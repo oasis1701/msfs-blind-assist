@@ -545,6 +545,135 @@
     return "";
   };
 
+  // True when a nav-rail link or a sub-tab is the ACTIVE one. The flyPad marks
+  // the selected nav-rail page link AND the selected Ground sub-tab
+  // (Services/Fuel/Payload/Pushback) with the STANDALONE class token
+  // "bg-theme-accent" (inactive ones only carry "hover:bg-theme-accent", which
+  // hasClassToken correctly rejects). Same marker pageLabel() uses for the page
+  // title, so the two always agree.
+  A.isActiveTab = function (n) {
+    return A.hasClassToken(n, "bg-theme-accent");
+  };
+
+  // Read-only ground-equipment status indicator (Wheel Chocks / Safety Cones).
+  // FBW renders these as a cursor-pointer <div> with NO click handler whose TEXT
+  // color encodes state: text-green-500 = placed/present, text-gray-500 = not
+  // placed (source A380Services.tsx: "Wheel Chocks and Security Cones are only
+  // visual information"). They are NOT controls — there is no onClick/setter — so
+  // they surface as a status line, never a clickable button. Detect the wrapper
+  // STRUCTURALLY (so it is language-independent) starting from the tile's heading
+  // and walking up a few levels. Returns "placed"/"not placed", else "". The
+  // no-handler gate means if a future FBW build makes them real buttons, this
+  // bows out and the normal button + serviceState path takes over.
+  A.groundStatusTile = function (n) {
+    var p = n, guard = 0;
+    while (p && guard < 3) {
+      guard++;
+      var c = lower(A.cls(p));
+      var hasState = c.indexOf("text-green-500") >= 0 || c.indexOf("text-gray-500") >= 0;
+      if (c.indexOf("cursor-pointer") >= 0 && hasState &&
+          typeof p.onclick !== "function" && !A.hasReactClick(p)) {
+        return c.indexOf("text-green-500") >= 0 ? "placed" : "not placed";
+      }
+      p = p.parentElement;
+    }
+    return "";
+  };
+
+  // ---- Ground form builders (Payload / Fuel) -----------------------------
+  // These re-represent the structured Payload/Fuel content as clean, ordered
+  // screen-reader lines. They re-surface the REAL <input> nodes (stamping idx)
+  // so set/click are unchanged, and mark suppressed/replaced subtrees with
+  // data-fbw-ground-region so enumerate's generic pass skips them. The nav rail
+  // and Ground sub-tab strip live OUTSIDE these subtrees and flow through normally.
+
+  // True when the named Ground sub-tab ("payload"/"fuel") is the ACTIVE one (its
+  // /ground/<name> link carries the standalone bg-theme-accent token). Language-
+  // independent page detector.
+  A.activeGroundSub = function (root, name) {
+    try {
+      var links = root.querySelectorAll("a[href]");
+      for (var i = 0; i < links.length; i++) {
+        var h = links[i].getAttribute("href") || "";
+        if (h.indexOf("/ground/" + name) >= 0 && A.hasClassToken(links[i], "bg-theme-accent")) return true;
+      }
+    } catch (e) {}
+    return false;
+  };
+
+  // True when n is inside a subtree a Ground builder has taken ownership of
+  // (marked data-fbw-ground-region). enumerate skips these in both passes.
+  A.insideGroundRegion = function (n) {
+    var cur = n;
+    while (cur) {
+      if (cur.getAttribute && cur.getAttribute("data-fbw-ground-region")) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  };
+
+  A.markOwned = function (n) { if (n && n.setAttribute) n.setAttribute("data-fbw-ground-region", "1"); };
+
+  // Suppress the per-page "Fill … from SimBrief" controls on Payload/Fuel (the
+  // user imports via the Dashboard). With no plan loaded only a hover-tooltip
+  // caption exists; the real CloudArrowDown icon button renders only when planned
+  // values differ from current. Own the innermost caption element + its clickable
+  // icon-button sibling in the same TooltipWrapper — but NEVER a sibling holding an
+  // <input> (the Fuel value field lives next to it).
+  A.suppressSimbrief = function (section) {
+    var all = section.getElementsByTagName("*");
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i];
+      var tc = n.textContent || "";
+      if (tc.length > 60 || !/simbrief/i.test(tc)) continue;
+      var hasInnerRef = false;
+      for (var c = 0; c < n.children.length; c++) { if (/simbrief/i.test(n.children[c].textContent || "")) { hasInnerRef = true; break; } }
+      if (hasInnerRef) continue;                       // not the innermost — keep descending
+      A.markOwned(n);                                   // the caption
+      var par = n.parentElement;
+      if (!par) continue;
+      for (var s = 0; s < par.children.length; s++) {
+        var ch = par.children[s];
+        if (ch === n) continue;
+        try { if (ch.getElementsByTagName("input").length) continue; } catch (e) { continue; }   // never the value field
+        var clickable = (typeof ch.onclick === "function") || A.hasReactClick(ch) ||
+                        ch.tagName.toLowerCase() === "button" || A.cls(ch).indexOf("cursor-pointer") >= 0 ||
+                        (ch.getElementsByTagName && ch.getElementsByTagName("svg").length > 0);
+        if (clickable) A.markOwned(ch);                 // the CloudArrowDown icon button
+      }
+    }
+  };
+
+  // Join a value cell FBW renders as separate spans (dim leading-zero pad + number
+  // + unit) into one clean string, taking the FIRST numeric token so a trailing
+  // tooltip concatenated into the same cell is ignored: "0154 PAX" -> "154 PAX",
+  // "34.64%Maximum ZFWCG 40%" -> "34.64 %".
+  A.joinValueCell = function (cell) {
+    if (!cell) return "";
+    var t = clean(cell.textContent);
+    var m = /0*(\d[\d,]*\.?\d*)\s*(%|[A-Za-z]{1,4})?/.exec(t);
+    if (m) { return m[2] ? (m[1] + " " + m[2]) : m[1]; }
+    return t;
+  };
+
+  // Find a "Maximum <Row> <value>" readout for a row label; returns the trailing
+  // value(+unit), else "". Matched by the row label being a substring of the line
+  // (both from the same t() translation -> language-independent).
+  A.findMaxFor = function (root, rowLabel) {
+    if (!rowLabel) return "";
+    var rl = lower(rowLabel);
+    var all = root.getElementsByTagName("*");
+    for (var i = 0; i < all.length; i++) {
+      var own = A.directText(all[i]);
+      if (!own) continue;
+      if (lower(own).indexOf(rl) >= 0 && /max/i.test(own)) {
+        var mm = /([\d][\d,]*\.?\d*\s*[%A-Za-z]*)\s*$/.exec(own);
+        if (mm) return clean(mm[1]);
+      }
+    }
+    return "";
+  };
+
   // Throttle-calibration page relabel. The two axis panels (Axis 1 = Throttle
   // 1+2, Axis 2 = Throttle 3+4) are shown SIDE BY SIDE around a shared centre
   // detent-selector column, so several controls/values are DUPLICATED with
@@ -655,6 +784,38 @@
     return true;
   };
 
+  // Ground page READ ORDER. The Ground/Services page is a two-column service-tile
+  // grid with the Services/Fuel/Payload/Pushback sub-tab strip in the upper-right.
+  // The generic two-column sort reads the left column (some service tiles) fully,
+  // then the right column — which starts with the status bar + the sub-tab strip,
+  // THEN the rest of the service tiles — so the tab strip lands in the MIDDLE of
+  // the service list. This pass bands the page so it reads: top status bar →
+  // sub-tab strip (grouped) → all service tiles (grouped: left column then right) →
+  // nav rail. Gated on the presence of "/ground/" sub-tab links, so every other
+  // page is untouched. Returns true when it handled (and re-sorted) the page.
+  A.orderGroundServices = function (items) {
+    var hasSub = false;
+    for (var i = 0; i < items.length; i++) { if (items[i]._groundSub) { hasSub = true; break; } }
+    if (!hasSub) return false;                       // not the Ground page
+
+    for (var j = 0; j < items.length; j++) {
+      var it = items[j];
+      if (it.navRail) { it._gband = 1e7; continue; }
+      if (it._groundSub) { it._gband = 100; continue; }   // sub-tab strip, grouped
+      if (it.top < 50) { it._gband = 0; continue; }        // global EFB status bar (top)
+      it._gband = 200;                                     // all service tiles + chocks/cones
+    }
+    // Within the service band keep the existing column→row order so the left
+    // column's tiles read fully, then the right column's — contiguous, no strip.
+    items.sort(function (a, b) {
+      return ((a.navRail ? 1 : 0) - (b.navRail ? 1 : 0)) ||
+             ((a._gband || 0) - (b._gband || 0)) ||
+             ((a._col || 0) - (b._col || 0)) ||
+             ((a._row || 0) - (b._row || 0)) || (a.left - b.left);
+    });
+    return true;
+  };
+
   // Builds the flat, screen-reader-friendly element list for the current
   // flyPad page: every visible interactive control PLUS visible headings/text,
   // one per line, in reading order, de-duplicated. Interactive/clickable items
@@ -715,9 +876,248 @@
     return boundary;
   };
 
+  // Locate the page content section ("h-content-section..."), the common root of
+  // the Payload/Fuel form area.
+  A.contentSection = function (root) {
+    try {
+      var s = root.querySelectorAll('[class*="h-content-section"]');
+      if (s && s.length) return s[0];
+    } catch (e) {}
+    return null;
+  };
+
+  // Build clean Payload-page content lines, or null when not the Payload page.
+  // Re-surfaces the real <input> nodes (stamps idx); folds each row's current +
+  // max into the field label; emits ZFWCG as a read-only line; suppresses the
+  // seat map / cargo bars / CG chart and the table's split-span cells. Builder
+  // items carry EMIT-ORDER synthetic coordinates (top 200+, left 0) so the unified
+  // sort keeps them in order, after the sub-tab strip and before the nav rail.
+  A.buildPayloadLines = function (root, idxRef) {
+    if (!A.activeGroundSub(root, "payload")) return null;
+    var section = A.contentSection(root);
+    if (!section) return null;
+    var table = section.querySelector("table");
+    if (!table) return null;
+
+    // Ownership: suppress every non-actionable top-level child (seat map, cargo
+    // bars), the table itself (re-emitted below), and — inside the actionable
+    // column that holds the table — the CG chart card (the direct child of that
+    // column that contains a <canvas>). The boarding panel (no canvas) stays
+    // unowned so the generic pass surfaces its buttons + rate selector.
+    var actionable = null, kids = section.children;
+    for (var c = 0; c < kids.length; c++) {
+      if (kids[c].contains(table)) actionable = kids[c];
+      else A.markOwned(kids[c]);
+    }
+    A.markOwned(table);
+    if (actionable) {
+      var canv = actionable.getElementsByTagName("canvas");
+      for (var v = 0; v < canv.length; v++) {
+        var p = canv[v];
+        while (p && p.parentElement !== actionable) p = p.parentElement;
+        if (p && !p.contains(table)) A.markOwned(p);
+      }
+    }
+    // Every visible label/limit/caption on this page is a pointer-events-none
+    // ABSOLUTE z-50 hover tooltip ("Per Passenger Weight", "Maximum ZFW …", "Begin
+    // Boarding"). We read the maxes from them (findMaxFor) and fold labels into
+    // fields, so they must not leak as their own lines — suppress them. Gate on
+    // "absolute": FBW's DISABLED buttons are ALSO pointer-events-none (opacity-20
+    // pointer-events-none) but are in-flow, NOT absolute — owning those would drop
+    // a disabled Start-deboarding / SimBrief button.
+    var tips = section.querySelectorAll('[class*="pointer-events-none"]');
+    var weightTips = [];
+    for (var tp = 0; tp < tips.length; tp++) {
+      if (A.cls(tips[tp]).indexOf("absolute") < 0) continue;   // not a tooltip overlay
+      A.markOwned(tips[tp]);
+      var tx = clean(tips[tp].textContent);
+      if (/weight/i.test(tx) && !/max/i.test(tx)) weightTips.push(tx);
+    }
+    A.suppressSimbrief(section);
+
+    var out = [];
+    function emit(o) { o.top = 200 + out.length * 30; o.left = 0; o._axis = 0; o.navRail = false; out.push(o); }
+    function field(node, label) {
+      var ix = idxRef.v++; node.setAttribute("data-fbw-efb-idx", String(ix));
+      emit({ idx: ix, kind: "input", tag: "input", role: "", text: label,
+             value: A.valueOf("input", node), controlType: "text", clickable: false,
+             level: 0, live: "", disabled: A.disabledFor(node), options: [] });
+    }
+    function textline(s) {
+      emit({ idx: 0, kind: "text", tag: "div", role: "", text: s, value: "",
+             controlType: "", clickable: false, level: 0, live: "", disabled: false, options: [] });
+    }
+
+    var rows = table.querySelectorAll("tr");
+    for (var i = 0; i < rows.length; i++) {
+      var cells = rows[i].children;
+      if (cells.length < 3) continue;
+      var label = clean(cells[0].textContent);
+      if (!label) continue;                              // header row (blank label cell)
+      var input = cells[1].querySelector("input");
+      var current = A.joinValueCell(cells[2]);
+      var max = A.findMaxFor(root, label);
+      if (input) {
+        var ctx = [];
+        if (current) ctx.push("current " + current);
+        if (max) ctx.push("max " + max);
+        field(input, label + (ctx.length ? ", " + ctx.join(", ") : ""));
+      } else {
+        var planned = A.joinValueCell(cells[1]);
+        var s = label + ": planned " + (planned || "n/a") + ", current " + (current || "n/a");
+        if (max) s += " (max " + max + ")";
+        textline(s);
+      }
+    }
+
+    // Per-passenger / per-bag weight inputs (outside the table, in the boarding
+    // panel). Their labels are weight tooltips; match each input to its nearest
+    // one, own the bare unit sibling ("LBS"), and emit with NO default-value hint.
+    // The only non-table inputs on Payload are the weight fields; pair them to the
+    // weight tooltips by DOM order (both render in source order: pax then bag).
+    var inputs = root.getElementsByTagName("input"), wi = 0;
+    for (var k = 0; k < inputs.length; k++) {
+      var n = inputs[k];
+      if (n.getAttribute("data-fbw-efb-idx")) continue;   // table inputs, already taken
+      if (A.insideGroundRegion(n)) continue;
+      if (!A.isVisible(n)) continue;
+      var nm = weightTips[wi] || A.fieldName(n); wi++;
+      if (!nm) continue;
+      var unit = "", sibs = n.parentElement ? n.parentElement.children : [];
+      for (var sx = 0; sx < sibs.length; sx++) {
+        if (sibs[sx] === n) continue;
+        var st = clean(sibs[sx].textContent);
+        if (A.unitToken(st)) { if (!unit) unit = st; A.markOwned(sibs[sx]); }
+      }
+      field(n, unit ? (nm + " (" + unit + ")") : nm);
+    }
+    return out;
+  };
+
+  // Build clean Fuel-page content lines, or null when not the Fuel page. Emits one
+  // read-only line per tank ("Name: current / capacity unit"), then the fuel-target
+  // pair (an accessible range slider + the real numeric input, BOTH carrying the
+  // input's idx so either writes the sim), and leaves the Refuel status / Start /
+  // rate selector to the generic pass. Owns each tank widget + the rc-slider.
+  A.buildFuelLines = function (root, idxRef) {
+    if (!A.activeGroundSub(root, "fuel")) return null;
+    // Scope to ROOT, not the tank content-section: on the A380 the Total/Trim cards
+    // AND the refuel input + rc-slider are absolutely-positioned OUTSIDE the tank
+    // section, so a section-scoped scan misses them. Tank/value/input detection is
+    // fuel-specific, so scanning root captures every layout without false matches.
+    A.suppressSimbrief(root);
+
+    var out = [];
+    function emit(o) { o.top = 200 + out.length * 30; o.left = 0; o._axis = 0; o.navRail = false; out.push(o); }
+    function textline(s) {
+      emit({ idx: 0, kind: "text", tag: "div", role: "", text: s, value: "",
+             controlType: "", clickable: false, level: 0, live: "", disabled: false, options: [] });
+    }
+    // A tank value display, in either layout: A320 "cur / cap UNIT" (single text
+    // node) or A380 "0…0value UNIT" (ValueUnitDisplay with leading-zero pad spans,
+    // no capacity). Returns { s: clean readout, cap } or null.
+    function fuelVal(txt) {
+      var a = /^([\d][\d,]*)\s*\/\s*([\d][\d,]*)\s*(LBS|KGS)$/i.exec(txt);
+      if (a) return { s: a[1] + " / " + a[2] + " " + a[3].toUpperCase(), cap: parseInt(a[2].replace(/,/g, ""), 10) };
+      var b = /^0*(\d[\d,]*)\s*(LBS|KGS)$/i.exec(txt);
+      if (b) return { s: b[1] + " " + b[2].toUpperCase(), cap: 0 };
+      return null;
+    }
+    function descHasFuel(el) {
+      for (var c = 0; c < el.children.length; c++) {
+        if (fuelVal(clean(el.children[c].textContent))) return true;
+        if (descHasFuel(el.children[c])) return true;
+      }
+      return false;
+    }
+    // Tank NAME for a value display + own the name source so it doesn't leak: the
+    // enclosing table row's first cell (A380 tables), else the nearest heading
+    // (A320 TankReadoutWidget), else the nearest preceding alphabetic label.
+    function fuelTankName(el) {
+      var p = el, g = 0;
+      while (p && p !== root && g < 8) {
+        if (p.tagName && p.tagName.toLowerCase() === "tr") { A.markOwned(p); var fc = p.firstElementChild; return fc ? clean(fc.textContent) : "Tank"; }
+        p = p.parentElement; g++;
+      }
+      var q = el, gg = 0;
+      while (q && q !== root && gg < 8) {
+        var prev = q.previousElementSibling;
+        while (prev) {
+          if (/^h[1-6]$/i.test(prev.tagName)) { var ht = clean(prev.textContent); if (ht) { A.markOwned(prev); return ht; } }
+          var pt = clean(prev.textContent);
+          if (pt && /[a-z]/i.test(pt) && !/(LBS|KGS|%)/i.test(pt) && !/^\d/.test(pt) && pt.length <= 20) { A.markOwned(prev); return pt; }
+          prev = prev.previousElementSibling;
+        }
+        q = q.parentElement; gg++;
+      }
+      return "Tank";
+    }
+
+    // Tank readouts. Match on textContent (A380 splits the value into spans, so
+    // directText is empty), take only the INNERMOST match (the value wrapper), and
+    // dedup by text+POSITION (distinct tanks can share a value, e.g. Left & Right
+    // Outer both "0/1528"; the outline+fill double-render repeats text at one spot).
+    var all = root.getElementsByTagName("*"), capacity = 0, seen = {}, unit = "LBS";
+    for (var j = 0; j < all.length; j++) {
+      var txt = clean(all[j].textContent);
+      var fv = fuelVal(txt);
+      if (!fv) continue;
+      if (descHasFuel(all[j])) continue;           // not the innermost value display
+      var tr = all[j].getBoundingClientRect();
+      var key = txt + "@" + Math.round(tr.top) + "," + Math.round(tr.left);
+      if (seen[key]) continue; seen[key] = 1;
+      if (/KGS/i.test(fv.s)) unit = "KGS";
+      var name = fuelTankName(all[j]);
+      textline(name + ": " + fv.s);
+      if (/total/i.test(name) && fv.cap) capacity = fv.cap;
+      A.markOwned(all[j]);                          // the value wrapper (pad/value/unit)
+    }
+
+    // Fuel-target numeric input: the SimpleInput under the "Refuel" heading (on the
+    // A380 it's in root, not the tank section). Emit an accessible range slider + the
+    // number field, both writing the input's idx.
+    var inputs = root.getElementsByTagName("input"), fuelInput = null;
+    for (var k = 0; k < inputs.length; k++) {
+      if (A.isVisible(inputs[k]) && /refuel/i.test(A.nearestHeading(inputs[k]))) { fuelInput = inputs[k]; break; }
+    }
+    if (fuelInput) {
+      // Slider max = total fuel capacity. The A320 Total tank carries it ("cur/cap");
+      // the A380 tanks show current only, so fall back to the stock capacity SimVar
+      // (gallons x weight-per-gallon = lbs), converted to the displayed unit.
+      var cap = capacity;
+      if (!cap) {
+        try {
+          var lbs = SimVar.GetSimVarValue("FUEL TOTAL CAPACITY", "gallons") * SimVar.GetSimVarValue("FUEL WEIGHT PER GALLON", "pounds");
+          cap = Math.round(unit === "KGS" ? lbs * 0.45359237 : lbs);
+        } catch (e) { cap = 0; }
+      }
+      if (!cap) cap = parseInt(clean(fuelInput.getAttribute("placeholder") || "0").replace(/,/g, ""), 10) || 0;
+      var step = cap > 100000 ? 1000 : 100;
+      var ix = idxRef.v++; fuelInput.setAttribute("data-fbw-efb-idx", String(ix));
+      var val = A.valueOf("input", fuelInput);
+      var dis = A.disabledFor(fuelInput);
+      emit({ idx: ix, kind: "slider", tag: "input", role: "slider", text: "Fuel target (slider)",
+             value: val, controlType: "range", clickable: false, level: 0, live: "", disabled: dis,
+             options: [], min: 0, max: cap, step: step });
+      emit({ idx: ix, kind: "input", tag: "input", role: "", text: "Fuel target (" + unit + ")",
+             value: val, controlType: "text", clickable: false, level: 0, live: "", disabled: dis, options: [] });
+      // Suppress the rc-slider widget (re-rendered as our accessible range above)
+      // and the input's lone unit sibling ("LBS").
+      var slider = root.querySelector('[class*="rc-slider"]');
+      if (slider) A.markOwned(slider);
+      var fsibs = fuelInput.parentElement ? fuelInput.parentElement.children : [];
+      for (var fx = 0; fx < fsibs.length; fx++) {
+        if (fsibs[fx] !== fuelInput && A.unitToken(clean(fsibs[fx].textContent))) A.markOwned(fsibs[fx]);
+      }
+    }
+    return out;
+  };
+
   A.enumerate = function (root) {
     var stale = root.querySelectorAll("[data-fbw-efb-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbw-efb-idx");
+    var staleR = root.querySelectorAll("[data-fbw-ground-region]");
+    for (var sr = 0; sr < staleR.length; sr++) staleR[sr].removeAttribute("data-fbw-ground-region");
 
     var rootRect = root.getBoundingClientRect();
     var all = root.getElementsByTagName("*");
@@ -745,9 +1145,19 @@
       return 0;
     }
 
+    // Dedicated Ground-form builders (Payload/Fuel) own + replace their content
+    // region with clean lines. They stamp idx on the real inputs and mark the
+    // suppressed/replaced subtrees data-fbw-ground-region; the generic passes
+    // below skip those subtrees but still surface the nav rail, sub-tabs, and the
+    // boarding/refuel buttons (which sit OUTSIDE the owned subtrees).
+    var idxRef = { v: idx };
+    var groundItems = A.buildPayloadLines(root, idxRef) || A.buildFuelLines(root, idxRef);
+    if (groundItems) { for (var gi = 0; gi < groundItems.length; gi++) items.push(groundItems[gi]); idx = idxRef.v; }
+
     for (var i = 0; i < all.length && idx <= 400; i++) {
       var n = all[i];
       if (!A.isVisible(n)) continue;
+      if (A.insideGroundRegion(n)) continue;
       var kind = A.classify(n);
       if (!kind) continue;
 
@@ -756,7 +1166,7 @@
       // redundant with the Instant/Fast/Real + Start refueling controls). Scoped to
       // the refuel context via the section heading so Payload inputs (Passengers /
       // Cargo / ZFW) and any sliders on other pages are untouched.
-      if ((kind === "slider" || kind === "input") && /refuel/i.test(A.nearestHeading(n))) continue;
+      if (kind === "slider" && /refuel/i.test(A.nearestHeading(n))) continue;
 
       var interactive = kind !== "heading";
 
@@ -782,6 +1192,14 @@
         if (svc) text = text + " (" + svc + ")";
       }
 
+      // Read-only ground status indicator (Wheel Chocks / Safety Cones): the name
+      // is a heading whose wrapper colour encodes placed/not-placed. Append it so
+      // the reader hears "Wheel Chocks: placed" instead of a bare name.
+      if (text && kind === "heading") {
+        var gstat = A.groundStatusTile(n);
+        if (gstat) text = text + ": " + gstat;
+      }
+
       // Drop empty, non-actionable noise. Inputs/checkboxes keep their slot
       // (their value carries meaning even with no label).
       if (!text && ctype !== "text" && ctype !== "select" && ctype !== "checkbox") continue;
@@ -791,6 +1209,23 @@
 
       var r = n.getBoundingClientRect();
       var topRel = r.top - rootRect.top, leftRel = r.left - rootRect.left;
+      // The left nav rail (page links in the far-left column) is grouped at the
+      // END so it stops interleaving with the page content row-by-row.
+      var navRail = (kind === "link" && leftRel < 100 && topRel > 40);
+      // Ground page sub-tab (Services/Fuel/Payload/Pushback): a link whose href is
+      // "/ground/<x>". Tagged so orderGroundServices can group the tab strip apart
+      // from the service tiles (the two-column read order otherwise drops the strip
+      // between the left- and right-column service items).
+      var hrefAttr = (n.getAttribute && n.getAttribute("href")) || "";
+      var groundSub = (kind === "link" && /^\/ground\//.test(hrefAttr));
+
+      // Active tab/nav indicator: mark the selected nav-rail page and the selected
+      // Ground sub-tab so the reader knows where it is. Nav-rail links read
+      // "current page"; in-content sub-tabs read "selected".
+      if (text && (kind === "link" || kind === "tab") && A.isActiveTab(n)) {
+        text = text + (navRail ? " (current page)" : " (selected)");
+      }
+
       items.push({
         top: topRel, left: leftRel,
         idx: thisIdx, kind: kind, tag: n.tagName.toLowerCase(),
@@ -801,9 +1236,7 @@
         disabled: A.disabledFor(n), options: A.optionsFor(n),
         // Throttle-calibration axis tag (0 = not on this page / shared detent column).
         _axis: axisPanels.length ? axisOfNode(n) : 0,
-        // The left nav rail (page links in the far-left column) is grouped at the
-        // END so it stops interleaving with the page content row-by-row.
-        navRail: (kind === "link" && leftRel < 100 && topRel > 40)
+        navRail: navRail, _groundSub: groundSub
       });
     }
 
@@ -815,10 +1248,15 @@
     for (var ti = 0; ti < all.length && items.length < 600; ti++) {
       var tn = all[ti];
       if (!A.isVisible(tn)) continue;
+      if (A.insideGroundRegion(tn)) continue; // owned by a Ground builder
       if (A.classify(tn)) continue;        // already captured (interactive/heading)
       if (A.isInsideStamped(tn)) continue; // text inside a captured control
       var own = A.directText(tn);          // immediate text only -> leaf labels/values
       if (!own || own.length > 80) continue;
+      // Stringified booleans/nullish leak from FBW template literals like
+      // `${!cond && t('…')}` (e.g. the Fuel rate-selector tooltips render "false");
+      // they are never real content.
+      if (/^(true|false|undefined|null)$/i.test(own)) continue;
       // A pure "(...)" sub-label belongs to an adjacent control (it is folded into
       // that control's label), so don't surface it as its own line.
       if (own.charAt(0) === "(" && own.charAt(own.length - 1) === ")") continue;
@@ -884,6 +1322,9 @@
     // Re-order the throttle-calibration page into logical column blocks (the
     // generic two-column sort zippers its three columns). No-op on other pages.
     A.orderThrottleCalib(items);
+    // Group the Ground page's sub-tab strip apart from its service tiles. No-op
+    // on other pages.
+    A.orderGroundServices(items);
 
     items = A.dedupe(items);
     A._elements = items;
@@ -1111,6 +1552,13 @@
     if (tag === "input" || tag === "textarea") {
       node.focus();
       A.setNativeValue(node, value);
+      // FBW's SimpleInput commits (clamp + write to the sim) on Enter / blur via
+      // getConstrainedValue — NOT on the React onChange. Dispatch both so a value
+      // set from our form actually reaches the aircraft (Passengers, Cargo, ZFW,
+      // weights, fuel target).
+      try { node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); } catch (e) {}
+      try { node.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); } catch (e2) {}
+      try { node.blur(); } catch (e3) {}
       return "ok";
     }
     if (node.getAttribute && node.getAttribute("contenteditable") === "true") {

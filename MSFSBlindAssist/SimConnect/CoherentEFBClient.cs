@@ -269,6 +269,11 @@ namespace MSFSBlindAssist.SimConnect
                     // Options for a real <select>; unit-separator joined (rare on the flyPad).
                     if (elements[i].options is { Count: > 0 })
                         data[$"items.{i}.options"] = string.Join(OptionSeparator, elements[i].options!);
+                    // Range (slider) bounds for controlType "range".
+                    var inv = System.Globalization.CultureInfo.InvariantCulture;
+                    if (elements[i].min is { } mn) data[$"items.{i}.min"] = mn.ToString(inv);
+                    if (elements[i].max is { } mx) data[$"items.{i}.max"] = mx.ToString(inv);
+                    if (elements[i].step is { } sp) data[$"items.{i}.step"] = sp.ToString(inv);
                 }
                 Raise("fbw_efb_elements", data);
             }
@@ -424,6 +429,9 @@ namespace MSFSBlindAssist.SimConnect
             public string? live { get; set; }
             public bool disabled { get; set; }
             public List<string>? options { get; set; }
+            public double? min { get; set; }
+            public double? max { get; set; }
+            public double? step { get; set; }
         }
     }
 }
