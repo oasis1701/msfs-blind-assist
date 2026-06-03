@@ -3866,14 +3866,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
-        // speed-brake) are FBW L:vars. Write them through the MobiFlight CALCULATOR path, never
-        // SetLVar's SimConnect data-def write: the data-def path is unreliable for FBW L:vars —
-        // it set the number but the 3-D model didn't take it cleanly, so the seats jittered and
-        // didn't feel like a smooth motorised chair. The model animates from the L:var.
+        // speed-brake) are FBW L:vars. Don't SNAP them to the target in one write — the 3-D
+        // model jumps there and you only hear a single "tick" of the motor. A real motorised
+        // seat moves gradually while you hold the switch, so we RAMP the L:var toward the
+        // target a few units per 40 ms (calc path, on the UI thread). The FBW then plays the
+        // sustained motor sound + smooth animation. (Writing via the calculator path also
+        // avoids SetLVar's data-def write, which is unreliable for FBW L:vars.)
         if (varDef.RenderAsSlider)
         {
-            simConnect.ExecuteCalculatorCode(
-                value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + varDef.Name + ")");
+            RampSliderTo(varDef.Name, value, simConnect);
             return true;
         }
         // FCU SPD/MACH toggle from a panel button: the legacy dotted event is inert on the A380's
@@ -5998,6 +5999,52 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         else s.SendEvent(evt);
         OnPanelButtonFired(evt, s, a);
     }
+
+    // ---- Smooth slider ramp (motorised cockpit seats / armrests / sunshades / visors) ----
+    // Writing the target L:var in ONE step makes the 3-D model SNAP there — you only hear a
+    // single "tick" of the motor. Real motorised seats move gradually while the switch is held,
+    // so we step the L:var toward the target a few units every 40 ms ON THE UI THREAD (a
+    // WinForms timer — never a thread-pool timer, which would call SimConnect off-thread). The
+    // FBW plays the sustained motor sound + smooth animation. _sliderCurrent is authoritative
+    // once a slider is first touched (seeded from the cache) so the ramp stays smooth.
+    private readonly Dictionary<string, double> _sliderTarget = new();
+    private readonly Dictionary<string, double> _sliderCurrent = new();
+    private System.Windows.Forms.Timer? _sliderRampTimer;
+    private SimConnectManager? _sliderRampSim;
+
+    private void RampSliderTo(string lvar, double target, SimConnectManager simConnect)
+    {
+        _sliderRampSim = simConnect;
+        target = Math.Max(0.0, Math.Min(100.0, target));
+        _sliderTarget[lvar] = target;
+        if (!_sliderCurrent.ContainsKey(lvar))
+            _sliderCurrent[lvar] = simConnect.GetCachedVariableValue(lvar) ?? target;
+        if (_sliderRampTimer == null)
+        {
+            _sliderRampTimer = new System.Windows.Forms.Timer { Interval = 40 };
+            _sliderRampTimer.Tick += (s, e) => SliderRampTick();
+            _sliderRampTimer.Start();
+        }
+    }
+
+    private void SliderRampTick()
+    {
+        var sim = _sliderRampSim;
+        if (sim == null || !sim.IsConnected) { StopSliderRamp(); return; }
+        const double step = 3.0;   // ~100 units in ~1.3 s — a believable seat-motor speed
+        foreach (var lvar in _sliderTarget.Keys.ToList())
+        {
+            double target = _sliderTarget[lvar];
+            double cur = _sliderCurrent.TryGetValue(lvar, out var c) ? c : target;
+            if (Math.Abs(target - cur) <= step) { cur = target; _sliderTarget.Remove(lvar); }
+            else cur += Math.Sign(target - cur) * step;
+            _sliderCurrent[lvar] = cur;
+            sim.ExecuteCalculatorCode(cur.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")");
+        }
+        if (_sliderTarget.Count == 0) StopSliderRamp();
+    }
+
+    private void StopSliderRamp() { _sliderRampTimer?.Stop(); _sliderRampTimer?.Dispose(); _sliderRampTimer = null; }
 
     // The A380's NEW FCU ignores the legacy dotted "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" H-event the
     // A320 used — live-verified that firing it (either dot or underscore form) does NOTHING. Its
