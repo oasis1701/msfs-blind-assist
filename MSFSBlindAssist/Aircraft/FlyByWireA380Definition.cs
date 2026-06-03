@@ -5715,8 +5715,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // Fenix/PMDG-style: terse, no "Captain" prefix, both units (the A380 EFIS is
                 // split per side but every sibling reads ONE altimeter with no side prefix, so
                 // we speak the captain side only, like the existing handler already chose).
-                if (_baroStdL == true) { announcer.AnnounceImmediate("Altimeter standard"); return true; }
-                if (_lastBaroL > 0) { announcer.AnnounceImmediate($"Altimeter: {_lastBaroL}, {_lastBaroL / 33.8639:0.00}"); return true; }
+                // Read STD + the baro value LIVE from the cache so a stale change-tracked
+                // flag can never make this say "standard" while the EFIS is actually on QNH
+                // (same class of fix as the flaps cache read). NOTE: above the transition
+                // altitude the EFIS genuinely IS standard, so "standard" there is correct.
+                double? isStdNow = simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD");
+                bool stdNow = isStdNow.HasValue ? isStdNow.Value > 0.5 : (_baroStdL == true);
+                if (stdNow) { announcer.AnnounceImmediate("Altimeter standard"); return true; }
+                int hpaNow = _lastBaroL;
+                double? baroWord = simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_HPA");
+                if (baroWord.HasValue && BaroHpa(new Arinc429Word(baroWord.Value).ValueOr(0), out int hpaDec) && hpaDec > 0) hpaNow = hpaDec;
+                if (hpaNow > 0) { announcer.AnnounceImmediate($"Altimeter: {hpaNow}, {hpaNow / 33.8639:0.00}"); return true; }
                 // Fallback (EIS baro not seeded yet): stock KOHLSMAN.
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
