@@ -4934,8 +4934,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // On-demand altimeter / baro setting (output mode + B). Reads the cached EFIS
             // baro (continuously monitored), so it's instant.
             case HotkeyAction.ReadAltimeter:
-                announcer.AnnounceImmediate(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, _baroMode < 0 ? 1 : _baroMode));
+            {
+                // Fenix/PMDG-style dual-unit readout (parity with the A380's B readout):
+                // "Altimeter: 1013, 29.92" / "Altimeter standard". The live knob-turn
+                // auto-announce + panel still use BaroPhrase (single-unit, per-side).
+                int baroMode = _baroMode < 0 ? 1 : _baroMode;
+                double baroHpa = _baroHpa < 0 ? 1013 : _baroHpa;
+                announcer.AnnounceImmediate(baroMode == 0
+                    ? "Altimeter standard"
+                    : $"Altimeter: {baroHpa:F0}, {baroHpa * 0.0295299830714:F2}");
                 return true;
+            }
             // Ctrl+W (output): ND TO-waypoint name/distance/bearing via SimVars (no Coherent — see NdWaypointReadout).
             case HotkeyAction.ReadNDWaypoint:
                 Services.NdWaypointReadout.Announce(simConnect, announcer);
