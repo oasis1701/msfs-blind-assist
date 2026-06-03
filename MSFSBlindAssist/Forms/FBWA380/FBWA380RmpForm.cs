@@ -70,10 +70,18 @@ public sealed class FBWA380RmpForm : Form
 
         _display = new TextBox
         {
-            Location = new Point(12, 44), Size = new Size(584, 330),
+            Location = new Point(12, 44), Size = new Size(584, 300),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 11), AccessibleName = "RMP screen", Text = "Loading…"
         };
+
+        // Page selectors, in the tab order. The FBW A380 RMP only models the VHF and Transponder
+        // (SQWK) pages — HF / TEL / NAV / MENU are not implemented on this build, so they are not
+        // offered (pressing those keys does nothing).
+        var pVhf = new Button { Text = "&VHF page", Location = new Point(12, 350), Size = new Size(130, 28), AccessibleName = "VHF page" };
+        pVhf.Click += (_, _) => Page("VHF", "VHF page");
+        var pSqwk = new Button { Text = "&Transponder page", Location = new Point(150, 350), Size = new Size(160, 28), AccessibleName = "Transponder page" };
+        pSqwk.Click += (_, _) => Page("SQWK", "Transponder page");
 
         var freqLabel = new Label { Text = "&Frequency (digits; Enter loads standby):", Location = new Point(12, 384), Size = new Size(584, 20) };
         _freq = new TextBox { Location = new Point(12, 406), Size = new Size(220, 26), AccessibleName = "Frequency" };
@@ -82,14 +90,14 @@ public sealed class FBWA380RmpForm : Form
 
         var help = new Label
         {
-            Location = new Point(12, 440), Size = new Size(584, 40),
-            Text = "Keys: Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V/H/T/Q/N/M page · " +
-                   "Alt+C clear · Alt+S frequency · Alt+Home screen"
+            Location = new Point(12, 440), Size = new Size(584, 44),
+            Text = "VHF: Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V VHF page · Alt+Q transponder.\n" +
+                   "SQWK: type the code, Enter validates, Alt+3 ident. Alt+C clear · Alt+S frequency · Alt+Home screen."
         };
-        var close = new Button { Text = "&Close", Location = new Point(12, 484), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        var close = new Button { Text = "&Close", Location = new Point(12, 488), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
 
-        Controls.AddRange(new Control[] { sideLabel, _side, _status, _display, freqLabel, _freq, help, close });
+        Controls.AddRange(new Control[] { sideLabel, _side, _status, _display, pVhf, pSqwk, freqLabel, _freq, help, close });
         CancelButton = close;
         Load += (_, _) => _display.Focus();
     }
@@ -116,12 +124,9 @@ public sealed class FBWA380RmpForm : Form
         {
             switch (e.KeyCode)
             {
+                // Only VHF + Transponder (SQWK) pages are modelled by the FBW A380 dev build.
                 case Keys.V: Page("VHF", "VHF page"); Handled(e); return;
-                case Keys.H: Page("HF", "HF page"); Handled(e); return;
-                case Keys.T: Page("TEL", "Telephone page"); Handled(e); return;
                 case Keys.Q: Page("SQWK", "Transponder page"); Handled(e); return;
-                case Keys.N: Page("NAV", "Nav page"); Handled(e); return;
-                case Keys.M: Page("MENU", "Menu"); Handled(e); return;
                 case Keys.Up: Page("UP", "Mode up"); Handled(e); return;
                 case Keys.Down: Page("DOWN", "Mode down"); Handled(e); return;
                 case Keys.C: _ = FullClear(); Handled(e); return;

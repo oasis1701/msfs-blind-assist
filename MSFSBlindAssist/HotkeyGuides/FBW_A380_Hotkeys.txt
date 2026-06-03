@@ -157,13 +157,17 @@ INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
   Ctrl+1 / 2 / 3   Select radio 1 / 2 / 3 (the left line keys; again = load standby)
   Alt+1 / 2 / 3    Swap that radio's active and standby (the right keys; manual)
                    (or F1/2/3 = select, F7/8/9 = swap, with alternate MCDU keys on)
-  Alt+V/H/T/Q/N/M  VHF / HF / TEL / SQWK / NAV / MENU page
-  Alt+Up / Down    Standby mode up / down
+  Pages (also buttons in the Tab order):
+  Alt+V            VHF page          Alt+Q   Transponder (SQWK) page
+                   (HF / TEL / NAV / MENU are not modelled by FBW — those do nothing)
+  Alt+Up / Down    Standby mode up / down (VHF page)
   Alt+C            Fully clear the entry (resets a stuck entry)
   Alt+S            Focus the Frequency box;  Alt+Home  back to the screen
-  In the Frequency box: type the digits (keyed live, no decimal point), Enter
-  loads the standby, Backspace deletes a digit. Then Alt+n swaps it active.
-  Side combo (Captain / First Officer) switches which RMP you control.
+  VHF page  — Frequency box: type the digits (keyed live, no decimal), Enter loads
+             the standby, Backspace deletes a digit; Alt+n swaps it active.
+  SQWK page — Frequency box: type the 4 squawk digits, Enter validates, Alt+3 = ident.
+  Side combo (Captain / First Officer) switches which RMP you control — the screen,
+  the announcements and the keys all follow it.
 
 
 INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)

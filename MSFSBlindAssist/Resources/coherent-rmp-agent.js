@@ -30,7 +30,11 @@
         var cells = document.querySelectorAll('.stby-frequency-cell');
         var n = Math.min(actives.length, idents.length, cells.length);
         for (var i = 0; i < n; i++) {
-          var ident = tight(idents[i]);            // VHF1 / VHF2 / VHF3 / HF1 / TEL1 ...
+          // The RMP shows ONE page; the other page's rows still exist in the DOM but are
+          // display:none (rect 0×0). Skip any transceiver row that is not actually visible,
+          // so the SQWK page doesn't read the hidden VHF rows (and vice-versa).
+          if (!vis(actives[i])) continue;
+          var ident = tight(idents[i]);            // VHF1 / VHF2 / VHF3
           var active = tight(actives[i]);          // 122.800 / DATA / ---.---
           // standby = the VISIBLE .stby-frequency in this cell (VHF3 DATA hides the digits one)
           var sf = cells[i].querySelectorAll('.stby-frequency');
@@ -45,16 +49,19 @@
           rows.push(line);
         }
 
-        // Transponder page (SQWK): mode + code + ident, if those leaves are visible.
+        // Transponder (SQWK) page: mode (AUTO/STBY), the squawk code (the .cyan child of
+        // .transponder-code, NOT the "SQWK" label), and IDENT. Only when actually visible.
         var tMode = document.querySelector('.transponder-mode');
         if (tMode && vis(tMode)) {
-          var code = '';
-          var codeEl = document.querySelector('.transponder-code, .squawk-code');
-          if (codeEl) code = tight(codeEl);
-          var tline = 'Transponder ' + tight(tMode);
-          if (code) tline += ', code ' + code;
+          var codeEl = document.querySelector('.transponder-code .cyan');
+          var code = codeEl ? tight(codeEl) : '';
+          var tline = 'Transponder ' + tight(tMode);   // AUTO or STBY
+          if (code) tline += ', squawk ' + code;
           var ident = document.querySelector('.transponder-ident');
-          if (ident && vis(ident)) tline += ', ' + tight(ident);
+          if (ident && vis(ident)) {
+            var it = tight(ident);                      // "*IDENT" = ready, "IDENT" = identing
+            tline += it.indexOf('*') >= 0 ? ', ident ready' : ', identing';
+          }
           rows.push(tline);
         }
 
