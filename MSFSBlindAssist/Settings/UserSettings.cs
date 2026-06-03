@@ -58,6 +58,18 @@ public class UserSettings
         public HandFlyWaveType VisualGuidanceToneWaveform { get; set; } = HandFlyWaveType.Triangle;
         public double VisualGuidanceToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
 
+        // Visual Guidance — "current attitude" follower tone. Always plays alongside the desired tone:
+        // pilot matches the two pans (lateral) and zero-beats the two frequencies (vertical) by ear.
+        // Waveform defaults to Sine so it stays timbrally distinct from the Triangle desired tone.
+        public HandFlyWaveType VisualGuidanceCurrentToneWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double VisualGuidanceCurrentToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+
+        // Visual Guidance — hard-pan mode. When ON, both tones snap to full left / full right
+        // once bank exceeds ~1° (instead of proportional pan). For stereo-speaker setups where
+        // partial pan blends with the centred case and direction is hard to tell. Headphones
+        // generally do not need this. Default OFF.
+        public bool VisualGuidanceHardPanTone { get; set; } = false;
+
         // Takeoff Assist Tone Settings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
@@ -222,6 +234,11 @@ public class UserSettings
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
 
+        // HS787 bridge — community folder override for non-standard installs
+        public string? Hs787CommunityFolderOverride { get; set; } = null;
+        // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
+        public string? Hs787SimVersionOverride { get; set; } = null;
+
         /// <summary>
         /// When true, the AccessGSX service continues to announce GSX tooltip
         /// updates through the screen reader even after the AccessGSX form is
@@ -255,6 +272,9 @@ public class UserSettings
             HandFlyAnnouncementIntervalMs = HandFlyAnnouncementIntervalMs,
             VisualGuidanceToneWaveform = VisualGuidanceToneWaveform,
             VisualGuidanceToneVolume = VisualGuidanceToneVolume,
+            VisualGuidanceCurrentToneWaveform = VisualGuidanceCurrentToneWaveform,
+            VisualGuidanceCurrentToneVolume = VisualGuidanceCurrentToneVolume,
+            VisualGuidanceHardPanTone = VisualGuidanceHardPanTone,
             TakeoffAssistToneWaveform = TakeoffAssistToneWaveform,
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,
@@ -305,6 +325,8 @@ public class UserSettings
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
             GroundTrafficUseMetres = GroundTrafficUseMetres,
+            Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
+            Hs787SimVersionOverride = Hs787SimVersionOverride,
             GsxBackgroundMonitoring = GsxBackgroundMonitoring
         };
     }

@@ -8,6 +8,7 @@ using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
 using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
+using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Forms.PMDGEFB;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
@@ -38,9 +39,14 @@ public partial class MainForm : Form
     private System.Windows.Forms.Form? pmdgCDUForm;
     private System.Windows.Forms.Form? pmdgEFBForm;
     private EFBBridgeServer? efbBridgeServer;
+    private EFBBridgeServer? hs787BridgeServer;
+    private HS787FMCForm? hs787FMCForm;
+    private HS787SimBriefForm? hs787SimBriefForm;
+    private HS787EFBForm? hs787EFBForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
+    private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
     private TcasForm? tcasForm;
@@ -112,6 +118,12 @@ public partial class MainForm : Form
     private Dictionary<string, Control> currentControls = new Dictionary<string, Control>();
     private Dictionary<string, double> currentSimVarValues = new Dictionary<string, double>();
     private bool updatingFromSim = false;
+    // Set true for the entire duration of panel-build code (PanelLoadTimer_Tick body, including
+    // its BeginInvoke continuation). All combo selection-change handlers gate writes on this
+    // being false. This blocks ANY phantom user-action fire that originates from panel
+    // construction — including the WinForms deferred handle-creation replay that surfaces a
+    // buffered SelectedIndex value through the SIC handler regardless of how it was set.
+    private bool _buildingPanel = false;
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
     private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
@@ -140,6 +152,7 @@ public partial class MainForm : Form
             "FENIX_A320CEO" => new FenixA320Definition(),
             "PMDG_777" => new PMDG777Definition(),
             "PMDG_737" => new PMDG737Definition(),
+            "HS_787" => new HorizonSim787Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -173,6 +186,15 @@ public partial class MainForm : Form
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
+        }
+
+        // Initialize 787 bridge if starting with HS 787
+        if (currentAircraft?.AircraftCode == "HS_787")
+        {
+            CheckAndOfferHS787ModPackage();
+            StartHS787BridgeServer();
+            if (currentAircraft is HorizonSim787Definition hs787defInit)
+                hs787defInit.BridgeServer = hs787BridgeServer;
         }
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
@@ -228,6 +250,11 @@ public partial class MainForm : Form
         // Initialize visual guidance manager
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
+
+        // Global ground-speed announcer — fed by the always-on GROUND_VELOCITY continuous
+        // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
+        // not just while taxi guidance is active.
+        groundSpeedAnnouncer = new MSFSBlindAssist.Services.GroundSpeedAnnouncer(announcer);
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
@@ -519,7 +546,9 @@ public partial class MainForm : Form
                 this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
             }
             // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
-            // which can interfere with aircraft-specific processing)
+            // which can interfere with aircraft-specific processing — we tried it and combo
+            // programmatic updates appear to trigger the user-action SIC handler despite the
+            // updatingFromSim flag for HS787 vars whose write handler toggles state).
             UpdateButtonStateFromStateVariable(e.VarName, e.Value);
             return; // Aircraft handled it completely, no further generic processing needed
         }
@@ -642,6 +671,17 @@ public partial class MainForm : Form
             e.VarName == "FCU_ALTITUDE_WITH_STATUS" || e.VarName == "FCU_VSFPA_VALUE")
         {
             announcer.AnnounceImmediate(e.Description);
+            return true;
+        }
+
+        // Ground-speed announcer. GROUND_VELOCITY is a continuous base variable (always
+        // monitored while connected). Route it to the dedicated announcer's bucket/hysteresis
+        // logic and return true so the generic "value changed" announcement is suppressed.
+        // The announcer self-gates on the interval setting AND on the on-ground state
+        // (_lastOnGround, cached from SIM_ON_GROUND) — GS callouts are on-ground only.
+        if (e.VarName == "GROUND_VELOCITY")
+        {
+            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround);
             return true;
         }
 
@@ -781,11 +821,24 @@ public partial class MainForm : Form
         if (e.VarName == "SIM_ON_GROUND")
         {
             bool onGround = e.Value >= 0.5;
+            bool justTouchedDown = onGround && !_lastOnGround;
             _lastOnGround = onGround;
             // Mirror to SimConnectManager so other components (LandingExitForm,
             // etc.) that have a SimConnectManager reference can read the latest
             // air/ground state without a separate MainForm dependency.
             simConnectManager.LastKnownOnGround = onGround;
+
+            // Auto-deactivate visual guidance on touchdown: from this moment on,
+            // the landing-exit planner / taxi guidance take over the rollout and
+            // taxi guidance respectively, so the dual-tone guidance no longer
+            // has a useful job. Keeping it running would compete with the taxi
+            // steering tone audibly. Only fires on the airborne→on-ground edge,
+            // so a user who manually engages visual guidance on the ramp for any
+            // reason (preflight test, etc.) is not surprised by auto-deactivation.
+            if (justTouchedDown && visualGuidanceManager.IsActive)
+            {
+                visualGuidanceManager.Toggle();
+            }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
             // can detect touchdown and auto-activate taxi guidance to the
@@ -905,24 +958,33 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Share pitch/bank/heading with visual guidance when both modes active
-        if (visualGuidanceManager.IsActive)
+        // Visual guidance attitude (pitch / bank) now comes from VG's own SimConnect
+        // monitoring batch — no longer dependent on HandFly being active. Heading is
+        // already populated by the VG position update above.
+        if (e.VarName == "VISUAL_GUIDANCE_PITCH" && visualGuidanceManager.IsActive)
         {
-            if (e.VarName == "PLANE_PITCH_DEGREES")
-            {
-                double pitchDegrees = -(e.Value * (180.0 / Math.PI));
-                visualGuidanceManager.UpdatePitch(pitchDegrees);
-            }
-            else if (e.VarName == "PLANE_BANK_DEGREES")
-            {
-                double bankDegrees = e.Value * (180.0 / Math.PI);
-                visualGuidanceManager.UpdateBank(bankDegrees);
-            }
-            else if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC")
-            {
-                double headingDegrees = e.Value * (180.0 / Math.PI);
-                visualGuidanceManager.UpdateHeading(headingDegrees);
-            }
+            // SimConnect pitch is positive=nose down (Euler convention); negate to
+            // standard right-handed convention (positive=nose up).
+            double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+            visualGuidanceManager.UpdatePitch(pitchDegrees);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_BANK" && visualGuidanceManager.IsActive)
+        {
+            // SimConnect bank is left-positive; VisualGuidanceManager.StandardBank() applies
+            // the sign conversion at the consumer side, so we pass the raw SimConnect value
+            // (just converted from radians to degrees).
+            double bankDegrees = e.Value * (180.0 / Math.PI);
+            visualGuidanceManager.UpdateBank(bankDegrees);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_AOA" && visualGuidanceManager.IsActive)
+        {
+            // INCIDENCE ALPHA from SimConnect arrives in radians. VG smooths and sanity-gates
+            // it consumer-side; we just convert and forward.
+            double aoaDegrees = e.Value * (180.0 / Math.PI);
+            visualGuidanceManager.UpdateAoA(aoaDegrees);
+            return true;
         }
 
         // Handle aircraft variable hotkey announcements
@@ -1200,6 +1262,24 @@ public partial class MainForm : Form
                 {
                     var varDef = currentAircraft.GetVariables()[varKey];
 
+                    // Fall back to SimConnectManager's lastVariableValues cache
+                    // when displayValues lacks an entry. lastVariableValues is
+                    // populated in ProcessIndividualVariableResponse BEFORE the
+                    // announced-var "unchanged" suppression at line 2215, so it
+                    // holds the current value even when SimVarUpdated was
+                    // suppressed and never reached MainForm's displayValues
+                    // sink. Without this fallback, panel display fields for
+                    // stable continuous announced vars (e.g. IRS POS_SET held
+                    // at 1, IRS minutes held at -1) silently render as "--".
+                    if (!displayValues.ContainsKey(varKey))
+                    {
+                        double? cached = simConnectManager?.GetCachedVariableValue(varKey);
+                        if (cached.HasValue)
+                        {
+                            displayValues[varKey] = cached.Value;
+                        }
+                    }
+
                     if (displayValues.ContainsKey(varKey))
                     {
                         double value = displayValues[varKey];
@@ -1353,6 +1433,26 @@ public partial class MainForm : Form
         OnSimVarUpdated(this, simVarEvent);
     }
 
+    /// <summary>
+    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set) — single
+    /// keypresses whose whole purpose is to speak a value. When one of these fires during
+    /// an active visual-guidance session, VG opens a grace window so its per-second
+    /// bank/centerline callouts don't talk over the readout.
+    /// </summary>
+    private static bool IsManualReadoutAction(HotkeyAction action) => action switch
+    {
+        HotkeyAction.ReadTargetFPM
+            or HotkeyAction.ReadPitch
+            or HotkeyAction.ReadBankAngle
+            or HotkeyAction.ReadVerticalSpeed
+            or HotkeyAction.ReadAltitudeAGL
+            or HotkeyAction.ReadAltitudeMSL
+            or HotkeyAction.ReadAirspeedIndicated
+            or HotkeyAction.ReadDestinationRunwayDistance
+            or HotkeyAction.ReadHeadingMagnetic => true,
+        _ => false
+    };
+
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
     {
         // Actions that don't require SimConnect connection (can be used offline)
@@ -1371,6 +1471,14 @@ public partial class MainForm : Form
         {
             announcer.Announce("Not connected to simulator, please wait");
             return;
+        }
+
+        // If the pilot fired a manual readout query while visual guidance is active, open a
+        // short grace window so VG's per-second bank/centerline callouts don't interrupt the
+        // readout mid-sentence. See VisualGuidanceManager.NotifyManualQuery.
+        if (visualGuidanceManager.IsActive && IsManualReadoutAction(e.Action))
+        {
+            visualGuidanceManager.NotifyManualQuery();
         }
 
         // Try aircraft-specific handler first
@@ -1491,6 +1599,10 @@ public partial class MainForm : Form
                 {
                     ShowPMDGCDUDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "HS_787")
+                {
+                    ShowHS787FMCDialog();
+                }
                 else
                 {
                     ShowFenixMCDUDialog();
@@ -1500,6 +1612,10 @@ public partial class MainForm : Form
                 if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
                 {
                     ShowPMDGEFBDialog();
+                }
+                else if (currentAircraft?.AircraftCode == "HS_787")
+                {
+                    ShowHS787EFBFormDialog();
                 }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
@@ -2077,6 +2193,211 @@ public partial class MainForm : Form
         }
 
         ((PMDGEFBForm)pmdgEFBForm).ShowForm();
+    }
+
+    private void ShowHS787EFBFormDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
+        {
+            announcer.Announce("EFB bridge server is not running. Please install the mod package and restart the flight.");
+            return;
+        }
+
+        if (hs787EFBForm == null || hs787EFBForm.IsDisposed)
+            hs787EFBForm = new HS787EFBForm(hs787BridgeServer, announcer);
+
+        hs787EFBForm.ShowForm();
+    }
+
+    private void ShowHS787FMCDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
+        {
+            announcer.Announce("FMC bridge server is not running. Please install the mod package and restart the flight.");
+            return;
+        }
+
+        if (hs787FMCForm == null || hs787FMCForm.IsDisposed)
+        {
+            hs787FMCForm = new HS787FMCForm(hs787BridgeServer, simConnectManager, announcer);
+        }
+
+        hs787FMCForm.ShowForm();
+    }
+
+    /// <summary>
+    /// Builds the list of (simLabel, communityPath) tuples to try for the HS787 bridge.
+    /// Saved override comes first (if the directory still exists); auto-detected paths follow,
+    /// deduplicated by normalized path.
+    /// </summary>
+    private static List<(string SimLabel, string Path)> BuildHS787FolderList()
+    {
+        var list = new List<(string SimLabel, string Path)>();
+        var settings = SettingsManager.Current;
+
+        if (!string.IsNullOrEmpty(settings.Hs787CommunityFolderOverride) &&
+            Directory.Exists(settings.Hs787CommunityFolderOverride))
+        {
+            string label = settings.Hs787SimVersionOverride == "FS2024" ? "MSFS 2024" : "MSFS 2020";
+            list.Add((label, settings.Hs787CommunityFolderOverride));
+        }
+
+        foreach (var folder in HS787ModPackageManager.FindAllCommunityFolders())
+        {
+            bool duplicate = list.Any(f =>
+            {
+                try { return string.Equals(System.IO.Path.GetFullPath(f.Path), System.IO.Path.GetFullPath(folder.Path), StringComparison.OrdinalIgnoreCase); }
+                catch (ArgumentException) { return false; }
+            });
+            if (!duplicate)
+                list.Add(folder);
+        }
+
+        return list;
+    }
+
+    private static void SaveHS787FolderOverride(string path, string simVersion)
+    {
+        var settings = SettingsManager.Current;
+        settings.Hs787CommunityFolderOverride = path;
+        settings.Hs787SimVersionOverride = simVersion;
+        SettingsManager.Save(settings);
+    }
+
+    private void CheckAndOfferHS787ModPackage()
+    {
+        string resourcesDir = Path.Combine(Application.StartupPath, "Resources");
+        var allFolders = BuildHS787FolderList();
+
+        // Nothing auto-detected and no saved override — ask the user.
+        if (allFolders.Count == 0)
+        {
+            using var dlg = new HS787CommunityFolderForm();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            SaveHS787FolderOverride(dlg.SelectedPath, dlg.SelectedSimVersion);
+            allFolders.Add((dlg.SelectedSimVersion == "FS2024" ? "MSFS 2024" : "MSFS 2020", dlg.SelectedPath));
+        }
+
+        foreach (var (simName, communityPath) in allFolders)
+        {
+            if (HS787ModPackageManager.IsInstalled(communityPath))
+            {
+                var updateResult = HS787ModPackageManager.UpdateModPackage(communityPath, resourcesDir);
+                if (updateResult == ModPackageResult.Updated)
+                    System.Diagnostics.Debug.WriteLine($"[HS787] Bridge updated in {simName} Community folder.");
+                continue;
+            }
+
+            var answer = MessageBox.Show(
+                $"The HorizonSim 787-9 FMC and EFB accessibility bridge is not installed for {simName}.\n\n" +
+                "Would you like to install it now? This installs a small mod package into your Community folder " +
+                "that allows Blind Assist to read the FMC screen, send button presses, and read the EFB tablet.\n\n" +
+                "Note: You must restart the flight after installation for the bridge to take effect.",
+                "787-9 Accessibility Bridge",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (answer != DialogResult.Yes) continue;
+
+            var installResult = HS787ModPackageManager.Install(communityPath, resourcesDir);
+
+            // CommunityFolderNotFound means the saved/detected path is wrong — let the user correct it.
+            string displayName = simName;
+            if (installResult == ModPackageResult.CommunityFolderNotFound)
+            {
+                MessageBox.Show(
+                    "The Community folder path could not be found. Please verify or update it.",
+                    "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                string currentSimVersion = simName.Contains("2024") ? "FS2024" : "FS2020";
+                using var fixDlg = new HS787CommunityFolderForm(communityPath, currentSimVersion);
+                if (fixDlg.ShowDialog(this) != DialogResult.OK) continue;
+
+                SaveHS787FolderOverride(fixDlg.SelectedPath, fixDlg.SelectedSimVersion);
+                displayName = fixDlg.SelectedSimVersion == "FS2024" ? "MSFS 2024" : "MSFS 2020";
+                installResult = HS787ModPackageManager.Install(fixDlg.SelectedPath, resourcesDir);
+            }
+
+            switch (installResult)
+            {
+                case ModPackageResult.Success:
+                    MessageBox.Show(
+                        $"Bridge installed successfully for {displayName}. Please restart your flight for it to take effect.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+                case ModPackageResult.HS787PackageNotFound:
+                    MessageBox.Show(
+                        $"Could not find the HorizonSim 787-9 package in your {displayName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
+                case ModPackageResult.BridgeJsSourceNotFound:
+                    MessageBox.Show(
+                        "Bridge JS source file not found. Please reinstall MSFS Blind Assist.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    break;
+                case ModPackageResult.CommunityFolderNotFound:
+                    MessageBox.Show(
+                        "The Community folder path could not be found. Please verify or update it.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
+                default:
+                    MessageBox.Show($"Failed to install for {displayName}: {installResult}",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    break;
+            }
+        }
+    }
+
+    private void StartHS787BridgeServer()
+    {
+        if (hs787BridgeServer == null)
+        {
+            hs787BridgeServer = new EFBBridgeServer(port: 19778);
+        }
+
+        if (!hs787BridgeServer.IsRunning)
+        {
+            hs787BridgeServer.Start();
+        }
+    }
+
+    private void StopHS787BridgeServer()
+    {
+        if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
+        {
+            hs787FMCForm.Dispose();
+            hs787FMCForm = null;
+        }
+
+        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
+        {
+            hs787SimBriefForm.Dispose();
+            hs787SimBriefForm = null;
+        }
+
+        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
+        {
+            hs787EFBForm.Dispose();
+            hs787EFBForm = null;
+        }
+
+        hs787BridgeServer?.Stop();
+    }
+
+    private void ShowHS787EFBDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        if (hs787SimBriefForm == null || hs787SimBriefForm.IsDisposed)
+        {
+            hs787SimBriefForm = new HS787SimBriefForm(hs787BridgeServer, simConnectManager, announcer);
+        }
+
+        hs787SimBriefForm.ShowForm();
     }
 
     private void CheckAndOfferEFBModPackage()
@@ -2981,11 +3302,11 @@ public partial class MainForm : Form
             // Unregister global H, V, Q hotkeys
             hotkeyManager.UnregisterHandFlyHotkeys();
 
-            // Stop visual guidance if active (requires hand fly mode)
-            if (visualGuidanceManager.IsActive)
-            {
-                visualGuidanceManager.Stop();
-            }
+            // Visual guidance is now independent of HandFly mode — do NOT stop it just
+            // because HandFly is being toggled off. VG runs its own attitude monitoring
+            // (VISUAL_GUIDANCE_PITCH / VISUAL_GUIDANCE_BANK) and has nothing to lose from
+            // HandFly going inactive. If anything, HandFly turning off makes VG audio
+            // cleaner because there are now only two tones playing instead of three.
         }
     }
 
@@ -3004,20 +3325,20 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Validation checks
-            if (!handFlyManager.IsActive)
-            {
-                announcer.Announce("Hand fly mode must be active first");
-                visualGuidanceManager.Stop();
-                return;
-            }
-
+            // Validation: visual guidance no longer requires HandFly mode — it monitors its
+            // own pitch/bank/heading via VISUAL_GUIDANCE_DATA. Decoupled per pilot feedback that
+            // HandFly's single tone interfered with VG's dual tones, making it hard to tell
+            // which tone to follow. If HandFly happens to also be active, its tone is paused
+            // for the duration of VG (see HandFlyManager.SuppressAudio).
+            // Use Stop(announce: false) — Toggle has already flipped isActive=true but the user
+            // never actually had a running guidance session, so the public "Visual guidance off"
+            // callout would be misleading after a validation error.
             var runway = simConnectManager.GetDestinationRunway();
             var airport = simConnectManager.GetDestinationAirport();
             if (runway == null)
             {
                 announcer.Announce("No destination runway selected");
-                visualGuidanceManager.Stop();
+                visualGuidanceManager.Stop(announce: false);
                 return;
             }
 
@@ -3026,16 +3347,68 @@ public partial class MainForm : Form
             var guidanceToneWaveform = settings.VisualGuidanceToneWaveform;
             var guidanceVolume = settings.VisualGuidanceToneVolume;
 
-            // Initialize visual guidance with runway and preferences
-            visualGuidanceManager.Initialize(runway, airport, guidanceToneWaveform, guidanceVolume);
+            // Initialize visual guidance with runway, audio preferences (desired + optional follower tone),
+            // and aircraft-specific tunables from the current aircraft definition.
+            visualGuidanceManager.Initialize(
+                runway, airport,
+                guidanceToneWaveform, guidanceVolume,
+                settings.VisualGuidanceCurrentToneWaveform,
+                settings.VisualGuidanceCurrentToneVolume,
+                settings.VisualGuidanceHardPanTone,
+                currentAircraft.GetVisualGuidanceProfile());
+
+            // PMDG 777: if the FMC has a pilot-entered landing Vref, push it as a live
+            // override of the profile-default reference Vref. The PMDG SDK doesn't expose
+            // AoA (which we read via the standard SimConnect INCIDENCE ALPHA simvar) but
+            // it DOES publish FMC_LandingVREF in its CDA broadcast — snapshot it at VG
+            // activation time. FBW / Fenix A320 have no equivalent SDK field, so they
+            // continue to use the A320 profile default. Snapshot rather than live: if the
+            // pilot re-enters Vref mid-approach (rare), they re-toggle VG to pick it up.
+            if (currentAircraft?.AircraftCode == "PMDG_777" &&
+                simConnectManager?.PMDGDataManager != null)
+            {
+                double fmcVref = simConnectManager.PMDGDataManager.GetFieldValue("FMC_LandingVREF");
+                if (fmcVref > 0)
+                {
+                    visualGuidanceManager.UpdateReferenceVref(fmcVref);
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] VG: pushed PMDG FMC_LandingVREF={fmcVref:F0}kt as ReferenceVref");
+                }
+            }
 
             // Start monitoring position variables at 1 Hz
             simConnectManager.StartVisualGuidanceMonitoring();
+
+            // Silence HandFly's tone if it's also active — VG's two tones use the same
+            // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
+            // together were impossible to follow. Announcements (if HandFly's feedback mode
+            // includes them) still fire. Idempotent — no-op if HandFly was already silent.
+            handFlyManager.SuppressAudio();
+
+            // Register the quick-access hotkey set (H, V, Q, S, D, B, P, A, F). The set is
+            // shared with HandFly — VG is a hand-flying scenario with extra audio guidance, so
+            // the same per-key readouts apply. The shared registration is reference-counted
+            // inside HotkeyManager, so activating both modes is conflict-free; whichever
+            // deactivates last releases the keys. If a key fails to register (some other app
+            // is holding it globally), the user is told to fall back to output mode.
+            bool allQuickKeysRegistered = hotkeyManager.RegisterVisualGuidanceHotkeys();
+            if (!allQuickKeysRegistered)
+            {
+                announcer.Announce("Visual guidance active. Some quick-access keys unavailable; use output mode.");
+            }
         }
         else
         {
             // Stop monitoring
             simConnectManager.StopVisualGuidanceMonitoring();
+
+            // Release VG's claim on the quick-access hotkey set. If HandFly is still active,
+            // its claim keeps the keys registered; if not, this drops the ref count to zero
+            // and unregisters all 9 keys.
+            hotkeyManager.UnregisterVisualGuidanceHotkeys();
+
+            // Resume HandFly's tone if HandFly is still active and its feedback mode wants
+            // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
+            handFlyManager.ResumeAudio();
         }
     }
 
@@ -3168,6 +3541,9 @@ public partial class MainForm : Form
             currentSettings.HandFlyMonitorVerticalSpeed,
             currentSettings.VisualGuidanceToneWaveform,
             currentSettings.VisualGuidanceToneVolume,
+            currentSettings.VisualGuidanceCurrentToneWaveform,
+            currentSettings.VisualGuidanceCurrentToneVolume,
+            currentSettings.VisualGuidanceHardPanTone,
             currentSettings.TakeoffAssistToneWaveform,
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
@@ -3188,6 +3564,9 @@ public partial class MainForm : Form
                 currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
                 currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
                 currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
+                currentSettings.VisualGuidanceCurrentToneWaveform = settingsForm.VisualGuidanceCurrentToneWaveform;
+                currentSettings.VisualGuidanceCurrentToneVolume = settingsForm.VisualGuidanceCurrentToneVolume;
+                currentSettings.VisualGuidanceHardPanTone = settingsForm.VisualGuidanceHardPanTone;
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
@@ -3329,6 +3708,11 @@ public partial class MainForm : Form
         SwitchAircraft(new PMDG737Definition());
     }
 
+    private void HorizonSim787MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new HorizonSim787Definition());
+    }
+
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
         // Update the aircraft instance
@@ -3439,6 +3823,25 @@ public partial class MainForm : Form
             pmdgEFBForm = null;
         }
 
+        // Dispose HS 787 forms when switching aircraft
+        if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
+        {
+            hs787FMCForm.Dispose();
+            hs787FMCForm = null;
+        }
+
+        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
+        {
+            hs787SimBriefForm.Dispose();
+            hs787SimBriefForm = null;
+        }
+
+        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
+        {
+            hs787EFBForm.Dispose();
+            hs787EFBForm = null;
+        }
+
         // PMDG data manager lifecycle
         if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
         {
@@ -3476,6 +3879,19 @@ public partial class MainForm : Form
             StopEFBBridgeServer();
         }
 
+        // 787 FMC bridge: mod package check and server start
+        if (newAircraft.AircraftCode == "HS_787")
+        {
+            CheckAndOfferHS787ModPackage();
+            StartHS787BridgeServer();
+            if (newAircraft is HorizonSim787Definition hs787def)
+                hs787def.BridgeServer = hs787BridgeServer;
+        }
+        else
+        {
+            StopHS787BridgeServer();
+        }
+
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {
@@ -3511,7 +3927,9 @@ public partial class MainForm : Form
                       currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal);
         bool isFenix = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("FENIX_", StringComparison.Ordinal);
-        fmcSettingsMenuItem.Visible = isPmdg || isFenix;
+        bool isHs787 = currentAircraft != null &&
+                       currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
+        fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
     }
 
     /// <summary>
@@ -3524,6 +3942,7 @@ public partial class MainForm : Form
         fenixA320MenuItem.Checked = false;
         pmdg777MenuItem.Checked = false;
         pmdg737MenuItem.Checked = false;
+        horizonSim787MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
         if (currentAircraft is FlyByWireA320Definition)
@@ -3541,6 +3960,10 @@ public partial class MainForm : Form
         else if (currentAircraft is PMDG737Definition)
         {
             pmdg737MenuItem.Checked = true;
+        }
+        else if (currentAircraft is HorizonSim787Definition)
+        {
+            horizonSim787MenuItem.Checked = true;
         }
     }
 
@@ -3938,6 +4361,12 @@ public partial class MainForm : Form
         {
             System.Diagnostics.Debug.WriteLine($"[Panel Load] Loading controls and requesting variables for '{panelToLoad}' panel");
 
+            // Gate all combo selection-change handlers off for the duration of this build.
+            // Also schedule a post-build clear so that any deferred SIC events that WinForms
+            // queues during handle creation (which run after this method returns, on the
+            // message loop) still see the flag set.
+            _buildingPanel = true;
+
             // Request variables first
             if (simConnectManager != null && simConnectManager.IsConnected)
             {
@@ -4165,9 +4594,15 @@ public partial class MainForm : Form
                     }
 
                     // Handle selection change - set both engines
-                    combo.SelectedIndexChanged += (s2, e2) =>
+                    // SelectionChangeCommitted fires only on user-initiated changes (mouse click,
+                    // arrow key commit, Enter). SelectedIndexChanged ALSO fires on programmatic
+                    // assignment AND on the deferred replay that happens when the combo is
+                    // parented and its native handle is created — which was firing phantom user-
+                    // action writes during panel build, toggling state-sensing SimVars (battery,
+                    // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
+                    combo.SelectionChangeCommitted += (s2, e2) =>
                     {
-                        if (!updatingFromSim && combo.SelectedIndex >= 0)
+                        if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             uint mode = (uint)combo.SelectedIndex;
                             // Set both engines to the same mode
@@ -4246,9 +4681,15 @@ public partial class MainForm : Form
                     // Handle selection change - send multiple events
                     // Capture varKey to avoid nullable reference warnings in closure
                     string capturedVarKey = varKey;
-                    combo.SelectedIndexChanged += (s2, e2) =>
+                    // SelectionChangeCommitted fires only on user-initiated changes (mouse click,
+                    // arrow key commit, Enter). SelectedIndexChanged ALSO fires on programmatic
+                    // assignment AND on the deferred replay that happens when the combo is
+                    // parented and its native handle is created — which was firing phantom user-
+                    // action writes during panel build, toggling state-sensing SimVars (battery,
+                    // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
+                    combo.SelectionChangeCommitted += (s2, e2) =>
                     {
-                        if (!updatingFromSim && combo.SelectedIndex >= 0)
+                        if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
@@ -4441,9 +4882,15 @@ public partial class MainForm : Form
                     }
 
                     // Handle selection change
-                    combo.SelectedIndexChanged += (s2, e2) =>
+                    // SelectionChangeCommitted fires only on user-initiated changes (mouse click,
+                    // arrow key commit, Enter). SelectedIndexChanged ALSO fires on programmatic
+                    // assignment AND on the deferred replay that happens when the combo is
+                    // parented and its native handle is created — which was firing phantom user-
+                    // action writes during panel build, toggling state-sensing SimVars (battery,
+                    // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
+                    combo.SelectionChangeCommitted += (s2, e2) =>
                     {
-                        if (!updatingFromSim && combo.SelectedIndex >= 0)
+                        if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
@@ -4775,7 +5222,7 @@ public partial class MainForm : Form
             displayTextBox.ReadOnly = true;
             displayTextBox.Size = new Size(240, 30);
             displayTextBox.Location = new Point(0, 0);
-            displayTextBox.AccessibleName = "Status display";
+            displayTextBox.AccessibleName = "Status display (press F5 to refresh)";
             displayTextBox.Text = "";  // Empty by default
 
             // Refresh button
@@ -4784,6 +5231,17 @@ public partial class MainForm : Form
             refreshButton.Size = new Size(80, 23);
             refreshButton.Location = new Point(0, 32);
             refreshButton.AccessibleName = "Refresh status";
+
+            // F5 on the read-only display triggers the same refresh action as the
+            // button — convenient for blind users who don't want to tab to the button.
+            displayTextBox.KeyDown += (s2, e2) =>
+            {
+                if (e2.KeyCode == Keys.F5)
+                {
+                    e2.SuppressKeyPress = true;
+                    refreshButton.PerformClick();
+                }
+            };
 
             refreshButton.Click += async (s2, e2) =>
             {
@@ -4803,12 +5261,17 @@ public partial class MainForm : Form
                 // Store the pending values temporarily
                 pendingDisplayRequests = pendingValues;
 
-                // Request all values
+                // Request all values. forceUpdate=true bypasses the
+                // ProcessIndividualVariableResponse suppression that drops
+                // SimVarUpdated for unchanged announced variables — without it,
+                // a Refresh on a stable announced var (e.g. IRS state held at
+                // Aligning for minutes) silently no-ops and the display falls
+                // through to "--" after the 2-second timeout.
                 foreach (var varKey in displayVars)
                 {
                     if (currentAircraft.GetVariables().ContainsKey(varKey))
                     {
-                        simConnectManager?.RequestVariable(varKey);
+                        simConnectManager?.RequestVariable(varKey, forceUpdate: true);
                     }
                 }
 
@@ -4851,6 +5314,22 @@ public partial class MainForm : Form
                     UpdateControlFromSimVar(varKey, value);
                 }
             }
+            // Note: a previous attempt to "force-refresh" all panel variables here caused
+            // duplicate-announce oscillation (on, then off) for HS787 vars whose
+            // ProcessSimVarUpdate handler announces on transitions. Reverted; rely on the
+            // initial-value read at combo creation (line 4297-4314) plus continuous
+            // monitoring to keep combo state in sync with the sim.
+            // Clear the flag asynchronously so any handle-creation-replay SIC events that
+            // got queued while we built controls also see _buildingPanel = true. 200 ms is
+            // generous; the actual replay window is sub-frame on a modern machine.
+            var clearTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            clearTimer.Tick += (_, __) =>
+            {
+                clearTimer.Stop();
+                clearTimer.Dispose();
+                _buildingPanel = false;
+            };
+            clearTimer.Start();
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
 
@@ -5179,6 +5658,13 @@ public partial class MainForm : Form
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();
         efbBridgeServer = null;
+
+        // Clean up 787 bridge and forms
+        hs787FMCForm?.Dispose();
+        hs787SimBriefForm?.Dispose();
+        hs787EFBForm?.Dispose();
+        hs787BridgeServer?.Dispose();
+        hs787BridgeServer = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

@@ -78,6 +78,23 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
             },
 
+            // Ground speed - universal SimConnect variable feeding the GLOBAL ground-speed
+            // announcer (Services/GroundSpeedAnnouncer.cs). Continuous so callouts work in
+            // every phase — takeoff roll, landing rollout, taxi — not just while taxi
+            // guidance is active. IsAnnounced=true gets it into the continuous batch; the
+            // generic "value changed" announcement is suppressed by a GROUND_VELOCITY case
+            // in MainForm.HandleSpecialAnnouncements, which routes the value to the
+            // ground-speed announcer's bucket/hysteresis logic instead.
+            ["GROUND_VELOCITY"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GROUND VELOCITY",
+                DisplayName = "Ground Speed",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "knots",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
             ["MON_GlideSlopeAlive"] = new SimConnect.SimVarDefinition
             {
@@ -584,6 +601,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     {
         // Default: do nothing (aircraft has no display system)
     }
+
+    /// <summary>
+    /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
+    /// </summary>
+    public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 
     /// <summary>
     /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.

@@ -204,35 +204,31 @@ public class TaxiGuidanceManager : IDisposable
 
     // Diagnostic per-frame trace for steering-tone troubleshooting. Captures the inputs
     // and outputs of the heading-error pipeline so erratic L/R tone flipping can be
-    // analysed post-hoc. Truncated and re-headered on every LoadRoute. Rate-limited
-    // to ~10 Hz to keep the file under ~100 KB for a typical 5-10 min taxi.
-    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms) and the
-    // log is overwritten each new route, so no growth across sessions.
+    // analysed post-hoc. Re-headered on every LoadRoute. Rate-limited to ~10 Hz to keep
+    // the file under ~100 KB for a typical 5-10 min taxi.
+    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms). Each LoadRoute
+    // APPENDS a session header (preserving prior sessions' traces for post-flight analysis),
+    // so the file grows across sessions. To bound that growth it is truncated at LoadRoute
+    // time once it exceeds MAX_GUIDANCE_LOG_BYTES.
     private static readonly string GuidanceLogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "MSFSBlindAssist", "taxi_guidance.log");
     private DateTime _lastGuidanceLogTime = DateTime.MinValue;
     private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
+    // Size cap for the cross-session diagnostic trace. A single taxi tops out ≈2 MB
+    // (10-min taxi at ~10 Hz ≈ 18k lines), so a 5 MB cap holds a few recent sessions
+    // while preventing unbounded growth over months of daily use. Checked at LoadRoute.
+    private const long MAX_GUIDANCE_LOG_BYTES = 5L * 1024 * 1024;
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
     // taxiway changes, lineup, arrival, distance countdowns. Two peripheral
     // sites still call _announcer.Announce directly (without recording to
     // _lastInstruction) so the Repeat-Last buffer keeps the actionable callout:
-    // (a) the LoadRoute route summary at start of guidance, (b) the periodic
-    // ground-speed bucket announcer (per CLAUDE.md, must not displace the
-    // Repeat-Last buffer). Cleared on StopGuidance.
+    // the LoadRoute route summary at start of guidance. Cleared on StopGuidance.
+    // (The periodic ground-speed announcer that also used to feed this buffer
+    // moved to the global Services/GroundSpeedAnnouncer.)
     private string _lastInstruction = "";
-
-    // Periodic ground-speed announcer state. The "last announced bucket"
-    // approach (gs / interval, integer) fires exactly once when the speed
-    // crosses each multiple in either direction, with no risk of stuttering
-    // on jitter near the boundary because we track the integer bucket, not
-    // an absolute threshold. Initialised to -1 so the FIRST sample after
-    // guidance starts establishes a baseline without firing — we don't want
-    // a "10 knots" callout immediately when the aircraft is sitting at
-    // 10 kt steady from a previous taxi.
-    private int _lastAnnouncedGsBucket = -1;
 
     // Speed-aware warnings
     private DateTime _lastSpeedWarningTime = DateTime.MinValue;
@@ -979,10 +975,6 @@ public class TaxiGuidanceManager : IDisposable
             _lastIncursionWarnedNodeId = -1;
             _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
             _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
-            // Reset GS announcer bucket so the first sample after a fresh
-            // route load establishes baseline silently (no spurious "10 knots"
-            // if the aircraft is already moving when guidance starts).
-            _lastAnnouncedGsBucket = -1;
             // Reset lineup/cooldown state so an ATC-amendment reload mid-taxi doesn't
             // inherit stale values from the prior route (e.g., "aligned" carrying over
             // would suppress the first alignment announcement on the new lineup target).
@@ -994,12 +986,23 @@ public class TaxiGuidanceManager : IDisposable
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
-            // Reset diagnostic frame trace. Each LoadRoute starts a fresh file
-            // headed with route metadata + CSV column names so the file is
-            // self-describing for post-flight analysis.
+            // Append a session-start header + CSV column row to the diagnostic
+            // frame trace. Appending (vs the old WriteAllText, which OVERWROTE the
+            // file on every LoadRoute) preserves history across sessions: each
+            // "=== Guidance ... ===" line acts as a session separator so a
+            // post-flight reader can split on it, and a buggy session's trace
+            // survives a subsequent route load. To stop the file growing without
+            // bound over months of use, truncate it here once it exceeds
+            // MAX_GUIDANCE_LOG_BYTES — checked only at LoadRoute, so a single
+            // in-progress taxi (≈2 MB worst case) is never cut mid-session.
             try
             {
-                File.WriteAllText(GuidanceLogPath,
+                if (File.Exists(GuidanceLogPath) &&
+                    new FileInfo(GuidanceLogPath).Length > MAX_GUIDANCE_LOG_BYTES)
+                {
+                    File.WriteAllText(GuidanceLogPath, string.Empty);  // start fresh; oldest sessions dropped
+                }
+                File.AppendAllText(GuidanceLogPath,
                     $"=== Guidance {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===" + Environment.NewLine
                     + "time,lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth" + Environment.NewLine);
             }
@@ -1334,57 +1337,10 @@ public class TaxiGuidanceManager : IDisposable
         {
         _lastGroundSpeedKts = groundSpeedKts;
 
-        // Periodic ground-speed announcement. When the user has configured an
-        // interval (5 or 10 kt), announce the current speed rounded to the
-        // NEAREST multiple of the interval — so 4 / 5 / 6 kt all read as
-        // "5 knots", 9 / 10 / 11 kt all read as "10 knots". The previous
-        // floor-bucket logic ((int)(gs / interval)) flipped between "0" and
-        // "5" every time the raw value crossed 5.000, producing announcements
-        // that bore no resemblance to the actual speed at any given moment.
-        //
-        // Hysteresis: once a bucket has been announced, the new bucket must
-        // be reached with a small margin (HYSTERESIS_KTS) past its rounding
-        // boundary before we re-announce. This kills jitter at the new
-        // boundary (the midpoint between buckets, e.g., 7.5 kt with
-        // interval=5) — without it, a steady 7.5 kt with throttle noise would
-        // alternate "5 knots" / "10 knots" / "5 knots". 0.5 kt is enough to
-        // ride out typical SimConnect GS jitter at taxi speeds.
-        //
-        // First sample after guidance start establishes baseline silently
-        // (initial _lastAnnouncedGsBucket = -1 → updated, no announcement).
-        // Goes through plain _announcer (NOT AnnounceInstruction) so a fading
-        // ground-speed callout doesn't displace the most recent actionable
-        // instruction in the Repeat-Last buffer.
-        int gsInterval = SettingsManager.Current.TaxiGuidanceGroundSpeedAnnounceInterval;
-        if (gsInterval > 0 && groundSpeedKts >= 0)
-        {
-            const double HYSTERESIS_KTS = 0.5;
-            int newBucket = (int)Math.Round(groundSpeedKts / gsInterval, MidpointRounding.AwayFromZero);
-
-            if (_lastAnnouncedGsBucket < 0)
-            {
-                // Establish baseline silently on first sample.
-                _lastAnnouncedGsBucket = newBucket;
-            }
-            else if (newBucket != _lastAnnouncedGsBucket)
-            {
-                // Hysteresis: only commit the change if gs is at least
-                // HYSTERESIS_KTS past the rounding boundary inside the new
-                // bucket. The midpoint between bucketA and bucketB is
-                // (bucketA + bucketB) / 2 * interval. We require the speed
-                // to be at least HYSTERESIS_KTS into the new bucket from
-                // that midpoint.
-                double newBucketCenter = newBucket * gsInterval;
-                double distanceIntoNewBucket = Math.Abs(groundSpeedKts - newBucketCenter);
-                double bucketHalfWidth = gsInterval / 2.0;
-                if (distanceIntoNewBucket <= bucketHalfWidth - HYSTERESIS_KTS)
-                {
-                    int announceKts = newBucket * gsInterval;
-                    _announcer.Announce($"{announceKts} knots.");
-                    _lastAnnouncedGsBucket = newBucket;
-                }
-            }
-        }
+        // NOTE: the periodic ground-speed announcer used to live here. It has been moved to
+        // the global Services/GroundSpeedAnnouncer (fed by the always-on GROUND_VELOCITY
+        // continuous variable) so callouts work in every phase — takeoff roll, landing
+        // rollout, taxi — not just while taxi guidance is active. Do not re-add it here.
 
         // Refresh tone-direction settings once per frame, before any branch
         // (taxiing, lining-up, or runway-aligned hold) that can drive the
@@ -4171,6 +4127,28 @@ public class TaxiGuidanceManager : IDisposable
                 ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + toneHeadingError * HEADING_ERROR_FILTER_ALPHA
                 : toneHeadingError;
             _headingErrorInitialized = true;
+
+            // Diagnostic frame trace for runway lineup. Captures the full lineup-phase
+            // state so post-flight analysis can pinpoint bugs like "the system is
+            // redirecting me away from the runway." Rate-limited inside LogGuidanceFrame.
+            // Field overloading vs the taxi-phase format (a separate column-set would
+            // mean dual schemas in one log; reusing the columns keeps post-hoc tooling
+            // simple):
+            //   seg = -1                    → distinguishes lineup-phase rows from taxi
+            //   segBrg = desiredHeadingTrue → the heading the tone is steering to
+            //   w = _lineupHeadingTrue      → the runway's true heading (reference)
+            //   tLat, tLon = threshold      → so a reader can recompute geometry
+            //   raw = crossTrackFeet        → signed (+left of CL, -right) — IMPORTANT
+            //                                 for diagnosing sign-direction bugs
+            //   smooth = smoothed heading error (degrees) — the actual tone driver
+            LogGuidanceFrame(
+                lat, lon, headingTrue, /* groundSpeedKts */ 0.0,
+                /* segIdx */ -1, /* segBrg = desiredHeadingTrue */ desiredHeadingTrue,
+                /* w = _lineupHeadingTrue (reference) */ _lineupHeadingTrue,
+                /* nxtTurn */ true,
+                _lineupTargetLat, _lineupTargetLon,
+                /* raw = signed crossTrackFeet */ crossTrackFeet,
+                /* smooth = smoothed heading error */ _smoothedHeadingError);
             // PRECISION hysteresis for runway LINEUP. We pass explicit thresholds
             // (bypassing the width-scaling MIN_SCALE clamp at 0.65, which still
             // gave silent ≈1.95° / activation ≈3.9° — too loose). With a 3° dead
@@ -4766,7 +4744,6 @@ public class TaxiGuidanceManager : IDisposable
         _positionInitialized = false;
         _headingErrorInitialized = false;
         _lastGroundSpeedKts = 0;
-        _lastAnnouncedGsBucket = -1;
         _hasLineupTarget = false;
         _lineupAnnouncedAligned = false;
         _autoActivateFired = false;
