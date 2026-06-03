@@ -5177,6 +5177,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // Generator line contactors (990XU1-4) + emergency-gen contactor (5XE).
                 for (int n = 1; n <= 4; n++) r.Add(($"Generator {n} line contactor", $"A32NX_ELEC_CONTACTOR_990XU{n}_IS_CLOSED", v => Flag(v, "closed", "open")));
                 r.Add(("Emergency generator contactor", "A32NX_ELEC_CONTACTOR_5XE_IS_CLOSED", v => Flag(v, "closed", "open")));
+                // AC EHA bus (electro-hydraulic actuators) + its supply contactors (911XN from AC3,
+                // 911XH from AC ESS).
+                r.Add(("AC EHA bus", "A32NX_ELEC_AC_EHA_BUS_IS_POWERED", OnOff));
+                r.Add(("AC EHA contactor from AC 3", "A32NX_ELEC_CONTACTOR_911XN_IS_CLOSED", v => Flag(v, "closed", "open")));
+                r.Add(("AC EHA contactor from AC ESS", "A32NX_ELEC_CONTACTOR_911XH_IS_CLOSED", v => Flag(v, "closed", "open")));
                 break;
             case 7: // ELEC DC
                 // The A380 batteries are NUMERIC-indexed 1/2/3/4 (3 = ESS, 4 = APU). The
@@ -5201,6 +5206,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int n = 1; n <= 2; n++) r.Add(($"DC bus {n}", $"A32NX_ELEC_DC_{n}_BUS_IS_POWERED", OnOff));
                 r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
                 r.Add(("DC APU bus", "A32NX_ELEC_309PP_BUS_IS_POWERED", OnOff));
+                // DC EHA bus + its supply contactors (14PH from DC ESS, 970PN2 from DC 2).
+                r.Add(("DC EHA bus", "A32NX_ELEC_DC_EHA_BUS_IS_POWERED", OnOff));
+                r.Add(("DC EHA contactor from DC ESS", "A32NX_ELEC_CONTACTOR_14PH_IS_CLOSED", v => Flag(v, "closed", "open")));
+                r.Add(("DC EHA contactor from DC 2", "A32NX_ELEC_CONTACTOR_970PN2_IS_CLOSED", v => Flag(v, "closed", "open")));
                 break;
             case 8: // FUEL — per-tank quantities are ARINC429 words (kg); FQMS is the page's
                     // primary source (the app previously read the FQDC fallback).
