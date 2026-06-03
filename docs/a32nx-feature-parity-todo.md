@@ -86,11 +86,32 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   `A32NX_SLIDES_ARMED`; no settable per-door arm). Keep the readout.
 - PFD CG readout — Gus already added GW-CG to the A320 W/Shift+W readouts; no PFD CG line.
 
-## F. A380 items still open (NOT parity — finish on the A380 first, then port)
+## F. A380 items — audited status (2026-06-03)
 
-- Clock chronometer button cosmetic ": Idle" readout + ET elapsed-time live-verify.
-- ILS/VOR/ADF tuned-station IDENTS in the DISPLAY (strings; currently delivered via the Output+N
-  hotkey's `NAV IDENT` STRING256 struct, which works).
-- EFIS preselect-QNH made settable.
-- In-flight-only adds (ETA/EFOB at destination, beta-target, TCAS RA VS-band) — source-safe,
-  unverifiable on the ground.
+DONE this session (then port to A320):
+- **Beta-target** (sideslip target) on the PFD box — `A32NX_BETA_TARGET` decoded "X.X degrees
+  left/right" gated on `A32NX_BETA_TARGET_ACTIVE` (now Continuous+IsAnnounced, announces
+  "Sideslip target active/inactive" on an engine-out/crosswind approach; cached for the decode).
+- **TCAS RA vertical-speed band** on the PFD box — `A32NX_TCAS_VSPEED_GREEN/_RED` decoded
+  "N feet per minute" / "no advisory".
+- **SAT/TAT** (ADIRS ARINC) — added earlier this session.
+
+AUDITED but deferred (each was checked; reason it isn't done):
+- **EFIS preselect-QNH settable** — CONFIRMED settable live (`1013 (>L:A380X_EFIS_L_BARO_PRESELECTED)`
+  stuck). It's currently a read-only readout; making it settable needs a numeric-input control
+  (a `_SET` key + a HandleUIVariableSet calc-path branch, hPa). Tractable follow-up, no blocker.
+- **Clock chronometer button ": Idle" cosmetic** — the CHRONO toggle WORKS (fires the H-event);
+  the navigation announce reads ": Idle" (the button's value). Cosmetic only. **ET elapsed-time**
+  needs a live test (set the ET knob to Run with DC power, confirm `A32NX_CHRONO_ET_ELAPSED_TIME`
+  advances).
+- **EWD BLEED line + IDLE memo** — source-safe (BLEED: AGS word bits 13/14 = PACKS, `ENG ANTI ICE:n`
+  = NAI, `STRUCTURAL DEICE SWITCH` = WAI; IDLE: ≥3 eng N1 ≤ idle+2 in phase 6–9). Not added yet —
+  niche, adds vars to the EWD builder.
+- **ILS/VOR/ADF tuned-station IDENTS in the DISPLAY** — strings; ALREADY delivered via the Output+N
+  hotkey's `NAV IDENT` STRING256 struct (works). A display readout would need a Coherent scrape;
+  low value given the hotkey covers it.
+- **ND chrono** — computed in JS, no SimVar; scrape-only. Deferred.
+- **ETA/EFOB at destination** — via the Coherent `flightInfo()` agent (`getDestEFOB` /
+  `getDestinationPrediction().secondsFromPresent`); needs a JS-agent change + in-flight to verify
+  (predictions null on the ground).
+- **ACP TX channels / pushback Call-Release Tug** — need write plumbing + state-machine testing.

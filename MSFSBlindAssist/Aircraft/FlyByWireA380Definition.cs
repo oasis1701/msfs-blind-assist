@@ -914,6 +914,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // permanent footer shows. Auto-decoded by the generic ARINC path.
         ArincUnit("PFD_SAT", "A32NX_ADIRS_ADR_1_STATIC_AIR_TEMPERATURE", "Static air temperature", "celsius");
         ArincUnit("PFD_TAT", "A32NX_ADIRS_ADR_1_TOTAL_AIR_TEMPERATURE", "Total air temperature", "celsius");
+        // Beta-target (sideslip target on engine-out / crosswind approach) — gated on _ACTIVE,
+        // decoded in TryGetDisplayOverride ("X.X degrees left/right" / "not active").
+        Read("A32NX_BETA_TARGET", "Sideslip target", "degrees");
+        // Continuous + announced: speaks "Sideslip target active/inactive" when it engages on an
+        // engine-out / crosswind approach (silent baseline on the ground), and the ProcessSimVarUpdate
+        // cache feeds the beta-target decode above.
+        Mon("A32NX_BETA_TARGET_ACTIVE", "Sideslip target",
+            new Dictionary<double, string> { [0] = "inactive", [1] = "active" });
+        // TCAS resolution-advisory vertical-speed band (green = fly toward, red = avoid). Only
+        // meaningful during an RA; decoded "fly to N fpm" / "—" in TryGetDisplayOverride.
+        Read("A32NX_TCAS_VSPEED_GREEN", "TCAS target vertical speed", "feet per minute");
+        Read("A32NX_TCAS_VSPEED_RED", "TCAS avoid vertical speed", "feet per minute");
         // Nav radios — VOR 1/2 frequency + DME and ADF 1/2 frequency (stock simvars; the IDENTS
         // are read by the Output+N "nav radio" hotkey via the NAV IDENT string struct). On the ND.
         Stock("ND_VOR1_FREQ", "NAV ACTIVE FREQUENCY:1", "VOR 1 frequency", "MHz");
@@ -2841,6 +2853,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
             "PFD_RA", "PFD_VS", "PFD_TRANS_ALT", "PFD_TRANS_LVL",
             "FCU_SEL_ALT", "FCU_SEL_HDG", "PFD_SAT", "PFD_TAT",
+            "A32NX_BETA_TARGET", "A32NX_TCAS_VSPEED_GREEN", "A32NX_TCAS_VSPEED_RED",
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
             "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT"
@@ -3032,6 +3045,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     };
     private readonly Dictionary<string, bool> _doorOpen = new();
     private int _presetBucket = -1;   // last-announced preset-load progress 10%-bucket (-1 = idle)
+    private bool _betaTargetActive;   // A32NX_BETA_TARGET_ACTIVE, cached for the beta-target decode
     private static string UnpackSixBitIdent(double w0, double w1)
     {
         double[] words = { w0, w1 };
@@ -3059,6 +3073,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // (no announcement; fall through to normal processing).
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
         else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
+        else if (varName == "A32NX_BETA_TARGET_ACTIVE") _betaTargetActive = value > 0.5;
 
         // Doors — read-only auto-announce. Passenger doors are INTERACTIVE POINT OPEN, a 0..1
         // animation fraction (open > 0.05); cargo doors are the inverted LOCKED L:var (1 = locked
@@ -4163,6 +4178,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey.StartsWith("FBW_RMP_FREQUENCY_", StringComparison.Ordinal))
         {
             displayText = $"{value / 1_000_000.0:0.000} MHz";
+            return true;
+        }
+        // Beta-target (sideslip target). Only valid when _ACTIVE (cached in ProcessSimVarUpdate).
+        if (varKey == "A32NX_BETA_TARGET")
+        {
+            displayText = !_betaTargetActive ? "not active"
+                        : Math.Abs(value) < 0.05 ? "centred"
+                        : $"{Math.Abs(value):0.0} degrees {(value > 0 ? "left" : "right")}";
+            return true;
+        }
+        // TCAS RA vertical-speed band: green = fly toward, red = avoid; 0 = no advisory.
+        if (varKey == "A32NX_TCAS_VSPEED_GREEN" || varKey == "A32NX_TCAS_VSPEED_RED")
+        {
+            displayText = Math.Abs(value) < 1 ? "no advisory" : $"{value:0} feet per minute";
             return true;
         }
         // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".
