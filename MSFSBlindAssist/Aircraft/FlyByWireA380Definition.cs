@@ -1008,6 +1008,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("GEAR_LEFT_POSITION", "GEAR LEFT POSITION", "Left Main Gear", "percent");
         Stock("GEAR_RIGHT_POSITION", "GEAR RIGHT POSITION", "Right Main Gear", "percent");
 
+        // FUEL SD-page valve states — stock FUELSYSTEM VALVE OPEN simvars (the FBW fuel
+        // system layer). Pre-declared as SimVar (clean key, spaced Name) so the A380SdRows
+        // auto-register loop leaves them as SimVar, exactly like the GEAR/ENG rows above.
+        // Indices from the FBW A380 flight_model.cfg fuel system: 1-4 engine LP valves,
+        // 46-49 crossfeed, 57/58 jettison. Live-verified the names resolve (valve 1 = open).
+        for (int v = 1; v <= 4; v++)  Stock($"FUEL_LP_VALVE:{v}",  $"FUELSYSTEM VALVE OPEN:{v}",      $"Engine {v} LP valve", "number");
+        for (int v = 1; v <= 4; v++)  Stock($"FUEL_XFEED:{v}",     $"FUELSYSTEM VALVE OPEN:{45 + v}", $"Crossfeed valve {v}", "number");
+        Stock("FUEL_JETT_L", "FUELSYSTEM VALVE OPEN:57", "Left jettison valve", "number");
+        Stock("FUEL_JETT_R", "FUELSYSTEM VALVE OPEN:58", "Right jettison valve", "number");
+
         // NOTE: The DOORS SD page gets its door states from the live Coherent SD
         // scrape (door states are part of the decoded scrape), so no INTERACTIVE
         // POINT OPEN SimVars are registered here. Registering those as SimConnect
@@ -4835,6 +4845,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // APU N / N2 are ARINC429 words (FBW ApuPage useArinc429Var) — decode, not plain
                 // (plain would show the raw ~1.1e9 word as "%"). Confirmed: APU_EGT on this page
                 // reads a raw ARINC word too.
+                r.Add(("APU available", "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5 ? "available" : "not available"));
+                r.Add(("APU master switch", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", v => v > 0.5 ? "on" : "off"));
                 r.Add(("APU N", "A32NX_APU_N", v => A(v, "%", "0.0")));
                 r.Add(("APU N2", "A32NX_APU_N2", v => A(v, "%", "0.0")));
                 r.Add(("APU EGT", "A32NX_APU_EGT", v => A(v, "degrees")));
@@ -4876,6 +4888,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // Pack operative (AGS discrete word bits 13/14).
                 r.Add(("Pack 1 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(13, "operative", "off")));
                 r.Add(("Pack 2 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(14, "operative", "off")));
+                // FDAC (pack-controller) channel-failure flags — 2 packs × 2 channels.
+                for (int f = 1; f <= 2; f++)
+                    for (int c = 1; c <= 2; c++) r.Add(($"Pack {f} FDAC channel {c}", $"A32NX_COND_FDAC_{f}_CHANNEL_{c}_FAILURE", v => Flag(v, "failed", "normal")));
                 break;
             case 3: // COND (Air Conditioning)
                 r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
@@ -4897,6 +4912,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Hot air 2 valve", "A32NX_COND_CPIOM_B1_TCS_DISCRETE_WORD", Bit(16, "open", "closed")));
                 r.Add(("Pack 1 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(13, "operative", "off")));
                 r.Add(("Pack 2 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(14, "operative", "off")));
+                // Temperature/ventilation controller channel-failure flags (TADD + FWD/AFT VCM).
+                for (int c = 1; c <= 2; c++) r.Add(($"TADD channel {c}", $"A32NX_COND_TADD_CHANNEL_{c}_FAILURE", v => Flag(v, "failed", "normal")));
+                foreach (var z in new[] { ("FWD", "Forward"), ("AFT", "Aft") })
+                    for (int c = 1; c <= 2; c++) r.Add(($"{z.Item2} ventilation controller channel {c}", $"A32NX_VENT_{z.Item1}_VCM_CHANNEL_{c}_FAILURE", v => Flag(v, "failed", "normal")));
                 break;
             case 4: // PRESS (Pressurization) — block-1 ARINC words
                 // The PRESS page's prominent AUTO/MAN cabin-pressure mode label.
@@ -4917,6 +4936,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int n = 1; n <= 4; n++) r.Add(($"Outflow valve {n}", $"A32NX_PRESS_OUTFLOW_VALVE_{n}_OPEN_PERCENTAGE_B1", v => A(v, "%")));
                 r.Add(("Pack 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", v => v > 0.5 ? "on" : "off"));
                 r.Add(("Pack 2", "A32NX_COND_PACK_2_FLOW_VALVE_1_IS_OPEN", v => v > 0.5 ? "on" : "off"));
+                // Separate cabin-V/S manual/auto control (distinct from the cabin-altitude mode above).
+                r.Add(("Cabin V/S control", "A32NX_OVHD_PRESS_MAN_VS_CTL_PB_IS_AUTO", v => v > 0.5 ? "auto" : "manual"));
+                // Outflow-valve controller (OCSM) channel-failure flags — 4 valves × 2 channels.
+                for (int o = 1; o <= 4; o++)
+                    for (int c = 1; c <= 2; c++) r.Add(($"Outflow controller {o} channel {c}", $"A32NX_PRESS_OCSM_{o}_CHANNEL_{c}_FAILURE", v => Flag(v, "failed", "normal")));
                 break;
             case 5: // DOORS
                 // NOTE: passenger-door states (the 16 `INTERACTIVE POINT OPEN:n` stock
@@ -4931,6 +4955,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Captain sliding window", "CPT_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
                 r.Add(("First officer sliding window", "FO_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
                 r.Add(("Crew oxygen supply", "PUSH_OVHD_OXYGEN_CREW", v => v > 0.5 ? "on" : "off"));
+                r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
                 break;
             case 6: // ELEC AC
                 for (int n = 1; n <= 4; n++)
@@ -4958,6 +4983,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int n = 1; n <= 4; n++) r.Add(($"AC bus {n}", $"A32NX_ELEC_AC_{n}_BUS_IS_POWERED", OnOff));
                 r.Add(("AC ESS bus", "A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED", OnOff));
                 r.Add(("AC EMER bus", "A32NX_ELEC_AC_ESS_BUS_IS_POWERED", OnOff));
+                // Generator line contactors (990XU1-4) + emergency-gen contactor (5XE).
+                for (int n = 1; n <= 4; n++) r.Add(($"Generator {n} line contactor", $"A32NX_ELEC_CONTACTOR_990XU{n}_IS_CLOSED", v => Flag(v, "closed", "open")));
+                r.Add(("Emergency generator contactor", "A32NX_ELEC_CONTACTOR_5XE_IS_CLOSED", v => Flag(v, "closed", "open")));
                 break;
             case 7: // ELEC DC
                 // The A380 batteries are NUMERIC-indexed 1/2/3/4 (3 = ESS, 4 = APU). The
@@ -4967,12 +4995,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 {
                     r.Add(($"Battery {name} voltage", $"A32NX_ELEC_BAT_{idx}_POTENTIAL", v => $"{v:0.0} volts"));
                     r.Add(($"Battery {name} current", $"A32NX_ELEC_BAT_{idx}_CURRENT", v => $"{v:0} amps"));
+                    // Charge direction from the current sign (positive = charging into the battery).
+                    r.Add(($"Battery {name} status", $"A32NX_ELEC_BAT_{idx}_CURRENT", v => Math.Abs(v) < 1 ? "idle" : v > 0 ? "charging" : "discharging"));
+                    // Pushbutton AUTO/OFF (named BAT_1/BAT_2/BAT_ESS/BAT_APU).
+                    r.Add(($"Battery {name} pushbutton", $"A32NX_OVHD_ELEC_BAT_{name}_PB_IS_AUTO", v => v > 0.5 ? "auto" : "off"));
                 }
                 // 4 TRs: TR1(idx1), TR2(idx2), ESS TR(idx3), APU TR(idx4) — voltage + current.
-                foreach (var (idx, name) in new[] { ("1", "1"), ("2", "2"), ("3", "ESS"), ("4", "APU") })
+                foreach (var (idx, name, ctc) in new[] { ("1", "1", "990PU1"), ("2", "2", "990PU2"), ("3", "ESS", "6PE"), ("4", "APU", "7PU") })
                 {
                     r.Add(($"TR {name} voltage", $"A32NX_ELEC_TR_{idx}_POTENTIAL", V));
                     r.Add(($"TR {name} current", $"A32NX_ELEC_TR_{idx}_CURRENT", v => $"{v:0} amps"));
+                    r.Add(($"TR {name} contactor", $"A32NX_ELEC_CONTACTOR_{ctc}_IS_CLOSED", v => Flag(v, "closed", "open")));
                 }
                 for (int n = 1; n <= 2; n++) r.Add(($"DC bus {n}", $"A32NX_ELEC_DC_{n}_BUS_IS_POWERED", OnOff));
                 r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
@@ -4986,6 +5019,35 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel used", $"A32NX_FUEL_USED:{e}", Wt));
                 r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", AWt));
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
+                // Fuel-system valve layer (stock FUELSYSTEM VALVE OPEN simvars, pre-registered above).
+                for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} LP valve", $"FUEL_LP_VALVE:{e}", OpenShut));
+                for (int x = 1; x <= 4; x++) r.Add(($"Crossfeed valve {x}", $"FUEL_XFEED:{x}", OpenShut));
+                r.Add(("Left jettison valve", "FUEL_JETT_L", OpenShut));
+                r.Add(("Right jettison valve", "FUEL_JETT_R", OpenShut));
+                // Fuel-pump running states — FQMS ARINC429 discrete words (exact bit map from the
+                // FBW FuelPage source). LEFT word: feed 1&2 (bits 12-15), left transfer (16-20),
+                // left trim (21). RIGHT word: feed 3&4 (bits 12-15), right transfer (16-20),
+                // right trim (21). running = the pump is commanded on.
+                r.Add(("Feed 1 main pump",   "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(12, "running", "off")));
+                r.Add(("Feed 1 standby pump","A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(13, "running", "off")));
+                r.Add(("Feed 2 main pump",   "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(14, "running", "off")));
+                r.Add(("Feed 2 standby pump","A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(15, "running", "off")));
+                r.Add(("Feed 3 main pump",   "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(12, "running", "off")));
+                r.Add(("Feed 3 standby pump","A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(13, "running", "off")));
+                r.Add(("Feed 4 main pump",   "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(14, "running", "off")));
+                r.Add(("Feed 4 standby pump","A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(15, "running", "off")));
+                r.Add(("Left outer transfer pump", "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(16, "running", "off")));
+                r.Add(("Left mid forward pump",    "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(17, "running", "off")));
+                r.Add(("Left mid aft pump",        "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(18, "running", "off")));
+                r.Add(("Left inner forward pump",  "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(19, "running", "off")));
+                r.Add(("Left inner aft pump",      "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(20, "running", "off")));
+                r.Add(("Right outer transfer pump","A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(16, "running", "off")));
+                r.Add(("Right mid forward pump",   "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(17, "running", "off")));
+                r.Add(("Right mid aft pump",       "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(18, "running", "off")));
+                r.Add(("Right inner forward pump", "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(19, "running", "off")));
+                r.Add(("Right inner aft pump",     "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(20, "running", "off")));
+                r.Add(("Left trim pump",  "A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD",  Bit(21, "running", "off")));
+                r.Add(("Right trim pump", "A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD", Bit(21, "running", "off")));
                 break;
             case 9: // WHEEL — gear + doors + braked-wheel temperatures (FBW Wheel page L:vars)
                 r.Add(("Nose gear", "A32NX_GEAR_CENTER_POSITION", v => v > 98 ? "down and locked" : v < 2 ? "up" : $"in transit {v:0} percent"));
@@ -5009,15 +5071,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     // Two engine-driven pumps per system (one per engine), pushbutton + DISC.
                     foreach (int e in new[] { e1, e2 })
                     {
+                        // Pump-section index per the FBW Engine.tsx: pump A = 1+2*((e-1)%2), pump B = +1.
+                        int pi = 1 + 2 * ((e - 1) % 2);
                         r.Add(($"Engine {e} pump A", $"A32NX_OVHD_HYD_ENG_{e}A_PUMP_PB_IS_AUTO", Auto));
+                        r.Add(($"Engine {e} pump A pressure", $"A32NX_HYD_{sys}_PUMP_{pi}_SECTION_PRESSURE_SWITCH", v => Flag(v, "pressurised", "low")));
+                        r.Add(($"Engine {e} pump A fire valve", $"A32NX_HYD_{sys}_PUMP_{pi}_FIRE_VALVE_OPENED", OpenShut));
                         r.Add(($"Engine {e} pump B", $"A32NX_OVHD_HYD_ENG_{e}B_PUMP_PB_IS_AUTO", Auto));
+                        r.Add(($"Engine {e} pump B pressure", $"A32NX_HYD_{sys}_PUMP_{pi + 1}_SECTION_PRESSURE_SWITCH", v => Flag(v, "pressurised", "low")));
+                        r.Add(($"Engine {e} pump B fire valve", $"A32NX_HYD_{sys}_PUMP_{pi + 1}_FIRE_VALVE_OPENED", OpenShut));
                         r.Add(($"Engine {e} pumps disconnect", $"A32NX_HYD_ENG_{e}AB_PUMP_DISC", v => Flag(v, "disconnected", "normal")));
                     }
-                    // Two electric pumps per system (A/B).
+                    // Two electric pumps per system (A/B) — pump 5 (A) / 6 (B) section switch + OFF-PB.
                     foreach (var p in new[] { "A", "B" })
                     {
                         string ep = $"{sys[0]}{p}";   // GA, GB, YA, YB
+                        int epi = p == "A" ? 5 : 6;
                         r.Add(($"{s} electric pump {p}", $"A32NX_HYD_{ep}_EPUMP_ACTIVE", Active));
+                        r.Add(($"{s} electric pump {p} pushbutton", $"A32NX_OVHD_HYD_EPUMP{ep}_OFF_PB_IS_AUTO", Auto));
+                        r.Add(($"{s} electric pump {p} pressure", $"A32NX_HYD_{sys}_PUMP_{epi}_SECTION_PRESSURE_SWITCH", v => Flag(v, "pressurised", "low")));
                         r.Add(($"{s} electric pump {p} overheat", $"A32NX_HYD_{ep}_EPUMP_OVHT", v => Flag(v, "OVERHEAT", "normal")));
                     }
                 }
@@ -5056,10 +5127,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 break;
             case 13: // CRUISE — fuel + cabin summary
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
+                for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel used", $"A32NX_FUEL_USED:{e}", Wt));
+                r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", AWt));
                 r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
                 r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
                 r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
+                r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => {
+                    var w = new SimConnect.Arinc429Word(v);
+                    return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not set (auto)";
+                }));
                 r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => $"{v:0.0} degrees"));
                 break;
         }
         return r;
