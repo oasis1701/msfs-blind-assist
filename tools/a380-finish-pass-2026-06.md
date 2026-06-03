@@ -7,8 +7,33 @@ Each item below was: implemented → built (0 errors) → every new SimVar/L:var
 live-verified via SimConnect MCP against a running A380X → committed (NOT pushed).
 
 Method: 5 parallel source-grounded audit agents (one per display) produced the gap
-lists; a panel-by-panel agent sweep produced the control gaps. All var names cited
-back to FBW A380 source (`fbw-aircraft/fbw-a380x/src/systems/instruments/src`).
+lists; a 5-agent panel-by-panel sweep (Overhead/Pedestal/Glareshield/Instrument/Ground,
+FCU excluded) produced the control gaps. All var names cited back to FBW A380 source
+(`fbw-aircraft/fbw-a380x/src/systems/instruments/src`).
+
+## STATUS — push-ready (NOT pushed; waiting for the user)
+
+Branch `fly-by-wire-A380-integration`. Final build: **0 errors**. Aircraft detection NOT
+re-broken (every new stock SimVar registered as `SimVar`, never L:var — the door-class
+rule). Sim left clean (all write-test L:vars restored to 0).
+
+Commits this pass (oldest→newest), all on top of `b8db3b8`:
+- `32b6a3a` ISIS: standby `:3` source + slip/skid + LS deviation
+- `841190c` ND: range-array bug fix + GS/TAS/wind + TRUE REF + appr capability
+- `7953b88` PFD: radio-alt/VS/trans-alt + speed bugs + marker + LS course
+- `8971da8` SD: pressurization AUTO/MAN + starter-valve rows
+- `f063a6a` EWD: thrust-limit N1 readout
+- `80851b2` Panels: gravity guards, ISIS LS toggle, autobrake DECEL, ND-filter Off
+- `51fa0eb` Panels: new Reset overhead panel, fire-agent discharge, pushback readouts
+- `3b578d6` ACP: VHF3/HF1-2/TEL1-2 receive (both RMPs)
+- `b8db3b8` docs: CLAUDE.md finish-pass record
+
+**⚠️ Recommended before relying on it:** start MSFSBA against the A380 and confirm it
+announces the aircraft + hotkeys work (detection sanity), then spot-check a new panel
+(e.g. the Reset panel) and a display (ND velocities). All vars were verified to READ via
+SimConnect MCP, but MSFSBA's own combo WRITE path for the new controls was confirmed only
+by equivalence to existing proven controls + a live calc-path set/read/restore — not by
+clicking each one in the running app.
 
 ---
 
