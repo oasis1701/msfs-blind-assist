@@ -4352,8 +4352,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (s == null || !s.IsConnected) return;
         if (rmp != 1 && rmp != 2) rmp = 1;
-        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED)");
-        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_RELEASED)");
+        // CRITICAL: fire PRESS and RELEASE in ONE calculator call. MobiFlight's command channel
+        // is a single shared buffer it reads once per frame — two back-to-back ExecuteCalculatorCode
+        // calls (separate SetClientData writes) land in the same frame, so the RELEASE overwrites the
+        // PRESS before the WASM module processes it. The key then never registers as pressed and the
+        // page switch / digit / swap silently does nothing. One call = one buffer write = both events
+        // run together (live-verified: page switch + digit entry only work this way through the app).
+        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED) (>H:RMP_{rmp}_{key}_RELEASED)");
     }
 
     /// <summary>Press a single RMP keypad key WITHOUT releasing it. Pair with
