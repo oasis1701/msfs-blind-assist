@@ -1998,38 +1998,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
         };
 
-        // ---- Ground Services (flyPad Ground page, exposed as cockpit controls) ----
-        // DOORS (re-added 2026-06, headroom from the SimConnect-ceiling strengthening).
-        // The earlier removal note blamed "doors break detection" — the REAL root cause was
-        // registering the stock SimVar "INTERACTIVE POINT OPEN:n" (space + colon) through the
-        // L:var path (the old A380SdRows loop hardcoded Type=LVar), which corrupted SimConnect
-        // registration. Registered HERE explicitly as Type = SimVar (the A320's proven pattern),
-        // it is connection-safe — verified live: ~530 total defs, FULLY CONNECTED.
-        //
-        // LIVE-VERIFIED EXIT MAP (TOGGLE_AIRCRAFT_EXIT param ↔ INTERACTIVE POINT OPEN:n, 1:1):
-        // only the 10 MAIN-DECK doors (ip0..9) respond to the event — toggling 0 drove
-        // INTERACTIVE POINT OPEN:0 0→1, and 1..9 likewise. The UPPER-DECK (ip10..15) and CARGO
-        // (ip16..17) interactive points do NOT respond to TOGGLE_AIRCRAFT_EXIT (verified: ip10
-        // toggled alone stays 0; ip16 stays 0) — they're GSX/flyPad-ground only, so they are
-        // intentionally not exposed here. Index→door from flight_model.cfg [INTERACTIVE POINTS]
-        // (Z = front-to-back, X = port-negative): ip0/1 = M1 L/R … ip8/9 = M5 L/R.
-        // The combo's live state is the 0..1 animation fraction; ProcessSimVarUpdate announces
-        // Open/Closed once per transition, TryGetDisplayOverride renders it cleanly, and a combo
-        // change fires TOGGLE_AIRCRAFT_EXIT:index in HandleUIVariableSet.
-        string[] doorNames =
+        // ---- Ground Services > DOORS — read-only status + auto-announce (NO combos) ----
+        // All 18 modelled doors (see _doorDefs for the authoritative ip→door map from the FBW
+        // DoorPage.tsx). The user opens/closes doors via the flyPad; MSFSBA only ANNOUNCES each
+        // open/closed transition and shows them in the Doors status display. Settable combos were
+        // removed — they garbled because all the passenger doors share the base SimVar name
+        // "INTERACTIVE POINT OPEN" in the panel control-update path; a read-only status keyed on
+        // the distinct MSFSBA var key is correct. Passenger doors register SimVar (0..1 fraction);
+        // cargo doors register LVar (LOCKED, inverted). Connection-safe (SimVar, never L:var path).
+        foreach (var dd in _doorDefs)
         {
-            "Main Door 1 Left", "Main Door 1 Right", "Main Door 2 Left", "Main Door 2 Right",
-            "Main Door 3 Left", "Main Door 3 Right", "Main Door 4 Left", "Main Door 4 Right",
-            "Main Door 5 Left", "Main Door 5 Right",
-        };
-        for (int dn = 0; dn < doorNames.Length; dn++)
-        {
-            vars[$"A380X_MSFSBA_DOOR_{dn}"] = new SimVarDefinition
+            vars[dd.Key] = new SimVarDefinition
             {
-                Name = $"INTERACTIVE POINT OPEN:{dn}", DisplayName = doorNames[dn],
-                Type = SimVarType.SimVar, Units = "percent over 100",
+                Name = dd.Var, DisplayName = dd.Name,
+                Type = dd.IsSimVar ? SimVarType.SimVar : SimVarType.LVar,
+                Units = dd.IsSimVar ? "percent over 100" : "bool",
                 UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = dd.CargoLocked
+                    ? new Dictionary<double, string> { [0] = "Open", [1] = "Closed" }
+                    : new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
             };
         }
 
@@ -2443,16 +2430,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED" };
 
         // ---- Ground Services (flyPad Ground page) ----
-        // Doors: one Closed/Open combo per main-deck exit (10, ip0..9, live-verified
-        // toggleable via TOGGLE_AIRCRAFT_EXIT). Registered as SimVar in BuildVariables —
-        // see the root-cause note there.
-        p["Doors"] = new List<string>
-        {
-            "A380X_MSFSBA_DOOR_0", "A380X_MSFSBA_DOOR_1", "A380X_MSFSBA_DOOR_2",
-            "A380X_MSFSBA_DOOR_3", "A380X_MSFSBA_DOOR_4", "A380X_MSFSBA_DOOR_5",
-            "A380X_MSFSBA_DOOR_6", "A380X_MSFSBA_DOOR_7", "A380X_MSFSBA_DOOR_8",
-            "A380X_MSFSBA_DOOR_9"
-        };
+        // Doors: NO controls — it's a read-only STATUS DISPLAY panel (all 18 doors auto-announce
+        // + read in d["Doors"]; open/close via the flyPad). Empty control list so the panel still
+        // builds (and gets its status box from GetPanelDisplayVariables).
+        p["Doors"] = new List<string>();
         p["Ground Equipment"] = new List<string>
         {
             // Only jetway/stairs are user-callable. CHOCKS, CONES and GPU-available
@@ -2740,6 +2721,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
         };
 
+        // Doors status display — all 18 doors (read-only; TryGetDisplayOverride renders
+        // Open / Closed / N% open). The panel itself has no controls (open/close via flyPad).
+        d["Doors"] = _doorDefs.Select(dd => dd.Key).ToList();
+
         // Clock readouts (the chrono + elapsed-time fields shown read-only in the
         // Clock panel; the controls live in p["Clock"]).
         d["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
@@ -2927,21 +2912,32 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ND TO-waypoint ident: packed 6 bits/char, 8 chars/word (low bits first),
     // char = code + 31. Cached from ProcessSimVarUpdate; decoded in TryGetDisplayOverride.
     private double _ndIdent0, _ndIdent1;
-    // ---- Ground-service doors (10 main-deck exits, ip0..9; 1:1 with TOGGLE_AIRCRAFT_EXIT,
-    // live-verified). Announce Open/Closed once per transition (INTERACTIVE POINT OPEN is a
-    // 0..1 animation fraction). DisplayName carried for the spoken phrase. ----
-    private static readonly Dictionary<string, string> _doorNames = new()
+    // ---- Doors (read-only status + auto-announce; NO settable combos — the user opens/closes
+    // via the flyPad). ALL 18 modelled doors, authoritative ip→door mapping from the FBW SD
+    // DoorPage.tsx: 16 passenger doors = stock SimVar INTERACTIVE POINT OPEN:0..15 (0..1 anim
+    // fraction, open > 0.05); 2 cargo doors = FBW L:vars A32NX_{FWD,AFT}_DOOR_CARGO_LOCKED
+    // (1 = locked = CLOSED → inverted). AVNCS + BULK cargo are hardcoded-closed in FBW (not
+    // modelled → not surfaced). (Key, spoken Name, backing Var, IsSimVar, CargoLocked-inverted). ----
+    private static readonly (string Key, string Name, string Var, bool IsSimVar, bool CargoLocked)[] _doorDefs = new[]
     {
-        ["A380X_MSFSBA_DOOR_0"] = "Main Door 1 Left",
-        ["A380X_MSFSBA_DOOR_1"] = "Main Door 1 Right",
-        ["A380X_MSFSBA_DOOR_2"] = "Main Door 2 Left",
-        ["A380X_MSFSBA_DOOR_3"] = "Main Door 2 Right",
-        ["A380X_MSFSBA_DOOR_4"] = "Main Door 3 Left",
-        ["A380X_MSFSBA_DOOR_5"] = "Main Door 3 Right",
-        ["A380X_MSFSBA_DOOR_6"] = "Main Door 4 Left",
-        ["A380X_MSFSBA_DOOR_7"] = "Main Door 4 Right",
-        ["A380X_MSFSBA_DOOR_8"] = "Main Door 5 Left",
-        ["A380X_MSFSBA_DOOR_9"] = "Main Door 5 Right",
+        ("A380X_MSFSBA_DOOR_0",  "Main Door 1 Left",   "INTERACTIVE POINT OPEN:0",  true,  false),
+        ("A380X_MSFSBA_DOOR_1",  "Main Door 1 Right",  "INTERACTIVE POINT OPEN:1",  true,  false),
+        ("A380X_MSFSBA_DOOR_2",  "Main Door 2 Left",   "INTERACTIVE POINT OPEN:2",  true,  false),
+        ("A380X_MSFSBA_DOOR_3",  "Main Door 2 Right",  "INTERACTIVE POINT OPEN:3",  true,  false),
+        ("A380X_MSFSBA_DOOR_4",  "Main Door 3 Left",   "INTERACTIVE POINT OPEN:4",  true,  false),
+        ("A380X_MSFSBA_DOOR_5",  "Main Door 3 Right",  "INTERACTIVE POINT OPEN:5",  true,  false),
+        ("A380X_MSFSBA_DOOR_6",  "Main Door 4 Left",   "INTERACTIVE POINT OPEN:6",  true,  false),
+        ("A380X_MSFSBA_DOOR_7",  "Main Door 4 Right",  "INTERACTIVE POINT OPEN:7",  true,  false),
+        ("A380X_MSFSBA_DOOR_8",  "Main Door 5 Left",   "INTERACTIVE POINT OPEN:8",  true,  false),
+        ("A380X_MSFSBA_DOOR_9",  "Main Door 5 Right",  "INTERACTIVE POINT OPEN:9",  true,  false),
+        ("A380X_MSFSBA_DOOR_10", "Upper Door 1 Left",  "INTERACTIVE POINT OPEN:10", true,  false),
+        ("A380X_MSFSBA_DOOR_11", "Upper Door 1 Right", "INTERACTIVE POINT OPEN:11", true,  false),
+        ("A380X_MSFSBA_DOOR_12", "Upper Door 2 Left",  "INTERACTIVE POINT OPEN:12", true,  false),
+        ("A380X_MSFSBA_DOOR_13", "Upper Door 2 Right", "INTERACTIVE POINT OPEN:13", true,  false),
+        ("A380X_MSFSBA_DOOR_14", "Upper Door 3 Left",  "INTERACTIVE POINT OPEN:14", true,  false),
+        ("A380X_MSFSBA_DOOR_15", "Upper Door 3 Right", "INTERACTIVE POINT OPEN:15", true,  false),
+        ("A380X_MSFSBA_CARGO_FWD", "Forward Cargo Door", "A32NX_FWD_DOOR_CARGO_LOCKED", false, true),
+        ("A380X_MSFSBA_CARGO_AFT", "Aft Cargo Door",     "A32NX_AFT_DOOR_CARGO_LOCKED", false, true),
     };
     private readonly Dictionary<string, bool> _doorOpen = new();
     private static string UnpackSixBitIdent(double w0, double w1)
@@ -2972,18 +2968,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
         else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
 
-        // Doors read INTERACTIVE POINT OPEN, a 0..1 FRACTION (a half-open door is e.g. 0.6,
-        // matching neither Closed(0) nor Open(1)), so announce Open/Closed once per transition
-        // (>0.05 = cracked open) instead of spamming the animation.
-        if (varName.StartsWith("A380X_MSFSBA_DOOR_", StringComparison.Ordinal))
+        // Doors — read-only auto-announce. Passenger doors are INTERACTIVE POINT OPEN, a 0..1
+        // animation fraction (open > 0.05); cargo doors are the inverted LOCKED L:var (1 = locked
+        // = closed). Announce Open/Closed once per transition (honours the Ctrl+M mute).
+        if (varName.StartsWith("A380X_MSFSBA_DOOR_", StringComparison.Ordinal)
+            || varName.StartsWith("A380X_MSFSBA_CARGO_", StringComparison.Ordinal))
         {
-            bool open = value > 0.05;
-            bool? prev = _doorOpen.TryGetValue(varName, out var pv) ? pv : null;
-            _doorOpen[varName] = open;
-            if (prev.HasValue && prev.Value != open
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName)
-                && _doorNames.TryGetValue(varName, out var dnm))
-                announcer.Announce($"{dnm} {(open ? "open" : "closed")}");
+            foreach (var dd in _doorDefs)
+            {
+                if (dd.Key != varName) continue;
+                bool open = dd.CargoLocked ? value < 0.5 : value > 0.05;
+                bool? prev = _doorOpen.TryGetValue(varName, out var pv) ? pv : null;
+                _doorOpen[varName] = open;
+                if (prev.HasValue && prev.Value != open
+                    && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                    announcer.Announce($"{dd.Name} {(open ? "open" : "closed")}");
+                break;
+            }
             return true;
         }
 
@@ -3706,16 +3707,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", (uint)(45 + xfn));
             return true;
         }
-        // Door combos: the combo shows the live INTERACTIVE POINT OPEN state, so any change
-        // means "toggle" → fire TOGGLE_AIRCRAFT_EXIT with the exit index (1:1 with the door
-        // number 0..9, live-verified). Upper-deck/cargo points don't respond to the event,
-        // so only the 10 main-deck doors are exposed.
-        if (varKey.StartsWith("A380X_MSFSBA_DOOR_", StringComparison.Ordinal))
-        {
-            if (int.TryParse(varKey.AsSpan("A380X_MSFSBA_DOOR_".Length), out int exitIdx))
-                simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", (uint)exitIdx);
-            return true;
-        }
+        // (Doors are read-only status now — no settable combos; open/close via the flyPad.)
         // Ground-service toggle combos (no clean state SimVar) — any change toggles.
         if (varKey == "A380X_GND_JETWAY") { if (value > 0.5) simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
         if (varKey == "A380X_GND_STAIRS") { if (value > 0.5) simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
@@ -4025,11 +4017,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
-        // Doors: INTERACTIVE POINT OPEN is a 0..1 fraction; render the state cleanly
-        // (Open / Closed / mid-animation percentage) instead of "0.6".
+        // Doors: passenger = INTERACTIVE POINT OPEN 0..1 fraction (Open / Closed / mid-animation
+        // %); cargo = inverted LOCKED L:var. Render cleanly instead of a raw "0.6" / "1".
         if (varKey.StartsWith("A380X_MSFSBA_DOOR_", StringComparison.Ordinal))
         {
             displayText = value > 0.95 ? "Open" : value < 0.05 ? "Closed" : $"{value * 100:0}% open";
+            return true;
+        }
+        if (varKey.StartsWith("A380X_MSFSBA_CARGO_", StringComparison.Ordinal))
+        {
+            displayText = value < 0.5 ? "Open" : "Closed";   // LOCKED inverted
             return true;
         }
         // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".
