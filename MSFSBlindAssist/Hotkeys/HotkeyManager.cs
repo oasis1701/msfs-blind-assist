@@ -53,6 +53,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_LANDING_RATE = 9240;     // Ctrl+Shift+R (last landing rate)  — output mode
         private const int HOTKEY_LANDING_PEAK_G = 9241;   // Ctrl+Shift+G (last landing g-force) — output mode
         private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
+        private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
         private const int HOTKEY_FCU_HDG_PUSH = 9031;
@@ -394,6 +395,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_WAYPOINT_INFO:
                             TriggerHotkey(HotkeyAction.ReadWaypointInfo);
                             break;
+                        case HOTKEY_ND_WAYPOINT:
+                            TriggerHotkey(HotkeyAction.ReadNDWaypoint);
+                            break;
                         case HOTKEY_ECAM_DISPLAY:
                             TriggerHotkey(HotkeyAction.ShowECAM);
                             break;
@@ -715,6 +719,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG, MOD_SHIFT, 0x57); // Shift+W (Gross Weight KG)
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
+            RegisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT, MOD_CONTROL, 0x57); // Ctrl+W (FBW ND TO-waypoint info)
             RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
             RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x59); // Shift+Y (STATUS Display)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
@@ -826,6 +831,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
+            UnregisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT);
             UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
@@ -1279,6 +1285,7 @@ public class HotkeyManager : IDisposable
         ReadGrossWeightKg,
         ShowNavigationDisplay,
         ReadWaypointInfo,
+        ReadNDWaypoint,   // Ctrl+W (output) — FBW ND TO-waypoint name/distance/bearing
         ShowECAM,
         ShowStatusPage,
         ToggleTakeoffAssist,

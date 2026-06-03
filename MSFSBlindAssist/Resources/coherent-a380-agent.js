@@ -1284,6 +1284,7 @@
       } catch (e) {}
       var pw = gc.currentPseudoWaypoints || [];
       for (var p = 0; p < pw.length; p++) {
+        if (!pw[p]) continue; // some pseudo-waypoint slots are null in flight; deref guard (was crashing flightInfo → dead D/Shift+D)
         var id = ((pw[p].ident || pw[p].mcduIdent || "") + "").toUpperCase();
         var dfs = pw[p].distanceFromStart;
         if (typeof dfs !== "number" || !isFinite(dfs) || info.distToDest == null || total == null) continue;

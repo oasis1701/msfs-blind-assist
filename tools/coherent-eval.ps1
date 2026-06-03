@@ -41,8 +41,12 @@ if ($Title -ne "") {
 if ($PageId -lt 0) { Write-Output "ERR: provide -PageId or -Title"; exit 1 }
 
 $expr = ""
-if ($PreFile -ne "") { $expr += (Get-Content -Raw -Path $PreFile) + "`n;`n" }
-if ($ExprFile -ne "") { $expr += (Get-Content -Raw -Path $ExprFile) }
+# Read JS files as UTF-8 (matches the app's File.ReadAllText). PowerShell 5.1's
+# Get-Content -Raw reads a no-BOM file as ANSI, which mangles non-ASCII literals
+# (e.g. the degree sign "°" -> "Â°"), silently corrupting the injected agent and
+# producing FALSE scrape results (this is what made track readouts look "dropped").
+if ($PreFile -ne "") { $expr += [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $PreFile).ProviderPath) + "`n;`n" }
+if ($ExprFile -ne "") { $expr += [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $ExprFile).ProviderPath) }
 elseif ($Expr -ne "") { $expr += $Expr }
 else { Write-Output "ERR: provide -ExprFile or -Expr"; exit 1 }
 
