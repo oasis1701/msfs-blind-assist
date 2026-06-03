@@ -320,6 +320,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "ESS", [1] = "APU", [2] = "Off", [3] = "Battery 1", [4] = "Battery 2" });
         for (int n = 1; n <= 4; n++) Read($"A32NX_ELEC_BAT_{n}_POTENTIAL", $"Battery {n} Voltage", "volts");
 
+        // ---- RESET (computer-reset panel, overhead behind the captain) ----
+        // 10 latching reset pushbuttons (FMC A/B/C, FWS 1/2, AESU 1/2, NSS AVNCS / FLT
+        // OPS, ARPT NAV) — used to reset a faulted computer. Plain A32NX_ L:vars,
+        // calc-write (live-verified settable). 0 = normal (in), 1 = reset (held out).
+        var resetVd = new Dictionary<double, string> { [0] = "Normal", [1] = "Reset" };
+        foreach (var (rk, rn) in _resetPanelVars)
+            Sel(rk, rn, resetVd);
+
         // ---- APU ----
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
         OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
@@ -471,6 +479,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
+        // Fire-extinguisher AGENT discharge pushbuttons (momentary). After pulling a fire
+        // handle, these discharge the bottle into the affected engine/APU — completing the
+        // fire drill the handles begin. Each engine has 2 agents; the APU has 1. Source:
+        // behaviour/overhead/fire.xml FBW_Airbus_FIRE_AGENT (momentary 1 -> 0). The squib
+        // armed/discharged states are already read in d["Fire"]. (Not live-fired in test —
+        // pressing actually discharges the bottle; registration follows the proven Press path.)
+        for (int n = 1; n <= 4; n++)
+        {
+            Press($"A32NX_OVHD_FIRE_AGENT_1_ENG_{n}_IS_PRESSED", $"Engine {n} Agent 1 Discharge");
+            Press($"A32NX_OVHD_FIRE_AGENT_2_ENG_{n}_IS_PRESSED", $"Engine {n} Agent 2 Discharge");
+        }
+        Press("A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED", "APU Agent Discharge");
         // Fire Test + Cargo Smoke Detection Test are HOLD on/off tests — they STAY combos
         // (Off/On): the user picks On (test runs, the EWD speaks the result), then Off, and
         // the combo always shows the current state. Only true one-shot momentary actions are
@@ -1727,6 +1747,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_PUSHBACK_SYSTEM_ENABLED", "Pushback System");
         Read("A32NX_PUSHBACK_SPD_FACTOR", "Pushback Speed Factor");
         Read("A32NX_PUSHBACK_HDG_FACTOR", "Pushback Heading Factor");
+        // Pushback tug state readouts (stock SimVars — space names -> SimVar, never L:var).
+        // Tug Attached tells a blind pilot whether the tug is physically connected; State
+        // gives the direction / no-tug. (Calling/releasing the tug stays on the EFB/keybind;
+        // the EFB sets these via the pushback state machine — see deferred note.)
+        Stock("PUSHBACK STATE", "PUSHBACK STATE", "Pushback State", "number",
+            new Dictionary<double, string> { [0] = "Straight", [1] = "Left", [2] = "Right", [3] = "No tug" });
+        Stock("PUSHBACK ATTACHED", "PUSHBACK ATTACHED", "Tug Attached", "bool",
+            new Dictionary<double, string> { [0] = "No", [1] = "Yes" });
 
         // KCCU keyboard/cursor enable vars are intentionally NOT defined as
         // controls — the KCCU is the MCDU's input device, driven through the
@@ -2040,7 +2068,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "ELEC", "APU", "Fuel", "Hydraulics", "Bleed Air", "Air Conditioning",
                 "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Fire", "Oxygen",
                 "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine Start",
-                "Recorder and Misc", "GPWS", "Interior Lighting", "Exterior Lighting"
+                "Recorder and Misc", "GPWS", "Reset", "Interior Lighting", "Exterior Lighting"
             },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings", "OIT" },
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching", "Clock" },
@@ -2145,8 +2173,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Fire"] = new List<string>
         {
             "A32NX_FIRE_BUTTON_ENG1", "A32NX_FIRE_BUTTON_ENG2", "A32NX_FIRE_BUTTON_ENG3",
-            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU", "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED",
-            "A32NX_FIRE_TEST_CARGO"
+            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU",
+            "A32NX_OVHD_FIRE_AGENT_1_ENG_1_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_1_IS_PRESSED",
+            "A32NX_OVHD_FIRE_AGENT_1_ENG_2_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_2_IS_PRESSED",
+            "A32NX_OVHD_FIRE_AGENT_1_ENG_3_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_3_IS_PRESSED",
+            "A32NX_OVHD_FIRE_AGENT_1_ENG_4_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_4_IS_PRESSED",
+            "A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED",
+            "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "A32NX_FIRE_TEST_CARGO"
         };
         p["Oxygen"] = new List<string>
         {
@@ -2282,6 +2315,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         p["Gear"] = new List<string> { "A32NX_GEAR_HANDLE_POSITION", "A32NX_LG_GRVTY_SWITCH_POS",
             "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "A32NX_LG_GRVTY_SWITCH_GUARD_1", "A32NX_LG_GRVTY_SWITCH_GUARD_2" };
+        // Computer-reset (CB) overhead panel — the 10 latching reset pushbuttons.
+        p["Reset"] = _resetPanelVars.Select(t => t.key).ToList();
         p["Autobrake"] = new List<string>
         {
             // ANTISKID_BRAKES_ACTIVE is a read-only sim state — it lives in the
@@ -2689,7 +2724,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
-        d["Pushback"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
+        d["Pushback"] = new List<string> { "PUSHBACK ATTACHED", "PUSHBACK STATE", "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
         // ---- plain SD-page scalar readouts ----
         for (int n = 1; n <= 4; n++)
@@ -3840,6 +3875,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
     private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
+
+    // Computer-reset (CB) panel pushbuttons — (L:var, label). Shared by GetVariables
+    // (registration) and BuildPanelControls (the "Reset" overhead panel). Source:
+    // fbw-a380x behaviour/overhead/reset.xml + A380_COCKPIT Overhead_Reset_Panel.
+    private static readonly (string key, string name)[] _resetPanelVars =
+    {
+        ("A32NX_RESET_PANEL_FMC_A", "Reset FMC A"), ("A32NX_RESET_PANEL_FMC_B", "Reset FMC B"),
+        ("A32NX_RESET_PANEL_FMC_C", "Reset FMC C"), ("A32NX_RESET_PANEL_FWS1", "Reset FWS 1"),
+        ("A32NX_RESET_PANEL_FWS2", "Reset FWS 2"), ("A32NX_RESET_PANEL_AESU1", "Reset AESU 1"),
+        ("A32NX_RESET_PANEL_AESU2", "Reset AESU 2"), ("A32NX_RESET_PANEL_NSS_AVNCS", "Reset NSS Avionics"),
+        ("A32NX_RESET_PANEL_NSS_FLT_OPS", "Reset NSS Flight Ops"), ("A32NX_RESET_PANEL_ARPT_NAV", "Reset Airport Nav"),
+    };
+
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
     // works if the EFIS is switched to inches and the value comes through scaled.

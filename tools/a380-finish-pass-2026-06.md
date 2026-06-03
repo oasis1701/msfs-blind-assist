@@ -131,3 +131,43 @@ shown), the **BLEED supply** line (CPIOM AGS ARINC bits), and the **IDLE** memo.
 A.FLOOR are FG-EventBus-only → available via the EWD live scrape, not a SimVar.
 
 Files: `Aircraft/FlyByWireA380Definition.cs` (autothrust readout + d["Thrust Levers"] + decode).
+
+---
+
+## Panel-by-panel audit (5 parallel agents) — controls/readouts added
+
+Five category agents (Overhead, Pedestal, Glareshield-minus-FCU, Instrument, Ground)
+audited every subpanel against FBW source. The panels were already heavily covered from
+prior passes; the genuine source-confirmed gaps were added (write paths live set/read/
+restore-verified where non-destructive):
+
+**Instrument group** (commit 80851b2):
+- Gear: gravity-extension guards as settable controls — master guard (promoted from
+  readout) + left/right (`A32NX_LG_GRVTY_SWITCH_GUARD_1/2`). All three gate the gravity
+  lever's DOWN position (FBW `CODE_POS_2_VERIF`) — without them DOWN was unreachable.
+- ISIS: **LS** promoted from readout to settable toggle (ILS scales on standby).
+- Autobrake: **DECEL light** readout (`A32NX_AUTOBRAKES_DECEL_LIGHT`), auto-announced.
+- EFIS: **ND Filter "Off" (0)** option added so the WPT/VORD/NDB overlay can be deselected.
+
+**Overhead + Fire + Ground** (this commit):
+- **New "Reset" overhead panel** — the 10 latching computer-reset pushbuttons
+  (`A32NX_RESET_PANEL_*`: FMC A/B/C, FWS 1/2, AESU 1/2, NSS AVNCS/FLT OPS, ARPT NAV).
+  Live set/read/restore-verified. Entirely new (no reset panel existed before).
+- **Fire panel: agent discharge buttons** — Engine 1-4 Agent 1/2 + APU agent
+  (`A32NX_OVHD_FIRE_AGENT_*_IS_PRESSED`, momentary). Completes the fire drill (handle →
+  discharge). NOT live-fired (pressing discharges the bottle); registered via the proven
+  `Press` momentary path; squib readouts already in `d["Fire"]`.
+- **Pushback readouts** — Tug Attached (`PUSHBACK ATTACHED`) + Pushback State
+  (`PUSHBACK STATE`), registered as **stock SimVars** (space names → SimVar, never L:var).
+
+**Deferred (documented, with source evidence in agent reports):**
+- ACP RX switches (VHF3/HF1-2/TEL1-2 ×2 RMPs, `A380X_RMP_*_VOL_RX_SWITCH_*`) — clean +
+  high-confidence, just not yet wired (audio routing, medium value).
+- Pushback **Call/Release Tug** control — needs stock-SimVar (PUSHBACK STATE/WAIT) write
+  plumbing + state-machine live testing; higher risk, deferred.
+- ACP TX channels / NAV_SEL / INT_RAD (mirror-var + name-mismatch uncertainty), ND chrono
+  push (no readback), ISIS bug editor, COCKPITDOOR_OPEN (you removed it earlier as "not
+  needed"), GPU connect (unverified publish target).
+
+Files: `Aircraft/FlyByWireA380Definition.cs` (GetVariables registrations, GetPanelStructure,
+BuildPanelControls p["Reset"]/p["Gear"]/p["ISIS"]/p["Fire"], GetPanelDisplayVariables).
