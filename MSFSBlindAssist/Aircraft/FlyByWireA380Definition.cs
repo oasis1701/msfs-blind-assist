@@ -5030,6 +5030,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => $"{v:0.0}"));
                     // Starter (cranking) valve — open while motoring/starting the engine.
                     r.Add(($"Engine {e} starter valve", $"A32NX_PNEU_ENG_{e}_STARTER_VALVE_OPEN", OpenShut));
+                    // Nacelle temperature — the FBW ENG page hardcodes 240°C (not yet modelled);
+                    // surfaced to match what the real SD shows. Constant, gated on FADEC power.
+                    r.Add(($"Engine {e} nacelle temperature", $"A32NX_ENGINE_N1:{e}", _ => "240 degrees"));
                 }
                 break;
             case 1: // APU
@@ -5146,6 +5149,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Captain sliding window", "CPT_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
                 r.Add(("First officer sliding window", "FO_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
                 r.Add(("Crew oxygen supply", "PUSH_OVHD_OXYGEN_CREW", v => v > 0.5 ? "on" : "off"));
+                // Crew/cabin oxygen pressure — the FBW DOOR page hardcodes 1829 / 1854 PSI (not yet
+                // modelled); surfaced to match the real SD. Constant.
+                r.Add(("Crew oxygen pressure", "PUSH_OVHD_OXYGEN_CREW", _ => "1829 psi"));
+                r.Add(("Cabin oxygen pressure", "PUSH_OVHD_OXYGEN_CREW", _ => "1854 psi"));
                 r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
                 break;
             case 6: // ELEC AC
@@ -5257,6 +5264,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Left gear door", "A32NX_GEAR_DOOR_LEFT_POSITION", v => v > 2 ? "open" : "closed"));
                 r.Add(("Right gear door", "A32NX_GEAR_DOOR_RIGHT_POSITION", v => v > 2 ? "open" : "closed"));
                 for (int w = 1; w <= 16; w++) r.Add(($"Brake {w} temp", $"A32NX_REPORTED_BRAKE_TEMPERATURE_{w}", C));
+                // Tire pressure — the FBW WHEEL page hardcodes 220 psi for every wheel (not yet
+                // modelled); surfaced once to match the real SD. Constant.
+                r.Add(("Tire pressure (all wheels)", "GEAR_CENTER_POSITION", _ => "220 psi"));
                 break;
             case 10: // HYD (A380 has Green + Yellow)
                 foreach (var (sys, e1, e2) in new[] { ("GREEN", 1, 2), ("YELLOW", 3, 4) })
