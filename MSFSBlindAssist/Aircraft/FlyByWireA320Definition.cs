@@ -5154,6 +5154,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
     private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
     private string _sdBoxContent = "";
+    private int _sdRefreshSeq;   // "latest request wins" guard for SD-page refresh (mirrors A380)
 
     // ---- ND status-box cache ---------------------------------------------------
     // The TO-waypoint ident is packed 6-bit-per-char (8 chars in word 0 — enough for
@@ -5479,21 +5480,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             else
             {
-                // SD system page — request its L:vars, let them arrive, then format.
+                // SD system page. PAINT IMMEDIATELY from cache so content never lags the page
+                // selection, then force-read + repaint ~0.4 s later (guarded so a newer page
+                // wins — mirrors the A380 fix).
                 var rows = SdSystemRows(page);
-                if (rows.Count == 0) { content = "(this SD page is not wired yet)"; }
-                else
+                if (rows.Count == 0) { _sdBoxContent = "(this SD page is not wired yet)"; sim.RequestVariable(SdPageVar, forceUpdate: true); return; }
+                int seq = ++_sdRefreshSeq;
+                void Paint()
                 {
-                    foreach (var row in rows) sim.RequestVariable(row.var, forceUpdate: true);
-                    await System.Threading.Tasks.Task.Delay(600);
                     var sb = new System.Text.StringBuilder();
                     foreach (var row in rows)
                     {
                         double? cv = sim.GetCachedVariableValue(row.var);
                         sb.AppendLine(cv.HasValue ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
                     }
-                    content = sb.ToString().TrimEnd();
+                    _sdBoxContent = sb.ToString().TrimEnd();
+                    sim.RequestVariable(SdPageVar, forceUpdate: true);
                 }
+                Paint();
+                foreach (var row in rows) sim.RequestVariable(row.var, forceUpdate: true);
+                await System.Threading.Tasks.Task.Delay(400);
+                if (seq != _sdRefreshSeq) return;
+                Paint();
+                return;
             }
             _sdBoxContent = content;
             sim.RequestVariable(SdPageVar, forceUpdate: true);

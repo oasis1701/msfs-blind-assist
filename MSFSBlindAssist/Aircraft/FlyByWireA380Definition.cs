@@ -910,6 +910,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // A32NX_FCU_*_DISPLAY var for these). On the PFD status box next to the FMA.
         Stock("FCU_SEL_ALT", "AUTOPILOT ALTITUDE LOCK VAR:3", "FCU selected altitude", "feet");
         Stock("FCU_SEL_HDG", "AUTOPILOT HEADING LOCK DIR", "FCU selected heading", "degrees");
+        // Static + total air temperature (ADIRS ADR-1 ARINC429 words, celsius) — what the SD
+        // permanent footer shows. Auto-decoded by the generic ARINC path.
+        ArincUnit("PFD_SAT", "A32NX_ADIRS_ADR_1_STATIC_AIR_TEMPERATURE", "Static air temperature", "celsius");
+        ArincUnit("PFD_TAT", "A32NX_ADIRS_ADR_1_TOTAL_AIR_TEMPERATURE", "Total air temperature", "celsius");
         // Nav radios — VOR 1/2 frequency + DME and ADF 1/2 frequency (stock simvars; the IDENTS
         // are read by the Output+N "nav radio" hotkey via the NAV IDENT string struct). On the ND.
         Stock("ND_VOR1_FREQ", "NAV ACTIVE FREQUENCY:1", "VOR 1 frequency", "MHz");
@@ -1848,9 +1852,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_GPWS_FLAPS3", "Landing Flap 3", new Dictionary<double, string> { [0] = "Off", [1] = "On" });
         OnOff("A32NX_GPWS_TEST", "GPWS Test");   // HOLD self-test: On runs the test audio, Off ends it
 
-        // Ground / automation helpers (whole-aircraft state + pushback).
-        Sel("A32NX_AIRCRAFT_PRESET_LOAD", "Load Aircraft Preset",
-            new Dictionary<double, string> { [0] = "None", [1] = "Cold and Dark", [2] = "Powered", [3] = "Pushback", [4] = "Taxi", [5] = "Takeoff" });
+        // Aircraft-preset LOAD selector — registered OnRequest, NOT announced. The panel that
+        // showed it was removed (presets load from the flyPad); leaving it as the old Continuous
+        // +IsAnnounced Sel made it announce "Load Aircraft Preset: None" every time the flyPad's
+        // load completed and the L:var reset to 0. The PROGRESS var below is the only announce now.
+        vars["A32NX_AIRCRAFT_PRESET_LOAD"] = new SimVarDefinition
+        {
+            Name = "A32NX_AIRCRAFT_PRESET_LOAD", DisplayName = "Load Aircraft Preset",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "None", [1] = "Cold and Dark", [2] = "Powered", [3] = "Pushback", [4] = "Taxi", [5] = "Takeoff" }
+        };
         // Preset load progress — auto-announced as "Aircraft preset loading N percent" at
         // milestones while the flyPad loads a preset (and "complete" at the end). Continuous +
         // IsAnnounced; the custom ProcessSimVarUpdate branch does the milestone throttling.
@@ -2829,7 +2840,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PFD_GROSS_WEIGHT", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
             "PFD_RA", "PFD_VS", "PFD_TRANS_ALT", "PFD_TRANS_LVL",
-            "FCU_SEL_ALT", "FCU_SEL_HDG",
+            "FCU_SEL_ALT", "FCU_SEL_HDG", "PFD_SAT", "PFD_TAT",
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
             "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT"
