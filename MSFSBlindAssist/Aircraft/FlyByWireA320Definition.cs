@@ -3910,6 +3910,58 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Crossfeed Valve Closed", [1] = "Crossfeed Valve Open" }
         },
+        // Stock per-tank fuel quantities (gallons base unit) for the SD FUEL page — the
+        // row formatter converts gallons → weight via FUEL WEIGHT PER GALLON and follows
+        // the metric toggle. Pre-declared (not auto-registered) so the Units are gallons,
+        // not the auto-loop's "number".
+        ["FUEL TANK LEFT AUX QUANTITY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TANK LEFT AUX QUANTITY",
+            DisplayName = "Left outer tank",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "gallons",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUEL TANK LEFT MAIN QUANTITY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TANK LEFT MAIN QUANTITY",
+            DisplayName = "Left inner tank",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "gallons",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUEL TANK CENTER QUANTITY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TANK CENTER QUANTITY",
+            DisplayName = "Center tank",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "gallons",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUEL TANK RIGHT MAIN QUANTITY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TANK RIGHT MAIN QUANTITY",
+            DisplayName = "Right inner tank",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "gallons",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUEL TANK RIGHT AUX QUANTITY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TANK RIGHT AUX QUANTITY",
+            DisplayName = "Right outer tank",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "gallons",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["ANTISKID BRAKES ACTIVE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "ANTISKID BRAKES ACTIVE",
+            DisplayName = "Anti-skid",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
         ["A32NX_TOTAL_FUEL_QUANTITY"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TOTAL_FUEL_QUANTITY",
@@ -4615,12 +4667,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 if (!variables.ContainsKey(sdVar))
                 {
+                    // A name with a SPACE is a stock SimVar ("FUEL TANK CENTER QUANTITY",
+                    // "ANTISKID BRAKES ACTIVE") and MUST register as Type = SimVar — forcing
+                    // it through the L:var path is the documented "not connected" crash.
+                    // Test SPACE only (NOT colon): FBW indexed L:vars like A32NX_ENGINE_FF:1
+                    // legitimately use a colon and must stay LVar. Stock SimVars get a "number"
+                    // base-unit read here as a safety net; prefer pre-declaring them with the
+                    // correct Units where the base unit isn't what the row formatter expects.
+                    bool isStock = sdVar.IndexOf(' ') >= 0;
                     variables[sdVar] = new SimConnect.SimVarDefinition
                     {
                         Name = sdVar,
                         DisplayName = label,
-                        Type = SimConnect.SimVarType.LVar,
-                        UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+                        Type = isStock ? SimConnect.SimVarType.SimVar : SimConnect.SimVarType.LVar,
+                        UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                        Units = isStock ? "number" : null
                     };
                 }
             }
@@ -5666,7 +5727,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
     // Instance (not static) so the FUEL rows can follow the metric toggle via WeightUser.
-    private List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page)
+    // `cache` (optional) lets a page pick the ACTIVE source among redundant controllers
+    // (COND ACSC 1/2, PRESS CPC 1/2, FCTL FAC 1/2) at row-BUILD time — the row model reads
+    // ONE var per row, so the active var must be chosen here. When `cache` is null (the
+    // auto-register pass), each selector defaults to controller 1 AND every candidate var
+    // is still emitted as a hidden registration row, so whichever the live cache later
+    // picks is already registered for OnRequest reads.
+    private List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page, Func<string, double?> cache = null)
     {
         // ARINC429 decoders — for vars FBW publishes as ARINC words (verified via
         // useArinc429Var in the fbw-a32nx SD source: APU N/EGT/LOW_FUEL_PRESSURE_FAULT,
@@ -5699,6 +5766,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string YesNo(double v) => v > 0.5 ? "yes" : "no";
         var r = new List<(string, string, Func<double, string>)>();
+        // True when an ARINC429 discrete word in the cache is a VALID (NormalOp/FuncTest)
+        // signal — used to pick the active controller among a redundant 1/2 pair. When
+        // `cache` is null (the auto-register pass) we can't read validity, so callers
+        // default to source 1 but ALSO emit the source-2 candidates as hidden rows
+        // (var-only, fmt never invoked) so both are registered.
+        bool ArincValid(string v)
+        {
+            double? raw = cache?.Invoke(v);
+            if (!raw.HasValue) return false;
+            var w = new SimConnect.Arinc429Word(raw.Value);
+            return w.IsNormalOperation || w.IsFunctionalTest;
+        }
         if (page == 2) // HYDRAULICS
         {
             r.Add(("Green pressure", "A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE", Psi));
@@ -5711,22 +5790,64 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Blue elec pump", "A32NX_HYD_BLUE_EPUMP_ACTIVE", v => v > 0.5 ? "running" : "off"));
             r.Add(("PTU valve", "A32NX_HYD_PTU_VALVE_OPENED", OpenShut));
             r.Add(("RAT stowed", "A32NX_RAT_STOW_POSITION", v => v < 0.05 ? "stowed" : $"deployed {v * 100:0}%"));
+            // Reservoir status per system (overheat / air-pressure-low / level-low).
+            r.Add(("Green reservoir overheat", "A32NX_HYD_GREEN_RESERVOIR_OVHT", YesNo));
+            r.Add(("Green reservoir air pressure low", "A32NX_HYD_GREEN_RESERVOIR_AIR_PRESSURE_IS_LOW", YesNo));
+            r.Add(("Green reservoir level low", "A32NX_HYD_GREEN_RESERVOIR_LEVEL_IS_LOW", YesNo));
+            r.Add(("Blue reservoir overheat", "A32NX_HYD_BLUE_RESERVOIR_OVHT", YesNo));
+            r.Add(("Blue reservoir air pressure low", "A32NX_HYD_BLUE_RESERVOIR_AIR_PRESSURE_IS_LOW", YesNo));
+            r.Add(("Blue reservoir level low", "A32NX_HYD_BLUE_RESERVOIR_LEVEL_IS_LOW", YesNo));
+            r.Add(("Yellow reservoir overheat", "A32NX_HYD_YELLOW_RESERVOIR_OVHT", YesNo));
+            r.Add(("Yellow reservoir air pressure low", "A32NX_HYD_YELLOW_RESERVOIR_AIR_PRESSURE_IS_LOW", YesNo));
+            r.Add(("Yellow reservoir level low", "A32NX_HYD_YELLOW_RESERVOIR_LEVEL_IS_LOW", YesNo));
+            // Electric-pump overheat.
+            r.Add(("Blue elec pump overheat", "A32NX_HYD_BLUE_EPUMP_OVHT", YesNo));
+            r.Add(("Yellow elec pump overheat", "A32NX_HYD_YELLOW_EPUMP_OVHT", YesNo));
+            // Engine-pump fire valves.
+            r.Add(("Green pump fire valve", "A32NX_HYD_GREEN_PUMP_1_FIRE_VALVE_OPENED", OpenShut));
+            r.Add(("Yellow pump fire valve", "A32NX_HYD_YELLOW_PUMP_1_FIRE_VALVE_OPENED", OpenShut));
         }
         else if (page == 3) // PRESSURIZATION
         {
             // The plain A32NX_PRESS_CABIN_* names DO NOT EXIST (read static 0) — the A32NX
-            // publishes cab-press via the CPC ARINC429 words. Read CPC 1 (normally the active
-            // controller); "not available" when its SSM is invalid (matches the SD showing XX).
+            // publishes cab-press via the CPC ARINC429 words. The ACTIVE CPC is selected below
+            // (CPC 1 discrete bit 11); "not available" when the word's SSM is invalid (matches
+            // the SD showing XX).
             string FtAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not available"; }
             string FpmAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet per minute" : "not available"; }
             string PsiAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0.0} psi" : "not available"; }
-            r.Add(("Cabin altitude", "A32NX_PRESS_CPC_1_CABIN_ALTITUDE", FtAir));
-            r.Add(("Cabin vertical speed", "A32NX_PRESS_CPC_1_CABIN_VS", FpmAir));
-            r.Add(("Differential pressure", "A32NX_PRESS_CPC_1_CABIN_DELTA_PRESSURE", PsiAir));
-            r.Add(("Outflow valve", "A32NX_PRESS_CPC_1_OUTFLOW_VALVE_OPEN_PERCENTAGE", PctAir));
+            // Select the ACTIVE CPC: CPC 1's discrete word bit 11 set = CPC 1 active, else CPC 2.
+            // On the auto-register pass (cache == null) default to CPC 1 and emit the CPC 2
+            // candidates as hidden registration rows.
+            int activeCpc = 1;
+            double? cpc1Disc = cache?.Invoke("A32NX_PRESS_CPC_1_DISCRETE_WORD");
+            if (cache != null)
+                activeCpc = (cpc1Disc.HasValue && new SimConnect.Arinc429Word(cpc1Disc.Value).BitValueOr(11, false)) ? 1 : 2;
+            string cpc = $"A32NX_PRESS_CPC_{activeCpc}_";
+            r.Add(("Cabin altitude", cpc + "CABIN_ALTITUDE", FtAir));
+            r.Add(("Cabin vertical speed", cpc + "CABIN_VS", FpmAir));
+            r.Add(("Differential pressure", cpc + "CABIN_DELTA_PRESSURE", PsiAir));
+            r.Add(("Outflow valve", cpc + "OUTFLOW_VALVE_OPEN_PERCENTAGE", PctAir));
             r.Add(("Safety valve", "A32NX_PRESS_SAFETY_VALVE_OPEN_PERCENTAGE", Pct));
-            r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", LElev));
+            // Landing elevation: prefer the active CPC's word when it's a valid ARINC signal;
+            // fall back to the FM value (which renders "auto" when the FMS computes it).
+            string lElevVar = ArincValid(cpc + "LANDING_ELEVATION")
+                ? cpc + "LANDING_ELEVATION"
+                : "A32NX_FM1_LANDING_ELEVATION";
+            r.Add(("Landing elevation", lElevVar, LElev));
             r.Add(("Manual pressurization mode", "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", v => v > 0.5 ? "auto" : "manual"));
+            if (cache == null)
+            {
+                // Hidden registration rows so the active-CPC selection always has its vars cached.
+                r.Add(("Pressure controller 2 discrete", "A32NX_PRESS_CPC_2_DISCRETE_WORD", _ => ""));
+                r.Add(("Pressure controller 2 cabin altitude", "A32NX_PRESS_CPC_2_CABIN_ALTITUDE", _ => ""));
+                r.Add(("Pressure controller 2 cabin VS", "A32NX_PRESS_CPC_2_CABIN_VS", _ => ""));
+                r.Add(("Pressure controller 2 delta pressure", "A32NX_PRESS_CPC_2_CABIN_DELTA_PRESSURE", _ => ""));
+                r.Add(("Pressure controller 2 outflow valve", "A32NX_PRESS_CPC_2_OUTFLOW_VALVE_OPEN_PERCENTAGE", _ => ""));
+                r.Add(("Pressure controller 1 landing elevation", "A32NX_PRESS_CPC_1_LANDING_ELEVATION", _ => ""));
+                r.Add(("Pressure controller 2 landing elevation", "A32NX_PRESS_CPC_2_LANDING_ELEVATION", _ => ""));
+                r.Add(("Pressure controller 1 discrete", "A32NX_PRESS_CPC_1_DISCRETE_WORD", _ => ""));
+            }
         }
         else if (page == 4) // APU
         {
@@ -5735,6 +5856,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Inlet flap", "A32NX_APU_FLAP_OPEN_PERCENTAGE", Pct));
             r.Add(("Bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
             r.Add(("Low fuel pressure", "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", YesNoAir));
+            r.Add(("APU N2", "A32NX_APU_N2", PctAir));
+            r.Add(("Bleed pressure", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", Psi));
+            r.Add(("Master switch", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", v => v > 0.5 ? "on" : "off"));
+            r.Add(("APU available", "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5 ? "available" : "not available"));
             r.Add(("Gen voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
             r.Add(("Gen load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
         }
@@ -5752,11 +5877,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Forward trim air valve", "A32NX_COND_FWD_TRIM_AIR_VALVE_POSITION", Pct));
             r.Add(("Aft trim air valve", "A32NX_COND_AFT_TRIM_AIR_VALVE_POSITION", Pct));
             // ACSC discrete word 1: hot-air valve open = bit 20 CLEAR (inverted); switch = bit 23;
-            // cabin fan 1/2 fault = bits 25/26. SSM-gated.
-            r.Add(("Hot air valve", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(20, false) ? "closed" : "open") : "not available"; }));
-            r.Add(("Hot air switch", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(23, false) ? "on" : "off") : "not available"; }));
-            r.Add(("Cabin fan 1", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(25, false) ? "fault" : "normal") : "not available"; }));
-            r.Add(("Cabin fan 2", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(26, false) ? "fault" : "normal") : "not available"; }));
+            // cabin fan 1/2 fault = bits 25/26. SSM-gated. Pick the ACTIVE ACSC: use 1 unless
+            // its word is invalid (then 2). On the auto-register pass (cache == null) default
+            // to 1 and emit the ACSC_2 word as a hidden registration row.
+            string acscWord = ArincValid("A32NX_COND_ACSC_1_DISCRETE_WORD_1")
+                ? "A32NX_COND_ACSC_1_DISCRETE_WORD_1"
+                : (cache != null ? "A32NX_COND_ACSC_2_DISCRETE_WORD_1" : "A32NX_COND_ACSC_1_DISCRETE_WORD_1");
+            r.Add(("Hot air valve", acscWord, v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(20, false) ? "closed" : "open") : "not available"; }));
+            r.Add(("Hot air switch", acscWord, v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(23, false) ? "on" : "off") : "not available"; }));
+            r.Add(("Cabin fan 1", acscWord, v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(25, false) ? "fault" : "normal") : "not available"; }));
+            r.Add(("Cabin fan 2", acscWord, v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(26, false) ? "fault" : "normal") : "not available"; }));
+            if (cache == null) r.Add(("Air conditioning controller 2", "A32NX_COND_ACSC_2_DISCRETE_WORD_1", _ => ""));
         }
         else if (page == 6) // WHEEL / BRAKES
         {
@@ -5767,6 +5898,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Autobrake mode", "A32NX_AUTOBRAKES_ARMED_MODE",
                 v => v < 0.5 ? "Off" : v < 1.5 ? "Low" : v < 2.5 ? "Medium" : "Max"));
             r.Add(("Autobrake active", "A32NX_AUTOBRAKES_ACTIVE", YesNo));
+            // Landing-gear positions (% extended).
+            string Gear(double v) => v > 95 ? "down" : v < 5 ? "up" : "in transit";
+            r.Add(("Nose gear", "A32NX_GEAR_CENTER_POSITION", Gear));
+            r.Add(("Left gear", "A32NX_GEAR_LEFT_POSITION", Gear));
+            r.Add(("Right gear", "A32NX_GEAR_RIGHT_POSITION", Gear));
+            r.Add(("Anti-skid", "ANTISKID BRAKES ACTIVE", v => v > 0.5 ? "active" : "inactive"));
         }
         else if (page == 7) // BLEED
         {
@@ -5790,16 +5927,43 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // Fuel rows follow the metric toggle (kg/lb per the EFB "US Units" setting).
             string Wt(double kg) { var (val, u) = WeightUser(kg); return $"{val:0} {u}"; }
             string Wth(double kgh) { var (val, u) = WeightUser(kgh); return $"{val:0} {u} per hour"; }
+            // Per-tank quantities are stock SimVars in GALLONS; convert to weight using a
+            // fixed Jet-A density (~3.039 kg/gal — SdSystemRows has no SimConnect handle to
+            // read the live FUEL WEIGHT PER GALLON, and Jet-A density barely varies) and
+            // route through WeightUser so the value follows the metric toggle.
+            const double kgPerGal = 3.039;
+            string TankWt(double gal)
+            {
+                var (val, u) = WeightUser(gal * kgPerGal);
+                return $"{val:0} {u}";
+            }
+            r.Add(("Left outer tank", "FUEL TANK LEFT AUX QUANTITY", TankWt));
+            r.Add(("Left inner tank", "FUEL TANK LEFT MAIN QUANTITY", TankWt));
+            r.Add(("Center tank", "FUEL TANK CENTER QUANTITY", TankWt));
+            r.Add(("Right inner tank", "FUEL TANK RIGHT MAIN QUANTITY", TankWt));
+            r.Add(("Right outer tank", "FUEL TANK RIGHT AUX QUANTITY", TankWt));
             r.Add(("Fuel flow eng 1", "A32NX_ENGINE_FF:1", Wth));
             r.Add(("Fuel flow eng 2", "A32NX_ENGINE_FF:2", Wth));
             r.Add(("Fuel used eng 1", "A32NX_FUEL_USED:1", Wt));
             r.Add(("Fuel used eng 2", "A32NX_FUEL_USED:2", Wt));
             r.Add(("Total fuel on board", "A32NX_TOTAL_FUEL_QUANTITY", Wt));
+            // Pumps + valves.
+            string Running(double v) => v > 0.5 ? "running" : "off";
+            r.Add(("Left pump 1", "FUELSYSTEM PUMP ACTIVE:2", Running));
+            r.Add(("Left pump 2", "FUELSYSTEM PUMP ACTIVE:5", Running));
+            r.Add(("Right pump 1", "FUELSYSTEM PUMP ACTIVE:3", Running));
+            r.Add(("Right pump 2", "FUELSYSTEM PUMP ACTIVE:6", Running));
+            r.Add(("Center pump", "FUELSYSTEM PUMP ACTIVE:1", Running));
+            r.Add(("Engine 1 LP valve", "FUELSYSTEM VALVE OPEN:1", OpenShut));
+            r.Add(("Engine 2 LP valve", "FUELSYSTEM VALVE OPEN:2", OpenShut));
+            r.Add(("Crossfeed valve", "FUELSYSTEM VALVE OPEN:3", OpenShut));
         }
         else if (page == 9) // DOORS
         {
             r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", v => v > 0.5 ? "locked" : "unlocked"));
             r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
+            // Crew oxygen supply pushbutton — pushbutton-out (0) = supply ON (inverted).
+            r.Add(("Crew oxygen", "PUSH_OVHD_OXYGEN_CREW", v => v > 0.5 ? "off" : "on"));
         }
         else if (page == 1) // ELEC
         {
@@ -5823,6 +5987,30 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("DC ESS shed bus", "A32NX_ELEC_DC_ESS_SHED_BUS_IS_POWERED", OnOff));
             r.Add(("APU gen frequency", "A32NX_ELEC_APU_GEN_1_FREQUENCY", v => $"{v:0} hertz"));
             r.Add(("Emergency gen frequency", "A32NX_ELEC_EMER_GEN_FREQUENCY", v => $"{v:0} hertz"));
+            // Battery charge direction (signed amps: + = charging into the battery).
+            string BatDir(double v) => Math.Abs(v) < 1 ? "idle" : (v > 0 ? "charging" : "discharging");
+            r.Add(("Battery 1 status", "A32NX_ELEC_BAT_1_CURRENT", BatDir));
+            r.Add(("Battery 2 status", "A32NX_ELEC_BAT_2_CURRENT", BatDir));
+            // Contactors.
+            string Closed(double v) => v > 0.5 ? "closed" : "open";
+            r.Add(("Gen 1 line contactor", "A32NX_ELEC_CONTACTOR_9XU1_IS_CLOSED", Closed));
+            r.Add(("Gen 2 line contactor", "A32NX_ELEC_CONTACTOR_9XU2_IS_CLOSED", Closed));
+            r.Add(("Bus tie contactor", "A32NX_ELEC_CONTACTOR_11XU1_IS_CLOSED", Closed));
+            r.Add(("APU gen contactor", "A32NX_ELEC_CONTACTOR_3XS_IS_CLOSED", Closed));
+            r.Add(("External power contactor", "A32NX_ELEC_CONTACTOR_3XG_IS_CLOSED", Closed));
+            // Transformer rectifiers (volts + amps).
+            string Amp(double v) => $"{v:0} A";
+            r.Add(("TR 1 voltage", "A32NX_ELEC_TR_1_POTENTIAL", V));
+            r.Add(("TR 1 current", "A32NX_ELEC_TR_1_CURRENT", Amp));
+            r.Add(("TR 2 voltage", "A32NX_ELEC_TR_2_POTENTIAL", V));
+            r.Add(("TR 2 current", "A32NX_ELEC_TR_2_CURRENT", Amp));
+            r.Add(("ESS TR voltage", "A32NX_ELEC_TR_3_POTENTIAL", V));
+            r.Add(("ESS TR current", "A32NX_ELEC_TR_3_CURRENT", Amp));
+            // IDG oil outlet temperature.
+            r.Add(("IDG 1 temperature", "A32NX_ELEC_ENG_GEN_1_IDG_OIL_OUTLET_TEMPERATURE", C));
+            r.Add(("IDG 2 temperature", "A32NX_ELEC_ENG_GEN_2_IDG_OIL_OUTLET_TEMPERATURE", C));
+            // Galley load shed.
+            r.Add(("Galley", "A32NX_ELEC_GALLEY_IS_SHED", v => v > 0.5 ? "shed" : "normal"));
         }
         else if (page == 10) // ENGINE — oil + vibration + igniters (N1/N2/EGT/FF are on the E/WD)
         {
@@ -5840,6 +6028,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Engine 2 vibration", "TURB_ENG_VIBRATION:2", Vib));
             r.Add(("Engine 2 igniter A", "A32NX_FADEC_IGNITER_A_ACTIVE_ENG2", IgOnOff));
             r.Add(("Engine 2 igniter B", "A32NX_FADEC_IGNITER_B_ACTIVE_ENG2", IgOnOff));
+            r.Add(("Engine 1 starter valve", "A32NX_PNEU_ENG_1_STARTER_VALVE_OPEN", OpenShut));
+            r.Add(("Engine 2 starter valve", "A32NX_PNEU_ENG_2_STARTER_VALVE_OPEN", OpenShut));
         }
         else if (page == 11) // FLIGHT CONTROLS — surface positions + trims (FCDC/FAC ARINC words)
         {
@@ -5861,7 +6051,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Rudder", "A32NX_HYD_RUDDER_DEFLECTION",
                 v => Math.Abs(v) < 0.5 ? "neutral" : $"{Math.Abs(v * 0.25):0.0} degrees {(v > 0 ? "right" : "left")}"));
             // Rudder trim ARINC word, positive = nose-left (matches the FCC-panel decode).
-            r.Add(("Rudder trim", "A32NX_FAC_1_RUDDER_TRIM_POS", v => ArDeg(v, "left", "right")));
+            // Pick the active FAC: use FAC 1 unless its discrete word 2 is invalid (then FAC 2).
+            // On the auto-register pass (cache == null) default to FAC 1 and register FAC 2.
+            string rudTrimVar = ArincValid("A32NX_FAC_1_DISCRETE_WORD_2")
+                ? "A32NX_FAC_1_RUDDER_TRIM_POS"
+                : (cache != null ? "A32NX_FAC_2_RUDDER_TRIM_POS" : "A32NX_FAC_1_RUDDER_TRIM_POS");
+            r.Add(("Rudder trim", rudTrimVar, v => ArDeg(v, "left", "right")));
+            if (cache == null)
+            {
+                r.Add(("Flight augmentation computer 1 discrete", "A32NX_FAC_1_DISCRETE_WORD_2", _ => ""));
+                r.Add(("Flight augmentation computer 2 rudder trim", "A32NX_FAC_2_RUDDER_TRIM_POS", _ => ""));
+            }
             r.Add(("Rudder travel limit", "A32NX_FAC_1_RUDDER_TRAVEL_LIMIT_COMMAND",
                 v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} degrees" : "not available"; }));
             r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
@@ -5953,23 +6153,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 // SD system page. PAINT IMMEDIATELY from cache so content never lags the page
                 // selection, then force-read + repaint ~0.4 s later (guarded so a newer page
-                // wins — mirrors the A380 fix).
-                var rows = SdSystemRows(page);
-                if (rows.Count == 0) { _sdBoxContent = "(this SD page is not wired yet)"; sim.RequestVariable(SdPageVar, forceUpdate: true); return; }
+                // wins — mirrors the A380 fix). Rows are rebuilt INSIDE Paint() with the live
+                // cache so the redundant-controller selection (COND ACSC / PRESS CPC / FCTL FAC)
+                // re-evaluates against fresh ARINC validity on the second paint.
+                Func<string, double?> cacheGet = sim.GetCachedVariableValue;
+                var rows0 = SdSystemRows(page, cacheGet);
+                if (rows0.Count == 0) { _sdBoxContent = "(this SD page is not wired yet)"; sim.RequestVariable(SdPageVar, forceUpdate: true); return; }
                 int seq = ++_sdRefreshSeq;
                 void Paint()
                 {
+                    var rows = SdSystemRows(page, cacheGet);
                     var sb = new System.Text.StringBuilder();
                     foreach (var row in rows)
                     {
                         double? cv = sim.GetCachedVariableValue(row.var);
-                        sb.AppendLine(cv.HasValue ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
+                        // Guard NaN (a var that doesn't exist on this airframe reads back NaN,
+                        // e.g. A32NX_ELEC_TR_3_CURRENT) so the box shows "--", not "NaN".
+                        sb.AppendLine(cv.HasValue && !double.IsNaN(cv.Value) ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
                     }
                     _sdBoxContent = sb.ToString().TrimEnd();
                     sim.RequestVariable(SdPageVar, forceUpdate: true);
                 }
                 Paint();
-                foreach (var row in rows) sim.RequestVariable(row.var, forceUpdate: true);
+                // Request every candidate var (incl. BOTH redundant controllers, via the
+                // null/auto pass which emits the hidden source-2 rows) so the second paint's
+                // selection always has fresh ARINC validity to choose from.
+                foreach (var row in SdSystemRows(page)) sim.RequestVariable(row.var, forceUpdate: true);
                 await System.Threading.Tasks.Task.Delay(400);
                 if (seq != _sdRefreshSeq) return;
                 Paint();

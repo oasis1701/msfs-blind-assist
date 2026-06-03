@@ -49,10 +49,21 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   auto-announce (`A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS`, must be IsAnnounced=true to be monitored);
   standalone slides-armed readout.
 
-**STILL OPEN:** SD-page readout additions (G1 — the big per-page re-map, in progress), EWD decode
-(G2), PRESS overhead-panel verify (B), fire-test aural-cancel (C — needs a live fire to test),
-squawk read-back (D — optional), RMP scraped-window (A — assessed NOT worth porting), SimConnect-
-ceiling live A32NX connect check (A — manual log check).
+- **SD-page readouts (G1) + 3 active-source correctness fixes (G6):** FUEL per-tank quantities /
+  pumps / valves, ELEC contactors / battery charge-direction / TR / IDG temp / galley-shed, HYD
+  reservoir-overheat + e-pump-overheat + fire-valves, APU N2 / bleed pressure / master+avail, WHEEL
+  gear-position (`A32NX_GEAR_{CENTER,LEFT,RIGHT}_POSITION` — confirmed exist) + anti-skid, ENG
+  starter-valves, DOOR crew-oxygen. Correctness: COND active-ACSC, PRESS active-CPC (discrete bit 11),
+  FCTL active-FAC source selection (redundant-controller pick at row-build time via a cache param).
+  The SD auto-register loop was **hardened** (a SPACE-named var → Type=SimVar, NOT the L:var path —
+  the documented crash; colon-indexed FBW L:vars stay LVar). EHA buses = SKIP (none on the A320). A
+  global NaN guard renders non-existent vars (e.g. ESS-TR current) as "--".
+
+**STILL OPEN:** EWD decode (G2 — Upper E/WD still scrape-only), PRESS overhead-panel verify (B),
+fire-test aural-cancel (C — needs a live fire to test), squawk read-back (D — optional), RMP
+scraped-window (A — assessed NOT worth porting), SimConnect-ceiling live A32NX connect check (A —
+manual log check), and a UI follow-up: the SD page combo doesn't always announce the landed-on page
+when arrowing (screen-reader/refresh interaction).
 
 ---
 
