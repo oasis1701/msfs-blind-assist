@@ -12,7 +12,8 @@ public sealed class GsxSettingsForm : Form
     private readonly ListBox _tabSelector = new();
     private readonly Panel _settingsHost = new();
     private readonly Dictionary<string, FlowLayoutPanel> _tabPages = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<TextBox, GsxService.GsxSettingItem> _textInputs = new();
+    private readonly List<Action> _closeCommitters = new();
+    private readonly Dictionary<string, string> _lastCommittedValues = new(StringComparer.OrdinalIgnoreCase);
 
     public GsxSettingsForm(
         GsxService gsxService,
@@ -94,7 +95,7 @@ public sealed class GsxSettingsForm : Form
         Controls.Add(_tabSelector);
         Controls.Add(bottomPanel);
 
-        FormClosing += (_, _) => CommitTextInputs();
+        FormClosing += (_, _) => CommitAllSettings();
     }
 
     private void PopulateSettings()
@@ -102,6 +103,8 @@ public sealed class GsxSettingsForm : Form
         _tabSelector.Items.Clear();
         _settingsHost.Controls.Clear();
         _tabPages.Clear();
+        _closeCommitters.Clear();
+        _lastCommittedValues.Clear();
 
         if (_items.Count == 0)
         {
@@ -227,9 +230,9 @@ public sealed class GsxSettingsForm : Form
         };
         checkBox.CheckedChanged += (_, _) =>
         {
-            _gsxService.SetSettingNumber(item.Key, checkBox.Checked ? 1 : 0);
-            _gsxService.PersistSettingValue(item, checkBox.Checked ? "1" : "0");
+            CommitNumber(item, checkBox.Checked ? 1 : 0);
         };
+        _closeCommitters.Add(() => CommitNumber(item, checkBox.Checked ? 1 : 0));
         return checkBox;
     }
 
@@ -258,9 +261,13 @@ public sealed class GsxSettingsForm : Form
         combo.SelectedIndexChanged += (_, _) =>
         {
             if (combo.SelectedItem is not ChoiceItem choice) return;
-            _gsxService.SetSettingNumber(item.Key, choice.Value);
-            _gsxService.PersistSettingValue(item, choice.Value.ToString(CultureInfo.InvariantCulture));
+            CommitNumber(item, choice.Value);
         };
+        _closeCommitters.Add(() =>
+        {
+            if (combo.SelectedItem is ChoiceItem choice)
+                CommitNumber(item, choice.Value);
+        });
 
         return combo;
     }
@@ -283,10 +290,9 @@ public sealed class GsxSettingsForm : Form
 
         numeric.ValueChanged += (_, _) =>
         {
-            double value = (double)numeric.Value;
-            _gsxService.SetSettingNumber(item.Key, value);
-            _gsxService.PersistSettingValue(item, value.ToString(CultureInfo.InvariantCulture));
+            CommitNumber(item, (double)numeric.Value);
         };
+        _closeCommitters.Add(() => CommitNumber(item, (double)numeric.Value));
 
         return numeric;
     }
@@ -317,11 +323,8 @@ public sealed class GsxSettingsForm : Form
             AccessibleName = item.Label
         };
 
-        trackBar.UserValueChanged += (_, _) =>
-        {
-            _gsxService.SetSettingNumber(item.Key, trackBar.Value);
-            _gsxService.PersistSettingValue(item, trackBar.Value.ToString(CultureInfo.InvariantCulture));
-        };
+        trackBar.ValueChanged += (_, _) => CommitNumber(item, trackBar.Value);
+        _closeCommitters.Add(() => CommitNumber(item, trackBar.Value));
 
         return trackBar;
     }
@@ -339,16 +342,16 @@ public sealed class GsxSettingsForm : Form
             AccessibleName = item.Label
         };
 
-        _textInputs[textBox] = item;
-
-        textBox.Leave += (_, _) => CommitTextInput(textBox);
+        textBox.TextChanged += (_, _) => CommitText(item, textBox.Text);
+        textBox.Leave += (_, _) => CommitText(item, textBox.Text);
         textBox.KeyDown += (_, e) =>
         {
             if (e.KeyCode != Keys.Enter) return;
-            CommitTextInput(textBox);
+            CommitText(item, textBox.Text);
             e.Handled = true;
             e.SuppressKeyPress = true;
         };
+        _closeCommitters.Add(() => CommitText(item, textBox.Text));
 
         return textBox;
     }
@@ -377,19 +380,44 @@ public sealed class GsxSettingsForm : Form
             AccessibleName = item.Label
         };
 
-    private void CommitTextInputs()
+    private void CommitAllSettings()
     {
-        foreach (var textBox in _textInputs.Keys.ToList())
-            CommitTextInput(textBox);
+        foreach (var commit in _closeCommitters.ToList())
+            commit();
     }
 
-    private void CommitTextInput(TextBox textBox)
+    private void CommitNumber(GsxService.GsxSettingItem item, double value)
     {
-        if (!_textInputs.TryGetValue(textBox, out var item))
+        string textValue = value.ToString(CultureInfo.InvariantCulture);
+        if (!ShouldCommit(item, textValue))
             return;
 
-        _gsxService.SetSettingText(item.Key, textBox.Text);
-        _gsxService.PersistSettingValue(item, textBox.Text);
+        _gsxService.SetSettingNumber(item.Key, value);
+        _gsxService.PersistSettingValue(item, textValue);
+    }
+
+    private void CommitText(GsxService.GsxSettingItem item, string value)
+    {
+        if (!ShouldCommit(item, value))
+            return;
+
+        _gsxService.SetSettingText(item.Key, value);
+        _gsxService.PersistSettingValue(item, value);
+    }
+
+    private bool ShouldCommit(GsxService.GsxSettingItem item, string value)
+    {
+        if (string.IsNullOrWhiteSpace(item.Key))
+            return false;
+
+        if (_lastCommittedValues.TryGetValue(item.Key, out string? lastValue)
+            && string.Equals(lastValue, value, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        _lastCommittedValues[item.Key] = value;
+        return true;
     }
 
     private void SelectFirstInput()
@@ -493,8 +521,6 @@ public sealed class GsxSettingsForm : Form
 
     private sealed class SettingsSlider : TrackBar
     {
-        public event EventHandler? UserValueChanged;
-
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (ApplyKey(keyData & Keys.KeyCode))
@@ -518,7 +544,6 @@ public sealed class GsxSettingsForm : Form
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            UserValueChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private bool ApplyKey(Keys keyCode)
@@ -541,7 +566,6 @@ public sealed class GsxSettingsForm : Form
             if (Value != clamped)
             {
                 Value = clamped;
-                UserValueChanged?.Invoke(this, EventArgs.Empty);
             }
 
             return true;
