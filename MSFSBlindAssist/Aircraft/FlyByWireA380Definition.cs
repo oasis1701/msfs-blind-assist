@@ -1574,6 +1574,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // unit flag is tracked off the XMLVAR in ProcessSimVarUpdate.
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
+        // Preselect QNH is settable (live-verified the calc-path write sticks) — a numeric input
+        // (the "_SET" key renders a hPa text box; HandleUIVariableSet writes the L:var). This is
+        // the descent QNH preselect, separate from the active CAPT_QNH_SET above.
+        foreach (var s in new[] { "L", "R" })
+            vars[$"A380X_EFIS_{s}_BARO_PRESELECTED_SET"] = new SimVarDefinition
+            {
+                Name = $"A380X_EFIS_{s}_BARO_PRESELECTED", DisplayName = s == "L" ? "Preselect QNH Captain" : "Preselect QNH First Officer",
+                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "hectopascals"
+            };
         // Settable QNH — numeric input in the side's CURRENT unit (hPa or inHg).
         // HandleUIVariableSet validates, converts to millibars*16 and fires the
         // stock K:KOHLSMAN_SET (verified live: 16320 -> 1020 hPa; works in both
@@ -2429,7 +2438,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
             "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "XMLVAR_Baro_Selector_HPA_1",
-            "A32NX_EFIS_L_OANS_RANGE",
+            "A380X_EFIS_L_BARO_PRESELECTED_SET", "A32NX_EFIS_L_OANS_RANGE",
             // Flight Director 1 (captain). The earlier removal said writes "fail",
             // but the engage-state L:var IS settable and HOLDS via the calculator
             // path (re-verified live: set 1 → still 1 after 2.5 s).
@@ -2443,7 +2452,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
             "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "FO_QNH_SET", "XMLVAR_Baro_Selector_HPA_2",
-            "A32NX_EFIS_R_OANS_RANGE",
+            "A380X_EFIS_R_BARO_PRESELECTED_SET", "A32NX_EFIS_R_OANS_RANGE",
             "A32NX_FCU_EFIS_R_FD_ACTIVE"   // Flight Director 2 (F/O) — see captain side
         };
         p["FCU"] = new List<string>
@@ -3835,6 +3844,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             && int.TryParse(varKey.AsSpan(6, 1), out int xfn))
         {
             simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", (uint)(45 + xfn));
+            return true;
+        }
+        // Preselect QNH input (descent QNH preselect) — write the L:var directly via the calc
+        // path (live-verified it sticks). Key "..._PRESELECTED_SET" -> L:var "..._PRESELECTED".
+        if (varKey == "A380X_EFIS_L_BARO_PRESELECTED_SET" || varKey == "A380X_EFIS_R_BARO_PRESELECTED_SET")
+        {
+            string lvar = varKey.Substring(0, varKey.Length - "_SET".Length);
+            simConnect.ExecuteCalculatorCode($"{value:0} (>L:{lvar})");
             return true;
         }
         // (Doors are read-only status now — no settable combos; open/close via the flyPad.)
