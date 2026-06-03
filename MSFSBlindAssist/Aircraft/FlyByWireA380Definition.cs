@@ -5888,6 +5888,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
         if (evt == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH") s.ExecuteCalculatorCode(SpdMachToggleRpn);
+        // The A380's NEW FCU consumes EVERY A32NX.FCU_* button as a K-EVENT, not the A320-era
+        // H-event the SendEvent path produces — live-verified: (>H:A32NX.FCU_SPD_PUSH) left the
+        // managed dot at 0, (>K:A32NX.FCU_SPD_PUSH) set it to 1. The Speed/Alt/Hdg/VS push-pull
+        // windows already pass the correct A380 event names (incl. the TO_AP_HDG/VS variants), so
+        // firing them as K-events makes all those FCU knob buttons work. (SPD/MACH stays the
+        // conditional RPN above; TRK/FPA toggle goes through here too — verify it separately.)
+        else if (evt.StartsWith("A32NX.FCU_", StringComparison.Ordinal)) s.ExecuteCalculatorCode($"(>K:{evt})");
         else s.SendEvent(evt);
         OnPanelButtonFired(evt, s, a);
     }
