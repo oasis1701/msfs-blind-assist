@@ -1203,7 +1203,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Situational-awareness auto-announces (status enums; batch-covered, so no
         // SimConnect-def cost). These announce on change and appear in the Ctrl+M monitor.
         // TCAS surveillance mode + system fault; FMA speed-protection + mode-reversion. ----
-        Mon("A32NX_TCAS_MODE", "TCAS Mode", new Dictionary<double, string>
+        Mon("A32NX_TCAS_MODE", "TCAS Operating Mode", new Dictionary<double, string>
             { [0] = "standby", [1] = "traffic advisory only", [2] = "traffic and resolution advisories" });
         ReadEnum("A32NX_TCAS_FAULT", "TCAS Fault", new Dictionary<double, string> { [0] = "normal", [1] = "fault" });
         Mon("A32NX_FMA_SPEED_PROTECTION_MODE", "Speed Protection",
@@ -1816,6 +1816,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // TRANSPONDER STATE:1 read 1/STBY — the var holds a value but drives nothing).
         // Only the squawk code (above) and IDENT (XPNDR_IDENT_ON) have working write paths.
         // The mode is observable read-only via the RMP SQWK page (AUTO/STBY) instead.
+
+        // TCAS SURVEILLANCE — settable, UNLIKE the transponder mode. The TCAS *output* mode
+        // (A32NX_TCAS_MODE, announced read-only above) is driven by two INPUT L-vars that the
+        // shared FlyByWire `systems` WASM binary reads: A32NX_SWITCH_TCAS_POSITION (mode) and
+        // A32NX_SWITCH_TCAS_TRAFFIC_POSITION (altitude band). These already work on the A32NX
+        // (same binary) — the A380 runs that same computer, so setting them drives its TCAS.
+        // They have ZERO references in the TS/Rust source because the rust crate binds them by
+        // name at runtime (not a string literal grep can find), which is why the dead MFD SURV
+        // radios — which only publish unsubscribed mfd_tcas_* EventBus events — are NOT the path.
+        // (Live in-flight confirmation pending; if the A380 turns out not to read them, remove.)
+        Sel("A32NX_SWITCH_TCAS_POSITION", "TCAS Mode",
+            new Dictionary<double, string> { [0] = "standby", [1] = "traffic advisory", [2] = "traffic and resolution advisories" });
+        Sel("A32NX_SWITCH_TCAS_TRAFFIC_POSITION", "TCAS Traffic Display",
+            new Dictionary<double, string> { [0] = "below", [1] = "normal", [2] = "above" });
 
         // ============================ MINIMUMS ============================
         // FMS-set decision minimums (best-effort; var reused from A32NX FM).
@@ -2730,7 +2744,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             // Mode (STBY/AUTO/ON) + ALT RPTG removed — dead on the FBW A380 (see the
             // GetVariables note). Only squawk code + IDENT actually work here.
-            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON"
+            // TCAS Mode + Traffic Display ARE settable (shared-systems input vars).
+            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON",
+            "A32NX_SWITCH_TCAS_POSITION", "A32NX_SWITCH_TCAS_TRAFFIC_POSITION"
         };
         // "Radios" (stock COM standby-set + swap) REMOVED — the FBW A380 ignores the stock
         // COM_STBY_RADIO_SET_HZ / COM*_RADIO_SWAP events (live-verified: setting COM1 standby
