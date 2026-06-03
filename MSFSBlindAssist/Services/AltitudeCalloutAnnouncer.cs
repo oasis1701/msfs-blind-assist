@@ -62,7 +62,9 @@ public class AltitudeCalloutAnnouncer
         lastAnnouncedBand = newBand;
         int feet = newBand * BandFeet;
         // Plain Announce (queued) so a fading altitude callout doesn't displace the most
-        // recent actionable instruction in any feature's Repeat-Last buffer.
-        announcer.Announce($"{feet:N0} feet.");
+        // recent actionable instruction in any feature's Repeat-Last buffer. Format is the bare
+        // number ("32000", "5000") per Gus's preference — this is now the ONLY altitude callout
+        // (the duplicate legacy in-base announce was removed).
+        announcer.Announce($"{feet}");
     }
 }

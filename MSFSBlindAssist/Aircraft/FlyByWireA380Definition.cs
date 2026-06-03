@@ -5568,6 +5568,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     : "Gross weight not available");
                 return true;
             case HotkeyAction.ReadAltimeter:
+                // Announce the captain's FBW EIS baro — STD/unit-aware, the SAME value + phrasing
+                // as the live auto-announce and the set (PMDG/Fenix-style), instead of the stock
+                // KOHLSMAN in inches (which ignored STD + the selected unit = the "funky" read).
+                if (_baroStdL == true) { announcer.AnnounceImmediate("Captain altimeter standard"); return true; }
+                if (_lastBaroL > 0) { announcer.AnnounceImmediate(BaroPhrase(true, _lastBaroL, false)); return true; }
+                // Fallback (EIS baro not seeded yet): stock KOHLSMAN.
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
             case HotkeyAction.ReadGrossWeightKg: // Shift+W -> "Gross weight N kilograms, center of gravity X% MAC"

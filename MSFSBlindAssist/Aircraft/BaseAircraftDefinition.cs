@@ -530,53 +530,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Handle altitude thousand-foot crossing announcements
         if (varName == "INDICATED_ALTITUDE")
         {
-            // Reset hysteresis if aircraft has moved 300+ feet away from last announced altitude
-            if (_lastAnnouncedRawAltitude.HasValue &&
-                Math.Abs(value - _lastAnnouncedRawAltitude.Value) >= 300)
-            {
-                _lastAnnouncedAltitudeThousands = null;
-            }
-
-            if (_previousAltitude.HasValue)
-            {
-                int oldThousands = (int)(_previousAltitude.Value / 1000);
-                int newThousands = (int)(value / 1000);
-
-                if (newThousands > oldThousands)
-                {
-                    // Climbing: announce each thousand-foot level crossed (with hysteresis)
-                    for (int i = oldThousands + 1; i <= newThousands; i++)
-                    {
-                        // Only announce if different from last announced altitude
-                        if (!_lastAnnouncedAltitudeThousands.HasValue || i != _lastAnnouncedAltitudeThousands.Value)
-                        {
-                            announcer.Announce($"{i * 1000}");
-                            _lastAnnouncedAltitudeThousands = i;
-                            _lastAnnouncedRawAltitude = value;
-                        }
-                    }
-                }
-                else if (newThousands < oldThousands)
-                {
-                    // Descending: announce each thousand-foot level crossed (with hysteresis)
-                    for (int i = oldThousands; i > newThousands; i--)
-                    {
-                        // Only announce if different from last announced altitude
-                        if (!_lastAnnouncedAltitudeThousands.HasValue || i != _lastAnnouncedAltitudeThousands.Value)
-                        {
-                            announcer.Announce($"{i * 1000}");
-                            _lastAnnouncedAltitudeThousands = i;
-                            _lastAnnouncedRawAltitude = value;
-                        }
-                    }
-                }
-                // If oldThousands == newThousands, no crossing occurred (no announcement)
-            }
-
-            // Update tracked altitude
+            // NOTE: thousand-foot crossing callouts are handled by the canonical,
+            // settings-controlled AltitudeCalloutAnnouncer service (MainForm.OnSimVarUpdated →
+            // HandleSpecialAnnouncements). This in-base announce was a DUPLICATE — the base spoke
+            // "32000" while the service also spoke "32,000 feet." (Gus's note). The base announce
+            // is removed so there is exactly ONE altitude callout. We still track the value and
+            // suppress the generic gate's raw "Altitude: 5234" announcement.
             _previousAltitude = value;
-
-            // Return true to suppress default announcement (we handle it custom)
             return true;
         }
 
