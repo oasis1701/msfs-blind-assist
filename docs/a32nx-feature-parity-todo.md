@@ -122,9 +122,22 @@ at a time, verify live, delete the line.
   (`A32NX_FMGC_TRUE_REF`), cross-track L/R formatting. All shared.
 - [ ] **ISIS**: `A32NX_ISIS_BUGS_ACTIVE` friendly label (bug VALUES + ATT-10s are JS-only — not modelled).
 
+### G3b. PFD speed-tape SOURCE fix (shared) — IMPORTANT
+- [ ] **VLS / VMAX / green-dot / F / S** must source from the FBW managed-speed L-vars
+  `A32NX_SPEEDS_{VLS,VMAX,GD,F,S}` (valid on the ground AND in flight), NOT the FAC ARINC words
+  `A32NX_FAC_1_V_*` (which are NCD on the ground → "not available" at the gate). All shared L-vars
+  — verify + apply the same source on the A320. Keep the alpha-protection speeds (alpha-prot,
+  alpha-max, stall-warn, VFE-next) on the FAC words (genuinely in-flight-only; "not available" on
+  the ground is correct there).
+
 ### G4. Auto-announces (shared enums)
 - [ ] TCAS mode (`A32NX_TCAS_MODE`) + TCAS fault (`A32NX_TCAS_FAULT`) + FMA speed-protection
   (`A32NX_FMA_SPEED_PROTECTION_MODE`) + FMA mode-reversion (`A32NX_FMA_MODE_REVERSION`). All shared.
+- [ ] **SAFETY AURALS** (all shared, high value): EGPWS callouts `A32NX_GPWS_AURAL_OUTPUT` (enum
+  0=none,1=PULL UP,2=TERRAIN,3=TOO LOW TERRAIN,4=TOO LOW GEAR,5=TOO LOW FLAPS,6=SINK RATE,
+  7=DON'T SINK,8/9=GLIDESLOPE,10=TERRAIN AHEAD,11=OBSTACLE AHEAD), stall warning
+  `A32NX_AUDIO_STALL_WARNING`, AP-disconnect cavalry charge `A32NX_FWC_CAVALRY_CHARGE`. Port as
+  ReadEnum auto-announces.
 
 ### G5. Controls
 - [ ] **APU auto-exit test** (`A32NX_APU_AUTOEXITING_TEST_ON`), **emer-gen test** (`A32NX_EMERELECPWR_GEN_TEST`),
@@ -191,3 +204,20 @@ PERF/FUEL&LOAD computed results (no SimVars — reachable via the existing MFD p
 FM/TCAS/WXR message lines + RWY-AHEAD QFU text (reachable via the ND form's F6 live scrape). The
 0..100 drag-axis comfort items (seats/armrests/forward visors) stay intentionally skipped as panel
 clutter.
+
+NON-DISPLAY FEATURE AUDIT (2026-06-03, 4 agents: overhead/systems, autoflight/protections/warnings,
+pedestal/comms/MFD/flyPad/ground, A380-specific). Verdict: coverage is strong-to-comprehensive.
+ACTIONED from it: the **safety aurals** (EGPWS / stall / AP-disconnect — see G4) were added; the PFD
+weight-speed source fix (G3b) was applied. A380 gaps deliberately LEFT (low value / not modelled /
+needs design), recorded so they're not re-discovered:
+- **HF + direct RMP frequency entry** — only VHF (COM1/2/3) has a frequency-set control; HF/RMP RX/TX
+  *selection* is covered but not tuning. The A380 tunes via the RMP touchscreen, which isn't driven
+  for freq entry. Medium value (HF rare in sim); a real future feature, not a quick add.
+- **Seat-belt sign AUTO position** — currently On/Off via the stock simvar; the FBW switch is 3-pos
+  (ON/AUTO/OFF, `XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position`). Switching risks regressing the
+  existing seat-belt EWD announce behaviour; deferred.
+- **EHA/EBHA electric-actuator buses, body-wheel-steering state, CIDS/cabin status, OIS/OIT terminal,
+  NSS/ATSU network, wing flex** — mostly NOT modelled by the FBW dev build (or visual-only); a blind
+  pilot has the readouts/controls that DO exist. Do-not-chase.
+- Active alpha-prot/high-speed/bank protection has no dedicated callout beyond the FMA + alpha-floor
+  announce (which IS present); FWS `FWC_FLIGHT_PHASE` not surfaced (FMGC phase suffices). Low value.
