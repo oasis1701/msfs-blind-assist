@@ -20,6 +20,17 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
 
 ## A. Connection-safety / shared
 
+- [x] **Landing-rate + landing-G output hotkeys — ALREADY shared, work on the A32NX now.**
+  `Ctrl+Shift+R` (touchdown rate) / `Ctrl+Shift+G` (peak g) live in the SHARED `MainForm` +
+  `Services/LandingRateAnnouncer` + base SimVars (`G_FORCE`, `PLANE_TOUCHDOWN_NORMAL_VELOCITY`),
+  so they fire for every aircraft including the A32NX automatically — nothing to port.
+- [ ] **RMP scraped window — A380-only so far; consider a parallel A32NX RMP window later.** The
+  A380 RMP became a dedicated scraped window (`Ctrl+R`, `FBWA380RmpForm` + `coherent-rmp-agent.js`
+  over `A380X_RMP_1/2`). The A32NX RMP is a different instrument (7-segment standby display, no
+  `A380X_RMP` Coherent view) — a future A32NX RMP window would need its own agent/structure; the
+  existing A32NX RMP receive-volume combos stay for now.
+
+
 - [ ] **SimConnect-ceiling strengthening — live A32NX connect check.** The strengthening is in the
   SHARED `SimConnectManager` (batch-covered vars skip their individual def). Architecturally
   identical, fewer continuous vars. Just confirm a clean A32NX connect + check `registration.log`

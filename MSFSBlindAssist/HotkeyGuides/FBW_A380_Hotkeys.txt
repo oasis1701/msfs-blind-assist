@@ -39,6 +39,8 @@ OUTPUT MODE  (press ] first)
   D          Distance to destination (from the FMS)
   Shift+D    Distance to Top of Descent (once computed in flight)
              (Q / A / Shift+A read in metres when the FCU MTRS button is on)
+  Ctrl+Shift+R  Last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Last landing peak g-force
 
   Characteristic speeds
   Shift+1    Green Dot speed
@@ -92,6 +94,8 @@ INPUT MODE  (press [ first)
   Windows
   Shift+M    Open MCDU / MFD window
   Shift+T    Open flyPad EFB window
+  Ctrl+R     Open Radio Management Panel (RMP) window — Captain / First Officer,
+             type a frequency + Enter, page / line / swap / clear keys
   Alt+G      Open GSX window
 
   Teleport / flight planning

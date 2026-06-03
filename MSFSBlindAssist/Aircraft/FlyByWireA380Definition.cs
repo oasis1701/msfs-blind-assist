@@ -721,7 +721,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- RADIO MANAGEMENT PANEL (RMP 1) KEYPAD ----
         // The A380 RMP (VHF/HF/TEL/transponder/NAV tuning) is operated through the dedicated
-        // accessible RMP WINDOW (Shift+R in input mode → FBWA380RmpForm), NOT a control panel:
+        // accessible RMP WINDOW (Ctrl+R in input mode → FBWA380RmpForm), NOT a control panel:
         // it scrapes the live A380X_RMP_1/2 Coherent views and drives the cockpit keypad H-events
         // (RMP_n_<KEY>_PRESSED/_RELEASED) via SendRmpKey / SendRmpKeypad. The old per-key button
         // panel was impractical (one digit at a time) and has been removed.
@@ -2600,7 +2600,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_2_INT_TX_1", "A380X_RMP_2_CAB_TX_1", "A380X_RMP_2_PA_TX_1", "A380X_RMP_2_NAV_TX_1"
         };
         // (Radio Management Panel removed — the RMP is now the dedicated accessible RMP WINDOW,
-        // Shift+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
+        // Ctrl+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",

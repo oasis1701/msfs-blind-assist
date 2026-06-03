@@ -2614,7 +2614,7 @@ public partial class MainForm : Form
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
     // by the ND Coherent view through CoherentNDClient. Used for BTV (Brake-To-
     // Vacate) exit selection and airport/runway/exit search.
-    // Open the accessible A380 RMP window (Shift+R in input mode) — replaces the old
+    // Open the accessible A380 RMP window (Ctrl+R in input mode) — replaces the old
     // per-key RMP button panel. Scrapes A380X_RMP_1/2 live; one window, Captain ↔ FO combo.
     private void ShowFBWA380RmpDialog()
     {
