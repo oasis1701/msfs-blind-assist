@@ -318,6 +318,9 @@ public class FbwEfbForm : Form
                 case "live":      el.Live = kv.Value; break;
                 case "disabled":  el.Disabled = kv.Value == "true"; break;
                 case "options":   el.Options = string.IsNullOrEmpty(kv.Value) ? null : kv.Value.Split(OptionSeparator); break;
+                case "min":       el.Min = ParseInv(kv.Value); break;
+                case "max":       el.Max = ParseInv(kv.Value); break;
+                case "step":      el.Step = ParseInv(kv.Value); break;
             }
         }
         _elements = byIndex.Values.ToList();
@@ -381,7 +384,10 @@ public class FbwEfbForm : Form
             level = e.Level,
             live = e.Live,
             disabled = e.Disabled,
-            options = e.Options
+            options = e.Options,
+            min = e.Min,
+            max = e.Max,
+            step = e.Step
         });
         return JsonSerializer.Serialize(new { page = _currentPage, items });
     }
@@ -688,7 +694,14 @@ public class FbwEfbForm : Form
         public string Live = "";
         public bool Disabled;
         public string[]? Options;
+        public double? Min;      // range (slider) bounds for controlType "range"
+        public double? Max;
+        public double? Step;
     }
+
+    private static double? ParseInv(string s) =>
+        double.TryParse(s, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
 
     // ---- the semantic HTML document hosted in WebView2 --------------------
     //
@@ -741,6 +754,7 @@ public class FbwEfbForm : Form
   // Classify an element to its rendered node TYPE — used to build AND to key.
   function rk(it) {
     var ct = it.controlType || '';
+    if (ct === 'range') return 'rng';
     if (ct === 'checkbox') return 'cb';
     if (ct === 'select' && it.options && it.options.length) return 'sel';
     if (ct === 'text' || ct === 'select') return 'in';
@@ -785,6 +799,19 @@ public class FbwEfbForm : Form
       for (var o = 0; o < opts.length; o++) { var op = document.createElement('option'); op.value = opts[o]; op.textContent = opts[o]; if (opts[o] === it.value) op.selected = true; sel.appendChild(op); }
       sel.addEventListener('change', function () { post({ type: 'set', idx: this.getAttribute('data-idx'), value: this.value, controlType: 'select' }); });
       sl.appendChild(sel); return sl;
+    }
+    if (type === 'rng') {
+      var rl = document.createElement('label'); rl.className = 'fld';
+      var rsp = document.createElement('span'); rsp.textContent = (text || 'Slider') + ': '; rl.appendChild(rsp);
+      var rg = document.createElement('input'); rg.type = 'range'; rg.className = 'in';
+      if (it.min != null) rg.min = it.min;
+      if (it.max != null) rg.max = it.max;
+      if (it.step != null) rg.step = it.step;
+      rg.value = it.value || (it.min != null ? it.min : 0);
+      rg.setAttribute('data-idx', String(it.idx)); rg.setAttribute('aria-label', text || 'Slider');
+      if (it.disabled) rg.disabled = true;
+      rg.addEventListener('change', function () { post({ type: 'set', idx: this.getAttribute('data-idx'), value: this.value, controlType: 'range' }); });
+      rl.appendChild(rg); return rl;
     }
     if (type === 'in') {
       var fl = document.createElement('label'); fl.className = 'fld';
@@ -845,6 +872,15 @@ public class FbwEfbForm : Form
       if (!same) { c.innerHTML = ''; for (var j = 0; j < opts.length; j++) { var op = document.createElement('option'); op.value = opts[j]; op.textContent = opts[j]; c.appendChild(op); } }
       if (document.activeElement !== c && c.value !== (it.value || '')) c.value = it.value || '';
       var sp = node.querySelector('span'); if (sp) setText(sp, (text || 'Choice') + ': ');
+      return;
+    }
+    if (type === 'rng') {
+      c.disabled = !!it.disabled;
+      if (it.min != null) c.min = it.min;
+      if (it.max != null) c.max = it.max;
+      if (it.step != null) c.step = it.step;
+      if (document.activeElement !== c) { var rv = it.value || ''; if (c.value !== rv) c.value = rv; }
+      var rsp2 = node.querySelector('span'); if (rsp2) setText(rsp2, (text || 'Slider') + ': ');
       return;
     }
     if (type === 'in') {

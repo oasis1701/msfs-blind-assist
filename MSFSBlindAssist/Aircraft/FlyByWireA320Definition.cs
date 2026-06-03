@@ -5043,9 +5043,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 ToggleA320ECAMMonitoring(simConnect, announcer);
                 return true;
 
-            case HotkeyAction.ReadGrossWeightKg: // Shift+W -> gross weight (selected unit) + CG
-                if (_gwKgCache > 0) { var (gw, gu) = WeightUser(_gwKgCache); announcer.AnnounceImmediate($"Gross weight {gw:0} {gu}{CgMacPhrase()}"); }
-                else announcer.AnnounceImmediate("Gross weight not available");
+            case HotkeyAction.ReadGrossWeightKg: // Shift+W -> gross weight KILOGRAMS + CG
+                // Deterministic kilograms (like the A380), NOT WeightUser — so a kg
+                // readout is always available regardless of the EFB US-Units toggle
+                // (otherwise imperial mode made Shift+W duplicate W's pounds).
+                announcer.AnnounceImmediate(_gwKgCache > 0
+                    ? $"Gross weight {_gwKgCache:0} kilograms{CgMacPhrase()}"
+                    : "Gross weight not available");
                 return true;
 
             case HotkeyAction.FCUSetBaro:
