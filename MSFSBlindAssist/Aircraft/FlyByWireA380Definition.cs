@@ -3885,7 +3885,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // run a fast small-increment drive while a direction is selected and halt on "Stopped".
         if (varKey.EndsWith("_MOTOR", System.StringComparison.Ordinal))
         {
-            StartOrStopSeatMotor(varKey.Substring(0, varKey.Length - 6), (int)System.Math.Round(value), simConnect);
+            StartOrStopSeatMotor(varKey.Substring(0, varKey.Length - 6), (int)System.Math.Round(value), simConnect, announcer);
             return true;
         }
         // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
@@ -6070,26 +6070,53 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private void StopSliderRamp() { _sliderRampTimer?.Stop(); _sliderRampTimer?.Dispose(); _sliderRampTimer = null; }
 
     // ---- Crew-seat START/STOP motor ----
-    // Unlike a slider (target -> ramp -> stop), a seat motor RUNS while a direction is selected and
-    // HALTS on "Stopped". The motor SOUND is a Wwise Continuous loop keyed to the DERIVATIVE of the
-    // position L:var, so the only thing that makes it sustain is the var changing EVERY frame. So we
-    // drive a SMALL clamped increment via the calculator path on a FAST UI-thread timer (every 20 ms),
-    // which keeps the per-frame derivative non-zero -> sustained motor noise + smooth motion. A read-
-    // modify-write calc expression (`(L:VAR) step + 100 min (>L:VAR)`) does the clamp in-sim so we
-    // never need to track the value or special-case the 0/100 limits (at the limit the writes become
-    // no-ops, the derivative goes to zero, and the loop fades on its own).
-    private readonly Dictionary<string, int> _seatMotorDir = new();   // posVar -> +1 (toward 100) / -1 (toward 0)
+    // A seat motor RUNS while a direction is selected and HALTS on "Stopped". The motor SOUND is a
+    // Wwise Continuous loop keyed to the DERIVATIVE of the position L:var, so it sustains only while
+    // the var changes every frame. We drive a small step every 20 ms on a UI-thread timer.
+    //
+    // RELIABILITY FIX (the "moves one tick then stops" bug): the calc string must be UNIQUE every
+    // tick. MobiFlight's WASM REGISTERS each distinct "MF.SimVars.Set.<code>" string and fires it
+    // ONCE; sending the SAME read-modify-write string every tick got de-duplicated -> one tick of
+    // movement then silence. We keep the read-modify-write (so it always reads the LIVE value ->
+    // continues smoothly from wherever the seat is, no snap, no seeding) but PREFIX a harmless
+    // ever-increasing "<seq> 0 *" (pushes 0, left on the stack, ignored) so every tick's string is
+    // distinct and each one fires -> continuous motion + sustained motor sound. (RampSliderTo never
+    // hit this because it writes the changing absolute value, which is already unique each tick.)
+    private readonly Dictionary<string, int> _seatMotorDir = new();     // posVar -> +1 (toward 100) / -1 (toward 0)
+    private readonly Dictionary<string, double> _seatMotorPos = new();  // posVar -> approx tracked position (for the spoken read-out only)
     private System.Windows.Forms.Timer? _seatMotorTimer;
     private SimConnectManager? _seatMotorSim;
+    private ScreenReaderAnnouncer? _seatMotorAnnouncer;
+    private long _seatMotorSeq;
     private int _seatMotorTicks;
 
-    private void StartOrStopSeatMotor(string posVar, int dir, SimConnectManager simConnect)
+    private static readonly Dictionary<string, (string Disp, string Hi, string Lo)> _seatMotorMeta = new()
+    {
+        ["SEAT_CPT_MOVE_UP_DOWN"] = ("Captain seat up and down", "up", "down"),
+        ["SEAT_CPT_MOVE_FWD_AFT"] = ("Captain seat forward and aft", "forward", "aft"),
+        ["SEAT_FO_MOVE_UP_DOWN"] = ("First officer seat up and down", "up", "down"),
+        ["SEAT_FO_MOVE_FWD_AFT"] = ("First officer seat forward and aft", "forward", "aft"),
+    };
+
+    private void StartOrStopSeatMotor(string posVar, int dir, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         _seatMotorSim = simConnect;
-        if (dir == 1) _seatMotorDir[posVar] = +1;        // option 1 = Up / Forward (toward 100)
-        else if (dir == 2) _seatMotorDir[posVar] = -1;   // option 2 = Down / Aft (toward 0)
-        else _seatMotorDir.Remove(posVar);               // 0 = Stopped
-        if (_seatMotorDir.Count == 0) { StopSeatMotor(); return; }
+        _seatMotorAnnouncer = announcer;
+        if (dir == 1 || dir == 2)
+        {
+            // Seed the approximate tracked position (used ONLY for the spoken "where is the seat"
+            // read-out) from the live var on a fresh start. The actual MOVEMENT reads the live value
+            // each tick (read-modify-write), so this seed never affects the seat itself.
+            if (!_seatMotorDir.ContainsKey(posVar))
+                _seatMotorPos[posVar] = Math.Max(0.0, Math.Min(100.0,
+                    simConnect.GetCachedVariableValue(posVar) ?? (_seatMotorPos.TryGetValue(posVar, out var lp) ? lp : 50.0)));
+            _seatMotorDir[posVar] = dir == 1 ? +1 : -1;
+        }
+        else if (_seatMotorDir.Remove(posVar))   // 0 = Stopped: halt this axis + say where it ended up
+        {
+            AnnounceSeatPosition(posVar);
+        }
+        if (_seatMotorDir.Count == 0) { _seatMotorTimer?.Stop(); return; }
         _seatMotorTicks = 0;
         if (_seatMotorTimer == null)
         {
@@ -6102,20 +6129,46 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private void SeatMotorTick()
     {
         var sim = _seatMotorSim;
-        if (sim == null || !sim.IsConnected || _seatMotorDir.Count == 0) { StopSeatMotor(); return; }
-        const double step = 0.4;   // 100 units in ~5 s; small enough that every frame sees a change
-        foreach (var kv in _seatMotorDir)
+        if (sim == null || !sim.IsConnected || _seatMotorDir.Count == 0) { _seatMotorTimer?.Stop(); return; }
+        const double step = 0.4;   // ~100 units in ~5 s
+        bool hitSafety = ++_seatMotorTicks > 400;   // ~8 s cap so a forgotten "moving" combo can't drive forever
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (var v in _seatMotorDir.Keys.ToList())
         {
-            string expr = kv.Value > 0
-                ? "(L:" + kv.Key + ") " + step.ToString(System.Globalization.CultureInfo.InvariantCulture) + " + 100 min (>L:" + kv.Key + ")"
-                : "(L:" + kv.Key + ") " + step.ToString(System.Globalization.CultureInfo.InvariantCulture) + " - 0 max (>L:" + kv.Key + ")";
+            long seq = ++_seatMotorSeq;   // makes each tick's calc string unique so MobiFlight re-fires it
+            string expr = _seatMotorDir[v] > 0
+                ? seq + " 0 * (L:" + v + ") " + step.ToString(inv) + " + 100 min (>L:" + v + ")"
+                : seq + " 0 * (L:" + v + ") " + step.ToString(inv) + " - 0 max (>L:" + v + ")";
             sim.ExecuteCalculatorCode(expr);
+            double pos = Math.Max(0.0, Math.Min(100.0, (_seatMotorPos.TryGetValue(v, out var p) ? p : 50.0) + _seatMotorDir[v] * step));
+            _seatMotorPos[v] = pos;
+            if (pos <= 0.01 || pos >= 99.99 || hitSafety) { _seatMotorDir.Remove(v); AnnounceSeatPosition(v); }
         }
-        // Safety stop a bit past full travel (~8 s) so a forgotten "moving" combo can't drive forever.
-        if (++_seatMotorTicks > 400) StopSeatMotor();
+        if (_seatMotorDir.Count == 0) _seatMotorTimer?.Stop();
     }
 
     private void StopSeatMotor() { _seatMotorDir.Clear(); _seatMotorTimer?.Stop(); }
+
+    // The user asked, after the seat stops, to hear WHERE it is as a position (not just a number).
+    // Spoken band + percent, derived from the approximate tracked position. Queued (not Immediate)
+    // so it follows NVDA's own "Stopped" combo read-out instead of cutting it off.
+    private void AnnounceSeatPosition(string posVar)
+    {
+        var ann = _seatMotorAnnouncer;
+        if (ann == null) return;
+        double pos = _seatMotorPos.TryGetValue(posVar, out var p) ? p : 50.0;
+        var (disp, hi, lo) = _seatMotorMeta.TryGetValue(posVar, out var m) ? m : ("Seat", "high", "low");
+        ann.Announce($"{disp}: {SeatBand(pos, hi, lo)}, {(int)Math.Round(pos)} percent");
+    }
+
+    private static string SeatBand(double pos, string hi, string lo) =>
+        pos >= 97 ? "fully " + hi :
+        pos >= 70 ? hi :
+        pos >= 56 ? "slightly " + hi :
+        pos >= 44 ? "mid travel" :
+        pos >= 30 ? "slightly " + lo :
+        pos >= 3 ? lo :
+        "fully " + lo;
 
     // The A380's NEW FCU ignores the legacy dotted "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" H-event the
     // A320 used — live-verified that firing it (either dot or underscore form) does NOTHING. Its
