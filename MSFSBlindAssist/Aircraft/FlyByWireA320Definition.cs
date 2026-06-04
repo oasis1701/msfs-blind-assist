@@ -402,30 +402,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Wing Lights Set Event",
             Type = SimConnect.SimVarType.Event
         },
-        ["NAV_LIGHTS_SET"] = new SimConnect.SimVarDefinition
-        {
-            Name = "NAV_LIGHTS_SET",
-            DisplayName = "Nav Lights Set Event",
-            Type = SimConnect.SimVarType.Event
-        },
-        ["NAV_LIGHTS_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "NAV_LIGHTS_ON",
-            DisplayName = "Nav Lights On Event",
-            Type = SimConnect.SimVarType.Event
-        },
-        ["NAV_LIGHTS_OFF"] = new SimConnect.SimVarDefinition
-        {
-            Name = "NAV_LIGHTS_OFF",
-            DisplayName = "Nav Lights Off Event",
-            Type = SimConnect.SimVarType.Event
-        },
-        ["LOGO_LIGHTS_SET"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LOGO_LIGHTS_SET",
-            DisplayName = "Logo Lights Set Event",
-            Type = SimConnect.SimVarType.Event
-        },
+        // NAV/LOGO stock single-param events removed: dead on the FBW A32NX. The combined
+        // Nav & Logo switch (A32NX_LIGHTS_NAV_LOGO) uses the indexed K:2:NAV_LIGHTS_SET /
+        // K:2:LOGO_LIGHTS_SET calc RPN in HandleUIVariableSet instead.
         ["CIRCUIT_SWITCH_ON:21"] = new SimConnect.SimVarDefinition
         {
             Name = "CIRCUIT SWITCH ON:21",
@@ -464,24 +443,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "bool",
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["LIGHT NAV"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LIGHT NAV",
-            DisplayName = "Nav Lights",
-            Type = SimConnect.SimVarType.SimVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "bool",
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        ["LIGHT LOGO"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LIGHT LOGO",
-            DisplayName = "Logo Lights",
-            Type = SimConnect.SimVarType.SimVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "bool",
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
+        // NAV and LOGO are a single combined switch on the A320 (see A32NX_LIGHTS_NAV_LOGO
+        // below). The old separate "LIGHT NAV" / "LIGHT LOGO" combos drove dead stock events
+        // and were removed.
         // Combined NAV & LOGO switch (the real A320 has ONE switch, FBW models it as the
         // FBW_A32NX_NAV_LOGO_LT_SW with state L:A32NX_LIGHTS_NAV_LOGO = OFF(0)/SYS1(1)/SYS2(2)).
         // The old separate "Nav"/"Logo" combos fired stock NAV_LIGHTS_SET/LOGO_LIGHTS_SET which

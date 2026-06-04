@@ -5314,7 +5314,6 @@ public partial class MainForm : Form
                 // Special handling for Lighting controls
                 else if (varKey == "LIGHTING_LANDING_1" || varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3" ||
                          varKey == "LIGHTING_STROBE_0" || varKey == "LIGHT BEACON" || varKey == "LIGHT WING" ||
-                         varKey == "LIGHT NAV" || varKey == "LIGHT LOGO" ||
                          varKey == "CIRCUIT_SWITCH_ON:21" || varKey == "CIRCUIT_SWITCH_ON:22")
                 {
                     ComboBox combo = new ComboBox();
@@ -5455,16 +5454,6 @@ public partial class MainForm : Form
                             else if (capturedVarKey == "LIGHT WING") // Wing Lights
                             {
                                 simConnectManager?.SendEvent("WING_LIGHTS_SET", (uint)selectedValue);
-                            }
-                            else if (capturedVarKey == "LIGHT NAV") // Nav Lights (controls both Nav and Logo)
-                            {
-                                simConnectManager?.SendEvent("NAV_LIGHTS_SET", (uint)selectedValue);
-                                simConnectManager?.SendEvent("LOGO_LIGHTS_SET", (uint)selectedValue);
-                            }
-                            else if (capturedVarKey == "LIGHT LOGO") // Logo Lights (controls both Nav and Logo)
-                            {
-                                simConnectManager?.SendEvent("NAV_LIGHTS_SET", (uint)selectedValue);
-                                simConnectManager?.SendEvent("LOGO_LIGHTS_SET", (uint)selectedValue);
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:21") // Left RWY Turn Off Light
                             {
