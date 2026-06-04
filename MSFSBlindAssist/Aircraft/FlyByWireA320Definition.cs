@@ -405,10 +405,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // NAV/LOGO stock single-param events removed: dead on the FBW A32NX. The combined
         // Nav & Logo switch (A32NX_LIGHTS_NAV_LOGO) uses the indexed K:2:NAV_LIGHTS_SET /
         // K:2:LOGO_LIGHTS_SET calc RPN in HandleUIVariableSet instead.
+        // Runway turn-off lights. The real A320 has ONE RWY TURN OFF switch
+        // (SWITCH_OVHD_EXTLT_RWY) driving BOTH lights: left = circuit 21 (LIGHT TAXI:2),
+        // right = circuit 22 (LIGHT TAXI:3). MSFSBA exposes a single combo (this :21 entry,
+        // displayed as "Runway Turn Off Lights") whose set drives BOTH circuits — see the
+        // CIRCUIT_SWITCH_ON:21 branch in MainForm's lighting block. Circuit 21's state is the
+        // representative read-back. The :22 entry below is kept as a read-only state source
+        // (no longer its own panel control) so the combined branch can sync the right circuit.
         ["CIRCUIT_SWITCH_ON:21"] = new SimConnect.SimVarDefinition
         {
             Name = "CIRCUIT SWITCH ON:21",
-            DisplayName = "Left RWY Turn Off Light",
+            DisplayName = "Runway Turn Off Lights",
             Type = SimConnect.SimVarType.SimVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "bool",
@@ -417,7 +424,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["CIRCUIT_SWITCH_ON:22"] = new SimConnect.SimVarDefinition
         {
             Name = "CIRCUIT SWITCH ON:22",
-            DisplayName = "Right RWY Turn Off Light",
+            DisplayName = "Right RWY Turn Off Light (state only)",
             Type = SimConnect.SimVarType.SimVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "bool",
@@ -5126,7 +5133,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "LIGHT WING",
             "A32NX_LIGHTS_NAV_LOGO",
             "CIRCUIT_SWITCH_ON:21",
-            "CIRCUIT_SWITCH_ON:22",
             "LANDING_LIGHTS_ON_THIRD_PARTY",
             "LANDING_LIGHTS_OFF_THIRD_PARTY"
         },
