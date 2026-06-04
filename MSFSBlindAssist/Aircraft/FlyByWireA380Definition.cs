@@ -3295,6 +3295,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ("A380X_MSFSBA_DOOR_15", "Upper Door 3 Right", "INTERACTIVE POINT OPEN:15", true,  false),
         ("A380X_MSFSBA_CARGO_FWD", "Forward Cargo Door", "A32NX_FWD_DOOR_CARGO_LOCKED", false, true),
         ("A380X_MSFSBA_CARGO_AFT", "Aft Cargo Door",     "A32NX_AFT_DOOR_CARGO_LOCKED", false, true),
+        // Ground-SERVICE interactive points OUTSIDE the 0..15 door range that the flyPad Ground
+        // page drives (A380Services.tsx): point 16 = the front cargo hatch the BAGGAGE truck opens,
+        // point 18 = the FUEL truck / fuelling connection. Same INTERACTIVE POINT OPEN mechanism as
+        // the doors, so they ride the proven once-per-transition announce — a flyPad baggage/fuel
+        // call is now spoken ("Front Cargo Door: Open", "Fuel Truck: Open"). (Catering/jet-bridge/
+        // stairs attach to cabin doors 0/2/9 which already announce; GPU = EXT PWR AVAIL announce.)
+        ("A380X_MSFSBA_DOOR_16", "Front Cargo Door (Baggage)", "INTERACTIVE POINT OPEN:16", true, false),
+        ("A380X_MSFSBA_DOOR_18", "Fuel Truck",                 "INTERACTIVE POINT OPEN:18", true, false),
     };
     private readonly Dictionary<string, bool> _doorOpen = new();
     private int _presetBucket = -1;   // last-announced preset-load progress 10%-bucket (-1 = idle)
@@ -3360,7 +3368,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 _doorOpen[varName] = open;
                 if (prev.HasValue && prev.Value != open
                     && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
-                    announcer.Announce($"{dd.Name} {(open ? "open" : "closed")}");
+                {
+                    // The fuel-truck service point (interactive point 18) reads more naturally as
+                    // connected/disconnected than open/closed; doors + the cargo hatch keep open/closed.
+                    string verb = varName == "A380X_MSFSBA_DOOR_18"
+                        ? (open ? "connected" : "disconnected")
+                        : (open ? "open" : "closed");
+                    announcer.Announce($"{dd.Name} {verb}");
+                }
                 break;
             }
             return true;
