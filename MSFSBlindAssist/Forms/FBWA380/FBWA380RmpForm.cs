@@ -176,7 +176,7 @@ public sealed class FBWA380RmpForm : Form
         bool wasSel = _selectedRowIndex == row;
         _selectedRowIndex = row;
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
-        if (wasSel) AnnounceSelectedStandby();   // re-press the selected radio = confirm/load -> read its standby
+        if (wasSel) AnnounceSelectedStandby(force: true);   // re-press selected radio = confirm/load -> read its standby
         else { _announcer?.Announce($"Radio {row + 1}"); ScheduleRefresh(); }
     }
 
@@ -195,7 +195,10 @@ public sealed class FBWA380RmpForm : Form
     // (not a cached value) avoids the stale-cache bug; deduped per radio+value so the typing-settle and the
     // Enter/LSK paths don't double; marshalled to the UI thread so the announce reliably speaks (the scrape
     // continuation can resume off the UI thread, where the screen-reader announce silently fails).
-    private async void AnnounceSelectedStandby()
+    // force = an explicit action (Enter / re-press the selected radio) — always speak, even if the
+    // typing-settle debounce already announced this same value. The debounce path passes force = false
+    // (deduped) so continuous typing speaks only once.
+    private async void AnnounceSelectedStandby(bool force = false)
     {
         int row = _selectedRowIndex;
         List<string>? rows = null;
@@ -213,11 +216,15 @@ public sealed class FBWA380RmpForm : Form
             if (sby.Length > 0 && sby.IndexOf('_') < 0)   // a complete (auto-completed) frequency
             {
                 string key = $"{row}:{sby}";
-                if (key != _lastStandbyAnnounced)
+                if (force || key != _lastStandbyAnnounced)
                 {
                     _lastStandbyAnnounced = key;
                     _announcer?.AnnounceImmediate($"VHF standby {row + 1}, {sby}");
                 }
+            }
+            else if (force)
+            {
+                _announcer?.AnnounceImmediate("Standby not set");   // Enter on an empty/incomplete entry
             }
             Apply(rows);
         }
@@ -277,7 +284,8 @@ public sealed class FBWA380RmpForm : Form
                 return;
             }
             _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // VHF: confirm/load the typed standby
-            AnnounceSelectedStandby();                                      // read it back: "VHF standby N, freq"
+            _standbyTimer?.Stop();                                          // cancel the pending typing-settle announce
+            AnnounceSelectedStandby(force: true);                          // always read it back: "VHF standby N, freq"
         }
         else if (e.KeyCode == Keys.Back)
         {
