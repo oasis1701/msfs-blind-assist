@@ -1,3 +1,10 @@
+> **⚠ SUPERSEDED (2026-06-04).** This file is self-contradictory (declares the pass "complete" up
+> top while sections A–G still list dozens of open items) and is kept only for its verified-history
+> record. The authoritative, source-grounded + live-verified audit is
+> **[`a320-a380-parity-audit-2026-06-04.md`](a320-a380-parity-audit-2026-06-04.md)** — start there.
+> Do NOT trust the `[ ]` items below without re-verifying against the FBW source + live sim per
+> the methodology in the new doc.
+
 # A32NX (FlyByWire A320) feature-parity TODO
 
 Everything done for the **A380** that still needs porting/checking on the **FlyByWire A32NX**

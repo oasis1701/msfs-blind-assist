@@ -1353,8 +1353,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
         Sel("XMLVAR_A320_WeatherRadar_Mode", "Weather Radar Mode",
             new Dictionary<double, string> { [0] = "Weather", [1] = "Weather plus Turbulence", [2] = "Turbulence", [3] = "Map" });
+        // PWS_Position: 0 = Off, 1 = Auto (verified from FBW source — PseudoFWC reads
+        // predWSOn = PWS_Position as Bool, so position 1 = predictive-windshear ON = Auto).
+        // The labels were reversed here; the A32NX has them correct.
         Sel("A32NX_SWITCH_RADAR_PWS_Position", "Predictive Windshear",
-            new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
+            new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
         OnOff("A32NX_RADAR_MULTISCAN_AUTO", "WXR Multiscan Auto");
         OnOff("A32NX_RADAR_GCS_AUTO", "WXR Ground Clutter Suppression");
 

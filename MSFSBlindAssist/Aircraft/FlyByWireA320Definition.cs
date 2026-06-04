@@ -61,6 +61,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // loop calls GetVariables() twice per control, so without this cache a panel switch
     // rebuilt it dozens of times — the subpanel-navigation lag. Built once, then reused.
     private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
+    // Helper for fault annunciators: auto-announce-only (Continuous + IsAnnounced),
+    // Normal/Fault, not placed in any panel list (faults aren't navigable controls —
+    // mirrors the A380 ReadEnum-fault pattern; surfaced via change-announce + Ctrl+M).
+    private static SimConnect.SimVarDefinition Fault(string name, string display) =>
+        new SimConnect.SimVarDefinition
+        {
+            Name = name, DisplayName = display,
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        };
+
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
         if (_cachedVariables != null) return _cachedVariables;
@@ -696,6 +709,39 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
         },
+        // Aft cargo-smoke bottle discharge status (FBW models 2 bottles — only FWD was
+        // exposed; A32NX_CARGOSMOKE_AFT_DISCHARGED confirmed in a320-simvars.md). Mirrors
+        // FWD; auto-announce + Ctrl+M via the panel-control loop.
+        ["A32NX_CARGOSMOKE_AFT_DISCHARGED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CARGOSMOKE_AFT_DISCHARGED",
+            DisplayName = "Cargo Aft Smoke Agent",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+        // Wing anti-ice FAULT (read-only status; confirmed in a320-simvars.md). Continuous +
+        // IsAnnounced so it speaks on change from any source and lists in Ctrl+M; shown
+        // read-only in the Anti Ice status box.
+        ["A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT",
+            DisplayName = "Wing Anti-Ice Fault",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
+        // Oxygen timer-reset FAULT (read-only status; confirmed in a320-simvars.md).
+        // Continuous + IsAnnounced — announce-only (in Ctrl+M); no Oxygen status box exists.
+        ["A32NX_OXYGEN_TMR_RESET_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OXYGEN_TMR_RESET_FAULT",
+            DisplayName = "Oxygen Timer Fault",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
 
         // Engine Maintenance Panel
         ["A32NX_OVHD_FADEC_1"] = new SimConnect.SimVarDefinition
@@ -993,33 +1039,35 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_OXYGEN_TMR_RESET", DisplayName = "Oxygen Timer Reset",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            RenderAsButton = true
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         // APU auto-exit TEST + emergency-generator TEST — momentary L-var pulse 1->0.
         ["A32NX_APU_AUTOEXITING_TEST_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_APU_AUTOEXITING_TEST_ON", DisplayName = "APU Auto Exit Test",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            RenderAsButton = true
+            // TOGGLE-type test (sustained while active) — latching Off/On.
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["A32NX_EMERELECPWR_GEN_TEST"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_EMERELECPWR_GEN_TEST", DisplayName = "Emergency Generator Test",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            RenderAsButton = true
+            // HOLD-type test (emer gen runs WHILE active) — latching Off/On.
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         // Interior-lighting preset load/save — momentary L-var pulse 1->0.
         ["A32NX_LIGHTING_PRESET_LOAD"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_LIGHTING_PRESET_LOAD", DisplayName = "Load Lighting Preset",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            RenderAsButton = true
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         ["A32NX_LIGHTING_PRESET_SAVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_LIGHTING_PRESET_SAVE", DisplayName = "Save Lighting Preset",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            RenderAsButton = true
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         // Speed-brake FINE slider (synthetic — no real backing var). The TrackBar maps
         // 0-16383 directly; HandleUIVariableSet fires the stock SPOILERS_SET. Parity A380.
@@ -1028,6 +1076,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_MSFSBA_SPEEDBRAKE_SLIDER", DisplayName = "Speed Brake (fine)",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             RenderAsSlider = true, SliderMin = 0, SliderMax = 16383
+        },
+        // Speed-brake COARSE combo (Retracted/Half/Full) — parity with the A380's
+        // A380X_MSFSBA_SPEEDBRAKE. Synthetic: no backing L:var; the set fires the stock
+        // SPOILERS_SET (0 / 8192 / 16383) in HandleUIVariableSet. OnRequest + excluded from
+        // the auto-announce loop (no real var to monitor — mirrors the A380 Act() helper).
+        // The real handle STATE is A32NX_SPOILERS_HANDLE_POSITION in the display box.
+        ["A32NX_MSFSBA_SPEEDBRAKE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MSFSBA_SPEEDBRAKE", DisplayName = "Speed Brake",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Retracted", [1] = "Half", [2] = "Full" }
         },
         // Metric / imperial WEIGHT units (parity with the A380). The A32NX EFB "US Units"
         // setting is mirrored continuously to A32NX_EFB_USING_METRIC_UNIT (1=kg, 0=lb);
@@ -2078,6 +2137,43 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "PWS Mode",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        // Weather-radar SYSTEM on/off + MODE + multiscan + ground-clutter-suppression
+        // (parity with the A380 Weather Radar panel — the A320 only had PWS before).
+        // XMLVAR_A320_WeatherRadar_Sys/_Mode + A32NX_RADAR_* are settable via the
+        // calculator-path catch-all in HandleUIVariableSet; Sys/Mode write-stick verified
+        // live on the A32NX (separate-eval read-back) 2026-06-04.
+        ["XMLVAR_A320_WeatherRadar_Sys"] = new SimConnect.SimVarDefinition
+        {
+            Name = "XMLVAR_A320_WeatherRadar_Sys",
+            DisplayName = "Weather Radar System",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["XMLVAR_A320_WeatherRadar_Mode"] = new SimConnect.SimVarDefinition
+        {
+            Name = "XMLVAR_A320_WeatherRadar_Mode",
+            DisplayName = "Weather Radar Mode",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Weather", [1] = "Weather plus Turbulence", [2] = "Turbulence", [3] = "Map" }
+        },
+        ["A32NX_RADAR_MULTISCAN_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RADAR_MULTISCAN_AUTO",
+            DisplayName = "WXR Multiscan Auto",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_RADAR_GCS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RADAR_GCS_AUTO",
+            DisplayName = "WXR Ground Clutter Suppression",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
         // ATC-TCAS Panel
@@ -4494,6 +4590,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Manual", [1] = "Auto" }
         },
+        // Manual cabin V/S control switch — used when MODE SEL is in Manual: drives the
+        // outflow valve (Up = valve opens / cabin climbs, Down = valve closes / cabin
+        // descends). 3-position latching switch (0=Up, 1=Neutral, 2=Down — FBW a320-simvars).
+        // Was missing from the A320 panel (only Mode + Ditching were exposed). Settable +
+        // latching, verified live (separate-eval read-back). Auto-announce + Ctrl+M via the loop.
+        ["A32NX_OVHD_PRESS_MAN_VS_CTL_SWITCH"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PRESS_MAN_VS_CTL_SWITCH", DisplayName = "Manual Cabin V/S Control",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Up", [1] = "Neutral", [2] = "Down" }
+        },
         ["A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON", DisplayName = "Ditching",
@@ -4502,17 +4609,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // ---- Ventilation panel (parity with A380 Overhead > Ventilation) ----
-        ["A32NX_OVHD_VENT_BLOWER_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        // CORRECTNESS FIX (A380-parity check): the avionics blower/extract controls used
+        // A32NX_OVHD_VENT_{BLOWER,EXTRACT}_PB_IS_ON, which DO NOT EXIST (not in a320-simvars.md
+        // nor the cockpit) — the control wrote a dead var and did nothing. The real cockpit
+        // controls are A32NX_VENTILATION_{BLOWER,EXTRACT}_TOGGLE (TOGGLE_SIMVAR; live-confirmed
+        // the old var read 0 while the real one read 1). 0=Off, 1=Auto per the cockpit tooltip.
+        ["A32NX_VENTILATION_BLOWER_TOGGLE"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_VENT_BLOWER_PB_IS_ON", DisplayName = "Blower",
+            Name = "A32NX_VENTILATION_BLOWER_TOGGLE", DisplayName = "Blower",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Override" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
         },
-        ["A32NX_OVHD_VENT_EXTRACT_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        ["A32NX_VENTILATION_EXTRACT_TOGGLE"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_VENT_EXTRACT_PB_IS_ON", DisplayName = "Extract",
+            Name = "A32NX_VENTILATION_EXTRACT_TOGGLE", DisplayName = "Extract",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Override" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
         },
         ["A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON"] = new SimConnect.SimVarDefinition
         {
@@ -4598,6 +4710,142 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_ELT_ON", DisplayName = "ELT",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Armed", [1] = "On" }
+        },
+        // Avionics-compartment ventilation light (Auto/On). Latching toggle L:var
+        // (TOGGLE_SIMVAR in the cockpit XML; tooltip "Set to AUTO" / "Turn ON" → 0=Auto,
+        // 1=On). FBW-flagged Inop. but the switch state is real; settable via the calc-path
+        // catch-all + auto-announce via the loop.
+        ["A32NX_AVIONICS_COMPLT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_AVIONICS_COMPLT_ON", DisplayName = "Avionics Compartment",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Auto", [1] = "On" }
+        },
+        // CVR test — momentary held button (HOLD_SIMVAR A32NX_RCDR_TEST, "Test CVR"). Pulse
+        // 1->0 via the button path (same pattern as the oxygen-timer-reset button above).
+        ["A32NX_RCDR_TEST"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RCDR_TEST", DisplayName = "Recorder Test",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            // HOLD-type CVR test (alarm plays WHILE active) — latching Off/On so the pilot
+            // controls the hold duration; a momentary pulse is too brief to hear the alarm.
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // Rain-repellent dispense L/R — momentary held buttons (HOLD_SIMVAR
+        // A32NX_RAIN_REPELLENT_LEFT/RIGHT_ON). FBW-flagged Inop. but the state vars are real.
+        ["A32NX_RAIN_REPELLENT_LEFT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RAIN_REPELLENT_LEFT_ON", DisplayName = "Rain Repellent Left",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        ["A32NX_RAIN_REPELLENT_RIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RAIN_REPELLENT_RIGHT_ON", DisplayName = "Rain Repellent Right",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        // ---- Source-grounded overhead control additions (2026-06-04) — clickable A32NX
+        // cockpit controls (A320_NEO_INTERIOR.xml) absent from MSFSBA; all write-stick
+        // verified live + settable via the A32NX_ calc-path catch-all + auto-announce loop. ----
+        // ELEC: galley/cabin power + emergency-generator-1 line.
+        ["A32NX_OVHD_ELEC_GALY_AND_CAB_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_GALY_AND_CAB_PB_IS_AUTO", DisplayName = "Galley and Cabin",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", DisplayName = "Emergency Generator 1 Line",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // HYD: leak-measurement valves (Green/Blue/Yellow). TOGGLE_SIMVAR _PB_IS_AUTO → Off/Auto.
+        ["A32NX_OVHD_HYD_LEAK_MEASUREMENT_G_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_LEAK_MEASUREMENT_G_PB_IS_AUTO", DisplayName = "Green Leak Measurement",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_LEAK_MEASUREMENT_B_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_LEAK_MEASUREMENT_B_PB_IS_AUTO", DisplayName = "Blue Leak Measurement",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_LEAK_MEASUREMENT_Y_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_LEAK_MEASUREMENT_Y_PB_IS_AUTO", DisplayName = "Yellow Leak Measurement",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        // Evacuation Capt/Purser selector (0=Purser, 1=Capt and Purser — from FBW + A380 def).
+        ["A32NX_EVAC_CAPT_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EVAC_CAPT_TOGGLE", DisplayName = "Evacuation Capt / Purser",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Purser", [1] = "Capt and Purser" }
+        },
+        // Recorder & Misc: ELT test/reset, DFDR event, crew headset (parity with the A380).
+        ["A32NX_ELT_TEST_RESET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ELT_TEST_RESET", DisplayName = "ELT Test / Reset",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_DFDR_EVENT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_DFDR_EVENT_ON", DisplayName = "DFDR Event",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_CREW_HEAD_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CREW_HEAD_SET", DisplayName = "Crew Headset",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // APU auto-exit RESET — momentary held button (HOLD_SIMVAR, pairs with the existing TEST).
+        ["A32NX_APU_AUTOEXITING_RESET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_APU_AUTOEXITING_RESET", DisplayName = "APU Auto Exit Reset",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        // ---- Fault annunciators (auto-announce-only, in Ctrl+M) — cockpit-driven panel
+        // FAULT lights (A320_NEO_INTERIOR.xml lamp conditions) the A320 def did not surface.
+        // Continuous + IsAnnounced so they speak on the fault transition (silent at baseline);
+        // not in panel lists (faults aren't navigable controls — the A380 ReadEnum pattern). ----
+        ["A32NX_AIRCOND_RAMAIR_FAULT"] = Fault("A32NX_AIRCOND_RAMAIR_FAULT", "Ram Air Fault"),
+        ["A32NX_GPWS_SYS_FAULT"] = Fault("A32NX_GPWS_SYS_FAULT", "GPWS System Fault"),
+        ["A32NX_GPWS_TERR_FAULT"] = Fault("A32NX_GPWS_TERR_FAULT", "GPWS Terrain Fault"),
+        ["A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT"] = Fault("A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT", "APU Master Fault"),
+        ["A32NX_OVHD_COND_HOT_AIR_PB_HAS_FAULT"] = Fault("A32NX_OVHD_COND_HOT_AIR_PB_HAS_FAULT", "Hot Air Fault"),
+        ["A32NX_OVHD_COND_PACK_1_PB_HAS_FAULT"] = Fault("A32NX_OVHD_COND_PACK_1_PB_HAS_FAULT", "Pack 1 Fault"),
+        ["A32NX_OVHD_COND_PACK_2_PB_HAS_FAULT"] = Fault("A32NX_OVHD_COND_PACK_2_PB_HAS_FAULT", "Pack 2 Fault"),
+        ["A32NX_OVHD_ELEC_AC_ESS_FEED_PB_HAS_FAULT"] = Fault("A32NX_OVHD_ELEC_AC_ESS_FEED_PB_HAS_FAULT", "AC Essential Feed Fault"),
+        ["A32NX_OVHD_ELEC_GALY_AND_CAB_PB_HAS_FAULT"] = Fault("A32NX_OVHD_ELEC_GALY_AND_CAB_PB_HAS_FAULT", "Galley and Cabin Fault"),
+        ["A32NX_OVHD_ELEC_IDG_1_PB_HAS_FAULT"] = Fault("A32NX_OVHD_ELEC_IDG_1_PB_HAS_FAULT", "IDG 1 Fault"),
+        ["A32NX_OVHD_ELEC_IDG_2_PB_HAS_FAULT"] = Fault("A32NX_OVHD_ELEC_IDG_2_PB_HAS_FAULT", "IDG 2 Fault"),
+        ["A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_HAS_FAULT"] = Fault("A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_HAS_FAULT", "Emergency Generator 1 Line Fault"),
+        ["A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_HAS_FAULT"] = Fault("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_HAS_FAULT", "RAT and Emergency Gen Fault"),
+        ["A32NX_OVHD_PRESS_MODE_SEL_PB_HAS_FAULT"] = Fault("A32NX_OVHD_PRESS_MODE_SEL_PB_HAS_FAULT", "Pressurization Mode Fault"),
+        ["A32NX_VENTILATION_BLOWER_FAULT"] = Fault("A32NX_VENTILATION_BLOWER_FAULT", "Blower Fault"),
+        ["A32NX_VENTILATION_EXTRACT_FAULT"] = Fault("A32NX_VENTILATION_EXTRACT_FAULT", "Extract Fault"),
+        // RAT (ram-air-turbine) emergency deploys — momentary guarded pushbuttons (the A380
+        // exposes these as Btn; _IS_PRESSED is the momentary press). Real emergency controls.
+        ["A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED", DisplayName = "RAT and Emergency Generator Deploy",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        ["A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED", DisplayName = "RAT Manual On",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
 
         // ---- Interior Lighting panel (parity with A380 Overhead > Interior Lighting) ----
@@ -4699,6 +4947,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             foreach (var key in panelKeys)
             {
                 if (key != SdPageVar   // synthetic SD-page selector — drives the scrape, not a monitored state
+                    && key != "A32NX_MSFSBA_SPEEDBRAKE"   // synthetic speed-brake combo — fires SPOILERS_SET, no backing L:var
                     && !key.EndsWith("_DETENT", StringComparison.Ordinal)  // synthetic thrust-lever detent combos — no real L:var to monitor
                     && variables.TryGetValue(key, out var cdef)
                     && (cdef.Type == SimConnect.SimVarType.LVar || cdef.Type == SimConnect.SimVarType.SimVar)
@@ -4774,7 +5023,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             // The actual wing-anti-ice flowing status (the SELECTED control reverts on
             // the ground inhibit; this is what's really happening at the valve).
-            "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON"
+            "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON",
+            // Wing anti-ice fault (auto-announces on change; read-only here).
+            "A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT"
         },
         ["Air Conditioning"] = new List<string>
         {
@@ -4989,6 +5240,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_ELEC_IDG_1_PB_IS_RELEASED",
             "A32NX_OVHD_ELEC_IDG_2_PB_IS_RELEASED",
             "A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON",
+            "A32NX_OVHD_ELEC_GALY_AND_CAB_PB_IS_AUTO",
+            "A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON",
+            "A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED",
             "A32NX_EMERELECPWR_GEN_TEST"
         },
         ["ADIRS"] = new List<string>
@@ -5007,7 +5261,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
             "A32NX_OVHD_APU_START_PB_IS_ON",
-            "A32NX_APU_AUTOEXITING_TEST_ON"
+            "A32NX_APU_AUTOEXITING_TEST_ON",
+            "A32NX_APU_AUTOEXITING_RESET"
         },
         ["Oxygen"] = new List<string>
         {
@@ -5042,6 +5297,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_HYD_EPUMPY_PB_HAS_FAULT",
             "A32NX_OVHD_HYD_PTU_PB_IS_AUTO",
             "A32NX_OVHD_HYD_PTU_PB_HAS_FAULT",
+            "A32NX_OVHD_HYD_LEAK_MEASUREMENT_G_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_LEAK_MEASUREMENT_B_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_LEAK_MEASUREMENT_Y_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED",
         },
         ["Fuel"] = new List<string>
         { 
@@ -5073,11 +5332,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Pressurization"] = new List<string>
         {
-            "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"
+            "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", "A32NX_OVHD_PRESS_MAN_VS_CTL_SWITCH", "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"
         },
         ["Ventilation"] = new List<string>
         {
-            "A32NX_OVHD_VENT_BLOWER_PB_IS_ON", "A32NX_OVHD_VENT_EXTRACT_PB_IS_ON",
+            "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE",
             "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON"
         },
         ["Cargo Air"] = new List<string>
@@ -5096,7 +5355,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Recorder and Misc"] = new List<string>
         {
             "A32NX_RCDR_GROUND_CONTROL_ON",
-            "A32NX_ELT_ON"
+            "A32NX_RCDR_TEST",
+            "A32NX_ELT_ON",
+            "A32NX_ELT_TEST_RESET",
+            "A32NX_DFDR_EVENT_ON",
+            "A32NX_CREW_HEAD_SET",
+            "A32NX_AVIONICS_COMPLT_ON"
         },
         ["Flight Control Computers"] = new List<string>
         {
@@ -5115,7 +5379,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Wipers"] = new List<string>
         {
             "XMLVAR_A320_WiperSwitch_1",
-            "XMLVAR_A320_WiperSwitch_2"
+            "XMLVAR_A320_WiperSwitch_2",
+            "A32NX_RAIN_REPELLENT_LEFT_ON",
+            "A32NX_RAIN_REPELLENT_RIGHT_ON"
         },
         ["Signs"] = new List<string>
         {
@@ -5161,11 +5427,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Evacuation"] = new List<string>
         {
             "A32NX_EVAC_COMMAND_TOGGLE",
+            "A32NX_EVAC_CAPT_TOGGLE",
         },
         ["Cargo Smoke"] = new List<string>
         {
             "A32NX_FIRE_TEST_CARGO",
             "A32NX_CARGOSMOKE_FWD_DISCHARGED",
+            "A32NX_CARGOSMOKE_AFT_DISCHARGED",
         },
         ["Engine Start"] = new List<string>
         {
@@ -5243,6 +5511,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Speed Brake"] = new List<string>
         {
+            "A32NX_MSFSBA_SPEEDBRAKE",
             "SPOILERS_ARM_TOGGLE",
             "SPOILERS_OFF",
             "SPOILERS_ON",
@@ -5294,7 +5563,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Weather Radar"] = new List<string>
         {
-            "A32NX_SWITCH_RADAR_PWS_POSITION"
+            "XMLVAR_A320_WeatherRadar_Sys",
+            "XMLVAR_A320_WeatherRadar_Mode",
+            "A32NX_SWITCH_RADAR_PWS_POSITION",
+            "A32NX_RADAR_MULTISCAN_AUTO",
+            "A32NX_RADAR_GCS_AUTO"
         },
         ["Transponder"] = new List<string>
         {
@@ -7150,12 +7423,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
-        // Momentary L-var pushbuttons (oxygen timer reset, APU/emer-gen test, lighting
-        // preset load/save) — pulse the L:var 1 then 0 via the MobiFlight calculator path
-        // (mirrors the A380 _momentaryButtons pulse). Only the press fires.
-        if (varKey == "A32NX_OXYGEN_TMR_RESET" || varKey == "A32NX_APU_AUTOEXITING_TEST_ON"
-            || varKey == "A32NX_EMERELECPWR_GEN_TEST" || varKey == "A32NX_LIGHTING_PRESET_LOAD"
-            || varKey == "A32NX_LIGHTING_PRESET_SAVE")
+        // Momentary L-var actions — "Activate" pulses the L:var 1 then 0 via the calculator
+        // path so the control springs back (mirrors the A380 _momentaryButtons pulse). Covers
+        // BOTH shapes: a RenderAsButton momentary button, AND an Idle/Activate COMBO (the
+        // screen-reader-preferred form for TEST/RESET/DEPLOY actions — selecting "Activate"
+        // fires, "Idle" does nothing). Only value > 0.5 fires. The auto-announce loop skips
+        // "Activate" combos; this handler speaks "<name> pressed". MUST stay before the catch-all.
+        if (varDef.Type == SimConnect.SimVarType.LVar && varKey.StartsWith("A32NX_", StringComparison.Ordinal)
+            && ((varDef.RenderAsButton && (varDef.ValueDescriptions == null || varDef.ValueDescriptions.Count == 0))
+                || (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsValue("Activate"))))
         {
             if (value > 0.5)
             {
@@ -7175,6 +7451,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             int axis = Math.Max(0, Math.Min(16383, (int)Math.Round(value)));
             simConnect.ExecuteCalculatorCode($"{axis} (>K:SPOILERS_SET)");
+            return true;
+        }
+        // Speed-brake COARSE combo (Retracted/Half/Full) -> stock SPOILERS_SET (0 / 8192 /
+        // 16383), mirroring the A380 handler. Synthetic var, no backing L:var.
+        if (varKey == "A32NX_MSFSBA_SPEEDBRAKE")
+        {
+            int pos = Math.Max(0, Math.Min(2, (int)Math.Round(value)));
+            int[] axis = { 0, 8192, 16383 };
+            simConnect.ExecuteCalculatorCode($"{axis[pos]} (>K:SPOILERS_SET)");
             return true;
         }
 
@@ -7325,6 +7610,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // re-requests the existing AFS_DISPLAY read-out so the new value is spoken.
     // ==================================================================================
 
+    // FCU set/push/pull events update the FBW AFS_DISPLAY_* vars ASYNCHRONOUSLY (a frame or
+    // two later). Reading them back in the same breath force-reads the STALE pre-event value,
+    // so the read-out speaks the OLD value/status (e.g. set 300 → speaks the previous 284,
+    // or a push reads the pre-push managed/selected state). Defer the read-out ~300 ms so the
+    // FBW FCU has processed the event first. Non-blocking (RequestVariable just queues the read;
+    // the response is announced from ProcessSimVarUpdate when it arrives).
+    private static void DeferReadback(Action readback)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        { try { await System.Threading.Tasks.Task.Delay(300); readback(); } catch { } });
+    }
+
     // Public readout wrappers (the windows call these on open + after a push/pull).
     public void RequestFCUHeadingReadout(SimConnect.SimConnectManager s) => RequestFCUHeadingWithStatus(s);
     public void RequestFCUSpeedReadout(SimConnect.SimConnectManager s) => RequestFCUSpeedWithStatus(s);
@@ -7336,7 +7633,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
-        RequestFCUHeadingWithStatus(s);
+        DeferReadback(() => RequestFCUHeadingWithStatus(s));
         return true;
     }
 
@@ -7345,7 +7642,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
-        RequestFCUSpeedWithStatus(s);
+        DeferReadback(() => RequestFCUSpeedWithStatus(s));
         return true;
     }
 
@@ -7378,19 +7675,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
         s.SendEvent(evt);
-        switch (evt)
+        // Defer the read-out so the FBW FCU has processed the push/pull before we read the
+        // managed/selected status + value (otherwise it speaks the pre-push state — see DeferReadback).
+        Action readback = evt switch
         {
-            case "A32NX.FCU_TO_AP_HDG_PUSH":
-            case "A32NX.FCU_TO_AP_HDG_PULL":
-            case "A32NX.FCU_TRK_FPA_TOGGLE_PUSH": RequestFCUHeadingWithStatus(s); break;
-            case "A32NX.FCU_SPD_PUSH":
-            case "A32NX.FCU_SPD_PULL":
-            case "A32NX.FCU_SPD_MACH_TOGGLE_PUSH": RequestFCUSpeedWithStatus(s); break;
-            case "A32NX.FCU_ALT_PUSH":
-            case "A32NX.FCU_ALT_PULL": RequestFCUAltitudeWithStatus(s); break;
-            case "A32NX.FCU_VS_PUSH":
-            case "A32NX.FCU_TO_AP_VS_PULL": RequestFCUVerticalSpeedFPA(s); break;
-        }
+            "A32NX.FCU_TO_AP_HDG_PUSH" or "A32NX.FCU_TO_AP_HDG_PULL" or "A32NX.FCU_TRK_FPA_TOGGLE_PUSH" => () => RequestFCUHeadingWithStatus(s),
+            "A32NX.FCU_SPD_PUSH" or "A32NX.FCU_SPD_PULL" or "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" => () => RequestFCUSpeedWithStatus(s),
+            "A32NX.FCU_ALT_PUSH" or "A32NX.FCU_ALT_PULL" => () => RequestFCUAltitudeWithStatus(s),
+            "A32NX.FCU_VS_PUSH" or "A32NX.FCU_TO_AP_VS_PULL" => () => RequestFCUVerticalSpeedFPA(s),
+            _ => null
+        };
+        if (readback != null) DeferReadback(readback);
     }
 
     // Request the live AP/mode state vars so the Autopilot window can refresh labels.

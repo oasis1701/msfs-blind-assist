@@ -546,6 +546,21 @@ public partial class MainForm : Form
         }
     }
 
+    // --- User-set auto-announce de-dup (GLOBAL, all aircraft + all combo types) ---
+    // When the user operates a panel combo, the screen reader already speaks the new
+    // value. The same change ALSO comes back through OnSimVarUpdated and would be
+    // auto-announced a second time by the monitor (per the "announce every state change"
+    // rule). We record the var+value the user just committed, then suppress exactly that
+    // echo once (updating the monitor baseline silently). A change to the SAME var from
+    // ANY OTHER source (flyPad, ground crew, failure, systems-host) still announces,
+    // because only the matching value within the short window is consumed.
+    private readonly Dictionary<string, (double value, long tick)> _uiSetEcho = new();
+    private const int UiSetEchoSuppressMs = 1500;
+    private void MarkUiSet(string? varName, double value)
+    {
+        if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)
@@ -717,6 +732,19 @@ public partial class MainForm : Form
                     arincAnnDef.TryDecodeArinc429(e.VarName, e.Value, out string arincSpoken))
                 {
                     description = $"{varDef.DisplayName}: {arincSpoken}";
+                }
+
+                // Suppress the duplicate echo of a value the user JUST set via the UI (the
+                // screen reader already spoke the combo). Update the baseline silently so a
+                // later change to this var from any OTHER source still announces. Consumed
+                // once; only a value matching what the user set within the window is dropped.
+                if (_uiSetEcho.TryGetValue(e.VarName, out var echo)
+                    && Math.Abs(echo.value - e.Value) < 0.001
+                    && Environment.TickCount64 - echo.tick < UiSetEchoSuppressMs)
+                {
+                    _uiSetEcho.Remove(e.VarName);
+                    simVarMonitor.SetBaseline(e.VarName, e.Value);
+                    return;
                 }
 
                 simVarMonitor.ProcessUpdate(e.VarName, e.Value, description);
@@ -5318,6 +5346,7 @@ public partial class MainForm : Form
                             simConnectManager?.SendEvent("TURBINE_IGNITION_SWITCH_SET2", mode);
                             simConnectManager?.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
                             currentSimVarValues["TURB ENG IGNITION SWITCH EX1:1"] = mode;
+                            MarkUiSet("TURB ENG IGNITION SWITCH EX1:1", mode);
                         }
                     };
                     
@@ -5400,6 +5429,7 @@ public partial class MainForm : Form
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
+                            MarkUiSet(varDef.Name, selectedValue);
 
                             // Capture the ACTUAL current cached state BEFORE the lines below
                             // overwrite currentSimVarValues with the new selection. The
@@ -5547,6 +5577,7 @@ public partial class MainForm : Form
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
+                            MarkUiSet(varDef.Name, selectedValue);
 
                             // Let aircraft handle special cases first (validation, conversion, multi-step logic)
                             bool aircraftHandled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);

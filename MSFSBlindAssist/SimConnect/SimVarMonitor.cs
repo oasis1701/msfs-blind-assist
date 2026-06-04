@@ -38,6 +38,17 @@ public class SimVarMonitor
     }
 
     /// <summary>
+    /// Update the tracked baseline for a variable WITHOUT announcing the change.
+    /// Used to suppress the duplicate auto-announce that echoes a value the user JUST
+    /// set via the UI (the screen reader already spoke the combo). Keeping the baseline
+    /// current means a SUBSEQUENT change from any other source still announces normally.
+    /// </summary>
+    public void SetBaseline(string varName, double value)
+    {
+        previousValues[varName] = value;
+    }
+
+    /// <summary>
     /// Enables announcements for variable changes.
     /// Call this after initial connection to begin monitoring.
     /// </summary>
