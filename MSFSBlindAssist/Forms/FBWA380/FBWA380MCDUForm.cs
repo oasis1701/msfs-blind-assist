@@ -144,6 +144,11 @@ public class FBWA380MCDUForm : Form
 
     private IntPtr _previousWindow = IntPtr.Zero;
     private System.Windows.Forms.Timer _statusTimer = null!;
+    // Debounce for the "Go to MFD page" combo: a closed DropDownList fires
+    // SelectedIndexChanged on EVERY arrow keystroke, so without this, arrowing from
+    // F-PLN down to INIT would navigate through (and load + announce) every page in
+    // between. We instead wait until the selection settles, then navigate once.
+    private System.Windows.Forms.Timer? _pageNavTimer;
 
     public FBWA380MCDUForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
         FlyByWireA380Definition? aircraftDefinition = null)
@@ -280,7 +285,9 @@ public class FBWA380MCDUForm : Form
         _btnClr     = MakeBtn("&CLR",     "CLR");
         _btnRefresh = MakeBtn("Refres&h", "Refresh");
         // Toggle the WEIGHT unit MSFSBA reads out (kilograms / pounds).
-        _btnUnits   = MakeBtn("&Units", "Toggle weight units, kilograms or pounds");
+        // Mnemonic is Alt+N ("U&nits"): Alt+U already belongs to the UP page button,
+        // and a shared mnemonic only CYCLES focus between the two instead of activating.
+        _btnUnits   = MakeBtn("U&nits", "Toggle weight units, kilograms or pounds");
         _btnUnits.Width = 110;
         _btnUnits.Enabled = _aircraftDefinition != null;
 
@@ -341,22 +348,36 @@ public class FBWA380MCDUForm : Form
 
         _pageSelector.SelectedIndexChanged += (_, _) =>
         {
-            int i = _pageSelector.SelectedIndex;
-            if (i < 0 || i >= AllPages.Length) return;
-            var p = AllPages[i];
-            if (!string.IsNullOrEmpty(p.Uri)) SendNavigateUri(p.Uri);
-            else SendNavigateById(p.Prefix, p.Index, p.Key);
-            // No explicit announce: the screen reader already speaks the chosen
-            // combo item, and the MFD page title announces when the new page loads.
-            // Pull the new page's elements shortly after the route switches.
-            var t = new System.Windows.Forms.Timer { Interval = 450 };
-            t.Tick += (_, _) => { t.Stop(); t.Dispose(); _bridgeServer.EnqueueCommand("get_mcdu_elements"); };
-            t.Start();
+            // Debounce: reset a short timer on each change and only navigate once the
+            // user STOPS arrowing, so passing over intermediate pages doesn't load and
+            // announce each one. (A closed DropDownList fires this per arrow keystroke.)
+            _pageNavTimer ??= new System.Windows.Forms.Timer { Interval = 350 };
+            _pageNavTimer.Stop();
+            // re-point the tick handler to the CURRENT selection each time
+            _pageNavTimer.Tick -= PageNavTick;
+            _pageNavTimer.Tick += PageNavTick;
+            _pageNavTimer.Start();
         };
 
         _scratchpad.KeyDown += ScratchpadKeyDown;
         _display.KeyDown    += DisplayKeyDown;
         KeyDown             += FormKeyDown;
+    }
+
+    // Fires once the "Go to MFD page" combo selection has settled (see the debounced
+    // SelectedIndexChanged handler). Navigates to the now-selected page and refreshes.
+    private void PageNavTick(object? sender, EventArgs e)
+    {
+        _pageNavTimer?.Stop();
+        int i = _pageSelector.SelectedIndex;
+        if (i < 0 || i >= AllPages.Length) return;
+        var p = AllPages[i];
+        if (!string.IsNullOrEmpty(p.Uri)) SendNavigateUri(p.Uri);
+        else SendNavigateById(p.Prefix, p.Index, p.Key);
+        // No explicit announce: the screen reader already speaks the chosen combo item,
+        // and the MFD page title announces when the new page loads. Pull the new page's
+        // elements shortly after the route switches.
+        ScheduleRefresh();
     }
 
     private void OnBridgeStateUpdated(object? sender, EFBStateUpdateEventArgs e)
@@ -793,6 +814,8 @@ public class FBWA380MCDUForm : Form
             _bridgeServer.StateUpdated -= OnBridgeStateUpdated;
             _statusTimer?.Stop();
             _statusTimer?.Dispose();
+            _pageNavTimer?.Stop();
+            _pageNavTimer?.Dispose();
         }
         base.Dispose(disposing);
     }
