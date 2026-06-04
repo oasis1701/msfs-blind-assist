@@ -75,6 +75,29 @@
     return s ? clean(s.textContent) : "";
   };
 
+  // An OANS InputField shows its empty state as a run of dashes/underscores
+  // (e.g. "------"); surface that as "blank" rather than reading the dashes.
+  A.isBlankValue = function (v) {
+    return !v || /^[\s\-–—_.]+$/.test(v);
+  };
+
+  // The OANS entry fields carry NO .mfd-label sibling in the DOM, so a screen
+  // reader would hear only the value. Label them by the active tab: the ARPT SEL
+  // field is the airport code, the MAP DATA field is the BTV runway/exit entry.
+  A.oansFieldLabel = function () {
+    var tabs = document.querySelectorAll(".mfd-top-tab-navigator-bar-element-outer");
+    for (var i = 0; i < tabs.length; i++) {
+      var lab = tabs[i].querySelector(".mfd-top-tab-navigator-bar-element-label");
+      var on = tabs[i].classList.contains("active") || (lab && lab.classList.contains("active"));
+      if (on && lab) {
+        var t = clean(lab.textContent);
+        if (t.indexOf("ARPT") >= 0) return "Airport";
+        if (t.indexOf("MAP") >= 0) return "Runway or exit";
+      }
+    }
+    return "";
+  };
+
   A.directText = function (n) {
     var s = "";
     for (var c = 0; c < n.childNodes.length; c++) {
@@ -96,7 +119,7 @@
 
   // Short label/value for one control line.
   A.lineText = function (n, kind) {
-    if (kind === "input") { return A.readInputValue(n) || "(empty)"; }
+    if (kind === "input") { var iv = A.readInputValue(n); return A.isBlankValue(iv) ? "blank" : iv; }
     if (kind === "dropdown") {
       var di = n.querySelector(".mfd-dropdown-inner");
       return clean(di ? di.textContent : n.textContent) || "(choice)";
@@ -157,8 +180,10 @@
       var kind = A.classify(n);
       var text = A.lineText(n, kind);
       if (kind === "input") {
-        var lbl = A.inputLabel(n);
-        if (lbl) text = lbl + ": " + (A.readInputValue(n) || "(empty)");
+        var lbl = A.inputLabel(n) || A.oansFieldLabel();
+        var val = A.readInputValue(n);
+        if (A.isBlankValue(val)) val = "blank";
+        text = lbl ? (lbl + ": " + val) : val;
       }
       if (!text && kind !== "input") continue;
       n.setAttribute(A.STAMP, String(idx));
@@ -192,7 +217,19 @@
     }
 
     items.sort(function (a, b) {
-      var dy = Math.round(a.top / 14) - Math.round(b.top / 14);
+      // The top tab bar (MAP DATA / ARPT SEL / STATUS) reads first, as a single row.
+      var at = (a.kind === "tab") ? 0 : 1, bt = (b.kind === "tab") ? 0 : 1;
+      if (at !== bt) return at - bt;
+      if (at === 0) return a.left - b.left;
+      // OANS pages are laid out in COLUMNS, not rows. ARPT SEL, for example, has the
+      // airport-entry field + ICAO/IATA/CITY-NAME mode radios on the left, DISPLAY
+      // AIRPORT in the centre, and the ORIGIN/DEST/ALTN preset buttons on the right.
+      // Reading zig-zag across rows (the old top-then-left sort) interleaved the radios
+      // with the preset buttons. Read each column top-to-bottom, left column first:
+      // cluster x into ~200px bands, then order by vertical position within the column.
+      var ca = Math.floor(a.left / 200), cb = Math.floor(b.left / 200);
+      if (ca !== cb) return ca - cb;
+      var dy = a.top - b.top;
       return dy || (a.left - b.left);
     });
 
@@ -209,21 +246,46 @@
     return out;
   };
 
-  // Open the OANS control panel if it is hidden. It is toggled by the ND map
-  // context-menu item "MAP DATA" (which flips controlPanelVisible). We click that
-  // element directly — only when the panel is hidden, so we never toggle it shut.
+  // KEY: the OANS airport map + its control panel only RENDER at the lowest "airport
+  // zoom" ND range. At any normal nav range the whole .oans-control-panel is 0x0 / hidden
+  // and nothing can be read or clicked (live-verified: range 1 -> 0x0; range 0 -> 768x256
+  // with the MAP DATA / ARPT SEL / STATUS tabs visible). A blind pilot can't turn the EFIS
+  // range knob and watch the map appear, so we force the captain ND to the airport zoom
+  // whenever the panel has no geometry. (Harmless when not near an airport — it just zooms
+  // the captain ND, which a screen-reader user doesn't see anyway.)
+  A.AIRPORT_ZOOM = 0;            // lowest ND range = airport map
+  A._emptyZoomedTicks = 0;       // consecutive empty polls while already at the airport zoom
+  // Returns true if the panel HAS geometry (is rendered), false otherwise. Forces the zoom
+  // when needed; the map then takes ~0.5-1 s to draw, so the first poll after a fresh open
+  // is normally still empty (handled by the "loading" message in scrape()).
+  A.ensureAirportZoom = function () {
+    try {
+      var p = A.findRoot();
+      if (p) {
+        // The control panel lays out at the airport zoom but stays visibility:hidden until
+        // it's "opened" on the ND map — and its controls then INHERIT visibility:hidden, so
+        // they have geometry but fail our isVisible() test (the panel reads but the agent
+        // finds "nothing"). A screen-reader user can't open it on the map, so force it (and
+        // its background) visible. React may re-hide on a re-render, so re-apply every poll;
+        // scrape() forces this then enumerates synchronously, so the controls are visible the
+        // instant we read them.
+        try { p.style.visibility = "visible"; } catch (e1) {}
+        var bg = document.querySelector(".oans-control-panel-background");
+        if (bg) { try { bg.style.visibility = "visible"; } catch (e2) {} }
+        if (p.getBoundingClientRect().width > 1) return true;
+      }
+      if (typeof SimVar !== "undefined") SimVar.SetSimVarValue("L:A32NX_EFIS_L_ND_RANGE", "number", A.AIRPORT_ZOOM);
+    } catch (e) {}
+    return false;
+  };
+
+  // Open / reveal the OANS control panel. With the map rendered (see ensureAirportZoom),
+  // the MAP DATA / ARPT SEL / STATUS tab bar is already visible — selecting a tab shows its
+  // content. We just make sure the map is zoomed in; the user drives the tabs via the list.
   A.openPanel = function () {
-    var p = A.findRoot();
-    if (p && window.getComputedStyle(p).visibility !== "hidden") return "open";
-    var items = document.querySelectorAll(".mfd-context-menu-element");
-    for (var i = 0; i < items.length; i++) {
-      if (clean(items[i].textContent) === "MAP DATA") { A.clickNode(items[i]); return "opened"; }
-    }
-    var all = document.querySelectorAll("span, div");
-    for (var j = 0; j < all.length; j++) {
-      if (clean(all[j].textContent) === "MAP DATA" && all[j].children.length <= 2) { A.clickNode(all[j]); return "opened"; }
-    }
-    return "notfound";
+    A._emptyZoomedTicks = 0;     // fresh "loading" window on every open / refresh
+    var rendered = A.ensureAirportZoom();
+    return rendered ? "open" : "zooming";
   };
 
   A.hasInteractive = function (els) {
@@ -254,20 +316,28 @@
   // ---- read ----
   A.scrape = function () {
     try {
-      // NOTE: opening the panel is done via the explicit openPanel() command
-      // (on form open / refresh), NOT here — otherwise a routine poll would
-      // re-open the panel every time the user closed it on the ND.
+      // Self-heal: keep the OANS map zoomed in so it stays rendered (it only draws at the
+      // airport zoom). Returns true once the panel actually has geometry.
+      var rendered = A.ensureAirportZoom();
       var root = A.findRoot();
       if (!root) return JSON.stringify({ ok: false, error: "OANS not present on this ND view" });
       var els = A.enumerate(root);
       if (!A.hasInteractive(els)) {
-        // Panel is hidden/empty (OANS not rendering): give a position-aware
-        // reason instead of always blaming the ADIRS.
+        // No controls yet. The map takes ~0.5-1 s to draw after we force the zoom, so the
+        // first poll(s) after opening are normally still empty — show a LOADING message for
+        // the first few seconds and only fall back to the "not available" reason once it's
+        // stayed empty long enough that we're genuinely not near a usable airport.
+        A._emptyZoomedTicks++;
+        var text = (A._emptyZoomedTicks <= 6)
+          ? "Loading the airport map - give it a moment, then press F5 to refresh."
+          : A.unavailableReason();
         els = [{
           top: 0, left: 0, idx: 0, kind: "text", tag: "div", role: "",
-          text: A.unavailableReason(),
+          text: text,
           value: "", controlType: "", clickable: false, level: 0, live: "", disabled: false, options: []
         }];
+      } else {
+        A._emptyZoomedTicks = 0;
       }
       return JSON.stringify({ ok: true, page: "OANS Airport Map / BTV", elements: els });
     } catch (e) {

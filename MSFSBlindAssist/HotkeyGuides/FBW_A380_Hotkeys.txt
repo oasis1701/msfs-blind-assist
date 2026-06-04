@@ -15,7 +15,7 @@ DIRECT (no mode)
   Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
   Ctrl+M     Monitor Manager (choose what auto-announces)
   Ctrl+E     Toggle ECAM E/WD call-outs
-  Ctrl+Shift+B  Airport Map and BTV (OANS) window
+  Ctrl+Shift+B  Airport Map and BTV (OANS) window — see "INSIDE THE OANS WINDOW" below
 
 
 OUTPUT MODE  (press ] first)
@@ -183,6 +183,24 @@ INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)
   Backspace  Step back to the menu
   F5         Refresh
   (the Abnormal procedures button lists active ECAM procedures)
+
+
+INSIDE THE OANS WINDOW (Ctrl+Shift+B opens it) -- airport map + Brake-To-Vacate (BTV)
+  The OANS airport map only draws at the closest ND range, so opening the window
+  AUTO-ZOOMS the Captain ND to the airport map for you (you don't see the ND, so this
+  is harmless). Give it a second; press F5 if it still says it's loading. Read the
+  controls with the arrow keys; Enter activates a button / opens a list; type into a
+  field then Enter; Escape closes. It's a tool for the GROUND and the terminal area
+  (taxi-out and approach) -- away from an airport it will say it's not available.
+  Three tabs across the top -- arrow to one and press Enter:
+   ARPT SEL  Pick the airport: choose the entry mode (ICAO / IATA / CITY NAME), type
+             the code into the field + Enter, then press DISPLAY AIRPORT. ORIGIN /
+             DEST / ALTN jump to your flight-plan airports.
+   MAP DATA  Brake-To-Vacate: pick the landing RWY, read RUNWAY LENGTH and the BTV
+             STOP DISTANCE, choose the exit (TWY / STAND / OTHER). BTV MANUAL CONTROL
+             is the fallback. (The dry/wet stop distances are also exposed as readouts
+             in the panels and announced during the landing rollout.)
+   STATUS    Active / second airport database + SWAP, and the database identifier.
 
 Thrust levers auto-announce the detent reached (Idle / Climb / Flex MCT / TOGA /
 Reverse). Most cockpit controls are in the Sections/Panels lists (Ctrl+1/Ctrl+2).

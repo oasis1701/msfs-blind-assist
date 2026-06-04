@@ -3865,6 +3865,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
+        // speed-brake) are FBW L:vars. Don't SNAP them to the target in one write — the 3-D
+        // model jumps there and you only hear a single "tick" of the motor. A real motorised
+        // seat moves gradually while you hold the switch, so we RAMP the L:var toward the
+        // target a few units per 40 ms (calc path, on the UI thread). The FBW then plays the
+        // sustained motor sound + smooth animation. (Writing via the calculator path also
+        // avoids SetLVar's data-def write, which is unreliable for FBW L:vars.)
+        if (varDef.RenderAsSlider)
+        {
+            RampSliderTo(varDef.Name, value, simConnect);
+            return true;
+        }
         // FCU SPD/MACH toggle from a panel button: the legacy dotted event is inert on the A380's
         // new FCU — switch via the stock K-events instead (see SpdMachToggleRpn). Then re-read.
         if (varKey == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH")
@@ -5567,26 +5579,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // RequestFCU*WithStatus readback spoke the value on every press regardless of
             // whether anything changed, which was identical to the output-mode read query
             // and masked the dead actuation.
-            case HotkeyAction.FCUHeadingPush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_HDG_PUSH)"); return true;
-            case HotkeyAction.FCUHeadingPull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_HDG_PULL)"); return true;
-            case HotkeyAction.FCUSpeedPush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_SPEED_PUSH)"); return true;
-            case HotkeyAction.FCUSpeedPull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_SPEED_PULL)"); return true;
-            case HotkeyAction.FCUAltitudePush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_ALT_PUSH)"); return true;
-            case HotkeyAction.FCUAltitudePull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_ALT_PULL)"); return true;
-            // The A380X V/S knob is pull-to-engage: the FBW VerticalSpeedManager handles
-            // VS_PULL + rotation but has NO VS_PUSH (no managed-V/S on the knob — managed
-            // vertical is armed via the ALT knob). VS push is therefore a no-op on the
-            // aircraft; we still fire the H-event for forward-compatibility.
-            case HotkeyAction.FCUVSPush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PUSH)"); return true;
-            case HotkeyAction.FCUVSPull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PULL)"); return true;
+            // CRITICAL: the A380's NEW FCU consumes K-events (K:A32NX.FCU_*), NOT the dotted
+            // A320 H-events — firing the H-event does NOTHING (this is why one push of the ALT
+            // knob "did nothing" and you had to push again: the first push was the dead H-event).
+            // Route through FireFCUButton, exactly like the FCU window Push/Pull buttons, so a
+            // single push actually fires (and re-reads the value). Event names match the windows.
+            case HotkeyAction.FCUHeadingPush: FireFCUButton("A32NX.FCU_TO_AP_HDG_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUHeadingPull: FireFCUButton("A32NX.FCU_TO_AP_HDG_PULL", simConnect, announcer); return true;
+            case HotkeyAction.FCUSpeedPush: FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUSpeedPull: FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer); return true;
+            case HotkeyAction.FCUAltitudePush: FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUAltitudePull: FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer); return true;
+            // The A380X V/S knob is pull-to-engage (managed vertical is armed via the ALT knob),
+            // so VS push is a no-op on the jet; fire the K-event anyway for consistency.
+            case HotkeyAction.FCUVSPush: FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUVSPull: FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer); return true;
 
             case HotkeyAction.ReadFlaps:
             {
@@ -5992,6 +5999,52 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         else s.SendEvent(evt);
         OnPanelButtonFired(evt, s, a);
     }
+
+    // ---- Smooth slider ramp (motorised cockpit seats / armrests / sunshades / visors) ----
+    // Writing the target L:var in ONE step makes the 3-D model SNAP there — you only hear a
+    // single "tick" of the motor. Real motorised seats move gradually while the switch is held,
+    // so we step the L:var toward the target a few units every 40 ms ON THE UI THREAD (a
+    // WinForms timer — never a thread-pool timer, which would call SimConnect off-thread). The
+    // FBW plays the sustained motor sound + smooth animation. _sliderCurrent is authoritative
+    // once a slider is first touched (seeded from the cache) so the ramp stays smooth.
+    private readonly Dictionary<string, double> _sliderTarget = new();
+    private readonly Dictionary<string, double> _sliderCurrent = new();
+    private System.Windows.Forms.Timer? _sliderRampTimer;
+    private SimConnectManager? _sliderRampSim;
+
+    private void RampSliderTo(string lvar, double target, SimConnectManager simConnect)
+    {
+        _sliderRampSim = simConnect;
+        target = Math.Max(0.0, Math.Min(100.0, target));
+        _sliderTarget[lvar] = target;
+        if (!_sliderCurrent.ContainsKey(lvar))
+            _sliderCurrent[lvar] = simConnect.GetCachedVariableValue(lvar) ?? target;
+        if (_sliderRampTimer == null)
+        {
+            _sliderRampTimer = new System.Windows.Forms.Timer { Interval = 40 };
+            _sliderRampTimer.Tick += (s, e) => SliderRampTick();
+            _sliderRampTimer.Start();
+        }
+    }
+
+    private void SliderRampTick()
+    {
+        var sim = _sliderRampSim;
+        if (sim == null || !sim.IsConnected) { StopSliderRamp(); return; }
+        const double step = 3.0;   // ~100 units in ~1.3 s — a believable seat-motor speed
+        foreach (var lvar in _sliderTarget.Keys.ToList())
+        {
+            double target = _sliderTarget[lvar];
+            double cur = _sliderCurrent.TryGetValue(lvar, out var c) ? c : target;
+            if (Math.Abs(target - cur) <= step) { cur = target; _sliderTarget.Remove(lvar); }
+            else cur += Math.Sign(target - cur) * step;
+            _sliderCurrent[lvar] = cur;
+            sim.ExecuteCalculatorCode(cur.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")");
+        }
+        if (_sliderTarget.Count == 0) StopSliderRamp();
+    }
+
+    private void StopSliderRamp() { _sliderRampTimer?.Stop(); _sliderRampTimer?.Dispose(); _sliderRampTimer = null; }
 
     // The A380's NEW FCU ignores the legacy dotted "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" H-event the
     // A320 used — live-verified that firing it (either dot or underscore form) does NOTHING. Its

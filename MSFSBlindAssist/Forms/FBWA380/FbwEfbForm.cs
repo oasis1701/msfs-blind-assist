@@ -56,7 +56,6 @@ public class FbwEfbForm : Form
     private Label _pageLabel = null!;
     private Panel _contentPanel = null!;
     private WebView2 _webView = null!;
-    private Button _refreshBtn = null!;
 
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _bridgeConnected;
@@ -172,16 +171,7 @@ public class FbwEfbForm : Form
         };
         Controls.Add(_contentPanel);
 
-        _refreshBtn = new Button
-        {
-            Text = "&Refresh (F5)",
-            Location = new Point(10, 576),
-            Size = new Size(140, 32),
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-            AccessibleName = "Refresh",
-            AccessibleDescription = "Re-pull the element list from the flyPad."
-        };
-        Controls.Add(_refreshBtn);
+        // (No "Refresh" button — F5 refreshes; a dedicated button was redundant clutter.)
 
         ResumeLayout(true);
     }
@@ -194,8 +184,6 @@ public class FbwEfbForm : Form
             Hide();
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         };
-
-        _refreshBtn.Click += (_, _) => _bridgeServer.EnqueueCommand("get_display_elements");
 
         KeyDown += (s, e) =>
         {
