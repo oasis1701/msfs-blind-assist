@@ -159,3 +159,12 @@ test('DEPARTURE: selector dropdowns show their selected value, stay selectable',
   assert.match(j, /TRANS, BEALE/, 'TRANS dropdown not showing selected transition');
   assertSelectable('departure');
 });
+
+// NAVAIDS → SELECTED FOR FMS NAV: a trailing unit that the Y-row bucketing split onto
+// its own line (the glideslope "°" 2px past a rounding boundary from "-3.0") is folded
+// back onto its value, so it reads "SLOPE: -3.0 °", not "SLOPE: -3.0" + a stray "°".
+test('NAVAIDS SELECTED: orphaned trailing unit re-attaches to its value', () => {
+  const j = joined('navaids_selected');
+  assert.match(j, /SLOPE: -3\.0 °/, 'SLOPE value did not keep its degree unit');
+  assert.doesNotMatch(j, /(^|\n)°(\n|$)/, 'a bare "°" line was left stranded');
+});

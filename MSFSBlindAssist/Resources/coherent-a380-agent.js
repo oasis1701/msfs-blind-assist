@@ -1040,6 +1040,28 @@
     }
     items = mergedLines;
 
+    // Re-attach an orphaned bare-UNIT line (just "°" / "KT" / "FT" / …) to the value
+    // line directly above it. The Y-row bucketing (ROW_Y_TOLERANCE_PX) can split a value
+    // from its trailing unit when the two sit a pixel either side of a rounding boundary
+    // (NAVAIDS SELECTED: "SLOPE: -3.0" at top 818 → bucket 58, its "°" at 820 → bucket 59),
+    // leaving the unit stranded on its own line. Fold it back so it reads "SLOPE: -3.0 °".
+    var attached = [];
+    for (var ai = 0; ai < items.length; ai++) {
+      var ln = items[ai];
+      if (ln.idx === 0 && ln.kind === "text" && isUnitCell(ln.text) && attached.length > 0) {
+        var pvl = attached[attached.length - 1];
+        // only fold onto a static value line that ENDS in a number/percent (its value),
+        // never onto a label-only line or an interactive control.
+        if (pvl.idx === 0 && pvl.kind === "text" && /[\d%)]$/.test(pvl.text)) {
+          pvl.text = pvl.text + " " + ln.text;
+          if (ln.right > pvl.right) pvl.right = ln.right;
+          continue;
+        }
+      }
+      attached.push(ln);
+    }
+    items = attached;
+
     items = A.dedupeLines(items);
 
     // Regroup open-menu options: a popped-up combo/context menu overlays other
