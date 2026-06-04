@@ -63,3 +63,22 @@ test('F-PLN is unaffected (PERF builder gated to PERF pages only)', () => {
   assert.ok(list.some((e) => e.kind === 'fplnwpt'), 'F-PLN lost its waypoint lines');
   assert.ok(!list.some((e) => /OPT: FL/.test(e.text)), 'PERF artifacts leaked into F-PLN');
 });
+
+// The label-aware Y-merge composer turns sibling label/value/unit data rows into
+// "LABEL: value unit, LABEL: value unit" instead of comma-soup. POSITION/IRS is the
+// canonical multi-column data-row page (captured live).
+test('POSITION/IRS: sibling-label data rows compose as "LABEL: value unit"', () => {
+  const j = joined('irs');
+  // multi-column rows: label binds its value with ":", a second column starts after ","
+  assert.match(j, /T\.TRK: 134\.4 °T, T\.HDG: 134\.4 °T/, 'T.TRK/T.HDG row not composed');
+  assert.match(j, /GND SPD: 0\.0 KT, MAG HDG: 122\.9 °/, 'GND SPD/MAG HDG row not composed');
+  // single label:value rows
+  assert.match(j, /(^|\n)IRS 1: NAV/, 'IRS 1 status not composed');
+  assert.match(j, /GPIRS POSITION: 33°56\.5N\/118°22\.2W/, 'GPIRS POSITION not composed');
+  // the colon-join header (label already printing its own ":")
+  assert.match(j, /IRS ALIGNED ON GPS POS: 33°/, 'aligned-on header lost its colon-join');
+  // no raw comma-soup left on the composed rows
+  assert.doesNotMatch(j, /T\.TRK, 134\.4, °T/, 'IRS comma-soup regressed');
+  // selectability invariant: every IRS button keeps its stamped idx
+  assertSelectable('irs');
+});

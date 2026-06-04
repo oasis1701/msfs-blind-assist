@@ -295,7 +295,9 @@
     if (kind === "dropdown") {
       var di = n.querySelector(".mfd-dropdown-inner");
       // DropdownMenu widget carries its selected value in .mfd-dropdown-inner.
-      if (di) return clean(di.textContent) || "(choice)";
+      // Use spacedText so multi-span values keep their word breaks (D-ATIS
+      // "UPDATE OR PRINT", not "UPDATEOR PRINT").
+      if (di) return A.spacedText(di) || "(choice)";
       // Button-style dropdown (ARRIVAL/DEPARTURE RWY/APPR/STAR/TRANS, etc.): the
       // element text is just the field NAME; the selected value sits in the summary
       // grid directly under the matching header. Fold it in so the combo announces
@@ -906,6 +908,9 @@
     // between each column ("BASU1D, 217°, 2 NM"; "FROM, TIME, TRK, DIST, FPA").
     // Interactive controls (idx>0) always keep their own line, so a clickable
     // waypoint/field is never swallowed into a text row.
+    // A bare UNIT cell (°T, KT, NM, %, KLB, …) attaches to the value before it with
+    // a space ("134.4 °T") instead of a comma; everything else is a column pause.
+    var isUnitCell = function (s) { return /^(°[TWEC]?|KT|NM|FT|FL|%|KLB|KG|LB|M|MIN|HR|NM\/MIN|°\/[A-Z]+)$/i.test(s); };
     var mergedLines = [];
     for (var mi = 0; mi < items.length; mi++) {
       var cur = items[mi];
@@ -915,16 +920,30 @@
         var prev = mergedLines[mergedLines.length - 1];
         if (prev.idx === 0 && prev.kind === "text" && !prev.fpln
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
-          // If the left cell is a label ending in ":" ("ACTIVE ATC :"), join its value with
-          // ": " so it reads "ACTIVE ATC: XXXX" instead of "ACTIVE ATC :, XXXX". Otherwise
-          // the usual ", " column separator (a screen-reader pause between grid columns).
-          if (/:\s*$/.test(prev.text)) prev.text = prev.text.replace(/\s*:\s*$/, ": ") + cur.text;
-          else prev.text = prev.text + ", " + cur.text;
+          // Compose label→value→unit groups so a row of sibling cells reads as
+          // "T.TRK: 134.4 °T, T.HDG: 134.4 °T" instead of comma-soup:
+          //  - a label cell ALREADY printing its own ":" ("ACTIVE ATC :") → strip + ": ";
+          //  - a NEW label cell (.mfd-label) → ", " starts a fresh column group;
+          //  - the first value AFTER a label → ": " binds it to that label;
+          //  - a bare unit cell → " " attaches to its value;
+          //  - anything else → ", " column pause.
+          // A real naming label has letters and isn't a bare unit — so a number/time
+          // cell that happens to carry .mfd-label (FUEL&LOAD DEST/ALTN prediction grid)
+          // can't spuriously bind the next value with a ":".
+          var curRealLabel = cur.isLabel && /[A-Za-z]/.test(cur.text) && !isUnitCell(cur.text);
+          if (/:\s*$/.test(prev.text)) { prev.text = prev.text.replace(/\s*:\s*$/, ": ") + cur.text; prev._afterLabel = false; }
+          else if (curRealLabel) { prev.text = prev.text + ", " + cur.text; prev._afterLabel = true; }
+          else if (prev._afterLabel) { prev.text = prev.text + ": " + cur.text; prev._afterLabel = false; }
+          else if (isUnitCell(cur.text)) { prev.text = prev.text + " " + cur.text; }
+          else { prev.text = prev.text + ", " + cur.text; }
           if (cur.right > prev.right) prev.right = cur.right;
           if (cur.bot > prev.bot) prev.bot = cur.bot;
           continue;
         }
       }
+      // Seed the label-group state for a fresh row from whether its first cell is a real
+      // (letters, non-unit) label.
+      if (cur.idx === 0 && cur.kind === "text") cur._afterLabel = !!cur.isLabel && /[A-Za-z]/.test(cur.text) && !isUnitCell(cur.text);
       mergedLines.push(cur);
     }
     items = mergedLines;
