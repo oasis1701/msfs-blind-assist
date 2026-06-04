@@ -635,9 +635,24 @@ public class FBWA380MCDUForm : Form
     }
 
     /// <summary>
-    /// Airbus CLR semantics. A real pilot pressing CLR first clears the
-    /// scratchpad; once it's empty, CLR acts on the field. Mirror that:
-    ///   • scratchpad has text  → clear it, announce "Scratchpad cleared"
+    /// The MFD's on-screen "CLEAR INFO" button (clears the footer info/error MESSAGE
+    /// line) on the current page, or 0 if none is shown. This is DISTINCT from clearing
+    /// a field — it dismisses the displayed message.
+    /// </summary>
+    private int FindClearInfoIndex()
+    {
+        foreach (var el in _displayedElements)
+            if (el.Index > 0 && el.Text.IndexOf("CLEAR INFO", StringComparison.OrdinalIgnoreCase) >= 0)
+                return el.Index;
+        return 0;
+    }
+
+    /// <summary>
+    /// Airbus CLR semantics. A real pilot pressing CLR clears the scratchpad, then any
+    /// displayed MESSAGE, then acts on a field. Mirror that:
+    ///   • scratchpad (our staging box) has text → clear it ("Scratchpad cleared")
+    ///   • else a footer info/error MESSAGE is shown → click the MFD "CLEAR INFO"
+    ///     button to dismiss it ("Info cleared") — answers "CLR also clears the message"
     ///   • else field selected  → clear that field on the MFD
     ///   • else                 → fire KCCU CLR (clears the MFD's own scratchpad)
     /// </summary>
@@ -648,6 +663,22 @@ public class FBWA380MCDUForm : Form
             _scratchpad.Text = "";
             _announcer.Announce("Scratchpad cleared");
             return;
+        }
+        // A displayed MFD info / error message is dismissed before acting on a field —
+        // matching real Airbus CLR (clears the scratchpad message first). _previousScratchpad
+        // holds the live footer text (footerMessage() returns "" when none), so this only
+        // fires when a message is actually up AND the page exposes a CLEAR INFO button.
+        if (!string.IsNullOrWhiteSpace(_previousScratchpad))
+        {
+            int infoIdx = FindClearInfoIndex();
+            if (infoIdx > 0)
+            {
+                _bridgeServer.EnqueueCommand("click_mcdu_element",
+                    new Dictionary<string, string> { ["index"] = infoIdx.ToString() });
+                _announcer.Announce("Info cleared");
+                ScheduleRefresh();
+                return;
+            }
         }
         int fieldIdx = SelectedElementIndex();
         if (fieldIdx > 0)
