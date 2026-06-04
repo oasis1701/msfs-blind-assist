@@ -150,7 +150,7 @@ INSIDE THE MCDU / MFD WINDOW
   F5         Refresh
 
   Page buttons (Alt+letter)
-  Alt+I  INIT     Alt+F  F-PLN    Alt+P  PERF      Alt+L  FUEL & LOAD
+  Alt+I  INIT     Alt+F  F-PLN    Alt+E  PERF      Alt+L  FUEL & LOAD
   Alt+R  RAD NAV  Alt+S  SEC FPL  Alt+D  DIR
   Alt+A  ATC COM  Alt+V  SURV     Alt+C  CLR       Alt+H  Refresh
   Alt+N  Toggle weight units (kilograms / pounds) for MSFSBA read-outs

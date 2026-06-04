@@ -1354,6 +1354,18 @@
     if (commit) A.dispatchKey(span, "keypress", 13);
   };
 
+  // CLEAR a focused field. A bare ENTER on a just-focused field does NOT clear it —
+  // InputField.onBlur sees modifiedFieldValue===null ("Enter after no modification") and
+  // re-validates the CURRENT value, so nothing changes (this was the "Backspace doesn't
+  // clear the field" bug). The real clear is a BACKSPACE keydown (keyCode 8): handleBackspace
+  // sets the edit buffer to '' (via the canBeCleared branch, or the else slice→''), then ENTER
+  // commits the empty value → the field clears (subject to the field allowing empty). One
+  // backspace clears the WHOLE field — it's the "clear field" semantic, not char-by-char.
+  A.clearFocusedField = function (span) {
+    A.dispatchKey(span, "keydown", 8);    // BACKSPACE → modifiedFieldValue = ''
+    A.dispatchKey(span, "keypress", 13);  // ENTER → blur+validate('') → field cleared
+  };
+
   // Legacy no-op kept so older call sites don't break; the DOM path needs no
   // KCCU keyboard-enable (that SimVar.Set doesn't even stick in-page anyway).
   A.ensureKccuKeyboardOn = function () {};
@@ -1480,17 +1492,22 @@
     // its InputField is handleFocusBlurExternally, so a direct span click does NOT
     // focus it — the field only becomes editable when the DROPDOWN is opened
     // (DropdownMenu focuses the inner InputField on open). So open it first.
+    // Empty newValue = a CLEAR request (the form's Backspace/Delete on a field). A clear
+    // needs a real BACKSPACE+ENTER, not a bare ENTER (see clearFocusedField).
+    var isClear = (newValue === null || String(newValue) === "");
+
     var dd = A.ancestorWithClass(node, "mfd-dropdown-outer");
     if (dd) {
       if (!A.dropdownIsOpen(dd)) A.clickNode(dd);   // toggle open -> focuses inner field
-      A.typeIntoField(span, newValue, true);        // type + ENTER (commits, closes)
+      if (isClear) A.clearFocusedField(span);       // backspace + ENTER (clears, closes)
+      else A.typeIntoField(span, newValue, true);   // type + ENTER (commits, closes)
       return "ok";
     }
 
-    // Plain InputField: focus via the real click->focus path, then type + ENTER.
-    // Focusing clears the field's edit buffer, so no manual backspacing needed.
+    // Plain InputField: focus via the real click->focus path, then type/clear + ENTER.
     A.focusField(span, spanningDiv);
-    A.typeIntoField(span, newValue, true);
+    if (isClear) A.clearFocusedField(span);
+    else A.typeIntoField(span, newValue, true);
     return "ok";
   };
 

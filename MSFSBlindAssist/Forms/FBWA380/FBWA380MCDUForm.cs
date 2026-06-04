@@ -276,7 +276,7 @@ public class FBWA380MCDUForm : Form
         // Row 1 — FMS pages (the ACTIVE trio F-PLN/PERF/FUEL&LOAD sit together).
         _btnInit    = MakeBtn("&INIT",         "INIT");
         _btnFPln    = MakeBtn("&F-PLN",        "F-PLN");
-        _btnPerf    = MakeBtn("&PERF",         "PERF");
+        _btnPerf    = MakeBtn("P&ERF",         "PERF");   // Alt+E
         _btnFuel    = MakeBtn("Fuel && &Load", "Fuel and Load");   // Alt+L
         _btnRadNav  = MakeBtn("&RAD NAV",      "RAD NAV");
         _btnSecFPln = MakeBtn("&SEC FPL",      "SEC FPL");
