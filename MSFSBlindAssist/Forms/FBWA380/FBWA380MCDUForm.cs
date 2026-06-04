@@ -25,11 +25,13 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 ///   3. Scratchpad box  — staging buffer. Type, then go to the display and
 ///                        press Enter on the target field. Enter here sends
 ///                        to the MFD's current cursor field; Escape clears it.
-///   4. Page buttons    — INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM, DIR,
-///                        UP, DOWN, CLR (Alt+letter mnemonics). Each clicks the
-///                        matching on-screen MFD control, KCCU key as fallback.
+///   4. Page buttons    — INIT, F-PLN, PERF, FUEL&LOAD, RAD NAV, SEC FPL, DIR
+///                        (row 1) / ATC COM, SURV, CLR, Refresh, Units (row 2),
+///                        Alt+letter mnemonics. Each navigates to / clicks the
+///                        matching MFD page/control (KCCU key as fallback).
 ///
-/// Page navigation: Ctrl+Up = previous page, Ctrl+Down = next page.
+/// Page navigation: Ctrl+Up = previous page, Ctrl+Down = next page (also
+/// PageUp/PageDown). There are no UP/DOWN buttons — the hotkeys cover it.
 ///
 /// Everything auto-refreshes: the agent polls the MFD DOM (~350 ms) and the
 /// client pushes new state only when it changes. Title and footer-message
@@ -120,12 +122,12 @@ public class FBWA380MCDUForm : Form
     private Button _btnInit = null!;
     private Button _btnFPln = null!;
     private Button _btnPerf = null!;
+    private Button _btnFuel = null!;
     private Button _btnRadNav = null!;
     private Button _btnSecFPln = null!;
     private Button _btnAtc = null!;
+    private Button _btnSurv = null!;
     private Button _btnDir = null!;
-    private Button _btnUp = null!;
-    private Button _btnDown = null!;
     private Button _btnClr = null!;
     private Button _btnRefresh = null!;
     private Button _btnUnits = null!;
@@ -271,17 +273,20 @@ public class FBWA380MCDUForm : Form
             return b;
         }
 
-        _btnInit    = MakeBtn("&INIT",    "INIT");
-        _btnFPln    = MakeBtn("&F-PLN",   "F-PLN");
-        _btnPerf    = MakeBtn("&PERF",    "PERF");
-        _btnRadNav  = MakeBtn("&RAD NAV", "RAD NAV");
-        _btnSecFPln = MakeBtn("&SEC FPL", "SEC FPL");
-        _btnAtc     = MakeBtn("&ATC COM", "ATC COM");
-        _btnDir     = MakeBtn("&DIR",     "DIR");
+        // Row 1 — FMS pages (the ACTIVE trio F-PLN/PERF/FUEL&LOAD sit together).
+        _btnInit    = MakeBtn("&INIT",         "INIT");
+        _btnFPln    = MakeBtn("&F-PLN",        "F-PLN");
+        _btnPerf    = MakeBtn("&PERF",         "PERF");
+        _btnFuel    = MakeBtn("Fuel && &Load", "Fuel and Load");   // Alt+L
+        _btnRadNav  = MakeBtn("&RAD NAV",      "RAD NAV");
+        _btnSecFPln = MakeBtn("&SEC FPL",      "SEC FPL");
+        _btnDir     = MakeBtn("&DIR",          "DIR");
         y += btnH + gap; col = 10;
 
-        _btnUp      = MakeBtn("&UP",      "UP");
-        _btnDown    = MakeBtn("DO&WN",    "DOWN");
+        // Row 2 — comms / surveillance / utility. (The UP/DOWN page-step buttons were
+        // removed; their job is on Ctrl+Up/Down and PageUp/PageDown.)
+        _btnAtc     = MakeBtn("&ATC COM", "ATC COM");
+        _btnSurv    = MakeBtn("SUR&V",    "SURV");                 // Alt+V
         _btnClr     = MakeBtn("&CLR",     "CLR");
         _btnRefresh = MakeBtn("Refres&h", "Refresh");
         // Toggle the WEIGHT unit MSFSBA reads out (kilograms / pounds).
@@ -327,12 +332,12 @@ public class FBWA380MCDUForm : Form
         _btnInit.Click    += (_, _) => SendNavigateById("Active",   4, "INIT");     // ACTIVE ▸ INIT
         _btnFPln.Click    += (_, _) => SendNavigateById("Active",   0, "FPLN");     // ACTIVE ▸ F-PLN
         _btnPerf.Click    += (_, _) => SendNavigateById("Active",   1, "PERF");     // ACTIVE ▸ PERF
+        _btnFuel.Click    += (_, _) => SendNavigateById("Active",   2, "");         // ACTIVE ▸ FUEL & LOAD
         _btnRadNav.Click  += (_, _) => SendNavigateById("Position", 2, "NAVAID");   // POSITION ▸ NAVAIDS
         _btnSecFPln.Click += (_, _) => SendNavigateUri("fms/sec/index");          // SEC INDEX (secondary flight plans)
         _btnAtc.Click     += (_, _) => SendNavigateUri("atccom/connect");          // ATC COM via UIService (reliable)
+        _btnSurv.Click    += (_, _) => SendNavigateUri("surv/controls");           // SURV CONTROLS (XPDR/TCAS/WXR/TAWS)
         _btnDir.Click     += (_, _) => SendNavigateById("",        -1, "DIR");      // KCCU only
-        _btnUp.Click      += (_, _) => SendCommand("key_prev_page");
-        _btnDown.Click    += (_, _) => SendCommand("key_next_page");
         _btnClr.Click     += (_, _) => PerformClear();
         _btnRefresh.Click += (_, _) => _bridgeServer.EnqueueCommand("get_mcdu_elements");
         _btnUnits.Click   += (_, _) => ToggleUnits();
