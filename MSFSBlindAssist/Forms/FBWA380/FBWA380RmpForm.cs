@@ -38,7 +38,6 @@ public sealed class FBWA380RmpForm : Form
 
     // ---- live region (announce-on-change, driven by the scrape poll) -------------------------
     private bool _firstScrape = true;
-    private string _standby = "", _lastAnnouncedStandby = "";
     private string _message = "", _lastAnnouncedMessage = "";
     private List<string> _scrapeVhfRows = new();   // "VHF1: active 129.000, standby 121.500, transmit, selected"
     private System.Windows.Forms.Timer? _refreshTimer;
@@ -174,9 +173,38 @@ public sealed class FBWA380RmpForm : Form
         if (_busy) return;
         bool wasSel = _selectedRowIndex == row;
         _selectedRowIndex = row;
+        if (wasSel) { LoadStandby(); return; }   // re-pressing the selected radio = load the typed standby
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
-        _announcer?.Announce(wasSel ? (_standby.Length > 0 ? $"Standby loaded, {_standby}" : "Standby loaded") : $"Radio {row + 1}");
+        _announcer?.Announce($"Radio {row + 1}");
         ScheduleRefresh();
+    }
+
+    // Load the typed standby into the SELECTED radio (LSK) and announce the ACTUAL loaded frequency by
+    // scraping FRESH — not the cached _standby, which is stale when Enter is pressed right after the last
+    // digit (the typing's debounced scrape hasn't run yet, so the autocomplete value isn't in _standby).
+    // Marshals to the UI thread so the announce reliably speaks (the scrape continuation can resume off it).
+    private async void LoadStandby()
+    {
+        if (_busy) return;
+        int row = _selectedRowIndex;
+        _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
+        _refreshTimer?.Stop();   // cancel the typing debounce so it doesn't double-scrape
+        List<string>? rows = null;
+        try { await Task.Delay(140); rows = await _disp.ScrapeNowAsync(); } catch { }
+        void Finish()
+        {
+            string sby = "";
+            if (rows != null)
+            {
+                var vhf = rows.FindAll(r => r.StartsWith("VHF", StringComparison.Ordinal));
+                string? sel = vhf.Find(r => r.EndsWith(", selected", StringComparison.Ordinal));
+                if (sel == null && row >= 0 && row < vhf.Count) sel = vhf[row];
+                if (sel != null) sby = Token(sel, "standby ");
+            }
+            _announcer?.AnnounceImmediate(sby.Length > 0 ? $"Radio {row + 1} standby loaded, {sby}" : "Standby loaded");
+            Apply(rows);
+        }
+        if (InvokeRequired) { try { BeginInvoke((Action)Finish); } catch { } } else Finish();
     }
 
     private void Swap(int row)
@@ -231,9 +259,7 @@ public sealed class FBWA380RmpForm : Form
                 else _announcer?.AnnounceImmediate("Enter a 4 digit squawk, 0 to 7");
                 return;
             }
-            _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // VHF: load standby
-            _announcer?.Announce(_standby.Length > 0 ? $"Standby loaded, {_standby}" : "Standby loaded");
-            ScheduleRefresh();
+            LoadStandby();   // VHF: load the typed standby and announce the actual loaded value (scrapes fresh)
         }
         else if (e.KeyCode == Keys.Back)
         {
@@ -300,8 +326,8 @@ public sealed class FBWA380RmpForm : Form
     private void StartScrape()
     {
         _firstScrape = true;
-        _lastAnnouncedStandby = ""; _lastAnnouncedMessage = "";
-        _standby = ""; _message = ""; _scrapeVhfRows = new();
+        _lastAnnouncedMessage = "";
+        _message = ""; _scrapeVhfRows = new();
         _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 300, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
         _disp.Start();
@@ -351,10 +377,6 @@ public sealed class FBWA380RmpForm : Form
             var msgRow = rows.Find(r => r.StartsWith("Message: ", StringComparison.Ordinal)) ?? "";
             _message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
 
-            string? sel = vhf.Find(r => r.EndsWith(", selected", StringComparison.Ordinal));
-            if (sel == null && _selectedRowIndex >= 0 && _selectedRowIndex < vhf.Count) sel = vhf[_selectedRowIndex];
-            if (sel != null) _standby = Token(sel, "standby ");
-
             AnnounceLive();
         }
         RenderFromSim();
@@ -368,7 +390,6 @@ public sealed class FBWA380RmpForm : Form
         if (_firstScrape)
         {
             _firstScrape = false;
-            _lastAnnouncedStandby = _standby;
             _lastAnnouncedMessage = _message;
             return;
         }
@@ -378,12 +399,8 @@ public sealed class FBWA380RmpForm : Form
             _lastAnnouncedMessage = _message;
             if (_message.Length > 0) _announcer?.Announce(_message);
         }
-
-        if (_standby.Length > 0 && _standby.IndexOf('_') < 0 && _standby != _lastAnnouncedStandby)
-        {
-            _lastAnnouncedStandby = _standby;
-            _announcer?.Announce($"Standby {_standby}");
-        }
+        // The STANDBY is intentionally NOT announced per keystroke (that was chatty autocomplete noise);
+        // the loaded standby is announced once on Enter / LSK by LoadStandby().
     }
 
     // Build the read-out: VHF rows (scrape) + squawk/transponder line (reliable simvars) + the live
