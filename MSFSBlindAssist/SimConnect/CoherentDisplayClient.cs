@@ -166,6 +166,28 @@ namespace MSFSBlindAssist.SimConnect
         {
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
+            // Socket still OPEN but the agent went missing (an eval timed out / the page re-evaluated
+            // and cleared window.__MSFSBA_DISP) — just re-install the agent on the SAME socket. This
+            // is the common transient case and avoids a reconnect entirely.
+            if (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                string reinstall = await EvalAsync(_agentJs, ct);
+                _agentInstalled = reinstall.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
+                if (_agentInstalled) { _connected = true; return true; }
+            }
+
+            // CRITICAL: tear down any existing socket BEFORE opening a new one. Coherent GT allows
+            // only ONE inspector connection per page, so opening a SECOND socket to the same page
+            // while the first is still alive is REJECTED — which left the client stuck forever on
+            // stale _lastRows (the "RMP display frozen / not refreshing" bug). Always release first.
+            if (_ws != null)
+            {
+                try { _ws.Abort(); } catch { }
+                try { _ws.Dispose(); } catch { }
+                _ws = null;
+                _agentInstalled = false;
+            }
+
             int? pageId = await ResolvePageId(ct);
             if (pageId == null) { _connected = false; return false; }
 
