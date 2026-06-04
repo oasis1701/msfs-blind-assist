@@ -5851,6 +5851,18 @@ public partial class MainForm : Form
                 }
             };
 
+            // When the user moves focus TO the status box, refresh it to the current selection.
+            // The auto-refresh timer deliberately skips while a selector combo (or the box) is
+            // focused — that periodic mid-navigation update was interrupting NVDA's combo
+            // announcements — so this GotFocus refresh is what brings the box current when the
+            // user goes to read it. It updates once on focus-in (review cursor at the top, which
+            // is what you want when you start reading), then the box-focused guard above keeps it
+            // stable. SetDisplayTextPreserveCaret no-ops when the content is unchanged.
+            displayTextBox.GotFocus += (s2, e2) =>
+            {
+                try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+            };
+
             refreshButton.Click += async (s2, e2) =>
             {
                 // Only show the "Loading..." placeholder on the FIRST populate (empty box).
@@ -6065,6 +6077,17 @@ public partial class MainForm : Form
             if (currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is TextBox dtb
                 && dtb.IsHandleCreated && dtb.Focused)
                 return;
+
+            // Also skip while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
+            // picker). The refresh re-requests the page var — UpdateControlFromSimVar can then
+            // re-set the combo's SelectedIndex to a lagging value, fighting the user's arrowing —
+            // and it replaces the box .Text (the MSAA interference noted above). Either one steps
+            // on NVDA's page-selection announcement, which is why arrowing the combo "frequently"
+            // didn't announce the landed page. The box is brought current when the user moves
+            // focus TO it (the display box's GotFocus refresh).
+            foreach (var kv in currentControls)
+                if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
+                    return;
 
             // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, etc.) — silent,
             //     no speech, pushes into the box via the page-index display var.
