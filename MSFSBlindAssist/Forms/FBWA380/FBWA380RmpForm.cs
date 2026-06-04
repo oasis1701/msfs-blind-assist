@@ -39,6 +39,10 @@ public sealed class FBWA380RmpForm : Form
     private string _message = "", _lastAnnouncedMessage = "";
     private System.Windows.Forms.Timer? _announceTimer;
     private System.Windows.Forms.Timer? _refreshTimer;
+    // The freq/squawk DISPLAY is built from the RELIABLE stock simvars (COM ACTIVE/STANDBY, squawk) —
+    // the Coherent RMP-screen scrape proved unreliable (reads a DOM that can freeze). The scrape is
+    // kept only for the best-effort MESSAGE line. Audio announces come from the def's simvar monitors.
+    private System.Windows.Forms.Timer? _simPoll;
 
     private ComboBox _side = null!;
     private TextBox _display = null!;
@@ -111,12 +115,19 @@ public sealed class FBWA380RmpForm : Form
         base.OnVisibleChanged(e);
         if (Visible)
         {
-            _disp?.SetActive(true);
+            _disp?.SetActive(true);   // scrape kept alive for the best-effort message line
+            if (_simPoll == null)
+            {
+                _simPoll = new System.Windows.Forms.Timer { Interval = 300 };
+                _simPoll.Tick += (_, _) => RenderFromSim();   // reliable freqs/squawk every 300 ms
+            }
+            _simPoll.Start();
+            RenderFromSim();          // instant accurate read-out the moment the window appears
             ActiveControl = _display;
             _display.Focus();
             _ = InitialScrape();
         }
-        else _disp?.SetActive(false);
+        else { _disp?.SetActive(false); _simPoll?.Stop(); }
     }
 
     // The window is reused across opens (Ctrl+Shift+R), so the X / Alt+F4 just HIDES it and
@@ -166,6 +177,7 @@ public sealed class FBWA380RmpForm : Form
     {
         if (_busy) return;
         bool wasSel = _selectedRowIndex == row;
+        _selectedRowIndex = row;   // track the selection ourselves (the simvar render reads it)
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
         _announcer?.Announce(wasSel ? "Standby loaded" : $"Radio {row + 1}");
         ScheduleRefresh();
@@ -274,42 +286,58 @@ public sealed class FBWA380RmpForm : Form
 
     private void Apply(List<string>? rows)
     {
-        if (rows == null || rows.Count == 0)
+        // The SCRAPE is now used ONLY for the best-effort MESSAGE line (FBW validation text like
+        // "VHF FREQ NOT VALID"); the freqs/squawk display comes from the reliable simvars in
+        // RenderFromSim. So an empty/failed scrape is harmless — the simvar render still works.
+        if (rows != null && rows.Count > 0)
         {
-            if (!_haveRows) _status.Text = "RMP not reachable — is the A380X loaded and powered?";
-            return;
+            var msgRow = rows.Find(r => r.StartsWith("Message: ", StringComparison.Ordinal)) ?? "";
+            string msg = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
+            if (msg != _message)
+            {
+                _message = msg;
+                if (msg.Length > 0 && msg != _lastAnnouncedMessage) { _lastAnnouncedMessage = msg; _announcer?.Announce(msg); }
+            }
         }
+        RenderFromSim();
+    }
+
+    // Build the RMP read-out from RELIABLE stock simvars (the Coherent scrape proved unreliable).
+    // COM ACTIVE/STANDBY FREQUENCY:n, the per-side TX/RX switches, squawk + transponder mode. The
+    // selected radio is tracked from the user's own LSK presses (_selectedRowIndex). Caret-preserving.
+    // Audio for freq/squawk changes is the def's simvar monitors; this just renders the screen.
+    private void RenderFromSim()
+    {
+        if (_sim == null || !_sim.IsConnected) return;
         _haveRows = true;
         _status.Text = $"Live — {SideName()}";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 1; i <= 3; i++)
+        {
+            double act = _sim.GetCachedVariableValue($"COM_ACTIVE_{i}") ?? 0;
+            double sby = _sim.GetCachedVariableValue($"COM_STANDBY_{i}") ?? 0;
+            bool tx = (_sim.GetCachedVariableValue($"A380X_RMP_{_rmp}_VHF_TX_{i}") ?? 0) > 0.5;
+            bool rx = (_sim.GetCachedVariableValue($"A380X_RMP_{_rmp}_VHF_VOL_RX_SWITCH_{i}") ?? 0) > 0.5;
+            string line = $"VHF {i}: active {act:0.000}, standby {sby:0.000}";
+            if (tx) line += ", transmit";
+            if (rx) line += ", receive";
+            if (i - 1 == _selectedRowIndex) line += ", selected";
+            sb.AppendLine(line);
+        }
+        int bcd = (int)Math.Round(_sim.GetCachedVariableValue("XPNDR_CODE") ?? 0);
+        string sq = $"{(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}";
+        double xst = _sim.GetCachedVariableValue("XPNDR_STATE") ?? 0;
+        string mode = xst >= 4 ? "Mode C" : xst >= 3 ? "Mode A" : xst >= 1 ? "Standby" : "Off";
+        sb.AppendLine($"Squawk: {sq}, transponder {mode}");
+        if (_message.Length > 0) sb.AppendLine($"Message: {_message}");
 
-        // Render the RMP as plain text (the touchscreen IS text), preserving the read caret.
-        string text = string.Join("\r\n", rows);
+        string text = sb.ToString().TrimEnd();
         if (_display.Text != text)
         {
             int caret = _display.SelectionStart;
             _display.Text = text;
             _display.SelectionStart = Math.Min(caret, _display.TextLength);
         }
-
-        // Track the selected row + its standby + the message line for the announce.
-        _selectedRowIndex = 0;
-        int tIdx = 0; string selRow = "";
-        foreach (var r in rows)
-        {
-            if (r.IndexOf(": active ", StringComparison.Ordinal) < 0) continue;
-            if (r.IndexOf(", selected", StringComparison.Ordinal) >= 0) { _selectedRowIndex = tIdx; selRow = r; }
-            tIdx++;
-        }
-        _standby = Token(selRow, "standby ");
-        var msgRow = rows.Find(r => r.StartsWith("Message: ", StringComparison.Ordinal)) ?? "";
-        _message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
-
-        if (_firstScrape) { _lastAnnouncedStandby = _standby; _lastAnnouncedMessage = _message; _firstScrape = false; }
-        // Only (re)start the debounce when there is genuinely something NEW to announce. Calling
-        // it on every poll restarted the timer each tick — and with the 300 ms poll equal to the
-        // 300 ms debounce, any screen flicker kept resetting it so it never fired (no announcements
-        // at all). Now the timer fires 300 ms after the LAST real standby/message change.
-        else if (_standby != _lastAnnouncedStandby || _message != _lastAnnouncedMessage) ScheduleAnnounce();
     }
 
     // Debounced announce (mirrors the MCDU scratchpad): once the dust settles, speak the
