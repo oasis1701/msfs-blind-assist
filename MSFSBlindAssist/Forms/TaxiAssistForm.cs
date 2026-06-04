@@ -92,6 +92,7 @@ public class TaxiAssistForm : Form
     private TaxiGraph? _graph;
     private string _currentIcao = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
+    private bool _taxiwaySelectionExplicit;
 
     // Destination nodes for routing
     private Dictionary<string, int> _destinationNodeMap = new();
@@ -276,6 +277,7 @@ public class TaxiAssistForm : Form
             AccessibleDescription = "Select the first taxiway to follow, sorted by distance. Select None to calculate the shortest path automatically."
         };
         cmbFirstTaxiway.SelectedIndexChanged += OnFirstTaxiwayChanged;
+        cmbFirstTaxiway.SelectionChangeCommitted += (s, e) => _taxiwaySelectionExplicit = true;
 
         chkFirstHoldShort = new CheckBox
         {
@@ -498,6 +500,7 @@ public class TaxiAssistForm : Form
         // from the previous airport if the new one fails to load below.
         cmbFirstTaxiway.Items.Clear();
         ClearAllAdditionalTaxiways();
+        _taxiwaySelectionExplicit = false;
         _airportRunwayIds = new List<string>();
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
 
@@ -820,6 +823,8 @@ public class TaxiAssistForm : Form
         {
             cmbFirstTaxiway.SelectedIndex = 0;
         }
+
+        _taxiwaySelectionExplicit = false;
     }
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
@@ -858,6 +863,8 @@ public class TaxiAssistForm : Form
 
         if (string.IsNullOrEmpty(previousTaxiway) || previousTaxiway.StartsWith("(None"))
             return;
+
+        _taxiwaySelectionExplicit = true;
 
         // Get heuristically-connected taxiways (within 2 named-taxiway crossings).
         // The dropdown then lists ALL airport taxiways: connected ones first
@@ -981,6 +988,7 @@ public class TaxiAssistForm : Form
 
         int capturedIndex = index;
         combo.SelectedIndexChanged += (s, ev) => OnAdditionalTaxiwayChanged(capturedIndex);
+        combo.SelectionChangeCommitted += (s, ev) => _taxiwaySelectionExplicit = true;
 
         var holdShortChk = new CheckBox
         {
@@ -1385,6 +1393,20 @@ public class TaxiAssistForm : Form
             thresholdLon = threshold.lon;
         }
         bool isRunwayDest = cmbDestType.SelectedIndex == 0;
+
+        if (isRunwayDest && _taxiwaySelectionExplicit && taxiwaySequence.Count > 0)
+        {
+            var intersectionNode = FindRunwayIntersectionDestinationNode(
+                taxiwaySequence[^1], destNodeId, thresholdLat, thresholdLon);
+            if (intersectionNode != null)
+            {
+                destNodeId = intersectionNode.NodeId;
+                destName = $"{destName} at taxiway {taxiwaySequence[^1]}";
+                thresholdLat = intersectionNode.Latitude;
+                thresholdLon = intersectionNode.Longitude;
+            }
+        }
+
         string? error = _guidanceManager.LoadRoute(
             _dataProvider, _currentIcao,
             _aircraftLat, _aircraftLon, _aircraftHeading,
@@ -1421,6 +1443,43 @@ public class TaxiAssistForm : Form
         // guidance is active. They close it manually with Escape / window-X
         // or by switching focus elsewhere; Stop Guidance button is also
         // available without re-opening.
+    }
+
+    private TaxiNode? FindRunwayIntersectionDestinationNode(
+        string finalTaxiwayName,
+        int runwayDestinationNodeId,
+        double? runwayLineupLat,
+        double? runwayLineupLon)
+    {
+        if (_graph == null || string.IsNullOrWhiteSpace(finalTaxiwayName))
+            return null;
+
+        if (!_graph.Nodes.TryGetValue(runwayDestinationNodeId, out var runwayNode))
+            return null;
+
+        double targetLat = runwayLineupLat ?? runwayNode.Latitude;
+        double targetLon = runwayLineupLon ?? runwayNode.Longitude;
+        int requiredComponentId = runwayNode.ComponentId;
+
+        TaxiNode? best = null;
+        double bestDist = double.MaxValue;
+        foreach (var node in _graph.Nodes.Values)
+        {
+            if (node.ComponentId != requiredComponentId)
+                continue;
+            if (!node.TaxiwayNames.Contains(finalTaxiwayName))
+                continue;
+
+            double dist = TaxiGraph.CalculateDistanceMeters(
+                node.Latitude, node.Longitude, targetLat, targetLon);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = node;
+            }
+        }
+
+        return best;
     }
 
     private void CheckGateOccupancy(bool isRunwayDest, double? gateLat, double? gateLon)

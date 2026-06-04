@@ -4209,13 +4209,11 @@ public class TaxiGuidanceManager : IDisposable
                 if (_isRunwayLineup && !_autoActivateFired)
                 {
                     _autoActivateFired = true;
-                    // Strip "Runway " prefix from _destinationName so the
-                    // event payload's RunwayId is just the designator,
-                    // matching what TakeoffAssistManager.SetRunwayReference
-                    // expects (e.g. "27L", not "Runway 27L").
-                    string rwyId = _destinationName ?? "";
-                    if (rwyId.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
-                        rwyId = rwyId.Substring(7).Trim();
+                    // Strip display-only route text so the event payload's
+                    // RunwayId is just the designator, matching what
+                    // TakeoffAssistManager.SetRunwayReference expects (e.g.
+                    // "27L", not "Runway 27L" or "27L at taxiway A5").
+                    string rwyId = ExtractRunwayIdFromDestinationName(_destinationName);
                     RequestTakeoffAssistAutoActivate?.Invoke(this,
                         new TakeoffAssistAutoActivateEventArgs
                         {
@@ -4290,6 +4288,19 @@ public class TaxiGuidanceManager : IDisposable
                 _steeringTone.Resume();
             }
         }
+    }
+
+    private static string ExtractRunwayIdFromDestinationName(string? destinationName)
+    {
+        string runwayId = destinationName ?? "";
+        if (runwayId.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
+            runwayId = runwayId.Substring(7).Trim();
+
+        int intersectionSuffix = runwayId.IndexOf(" at taxiway ", StringComparison.OrdinalIgnoreCase);
+        if (intersectionSuffix >= 0)
+            runwayId = runwayId.Substring(0, intersectionSuffix).Trim();
+
+        return runwayId;
     }
 
     /// <summary>
