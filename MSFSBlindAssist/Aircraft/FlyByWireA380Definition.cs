@@ -560,30 +560,44 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.OnRequest,
             RenderAsSlider = true, SliderMin = min, SliderMax = max
         };
-        // Crew SEAT axes are a START/STOP MOTOR control, NOT a position slider. The seat motor
-        // SOUND is a Wwise Continuous loop driven by the DERIVATIVE of the position L:var (sound.xml
-        // RTPC Derived="true"), so it only plays while the var is actively CHANGING per frame.
-        // Ramping the position in big 3-unit jumps every 40 ms left flat gaps where the per-frame
-        // derivative was zero -> a single "tick" instead of a sustained motor. Each axis is instead a
-        // 3-state combo (Stopped / one way / the other); selecting a direction starts a fast,
-        // small-increment drive (HandleUIVariableSet -> StartOrStopSeatMotor) so the var changes every
-        // frame and the motor runs + sounds for as long as you like; "Stopped" halts it. Synthetic
-        // "<posVar>_MOTOR" key (OnRequest, no real L:var) — like the Act()/_DETENT combos.
-        void SeatMotor(string posVar, string display, string dirA, string dirB) => vars[posVar + "_MOTOR"] = new SimVarDefinition
+        // Crew SEAT axes are a START/STOP MOTOR, driven by TOGGLE BUTTONS (one per direction:
+        // up / down / forward / aft, per pilot). PRESS to start moving that way, press AGAIN to
+        // stop (and hear the position); pressing the opposite direction reverses. The seat motor
+        // SOUND is a Wwise Continuous loop keyed to the DERIVATIVE of the position L:var, so it
+        // only sustains while the var is actively changing — the motor drive (SeatMotorTick) writes
+        // a UNIQUE clamped read-modify-write each 20 ms tick (anti MobiFlight-dedup). Buttons (not a
+        // synthetic combo) avoid the combo's periodic read-back snapping to "Stopped" and re-firing
+        // — which caused the start/stop/start + spurious position read-out. Synthetic SEATBTN_* keys
+        // (OnRequest, RenderAsButton) -> ToggleSeatMotor in HandleUIVariableSet.
+        void SeatBtn(string key, string display) => vars[key] = new SimVarDefinition
         {
-            Name = posVar + "_MOTOR", DisplayName = display, Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Stopped", [1] = dirA, [2] = dirB }
+            Name = key, DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, RenderAsButton = true
+        };
+        // The real 0..100 position vars, registered read-only so the motor can seed its tracked
+        // position from a fresh cache (force-read on start/stop) for an accurate spoken read-out.
+        void SeatPos(string key, string display) => vars[key] = new SimVarDefinition
+        {
+            Name = key, DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false
         };
         Slider("SUNSHADE_FWD_LH", "Forward sunshade left");
         Slider("SUNSHADE_FWD_CTR", "Forward sunshade centre");
         Slider("SUNSHADE_FWD_RH", "Forward sunshade right");
         Slider("AFT_LH_SUNSHADE_OPENING", "Aft sunshade left");
         Slider("AFT_RH_SUNSHADE_OPENING", "Aft sunshade right");
-        SeatMotor("SEAT_CPT_MOVE_UP_DOWN", "Captain seat up/down", "Up", "Down");
-        SeatMotor("SEAT_CPT_MOVE_FWD_AFT", "Captain seat forward/aft", "Forward", "Aft");
-        SeatMotor("SEAT_FO_MOVE_UP_DOWN", "First officer seat up/down", "Up", "Down");
-        SeatMotor("SEAT_FO_MOVE_FWD_AFT", "First officer seat forward/aft", "Forward", "Aft");
+        SeatBtn("SEATBTN_CPT_UP", "Captain seat up");
+        SeatBtn("SEATBTN_CPT_DOWN", "Captain seat down");
+        SeatBtn("SEATBTN_CPT_FWD", "Captain seat forward");
+        SeatBtn("SEATBTN_CPT_AFT", "Captain seat aft");
+        SeatBtn("SEATBTN_FO_UP", "First officer seat up");
+        SeatBtn("SEATBTN_FO_DOWN", "First officer seat down");
+        SeatBtn("SEATBTN_FO_FWD", "First officer seat forward");
+        SeatBtn("SEATBTN_FO_AFT", "First officer seat aft");
+        SeatPos("SEAT_CPT_MOVE_UP_DOWN", "Captain seat up/down position");
+        SeatPos("SEAT_CPT_MOVE_FWD_AFT", "Captain seat forward/aft position");
+        SeatPos("SEAT_FO_MOVE_UP_DOWN", "First officer seat up/down position");
+        SeatPos("SEAT_FO_MOVE_FWD_AFT", "First officer seat forward/aft position");
         // Armrests (big = up/down + tilt; small = fwd) + forward windshield visors — all 0..100
         // drag axes, live-verified writable (held at 40/50).
         Slider("BIGARMREST_CPT_UP_DOWN", "Captain armrest up/down");
@@ -2574,9 +2588,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
             "A380_LGPIN_DOOR",
-            // ---- Crew seats (start/stop motor combos) + armrests (drag sliders) ----
-            "SEAT_CPT_MOVE_UP_DOWN_MOTOR", "SEAT_CPT_MOVE_FWD_AFT_MOTOR",
-            "SEAT_FO_MOVE_UP_DOWN_MOTOR", "SEAT_FO_MOVE_FWD_AFT_MOTOR",
+            // ---- Crew seats (start/stop motor toggle BUTTONS + position read-outs) + armrests ----
+            "SEATBTN_CPT_UP", "SEATBTN_CPT_DOWN", "SEATBTN_CPT_FWD", "SEATBTN_CPT_AFT",
+            "SEAT_CPT_MOVE_UP_DOWN", "SEAT_CPT_MOVE_FWD_AFT",
+            "SEATBTN_FO_UP", "SEATBTN_FO_DOWN", "SEATBTN_FO_FWD", "SEATBTN_FO_AFT",
+            "SEAT_FO_MOVE_UP_DOWN", "SEAT_FO_MOVE_FWD_AFT",
             "BIGARMREST_CPT_UP_DOWN", "BIGARMREST_CPT_TILT", "SMALLARMREST_CPT_FWD",
             "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD"
         };
@@ -3880,12 +3896,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        // Crew SEAT motor (Stopped / dir A / dir B) — START/STOP, not a position target. See the
-        // SeatMotor helper: the motor SOUND needs the position L:var to change every frame, so we
-        // run a fast small-increment drive while a direction is selected and halt on "Stopped".
-        if (varKey.EndsWith("_MOTOR", System.StringComparison.Ordinal))
+        // Crew SEAT toggle button (up/down/fwd/aft per pilot): press to start moving that way,
+        // press again to stop (+ speak the position); opposite direction reverses. value>0.5 is the
+        // press edge (RenderAsButton click sends 1); ignore anything else.
+        if (_seatButtonMap.TryGetValue(varKey, out var seatBtn) && value > 0.5)
         {
-            StartOrStopSeatMotor(varKey.Substring(0, varKey.Length - 6), (int)System.Math.Round(value), simConnect, announcer);
+            ToggleSeatMotor(seatBtn.PosVar, seatBtn.Dir, simConnect, announcer);
             return true;
         }
         // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
@@ -4463,6 +4479,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Crew-seat position read-outs: show a spoken-style band + percent, not a raw "50".
+        if (_seatMotorMeta.TryGetValue(varKey, out var sm))
+        {
+            displayText = $"{SeatBand(value, sm.Hi, sm.Lo)}, {(int)Math.Round(value)} percent";
+            return true;
+        }
         // Doors: passenger = INTERACTIVE POINT OPEN 0..1 fraction (Open / Closed / mid-animation
         // %); cargo = inverted LOCKED L:var. Render cleanly instead of a raw "0.6" / "1".
         if (varKey.StartsWith("A380X_MSFSBA_DOOR_", StringComparison.Ordinal))
@@ -6103,25 +6125,41 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["SEAT_FO_MOVE_FWD_AFT"] = ("First officer seat forward and aft", "forward", "aft"),
     };
 
-    private void StartOrStopSeatMotor(string posVar, int dir, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    // The 8 toggle buttons -> (position L:var, direction +1 toward 100 / -1 toward 0).
+    private static readonly Dictionary<string, (string PosVar, int Dir)> _seatButtonMap = new()
+    {
+        ["SEATBTN_CPT_UP"]   = ("SEAT_CPT_MOVE_UP_DOWN", +1),
+        ["SEATBTN_CPT_DOWN"] = ("SEAT_CPT_MOVE_UP_DOWN", -1),
+        ["SEATBTN_CPT_FWD"]  = ("SEAT_CPT_MOVE_FWD_AFT", +1),
+        ["SEATBTN_CPT_AFT"]  = ("SEAT_CPT_MOVE_FWD_AFT", -1),
+        ["SEATBTN_FO_UP"]    = ("SEAT_FO_MOVE_UP_DOWN", +1),
+        ["SEATBTN_FO_DOWN"]  = ("SEAT_FO_MOVE_UP_DOWN", -1),
+        ["SEATBTN_FO_FWD"]   = ("SEAT_FO_MOVE_FWD_AFT", +1),
+        ["SEATBTN_FO_AFT"]   = ("SEAT_FO_MOVE_FWD_AFT", -1),
+    };
+
+    // Toggle button: press a direction -> if already moving that way, STOP (+ speak position);
+    // otherwise start moving that way (reversing if it was going the other way). No combo re-read,
+    // so no start/stop/start and no spurious read-out.
+    private void ToggleSeatMotor(string posVar, int dir, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         _seatMotorSim = simConnect;
         _seatMotorAnnouncer = announcer;
-        if (dir == 1 || dir == 2)
+        if (_seatMotorDir.TryGetValue(posVar, out var cur) && cur == dir)
         {
-            // Seed the approximate tracked position (used ONLY for the spoken "where is the seat"
-            // read-out) from the live var on a fresh start. The actual MOVEMENT reads the live value
-            // each tick (read-modify-write), so this seed never affects the seat itself.
-            if (!_seatMotorDir.ContainsKey(posVar))
-                _seatMotorPos[posVar] = Math.Max(0.0, Math.Min(100.0,
-                    simConnect.GetCachedVariableValue(posVar) ?? (_seatMotorPos.TryGetValue(posVar, out var lp) ? lp : 50.0)));
-            _seatMotorDir[posVar] = dir == 1 ? +1 : -1;
-        }
-        else if (_seatMotorDir.Remove(posVar))   // 0 = Stopped: halt this axis + say where it ended up
-        {
+            // pressing the SAME direction again -> stop this axis + say where it ended up
+            _seatMotorDir.Remove(posVar);
             AnnounceSeatPosition(posVar);
+            simConnect.RequestVariable(posVar, forceUpdate: true);   // refresh cache for the read-out + next seed
+            if (_seatMotorDir.Count == 0) _seatMotorTimer?.Stop();
+            return;
         }
-        if (_seatMotorDir.Count == 0) { _seatMotorTimer?.Stop(); return; }
+        // start (or reverse) -> seed the tracked position from the live var on a fresh start
+        // (movement itself reads the live value each tick, so the seed only feeds the spoken read-out)
+        if (!_seatMotorDir.ContainsKey(posVar))
+            _seatMotorPos[posVar] = Math.Max(0.0, Math.Min(100.0,
+                simConnect.GetCachedVariableValue(posVar) ?? (_seatMotorPos.TryGetValue(posVar, out var lp) ? lp : 50.0)));
+        _seatMotorDir[posVar] = dir;
         _seatMotorTicks = 0;
         if (_seatMotorTimer == null)
         {
