@@ -1722,17 +1722,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Right Landing Light Retracted",
             Type = SimConnect.SimVarType.Event
         },
+        // "All Landing Lights" action buttons. RenderAsButton routes the click through
+        // HandleUIVariableSet (NOT the stock LANDING_LIGHTS_ON/OFF events these used to fire —
+        // those bypass the FBW switch and desync the LDG LT memo, per FBW issues #1507/#1528).
+        // On = both LAND lights extend + illuminate; Off = both RETRACT (stows them, clears
+        // LDG LT). Nose light is left independent. See HandleUIVariableSet.
         ["LANDING_LIGHTS_ON_THIRD_PARTY"] = new SimConnect.SimVarDefinition
         {
             Name = "LANDING_LIGHTS_ON",
-            DisplayName = "All landing lights on for third party programs",
-            Type = SimConnect.SimVarType.Event
+            DisplayName = "All Landing Lights On",
+            Type = SimConnect.SimVarType.Event,
+            RenderAsButton = true
         },
         ["LANDING_LIGHTS_OFF_THIRD_PARTY"] = new SimConnect.SimVarDefinition
         {
             Name = "LANDING_LIGHTS_OFF",
-            DisplayName = "All landing lights off for third party programs",
-            Type = SimConnect.SimVarType.Event
+            DisplayName = "All Landing Lights Off (Retract)",
+            Type = SimConnect.SimVarType.Event,
+            RenderAsButton = true
         },
 
         // PEDESTAL SECTION - Other panels
@@ -7170,6 +7177,28 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             int axis = Math.Max(0, Math.Min(16383, (int)Math.Round(value)));
             simConnect.ExecuteCalculatorCode($"{axis} (>K:SPOILERS_SET)");
+            return true;
+        }
+
+        // "All Landing Lights" buttons (RenderAsButton, Exterior Lighting panel). Drive the
+        // FBW switch L:vars directly — the SAME calls as the per-light Left/Right Landing Light
+        // combos (MainForm lighting block) — so the LDG LT memo stays in sync. The old wiring
+        // fired the stock LANDING_LIGHTS_ON/OFF events, which bypass the FBW switch and desync
+        // the memo (FBW issues #1507/#1528). On = 0 (extend + illuminate); Off = 2 (RETRACT —
+        // stows the lights and clears LDG LT). Nose light (LIGHTING_LANDING_1) stays independent.
+        if (varKey == "LANDING_LIGHTS_ON_THIRD_PARTY" || varKey == "LANDING_LIGHTS_OFF_THIRD_PARTY")
+        {
+            if (value > 0.5)
+            {
+                bool on = varKey == "LANDING_LIGHTS_ON_THIRD_PARTY";
+                int pos = on ? 0 : 2;     // LIGHTING_LANDING_x: 0 = On, 2 = Retract
+                int retr = on ? 0 : 1;    // LANDING_x_RETRACTED: 1 = retracted
+                simConnect.SetLVar("LIGHTING_LANDING_2", pos);
+                simConnect.SetLVar("LANDING_2_RETRACTED", retr);
+                simConnect.SetLVar("LIGHTING_LANDING_3", pos);
+                simConnect.SetLVar("LANDING_3_RETRACTED", retr);
+                announcer.Announce(on ? "All landing lights on" : "All landing lights retracted");
+            }
             return true;
         }
 

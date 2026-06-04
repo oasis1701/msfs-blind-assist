@@ -5438,7 +5438,10 @@ public partial class MainForm : Form
                                     ? currentSimVarValues["CIRCUIT_SWITCH_ON:22"] : -1;
                                 bool wantOn = selectedValue == 1;
                                 bool isOn = currentState == 1;
-                                if (wantOn != isOn)
+                                // When state is unknown (cache miss on first open), always send toggle
+                                // (matches the :21 left-light branch — fixes the asymmetry where
+                                // "Right RWY off" no-opped on first open before the cache populated).
+                                if (currentState < 0 || wantOn != isOn)
                                     simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 22);
                             }
                         }
