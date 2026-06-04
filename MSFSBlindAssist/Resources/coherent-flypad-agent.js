@@ -574,6 +574,68 @@
     return A.hasClassToken(n, "bg-theme-accent");
   };
 
+  // Precise door identity from the tile's click handler, MATCHING MSFSBA's own door
+  // names (its `_doorDefs` table — which is also what the read-only door-state
+  // announcements speak). FBW labels several distinct doors with the SAME tile text
+  // ("Door Fwd"/"Door Aft"), and its flyPad enum DIGIT is unreliable — e.g. the A380
+  // `Main4Right` controls INTERACTIVE POINT OPEN:9, which the FBW MODEL itself names
+  // "M5R" and the EWD calls "MAIN 5R", i.e. MSFSBA's "Main Door 5 Right" — NOT "Main 4".
+  // So we don't trust FBW's digit: we parse the enum NAME from the handler comment
+  // (`() => handleButtonClick(N /* Main4Right */)`) and look it up in a fixed map to the
+  // app's authoritative name, keeping the flyPad label consistent with the announcement.
+  // GUARDED: an unknown/renamed enum, a minified build (no comment), or a Cargo handler
+  // all return "" so the caller falls back to the column-based Left/Right — never a
+  // wrong label. Keep this map in sync with FlyByWire{A320,A380}Definition._doorDefs.
+  A.DOOR_NAMES = {
+    // A320 (FBW enum -> INTERACTIVE POINT -> MSFSBA name): pt 0/1/2/3
+    cabinleftdoor: "Forward Left Door", cabinrightdoor: "Forward Right Door",
+    aftleftdoor: "Aft Left Door", aftrightdoor: "Aft Right Door",
+    // A380: Main1Left=pt0, Main2Left=pt2, Main4Right=pt9 (the model's M5R), Upper1Left=pt10
+    main1left: "Main Door 1 Left", main2left: "Main Door 2 Left",
+    main4right: "Main Door 5 Right", upper1left: "Upper Door 1 Left"
+  };
+  A.doorIdentity = function (n) {
+    function srcsOf(el) {
+      var out = [];
+      try { if (typeof el.onclick === "function") out.push("" + el.onclick); } catch (e) {}
+      try {
+        var ks = Object.keys(el);
+        for (var k = 0; k < ks.length; k++) {
+          if (ks[k].indexOf("__reactProps") === 0) {
+            var p = el[ks[k]];
+            if (p && typeof p.onClick === "function") out.push("" + p.onClick);
+          }
+        }
+      } catch (e2) {}
+      return out;
+    }
+    var srcs = [], cur = n, g = 0;
+    while (cur && g < 4) { srcs = srcs.concat(srcsOf(cur)); cur = cur.parentElement; g++; }
+    // The React handler (which carries the enum-name comment) may sit on the stamped
+    // node, an ancestor, OR an inner descendant — the agent doesn't always stamp the
+    // exact clickable div (e.g. the A380's first forward door stamps an outer wrapper
+    // whose DOM onclick has no comment, while a child holds the React onClick). Scan
+    // the tile subtree too. Each door tile is its own small subtree, so this can't pick
+    // up a neighbouring door's handler.
+    try { var kids = n.getElementsByTagName("*"); for (var d = 0; d < kids.length && d < 50; d++) srcs = srcs.concat(srcsOf(kids[d])); } catch (e3) {}
+    for (var i = 0; i < srcs.length; i++) {
+      var m = /\/\*\s*([A-Za-z0-9]+)\s*\*\//.exec(srcs[i]);
+      if (m) {
+        var nm = A.DOOR_NAMES[m[1].toLowerCase()];
+        if (nm) { try { n.setAttribute("data-fbw-door", nm); } catch (e4) {} return nm; }
+      }
+    }
+    // The handler (and its enum comment) is REMOVED when the door button is disabled
+    // — FBW sets onClick=undefined while an attached service (jet bridge, stairs)
+    // controls that door, so the identity is state-dependent. We stamped the resolved
+    // name on the node the first time it WAS parseable (door inactive); reuse that
+    // cache so the label stays stable across the door's state changes. The cache is
+    // NOT cleared by the per-scrape stale sweep, and the door tile's DOM node persists
+    // across React re-renders, so it survives.
+    try { var cached = n.getAttribute("data-fbw-door"); if (cached) return cached; } catch (e5) {}
+    return "";
+  };
+
   // Read-only ground-equipment status indicator (Wheel Chocks / Safety Cones).
   // FBW renders these as a cursor-pointer <div> with NO click handler whose TEXT
   // color encodes state: text-green-500 = placed/present, text-gray-500 = not
@@ -1247,14 +1309,18 @@
       // requires an unselected (bg-theme-accent) sibling to disambiguate.
       if (text && A.isSelectedSegment(n)) text = text + " (selected)";
 
-      // Distinguish the duplicated passenger door tiles by aircraft side: FBW labels
-      // BOTH the left and right Cabin/Aft doors "Door Fwd"/"Door Aft". The screen
-      // LEFT column is the aircraft's LEFT side (the xr-anchored wrapper holds
-      // CabinLeftDoor / interactive point 0). Cargo Door is unique — left alone. The
-      // side goes BEFORE the (active)/(called) suffix so the focus-stable key strip
-      // (which trims the trailing state marker) still works.
+      // Distinguish the duplicated passenger door tiles: FBW labels several distinct
+      // doors "Door Fwd"/"Door Aft". Prefer the PRECISE identity parsed from the tile's
+      // click handler (Door Forward Left / Door Main 2 Left / Door Upper 1 Left / Door
+      // Aft Right) — guarded so it can only return a known door or nothing. If the
+      // handler isn't parseable (minified build), fall back to the robust column-based
+      // side: the screen LEFT column is the aircraft's LEFT side (the xr-anchored
+      // wrapper holds CabinLeftDoor / Main1Left = interactive point 0). Cargo Door is
+      // unique — left alone. Done BEFORE the (active)/(called) suffix so the focus-
+      // stable key strip (which trims the trailing state marker) still works.
       if (text && kind === "button" && /\bdoor\b/i.test(text) && !/cargo/i.test(text)) {
-        text = text + (leftRel < rootRect.width * 0.5 ? " Left" : " Right");
+        var did = A.doorIdentity(n);   // MSFSBA-matching full name, or "" -> column fallback
+        text = did ? did : text + (leftRel < rootRect.width * 0.5 ? " Left" : " Right");
       }
 
       // Ground-service tiles: append the connected/called state (see A.serviceState).
