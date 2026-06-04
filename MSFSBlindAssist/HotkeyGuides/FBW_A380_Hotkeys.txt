@@ -142,17 +142,21 @@ INSIDE THE MCDU / MFD WINDOW
   Up / Down  Move through lines
   Enter      Activate the line (send scratchpad to field; open a combo box)
   (type)     Type into the scratchpad, then Enter
-  Backspace  CLR (scratchpad first, then the selected field)
+  Backspace  CLR (scratchpad first, then a displayed info/error message, then field)
+  Alt+C      CLR (same as Backspace)
   Delete     Clear the selected field
   Ctrl+Up    Previous page (PageUp also)
   Ctrl+Down  Next page (PageDown also; scrolls the F-PLN window)
   F5         Refresh
 
   Page buttons (Alt+letter)
-  Alt+I  INIT     Alt+F  F-PLN    Alt+P  PERF
-  Alt+R  RAD NAV  Alt+S  SEC FPL  Alt+A  ATC COM
-  Alt+D  DIR      Alt+H  Refresh
-  Alt+U  Toggle weight units (kilograms / pounds) for MSFSBA read-outs
+  Alt+I  INIT     Alt+F  F-PLN    Alt+P  PERF      Alt+L  FUEL & LOAD
+  Alt+R  RAD NAV  Alt+S  SEC FPL  Alt+D  DIR
+  Alt+A  ATC COM  Alt+V  SURV     Alt+C  CLR       Alt+H  Refresh
+  Alt+N  Toggle weight units (kilograms / pounds) for MSFSBA read-outs
+  (No UP/DOWN buttons — page stepping is Ctrl+Up/Down or PageUp/PageDown.)
+  The "go to MFD page" combo reaches ALL pages; arrow to one and it navigates
+  once your selection settles.
 
 
 INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)

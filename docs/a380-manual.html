@@ -151,7 +151,7 @@
 <tr><td>Up / Down arrow</td><td>Move through the lines.</td></tr>
 <tr><td>Enter</td><td>Activate the selected line. If you typed something into the scratchpad first, that text is sent to the selected field. On a combo box, opens it.</td></tr>
 <tr><td>(type)</td><td>Type into the scratchpad edit box, then Enter to send it to the selected field.</td></tr>
-<tr><td>Backspace</td><td>CLR — clears the scratchpad first; if it is already empty, clears the selected field.</td></tr>
+<tr><td>Backspace, or <kbd>Alt</kbd>+<kbd>C</kbd></td><td>CLR — like a real Airbus CLR: clears the scratchpad first; if it is empty, dismisses any displayed info/error message (the MFD's "CLEAR INFO", announced "Info cleared"); otherwise clears the selected field.</td></tr>
 <tr><td>Delete</td><td>Clear the selected field on the MFD.</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Up</kbd> or <kbd>PageUp</kbd></td><td>Previous page (announces "Previous page").</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Down</kbd> or <kbd>PageDown</kbd></td><td>Next page (announces "Next page"). Within a long page like F-PLN, this also scrolls the waypoint window.</td></tr>
@@ -161,8 +161,8 @@
 
 <h3 id="pagenav">Moving between pages — three ways</h3>
 <ol>
-  <li><strong>The "go to MFD page" combo</strong> at the top lists all 20 pages, grouped by tab: ACTIVE (F-PLN / PERF / FUEL &amp; LOAD / WIND / INIT); POSITION (MONITOR / REPORT / NAVAIDS / IRS / GNSS / TIME); SEC INDEX (SEC 1–3); DATA (STATUS / WAYPOINT / NAVAID / ROUTE / AIRPORT / PRINTER).</li>
-  <li><strong>Quick page buttons</strong> (Alt+letter): <kbd>Alt</kbd>+<kbd>I</kbd> INIT, <kbd>Alt</kbd>+<kbd>F</kbd> F-PLN, <kbd>Alt</kbd>+<kbd>P</kbd> PERF, <kbd>Alt</kbd>+<kbd>R</kbd> RAD NAV, <kbd>Alt</kbd>+<kbd>S</kbd> SEC FPL, <kbd>Alt</kbd>+<kbd>A</kbd> ATC COM, <kbd>Alt</kbd>+<kbd>D</kbd> DIR, <kbd>Alt</kbd>+<kbd>H</kbd> Refresh.</li>
+  <li><strong>The "go to MFD page" combo</strong> at the top reaches every page (ACTIVE F-PLN / PERF / FUEL &amp; LOAD / WIND / INIT; POSITION MONITOR / REPORT / NAVAIDS / IRS / GNSS / TIME; SEC INDEX SEC 1–3; DATA STATUS / WAYPOINT / NAVAID / ROUTE / AIRPORT / PRINTER; ATC COM; SURV). Arrow to a page and it navigates once your selection settles (so passing over pages on the way doesn't load each one).</li>
+  <li><strong>Quick page buttons</strong> (Alt+letter): <kbd>Alt</kbd>+<kbd>I</kbd> INIT, <kbd>Alt</kbd>+<kbd>F</kbd> F-PLN, <kbd>Alt</kbd>+<kbd>P</kbd> PERF, <kbd>Alt</kbd>+<kbd>L</kbd> FUEL &amp; LOAD, <kbd>Alt</kbd>+<kbd>R</kbd> RAD NAV, <kbd>Alt</kbd>+<kbd>S</kbd> SEC FPL, <kbd>Alt</kbd>+<kbd>D</kbd> DIR, <kbd>Alt</kbd>+<kbd>A</kbd> ATC COM, <kbd>Alt</kbd>+<kbd>V</kbd> SURV, <kbd>Alt</kbd>+<kbd>H</kbd> Refresh. (Page stepping is on Ctrl+Up/Down and PageUp/PageDown — there are no separate UP/DOWN buttons.)</li>
   <li>The MFD's own in-page tabs, which appear in the line list.</li>
 </ol>
 <p>Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS has the data they need — that is real aircraft behaviour; they read "disabled" until then.</p>
@@ -484,7 +484,7 @@
 </table>
 
 <h3>Inside the MCDU window</h3>
-<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace, Delete, Ctrl+Up/Down, F5) and the <a href="#pagenav">Alt+letter page buttons</a> (INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM, DIR, Refresh). <kbd>Alt</kbd>+<kbd>U</kbd> toggles MSFSBA's weight units (kilograms / pounds) for its own readouts.</p>
+<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace/Alt+C, Delete, Ctrl+Up/Down, F5) and the <a href="#pagenav">Alt+letter page buttons</a> (INIT, F-PLN, PERF, FUEL &amp; LOAD, RAD NAV, SEC FPL, DIR, ATC COM, SURV, Refresh). <kbd>Alt</kbd>+<kbd>N</kbd> toggles MSFSBA's weight units (kilograms / pounds) for its own readouts.</p>
 
 <!-- ===================================================================== -->
 <h2 id="part14">14. FlyByWire A380X feature status and limitations</h2>
