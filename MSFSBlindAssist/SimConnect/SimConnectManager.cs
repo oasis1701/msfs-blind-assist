@@ -26,7 +26,14 @@ public class SimConnectManager
     // during aircraft switches/disconnect) can dispatch a queued WM_USER_SIMCONNECT and
     // re-enter ReceiveMessage() in the middle of one already in flight. This flag blocks
     // that; the skipped message stays queued and is drained on the next non-nested pump.
-    private bool _inReceiveMessage;
+    //
+    // SHARED (static) across BOTH SimConnect connections — the main one AND the always-on
+    // GsxService connection (MSFSBA_GSX). All dispatch happens on the UI thread (WndProc /
+    // DoEvents pumps), so a plain flag is sufficient. Making it shared is the key fix: a
+    // DoEvents pump during one connection's ReceiveMessage could otherwise dispatch the
+    // OTHER connection's WM_USER and interleave the two marshalling passes — the same
+    // corruption, just across connections. While EITHER is dispatching, the other defers.
+    internal static bool SimConnectDispatchInProgress;
 
     // Events
     public event EventHandler<string>? ConnectionStatusChanged;
@@ -3986,8 +3993,8 @@ public class SimConnectManager
             // pump can land us back here while an outer ReceiveMessage() is still on the stack;
             // skipping leaves the data queued for the next clean pump rather than corrupting the
             // marshalling buffer.
-            if (_inReceiveMessage) return;
-            _inReceiveMessage = true;
+            if (SimConnectDispatchInProgress) return;
+            SimConnectDispatchInProgress = true;
             try
             {
                 simConnect.ReceiveMessage();
@@ -4009,7 +4016,7 @@ public class SimConnectManager
             }
             finally
             {
-                _inReceiveMessage = false;
+                SimConnectDispatchInProgress = false;
             }
         }
     }

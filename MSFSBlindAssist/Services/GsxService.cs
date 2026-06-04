@@ -216,6 +216,14 @@ public sealed class GsxService : IDisposable
     {
         if (m.Msg == WM_USER_GSX_SIMCONNECT && _simConnect != null)
         {
+            // Shared re-entrancy gate with the main SimConnect connection. The managed
+            // SimConnect ReceiveMessage() is not reentrant; a DoEvents() pump (during a main
+            // connection's data-def wait) can dispatch THIS GSX message mid-marshalling, which
+            // corrupts the buffer (0xC0000005 in coreclr.dll / ExecutionEngineException). While
+            // either connection is dispatching, defer — the message stays queued for the next
+            // clean pump. All dispatch is on the UI thread, so a plain flag is enough.
+            if (MSFSBlindAssist.SimConnect.SimConnectManager.SimConnectDispatchInProgress) return;
+            MSFSBlindAssist.SimConnect.SimConnectManager.SimConnectDispatchInProgress = true;
             try
             {
                 _simConnect.ReceiveMessage();
@@ -234,6 +242,10 @@ public sealed class GsxService : IDisposable
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[GsxService] Unexpected exception in ProcessWindowMessage: {ex}");
+            }
+            finally
+            {
+                MSFSBlindAssist.SimConnect.SimConnectManager.SimConnectDispatchInProgress = false;
             }
         }
     }
