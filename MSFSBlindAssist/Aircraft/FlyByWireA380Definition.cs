@@ -1774,10 +1774,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_FMA_EXPEDITE_MODE", "Expedite", onOff);
 
         // ---- EFIS Control Panel: flight director + baro (per side) ----
-        // FD toggle event removed — non-functional on this A380X build (the sim
-        // recomputes the L-var every tick; see the note in BuildPanelControls).
-        // FD_ACTIVE is kept as a read-only STATUS so the pilot can still tell
-        // whether the flight director is on.
+        // FD IS controllable after all: the per-side engage L:vars A32NX_FCU_EFIS_L/R_FD_ACTIVE
+        // are settable via the calculator path and STICK (live-verified again 2026-06: writing 1
+        // held for 2 s+, restored to 0). They are exposed as the "Flight Director 1/2" combos
+        // (registered above via OnOff). The earlier "FD toggle event removed / non-functional"
+        // conclusion was about the STOCK TOGGLE_FLIGHT_DIRECTOR event + the data-def write path,
+        // which don't work — the FBW L:var calc-path write does. FD_ACTIVE below is the stock
+        // COMBINED FD state, kept as an additional read-only status readout.
         Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
         // (Legacy XMLVAR_BaroN_Mode combos are DEAD on the A380X — verified live
         //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
@@ -1901,7 +1904,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ISIS standby instrument. LS is a settable toggle (shows the ILS scales on the
         // standby instrument) — promoted from readout to control (live-verified writable).
         OnOff("A32NX_ISIS_LS_ACTIVE", "ISIS LS");
-        ReadEnum("A32NX_ISIS_BUGS_ACTIVE", "ISIS Bugs Page", onOff);
+        // Quiet (ReadEnumQuiet, NOT ReadEnum): this flag toggles rapidly with the ISIS bugs page
+        // and must not auto-announce. It is registered earlier too (~line 1043) as ReadEnumQuiet;
+        // this is the winning registration (last write wins), so it MUST stay quiet or the chatter
+        // the earlier ReadEnumQuiet exists to prevent comes back.
+        ReadEnumQuiet("A32NX_ISIS_BUGS_ACTIVE", "ISIS Bugs Page", onOff);
         Sel("A32NX_ISIS_BARO_MODE", "ISIS Baro Mode", new Dictionary<double, string> { [0] = "Set", [1] = "Standard" });
         OnOff("A32NX_ISIS_BARO_UNIT_INHG", "ISIS Baro in inHg");
 
@@ -4034,16 +4041,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // rain repellent): pulse the L:var 1→0 so the sim registers the press edge
         // rather than leaving it latched on. ~250 ms is long enough for the FWS /
         // systems to act on the rising edge, then it auto-releases.
-        if (_toggleButtons.Contains(varKey))
-        {
-            // Toggle BUTTON: flip the current state, write via the calculator path, speak
-            // the new state. (Fire test / cargo smoke test HOLD pushbuttons etc.)
-            bool curOn = (simConnect.GetCachedVariableValue(varKey) ?? 0.0) > 0.5;
-            bool newOn = !curOn;
-            simConnect.ExecuteCalculatorCode($"{(newOn ? 1 : 0)} (>L:{varKey})");
-            announcer.Announce($"{varDef.DisplayName} {(newOn ? "on" : "off")}");
-            return true;
-        }
         if (_momentaryButtons.Contains(varKey))
         {
             // Combo now (Off / Activate): only the "Activate" option fires; choosing
@@ -4877,9 +4874,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // 1→0 so the sim sees the rising edge, instead of latching it on like a combo.
     private readonly HashSet<string> _momentaryButtons = new();
     // Toggle BUTTONS (e.g. fire test / cargo smoke test HOLD pushbuttons): a click reads
-    // the current L:var, sets the opposite via the calculator path, and announces the new
-    // On/Off state. (User request 2026-06: these are buttons, not combos.)
-    private readonly HashSet<string> _toggleButtons = new();
 
     // Lazy live-scrape client for the System Display: when the user picks an SD page
     // in the ECAM Control Panel "System Display Page" combo, MSFSBA drives the page
