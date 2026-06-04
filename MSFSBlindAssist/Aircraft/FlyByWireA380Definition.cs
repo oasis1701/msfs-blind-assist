@@ -4433,7 +4433,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public void SendRmpKey(int rmp, string key, SimConnectManager s)
     {
         if (s == null || !s.IsConnected) return;
-        if (rmp != 1 && rmp != 2) rmp = 1;
+        if (rmp < 1 || rmp > 3) rmp = 1;   // 1=Captain, 2=First Officer, 3=Overhead (RMP 3)
         // CRITICAL: fire PRESS and RELEASE in ONE calculator call. MobiFlight's command channel
         // is a single shared buffer it reads once per frame — two back-to-back ExecuteCalculatorCode
         // calls (separate SetClientData writes) land in the same frame, so the RELEASE overwrites the
@@ -4451,7 +4451,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public void SendRmpKeyPress(int rmp, string key, SimConnectManager s)
     {
         if (s == null || !s.IsConnected) return;
-        if (rmp != 1 && rmp != 2) rmp = 1;
+        if (rmp < 1 || rmp > 3) rmp = 1;   // 1=Captain, 2=First Officer, 3=Overhead (RMP 3)
         s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED)");
     }
 
@@ -4459,7 +4459,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public void SendRmpKeyRelease(int rmp, string key, SimConnectManager s)
     {
         if (s == null || !s.IsConnected) return;
-        if (rmp != 1 && rmp != 2) rmp = 1;
+        if (rmp < 1 || rmp > 3) rmp = 1;   // 1=Captain, 2=First Officer, 3=Overhead (RMP 3)
         s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_RELEASED)");
     }
 

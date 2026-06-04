@@ -63,9 +63,11 @@ public sealed class FBWA380RmpForm : Form
 
         var sideLabel = new Label { Text = "&Side:", Location = new Point(12, 14), Size = new Size(40, 22) };
         _side = new ComboBox { Location = new Point(56, 11), Size = new Size(170, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Side" };
-        _side.Items.AddRange(new object[] { "Captain", "First Officer" });
+        _side.Items.AddRange(new object[] { "Captain", "First Officer", "Overhead" });
         _side.SelectedIndex = 0;
-        _side.SelectedIndexChanged += (_, _) => { _rmp = _side.SelectedIndex == 1 ? 2 : 1; SwitchSide(); };
+        // index 0/1/2 -> RMP 1/2/3 (Captain / First Officer / Overhead). The scrape view
+        // (A380X_RMP_{_rmp}) and the keypad H-events (RMP_{_rmp}_*) both follow _rmp.
+        _side.SelectedIndexChanged += (_, _) => { _rmp = _side.SelectedIndex + 1; SwitchSide(); };
         _status = new Label { Location = new Point(240, 14), Size = new Size(360, 22), Text = "Connecting…", AccessibleName = "Status" };
 
         // The RMP screen IS the input surface (like the real touchscreen): read it with the
@@ -242,10 +244,13 @@ public sealed class FBWA380RmpForm : Form
         _ = InitialScrape();
     }
 
+    // RMP 1/2/3 -> spoken side name (Captain / First Officer / Overhead).
+    private string SideName() => _rmp == 1 ? "Captain" : _rmp == 2 ? "First Officer" : "Overhead";
+
     private void SwitchSide()
     {
         try { _disp.RowsUpdated -= OnRowsUpdated; _disp.Dispose(); } catch { }
-        _status.Text = _rmp == 1 ? "Captain — connecting…" : "First Officer — connecting…";
+        _status.Text = $"{SideName()} — connecting…";
         StartScrape();
     }
 
@@ -271,7 +276,7 @@ public sealed class FBWA380RmpForm : Form
             return;
         }
         _haveRows = true;
-        _status.Text = _rmp == 1 ? "Live — Captain" : "Live — First Officer";
+        _status.Text = $"Live — {SideName()}";
 
         // Render the RMP as plain text (the touchscreen IS text), preserving the read caret.
         string text = string.Join("\r\n", rows);
