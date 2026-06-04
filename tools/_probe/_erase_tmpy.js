@@ -1,0 +1,1 @@
+(function(){try{var A=window.__MSFSBA_A380;var r=JSON.parse(A.scrape());if(!r.ok)return"scrape fail";for(var i=0;i<r.elements.length;i++){var e=r.elements[i];if(/ERASE TMPY/i.test(e.text)&&e.idx>0){A.clickElement(e.idx);return"erased TMPY idx "+e.idx;}}return"no TMPY (clean)";}catch(e){return"ERR "+e;}})();

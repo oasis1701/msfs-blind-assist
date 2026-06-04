@@ -146,3 +146,16 @@ test('STEP ALTs: WPT/ALT relabeled, FL binds its level, fields selectable', () =
   // the WPT combobox + ALT input keep their stamped idx (still settable)
   assertSelectable('vertrev_stepalts');
 });
+
+// F-PLN DEPARTURE sub-page: the RWY/SID/TRANS selector dropdowns must show their
+// CURRENT selection (comboSelectedValue reads the summary cell under each header),
+// so they read "RWY, 24L" / "SID, OSHNN1" / "TRANS, BEALE", not bare names. Captured live.
+test('DEPARTURE: selector dropdowns show their selected value, stay selectable', () => {
+  const list = els('departure');
+  const dd = list.filter((e) => e.kind === 'dropdown');
+  const j = dd.map((e) => e.text).join('\n');
+  assert.match(j, /RWY, 24L/, 'RWY dropdown not showing selected runway');
+  assert.match(j, /SID, OSHNN1/, 'SID dropdown not showing selected SID');
+  assert.match(j, /TRANS, BEALE/, 'TRANS dropdown not showing selected transition');
+  assertSelectable('departure');
+});
