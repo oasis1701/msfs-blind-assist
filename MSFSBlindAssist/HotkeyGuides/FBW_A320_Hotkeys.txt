@@ -39,6 +39,12 @@ Vertical:
   Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
   Ctrl+Shift+G  Read last landing peak g-force
 
+Flight progress (FMS):
+  D          Distance to destination
+  Shift+D    Distance + time to Top of Descent, e.g. "145 miles to top of
+             descent: 00:16:58" ("Past top of descent" once descending;
+             "not yet computed" until the FMS computes the descent)
+
 Weather:
   I          Wind Info
   O          Read Outside Temperature (Celsius)

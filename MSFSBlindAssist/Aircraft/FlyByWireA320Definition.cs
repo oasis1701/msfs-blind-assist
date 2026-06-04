@@ -482,6 +482,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "bool",
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        // Combined NAV & LOGO switch (the real A320 has ONE switch, FBW models it as the
+        // FBW_A32NX_NAV_LOGO_LT_SW with state L:A32NX_LIGHTS_NAV_LOGO = OFF(0)/SYS1(1)/SYS2(2)).
+        // The old separate "Nav"/"Logo" combos fired stock NAV_LIGHTS_SET/LOGO_LIGHTS_SET which
+        // are DEAD on FBW (live-verified). The set is handled in HandleUIVariableSet by replaying
+        // the FBW switch RPN. State reads the switch L-var (0=Off, 2=On). See HandleUIVariableSet.
+        ["A32NX_LIGHTS_NAV_LOGO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_LIGHTS_NAV_LOGO",
+            DisplayName = "Nav and Logo Lights",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [2] = "On" }
+        },
 
         // Light Events
         ["BEACON_OFF"] = new SimConnect.SimVarDefinition
@@ -5147,8 +5160,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "LIGHTING_STROBE_0",
             "LIGHT BEACON",
             "LIGHT WING",
-            "LIGHT NAV",
-            "LIGHT LOGO",
+            "A32NX_LIGHTS_NAV_LOGO",
             "CIRCUIT_SWITCH_ON:21",
             "CIRCUIT_SWITCH_ON:22",
             "LANDING_LIGHTS_ON_THIRD_PARTY",
@@ -5504,6 +5516,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // Ctrl+W (output): ND TO-waypoint name/distance/bearing via SimVars (no Coherent — see NdWaypointReadout).
             case HotkeyAction.ReadNDWaypoint:
                 Services.NdWaypointReadout.Announce(simConnect, announcer);
+                return true;
+            // D / Shift+D: distance + time to destination / Top of Descent. The A32NX FMS
+            // exposes the same guidanceController as the A380 over the Coherent debugger
+            // (A32NX_MCDU view) — read it via the one-shot CoherentEvalClient and announce
+            // identically to the A380 (PMDG-format TOD). MainForm owns the eval + readout.
+            case HotkeyAction.ReadDistanceToDest:
+                if (parentForm is MainForm mfDestA32) mfDestA32.AnnounceA32NXFlightInfo(false);
+                return true;
+            case HotkeyAction.ReadDistanceToTOD:
+                if (parentForm is MainForm mfTodA32) mfTodA32.AnnounceA32NXFlightInfo(true);
                 return true;
             // FCU value windows (Fenix-style: value entry + knob Push/Pull + mode
             // toggles + spoken read-out). Mirrors the A380's Ctrl+S/H/A/V/P/B windows;
@@ -7198,6 +7220,33 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 simConnect.SetLVar("LIGHTING_LANDING_3", pos);
                 simConnect.SetLVar("LANDING_3_RETRACTED", retr);
                 announcer.Announce(on ? "All landing lights on" : "All landing lights retracted");
+            }
+            return true;
+        }
+
+        // Combined NAV & LOGO lights. The stock NAV_LIGHTS_SET / LOGO_LIGHTS_SET single-param
+        // events are DEAD on the FBW A32NX (live-verified). The real cockpit switch
+        // (FBW_A32NX_NAV_LOGO_LT_SW, source A32NX_Lights.xml) writes the A:LIGHT NAV / A:LIGHT
+        // LOGO simvars AND fires the INDEXED 2-param K:2:NAV_LIGHTS_SET / K:2:LOGO_LIGHTS_SET
+        // events. We replay that exact RPN via the calculator path (the reliable FBW write),
+        // and set the switch state L-var (0=Off, 2=On/SYS2) so the cockpit knob + the combo
+        // read-back agree. Verbatim from the switch template's OFF and SYS2 branches.
+        if (varKey == "A32NX_LIGHTS_NAV_LOGO")
+        {
+            bool on = value >= 0.5;
+            if (on)
+            {
+                simConnect.ExecuteCalculatorCode(
+                    "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 0 1 (>K:2:LOGO_LIGHTS_SET) " +
+                    "1 0 (>K:2:NAV_LIGHTS_SET) 2 0 (>K:2:NAV_LIGHTS_SET) 3 0 (>K:2:NAV_LIGHTS_SET) " +
+                    "4 1 (>K:2:NAV_LIGHTS_SET) 5 1 (>K:2:NAV_LIGHTS_SET) 6 1 (>K:2:NAV_LIGHTS_SET) " +
+                    "2 (>L:A32NX_LIGHTS_NAV_LOGO)");
+            }
+            else
+            {
+                simConnect.ExecuteCalculatorCode(
+                    "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:NAV_LIGHTS_SET) " +
+                    "0 0 (>K:2:LOGO_LIGHTS_SET) 0 (>L:A32NX_LIGHTS_NAV_LOGO)");
             }
             return true;
         }

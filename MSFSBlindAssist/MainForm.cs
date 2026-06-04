@@ -2539,11 +2539,46 @@ public partial class MainForm : Form
     /// </summary>
     public async void AnnounceA380FlightInfo(bool tod)
     {
+        if (coherentClient == null) { announcer.AnnounceImmediate("Flight info unavailable."); return; }
+        string raw = "";
+        try { raw = await coherentClient.EvalForResultAsync("window.__MSFSBA_A380 ? __MSFSBA_A380.flightInfo() : ''"); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[A380 flightInfo] {ex.Message}"); }
+        AnnounceFlightInfoJson(raw, tod);
+    }
+
+    /// <summary>
+    /// A32NX equivalent. The A320 has no D/Shift+D path of its own and drives its MCDU over
+    /// the SimBridge relay (not the Coherent MCDU bridge), so we read its FMS guidanceController
+    /// directly via a ONE-SHOT Coherent eval of the self-contained coherent-a32nx-flightinfo.js,
+    /// then announce identically to the A380 (PMDG-format TOD).
+    /// </summary>
+    public async void AnnounceA32NXFlightInfo(bool tod)
+    {
+        string js = LoadA32NXFlightInfoJs();
+        if (string.IsNullOrEmpty(js)) { announcer.AnnounceImmediate("Flight info unavailable."); return; }
+        string raw = "";
+        try { raw = await SimConnect.CoherentEvalClient.EvalAsync("A32NX_MCDU", js); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[A32NX flightInfo] {ex.Message}"); }
+        AnnounceFlightInfoJson(raw, tod);
+    }
+
+    private string? _a32nxFlightInfoJs;
+    private string LoadA32NXFlightInfoJs()
+    {
+        if (_a32nxFlightInfoJs == null)
+        {
+            try { _a32nxFlightInfoJs = System.IO.File.ReadAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-a32nx-flightinfo.js")); }
+            catch { _a32nxFlightInfoJs = ""; }
+        }
+        return _a32nxFlightInfoJs;
+    }
+
+    // Parse the flightInfo JSON (same shape for the A380 + A32NX) and speak the D/Shift+D
+    // readout. Shared so both FBW jets announce identically (PMDG-format TOD).
+    private void AnnounceFlightInfoJson(string raw, bool tod)
+    {
         try
         {
-            if (coherentClient == null) { announcer.AnnounceImmediate("A380 flight info unavailable."); return; }
-            string raw = await coherentClient.EvalForResultAsync(
-                "window.__MSFSBA_A380 ? __MSFSBA_A380.flightInfo() : ''");
             if (string.IsNullOrEmpty(raw)) { announcer.AnnounceImmediate("Flight management not ready."); return; }
 
             using var doc = System.Text.Json.JsonDocument.Parse(raw);
@@ -2593,7 +2628,7 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[A380 flightInfo] {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[flightInfo] {ex.Message}");
             announcer.AnnounceImmediate("Flight info error.");
         }
     }
