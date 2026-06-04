@@ -4414,9 +4414,7 @@ public class TaxiGuidanceManager : IDisposable
             return null;
 
         string target = finalClearedTaxiway.Trim();
-        string runway = destinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
-            ? destinationName["Runway ".Length..].Trim()
-            : destinationName.Trim();
+        string runway = ExtractRunwayIdFromDestinationName(destinationName);
 
         var candidates = _graph.Nodes.Values
             .Where(n => n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort)
@@ -4447,7 +4445,7 @@ public class TaxiGuidanceManager : IDisposable
 
     private bool NodeBelongsToTaxiway(TaxiNode node, string taxiwayName)
     {
-        if (node.TaxiwayNames.Contains(taxiwayName))
+        if (node.TaxiwayNames.Any(n => string.Equals(n, taxiwayName, StringComparison.OrdinalIgnoreCase)))
             return true;
 
         if (_graph?.Adjacency.TryGetValue(node.NodeId, out var edges) == true)
