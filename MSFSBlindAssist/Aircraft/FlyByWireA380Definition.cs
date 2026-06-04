@@ -3320,6 +3320,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private readonly Dictionary<string, double> _comActiveFreq = new();
     private readonly Dictionary<string, double> _comStandbyFreq = new();
     private int _lastSquawkBcd = -1;
+    // Squawk the RMP window just set via XPNDR_SET — the XPNDR_CODE monitor SKIPS announcing this exact
+    // code (the window already spoke it), so a window set doesn't double-announce. Consumed on match.
+    private int _formSetSquawkBcd = -1;
     /// <summary>Set by MainForm when the E/WD DOM-scrape monitor (CoherentEWDClient)
     /// is running. While true, the SimVar EWD_LOWER memo auto-announce is suppressed
     /// so the scrape is the single source for E/WD call-outs (it announces both the
@@ -3464,8 +3467,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (bcd != _lastSquawkBcd)
             {
                 bool first = _lastSquawkBcd < 0;
+                bool formSet = bcd == _formSetSquawkBcd;   // the RMP window set this code and already spoke it
                 _lastSquawkBcd = bcd;
-                if (!first && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                if (formSet) _formSetSquawkBcd = -1;        // consume
+                if (!first && !formSet && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
                     announcer.Announce($"Squawk {(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}");
             }
             return true;
@@ -4546,6 +4551,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // page switch / digit / swap silently does nothing. One call = one buffer write = both events
         // run together (live-verified: page switch + digit entry only work this way through the app).
         s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED) (>H:RMP_{rmp}_{key}_RELEASED)");
+    }
+
+    /// <summary>Set the transponder squawk straight from the RMP window via the stock <c>XPNDR_SET</c>
+    /// event (BCD16) — INDEPENDENT of the RMP SQWK page / keypad chain, which proved unreliable to drive
+    /// externally. Live-verified: <c>0x{code} (&gt;K:XPNDR_SET)</c> changes TRANSPONDER CODE:1 regardless
+    /// of which RMP page the cockpit shows. Speaks the code once and primes the XPNDR_CODE monitor to skip
+    /// its duplicate announce. <paramref name="fourOctalDigits"/> must be 4 chars, each 0–7.</summary>
+    public void SetSquawkFromForm(string fourOctalDigits, SimConnectManager s, ScreenReaderAnnouncer? ann)
+    {
+        if (s == null || !s.IsConnected || string.IsNullOrEmpty(fourOctalDigits) || fourOctalDigits.Length != 4) return;
+        foreach (char c in fourOctalDigits) if (c < '0' || c > '7') return;   // squawk is octal
+        _formSetSquawkBcd = Convert.ToInt32(fourOctalDigits, 16);   // "2222" -> 0x2222 (each nibble = a digit)
+        s.ExecuteCalculatorCode($"0x{fourOctalDigits} (>K:XPNDR_SET)");
+        ann?.AnnounceImmediate($"Squawk {fourOctalDigits}");
+    }
+
+    /// <summary>Fire an IDENT pulse via the stock <c>XPNDR_IDENT_ON</c> event (the same one the FBW
+    /// TransponderController uses) — RMP-page-independent. Announced by the caller.</summary>
+    public void SendTransponderIdent(SimConnectManager s)
+    {
+        if (s == null || !s.IsConnected) return;
+        s.ExecuteCalculatorCode("(>K:XPNDR_IDENT_ON)");
     }
 
     /// <summary>Press a single RMP keypad key WITHOUT releasing it. Pair with
