@@ -4,6 +4,31 @@ Live in-flight investigation (cruise FL380, VCBI→KLAX). Raw captures:
 `tools/_probe/captures/mcdu_captures.md`. Probes: `tools/_probe/_perf_dom*.js`,
 `_mach_probe.js`, `_capture.js`.
 
+## STATUS (2026-06-04): PERF builder IMPLEMENTED + tested
+`A.buildPerfLines` + `A.isPerfPage` + `A.insidePerf` are in `coherent-a380-agent.js`,
+gated like `buildFplnLines` (4 wiring points in `enumerateLines`). Built LIVE on the A380
+(on the ground, active-field state) and verified across all 6 tabs, plus the cruise/inactive
+state validated offline against `tools/perf-builder-test/fixtures/perf_clb.html`. Fixed:
+- comma-soup for labeled fields → one clean "LABEL: value unit" line (OPT/REC MAX/EO MAX,
+  F/S/VREF/VLS/VAPP/VLS, HD/CROSS, LW, etc.)
+- **APPR F-speed no longer fused into the wind line** (each is its own container)
+- **green-dot speed labeled** ("green dot: 208 KT" — was a bare value)
+- **speed-prediction grids reconstructed** (CLB/CRZ/DES: "ECON: SPD 292 KT, MACH .84",
+  "LRC: MACH .84") via `br`-row + column-header pairing
+- **PRED-TO no longer mislabeled "MACH: FL 380"** (owning the grid removed the bad pairing)
+- `null` grid rows suppressed; the APPR approach-summary composite left to the generic pass
+  (so the ILS ident isn't lost)
+Selectability preserved (every input/combo/radio/subtab/button keeps its stamped idx);
+F-PLN unaffected (gated). Regression tests: `tools/perf-builder-test/perf.test.js`
+(`cd tools/perf-builder-test && npm test`), 5 tests green.
+
+**Remaining minor edges (readability, not wrong values):** the CLB SPD LIM and DEST
+composites (label + label-less value cells) stay as readable comma-soup; the unlabeled
+PRESEL / managed-speed input fields read as bare values; a stray RADIO-minimums "-----" on
+APPR. **STEP ALTs clarity** (relabel WPT→"Step waypoint", ALT→"Step altitude", drop the
+orphan "DIST, UTC" header) is NOT done — the units fix already added "FT" to ALT; the
+relabel is a small follow-up.
+
 ## STEP ALTs (Vertical Revision) — what the edit boxes do
 Reached: F-PLN → click a waypoint → revision menu → **STEP ALTs**.
 - **WPT** (combobox) — the waypoint where the step climb/descent occurs (dropdown of

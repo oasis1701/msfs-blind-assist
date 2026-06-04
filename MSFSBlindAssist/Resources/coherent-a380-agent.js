@@ -443,6 +443,79 @@
     return false;
   };
 
+  // ---- PERF page: structure-aware emission (one clean line per field/row) ------
+  // The PERF page is a dense multi-column grid; the generic Y-row merge is column-blind,
+  // so it fused values into the wrong field (APPR F-speed into the wind line) and made
+  // comma-soup. The DOM is well-structured (each field is a .mfd-label-value-container
+  // with label/value/unit siblings; speed predictions are a grid of cells with a header
+  // row), so we emit per field/row. Interactive controls stay with step-1 (they keep
+  // their stamped idx + selectability); this only takes over STATIC text, like buildFplnLines.
+  A.isPerfPage = function (page) {
+    try { return !!page.querySelector('[class*="mfd-fms-perf"]'); } catch (e) { return false; }
+  };
+  A.insidePerf = function (n) {
+    var cur = n;
+    while (cur) { if (cur.getAttribute && cur.getAttribute("data-fbwa380-perf-owned")) return true; cur = cur.parentElement; }
+    return false;
+  };
+  A.buildPerfLines = function (page, pageRect, items, startIdx) {
+    var idx = startIdx;
+    function own(el) { try { el.setAttribute("data-fbwa380-perf-owned", "1"); } catch (e) {} }
+    function hasInteractive(el) { return !!el.querySelector("[data-fbwa380-mcdu-idx]"); }
+    function isDash(s) { return !s || /^[-:.+\s]+$/.test(s); }
+    function push(el, text) {
+      if (!text) return;
+      var r = el.getBoundingClientRect();
+      items.push({ top: r.top - pageRect.top, left: r.left - pageRect.left, right: r.right - pageRect.left, bot: r.bottom - pageRect.top, idx: 0, kind: "text", text: text, value: "", disabled: false, perf: true });
+    }
+
+    // 1) Speed-prediction grids (CLB/CRZ/DES): rows delimited by a `br`-classed first
+    //    cell; row 0 = column headers (MODE/SPD/MACH/PRED TO). Pair each data cell with
+    //    its header by COLUMN INDEX so a right-column value can't leak into another field.
+    var grids = page.querySelectorAll(".mfd-fms-perf-clb-grid, .mfd-fms-perf-crz-grid, .mfd-fms-perf-des-grid");
+    for (var g = 0; g < grids.length; g++) {
+      var grid = grids[g]; if (!A.isVisible(grid)) continue;
+      var cells = grid.querySelectorAll(".mfd-fms-perf-speed-table-cell, .mfd-fms-perf-speed-presel-managed-table-cell");
+      var rows = [], cur = null, ci;
+      for (ci = 0; ci < cells.length; ci++) { var cl = cells[ci]; if (!A.isVisible(cl)) continue; if (cl.classList.contains("br") || cur === null) { cur = []; rows.push(cur); } cur.push(cl); }
+      var headers = rows.length ? rows[0].map(function (c) { return clean(c.innerText); }) : [];
+      for (var ri = 1; ri < rows.length; ri++) {
+        var row = rows[ri]; var rlabel = clean(row[0].innerText); if (rlabel === "null") rlabel = ""; var parts = [];
+        for (var k = 1; k < row.length; k++) {
+          if (hasInteractive(row[k])) continue;   // editable cell (PRESEL) → step-1 owns it
+          var v = clean(row[k].innerText); if (isDash(v) || v === "null") continue;
+          var h = headers[k] || ""; parts.push(h ? (h + " " + v) : v);
+        }
+        if (rlabel || parts.length) push(row[0], (rlabel ? rlabel + ": " : "") + parts.join(", "));
+      }
+      own(grid);
+    }
+
+    // 2) Discrete fields: one clean line per visible .mfd-label-value-container that has
+    //    a LABEL, no interactive child (those stay with step-1), and isn't in an owned grid.
+    //    Label-less composite cells (e.g. CLB SPD LIM's value cells) are left to the generic
+    //    pass. Green-dot speed has an <svg> circle for its label → synthesize "green dot".
+    var lvcs = page.querySelectorAll(".mfd-label-value-container");
+    for (var li = 0; li < lvcs.length; li++) {
+      var c = lvcs[li]; if (!A.isVisible(c)) continue;
+      if (c.getAttribute("data-fbwa380-perf-owned") || A.insidePerf(c.parentElement)) continue;
+      if (hasInteractive(c)) continue;
+      var lab = c.querySelector(".mfd-label"); var labT = lab ? clean(lab.textContent) : "";
+      if (!labT && c.querySelector("svg circle")) labT = "green dot";
+      if (!labT) continue;
+      var valEl = c.querySelector(".mfd-value"); var valT = valEl ? clean(valEl.textContent) : "";
+      var lu = c.querySelector(".mfd-unit-leading"), tu = c.querySelector(".mfd-unit-trailing");
+      // A labeled container with NO value and NO unit is a header/composite (e.g. the APPR
+      // approach summary "APPR ILS24R KJFK", where the ident lives in sibling cells) — don't
+      // own/emit it as "LABEL:" with an empty value; leave it to the generic pass so the
+      // ident isn't lost. Real value fields (even dashed, like "HD --- KT") have a unit.
+      if (isDash(valT) && !lu && !tu) continue;
+      var shown = clean((lu ? clean(lu.textContent) + " " : "") + valT + (tu ? " " + clean(tu.textContent) : ""));
+      own(c); push(c, labT + ": " + shown);
+    }
+    return idx;
+  };
+
   // Decode an F-PLN altitude constraint token: "+N" = at or above N feet, "-N" =
   // at or below N feet, plain "N" = at N feet. (Speed constraints live in the
   // speed column, handled separately, not here.)
@@ -655,6 +728,8 @@
   A.enumerateLines = function (root) {
     var stale = root.querySelectorAll("[data-fbwa380-mcdu-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-mcdu-idx");
+    var staleP = root.querySelectorAll("[data-fbwa380-perf-owned]");
+    for (var sp = 0; sp < staleP.length; sp++) staleP[sp].removeAttribute("data-fbwa380-perf-owned");
 
     var page = root.querySelector(".mfd-navigator-container") || root;
     var pageRect = page.getBoundingClientRect();
@@ -716,6 +791,11 @@
     var isFpln = !!page.querySelector(".mfd-fms-fpln-line");
     if (isFpln) idx = A.buildFplnLines(page, pageRect, items, idx);
 
+    // 1c) PERF page → structure-aware builder (one clean line per field/row); the generic
+    //     static pass + Y-merge then SKIP the regions it consumed (data-fbwa380-perf-owned).
+    var isPerf = A.isPerfPage(page);
+    if (isPerf) idx = A.buildPerfLines(page, pageRect, items, idx);
+
     // 2) static-text leaves not inside an interactive control above.
     var all = page.getElementsByTagName("*");
     for (var j = 0; j < all.length; j++) {
@@ -723,6 +803,7 @@
       if (!A.isVisible(t)) continue;
       if (A.isInsideInteractive(t)) continue;
       if (isFpln && A.insideFpln(t)) continue;   // plan grid handled by buildFplnLines
+      if (isPerf && A.insidePerf(t)) continue;   // PERF fields handled by buildPerfLines
       var own = A.directText(t);
       // Skip empty leaves and FBW data-binding artifacts ("null"/"undefined"
       // rendered into empty MFD cells) — never meaningful to the pilot.
@@ -794,7 +875,7 @@
       var cur = items[mi];
       // Pre-built F-PLN waypoint lines (fpln:true) are already complete — never
       // merge them with each other or with neighbouring text.
-      if (cur.idx === 0 && cur.kind === "text" && !cur.fpln && mergedLines.length > 0) {
+      if (cur.idx === 0 && cur.kind === "text" && !cur.fpln && !cur.perf && mergedLines.length > 0) {
         var prev = mergedLines[mergedLines.length - 1];
         if (prev.idx === 0 && prev.kind === "text" && !prev.fpln
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {

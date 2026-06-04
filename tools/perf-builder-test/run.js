@@ -50,10 +50,16 @@ function scrapeLines(name) {
   return lines.map(function (e) { return e.kind + ' | idx ' + e.idx + ' | ' + e.text; });
 }
 
+function scrapeElements(name) {
+  const { window, A } = loadFixture(name);
+  const root = window.document.body.firstElementChild;
+  return A.enumerateLines(root).map(function (e) { return { kind: e.kind, idx: e.idx, text: e.text }; });
+}
+
 if (require.main === module) {
   const name = process.argv[2] || 'perf_clb';
   console.log('# ' + name);
   console.log(scrapeLines(name).join('\n'));
 }
 
-module.exports = { loadFixture, scrapeLines };
+module.exports = { loadFixture, scrapeLines, scrapeElements };
