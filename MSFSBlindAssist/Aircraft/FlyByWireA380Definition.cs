@@ -3940,7 +3940,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // 16 = our synthetic "Upper E/WD" option — scrape the E/WD view instead of an
             // SD page. Still record the combo value (so the box header reads "Upper E/WD"
             // and the selection persists); the real SD view ignores the out-of-range index.
-            simConnect.ExecuteCalculatorCode($"{idx} (>L:{varKey})");
+            // UNIQUE-prefix the write ("{seq} 0 *" pushes 0, discarded): re-selecting a page
+            // you already visited (e.g. ELEC -> HYD -> ELEC) sends an IDENTICAL calc string,
+            // which MobiFlight de-duplicates -> the write never re-fires and the real SD page
+            // doesn't switch back (the scraped C/B / STATUS / VIDEO pages then show stale text).
+            simConnect.ExecuteCalculatorCode($"{++_sdWriteSeq} 0 * {idx} (>L:{varKey})");
             RefreshSdPageDisplayAsync(simConnect, idx, ewd: idx == 16);
             return true;
         }
@@ -6089,6 +6093,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private ScreenReaderAnnouncer? _seatMotorAnnouncer;
     private long _seatMotorSeq;
     private int _seatMotorTicks;
+    private long _sdWriteSeq;   // makes the SD-page-index calc write unique each time (anti-dedup)
 
     private static readonly Dictionary<string, (string Disp, string Hi, string Lo)> _seatMotorMeta = new()
     {

@@ -5732,6 +5732,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     }
 
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
+    private long _sdWriteSeq;   // makes the SD-page calc write unique each time (anti-dedup, see HandleUIVariableSet)
     private string _sdBoxContent = "";
     private int _sdRefreshSeq;   // "latest request wins" guard for SD-page refresh (mirrors A380)
 
@@ -6939,7 +6940,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_MSFSBA_SD_PAGE")
         {
             int page = (int)Math.Round(value);
-            simConnect.ExecuteCalculatorCode($"{page} (>L:A32NX_MSFSBA_SD_PAGE)");
+            // UNIQUE-prefix the write ("{seq} 0 *" pushes 0, then it's discarded): re-selecting a
+            // page you already visited sends an IDENTICAL calc string, which MobiFlight
+            // de-duplicates -> the L:var doesn't re-set, so the combo's read-back can snap to the
+            // stale page (you hear/land on the wrong page). The unique prefix forces every write
+            // to fire. (Same MobiFlight dedup that made the A380 seat motor "tick once and stop".)
+            simConnect.ExecuteCalculatorCode($"{++_sdWriteSeq} 0 * {page} (>L:A32NX_MSFSBA_SD_PAGE)");
             RefreshDisplayBoxAsync(page, simConnect);
             return true;
         }
