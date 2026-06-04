@@ -1,5 +1,42 @@
 # A380 MFD pages recon (live, on ground)
 
+> **The page captures below are PRE-sweep (raw comma-soup).** They're kept as the raw
+> material that drove the cleanup. See the sweep status next for the current behaviour.
+
+## SWEEP STATUS (2026-06-04) — MFD pages tidy-up
+
+Four shipped increments (commits 97e3c80 → bb87993), each live-verified + jsdom-tested
+(`tools/perf-builder-test`, 8 tests green); selectability invariant preserved everywhere
+(every input/combo/radio/subtab/button/surv keeps its stamped idx):
+
+1. **buildLabeledFields** (all pages) — one clean `LABEL: value unit` per
+   `.mfd-label-value-container` with an inner label (GW/CG/FOB, EPU, GPIRS POSITION, …)
+   + the label-colon join (`ACTIVE ATC: XXXX`, `IRS ALIGNED ON GPS POS: …`).
+2. **Label-aware Y-merge composer** — sibling label/value/unit data rows compose as
+   `T.TRK: 134.4 °T, T.HDG: 134.4 °T`, `GND SPD: 0.0 KT, MAG HDG: 122.9 °`, `IRS 1: NAV`,
+   `IRS1: 0.0 NM`, `WAYPOINTS: 00, ROUTES: 00`, `NAV DATABASE: MS26050001`,
+   `TRIP: 108.7 KLB, 04:32`. Number/time cells can't act as labels (real-label guard).
+   + D-ATIS dropdown uses spacedText.
+3. **buildSurvControls** — SURV CONTROLS radios/toggles header-prefixed by column:
+   `XPDR: AUTO`, `TCAS: TA/RA`, `WXR: AUTO`, `MODE: WX`, `TERR SYS: OFF: ON`,
+   `ELEVN/TILT: AUTO`. (TCAS ABV/BLW/NORM range column has no DOM header → bare.)
+4. **STATUS & SWITCHING** — `.mfd-surv-status-item` cells never row-merge; each on its
+   own line, no false heading-bind.
+
+Per-page state now:
+- CLEAN: ATC CONNECT / MSG RECORD, DATA/AIRPORT, SEC INDEX, INIT, IRS, MONITOR,
+  SURV CONTROLS, STATUS & SWITCHING, PERF (T.O/CLB/CRZ/DES/APPR/GA), F-PLN (per-wpt).
+- MOSTLY CLEAN: DATA/STATUS (a few neutral column-header rows: IDLE/PERF, ACTIVE/SECOND,
+  the DB-cycle dates); FUEL&LOAD (top fields clean; the DEST/ALTN read-only prediction
+  GRID still reads as comma rows); NAVAIDS (CLASS / SLOPE read as header then value).
+- LEFT AS-IS (low value / FBW-WIP): D-ATIS function dropdown concatenates option labels
+  ("UPDATEOR PRINT"); ACCURACY drops its split "FT" unit span (value still reads);
+  PERF composite residuals (CLB SPD LIM, DEST) + STEP ALTs WPT/ALT relabel;
+  ATC REQUEST/REPORT/EMER + DATA WAYPOINT/NAVAID/ROUTE/PRINTER + POSITION REPORT/GNSS/TIME
+  (unreachable / "ERROR 404" in the FBW dev build).
+
+---
+
 ## atccom_connect  ->  CONNECT / CONNECT  (14 els)
 - text | CONNECT
 - input | NOTIFY TO ATC: ---- (combobox)
