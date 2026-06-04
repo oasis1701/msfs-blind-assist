@@ -706,6 +706,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Slider("A380X_RMP_1_VHF_VOL_1", "VHF 1 Volume");
         Slider("A380X_RMP_1_VHF_VOL_2", "VHF 2 Volume");
         Slider("A380X_RMP_1_VHF_VOL_3", "VHF 3 Volume");
+        // The rest of the ACP receive-volume knobs (all settable 0-100 sliders, same calc path).
+        // Niche for a sim pilot (HF/TEL/cabin comms) but exposed for completeness; NAV volume is
+        // the navaid (VOR/ILS) ident audio level. Plus the RMP screen brightness knob.
+        Slider("A380X_RMP_1_HF_VOL_1", "HF 1 Volume");
+        Slider("A380X_RMP_1_HF_VOL_2", "HF 2 Volume");
+        Slider("A380X_RMP_1_TEL_VOL_1", "Telephone Volume");
+        Slider("A380X_RMP_1_CAB_VOL", "Cabin Interphone Volume");
+        Slider("A380X_RMP_1_INT_VOL", "Interphone Volume");
+        Slider("A380X_RMP_1_PA_VOL", "PA Volume");
+        Slider("A380X_RMP_1_NAV_VOL", "Navaid Volume");
+        Slider("A380X_RMP_1_BRIGHTNESS_KNOB", "RMP Screen Brightness");
         OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
         OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
         OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
@@ -736,6 +747,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Slider("A380X_RMP_2_VHF_VOL_1", "VHF 1 Volume");
         Slider("A380X_RMP_2_VHF_VOL_2", "VHF 2 Volume");
         Slider("A380X_RMP_2_VHF_VOL_3", "VHF 3 Volume");
+        Slider("A380X_RMP_2_HF_VOL_1", "HF 1 Volume");
+        Slider("A380X_RMP_2_HF_VOL_2", "HF 2 Volume");
+        Slider("A380X_RMP_2_TEL_VOL_1", "Telephone Volume");
+        Slider("A380X_RMP_2_CAB_VOL", "Cabin Interphone Volume");
+        Slider("A380X_RMP_2_INT_VOL", "Interphone Volume");
+        Slider("A380X_RMP_2_PA_VOL", "PA Volume");
+        Slider("A380X_RMP_2_NAV_VOL", "Navaid Volume");
+        Slider("A380X_RMP_2_BRIGHTNESS_KNOB", "RMP Screen Brightness");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
@@ -2675,6 +2694,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "A380X_RMP_1_VHF_VOL_RX_SWITCH_3",
             "A380X_RMP_1_VHF_VOL_1", "A380X_RMP_1_VHF_VOL_2", "A380X_RMP_1_VHF_VOL_3",
+            "A380X_RMP_1_HF_VOL_1", "A380X_RMP_1_HF_VOL_2", "A380X_RMP_1_TEL_VOL_1",
+            "A380X_RMP_1_CAB_VOL", "A380X_RMP_1_INT_VOL", "A380X_RMP_1_PA_VOL", "A380X_RMP_1_NAV_VOL",
+            "A380X_RMP_1_BRIGHTNESS_KNOB",
             "A380X_RMP_1_HF_VOL_RX_SWITCH_1", "A380X_RMP_1_HF_VOL_RX_SWITCH_2",
             "A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "A380X_RMP_1_TEL_VOL_RX_SWITCH_2",
             "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
@@ -2687,6 +2709,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "A380X_RMP_2_VHF_VOL_RX_SWITCH_3",
             "A380X_RMP_2_VHF_VOL_1", "A380X_RMP_2_VHF_VOL_2", "A380X_RMP_2_VHF_VOL_3",
+            "A380X_RMP_2_HF_VOL_1", "A380X_RMP_2_HF_VOL_2", "A380X_RMP_2_TEL_VOL_1",
+            "A380X_RMP_2_CAB_VOL", "A380X_RMP_2_INT_VOL", "A380X_RMP_2_PA_VOL", "A380X_RMP_2_NAV_VOL",
+            "A380X_RMP_2_BRIGHTNESS_KNOB",
             "A380X_RMP_2_HF_VOL_RX_SWITCH_1", "A380X_RMP_2_HF_VOL_RX_SWITCH_2",
             "A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "A380X_RMP_2_TEL_VOL_RX_SWITCH_2",
             "A380X_RMP_2_CAB_VOL_RX_SWITCH", "A380X_RMP_2_INT_VOL_RX_SWITCH",

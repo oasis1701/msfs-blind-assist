@@ -268,15 +268,13 @@ public partial class ColdTemperatureCorrectionForm : Form
         string header = $"Cold temperature correction at {fieldElevation:0} ft field elevation, {temperatureC:0.#} Celsius:";
         resultsTextBox.Text = header + Environment.NewLine + string.Join(Environment.NewLine, outputs);
 
-        // Speak a concise summary so the user gets the answer without tabbing.
-        // For a single altitude, speak the full result; for several, speak the
-        // count and let the user arrow through the results box.
+        // For a SINGLE altitude, speak the answer directly (instant feedback). For several,
+        // say nothing extra — just move focus into the results box (below) so the screen reader
+        // lands there and the user arrows through the lines. (No "N computed" chatter — per user.)
         if (outputs.Count == 1)
             _announcer.AnnounceImmediate(outputs[0]);
-        else
-            _announcer.AnnounceImmediate($"{outputs.Count} corrected altitudes computed. Read them in the results.");
 
-        // Move focus to the results so the screen reader lands on the answer.
+        // Move focus to the results field, caret at the top, so the user reads from line 1.
         resultsTextBox.Focus();
         resultsTextBox.SelectionStart = 0;
         resultsTextBox.SelectionLength = 0;
