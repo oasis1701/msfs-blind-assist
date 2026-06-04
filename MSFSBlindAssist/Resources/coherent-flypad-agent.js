@@ -516,6 +516,25 @@
       if (A.hasClassToken(sibs[i], "cursor-pointer") &&
           A.hasClassToken(sibs[i], "bg-opacity-0")) return true;                    // (B)
     }
+    // (C) FBW SelectGroup option (boarding/refuel rate Instant/Fast/Real, etc.):
+    // EACH option may be wrapped in its own TooltipWrapper <div> (so it can be
+    // disabled-with-tooltip), so the SELECTED option's only sibling is its tooltip,
+    // not the other options — the immediate-sibling checks above then miss it. The
+    // options live together in the SelectGroup container (class "divide-x"). If an
+    // ancestor is such a group AND holds ANOTHER cursor-pointer option, n is a
+    // selected segment. (A standalone action button has no divide-x group, so this
+    // stays specific.)
+    var g = p, up = 0;
+    while (g && up < 4) {
+      if (A.hasClassToken(g, "divide-x")) {
+        var opts = g.getElementsByTagName("*");
+        for (var o = 0; o < opts.length; o++) {
+          if (opts[o] !== n && !opts[o].contains(n) && !n.contains(opts[o]) &&
+              A.hasClassToken(opts[o], "cursor-pointer")) return true;
+        }
+      }
+      g = g.parentElement; up++;
+    }
     return false;
   };
 
@@ -803,7 +822,11 @@
       if (it.navRail) { it._gband = 1e7; continue; }
       if (it._groundSub) { it._gband = 100; continue; }   // sub-tab strip, grouped
       if (it.top < 50) { it._gband = 0; continue; }        // global EFB status bar (top)
-      it._gband = 200;                                     // all service tiles + chocks/cones
+      // Group the door service tiles together (user request) right after the sub-tab
+      // strip, ahead of the other services. Only the Services page has door buttons
+      // (Payload/Fuel builder rows aren't buttons named "door").
+      if (it.kind === "button" && /door/i.test(it.text || "")) { it._gband = 150; continue; }
+      it._gband = 200;                                     // all other service tiles + chocks/cones
     }
     // Within the service band keep the existing column→row order so the left
     // column's tiles read fully, then the right column's — contiguous, no strip.
@@ -991,6 +1014,20 @@
       }
       field(n, unit ? (nm + " (" + unit + ")") : nm);
     }
+
+    // Boarding time: FBW renders the duration as a parenthetical CHILD of the label
+    // (<div>Boarding Time<span>(11:00 minutes)</span></div>), so the generic pass
+    // captures only "Boarding Time" (directText) and the parenthetical-skip rule
+    // drops the time. Emit the FULL text (space before the paren) and own it.
+    var btAll = root.getElementsByTagName("*");
+    for (var bt = 0; bt < btAll.length; bt++) {
+      var bn = btAll[bt];
+      if (!/^boarding time/i.test(A.directText(bn))) continue;
+      if (A.insideGroundRegion(bn)) continue;
+      textline(clean(bn.textContent).replace(/\s*\(/, " ("));
+      A.markOwned(bn);
+      break;
+    }
     return out;
   };
 
@@ -1110,6 +1147,18 @@
         if (fsibs[fx] !== fuelInput && A.unitToken(clean(fsibs[fx].textContent))) A.markOwned(fsibs[fx]);
       }
     }
+
+    // Suppress the redundant "Refuel Time" heading: it labels the Instant/Fast/Real
+    // rate selector but reads as a second, oddly-placed time line (after "Start
+    // refueling") when the actual estimated duration already shows above. The rate
+    // options are self-evident on the Fuel page — matches the Payload boarding flow,
+    // which has no separate rate heading.
+    var rtAll = root.getElementsByTagName("*");
+    for (var rt = 0; rt < rtAll.length; rt++) {
+      if (/^h[1-6]$/i.test(rtAll[rt].tagName) && /^refuel time$/i.test(clean(rtAll[rt].textContent))) {
+        A.markOwned(rtAll[rt]); break;
+      }
+    }
     return out;
   };
 
@@ -1179,12 +1228,34 @@
       var ctype = A.controlType(kind, n);
       var clickable = A.isClickable(kind);
 
+      var r = n.getBoundingClientRect();
+      var topRel = r.top - rootRect.top, leftRel = r.left - rootRect.left;
+      // The left nav rail (page links in the far-left column) is grouped at the
+      // END so it stops interleaving with the page content row-by-row.
+      var navRail = (kind === "link" && leftRel < 100 && topRel > 40);
+      // Ground page sub-tab (Services/Fuel/Payload/Pushback): a link whose href is
+      // "/ground/<x>". Tagged so orderGroundServices can group the tab strip apart
+      // from the service tiles (the two-column read order otherwise drops the strip
+      // between the left- and right-column service items).
+      var hrefAttr = (n.getAttribute && n.getAttribute("href")) || "";
+      var groundSub = (kind === "link" && /^\/ground\//.test(hrefAttr));
+
       // Mark the selected option of a segmented setting control (e.g. the chosen
       // "Instant / Fast / Real", throttle axis, or calibration detent). Only a
       // genuine choice control gets the marker — a primary action button shares
       // the same bg-theme-highlight background, so isSelectedSegment additionally
       // requires an unselected (bg-theme-accent) sibling to disambiguate.
       if (text && A.isSelectedSegment(n)) text = text + " (selected)";
+
+      // Distinguish the duplicated passenger door tiles by aircraft side: FBW labels
+      // BOTH the left and right Cabin/Aft doors "Door Fwd"/"Door Aft". The screen
+      // LEFT column is the aircraft's LEFT side (the xr-anchored wrapper holds
+      // CabinLeftDoor / interactive point 0). Cargo Door is unique — left alone. The
+      // side goes BEFORE the (active)/(called) suffix so the focus-stable key strip
+      // (which trims the trailing state marker) still works.
+      if (text && kind === "button" && /\bdoor\b/i.test(text) && !/cargo/i.test(text)) {
+        text = text + (leftRel < rootRect.width * 0.5 ? " Left" : " Right");
+      }
 
       // Ground-service tiles: append the connected/called state (see A.serviceState).
       if (text && kind === "button") {
@@ -1206,18 +1277,6 @@
 
       var thisIdx = 0;
       if (interactive) { thisIdx = idx; n.setAttribute("data-fbw-efb-idx", String(idx)); idx++; }
-
-      var r = n.getBoundingClientRect();
-      var topRel = r.top - rootRect.top, leftRel = r.left - rootRect.left;
-      // The left nav rail (page links in the far-left column) is grouped at the
-      // END so it stops interleaving with the page content row-by-row.
-      var navRail = (kind === "link" && leftRel < 100 && topRel > 40);
-      // Ground page sub-tab (Services/Fuel/Payload/Pushback): a link whose href is
-      // "/ground/<x>". Tagged so orderGroundServices can group the tab strip apart
-      // from the service tiles (the two-column read order otherwise drops the strip
-      // between the left- and right-column service items).
-      var hrefAttr = (n.getAttribute && n.getAttribute("href")) || "";
-      var groundSub = (kind === "link" && /^\/ground\//.test(hrefAttr));
 
       // Active tab/nav indicator: mark the selected nav-rail page and the selected
       // Ground sub-tab so the reader knows where it is. Nav-rail links read

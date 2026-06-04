@@ -756,7 +756,19 @@ public class FbwEfbForm : Form
   // across same-named sub-tabs. Keying by rendered-type + label keeps a node stable
   // across same-page polls (values are patched in place) while a sub-tab/page switch
   // cleanly swaps controls. The live data-idx for click/set is patched in place.
-  function keyOf(it) { return rk(it) + '|' + (it.text || ''); }
+  // Strip the DYNAMIC state suffixes the agent appends -- (active) / (called) /
+  // (selected) / (current page) and the colon placed/not-placed markers -- from the
+  // reconcile key, so a control whose state changes (a door tile activated, a rate
+  // option selected) maps to the SAME node and is patched IN PLACE rather than
+  // destroyed + rebuilt. Rebuilding moved the screen-reader focus off the control
+  // the user just activated. The visible label still updates via patchEl; only the
+  // key is stabilised.
+  function baseLabel(t) {
+    return (t || '')
+      .replace(/\s*\((active|called|selected|current page|expanded|collapsed)\)\s*$/i, '')
+      .replace(/:\s*(placed|not placed)\s*$/i, '');
+  }
+  function keyOf(it) { return rk(it) + '|' + baseLabel(it.text || ''); }
 
   function onActivate(e) {
     var idx = this.getAttribute('data-idx');
