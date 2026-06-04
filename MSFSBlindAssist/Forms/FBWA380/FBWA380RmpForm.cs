@@ -39,10 +39,15 @@ public sealed class FBWA380RmpForm : Form
     private string _message = "", _lastAnnouncedMessage = "";
     private System.Windows.Forms.Timer? _announceTimer;
     private System.Windows.Forms.Timer? _refreshTimer;
-    // The freq/squawk DISPLAY is built from the RELIABLE stock simvars (COM ACTIVE/STANDBY, squawk) —
-    // the Coherent RMP-screen scrape proved unreliable (reads a DOM that can freeze). The scrape is
-    // kept only for the best-effort MESSAGE line. Audio announces come from the def's simvar monitors.
+    // The VHF rows (active + STANDBY + transmit/receive/selected) come from the Coherent RMP-screen
+    // SCRAPE — it is the ONLY reliable source for the STANDBY frequency (the stock COM STANDBY simvar
+    // stays frozen at the A380 default and never tracks the RMP standby, and FBW_RMP_FREQUENCY_STANDBY_n
+    // reads uninitialised garbage). The single-socket EnsureConnected bug that used to freeze the scrape
+    // is fixed, so the scrape now matches the cockpit live (verified: active 129.000 == COM ACTIVE). The
+    // SQUAWK/transponder line is still built from the reliable stock simvars. Audio standby announces are
+    // debounced off the scrape here; freq/squawk audio also comes from the def's simvar monitors.
     private System.Windows.Forms.Timer? _simPoll;
+    private List<string> _scrapeVhfRows = new();   // "VHF1: active 129.000, standby 121.500, transmit, selected"
 
     private ComboBox _side = null!;
     private TextBox _display = null!;
@@ -254,6 +259,7 @@ public sealed class FBWA380RmpForm : Form
     {
         _haveRows = false; _firstScrape = true;
         _lastAnnouncedStandby = ""; _lastAnnouncedMessage = "";
+        _standby = ""; _message = ""; _scrapeVhfRows = new();
         _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 300, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
         _disp.Start();
@@ -286,43 +292,61 @@ public sealed class FBWA380RmpForm : Form
 
     private void Apply(List<string>? rows)
     {
-        // The SCRAPE is now used ONLY for the best-effort MESSAGE line (FBW validation text like
-        // "VHF FREQ NOT VALID"); the freqs/squawk display comes from the reliable simvars in
-        // RenderFromSim. So an empty/failed scrape is harmless — the simvar render still works.
+        // The SCRAPE supplies the VHF rows — the only reliable source for the STANDBY frequency (the
+        // stock COM STANDBY simvar is frozen at the A380 default and the FBW standby L:var is garbage).
+        // We cache the VHF rows + message, capture the SELECTED radio's standby for the auto-announce,
+        // and re-render. An empty/failed scrape is harmless — the last good rows + simvar squawk persist.
         if (rows != null && rows.Count > 0)
         {
+            var vhf = rows.FindAll(r => r.StartsWith("VHF", StringComparison.Ordinal));
+            if (vhf.Count > 0) _scrapeVhfRows = vhf;
+
             var msgRow = rows.Find(r => r.StartsWith("Message: ", StringComparison.Ordinal)) ?? "";
-            string msg = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
-            if (msg != _message)
+            _message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
+
+            // The selected radio's standby (the one the keypad is loading into) — prefer the scrape's
+            // own ", selected" marker, else fall back to the row the user's LSK presses point at.
+            string? sel = vhf.Find(r => r.EndsWith(", selected", StringComparison.Ordinal));
+            if (sel == null && _selectedRowIndex >= 0 && _selectedRowIndex < vhf.Count) sel = vhf[_selectedRowIndex];
+            if (sel != null) { string sby = Token(sel, "standby "); if (sby.Length > 0) _standby = sby; }
+
+            // First scrape after open / side-switch: seed the baselines SILENTLY (no announce on open).
+            if (_firstScrape)
             {
-                _message = msg;
-                if (msg.Length > 0 && msg != _lastAnnouncedMessage) { _lastAnnouncedMessage = msg; _announcer?.Announce(msg); }
+                _firstScrape = false;
+                _lastAnnouncedStandby = _standby;
+                _lastAnnouncedMessage = _message;
             }
+            else ScheduleAnnounce();   // debounced: speak the selected standby + any new message on change
         }
         RenderFromSim();
     }
 
-    // Build the RMP read-out from RELIABLE stock simvars (the Coherent scrape proved unreliable).
-    // COM ACTIVE/STANDBY FREQUENCY:n, the per-side TX/RX switches, squawk + transponder mode. The
-    // selected radio is tracked from the user's own LSK presses (_selectedRowIndex). Caret-preserving.
-    // Audio for freq/squawk changes is the def's simvar monitors; this just renders the screen.
+    // Build the RMP read-out: VHF rows (active + STANDBY + transmit/receive/selected) from the SCRAPE
+    // (the only reliable standby source), squawk + transponder mode from the reliable stock simvars.
+    // Falls back to a simvar-only VHF render if no scrape rows are in yet. Caret-preserving.
     private void RenderFromSim()
     {
         if (_sim == null || !_sim.IsConnected) return;
         _haveRows = true;
         _status.Text = $"Live — {SideName()}";
         var sb = new System.Text.StringBuilder();
-        for (int i = 1; i <= 3; i++)
+        if (_scrapeVhfRows.Count > 0)
         {
-            double act = _sim.GetCachedVariableValue($"COM_ACTIVE_{i}") ?? 0;
-            double sby = _sim.GetCachedVariableValue($"COM_STANDBY_{i}") ?? 0;
-            bool tx = (_sim.GetCachedVariableValue($"A380X_RMP_{_rmp}_VHF_TX_{i}") ?? 0) > 0.5;
-            bool rx = (_sim.GetCachedVariableValue($"A380X_RMP_{_rmp}_VHF_VOL_RX_SWITCH_{i}") ?? 0) > 0.5;
-            string line = $"VHF {i}: active {act:0.000}, standby {sby:0.000}";
-            if (tx) line += ", transmit";
-            if (rx) line += ", receive";
-            if (i - 1 == _selectedRowIndex) line += ", selected";
-            sb.AppendLine(line);
+            foreach (var r in _scrapeVhfRows) sb.AppendLine(r);
+        }
+        else
+        {
+            // Pre-first-scrape fallback: active from the reliable COM simvar (standby unavailable yet).
+            for (int i = 1; i <= 3; i++)
+            {
+                double act = _sim.GetCachedVariableValue($"COM_ACTIVE_{i}") ?? 0;
+                bool tx = (_sim.GetCachedVariableValue($"A380X_RMP_{_rmp}_VHF_TX_{i}") ?? 0) > 0.5;
+                string line = $"VHF {i}: active {act:0.000}";
+                if (tx) line += ", transmit";
+                if (i - 1 == _selectedRowIndex) line += ", selected";
+                sb.AppendLine(line);
+            }
         }
         int bcd = (int)Math.Round(_sim.GetCachedVariableValue("XPNDR_CODE") ?? 0);
         string sq = $"{(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}";
