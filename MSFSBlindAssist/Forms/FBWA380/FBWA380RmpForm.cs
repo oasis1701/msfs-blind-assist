@@ -447,8 +447,13 @@ public sealed class FBWA380RmpForm : Form
             var vhf = rows.FindAll(r => r.StartsWith("VHF", StringComparison.Ordinal));
             if (vhf.Count > 0) _scrapeVhfRows = vhf;
 
-            for (int k = 0; k < vhf.Count; k++)
-                if (vhf[k].EndsWith(", selected", StringComparison.Ordinal)) { _selectedRowIndex = k; break; }
+            // Sync our selected-row tracking to the cockpit ONLY on the first scrape (to initialize). After
+            // that the user's Ctrl+1/2/3 is authoritative. A per-poll sync RACED the LSK-select registration
+            // lag: a poll firing before LSK_2/LSK_3 registered would see VHF1 still selected and reset a
+            // fresh VHF2/3 selection back to row 0 — that's the "says VHF standby 1 and won't swap" bug.
+            if (_firstScrape)
+                for (int k = 0; k < vhf.Count; k++)
+                    if (vhf[k].EndsWith(", selected", StringComparison.Ordinal)) { _selectedRowIndex = k; break; }
 
             var msgRow = rows.Find(r => r.StartsWith("Message: ", StringComparison.Ordinal)) ?? "";
             _message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
