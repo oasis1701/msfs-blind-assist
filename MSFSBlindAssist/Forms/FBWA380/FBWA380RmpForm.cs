@@ -201,18 +201,22 @@ public sealed class FBWA380RmpForm : Form
     private async void AnnounceSelectedStandby(bool force = false)
     {
         int row = _selectedRowIndex;
+        // The FBW RMP auto-completes over a FEW FRAMES after the last keystroke, so a single scrape can
+        // catch a transient mid-entry value (e.g. 123.400 while the final is 123.450 — the bug the user
+        // hit). Poll the FRESH scrape until the standby reads the SAME complete value twice in a row
+        // (settled), capped at ~0.9 s so it can never hang.
+        string sby = "", prev = "";
         List<string>? rows = null;
-        try { rows = await _disp.ScrapeNowAsync(); } catch { }
+        for (int i = 0; i < 8; i++)
+        {
+            try { rows = await _disp.ScrapeNowAsync(); } catch { }
+            sby = StandbyFromRows(rows, row);
+            if (sby.Length > 0 && sby.IndexOf('_') < 0 && sby == prev) break;   // settled on a complete value
+            prev = sby;
+            await Task.Delay(110);
+        }
         void Finish()
         {
-            string sby = "";
-            if (rows != null)
-            {
-                var vhf = rows.FindAll(r => r.StartsWith("VHF", StringComparison.Ordinal));
-                string? sel = vhf.Find(r => r.EndsWith(", selected", StringComparison.Ordinal));
-                if (sel == null && row >= 0 && row < vhf.Count) sel = vhf[row];
-                if (sel != null) sby = Token(sel, "standby ");
-            }
             if (sby.Length > 0 && sby.IndexOf('_') < 0)   // a complete (auto-completed) frequency
             {
                 string key = $"{row}:{sby}";
@@ -229,6 +233,16 @@ public sealed class FBWA380RmpForm : Form
             Apply(rows);
         }
         if (InvokeRequired) { try { BeginInvoke((Action)Finish); } catch { } } else Finish();
+    }
+
+    // The SELECTED VHF row's standby frequency from a scrape row set ("" if none / not found).
+    private static string StandbyFromRows(List<string>? rows, int row)
+    {
+        if (rows == null) return "";
+        var vhf = rows.FindAll(r => r.StartsWith("VHF", StringComparison.Ordinal));
+        string? sel = vhf.Find(r => r.EndsWith(", selected", StringComparison.Ordinal));
+        if (sel == null && row >= 0 && row < vhf.Count) sel = vhf[row];
+        return sel != null ? Token(sel, "standby ") : "";
     }
 
     private void Swap(int row)
