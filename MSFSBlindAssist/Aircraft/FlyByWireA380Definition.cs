@@ -1281,7 +1281,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "System Display Page",
             new Dictionary<double, string>
             {
-                [-1] = "None", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Cond", [4] = "Press",
+                [-1] = "Default automatic page", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Cond", [4] = "Press",
                 [5] = "Door", [6] = "Elec AC", [7] = "Elec DC", [8] = "Fuel", [9] = "Wheel", [10] = "Hyd",
                 [11] = "F/Ctl", [13] = "Cruise",
                 // C/B (12), Status (14) and Video (15) were REMOVED from the picker: the FBW SD
@@ -4841,7 +4841,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private int _sdRefreshSeq;   // bumped per SD-page refresh; "latest request wins" guard
     private static readonly Dictionary<int, string> _sdPageNames = new()
     {
-        [-1] = "Default", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
+        [-1] = "Default automatic page", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
         [4] = "Pressurization", [5] = "Doors", [6] = "Electrical AC", [7] = "Electrical DC",
         [8] = "Fuel", [9] = "Wheel", [10] = "Hydraulics", [11] = "Flight Controls",
         [12] = "Circuit Breakers", [13] = "Cruise", [14] = "Status", [15] = "Video",
