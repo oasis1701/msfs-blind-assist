@@ -39,6 +39,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_ILS_GUIDANCE = 9015;
         private const int HOTKEY_WIND_INFO = 9016;
         private const int HOTKEY_METAR_REPORT = 9017;
+        private const int HOTKEY_COLD_TEMP_CORRECTION = 9250; // Alt+T (cold-temperature altitude correction)
         private const int HOTKEY_RUNWAY_TELEPORT = 9021;
         private const int HOTKEY_GATE_TELEPORT = 9022;
         private const int HOTKEY_LOCATION_INFO = 9023;
@@ -328,6 +329,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_METAR_REPORT:
                             TriggerHotkey(HotkeyAction.ShowMETARReport);
+                            break;
+                        case HOTKEY_COLD_TEMP_CORRECTION:
+                            TriggerHotkey(HotkeyAction.ShowColdTempCorrection);
                             break;
                         case HOTKEY_PFD:
                             TriggerHotkey(HotkeyAction.ShowPFD);
@@ -696,6 +700,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_WIND_INFO, MOD_NONE, 0x49); // I (Wind Info)
             RegisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO, MOD_NONE, 0x4E); // N (NAV Radio Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)
+            RegisterHotKey(windowHandle, HOTKEY_COLD_TEMP_CORRECTION, MOD_ALT, 0x54); // Alt+T (Cold Temperature Altitude Correction)
             RegisterHotKey(windowHandle, HOTKEY_PFD, MOD_SHIFT, 0x50); // Shift+P (PFD Window)
             RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x42); // Shift+B (SimBrief Briefing)
             RegisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD, MOD_SHIFT, 0x44); // Shift+D (Distance to TOD)
@@ -806,6 +811,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_LOCATION_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_WIND_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_METAR_REPORT);
+            UnregisterHotKey(windowHandle, HOTKEY_COLD_TEMP_CORRECTION);
             UnregisterHotKey(windowHandle, HOTKEY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_DEST);
@@ -1243,6 +1249,7 @@ public class HotkeyManager : IDisposable
         ReadILSGuidance,
         ReadWindInfo,
         ShowMETARReport,
+        ShowColdTempCorrection,
         RunwayTeleport,
         GateTeleport,
         LocationInfo,

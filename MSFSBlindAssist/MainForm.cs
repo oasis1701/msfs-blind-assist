@@ -1655,6 +1655,7 @@ public partial class MainForm : Form
         {
             HotkeyAction.ShowChecklist,
             HotkeyAction.ShowMETARReport,
+            HotkeyAction.ShowColdTempCorrection,
             HotkeyAction.SimBriefBriefing,
             HotkeyAction.ShowElectronicFlightBag,
             HotkeyAction.ShowFenixMCDU,
@@ -1812,6 +1813,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ShowMETARReport:
                 ShowMETARReportDialog();
+                break;
+            case HotkeyAction.ShowColdTempCorrection:
+                ShowColdTempCorrectionDialog();
                 break;
             case HotkeyAction.ShowChecklistECL:
                 ShowChecklistECLDialog();
@@ -2298,6 +2302,15 @@ public partial class MainForm : Form
         hotkeyManager.ExitOutputHotkeyMode();
 
         var dialog = new METARReportForm(announcer);
+        dialog.ShowForm();
+    }
+
+    private void ShowColdTempCorrectionDialog()
+    {
+        // Ensure output hotkey mode is deactivated before showing the window
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        var dialog = new ColdTemperatureCorrectionForm(announcer);
         dialog.ShowForm();
     }
 

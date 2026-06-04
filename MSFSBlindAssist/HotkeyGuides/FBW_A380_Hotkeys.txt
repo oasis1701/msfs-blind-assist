@@ -66,6 +66,7 @@ OUTPUT MODE  (press ] first)
   Ctrl+R     Show TCAS window
   Shift+W    Weather Radar
   Shift+M    METAR report
+  Alt+T      Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
 
   Display windows
   Alt+E      E/WD (Engine/Warning Display) pop-out window — the whole E/WD (engine

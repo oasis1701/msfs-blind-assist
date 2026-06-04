@@ -131,6 +131,7 @@ Displays and Windows:
   Shift+E    Route viewer, procedure planner and airport lookup
   Shift+L    Location Info
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
+  Alt+T      Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
   Shift+N    Navigation Display
