@@ -5590,17 +5590,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // these through the accessible status-box panels (Instrument > PFD / ND /
             // ISIS / System Display), exactly like the A380. ShowPFD /
             // ShowNavigationDisplay / ShowECAM / ShowStatusPage fall through to no-op.
-            // EWD on-demand read (output mode → ReadDisplayUpperECAM) — speaks the live
-            // upper E/WD (engine row + memos + warnings) aloud, mirroring the A380's
-            // Alt+E ReadAllEwdWarnings. The EWD also stays available as the display
-            // (System Display page 0 status box + the continuous EWD monitor).
-            // Alt+E opens the E/WD as a pop-out WINDOW (auto-refreshing, F5 to refresh,
-            // Escape to close) with the whole E/WD scraped live — instead of speaking it
-            // once. ReadEwdAloud stays for the always-on monitor / other callers.
+            // EWD on-demand read (output mode → ReadDisplayUpperECAM): opens the E/WD as a
+            // pop-out WINDOW (auto-refreshing, F5 to refresh, Escape to close) showing the
+            // DECODED upper E/WD (engine row + memos + warnings) from SimVars — NOT a Coherent
+            // scrape (the schematic engine row scraped as "XX XX" garbage and the scrape socket
+            // is a documented native-crash risk). The continuous EWD-line monitor still
+            // auto-announces new memos/warnings independently.
             case HotkeyAction.ReadDisplayUpperECAM:
                 hotkeyManager.ExitOutputHotkeyMode();
                 new Forms.FbwEwdWindow("A320 E/WD — Engine / Warning Display",
-                    () => BuildEwdWindowTextAsync(), announcer).Show();
+                    () => BuildEwdWindowTextAsync(simConnect), announcer).Show();
                 return true;
             // On-demand flaps / gear read (parity with the A380; L and Shift+G). Read
             // straight from the live cache — a forced request of an UNCHANGED monitored
@@ -5734,7 +5733,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     }
 
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
-    private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
     private string _sdBoxContent = "";
     private int _sdRefreshSeq;   // "latest request wins" guard for SD-page refresh (mirrors A380)
 
@@ -6149,31 +6147,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return r;
     }
 
-    // On-demand spoken EWD read (output mode → ReadDisplayUpperECAM). Scrapes the live
-    // upper E/WD (the same A32NX_EWD_1 view the System Display page-0 box uses) and
-    // speaks each row. Mirrors the A380's Alt+E ReadAllEwdWarnings. The EWD also stays
-    // on as the panel display + the continuous EWD-line monitor, so this is the
-    // "read it now" companion to the always-on auto-announce.
-    private async void ReadEwdAloud(ScreenReaderAnnouncer announcer)
-    {
-        try
-        {
-            if (_ewdScrapeClient == null)
-            {
-                _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
-                _ewdScrapeClient.Start();
-                _ewdScrapeClient.SetActive(false);   // on-demand only
-            }
-            await System.Threading.Tasks.Task.Delay(500);
-            var rows = await _ewdScrapeClient.ScrapeNowAsync();
-            if (rows == null || rows.Count == 0)
-                announcer.AnnounceImmediate("E W D not available. Power up the displays and try again.");
-            else
-                announcer.AnnounceImmediate("E W D. " + string.Join(". ", rows));
-        }
-        catch { announcer.AnnounceImmediate("E W D read failed."); }
-    }
-
     // Build the DECODED Upper E/WD (SD page 0) text from SimVars — the engine row
     // (thrust rating/limit + per-engine N1 / N1-command / EGT / N2 / FF / state /
     // reverser) plus the live ECAM memo lines (A32NX_Ewd_LOWER_* codes → EWDMessageLookup).
@@ -6181,7 +6154,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // A320-specific: 2 engines, NO N3, NO per-engine THR% clamp (one A32NX_AUTOTHRUST_THRUST_LIMIT),
     // 7 memo lines per side, A32NX EWDMessageLookup (NOT the A380 table). Force-reads the
     // source vars, waits ~0.4 s, then builds from cache. Returns "" when there's no real
-    // engine data AND no memos (the caller then falls back to the live scrape).
+    // engine data AND no memos (the caller then shows a placeholder).
     private async Task<string> BuildEwdDecodedTextAsync(SimConnect.SimConnectManager sim)
     {
         try
@@ -6200,6 +6173,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 "A32NX_ENGINE_STATE:1", "A32NX_ENGINE_STATE:2",
                 "A32NX_REVERSER_1_DEPLOYED", "A32NX_REVERSER_2_DEPLOYED",
                 "A32NX_ENGINE_IDLE_N1", "A32NX_FWC_FLIGHT_PHASE", "A32NX_AUTOTHRUST_STATUS",
+                "A32NX_TOTAL_FUEL_QUANTITY",
             };
             foreach (var v in toRead) sim.RequestVariable(v, forceUpdate: true);
             for (int i = 1; i <= 7; i++)
@@ -6233,8 +6207,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             string EngState(double v) => v >= 2 ? "starting" : v >= 1 ? "on" : "off";
 
-            // Track whether any per-engine value is real, so the caller can fall back to
-            // the scrape when no engine data has been cached yet.
+            // Fuel on board (kg var; WeightUser follows the metric toggle).
+            double? fobKg = sim.GetCachedVariableValue("A32NX_TOTAL_FUEL_QUANTITY");
+            string fobStr = "--";
+            if (fobKg.HasValue && !double.IsNaN(fobKg.Value)) { var (fv, fu) = WeightUser(fobKg.Value); fobStr = $"{fv:0} {fu}"; }
+
+            // Track whether any per-engine value is real (placeholder shown when nothing's cached).
             bool anyEngineData =
                 engs.Any(e => sim.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}").HasValue
                            || sim.GetCachedVariableValue($"A32NX_ENGINE_EGT:{e}").HasValue
@@ -6250,6 +6228,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
                 "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
                 "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
+                "Fuel on board: " + fobStr,
             };
 
             // Reversers (engine 1/2) — only annunciate when deployed.
@@ -6281,7 +6260,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     if (!string.IsNullOrWhiteSpace(clean)) memos.Add(clean);
                 }
 
-            // No real engine data AND no memos → let the caller fall back to the scrape.
+            // No real engine data AND no memos → caller shows a placeholder.
             if (!anyEngineData && memos.Count == 0) return "";
 
             lines.Add("");
@@ -6292,26 +6271,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         catch { return ""; }
     }
 
-    // Build the full upper-E/WD text for the Alt+E pop-out window (FbwEwdWindow) by
-    // scraping the live A32NX_EWD_1 view (engine row + memos / warnings) — the same
-    // source ReadEwdAloud speaks and the SD page-0 box shows. Returns the clean joined
-    // rows, or "" when nothing is available (the window then shows its own placeholder).
-    public async Task<string> BuildEwdWindowTextAsync()
+    // Build the upper-E/WD text for the Alt+E pop-out (FbwEwdWindow): the DECODED engine
+    // row + memos from SimVars/SimConnect — NO Coherent scrape. The schematic ENGINE row
+    // scraped as garbage ("XX XX N1 XX %…"), and the Coherent scrape socket is a documented
+    // native-crash risk; the decode covers the content whenever the aircraft is powered.
+    // Returns a placeholder when the decode has nothing (displays not powered).
+    public async Task<string> BuildEwdWindowTextAsync(SimConnect.SimConnectManager sim)
     {
-        try
-        {
-            if (_ewdScrapeClient == null)
-            {
-                _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
-                _ewdScrapeClient.Start();
-                _ewdScrapeClient.SetActive(false);   // on-demand only
-            }
-            await System.Threading.Tasks.Task.Delay(400);
-            var rows = await _ewdScrapeClient.ScrapeNowAsync();
-            if (rows == null || rows.Count == 0) return "";
-            return string.Join("\r\n", rows.Where(r => !string.IsNullOrWhiteSpace(r)));
-        }
-        catch { return ""; }
+        if (sim == null || !sim.IsConnected) return "E/WD not available — not connected.";
+        string decoded = await BuildEwdDecodedTextAsync(sim);
+        return string.IsNullOrEmpty(decoded)
+            ? "E/WD not available — power up the displays."
+            : decoded;
     }
 
     // Populate the System Display status box for the selected page, then force the box
@@ -6332,27 +6303,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         try
         {
             string content;
-            if (page == 0)   // E/WD — DECODED engine row + memos (primary); live scrape is the fallback
+            if (page == 0)   // E/WD — DECODED engine row + memos from SimVars (NO Coherent scrape)
             {
-                // Primary: decode the engine row + memos from SimVars. The schematic ENGINE
-                // row scrapes as garbage ("XX XX N1 XX %…"), so we never use the scrape for it.
                 content = await BuildEwdDecodedTextAsync(sim);
                 if (string.IsNullOrEmpty(content))
-                {
-                    // Fallback ONLY when the decode yields nothing real (no engine data cached
-                    // AND no memos) — e.g. displays not powered yet.
-                    if (_ewdScrapeClient == null)
-                    {
-                        _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
-                        _ewdScrapeClient.Start();
-                        _ewdScrapeClient.SetActive(false);   // on-demand only
-                    }
-                    await System.Threading.Tasks.Task.Delay(700);
-                    var rows = await _ewdScrapeClient.ScrapeNowAsync();
-                    content = (rows == null || rows.Count == 0)
-                        ? "(content not available — power up the displays / try again)"
-                        : string.Join("\r\n", rows);
-                }
+                    content = "(content not available — power up the displays)";
             }
             else
             {

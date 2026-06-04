@@ -64,7 +64,11 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   ENGINE row, plus the live ECAM memo lines. Memos read via a new `SimConnectManager.GetEcamLineRaw`
   accessor: the memo CODE vars are decoded into strings and the batch handler `continue`s past the
   numeric cache, so `GetCachedVariableValue` returns null for them — the accessor exposes the decoded
-  text. Scrape kept as a fallback when nothing decodes.
+  text. BOTH the Alt+E pop-out (`BuildEwdWindowTextAsync`, + FOB) and the SD page-0 box use this
+  decode; the Coherent scrape was REMOVED entirely from the A320 E/WD (the old `ReadEwdAloud` + the
+  `_ewdScrapeClient` are gone) — a text placeholder shows when nothing decodes. The A320 (older FBW)
+  publishes all EWD content as `Ewd_LOWER` codes so no scrape is needed; the A380 keeps its always-on
+  scrape only for its EventBus-only abnormal procedures.
 - **SD page-combo announce fix (UI):** the SD-panel 3 s auto-refresh updated the status box (and
   re-requested the page var) while the page-selector combo was focused, firing an MSAA event that
   stepped on NVDA's page announcement. The auto-refresh now also skips while a selector combo is
