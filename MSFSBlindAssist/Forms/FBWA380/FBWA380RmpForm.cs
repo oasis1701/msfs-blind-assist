@@ -198,8 +198,12 @@ public sealed class FBWA380RmpForm : Form
         {
             _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);   // keyed live; the standby auto-completes
             e.Handled = true;                                    // swallow so there's no error ding
-            // No per-keystroke scrape here — that stacked a Coherent round-trip on every digit and
-            // made fast typing lag. The auto-poll (RowsUpdated) refreshes the screen within one tick.
+            // Force a DEBOUNCED scrape so the RMP's own autocomplete is heard. ScheduleRefresh is
+            // Stop+Start, so rapid typing does NOT stack a round-trip per digit — it scrapes ONCE,
+            // ~250 ms after the LAST digit. That re-read catches the auto-completed standby (e.g.
+            // type 8 -> 118.000) and Apply()'s standby-change check then announces "Standby 118.000".
+            // (The background poll alone was too flaky to reliably catch the autocomplete.)
+            ScheduleRefresh();
         }
     }
 
