@@ -924,7 +924,13 @@
         // F-PLN leg/airway annotation (the SID/STAR/airway name printed to the
         // left of every leg). The same procedure name repeats on every leg it
         // covers, so flag it for consecutive-duplicate suppression below.
-        isAnno: cls.indexOf("mfd-fms-fpln-line-annotation") >= 0
+        isAnno: cls.indexOf("mfd-fms-fpln-line-annotation") >= 0,
+        // SURV STATUS & SWITCHING status indicators (.mfd-surv-status-item) are
+        // INDEPENDENT per-column cells (SYS1 status / a section heading / SYS2-or-OFF
+        // status). They must never row-merge — comma-joining them, or binding a mid-row
+        // heading (TAWS/XPDR/TCAS) to one as a "LABEL: value", reads as a false
+        // relationship. Flag so the Y-merge leaves each on its own line.
+        isStatusItem: cls.indexOf("mfd-surv-status-item") >= 0
       });
     }
 
@@ -976,6 +982,7 @@
       if (cur.idx === 0 && cur.kind === "text" && !cur.fpln && !cur.perf && mergedLines.length > 0) {
         var prev = mergedLines[mergedLines.length - 1];
         if (prev.idx === 0 && prev.kind === "text" && !prev.fpln
+            && !cur.isStatusItem && !prev.isStatusItem
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
           // Compose label→value→unit groups so a row of sibling cells reads as
           // "T.TRK: 134.4 °T, T.HDG: 134.4 °T" instead of comma-soup:

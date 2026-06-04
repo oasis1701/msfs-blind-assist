@@ -99,3 +99,18 @@ test('SURV CONTROLS: radios + toggles carry their system header, stay selectable
   // selectability invariant preserved (every radio/surv/button keeps its idx)
   assertSelectable('surv_controls');
 });
+
+// SURV STATUS & SWITCHING: .mfd-surv-status-item cells must NOT row-merge — each
+// stays its own line, and a mid-row heading (TAWS/XPDR/TCAS) must not bind a status
+// cell as "HEADING: status" (a false relationship). Captured live.
+test('SURV STATUS & SWITCHING: status items stay on their own lines', () => {
+  const list = els('surv_status');
+  const j = list.map((e) => e.text).join('\n');
+  assert.match(j, /(^|\n)TERR SYS 1(\n|$)/, 'TERR SYS 1 not its own line');
+  assert.match(j, /(^|\n)TERR SYS OFF(\n|$)/, 'TERR SYS OFF not its own line');
+  assert.match(j, /(^|\n)WXR DISPLAY 1(\n|$)/, 'WXR DISPLAY 1 not its own line');
+  // no false heading-bind across the column status cells
+  assert.doesNotMatch(j, /TAWS: /, 'TAWS spuriously bound a status cell');
+  assert.doesNotMatch(j, /XPDR: XPDR OFF/, 'XPDR spuriously bound a status cell');
+  assert.doesNotMatch(j, /TERR SYS 1,/, 'status items wrongly comma-merged');
+});
