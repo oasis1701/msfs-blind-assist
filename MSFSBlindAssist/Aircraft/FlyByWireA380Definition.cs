@@ -560,15 +560,30 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.OnRequest,
             RenderAsSlider = true, SliderMin = min, SliderMax = max
         };
+        // Crew SEAT axes are a START/STOP MOTOR control, NOT a position slider. The seat motor
+        // SOUND is a Wwise Continuous loop driven by the DERIVATIVE of the position L:var (sound.xml
+        // RTPC Derived="true"), so it only plays while the var is actively CHANGING per frame.
+        // Ramping the position in big 3-unit jumps every 40 ms left flat gaps where the per-frame
+        // derivative was zero -> a single "tick" instead of a sustained motor. Each axis is instead a
+        // 3-state combo (Stopped / one way / the other); selecting a direction starts a fast,
+        // small-increment drive (HandleUIVariableSet -> StartOrStopSeatMotor) so the var changes every
+        // frame and the motor runs + sounds for as long as you like; "Stopped" halts it. Synthetic
+        // "<posVar>_MOTOR" key (OnRequest, no real L:var) — like the Act()/_DETENT combos.
+        void SeatMotor(string posVar, string display, string dirA, string dirB) => vars[posVar + "_MOTOR"] = new SimVarDefinition
+        {
+            Name = posVar + "_MOTOR", DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Stopped", [1] = dirA, [2] = dirB }
+        };
         Slider("SUNSHADE_FWD_LH", "Forward sunshade left");
         Slider("SUNSHADE_FWD_CTR", "Forward sunshade centre");
         Slider("SUNSHADE_FWD_RH", "Forward sunshade right");
         Slider("AFT_LH_SUNSHADE_OPENING", "Aft sunshade left");
         Slider("AFT_RH_SUNSHADE_OPENING", "Aft sunshade right");
-        Slider("SEAT_CPT_MOVE_FWD_AFT", "Captain seat forward/aft");
-        Slider("SEAT_CPT_MOVE_UP_DOWN", "Captain seat up/down");
-        Slider("SEAT_FO_MOVE_FWD_AFT", "First officer seat forward/aft");
-        Slider("SEAT_FO_MOVE_UP_DOWN", "First officer seat up/down");
+        SeatMotor("SEAT_CPT_MOVE_UP_DOWN", "Captain seat up/down", "Up", "Down");
+        SeatMotor("SEAT_CPT_MOVE_FWD_AFT", "Captain seat forward/aft", "Forward", "Aft");
+        SeatMotor("SEAT_FO_MOVE_UP_DOWN", "First officer seat up/down", "Up", "Down");
+        SeatMotor("SEAT_FO_MOVE_FWD_AFT", "First officer seat forward/aft", "Forward", "Aft");
         // Armrests (big = up/down + tilt; small = fwd) + forward windshield visors — all 0..100
         // drag axes, live-verified writable (held at 40/50).
         Slider("BIGARMREST_CPT_UP_DOWN", "Captain armrest up/down");
@@ -2559,9 +2574,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
             "A380_LGPIN_DOOR",
-            // ---- Crew seats + armrests (accessible drag sliders) ----
-            "SEAT_CPT_MOVE_FWD_AFT", "SEAT_CPT_MOVE_UP_DOWN",
-            "SEAT_FO_MOVE_FWD_AFT", "SEAT_FO_MOVE_UP_DOWN",
+            // ---- Crew seats (start/stop motor combos) + armrests (drag sliders) ----
+            "SEAT_CPT_MOVE_UP_DOWN_MOTOR", "SEAT_CPT_MOVE_FWD_AFT_MOTOR",
+            "SEAT_FO_MOVE_UP_DOWN_MOTOR", "SEAT_FO_MOVE_FWD_AFT_MOTOR",
             "BIGARMREST_CPT_UP_DOWN", "BIGARMREST_CPT_TILT", "SMALLARMREST_CPT_FWD",
             "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD"
         };
@@ -3865,6 +3880,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Crew SEAT motor (Stopped / dir A / dir B) — START/STOP, not a position target. See the
+        // SeatMotor helper: the motor SOUND needs the position L:var to change every frame, so we
+        // run a fast small-increment drive while a direction is selected and halt on "Stopped".
+        if (varKey.EndsWith("_MOTOR", System.StringComparison.Ordinal))
+        {
+            StartOrStopSeatMotor(varKey.Substring(0, varKey.Length - 6), (int)System.Math.Round(value), simConnect);
+            return true;
+        }
         // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
         // speed-brake) are FBW L:vars. Don't SNAP them to the target in one write — the 3-D
         // model jumps there and you only hear a single "tick" of the motor. A real motorised
@@ -6045,6 +6068,54 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     }
 
     private void StopSliderRamp() { _sliderRampTimer?.Stop(); _sliderRampTimer?.Dispose(); _sliderRampTimer = null; }
+
+    // ---- Crew-seat START/STOP motor ----
+    // Unlike a slider (target -> ramp -> stop), a seat motor RUNS while a direction is selected and
+    // HALTS on "Stopped". The motor SOUND is a Wwise Continuous loop keyed to the DERIVATIVE of the
+    // position L:var, so the only thing that makes it sustain is the var changing EVERY frame. So we
+    // drive a SMALL clamped increment via the calculator path on a FAST UI-thread timer (every 20 ms),
+    // which keeps the per-frame derivative non-zero -> sustained motor noise + smooth motion. A read-
+    // modify-write calc expression (`(L:VAR) step + 100 min (>L:VAR)`) does the clamp in-sim so we
+    // never need to track the value or special-case the 0/100 limits (at the limit the writes become
+    // no-ops, the derivative goes to zero, and the loop fades on its own).
+    private readonly Dictionary<string, int> _seatMotorDir = new();   // posVar -> +1 (toward 100) / -1 (toward 0)
+    private System.Windows.Forms.Timer? _seatMotorTimer;
+    private SimConnectManager? _seatMotorSim;
+    private int _seatMotorTicks;
+
+    private void StartOrStopSeatMotor(string posVar, int dir, SimConnectManager simConnect)
+    {
+        _seatMotorSim = simConnect;
+        if (dir == 1) _seatMotorDir[posVar] = +1;        // option 1 = Up / Forward (toward 100)
+        else if (dir == 2) _seatMotorDir[posVar] = -1;   // option 2 = Down / Aft (toward 0)
+        else _seatMotorDir.Remove(posVar);               // 0 = Stopped
+        if (_seatMotorDir.Count == 0) { StopSeatMotor(); return; }
+        _seatMotorTicks = 0;
+        if (_seatMotorTimer == null)
+        {
+            _seatMotorTimer = new System.Windows.Forms.Timer { Interval = 20 };
+            _seatMotorTimer.Tick += (s, e) => SeatMotorTick();
+        }
+        if (!_seatMotorTimer.Enabled) _seatMotorTimer.Start();
+    }
+
+    private void SeatMotorTick()
+    {
+        var sim = _seatMotorSim;
+        if (sim == null || !sim.IsConnected || _seatMotorDir.Count == 0) { StopSeatMotor(); return; }
+        const double step = 0.4;   // 100 units in ~5 s; small enough that every frame sees a change
+        foreach (var kv in _seatMotorDir)
+        {
+            string expr = kv.Value > 0
+                ? "(L:" + kv.Key + ") " + step.ToString(System.Globalization.CultureInfo.InvariantCulture) + " + 100 min (>L:" + kv.Key + ")"
+                : "(L:" + kv.Key + ") " + step.ToString(System.Globalization.CultureInfo.InvariantCulture) + " - 0 max (>L:" + kv.Key + ")";
+            sim.ExecuteCalculatorCode(expr);
+        }
+        // Safety stop a bit past full travel (~8 s) so a forgotten "moving" combo can't drive forever.
+        if (++_seatMotorTicks > 400) StopSeatMotor();
+    }
+
+    private void StopSeatMotor() { _seatMotorDir.Clear(); _seatMotorTimer?.Stop(); }
 
     // The A380's NEW FCU ignores the legacy dotted "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" H-event the
     // A320 used — live-verified that firing it (either dot or underscore form) does NOTHING. Its
