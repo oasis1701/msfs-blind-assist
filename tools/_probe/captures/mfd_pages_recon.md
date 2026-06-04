@@ -29,11 +29,29 @@ Per-page state now:
 - MOSTLY CLEAN: DATA/STATUS (a few neutral column-header rows: IDLE/PERF, ACTIVE/SECOND,
   the DB-cycle dates); FUEL&LOAD (top fields clean; the DEST/ALTN read-only prediction
   GRID still reads as comma rows); NAVAIDS (CLASS / SLOPE read as header then value).
-- LEFT AS-IS (low value / FBW-WIP): D-ATIS function dropdown concatenates option labels
-  ("UPDATEOR PRINT"); ACCURACY drops its split "FT" unit span (value still reads);
-  PERF composite residuals (CLB SPD LIM, DEST) + STEP ALTs WPT/ALT relabel;
+- LEFT AS-IS (low value / FBW-WIP): ACCURACY drops its split "FT" unit span (value
+  still reads); PERF composite residuals (CLB SPD LIM, DEST);
   ATC REQUEST/REPORT/EMER + DATA WAYPOINT/NAVAID/ROUTE/PRINTER + POSITION REPORT/GNSS/TIME
   (unreachable / "ERROR 404" in the FBW dev build).
+
+Follow-up increments (commits 3c90987 → d917b94), live-verified on the ground (KLAX→KJFK):
+5. **D-ATIS** (once populated): function selector reads "UPDATE OR PRINT" (was absorbing
+   the whole ATIS report via comboSelectedValue + losing spacing); ATIS reads once.
+6. **F-PLN**: dropped the stray "at * feet" managed-constraint marker (real constraints
+   decode: "at or above 640 feet"); **STEP ALTs** WPT/ALT → "Step waypoint"/"Step
+   altitude" (scoped to that subtab); leading "FL" binds its level ("FROM CRZ: FL 390").
+
+F-PLN sub-pages + per-page sub-tabs SWEPT (all read acceptably; no further code needed):
+- LAT REV menu (DIR TO/DEPARTURE/ARRIVAL/HOLD/AIRWAYS/STEP ALTs/CONSTRAINTS, "(N/A)"
+  disabled) — clean under its opener.
+- DEPARTURE (RWY/SID/TRANS show selection + summary), ARRIVAL (same widget/path),
+  HOLD (INBOUND CRS / TURN / TIME-DIST / LEG PARAM), AIRWAYS (FROM / VIA / TO),
+  CONSTRAINTS=VERT REV/ALT (ALT CSTR AT + AT/ABOVE/BELOW), VERT REV/SPD (SPD CSTR +
+  CLB SPD LIMIT). NOTE: HOLD/AIRWAYS/DEPARTURE-ARRIVAL-selection/SPD create a TMPY on
+  interaction — erase after (ERASE TMPY on F-PLN).
+- Sub-tabs: DATA→FMS P/N (empty), NAVAIDS→SELECTED FOR FMS NAV (navaid selectors +
+  RADIO NAV MODE/POSITION; minor: a SLOPE value's "°" orphans to the next row),
+  DATA/AIRPORT→PILOT STORED RWYs (empty).
 
 ---
 
