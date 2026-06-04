@@ -42,6 +42,8 @@ public sealed class FBWA380RmpForm : Form
     private List<string> _scrapeVhfRows = new();   // "VHF1: active 129.000, standby 121.500, transmit, selected"
     private System.Windows.Forms.Timer? _refreshTimer;
     private System.Windows.Forms.Timer? _simPoll;
+    private System.Windows.Forms.Timer? _standbyTimer;   // debounce for the post-typing standby announce
+    private string _lastStandbyAnnounced = "";           // dedup key "row:freq" so it speaks once
 
     private ComboBox _side = null!;
     private TextBox _display = null!;
@@ -173,24 +175,31 @@ public sealed class FBWA380RmpForm : Form
         if (_busy) return;
         bool wasSel = _selectedRowIndex == row;
         _selectedRowIndex = row;
-        if (wasSel) { LoadStandby(); return; }   // re-pressing the selected radio = load the typed standby
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
-        _announcer?.Announce($"Radio {row + 1}");
-        ScheduleRefresh();
+        if (wasSel) AnnounceSelectedStandby();   // re-press the selected radio = confirm/load -> read its standby
+        else { _announcer?.Announce($"Radio {row + 1}"); ScheduleRefresh(); }
     }
 
-    // Load the typed standby into the SELECTED radio (LSK) and announce the ACTUAL loaded frequency by
-    // scraping FRESH — not the cached _standby, which is stale when Enter is pressed right after the last
-    // digit (the typing's debounced scrape hasn't run yet, so the autocomplete value isn't in _standby).
-    // Marshals to the UI thread so the announce reliably speaks (the scrape continuation can resume off it).
-    private async void LoadStandby()
+    // Debounce: ~350 ms after the user stops typing a VHF frequency, announce the selected radio's standby.
+    private void ScheduleStandbyAnnounce()
     {
-        if (_busy) return;
+        if (_standbyTimer == null)
+        {
+            _standbyTimer = new System.Windows.Forms.Timer { Interval = 350 };
+            _standbyTimer.Tick += (_, _) => { _standbyTimer!.Stop(); AnnounceSelectedStandby(); };
+        }
+        _standbyTimer.Stop(); _standbyTimer.Start();
+    }
+
+    // Scrape FRESH and announce the SELECTED radio's standby ONCE: "VHF standby 1, 121.900". Reading fresh
+    // (not a cached value) avoids the stale-cache bug; deduped per radio+value so the typing-settle and the
+    // Enter/LSK paths don't double; marshalled to the UI thread so the announce reliably speaks (the scrape
+    // continuation can resume off the UI thread, where the screen-reader announce silently fails).
+    private async void AnnounceSelectedStandby()
+    {
         int row = _selectedRowIndex;
-        _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
-        _refreshTimer?.Stop();   // cancel the typing debounce so it doesn't double-scrape
         List<string>? rows = null;
-        try { await Task.Delay(140); rows = await _disp.ScrapeNowAsync(); } catch { }
+        try { rows = await _disp.ScrapeNowAsync(); } catch { }
         void Finish()
         {
             string sby = "";
@@ -201,7 +210,15 @@ public sealed class FBWA380RmpForm : Form
                 if (sel == null && row >= 0 && row < vhf.Count) sel = vhf[row];
                 if (sel != null) sby = Token(sel, "standby ");
             }
-            _announcer?.AnnounceImmediate(sby.Length > 0 ? $"Radio {row + 1} standby loaded, {sby}" : "Standby loaded");
+            if (sby.Length > 0 && sby.IndexOf('_') < 0)   // a complete (auto-completed) frequency
+            {
+                string key = $"{row}:{sby}";
+                if (key != _lastStandbyAnnounced)
+                {
+                    _lastStandbyAnnounced = key;
+                    _announcer?.AnnounceImmediate($"VHF standby {row + 1}, {sby}");
+                }
+            }
             Apply(rows);
         }
         if (InvokeRequired) { try { BeginInvoke((Action)Finish); } catch { } } else Finish();
@@ -243,7 +260,7 @@ public sealed class FBWA380RmpForm : Form
             return;
         }
         _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);   // VHF: keyed live; the standby auto-completes
-        ScheduleRefresh();
+        ScheduleStandbyAnnounce();   // ~350 ms after the last digit: announce "VHF standby N, freq" (also refreshes)
     }
 
     private void OnDisplayKeyDown(object? sender, KeyEventArgs e)
@@ -259,7 +276,8 @@ public sealed class FBWA380RmpForm : Form
                 else _announcer?.AnnounceImmediate("Enter a 4 digit squawk, 0 to 7");
                 return;
             }
-            LoadStandby();   // VHF: load the typed standby and announce the actual loaded value (scrapes fresh)
+            _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // VHF: confirm/load the typed standby
+            AnnounceSelectedStandby();                                      // read it back: "VHF standby N, freq"
         }
         else if (e.KeyCode == Keys.Back)
         {
@@ -326,7 +344,7 @@ public sealed class FBWA380RmpForm : Form
     private void StartScrape()
     {
         _firstScrape = true;
-        _lastAnnouncedMessage = "";
+        _lastAnnouncedMessage = ""; _lastStandbyAnnounced = "";
         _message = ""; _scrapeVhfRows = new();
         _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 300, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
@@ -464,6 +482,7 @@ public sealed class FBWA380RmpForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         try { _refreshTimer?.Stop(); _refreshTimer?.Dispose(); } catch { }
+        try { _standbyTimer?.Stop(); _standbyTimer?.Dispose(); } catch { }
         try { _simPoll?.Stop(); _simPoll?.Dispose(); } catch { }
         try { _disp.RowsUpdated -= OnRowsUpdated; _disp.Dispose(); } catch { }
         base.OnFormClosed(e);
