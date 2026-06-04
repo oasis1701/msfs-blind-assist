@@ -5389,6 +5389,15 @@ public partial class MainForm : Form
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
+                            // Capture the ACTUAL current cached state BEFORE the lines below
+                            // overwrite currentSimVarValues with the new selection. The
+                            // circuit-toggle branches (RWY turn-off) need this: ELECTRICAL_CIRCUIT_TOGGLE
+                            // is toggle-only, so they must compare desired vs actual. The old code
+                            // read currentSimVarValues AFTER the overwrite, so current == selected
+                            // always, and the toggle never fired (RWY turn-off appeared dead).
+                            double priorCachedState = currentSimVarValues.ContainsKey(capturedVarKey)
+                                ? currentSimVarValues[capturedVarKey] : -1;
+
                             // Let the aircraft handle this SimVar-backed combo first
                             // (e.g. an A380 valve/exit combo whose STATE is a SimVar
                             // but whose CONTROL is a K-event — engine masters,
@@ -5459,25 +5468,25 @@ public partial class MainForm : Form
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:21") // Left RWY Turn Off Light
                             {
-                                double currentState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:21")
-                                    ? currentSimVarValues["CIRCUIT_SWITCH_ON:21"] : -1;
+                                // FBW's own preset reads A:CIRCUIT SWITCH ON:21 then toggles only if
+                                // needed (ELECTRICAL_CIRCUIT_TOGGLE is toggle-only). Compare desired vs
+                                // the PRE-overwrite cached state. -1 (unknown) treated as off, which
+                                // matches the combo's default display (index 0 = Off).
                                 bool wantOn = selectedValue == 1;
-                                bool isOn = currentState == 1;
-                                // When state is unknown (cache miss on first open), always send toggle
-                                if (currentState < 0 || wantOn != isOn)
+                                bool isOn = priorCachedState == 1;
+                                if (wantOn != isOn)
                                     simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 21);
+                                // Refresh actual state so an external (cockpit) change can't leave the
+                                // next decision stale.
+                                simConnectManager?.RequestVariable("CIRCUIT_SWITCH_ON:21", forceUpdate: true);
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:22") // Right RWY Turn Off Light
                             {
-                                double currentState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:22")
-                                    ? currentSimVarValues["CIRCUIT_SWITCH_ON:22"] : -1;
                                 bool wantOn = selectedValue == 1;
-                                bool isOn = currentState == 1;
-                                // When state is unknown (cache miss on first open), always send toggle
-                                // (matches the :21 left-light branch — fixes the asymmetry where
-                                // "Right RWY off" no-opped on first open before the cache populated).
-                                if (currentState < 0 || wantOn != isOn)
+                                bool isOn = priorCachedState == 1;
+                                if (wantOn != isOn)
                                     simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 22);
+                                simConnectManager?.RequestVariable("CIRCUIT_SWITCH_ON:22", forceUpdate: true);
                             }
                         }
                     };
