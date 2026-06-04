@@ -71,9 +71,20 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   focused, and the box refreshes on focus instead — so arrowing the combo announces cleanly. (The
   residual fast-arrow cutoff is normal screen-reader self-interruption, not an app bug.)
 
-**STILL OPEN:** PRESS overhead-panel verify (B — likely already correct), fire-test aural-cancel
-(C — needs a live fire to test the CRC clears), squawk read-back (D — optional), RMP scraped-window
-(A — assessed NOT worth porting), SimConnect-ceiling live A32NX connect check (A — manual log check).
+- **Fire-test aural-cancel (C):** turning a fire / cargo-smoke test Off in the Fire panel now pulses
+  `PUSH_AUTOPILOT_MASTERWARN_L` (the A320 no-extra-A spelling its `CLEAR_MASTER_WARNING` uses; the A380
+  uses MASTERAWARN) to silence the CRC. Live-verified.
+- **Squawk read-back (D):** `XPNDR_CODE` (= stock `TRANSPONDER CODE:1`, BCO16) decoded to the 4-digit
+  squawk in the Transponder status box (distinct from the special `SQUAWK_CODE` key). Decode verified
+  live (8192 → "2000").
+- **SimConnect-ceiling (A):** verified live — ~454 defs (429 individual + 236 batch-covered), capped=0,
+  FULLY CONNECTED; ~546 of headroom under the 1000 ceiling.
+- **PRESS overhead (B):** confirmed already correct — the A320 reads cabin pressurization from the CPC
+  ARINC words (the plain names don't exist), and the Tier-6 active-CPC fix picks the right controller.
+
+**STILL OPEN:** RMP scraped-window (A — assessed NOT worth porting; the A32NX RMP is a different
+instrument — bare-SVG seven-segment DOM, knob-only entry — so the A380's scraped-window approach
+doesn't transfer). This is the single deliberate skip; the parity pass is otherwise complete.
 
 ---
 

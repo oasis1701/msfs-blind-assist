@@ -2121,6 +2121,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.Event,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        // Squawk read-back: TRANSPONDER CODE:1 reads as a BCD16 word (0x2000 = 8192) — decoded
+        // to the 4-digit squawk in TryGetDisplayOverride. Distinct key (NOT SQUAWK_CODE, which is
+        // a MainForm special-announce key). Matches the A380. The A320 already had squawk INPUT
+        // (TRANSPONDER_CODE_SET); this is the read-back.
+        ["XPNDR_CODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TRANSPONDER CODE:1",
+            DisplayName = "Squawk Code",
+            Type = SimConnect.SimVarType.SimVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "BCO16"
+        },
         ["XPNDR_IDENT_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "XPNDR_IDENT_ON",
@@ -4840,6 +4852,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "COM_TRANSMIT:2",
             "COM_TRANSMIT:3"
         },
+        // Squawk read-back (decoded from the BCD16 word). The mode/system are settable
+        // controls in the Transponder panel; this read-only box shows the active code.
+        ["Transponder"] = new List<string>
+        {
+            "XPNDR_CODE"
+        },
         ["ECAM Control Panel"] = new List<string>
         {
             "A32NX_ECAM_SFAIL"
@@ -6521,6 +6539,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ---- PFD / ND A380-parity status-box decodes --------------------------
         // Indicated airspeed in the PFD/ISIS box (non-special alias — see the PFD_IAS registration).
         if (varKey == "PFD_IAS") { displayText = $"{value:0} knots"; return true; }
+        // Squawk read-back: TRANSPONDER CODE:1 reads as a BCD16 word (0x2000 = 8192) -> "2000".
+        if (varKey == "XPNDR_CODE")
+        {
+            int bcd = (int)Math.Round(value);
+            displayText = $"{(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}";
+            return true;
+        }
         // Managed target speed on the PFD (0 = none shown).
         if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
@@ -6962,6 +6987,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             int page = (int)Math.Round(value);
             simConnect.ExecuteCalculatorCode($"{page} (>L:A32NX_MSFSBA_SD_PAGE)");
             RefreshDisplayBoxAsync(page, simConnect);
+            return true;
+        }
+
+        // Fire / cargo-smoke TEST: the test PB drives its L:var, but the CRC ("beep beep beep")
+        // can keep sounding until the master warning is acknowledged — so on TEST OFF, also pulse
+        // the master-warning acknowledge to guarantee the aural cancels. Reuses the SAME
+        // PUSH_AUTOPILOT_MASTERWARN_L the A320's CLEAR_MASTER_WARNING control uses (no extra A —
+        // that's the A320 spelling; the A380 uses MASTERAWARN). Calc-path write. The combo
+        // announces its own On/Off, so no extra speech here.
+        if (varKey == "A32NX_FIRE_TEST_ENG1" || varKey == "A32NX_FIRE_TEST_ENG2"
+            || varKey == "A32NX_FIRE_TEST_APU" || varKey == "A32NX_FIRE_TEST_CARGO")
+        {
+            int on = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"{on} (>L:{varKey})");
+            if (on == 0)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
+            }
             return true;
         }
 
