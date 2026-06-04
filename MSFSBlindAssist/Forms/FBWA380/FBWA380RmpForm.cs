@@ -175,7 +175,7 @@ public sealed class FBWA380RmpForm : Form
         bool wasSel = _selectedRowIndex == row;
         _selectedRowIndex = row;
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
-        _announcer?.Announce(wasSel ? "Standby loaded" : $"Radio {row + 1}");
+        _announcer?.Announce(wasSel ? (_standby.Length > 0 ? $"Standby loaded, {_standby}" : "Standby loaded") : $"Radio {row + 1}");
         ScheduleRefresh();
     }
 
@@ -232,7 +232,7 @@ public sealed class FBWA380RmpForm : Form
                 return;
             }
             _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // VHF: load standby
-            _announcer?.Announce("Standby loaded");
+            _announcer?.Announce(_standby.Length > 0 ? $"Standby loaded, {_standby}" : "Standby loaded");
             ScheduleRefresh();
         }
         else if (e.KeyCode == Keys.Back)
@@ -255,7 +255,7 @@ public sealed class FBWA380RmpForm : Form
         if (c < '0' || c > '7') { _announcer?.AnnounceImmediate("Squawk digits are 0 to 7"); return; }
         if (_squawkEntry.Length >= 4) _squawkEntry = "";   // a 5th digit starts a fresh code
         _squawkEntry += c;
-        _announcer?.Announce(c.ToString());                // echo each digit (the screen is read-only)
+        // No per-digit echo (the screen shows "Squawk entry: 22__"); the commit announces "Squawk NNNN".
         if (_squawkEntry.Length == 4) CommitSquawk();
         else RenderFromSim();
     }
@@ -334,6 +334,12 @@ public sealed class FBWA380RmpForm : Form
 
     private void Apply(List<string>? rows)
     {
+        // ScrapeNowAsync's continuation can resume OFF the UI thread, so Apply (and thus the live-region
+        // Announce) could run on a thread-pool thread — where the screen-reader announce silently fails
+        // AND _lastAnnouncedStandby still gets updated, so the next UI-thread poll then sees "no change"
+        // and never speaks. That was why the VHF autocomplete never announced. Marshal to the UI thread.
+        if (InvokeRequired) { try { BeginInvoke(new Action(() => Apply(rows))); } catch { } return; }
+
         if (rows != null && rows.Count > 0)
         {
             var vhf = rows.FindAll(r => r.StartsWith("VHF", StringComparison.Ordinal));
@@ -406,7 +412,9 @@ public sealed class FBWA380RmpForm : Form
         int bcd = (int)Math.Round(_sim.GetCachedVariableValue("XPNDR_CODE") ?? 0);
         string sq = $"{(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}";
         double xst = _sim.GetCachedVariableValue("XPNDR_STATE") ?? 0;
-        string mode = xst >= 4 ? "Mode C" : xst >= 3 ? "Mode A" : xst >= 1 ? "Standby" : "Off";
+        // 0 Off · 1 Standby · 2 Test · 3 Mode A · 4 Mode C · 5 Mode S (the FBW A380 reports Mode S on the
+        // ground/airborne when AUTO; earlier code mislabelled 5 as "Mode C").
+        string mode = xst >= 5 ? "Mode S" : xst >= 4 ? "Mode C" : xst >= 3 ? "Mode A" : xst >= 2 ? "Test" : xst >= 1 ? "Standby" : "Off";
         sb.AppendLine($"Squawk: {sq}, transponder {mode}");
         if (_page == "SQWK" && _squawkEntry.Length > 0)
             sb.AppendLine($"Squawk entry: {_squawkEntry.PadRight(4, '_')}");
