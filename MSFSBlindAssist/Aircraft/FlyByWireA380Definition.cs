@@ -1850,15 +1850,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // BCD16-encodes the entered code (4242 -> 0x4242). Sending the raw decimal
         // via the generic event path produced a wrong squawk. Event name stays XPNDR_SET.
         Evt("TRANSPONDER_CODE_SET", "XPNDR_SET", "Squawk Code");
-        // NOTE: the transponder MODE (STBY/AUTO/ON) and ALT RPTG are NOT settable on the
-        // FBW A380. They were previously exposed as combos over A32NX_TRANSPONDER_MODE /
-        // A32NX_SWITCH_ATC_ALT, but those L:vars are dead on the A380 — verified from source
-        // (zero consumers anywhere in fbw-a380x; the MFD SURV AUTO/STBY + ALT RPTG controls
-        // just publish mfd_xpdr_set_auto / mfd_xpdr_set_alt_reporting events that NOTHING
-        // subscribes to) and live (A32NX_TRANSPONDER_MODE read 2/"On" while the real
-        // TRANSPONDER STATE:1 read 1/STBY — the var holds a value but drives nothing).
-        // Only the squawk code (above) and IDENT (XPNDR_IDENT_ON) have working write paths.
-        // The mode is observable read-only via the RMP SQWK page (AUTO/STBY) instead.
+        // Transponder MODE read-out (the stock SimVar VATSIM/vPilot read). The FBW A380's
+        // systems-host OWNS this and AUTO-manages it: Standby on the ground (Mode C inhibited),
+        // Mode C once airborne. Verified live it is NOT externally settable — XPNDR_SET_MODE,
+        // a direct `set TRANSPONDER STATE:1 = 4`, and the old A32NX_TRANSPONDER_MODE L:var all
+        // revert within a frame (the systems-host restores Standby on the ground). So the only
+        // manual surveillance writes are the squawk code + IDENT (above); the mode is correct on
+        // VATSIM automatically. We surface it as a Continuous+IsAnnounced read-out so a blind
+        // pilot HEARS "Transponder Mode C" when it goes active in the climb (confirming VATSIM is
+        // seeing their altitude) and "Standby" after landing. The AUTO<->STBY + ALT RPTG + TCAS
+        // alert-level toggles are EventBus-only (mfd_xpdr_set_auto / mfd_tcas_alert_level, consumed
+        // in-process) so they are reachable ONLY via the MFD SURV CONTROLS page (in AllPages,
+        // surv/controls) — rarely needed since AUTO + TA/RA are the correct VATSIM defaults.
+        vars["XPNDR_STATE"] = new SimVarDefinition
+        {
+            Name = "TRANSPONDER STATE:1", DisplayName = "Transponder Mode",
+            Type = SimVarType.SimVar, Units = "Enum",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "Off", [1] = "Standby", [2] = "Test", [3] = "Mode A", [4] = "Mode C", [5] = "Mode S" }
+        };
 
         // TCAS mode is NOT settable on the FBW A380 — REMOVED after a live in-flight test.
         // A32NX_SWITCH_TCAS_POSITION / _TRAFFIC_POSITION drive TCAS on the A32NX, but the A380
@@ -2600,11 +2611,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
             "A380_LGPIN_DOOR",
-            // ---- Crew seats (start/stop motor toggle BUTTONS + position read-outs) + armrests ----
+            // ---- Crew seats (start/stop motor toggle BUTTONS only) + armrests ----
+            // The 4 SEAT_*_MOVE_* position read-outs were REMOVED from the panel (user request):
+            // the moving buttons + the spoken position-on-stop are enough. The position L:vars stay
+            // REGISTERED (OnRequest) so ToggleSeatMotor can seed/read them and AnnounceSeatPosition
+            // can speak the band when a motor stops — they are just no longer listed as panel fields.
             "SEATBTN_CPT_UP", "SEATBTN_CPT_DOWN", "SEATBTN_CPT_FWD", "SEATBTN_CPT_AFT",
-            "SEAT_CPT_MOVE_UP_DOWN", "SEAT_CPT_MOVE_FWD_AFT",
             "SEATBTN_FO_UP", "SEATBTN_FO_DOWN", "SEATBTN_FO_FWD", "SEATBTN_FO_AFT",
-            "SEAT_FO_MOVE_UP_DOWN", "SEAT_FO_MOVE_FWD_AFT",
             "BIGARMREST_CPT_UP_DOWN", "BIGARMREST_CPT_TILT", "SMALLARMREST_CPT_FWD",
             "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD"
         };
@@ -2779,8 +2792,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Transponder"] = new List<string>
         {
-            // Mode (STBY/AUTO/ON) + ALT RPTG + TCAS mode all removed — dead on the FBW A380
-            // (see the GetVariables note). Only squawk code + IDENT actually work here.
+            // Only squawk code + IDENT are settable here (working stock events). The transponder
+            // MODE is AUTO-managed by the FBW systems-host (Standby on ground / Mode C airborne)
+            // and not externally settable — it is surfaced as the read-only auto-announcing
+            // "Transponder Mode" read-out (XPNDR_STATE in d["Transponder"]). The AUTO/STBY +
+            // ALT RPTG + TCAS toggles are EventBus-only -> the MFD SURV CONTROLS page (rarely
+            // needed; AUTO + TA/RA are the correct VATSIM defaults). See the GetVariables note.
             "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON"
         };
         // "Radios" (stock COM standby-set + swap) REMOVED — the FBW A380 ignores the stock
@@ -3036,7 +3053,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA" };
         // d["Radios"] removed with the dead "Radios" panel — the RMP active/standby freqs are
         // in d["RMP"] (FBW L:vars) and the RMP window.
-        d["Transponder"] = new List<string> { "XPNDR_CODE", "A32NX_DCDU_ATC_MSG_WAITING" };
+        d["Transponder"] = new List<string> { "XPNDR_CODE", "XPNDR_STATE", "A32NX_DCDU_ATC_MSG_WAITING" };
         // Minimums are ARINC429 words — TryGetDisplayOverride decodes them to
         // "200 feet" / "Not set" (the raw word reads ~4.29e9). They also
         // auto-announce when set on the MCDU PERF APPR page.
