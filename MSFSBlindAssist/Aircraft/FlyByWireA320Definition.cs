@@ -685,6 +685,43 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
+        // ---- Cockpit furniture. The A32NX cockpit model exposes NO motorized seats /
+        // sunshades / visors / tilting armrests like the A380 (those L:vars don't exist in the
+        // FBW A320 source). The ONLY interactive furniture it models is these 4 BINARY toggles,
+        // so they are simple combos (no motor/slider machinery — nothing for it to drive).
+        // Settable via the A32NX_ calculator-path catch-all in HandleUIVariableSet; auto-
+        // announced + Ctrl+M-mutable via the flip-to-monitored loop. NOTE: the 0/1 -> label
+        // polarity below is NOT visually verified yet (the FBW template is a `!`-toggle with a
+        // `100 *` anim); confirm in-sim and flip the ValueDescriptions if a state reads inverted.
+        ["A32NX_ARMREST_CPT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ARMREST_CPT",
+            DisplayName = "Captain Armrest",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
+        },
+        ["A32NX_ARMREST_FO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ARMREST_FO",
+            DisplayName = "First Officer Armrest",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
+        },
+        ["A32NX_COCKPIT_SEAT_BACK"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_COCKPIT_SEAT_BACK",
+            DisplayName = "Third Occupant Seat",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Slid out" }
+        },
+        ["A32NX_COCKPIT_SEAT_BACK_TOP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_COCKPIT_SEAT_BACK_TOP",
+            DisplayName = "Third Occupant Seat Backrest",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Folded", [1] = "Up" }
+        },
+
         // Evacuation Panel
         ["A32NX_EVAC_COMMAND_TOGGLE"] = new SimConnect.SimVarDefinition
         {
@@ -3942,24 +3979,53 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Not Latched", [1] = "Latched" }
         },
 
-        // "Activate" pulses the real glareshield MASTER WARN / CAUT pushbutton (handled
-        // in HandleUIVariableSet) to acknowledge + silence the aural. (Was wrongly wired
-        // to write the A32NX_MASTER_WARNING output var, which does nothing.)
+        // Master Warning / Caution ACKNOWLEDGE — momentary push-BUTTONS (mirrors the A380's
+        // four Btn acks). Pressing pulses the real glareshield PB L:var 1->0 (handled in
+        // HandleUIVariableSet) to acknowledge + silence the aural. Captain (_L) + First Officer
+        // (_R); the FWS ORs both sides (PseudoFWC.ts reads all four).
+        // SOURCE-VERIFIED 2026-06-04: the warning var is PUSH_AUTOPILOT_MASTER**A**WARN_L/_R
+        // (extra A) — the A320_NEO_INTERIOR.xml cockpit model WRITES it and PseudoFWC.ts:2375
+        // READS it. The old "no A" PUSH_AUTOPILOT_MASTERWARN_L was a DEAD var (ack never
+        // cleared the warning). Caution is PUSH_AUTOPILOT_MASTERCAUT_L/_R (no A — correct).
         ["CLEAR_MASTER_WARNING"] = new SimConnect.SimVarDefinition
         {
-            Name = "PUSH_AUTOPILOT_MASTERWARN_L",
-            DisplayName = "Clear Master Warning",
+            Name = "PUSH_AUTOPILOT_MASTERAWARN_L",
+            DisplayName = "Master Warning Acknowledge (Capt)",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+            IsAnnounced = false,
+            RenderAsButton = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
+        },
+        ["CLEAR_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "PUSH_AUTOPILOT_MASTERAWARN_R",
+            DisplayName = "Master Warning Acknowledge (First Officer)",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsButton = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
         },
         ["CLEAR_MASTER_CAUTION"] = new SimConnect.SimVarDefinition
         {
             Name = "PUSH_AUTOPILOT_MASTERCAUT_L",
-            DisplayName = "Clear Master Caution",
+            DisplayName = "Master Caution Acknowledge (Capt)",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+            IsAnnounced = false,
+            RenderAsButton = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
+        },
+        ["CLEAR_MASTER_CAUTION_FO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "PUSH_AUTOPILOT_MASTERCAUT_R",
+            DisplayName = "Master Caution Acknowledge (First Officer)",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsButton = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
         },
         ["A32NX_AUTOBRAKES_ARMED_MODE"] = new SimConnect.SimVarDefinition
         {
@@ -5213,7 +5279,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" }
@@ -5419,10 +5485,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_GPWS_TERR_OFF",
             "A32NX_GPWS_TEST"
         },
-        ["Cockpit Door"] = new List<string>
+        ["Cockpit"] = new List<string>
         {
             "A32NX_COCKPIT_DOOR_LOCKED",
             "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
+            // Cockpit furniture (binary toggles — the only ones the A32NX models)
+            "A32NX_ARMREST_CPT",
+            "A32NX_ARMREST_FO",
+            "A32NX_COCKPIT_SEAT_BACK",
+            "A32NX_COCKPIT_SEAT_BACK_TOP",
         },
         ["Evacuation"] = new List<string>
         {
@@ -5492,7 +5563,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Warnings"] = new List<string>
         {
             "CLEAR_MASTER_WARNING",
-            "CLEAR_MASTER_CAUTION"
+            "CLEAR_MASTER_WARNING_FO",
+            "CLEAR_MASTER_CAUTION",
+            "CLEAR_MASTER_CAUTION_FO"
         },
         ["Gear"] = new List<string>
         {
@@ -7225,10 +7298,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
         // Fire / cargo-smoke TEST: the test PB drives its L:var, but the CRC ("beep beep beep")
         // can keep sounding until the master warning is acknowledged — so on TEST OFF, also pulse
-        // the master-warning acknowledge to guarantee the aural cancels. Reuses the SAME
-        // PUSH_AUTOPILOT_MASTERWARN_L the A320's CLEAR_MASTER_WARNING control uses (no extra A —
-        // that's the A320 spelling; the A380 uses MASTERAWARN). Calc-path write. The combo
-        // announces its own On/Off, so no extra speech here.
+        // the master-warning acknowledge to guarantee the aural cancels. Uses the SAME var as the
+        // CLEAR_MASTER_WARNING button: PUSH_AUTOPILOT_MASTERAWARN_L (extra A — SOURCE-VERIFIED
+        // 2026-06-04 against A320_NEO_INTERIOR.xml [writes it] + PseudoFWC.ts:2375 [reads it]; the
+        // old "no A" PUSH_AUTOPILOT_MASTERWARN_L was DEAD, so this aural-cancel never worked).
+        // Calc-path write. The combo announces its own On/Off, so no extra speech here.
         if (varKey == "A32NX_FIRE_TEST_ENG1" || varKey == "A32NX_FIRE_TEST_ENG2"
             || varKey == "A32NX_FIRE_TEST_APU" || varKey == "A32NX_FIRE_TEST_CARGO")
         {
@@ -7236,32 +7310,28 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{on} (>L:{varKey})");
             if (on == 0)
             {
-                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
-                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_L)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_L)");
             }
             return true;
         }
 
         // Acknowledge / silence the MASTER WARNING / MASTER CAUTION (and its aural — the
-        // repetitive "beep" / single chime). The real glareshield pushbutton is
-        // PUSH_AUTOPILOT_MASTERWARN_L / _MASTERCAUT_L (a HELD momentary), NOT the
-        // A32NX_MASTER_WARNING output the old "clear" wrongly wrote — so pulse 1->0
-        // (press + release) via the calculator path. Selecting "Activate" fires it.
-        if (varKey == "CLEAR_MASTER_WARNING")
+        // repetitive "beep" / single chime). Momentary push-BUTTONS: pulse the real glareshield
+        // PB L:var 1->0 (press + release) via the calculator path, then speak "<name> pressed"
+        // (mirrors the A380 _momentaryButtons pattern; returning true suppresses MainForm's raw
+        // click re-announce). varDef.Name carries the correct per-button var —
+        // PUSH_AUTOPILOT_MASTERAWARN_L/_R (warning, extra A) or _MASTERCAUT_L/_R (caution) —
+        // so Captain (_L) and First Officer (_R) each fire the right side. The FWS ORs both.
+        if (varKey == "CLEAR_MASTER_WARNING" || varKey == "CLEAR_MASTER_WARNING_FO"
+            || varKey == "CLEAR_MASTER_CAUTION" || varKey == "CLEAR_MASTER_CAUTION_FO")
         {
             if (value > 0.5)
             {
-                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
-                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
-            }
-            return true;
-        }
-        if (varKey == "CLEAR_MASTER_CAUTION")
-        {
-            if (value > 0.5)
-            {
-                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERCAUT_L)");
-                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERCAUT_L)");
+                string lvar = varDef.Name;
+                simConnect.ExecuteCalculatorCode($"1 (>L:{lvar})");
+                simConnect.ExecuteCalculatorCode($"0 (>L:{lvar})");
+                announcer.Announce($"{varDef.DisplayName} pressed");
             }
             return true;
         }

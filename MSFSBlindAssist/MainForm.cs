@@ -1254,8 +1254,25 @@ public partial class MainForm : Form
             }
             else if (control is ComboBox combo)
             {
+                // Synthetic, MSFSBA-internal selector combos (the A32NX System Display page
+                // picker A32NX_MSFSBA_SD_PAGE, the synthetic speed-brake combo, and the
+                // thrust-lever _DETENT combos) are the SOLE source of truth for their own value:
+                // the combo's SelectedIndex IS the state. They have no real, continuously
+                // broadcast sim var to defer to — the backing L:var is written ONLY by the
+                // user's own selection and is re-requested purely to repaint the status box.
+                // Re-setting SelectedIndex from those (stale / async) round-trip reads yanks the
+                // selection backward while the user is arrowing (the "wonky" A320 SD combo). Skip
+                // the snap-back for them; the same update still flows on to repaint the box.
+                // (The A380 SD combo is a REAL Continuous sim var whose broadcast always agrees
+                // with the user's selection, so it is unaffected. Mirrors the synthetic-combo
+                // exclusion list in FlyByWireA320Definition.cs.)
+                bool isSyntheticSelector =
+                    varName == "A32NX_MSFSBA_SD_PAGE" ||
+                    varName == "A32NX_MSFSBA_SPEEDBRAKE" ||
+                    varName.EndsWith("_DETENT", StringComparison.Ordinal);
+
                 // Find the matching value in the combo box
-                if (currentAircraft.GetVariables().ContainsKey(varName))
+                if (!isSyntheticSelector && currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
                     if (varDef.ValueDescriptions.ContainsKey(value))
@@ -1313,11 +1330,24 @@ public partial class MainForm : Form
                         // This button uses a StateVariable — but this update is for the button's own variable,
                         // not the state variable. Skip — the state variable update will handle the label.
                     }
-                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 0)
                     {
-                        string newLabel = $"{varDef.DisplayName}: {stateText}";
-                        btn.Text = newLabel;
-                        btn.AccessibleName = newLabel;
+                        // Mirror the build-time button-label logic (the RenderAsButton branch):
+                        // a momentary push-button (ECAM-CP keys, calls, acks, tests) has no
+                        // meaningful RESTING state, so the value 0 (Released / Off / Idle) must
+                        // NOT be appended — otherwise this live update relabels e.g. "ECAM All"
+                        // to "ECAM All: Released", which the screen reader reads aloud. Only
+                        // append a non-zero (active / latched) state; reset to the plain
+                        // DisplayName on the resting value. The functional dispatch keys on the
+                        // var name/events, never the label, so this is purely cosmetic.
+                        string newLabel = (value != 0 && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                            ? $"{varDef.DisplayName}: {stateText}"
+                            : varDef.DisplayName;
+                        if (btn.Text != newLabel)
+                        {
+                            btn.Text = newLabel;
+                            btn.AccessibleName = newLabel;
+                        }
                     }
                 }
             }
