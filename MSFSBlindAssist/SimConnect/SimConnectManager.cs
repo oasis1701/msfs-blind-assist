@@ -3377,6 +3377,19 @@ public class SimConnectManager
     }
 
     /// <summary>
+    /// Decoded ECAM memo line (raw text, still with ANSI color markers) for an
+    /// A32NX_Ewd_LOWER_* key, or "" if absent. The batch handler converts these memo
+    /// CODE vars to strings (ecamStringData) and `continue`s past the numeric-cache write,
+    /// so GetCachedVariableValue returns null for them — callers that want the memo text
+    /// (e.g. the decoded Upper E/WD readout) must use this accessor. Run CleanANSICodes on it.
+    /// </summary>
+    public string GetEcamLineRaw(string varKey)
+    {
+        try { return ecamStringData.TryGetValue(varKey, out var raw) ? raw : ""; }
+        catch { return ""; }
+    }
+
+    /// <summary>
     /// Get snapshot of multiple cached variables
     /// </summary>
     public Dictionary<string, double> GetCachedVariableSnapshot(List<string> varKeys)

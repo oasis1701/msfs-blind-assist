@@ -58,12 +58,22 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   The SD auto-register loop was **hardened** (a SPACE-named var → Type=SimVar, NOT the L:var path —
   the documented crash; colon-indexed FBW L:vars stay LVar). EHA buses = SKIP (none on the A320). A
   global NaN guard renders non-existent vars (e.g. ESS-TR current) as "--".
+- **Decoded Upper E/WD (G2):** SD page 0 now DECODES the engine row from SimVars (thrust rating +
+  single thrust-limit number — the A320 has no per-engine THR% gauge — N1 / N1-command / EGT / N2 /
+  FF / engine-state per engine, reversers, IDLE memo) instead of scraping the schematic ("XX XX")
+  ENGINE row, plus the live ECAM memo lines. Memos read via a new `SimConnectManager.GetEcamLineRaw`
+  accessor: the memo CODE vars are decoded into strings and the batch handler `continue`s past the
+  numeric cache, so `GetCachedVariableValue` returns null for them — the accessor exposes the decoded
+  text. Scrape kept as a fallback when nothing decodes.
+- **SD page-combo announce fix (UI):** the SD-panel 3 s auto-refresh updated the status box (and
+  re-requested the page var) while the page-selector combo was focused, firing an MSAA event that
+  stepped on NVDA's page announcement. The auto-refresh now also skips while a selector combo is
+  focused, and the box refreshes on focus instead — so arrowing the combo announces cleanly. (The
+  residual fast-arrow cutoff is normal screen-reader self-interruption, not an app bug.)
 
-**STILL OPEN:** EWD decode (G2 — Upper E/WD still scrape-only), PRESS overhead-panel verify (B),
-fire-test aural-cancel (C — needs a live fire to test), squawk read-back (D — optional), RMP
-scraped-window (A — assessed NOT worth porting), SimConnect-ceiling live A32NX connect check (A —
-manual log check), and a UI follow-up: the SD page combo doesn't always announce the landed-on page
-when arrowing (screen-reader/refresh interaction).
+**STILL OPEN:** PRESS overhead-panel verify (B — likely already correct), fire-test aural-cancel
+(C — needs a live fire to test the CRC clears), squawk read-back (D — optional), RMP scraped-window
+(A — assessed NOT worth porting), SimConnect-ceiling live A32NX connect check (A — manual log check).
 
 ---
 

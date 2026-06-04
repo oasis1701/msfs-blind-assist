@@ -2263,6 +2263,67 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "percent"
         },
+        // The single ACTIVE thrust-limit % (abs) the FBW EWD N1 gauge shows — used by the
+        // decoded Upper-E/WD (SD page 0) readout. (The A320 has no per-engine THR% clamp,
+        // unlike the A380; this one number is the limit for both engines.)
+        ["A32NX_AUTOTHRUST_THRUST_LIMIT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_AUTOTHRUST_THRUST_LIMIT",
+            DisplayName = "Autothrust Thrust Limit",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "percent"
+        },
+        ["A32NX_AUTOTHRUST_N1_COMMANDED:1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_AUTOTHRUST_N1_COMMANDED:1",
+            DisplayName = "N1 Commanded",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "percent"
+        },
+        ["A32NX_AUTOTHRUST_N1_COMMANDED:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_AUTOTHRUST_N1_COMMANDED:2",
+            DisplayName = "N1 Commanded",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "percent"
+        },
+        // Idle-N1 reference + FWC flight phase (gate the "IDLE" memo on the Upper E/WD).
+        ["A32NX_ENGINE_IDLE_N1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ENGINE_IDLE_N1",
+            DisplayName = "Idle N1",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "percent"
+        },
+        ["A32NX_FWC_FLIGHT_PHASE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FWC_FLIGHT_PHASE",
+            DisplayName = "FWC Flight Phase",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number"
+        },
+        // Reverser deployed flags (bool) — Upper E/WD reverser annunciation.
+        ["A32NX_REVERSER_1_DEPLOYED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_REVERSER_1_DEPLOYED",
+            DisplayName = "Engine 1 Reverser Deployed",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "bool"
+        },
+        ["A32NX_REVERSER_2_DEPLOYED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_REVERSER_2_DEPLOYED",
+            DisplayName = "Engine 2 Reverser Deployed",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "bool"
+        },
         ["A32NX_AUTOPILOT_VS_SELECTED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AUTOPILOT_VS_SELECTED",
@@ -6095,6 +6156,124 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         catch { announcer.AnnounceImmediate("E W D read failed."); }
     }
 
+    // Build the DECODED Upper E/WD (SD page 0) text from SimVars — the engine row
+    // (thrust rating/limit + per-engine N1 / N1-command / EGT / N2 / FF / state /
+    // reverser) plus the live ECAM memo lines (A32NX_Ewd_LOWER_* codes → EWDMessageLookup).
+    // This REPLACES the garbage schematic-engine scrape (which read as "XX XX N1 XX %…").
+    // A320-specific: 2 engines, NO N3, NO per-engine THR% clamp (one A32NX_AUTOTHRUST_THRUST_LIMIT),
+    // 7 memo lines per side, A32NX EWDMessageLookup (NOT the A380 table). Force-reads the
+    // source vars, waits ~0.4 s, then builds from cache. Returns "" when there's no real
+    // engine data AND no memos (the caller then falls back to the live scrape).
+    private async Task<string> BuildEwdDecodedTextAsync(SimConnect.SimConnectManager sim)
+    {
+        try
+        {
+            // Force-read every var the decode consumes (engine params, thrust, idle/phase,
+            // reversers, memos) so the cache is fresh before we read it.
+            string[] toRead =
+            {
+                "A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "A32NX_AUTOTHRUST_THRUST_LIMIT",
+                "A32NX_AIRLINER_TO_FLEX_TEMP",
+                "A32NX_ENGINE_N1:1", "A32NX_ENGINE_N1:2",
+                "A32NX_AUTOTHRUST_N1_COMMANDED:1", "A32NX_AUTOTHRUST_N1_COMMANDED:2",
+                "A32NX_ENGINE_EGT:1", "A32NX_ENGINE_EGT:2",
+                "A32NX_ENGINE_N2:1", "A32NX_ENGINE_N2:2",
+                "A32NX_ENGINE_FF:1", "A32NX_ENGINE_FF:2",
+                "A32NX_ENGINE_STATE:1", "A32NX_ENGINE_STATE:2",
+                "A32NX_REVERSER_1_DEPLOYED", "A32NX_REVERSER_2_DEPLOYED",
+                "A32NX_ENGINE_IDLE_N1", "A32NX_FWC_FLIGHT_PHASE", "A32NX_AUTOTHRUST_STATUS",
+            };
+            foreach (var v in toRead) sim.RequestVariable(v, forceUpdate: true);
+            for (int i = 1; i <= 7; i++)
+            {
+                sim.RequestVariable($"A32NX_Ewd_LOWER_LEFT_LINE_{i}", forceUpdate: true);
+                sim.RequestVariable($"A32NX_Ewd_LOWER_RIGHT_LINE_{i}", forceUpdate: true);
+            }
+            await System.Threading.Tasks.Task.Delay(400);
+
+            int[] engs = { 1, 2 };
+            string Grp(string varFmt, Func<double, string> fmt)
+            {
+                var parts = new List<string>();
+                foreach (int e in engs)
+                {
+                    double? cv = sim.GetCachedVariableValue(string.Format(varFmt, e));
+                    parts.Add($"Engine {e} " + (cv.HasValue && !double.IsNaN(cv.Value) ? fmt(cv.Value) : "--"));
+                }
+                return string.Join(", ", parts);
+            }
+
+            // Thrust rating type — enum from A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE
+            // ['', CLB, MCT, FLX, TOGA, MREV]; FLX appends the flex temp when set.
+            string[] thrModes = { "", "CLB", "MCT", "FLX", "TOGA", "MREV" };
+            int tltI = (int)Math.Round(sim.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE") ?? 0);
+            string thrMode = (tltI >= 1 && tltI < thrModes.Length) ? thrModes[tltI] : "none";
+            double? flex = sim.GetCachedVariableValue("A32NX_AIRLINER_TO_FLEX_TEMP");
+            if (tltI == 3 && flex.HasValue && flex.Value > 0) thrMode += $" {flex.Value:0}°C";
+            double? thrLim = sim.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT");
+            string thrLimStr = thrLim.HasValue && !double.IsNaN(thrLim.Value) ? $"{Math.Abs(thrLim.Value):0}%" : "--";
+
+            string EngState(double v) => v >= 2 ? "starting" : v >= 1 ? "on" : "off";
+
+            // Track whether any per-engine value is real, so the caller can fall back to
+            // the scrape when no engine data has been cached yet.
+            bool anyEngineData =
+                engs.Any(e => sim.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}").HasValue
+                           || sim.GetCachedVariableValue($"A32NX_ENGINE_EGT:{e}").HasValue
+                           || sim.GetCachedVariableValue($"A32NX_ENGINE_STATE:{e}").HasValue);
+
+            var lines = new List<string>
+            {
+                "Thrust rating: " + thrMode,
+                "Thrust limit: "  + thrLimStr,
+                "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
+                "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
+                "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
+                "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
+                "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
+                "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
+            };
+
+            // Reversers (engine 1/2) — only annunciate when deployed.
+            var revOn = engs.Where(e => (sim.GetCachedVariableValue($"A32NX_REVERSER_{e}_DEPLOYED") ?? 0) > 0.5).ToList();
+            if (revOn.Count > 0)
+                lines.Add("Reverser: " + string.Join(" and ", revOn.Select(e => $"engine {e}")) + " deployed");
+
+            // IDLE memo — both engines at/near idle AND in a flight phase AND autothrust active
+            // (mirrors the FBW EWD Idle.tsx rule, A320 vars).
+            double idleN1 = sim.GetCachedVariableValue("A32NX_ENGINE_IDLE_N1") ?? 0;
+            double? fwcPhase = sim.GetCachedVariableValue("A32NX_FWC_FLIGHT_PHASE");
+            bool athrActive = (sim.GetCachedVariableValue("A32NX_AUTOTHRUST_STATUS") ?? 0) > 0.5;
+            bool bothIdle = engs.All(e => { var n1 = sim.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}"); return n1.HasValue && n1.Value <= idleN1 + 2; });
+            if (bothIdle && athrActive && fwcPhase.HasValue && fwcPhase.Value >= 5 && fwcPhase.Value <= 7)
+                lines.Add("IDLE");
+
+            // ECAM memo lines (7 per side) — decode each numeric code via EWDMessageLookup
+            // (the A320 table), exactly as SimConnectManager does. Skip 0/blank codes.
+            var memos = new List<string>();
+            foreach (var lr in new[] { "LEFT", "RIGHT" })
+                for (int i = 1; i <= 7; i++)
+                {
+                    // The memo CODE vars are diverted to ecamStringData in SimConnectManager and
+                    // skipped from the numeric cache (the batch handler `continue`s past the cache
+                    // write), so GetCachedVariableValue returns null for them — read the already-
+                    // decoded string via GetEcamLineRaw instead.
+                    string raw = sim.GetEcamLineRaw($"A32NX_Ewd_LOWER_{lr}_LINE_{i}");
+                    string clean = SimConnect.EWDMessageLookup.CleanANSICodes(raw);
+                    if (!string.IsNullOrWhiteSpace(clean)) memos.Add(clean);
+                }
+
+            // No real engine data AND no memos → let the caller fall back to the scrape.
+            if (!anyEngineData && memos.Count == 0) return "";
+
+            lines.Add("");
+            lines.Add(memos.Count == 0 ? "Memo / warnings: none" : "Memo / warnings:");
+            lines.AddRange(memos);
+            return string.Join("\r\n", lines);
+        }
+        catch { return ""; }
+    }
+
     // Build the full upper-E/WD text for the Alt+E pop-out window (FbwEwdWindow) by
     // scraping the live A32NX_EWD_1 view (engine row + memos / warnings) — the same
     // source ReadEwdAloud speaks and the SD page-0 box shows. Returns the clean joined
@@ -6135,19 +6314,27 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         try
         {
             string content;
-            if (page == 0)   // E/WD — scrape the live display (engine row + memos/warnings)
+            if (page == 0)   // E/WD — DECODED engine row + memos (primary); live scrape is the fallback
             {
-                if (_ewdScrapeClient == null)
+                // Primary: decode the engine row + memos from SimVars. The schematic ENGINE
+                // row scrapes as garbage ("XX XX N1 XX %…"), so we never use the scrape for it.
+                content = await BuildEwdDecodedTextAsync(sim);
+                if (string.IsNullOrEmpty(content))
                 {
-                    _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
-                    _ewdScrapeClient.Start();
-                    _ewdScrapeClient.SetActive(false);   // on-demand only
+                    // Fallback ONLY when the decode yields nothing real (no engine data cached
+                    // AND no memos) — e.g. displays not powered yet.
+                    if (_ewdScrapeClient == null)
+                    {
+                        _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
+                        _ewdScrapeClient.Start();
+                        _ewdScrapeClient.SetActive(false);   // on-demand only
+                    }
+                    await System.Threading.Tasks.Task.Delay(700);
+                    var rows = await _ewdScrapeClient.ScrapeNowAsync();
+                    content = (rows == null || rows.Count == 0)
+                        ? "(content not available — power up the displays / try again)"
+                        : string.Join("\r\n", rows);
                 }
-                await System.Threading.Tasks.Task.Delay(700);
-                var rows = await _ewdScrapeClient.ScrapeNowAsync();
-                content = (rows == null || rows.Count == 0)
-                    ? "(content not available — power up the displays / try again)"
-                    : string.Join("\r\n", rows);
             }
             else
             {
