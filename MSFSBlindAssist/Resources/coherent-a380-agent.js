@@ -516,6 +516,37 @@
     return idx;
   };
 
+  // General labeled-field emitter — runs on EVERY MFD page. One clean "LABEL: value unit"
+  // line per visible .mfd-label-value-container that has an INNER .mfd-label, isn't already
+  // owned (by buildFplnLines/buildPerfLines), has no interactive child, and isn't in the
+  // F-PLN grid. Generalises the PERF labeled-field cleanup to FUEL&LOAD / POSITION / DATA /
+  // ATC etc. (e.g. "GW: ---.- KLB", "EPU: 0.04 NM"). Containers whose naming label is a
+  // SIBLING (not a child) — common on POSITION pages — are left for page-specific builders;
+  // label-less composites are left to the generic pass. Safe: PERF LVCs are already owned, so
+  // this no-ops there; F-PLN is skipped; nothing interactive is touched.
+  A.buildLabeledFields = function (page, pageRect, items, startIdx) {
+    var idx = startIdx;
+    function isDash(s) { return !s || /^[-:.+\s]+$/.test(s); }
+    var lvcs = page.querySelectorAll(".mfd-label-value-container");
+    for (var i = 0; i < lvcs.length; i++) {
+      var c = lvcs[i];
+      if (!A.isVisible(c)) continue;
+      if (c.getAttribute("data-fbwa380-perf-owned") || A.insidePerf(c.parentElement)) continue;
+      if (A.insideFpln(c)) continue;
+      if (c.querySelector("[data-fbwa380-mcdu-idx]")) continue;   // interactive child → step-1 owns it
+      var lab = c.querySelector(".mfd-label"); var labT = lab ? clean(lab.textContent) : "";
+      if (!labT) continue;   // label-less composite → leave to the generic pass / page builders
+      var valEl = c.querySelector(".mfd-value"); var valT = valEl ? clean(valEl.textContent) : "";
+      var lu = c.querySelector(".mfd-unit-leading"), tu = c.querySelector(".mfd-unit-trailing");
+      if (isDash(valT) && !lu && !tu) continue;   // header/composite with no real value
+      var shown = clean((lu ? clean(lu.textContent) + " " : "") + valT + (tu ? " " + clean(tu.textContent) : ""));
+      try { c.setAttribute("data-fbwa380-perf-owned", "1"); } catch (e) {}
+      var r = c.getBoundingClientRect();
+      items.push({ top: r.top - pageRect.top, left: r.left - pageRect.left, right: r.right - pageRect.left, bot: r.bottom - pageRect.top, idx: 0, kind: "text", text: labT + ": " + shown, value: "", disabled: false, perf: true });
+    }
+    return idx;
+  };
+
   // Decode an F-PLN altitude constraint token: "+N" = at or above N feet, "-N" =
   // at or below N feet, plain "N" = at N feet. (Speed constraints live in the
   // speed column, handled separately, not here.)
@@ -796,6 +827,11 @@
     var isPerf = A.isPerfPage(page);
     if (isPerf) idx = A.buildPerfLines(page, pageRect, items, idx);
 
+    // 1d) General labeled-field cleanup on EVERY page (clean "LABEL: value unit" lines for
+    //     any .mfd-label-value-container with an inner label). Runs after the PERF/F-PLN
+    //     builders so it only takes the containers they didn't already own.
+    idx = A.buildLabeledFields(page, pageRect, items, idx);
+
     // 2) static-text leaves not inside an interactive control above.
     var all = page.getElementsByTagName("*");
     for (var j = 0; j < all.length; j++) {
@@ -803,7 +839,7 @@
       if (!A.isVisible(t)) continue;
       if (A.isInsideInteractive(t)) continue;
       if (isFpln && A.insideFpln(t)) continue;   // plan grid handled by buildFplnLines
-      if (isPerf && A.insidePerf(t)) continue;   // PERF fields handled by buildPerfLines
+      if (A.insidePerf(t)) continue;             // any region owned by a structure-aware builder
       var own = A.directText(t);
       // Skip empty leaves and FBW data-binding artifacts ("null"/"undefined"
       // rendered into empty MFD cells) — never meaningful to the pilot.
@@ -879,7 +915,11 @@
         var prev = mergedLines[mergedLines.length - 1];
         if (prev.idx === 0 && prev.kind === "text" && !prev.fpln
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
-          prev.text = prev.text + ", " + cur.text;
+          // If the left cell is a label ending in ":" ("ACTIVE ATC :"), join its value with
+          // ": " so it reads "ACTIVE ATC: XXXX" instead of "ACTIVE ATC :, XXXX". Otherwise
+          // the usual ", " column separator (a screen-reader pause between grid columns).
+          if (/:\s*$/.test(prev.text)) prev.text = prev.text.replace(/\s*:\s*$/, ": ") + cur.text;
+          else prev.text = prev.text + ", " + cur.text;
           if (cur.right > prev.right) prev.right = cur.right;
           if (cur.bot > prev.bot) prev.bot = cur.bot;
           continue;
