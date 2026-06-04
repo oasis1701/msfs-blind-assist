@@ -157,23 +157,28 @@ INSIDE THE MCDU / MFD WINDOW
 
 INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
   The RMP screen is read-only text — read it with the arrow keys. It refreshes
-  automatically and announces the standby and any message (e.g. FREQ NOT VALID).
-  Soft keys (same scheme as the MCDU: left = Ctrl, right = Alt):
-  Ctrl+1 / 2 / 3   Select radio 1 / 2 / 3 (the left line keys; again = load standby)
-  Alt+1 / 2 / 3    Swap that radio's active and standby (the right keys; manual)
-                   (or F1/2/3 = select, F7/8/9 = swap, with alternate MCDU keys on)
-  Pages (also buttons in the Tab order):
+  automatically and announces any RMP message (e.g. FREQ NOT VALID) as it appears.
+  Pick a page, then type the digits right on the screen (no separate entry box —
+  the screen is read-only, so the digits go to the radio, not the text):
   Alt+V            VHF page          Alt+T   Transponder (SQWK) page
                    (HF / TEL / NAV / MENU are not modelled by FBW — those do nothing)
-  Alt+C            Fully clear the entry (resets a stuck entry)
   Alt+Home         Jump back to the screen (e.g. from a page button)
-  You TYPE the digits right on the screen — there is no separate entry box (the
-  screen is read-only, so the digits go to the radio, not the text):
-  VHF page  — type the digits (keyed live, no decimal), Enter loads the standby,
-             Backspace deletes a digit; Alt+n swaps it active.
-  SQWK page — type the 4 squawk digits, Enter validates, Alt+3 = ident.
-  Side combo (Captain / First Officer) switches which RMP you control — the screen,
-  the announcements and the keys all follow it.
+
+  VHF page (left keys on Ctrl, right keys on Alt — same scheme as the MCDU):
+  Ctrl+1 / 2 / 3   Select radio 1 / 2 / 3   (or F1/2/3 with alternate MCDU keys on)
+  Alt+1 / 2 / 3    Swap that radio's active and standby   (or F7/8/9)
+                   Type the frequency (keyed live, no decimal — it auto-completes:
+                   118500 or 1185 both give 118.500). Enter loads it into standby and
+                   reads it back, e.g. "VHF standby 1, 118.500"; Backspace deletes a
+                   digit; Alt+C fully clears a stuck entry. Then Alt+1/2/3 swaps it
+                   active (the pilot's call).
+
+  Transponder (SQWK) page:
+  Type the 4 squawk digits (0 to 7). It sets automatically on the 4th digit (or press
+  Enter) and reads back "Squawk 2222".   Alt+I   sends IDENT.
+
+  Side combo (Captain / First Officer / Overhead) switches which RMP you control —
+  the screen, the announcements and the keys all follow it.
 
 
 INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)
