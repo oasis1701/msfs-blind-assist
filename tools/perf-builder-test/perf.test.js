@@ -12,7 +12,7 @@ const assert = require('node:assert');
 const { scrapeElements } = require('./run');
 
 const GROUND = ['perf_to_gnd', 'perf_clb_gnd', 'perf_crz_gnd', 'perf_des_gnd', 'perf_appr_gnd', 'perf_ga_gnd'];
-const INTERACTIVE = ['input', 'dropdown', 'radio', 'subtab', 'button', 'menu', 'fplnwpt', 'fplndisc'];
+const INTERACTIVE = ['input', 'dropdown', 'radio', 'subtab', 'button', 'menu', 'fplnwpt', 'fplndisc', 'surv', 'survstatus'];
 
 function els(name) { return scrapeElements(name); }
 function joined(name) { return els(name).map((e) => e.text).join('\n'); }
@@ -81,4 +81,21 @@ test('POSITION/IRS: sibling-label data rows compose as "LABEL: value unit"', () 
   assert.doesNotMatch(j, /T\.TRK, 134\.4, °T/, 'IRS comma-soup regressed');
   // selectability invariant: every IRS button keeps its stamped idx
   assertSelectable('irs');
+});
+
+// SURV CONTROLS: each radio / toggle is prefixed with its column header so a blind
+// pilot knows which system it belongs to ("TCAS: TA/RA" vs "XPDR: AUTO"). Captured live.
+test('SURV CONTROLS: radios + toggles carry their system header, stay selectable', () => {
+  const j = joined('surv_controls');
+  assert.match(j, /(^|\n)TCAS: TA\/RA(\n|$)/, 'TCAS mode radio not header-prefixed');
+  assert.match(j, /(^|\n)XPDR: AUTO(\n|$)/, 'XPDR mode radio not header-prefixed');
+  assert.match(j, /(^|\n)ELEVN\/TILT: AUTO(\n|$)/, 'ELEVN/TILT radio not header-prefixed');
+  assert.match(j, /(^|\n)WXR: AUTO(\n|$)/, 'WXR toggle not header-prefixed');
+  assert.match(j, /(^|\n)MODE: WX(\n|$)/, 'MODE toggle not header-prefixed');
+  assert.match(j, /(^|\n)TERR SYS: /, 'TERR SYS toggle not header-prefixed');
+  // the XPDR/TCAS header cells are owned → not also read as bare lines
+  assert.doesNotMatch(j, /(^|\n)XPDR(\n|$)/, 'XPDR header double-read as a bare line');
+  assert.doesNotMatch(j, /(^|\n)TCAS(\n|$)/, 'TCAS header double-read as a bare line');
+  // selectability invariant preserved (every radio/surv/button keeps its idx)
+  assertSelectable('surv_controls');
 });

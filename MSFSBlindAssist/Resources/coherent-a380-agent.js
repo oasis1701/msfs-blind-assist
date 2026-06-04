@@ -549,6 +549,58 @@
     return idx;
   };
 
+  // ---- SURV CONTROLS page: header-prefix the radios + toggle buttons ----------
+  // The SURV CONTROLS page is a 2-D grid: section headers (XPDR / TCAS / TAWS as
+  // .mfd-surv-heading; ALT RPTG / ELEVN/TILT as .mfd-label.bigger) and per-control
+  // labels (WXR / PRED W/S / TURB / GAIN / MODE / WX ON VD / TERR SYS / GPWS / G/S
+  // MODE / FLAP MODE as .mfd-surv-label) sit ABOVE the radios / SurvButtons they
+  // name. A flat read gives bare "radio | TA/RA" / "surv | AUTO" with no idea which
+  // system they belong to. Here we PREFIX each surv/radio control (already emitted +
+  // stamped in step 1 — idx/selectability untouched) with the nearest header DIRECTLY
+  // ABOVE it in the same column ("TCAS: TA/RA", "WXR: AUTO", "TERR SYS: OFF: ON"), and
+  // mark the matched header owned so it isn't ALSO read as a bare line. The TCAS
+  // ABV/BLW/NORM range column has no DOM header → those stay bare (self-evident).
+  A.isSurvPage = function (page) {
+    try { return !!page.querySelector(".mfd-surv-button, .mfd-surv-heading"); } catch (e) { return false; }
+  };
+  A.buildSurvControls = function (page, pageRect, items, startIdx) {
+    function own(el) { try { el.setAttribute("data-fbwa380-perf-owned", "1"); } catch (e) {} }
+    function dtext(el) { var s = ""; for (var c = 0; c < el.childNodes.length; c++) { if (el.childNodes[c].nodeType === 3) s += el.childNodes[c].nodeValue; } return clean(s); }
+    // header candidates (with geometry)
+    var hs = page.querySelectorAll(".mfd-surv-label, .mfd-surv-heading, .mfd-label.bigger");
+    var headers = [];
+    for (var h = 0; h < hs.length; h++) {
+      if (!A.isVisible(hs[h])) continue;
+      var t = dtext(hs[h]); if (!t) continue;
+      var r = hs[h].getBoundingClientRect();
+      headers.push({ t: t, top: r.top - pageRect.top, left: r.left - pageRect.left, right: r.right - pageRect.left, el: hs[h] });
+    }
+    function headerAbove(rect) {
+      var best = null, bestGap = 1e9;
+      for (var i = 0; i < headers.length; i++) {
+        var hd = headers[i];
+        if (hd.top >= rect.top) continue;                                 // must start above the control
+        if (hd.right < rect.left + 3 || hd.left > rect.right - 3) continue; // same column (x-overlap)
+        var gap = rect.top - hd.top;
+        if (gap < bestGap) { bestGap = gap; best = hd; }
+      }
+      return best;
+    }
+    // enrich each surv-button / radio item by its stamped idx (text only — idx stays)
+    var ctrls = page.querySelectorAll(".mfd-surv-button[data-fbwa380-mcdu-idx], .mfd-radio-button[data-fbwa380-mcdu-idx]");
+    for (var c = 0; c < ctrls.length; c++) {
+      var el = ctrls[c]; if (!A.isVisible(el)) continue;
+      var cidx = parseInt(el.getAttribute("data-fbwa380-mcdu-idx"), 10);
+      var item = null;
+      for (var k = 0; k < items.length; k++) { if (items[k].idx === cidx) { item = items[k]; break; } }
+      if (!item) continue;
+      var rr = el.getBoundingClientRect();
+      var hd = headerAbove({ top: rr.top - pageRect.top, left: rr.left - pageRect.left, right: rr.right - pageRect.left });
+      if (hd && item.text.indexOf(hd.t + ":") !== 0) { item.text = hd.t + ": " + item.text; own(hd.el); }
+    }
+    return startIdx;
+  };
+
   // Decode an F-PLN altitude constraint token: "+N" = at or above N feet, "-N" =
   // at or below N feet, plain "N" = at N feet. (Speed constraints live in the
   // speed column, handled separately, not here.)
@@ -833,6 +885,11 @@
     //     any .mfd-label-value-container with an inner label). Runs after the PERF/F-PLN
     //     builders so it only takes the containers they didn't already own.
     idx = A.buildLabeledFields(page, pageRect, items, idx);
+
+    // 1e) SURV CONTROLS page → prefix each radio / toggle button with its column
+    //     header ("TCAS: TA/RA", "WXR: AUTO"); matched headers are owned so the
+    //     static pass below skips them. Enriches existing items in place (idx kept).
+    if (A.isSurvPage(page)) idx = A.buildSurvControls(page, pageRect, items, idx);
 
     // 2) static-text leaves not inside an interactive control above.
     var all = page.getElementsByTagName("*");
