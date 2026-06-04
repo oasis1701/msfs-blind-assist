@@ -114,3 +114,19 @@ test('SURV STATUS & SWITCHING: status items stay on their own lines', () => {
   assert.doesNotMatch(j, /XPDR: XPDR OFF/, 'XPDR spuriously bound a status cell');
   assert.doesNotMatch(j, /TERR SYS 1,/, 'status items wrongly comma-merged');
 });
+
+// D-ATIS/LIST: the per-station "UPDATE OR PRINT" function selector is a .mfd-button
+// (no .mfd-dropdown-inner); it must read its own label with word spacing and must NOT
+// geometrically absorb the ATIS report sitting below it. The ATIS reads once as text.
+test('D-ATIS: function dropdown reads "UPDATE OR PRINT", ATIS not duplicated into it', () => {
+  const list = els('datis');
+  const dd = list.filter((e) => e.kind === 'dropdown');
+  assert.ok(dd.length >= 1, 'no D-ATIS function dropdown found');
+  for (const e of dd) {
+    assert.strictEqual(e.text, 'UPDATE OR PRINT', `dropdown text wrong: "${e.text}"`);
+    assert.doesNotMatch(e.text, /ATIS INFO|UPDATEOR/, 'dropdown absorbed the ATIS / lost spacing');
+  }
+  // the ATIS report still reads as its own (text) line
+  assert.ok(list.some((e) => e.kind === 'text' && /ATIS INFO K/.test(e.text)), 'ATIS report line missing');
+  assertSelectable('datis');
+});

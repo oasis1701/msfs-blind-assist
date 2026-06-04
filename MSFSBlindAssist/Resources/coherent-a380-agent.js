@@ -302,7 +302,9 @@
       // element text is just the field NAME; the selected value sits in the summary
       // grid directly under the matching header. Fold it in so the combo announces
       // "RWY, 30R" instead of a bare "RWY" (nothing appended when none is set).
-      var dlbl = clean(n.textContent);
+      // spacedText so multi-span button labels keep word breaks (D-ATIS function
+      // selector "UPDATE OR PRINT", not "UPDATEOR PRINT").
+      var dlbl = A.spacedText(n) || clean(n.textContent);
       var dval = A.comboSelectedValue(dlbl, n);
       return dval ? (dlbl + ", " + dval) : (dlbl || "(choice)");
     }
@@ -799,6 +801,11 @@
     for (i = 0; i < all.length; i++) {
       var t = clean(A.directText(all[i]));
       if (!t || t === label) continue;
+      // A dropdown SELECTION is short (a runway, ident, mode). Never treat a long
+      // free-text block as a selected value — esp. the D-ATIS report sitting directly
+      // below the per-station "UPDATE OR PRINT" button (.mfd-atccom-datis-block-msgarea).
+      if (t.length > 40) continue;
+      if (A.ancestorWithClass(all[i], "mfd-atccom-datis-block-msgarea")) continue;
       var rr = all[i].getBoundingClientRect();
       if (!(rr.width > 0 && rr.height > 0)) continue;
       var g = rr.top - hdr.bottom;
