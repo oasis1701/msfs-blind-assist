@@ -1894,6 +1894,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ISIS_BARO_MODE", "ISIS Baro Mode", new Dictionary<double, string> { [0] = "Set", [1] = "Standard" });
         OnOff("A32NX_ISIS_BARO_UNIT_INHG", "ISIS Baro in inHg");
 
+        // Abnormal-procedure LANDING IMPACT (FWS): an active failure / abnormal procedure that
+        // DEGRADES landing performance or increases landing distance. Boolean L:vars the FwsCore
+        // writes (driven by activeAbnormalNonSensedKeys — real spoiler/braking failure logic).
+        // Auto-announced on change so a blind pilot is told a failure affects the landing BEFORE
+        // the approach, instead of having to infer it from the abnormal-procedure body text. Use
+        // the FWC-1 channel (agrees with FWC-2 in normal ops). Live-verified the vars exist + read 0
+        // with no failure; flip to 1 under a relevant failure (e.g. a ground-spoiler/braking fault).
+        ReadEnum("A32NX_FWC_1_ABN_PROC_IMPACT_LDG_PERF", "Landing Performance Impact",
+            new Dictionary<double, string> { [0] = "None", [1] = "Degraded by failure" });
+        ReadEnum("A32NX_FWC_1_ABN_PROC_IMPACT_LDG_DIST", "Landing Distance Impact",
+            new Dictionary<double, string> { [0] = "None", [1] = "Affected by failure" });
+
         // Brakes.
         // NOTE: the BRAKE FAN is NOT modelled on the FBW A380 dev build — all four brake
         // assemblies pass `None` for the brake-fan electrical bus (a `// TODO` in

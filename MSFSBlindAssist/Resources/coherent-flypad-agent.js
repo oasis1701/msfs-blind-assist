@@ -1224,6 +1224,53 @@
     return out;
   };
 
+  // Navigraph / LIDO / FAA CHART LIST rows are clickable container <div>s (they carry a
+  // React AND a DOM onClick) whose visible text lives in child spans (chart name + a small
+  // index-code chip). The generic leaf-only pass therefore emitted the name/code as plain
+  // TEXT and never marked the row clickable — a blind pilot could READ the chart names but
+  // not SELECT one (the accessibility bug). This builder finds each chart row (a clickable
+  // div containing a ".bg-theme-secondary" index-code chip), owns its subtree, and emits ONE
+  // clickable line "Name, code" stamped for clickElement. Shared with the A32NX. (The chart
+  // IMAGE itself stays inaccessible — that's the separate AI-reader idea.)
+  A.buildChartLines = function (root, idxRef) {
+    var onCharts = false, hs = root.querySelectorAll("h1,h2");
+    for (var h = 0; h < hs.length; h++) {
+      if (/navigation\s*&\s*charts/i.test(clean(hs[h].textContent))) { onCharts = true; break; }
+    }
+    if (!onCharts) return null;
+    var divs = root.getElementsByTagName("div"), rows = [];
+    for (var i = 0; i < divs.length; i++) {
+      var d = divs[i];
+      if (!A.isVisible(d)) continue;
+      if (!(typeof d.onclick === "function" || A.hasReactClick(d))) continue;
+      if (!d.querySelector(".bg-theme-secondary")) continue;   // the chart index-code chip
+      rows.push(d);
+    }
+    if (!rows.length) return null;
+    var out = [];
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r], nested = false;
+      for (var q = 0; q < rows.length; q++) { if (q !== r && rows[q].contains(row)) { nested = true; break; } }
+      if (nested) continue;
+      // Join the row's leaf text pieces (chart name + index-code chip) with ", " so the
+      // name and code don't run together ("AIRPORT BRIEFING (GEN), 10-1P").
+      var pieces = [], leaves = row.getElementsByTagName("*");
+      for (var z = 0; z < leaves.length; z++) {
+        if (leaves[z].children.length) continue;     // leaf only
+        var tt = clean(leaves[z].textContent);
+        if (tt && pieces.indexOf(tt) < 0) pieces.push(tt);
+      }
+      var label = pieces.length ? pieces.join(", ") : clean(row.textContent);
+      if (!label) continue;
+      A.markOwned(row);
+      var ix = idxRef.v++; row.setAttribute("data-fbw-efb-idx", String(ix));
+      out.push({ idx: ix, kind: "link", tag: "div", role: "", text: label, value: "",
+                 top: 200 + out.length * 22, left: 0, _axis: 0, navRail: false,
+                 controlType: "", clickable: true, level: 0, live: "", disabled: false, options: [] });
+    }
+    return out.length ? out : null;
+  };
+
   A.enumerate = function (root) {
     var stale = root.querySelectorAll("[data-fbw-efb-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbw-efb-idx");
@@ -1262,7 +1309,7 @@
     // below skip those subtrees but still surface the nav rail, sub-tabs, and the
     // boarding/refuel buttons (which sit OUTSIDE the owned subtrees).
     var idxRef = { v: idx };
-    var groundItems = A.buildPayloadLines(root, idxRef) || A.buildFuelLines(root, idxRef);
+    var groundItems = A.buildPayloadLines(root, idxRef) || A.buildFuelLines(root, idxRef) || A.buildChartLines(root, idxRef);
     if (groundItems) { for (var gi = 0; gi < groundItems.length; gi++) items.push(groundItems[gi]); idx = idxRef.v; }
 
     for (var i = 0; i < all.length && idx <= 400; i++) {
