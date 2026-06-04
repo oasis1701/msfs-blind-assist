@@ -35,6 +35,7 @@ public sealed class FBWA380RmpForm : Form
     private bool _busy;                   // held-clear running
     private string _page = "VHF";         // active page on the SCREEN: "VHF" or "SQWK"
     private string _squawkEntry = "";     // local squawk being typed on the SQWK page (set via XPNDR_SET)
+    private string _vhfEntry = "";        // VHF digits typed on the VHF page — the readback formats THESE (no scrape race)
 
     // ---- live region (announce-on-change, driven by the scrape poll) -------------------------
     private bool _firstScrape = true;
@@ -176,8 +177,38 @@ public sealed class FBWA380RmpForm : Form
         bool wasSel = _selectedRowIndex == row;
         _selectedRowIndex = row;
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
-        if (wasSel) AnnounceSelectedStandby(force: true);   // re-press selected radio = confirm/load -> read its standby
-        else { _announcer?.Announce($"Radio {row + 1}"); ScheduleRefresh(); }
+        if (wasSel) { _standbyTimer?.Stop(); AnnounceVhfEntry(force: true); _vhfEntry = ""; }   // re-press = load -> read back
+        else { _vhfEntry = ""; _announcer?.Announce($"Radio {row + 1}"); ScheduleRefresh(); }    // new radio = fresh entry
+    }
+
+    // Announce the SELECTED radio's standby as "VHF standby 1, 123.500", formatting the DIGITS the user
+    // typed (no scrape -> no autocomplete-timing race). FBW completes an entry as entered.padEnd(6,'0')
+    // shown XXX.XXX; we mirror that. If the typed digits don't form a plausible VHF frequency (e.g. the
+    // rare leading-omitted shortcut "8" = 118.000), fall back to the scrape-settle reader.
+    private void AnnounceVhfEntry(bool force)
+    {
+        int row = _selectedRowIndex;
+        string freq = FormatVhfEntry(_vhfEntry);
+        if (freq.Length == 0) { AnnounceSelectedStandby(force); return; }   // empty / shortcut -> read the live value
+        string key = $"{row}:{freq}";
+        if (force || key != _lastStandbyAnnounced)
+        {
+            _lastStandbyAnnounced = key;
+            _announcer?.AnnounceImmediate($"VHF standby {row + 1}, {freq}");
+        }
+    }
+
+    // FBW completes a VHF entry as `entered.padEnd(6,'0')` displayed as XXX.XXX. Returns "" if the result
+    // isn't a plausible 118.000–136.975 COM frequency (caller then falls back to the scrape).
+    private static string FormatVhfEntry(string digits)
+    {
+        if (string.IsNullOrEmpty(digits)) return "";
+        string d = digits.Length >= 6 ? digits.Substring(0, 6) : digits.PadRight(6, '0');
+        string f = $"{d.Substring(0, 3)}.{d.Substring(3, 3)}";
+        return double.TryParse(f, System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture, out double mhz)
+               && mhz >= 118.0 && mhz <= 137.0
+            ? f : "";
     }
 
     // Debounce: ~350 ms after the user stops typing a VHF frequency, announce the selected radio's standby.
@@ -186,7 +217,7 @@ public sealed class FBWA380RmpForm : Form
         if (_standbyTimer == null)
         {
             _standbyTimer = new System.Windows.Forms.Timer { Interval = 350 };
-            _standbyTimer.Tick += (_, _) => { _standbyTimer!.Stop(); AnnounceSelectedStandby(); };
+            _standbyTimer.Tick += (_, _) => { _standbyTimer!.Stop(); AnnounceVhfEntry(false); };
         }
         _standbyTimer.Stop(); _standbyTimer.Start();
     }
@@ -257,7 +288,7 @@ public sealed class FBWA380RmpForm : Form
     {
         if (_busy) return;
         _page = (key == "SQWK") ? "SQWK" : "VHF";
-        _squawkEntry = "";                       // start each transponder visit with a fresh entry
+        _squawkEntry = ""; _vhfEntry = "";       // start each page visit with a fresh entry
         _def.SendRmpKey(_rmp, key, _sim);         // drive the cockpit RMP to match (best-effort; scrape follows)
         _announcer?.Announce(spoken);
         ScheduleRefresh();
@@ -280,8 +311,10 @@ public sealed class FBWA380RmpForm : Form
             SquawkDigit(e.KeyChar);
             return;
         }
+        if (_vhfEntry.Length >= 6) _vhfEntry = "";           // a 7th digit starts a fresh frequency
+        _vhfEntry += e.KeyChar;                              // remember what was typed (the readback uses this)
         _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);   // VHF: keyed live; the standby auto-completes
-        ScheduleStandbyAnnounce();   // ~350 ms after the last digit: announce "VHF standby N, freq" (also refreshes)
+        ScheduleStandbyAnnounce();   // ~350 ms after the last digit: announce "VHF standby N, freq"
     }
 
     private void OnDisplayKeyDown(object? sender, KeyEventArgs e)
@@ -299,7 +332,8 @@ public sealed class FBWA380RmpForm : Form
             }
             _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // VHF: confirm/load the typed standby
             _standbyTimer?.Stop();                                          // cancel the pending typing-settle announce
-            AnnounceSelectedStandby(force: true);                          // always read it back: "VHF standby N, freq"
+            AnnounceVhfEntry(force: true);                                  // read back what was typed: "VHF standby N, freq"
+            _vhfEntry = "";                                                 // next digit starts a fresh entry
         }
         else if (e.KeyCode == Keys.Back)
         {
@@ -309,6 +343,7 @@ public sealed class FBWA380RmpForm : Form
                 if (_squawkEntry.Length > 0) { _squawkEntry = _squawkEntry.Substring(0, _squawkEntry.Length - 1); RenderFromSim(); }
                 return;
             }
+            if (_vhfEntry.Length > 0) _vhfEntry = _vhfEntry.Substring(0, _vhfEntry.Length - 1);
             _def.SendRmpKey(_rmp, "DIGIT_CLR", _sim);   // VHF: one-digit backspace
             ScheduleRefresh();
         }
@@ -357,6 +392,7 @@ public sealed class FBWA380RmpForm : Form
         _busy = true;
         try { _def.SendRmpKeyPress(_rmp, "DIGIT_CLR", _sim); await Task.Delay(1150); }
         finally { _def.SendRmpKeyRelease(_rmp, "DIGIT_CLR", _sim); _busy = false; }
+        _vhfEntry = "";
         _announcer?.Announce("Cleared");
         Apply(await _disp.ScrapeNowAsync());
     }
@@ -367,7 +403,7 @@ public sealed class FBWA380RmpForm : Form
     {
         _firstScrape = true;
         _lastAnnouncedMessage = ""; _lastStandbyAnnounced = "";
-        _message = ""; _scrapeVhfRows = new();
+        _message = ""; _scrapeVhfRows = new(); _vhfEntry = "";
         _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 300, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
         _disp.Start();
