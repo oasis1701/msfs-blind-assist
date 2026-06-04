@@ -1370,10 +1370,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A380X_RMP_{r}_STATE", $"RMP {r} State", rmpState);
         for (int v = 1; v <= 3; v++)
         {
-            // Active freq is continuously monitored so it auto-announces on change (the format +
-            // VHF-band gate + silent baseline live in ProcessSimVarUpdate). Standby stays on-request.
-            MonNum($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"VHF {v} Active Frequency");
+            // The FBW_RMP_FREQUENCY_* L:vars read an UNINITIALISED ~19 MHz garbage value in many
+            // states (live-confirmed), so they can't drive the announce — kept as plain read-outs
+            // only. The STOCK COM ACTIVE/STANDBY FREQUENCY:n simvars are RELIABLE (live-verified they
+            // track the RMP-tuned freq: set 121.900 + swap -> COM1 active read 121.9), so THOSE are
+            // the auto-announce source: a blind pilot hears "VHF n active/standby X" on every
+            // load/swap, completely independent of the (flaky) Coherent RMP-window scrape.
+            Read($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"VHF {v} Active Frequency");
             Read($"FBW_RMP_FREQUENCY_STANDBY_{v}", $"VHF {v} Standby Frequency");
+            vars[$"COM_ACTIVE_{v}"] = new SimVarDefinition
+            {
+                Name = $"COM ACTIVE FREQUENCY:{v}", DisplayName = $"VHF {v} Active Frequency",
+                Type = SimVarType.SimVar, Units = "MHz",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+            };
+            vars[$"COM_STANDBY_{v}"] = new SimVarDefinition
+            {
+                Name = $"COM STANDBY FREQUENCY:{v}", DisplayName = $"VHF {v} Standby Frequency",
+                Type = SimVarType.SimVar, Units = "MHz",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+            };
         }
 
         // ---- Cockpit door ----
@@ -1876,7 +1892,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ============================ TRANSPONDER / ATC ============================
         // "BCO16" makes SimConnect decode the BCD-packed code to the 4-digit squawk
         // (e.g. 4242); reading it as "number" gave the raw BCD integer (0x4242=16962).
-        Stock("XPNDR_CODE", "TRANSPONDER CODE:1", "Squawk Code", "BCO16");
+        // Continuous + IsAnnounced so the squawk AUTO-ANNOUNCES on change ("Squawk 1234") whenever
+        // it's set — from the RMP, the flyPad, or anywhere (decode + announce in ProcessSimVarUpdate).
+        vars["XPNDR_CODE"] = new SimVarDefinition
+        {
+            Name = "TRANSPONDER CODE:1", DisplayName = "Squawk Code",
+            Type = SimVarType.SimVar, Units = "BCO16",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
         // Key MUST be "TRANSPONDER_CODE_SET" so MainForm's squawk-input path
         // BCD16-encodes the entered code (4242 -> 0x4242). Sending the raw decimal
         // via the generic event path produced a wrong squawk. Event name stays XPNDR_SET.
@@ -3075,9 +3098,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // so they are NOT duplicated as read-only display variables here.
         d["RMP"] = new List<string>
         {
-            "FBW_RMP_FREQUENCY_ACTIVE_1", "FBW_RMP_FREQUENCY_STANDBY_1",
-            "FBW_RMP_FREQUENCY_ACTIVE_2", "FBW_RMP_FREQUENCY_STANDBY_2",
-            "FBW_RMP_FREQUENCY_ACTIVE_3", "FBW_RMP_FREQUENCY_STANDBY_3"
+            // Reliable STOCK COM freqs (the FBW_RMP_FREQUENCY L:vars read ~19 MHz garbage).
+            "COM_ACTIVE_1", "COM_STANDBY_1",
+            "COM_ACTIVE_2", "COM_STANDBY_2",
+            "COM_ACTIVE_3", "COM_STANDBY_3"
         };
         d["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" };
         d["FCU"] = new List<string>
@@ -3291,6 +3315,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // Last announced RMP active VHF frequency per channel ("1"/"2"/"3"), raw Hz — for the
     // change-detect + silent-baseline of the active-frequency auto-announce in ProcessSimVarUpdate.
     private readonly Dictionary<string, double> _rmpActiveFreq = new();
+    // Stock COM active/standby freq (MHz) per channel "1"/"2"/"3" — last-announced, for the
+    // reliable VHF freq auto-announce (the FBW_RMP_FREQUENCY L:vars read garbage). + last squawk.
+    private readonly Dictionary<string, double> _comActiveFreq = new();
+    private readonly Dictionary<string, double> _comStandbyFreq = new();
+    private int _lastSquawkBcd = -1;
     /// <summary>Set by MainForm when the E/WD DOM-scrape monitor (CoherentEWDClient)
     /// is running. While true, the SimVar EWD_LOWER memo auto-announce is suppressed
     /// so the scrape is the single source for E/WD call-outs (it announces both the
@@ -3401,6 +3430,46 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // so this is the single non-duplicate call-out). The register is raw Hz; range-gate to a
         // valid VHF band (118.000–136.975 MHz) so the UNINITIALISED value the FBW RMP holds while
         // unpowered (reads ~19 MHz) is cached silently and never spoken. Honours the Ctrl+M mute.
+        // RELIABLE VHF freq auto-announce off the stock COM simvars (the FBW_RMP_FREQUENCY L:vars
+        // read garbage). value is MHz; gate to the VHF band so an uninitialised 0 stays silent.
+        // Active change = "VHF n active 121.900" (after a swap); standby change = "VHF n standby …"
+        // (the autocomplete/load read-back). prev>0 skips the first-seen baseline. Honours Ctrl+M.
+        if (varName.StartsWith("COM_ACTIVE_", StringComparison.Ordinal))
+        {
+            string ch = varName.Substring("COM_ACTIVE_".Length);
+            bool plausible = value >= 118.0 && value <= 137.0;
+            bool changed = !_comActiveFreq.TryGetValue(ch, out var prev) || Math.Abs(prev - value) > 0.0004;
+            _comActiveFreq[ch] = value;
+            if (plausible && changed && prev > 0
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                announcer.Announce($"VHF {ch} active {value:0.000}");
+            return true;
+        }
+        if (varName.StartsWith("COM_STANDBY_", StringComparison.Ordinal))
+        {
+            string ch = varName.Substring("COM_STANDBY_".Length);
+            bool plausible = value >= 118.0 && value <= 137.0;
+            bool changed = !_comStandbyFreq.TryGetValue(ch, out var prev) || Math.Abs(prev - value) > 0.0004;
+            _comStandbyFreq[ch] = value;
+            if (plausible && changed && prev > 0
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                announcer.Announce($"VHF {ch} standby {value:0.000}");
+            return true;
+        }
+        // Transponder squawk auto-announce: TRANSPONDER CODE:1 reads a BCD16 word; decode (same as
+        // the display) and speak "Squawk 1234" whenever it changes. _lastSquawkBcd<0 skips the first.
+        if (varName == "XPNDR_CODE")
+        {
+            int bcd = (int)Math.Round(value);
+            if (bcd != _lastSquawkBcd)
+            {
+                bool first = _lastSquawkBcd < 0;
+                _lastSquawkBcd = bcd;
+                if (!first && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                    announcer.Announce($"Squawk {(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}");
+            }
+            return true;
+        }
         if (varName.StartsWith("FBW_RMP_FREQUENCY_ACTIVE_", StringComparison.Ordinal))
         {
             string ch = varName.Substring("FBW_RMP_FREQUENCY_ACTIVE_".Length);
