@@ -202,6 +202,14 @@ public sealed class FBWA380RmpForm : Form
         _def.SendRmpKey(_rmp, key, _sim);
         _announcer?.Announce(spoken);
         ScheduleRefresh();
+        // CRITICAL: a page switch is the one action reachable via a BUTTON mnemonic (Alt+V / Alt+T
+        // fire the "VHF page" / "Transponder page" buttons), and activating a button moves keyboard
+        // focus ONTO it. If we don't pull focus back to the screen, the digits the user then types
+        // (e.g. a squawk on the SQWK page) go to the button — which has no digit handler — so nothing
+        // is keyed into the radio and nothing auto-announces. VHF entry never hit this because VHF is
+        // the default page (no switch needed), which is why frequencies worked but the squawk didn't.
+        ActiveControl = _display;
+        _display.Focus();
     }
 
     // ---- digit entry on the screen itself: type digits, Enter = load -------------------------
