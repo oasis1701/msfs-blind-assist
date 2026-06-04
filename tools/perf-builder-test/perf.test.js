@@ -130,3 +130,19 @@ test('D-ATIS: function dropdown reads "UPDATE OR PRINT", ATIS not duplicated int
   assert.ok(list.some((e) => e.kind === 'text' && /ATIS INFO K/.test(e.text)), 'ATIS report line missing');
   assertSelectable('datis');
 });
+
+// F-PLN VERT REV → STEP ALTs sub-page: the two anonymous fields are clarified to
+// "Step waypoint" / "Step altitude" (only on this subtab), and a leading "FL" unit
+// binds its flight level ("FROM CRZ: FL 390", not "FL, 390"). Captured live.
+test('STEP ALTs: WPT/ALT relabeled, FL binds its level, fields selectable', () => {
+  const list = els('vertrev_stepalts');
+  const j = list.map((e) => e.text).join('\n');
+  assert.match(j, /Step waypoint: /, 'WPT not relabeled to "Step waypoint"');
+  assert.match(j, /Step altitude: /, 'ALT not relabeled to "Step altitude"');
+  assert.doesNotMatch(j, /(^|\n)WPT: /, 'bare "WPT:" still present');
+  assert.doesNotMatch(j, /(^|\n)ALT: /, 'bare "ALT:" still present');
+  assert.match(j, /FROM CRZ: FL 390/, 'leading FL not bound to its level');
+  assert.doesNotMatch(j, /FL, 390/, 'FL still comma-split from its level');
+  // the WPT combobox + ALT input keep their stamped idx (still settable)
+  assertSelectable('vertrev_stepalts');
+});

@@ -670,10 +670,12 @@
         if (ut.indexOf("°") >= 0) track = ut;
         else if (/^\d+$/.test(ut)) dist = ut;
       }
-      // altitude constraint cell ("+500" / "-5000"); ignore dash placeholders
+      // altitude constraint cell ("+500" / "-5000" / "5000" / "FL100"); ignore dash
+      // placeholders AND the bare "*" managed-constraint marker (which produced the
+      // junk "at * feet"). Require a digit so only real numeric constraints decode.
       var con = "";
       var cons = L.querySelectorAll('[class*="fpln-leg-constraint"]');
-      for (var c = 0; c < cons.length; c++) { var ct = clean(cons[c].textContent); if (!isDash(ct)) con = ct; }
+      for (var c = 0; c < cons.length; c++) { var ct = clean(cons[c].textContent); if (!isDash(ct) && /\d/.test(ct)) con = ct; }
       var lr = L.getBoundingClientRect();
       // ETA in the lower row's leftmost cell — only meaningful once airborne
       var eta = cellText(L, ".mfd-fms-fpln-leg-lower-row");
@@ -950,6 +952,23 @@
     // Drop labels that were folded into an input line (avoid a dangling copy).
     items = items.filter(function (it) { return !it.consumed; });
 
+    // VERT REV → STEP ALTs sub-page: the two editable fields are just "WPT" and "ALT",
+    // which out of context don't say what they do. On THIS sub-page only (active STEP
+    // ALTs subtab) clarify them to "Step waypoint" / "Step altitude" — the waypoint
+    // where the step climb/descent occurs and its target altitude (both must be set to
+    // create a step). Scoped so the generic WPT/ALT fields elsewhere are untouched.
+    var stepAltsActive = false;
+    for (var sa = 0; sa < items.length; sa++) {
+      if (items[sa].kind === "subtab" && /STEP ALTs/i.test(items[sa].text) && /active/i.test(items[sa].text)) { stepAltsActive = true; break; }
+    }
+    if (stepAltsActive) {
+      for (var si = 0; si < items.length; si++) {
+        if (items[si].kind !== "input") continue;
+        if (/^WPT\s*:/.test(items[si].text)) items[si].text = items[si].text.replace(/^WPT\s*:/, "Step waypoint:");
+        else if (/^ALT\s*:/.test(items[si].text)) items[si].text = items[si].text.replace(/^ALT\s*:/, "Step altitude:");
+      }
+    }
+
     // reading order: rows top→bottom (rounded to a tolerance), then left→right.
     items.sort(function (a, b) {
       var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
@@ -1006,6 +1025,8 @@
           else if (curRealLabel) { prev.text = prev.text + ", " + cur.text; prev._afterLabel = true; }
           else if (prev._afterLabel) { prev.text = prev.text + ": " + cur.text; prev._afterLabel = false; }
           else if (isUnitCell(cur.text)) { prev.text = prev.text + " " + cur.text; }
+          // a LEADING "FL" unit binds its flight-level number ("FL 390", not "FL, 390").
+          else if (/\bFL$/.test(prev.text) && /^[\d-]/.test(cur.text)) { prev.text = prev.text + " " + cur.text; }
           else { prev.text = prev.text + ", " + cur.text; }
           if (cur.right > prev.right) prev.right = cur.right;
           if (cur.bot > prev.bot) prev.bot = cur.bot;
