@@ -868,10 +868,12 @@ public class TaxiGuidanceManager : IDisposable
             // route start where it's supposed to, regardless of the aircraft's
             // current orientation.
             int routeDestinationNodeId = destinationNodeId;
-            if (isRunwayDestination && taxiwaySequence != null && taxiwaySequence.Count > 0)
+            string? destinationFinalTaxiway = ExtractFinalTaxiwayFromDestinationName(destinationName);
+            string? finalClearedTaxiway = destinationFinalTaxiway ?? taxiwaySequence?.LastOrDefault();
+            if (isRunwayDestination && !string.IsNullOrWhiteSpace(finalClearedTaxiway))
             {
                 var selectedHoldShort = FindSelectedRunwayHoldShortNode(
-                    taxiwaySequence[^1], destinationName);
+                    finalClearedTaxiway, destinationName);
                 if (selectedHoldShort != null)
                     routeDestinationNodeId = selectedHoldShort.NodeId;
             }
@@ -947,7 +949,7 @@ public class TaxiGuidanceManager : IDisposable
             // radius of the threshold, which is often PAST the hold-short markings
             // (real hold-short lines sit ~150-200 ft / 46-61 m back from the threshold).
             if (isRunwayDestination)
-                TruncateToHoldShort(route, destinationName, taxiwaySequence?.LastOrDefault());
+                TruncateToHoldShort(route, destinationName, finalClearedTaxiway);
 
             // Auto-insert hold-shorts for INTERMEDIATE runway crossings.
             // FAA AIM 4-3-18 & ICAO Doc 4444: an aircraft must hold short of every
@@ -2387,7 +2389,10 @@ public class TaxiGuidanceManager : IDisposable
         // after an auto-recalc the pilot would roll straight onto the runway instead
         // of stopping at the hold-short line.
         if (_isRunwayLineup)
-            TruncateToHoldShort(newRoute, _destinationName, remainingSequence?.LastOrDefault());
+            TruncateToHoldShort(
+                newRoute,
+                _destinationName,
+                ExtractFinalTaxiwayFromDestinationName(_destinationName) ?? remainingSequence?.LastOrDefault());
 
         _route = newRoute;
         _currentSegmentIndex = 0;
@@ -4301,6 +4306,20 @@ public class TaxiGuidanceManager : IDisposable
             runwayId = runwayId.Substring(0, intersectionSuffix).Trim();
 
         return runwayId;
+    }
+
+    private static string? ExtractFinalTaxiwayFromDestinationName(string? destinationName)
+    {
+        if (string.IsNullOrWhiteSpace(destinationName))
+            return null;
+
+        const string marker = " at taxiway ";
+        int suffix = destinationName.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (suffix < 0)
+            return null;
+
+        string taxiway = destinationName[(suffix + marker.Length)..].Trim();
+        return string.IsNullOrWhiteSpace(taxiway) ? null : taxiway;
     }
 
     /// <summary>

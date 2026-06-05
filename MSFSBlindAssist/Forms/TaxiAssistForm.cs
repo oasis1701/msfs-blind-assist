@@ -93,6 +93,7 @@ public class TaxiAssistForm : Form
     private string _currentIcao = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
     private bool _taxiwaySelectionExplicit;
+    private bool _firstTaxiwaySelectionExplicit;
 
     // Destination nodes for routing
     private Dictionary<string, int> _destinationNodeMap = new();
@@ -277,7 +278,11 @@ public class TaxiAssistForm : Form
             AccessibleDescription = "Select the first taxiway to follow, sorted by distance. Select None to calculate the shortest path automatically."
         };
         cmbFirstTaxiway.SelectedIndexChanged += OnFirstTaxiwayChanged;
-        cmbFirstTaxiway.SelectionChangeCommitted += (s, e) => _taxiwaySelectionExplicit = true;
+        cmbFirstTaxiway.SelectionChangeCommitted += (s, e) =>
+        {
+            _taxiwaySelectionExplicit = true;
+            _firstTaxiwaySelectionExplicit = true;
+        };
 
         chkFirstHoldShort = new CheckBox
         {
@@ -501,6 +506,7 @@ public class TaxiAssistForm : Form
         cmbFirstTaxiway.Items.Clear();
         ClearAllAdditionalTaxiways();
         _taxiwaySelectionExplicit = false;
+        _firstTaxiwaySelectionExplicit = false;
         _airportRunwayIds = new List<string>();
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
 
@@ -825,6 +831,7 @@ public class TaxiAssistForm : Form
         }
 
         _taxiwaySelectionExplicit = false;
+        _firstTaxiwaySelectionExplicit = false;
     }
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
@@ -1161,14 +1168,14 @@ public class TaxiAssistForm : Form
         var names = new List<string>();
 
         string? first = cmbFirstTaxiway.SelectedItem?.ToString();
-        if (!string.IsNullOrEmpty(first) && !first.StartsWith("(None"))
-            names.Add(first);
+        if (_firstTaxiwaySelectionExplicit && IsRealTaxiwaySelection(first))
+            names.Add(first!);
 
         foreach (var (_, combo, _, _, _) in _additionalTaxiways)
         {
             string? sel = combo.SelectedItem?.ToString();
-            if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
-                names.Add(sel);
+            if (IsRealTaxiwaySelection(sel))
+                names.Add(sel!);
         }
 
         return names;
@@ -1181,18 +1188,22 @@ public class TaxiAssistForm : Form
     private List<int> GetUserHoldShortIndices()
     {
         var indices = new List<int>();
+        int seqIndex = 0;
 
         // Check first taxiway hold-short
         string? first = cmbFirstTaxiway.SelectedItem?.ToString();
-        if (!string.IsNullOrEmpty(first) && !first.StartsWith("(None") && chkFirstHoldShort.Checked)
-            indices.Add(0);
+        if (_firstTaxiwaySelectionExplicit && IsRealTaxiwaySelection(first))
+        {
+            if (chkFirstHoldShort.Checked)
+                indices.Add(seqIndex);
+            seqIndex++;
+        }
 
         // Check additional taxiway hold-shorts
-        int seqIndex = 1;
         foreach (var (_, combo, holdShortChk, _, _) in _additionalTaxiways)
         {
             string? sel = combo.SelectedItem?.ToString();
-            if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
+            if (IsRealTaxiwaySelection(sel))
             {
                 if (holdShortChk.Checked)
                     indices.Add(seqIndex);
@@ -1216,22 +1227,23 @@ public class TaxiAssistForm : Form
     private Dictionary<int, string> GetUserRunwayHoldShorts()
     {
         var result = new Dictionary<int, string>();
+        int seqIndex = 0;
 
         // First taxiway slot — only meaningful if a real taxiway is selected.
         string? firstTaxi = cmbFirstTaxiway.SelectedItem?.ToString();
         string? firstRwy = cmbFirstHoldShortRunway.SelectedItem?.ToString();
-        if (!string.IsNullOrEmpty(firstTaxi) && !firstTaxi.StartsWith("(None") &&
-            !string.IsNullOrEmpty(firstRwy) && firstRwy != NO_RUNWAY_HOLDSHORT)
+        if (_firstTaxiwaySelectionExplicit && IsRealTaxiwaySelection(firstTaxi))
         {
-            result[0] = firstRwy;
+            if (!string.IsNullOrEmpty(firstRwy) && firstRwy != NO_RUNWAY_HOLDSHORT)
+                result[seqIndex] = firstRwy;
+            seqIndex++;
         }
 
         // Dynamic taxiway rows.
-        int seqIndex = 1;
         foreach (var (_, combo, _, holdShortRunwayCmb, _) in _additionalTaxiways)
         {
             string? sel = combo.SelectedItem?.ToString();
-            if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
+            if (IsRealTaxiwaySelection(sel))
             {
                 string? rwy = holdShortRunwayCmb.SelectedItem?.ToString();
                 if (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT)
@@ -1242,6 +1254,9 @@ public class TaxiAssistForm : Form
 
         return result;
     }
+
+    private static bool IsRealTaxiwaySelection(string? value) =>
+        !string.IsNullOrEmpty(value) && !value.StartsWith("(None", StringComparison.OrdinalIgnoreCase);
 
     private List<string> SortTaxiwaysByDistance(List<string> taxiwayNames)
     {
@@ -1397,13 +1412,11 @@ public class TaxiAssistForm : Form
         if (isRunwayDest && _taxiwaySelectionExplicit && taxiwaySequence.Count > 0)
         {
             var intersectionNode = FindRunwayIntersectionDestinationNode(
-                taxiwaySequence[^1], destNodeId, thresholdLat, thresholdLon);
+                taxiwaySequence[^1], destName, destNodeId, thresholdLat, thresholdLon);
             if (intersectionNode != null)
             {
                 destNodeId = intersectionNode.NodeId;
                 destName = $"{destName} at taxiway {taxiwaySequence[^1]}";
-                thresholdLat = intersectionNode.Latitude;
-                thresholdLon = intersectionNode.Longitude;
             }
         }
 
@@ -1447,6 +1460,7 @@ public class TaxiAssistForm : Form
 
     private TaxiNode? FindRunwayIntersectionDestinationNode(
         string finalTaxiwayName,
+        string runwayDestinationName,
         int runwayDestinationNodeId,
         double? runwayLineupLat,
         double? runwayLineupLon)
@@ -1460,6 +1474,28 @@ public class TaxiAssistForm : Form
         double targetLat = runwayLineupLat ?? runwayNode.Latitude;
         double targetLon = runwayLineupLon ?? runwayNode.Longitude;
         int requiredComponentId = runwayNode.ComponentId;
+        string runwayId = runwayDestinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? runwayDestinationName.Substring(7).Trim()
+            : runwayDestinationName.Trim();
+
+        var holdShort = _graph.Nodes.Values
+            .Where(node => node.ComponentId == requiredComponentId)
+            .Where(node => node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort)
+            .Where(node => NodeBelongsToTaxiway(node, finalTaxiwayName))
+            .Select(node => new
+            {
+                Node = node,
+                RunwayMatches = !string.IsNullOrWhiteSpace(runwayId)
+                    && !string.IsNullOrWhiteSpace(node.HoldShortName)
+                    && node.HoldShortName.Contains($"Runway {runwayId}", StringComparison.OrdinalIgnoreCase),
+                Distance = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, targetLat, targetLon)
+            })
+            .OrderByDescending(candidate => candidate.RunwayMatches)
+            .ThenBy(candidate => candidate.Distance)
+            .Select(candidate => candidate.Node)
+            .FirstOrDefault();
+        if (holdShort != null)
+            return holdShort;
 
         TaxiNode? best = null;
         double bestDist = double.MaxValue;
@@ -1480,6 +1516,23 @@ public class TaxiAssistForm : Form
         }
 
         return best;
+    }
+
+    private bool NodeBelongsToTaxiway(TaxiNode node, string taxiwayName)
+    {
+        if (node.TaxiwayNames.Any(n => string.Equals(n, taxiwayName, StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        if (_graph?.Adjacency.TryGetValue(node.NodeId, out var edges) == true)
+        {
+            foreach (var edge in edges)
+            {
+                if (string.Equals(edge.TaxiwayName, taxiwayName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private void CheckGateOccupancy(bool isRunwayDest, double? gateLat, double? gateLon)
