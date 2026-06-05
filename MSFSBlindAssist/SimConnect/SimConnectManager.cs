@@ -3897,6 +3897,28 @@ public class SimConnectManager
     {
         if (!IsConnected || simConnect == null) return;
 
+        // GLOBAL WRITE ROUTING: prefer the MobiFlight calculator path for real L:vars.
+        // The data-definition write below (AddToDataDefinition + SetDataOnSimObject) is UNRELIABLE for
+        // many add-on L:vars (FlyByWire L:vars in particular silently revert a frame later) -- which is
+        // why dozens of A380/A32NX controls had to be hand-routed through the calc path one prefix at a
+        // time in each aircraft def's HandleUIVariableSet catch-all. Routing every L:var write that
+        // reaches this fallback through the calc path fixes them all globally. Guardrails:
+        //   * Only when MobiFlight is actually connected (IsMobiFlightConnected checks
+        //     mobiFlightWasm.IsConnected) -- otherwise fall through to the data-def write so users without
+        //     the WASM module keep working. (Fenix's data-def write also remains intact if MobiFlight is
+        //     absent; with MobiFlight present, the calc path is live-verified to set Fenix L:vars too.)
+        //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
+        //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
+        //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
+        if (IsMobiFlightConnected
+            && varName.IndexOf(' ') < 0
+            && varName.IndexOf(':') < 0)
+        {
+            ExecuteCalculatorCode(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0} (>L:{1})", value, varName));
+            return;
+        }
+
         // For setting LVars, we'll need to use a workaround
         // Create a temporary data definition for this specific LVar
         // Use thread-safe counter to generate unique IDs (fixes crash from ID collision)
