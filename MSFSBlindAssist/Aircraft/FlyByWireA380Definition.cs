@@ -5243,7 +5243,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                             string mtext = EWDMessageLookupA380.GetMessage(code);
                             if (!string.IsNullOrWhiteSpace(mtext) &&
                                 !mtext.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
-                            { ewdLines.Add(mtext); memoCount++; }
+                            {
+                                // Append the ECAM colour name (e.g. "ENG 1 FAIL, Amber") so the
+                                // System Display page conveys severity, matching the EWD viewer + the
+                                // live monitoring announcements.
+                                string priority = EWDMessageLookupA380.GetMessagePriority(code);
+                                ewdLines.Add(string.IsNullOrEmpty(priority) ? mtext : $"{mtext}, {priority}");
+                                memoCount++;
+                            }
                         }
 
                 if (anyReal || memoCount > 0)

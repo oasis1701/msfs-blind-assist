@@ -802,48 +802,57 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // panel (ENG MODE selector + ENG MASTER), not the overhead. FADEC 1/2 above stay
         // (they power the FADEC, consumed by A32NX_FADEC.ts).
 
-        // Fuel Panel (these are events with parameters)
-        ["FUELSYSTEM_PUMP_TOGGLE:2"] = new SimConnect.SimVarDefinition
+        // Fuel pumps — Off/On combo boxes (parity with the engine-master combos).
+        // STATE = the commanded switch position FUELSYSTEM PUMP SWITCH:n (main pumps) /
+        // FUELSYSTEM VALVE SWITCH:n (centre jet-pump valves) — the instant switch the
+        // pilot sets; NOT the PUMP ACTIVE / VALVE OPEN running-state, which is a computed
+        // output that would REVERT a set while unpowered. The SET fires the stock fuel-
+        // system events in HandleUIVariableSet: FUELSYSTEM_PUMP_ON/_OFF (main pumps) or
+        // FUELSYSTEM_VALVE_OPEN/_CLOSE (jet pumps — the exact path proven on the engine
+        // masters). Continuous + announced so each speaks Off/On on change — this REPLACES
+        // the old PUMP ACTIVE:n / VALVE OPEN:9,10 monitors (removed to avoid double-speak).
+        // Pump indices: L1=2, L2=5, R1=3, R2=6; centre jet-pump valves C1=9, C2=10.
+        ["FUEL_PUMP_L1"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_PUMP_TOGGLE",
-            DisplayName = "Fuel Pump L1",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 2  // L1 = 2
+            Name = "FUELSYSTEM PUMP SWITCH:2", DisplayName = "Fuel Pump L1",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["FUELSYSTEM_PUMP_TOGGLE:5"] = new SimConnect.SimVarDefinition
+        ["FUEL_PUMP_L2"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_PUMP_TOGGLE",
-            DisplayName = "Fuel Pump L2",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 5  // L2 = 5
+            Name = "FUELSYSTEM PUMP SWITCH:5", DisplayName = "Fuel Pump L2",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["FUELSYSTEM_PUMP_TOGGLE:3"] = new SimConnect.SimVarDefinition
+        ["FUEL_PUMP_R1"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_PUMP_TOGGLE",
-            DisplayName = "Fuel Pump R1",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 3  // R1 = 3
+            Name = "FUELSYSTEM PUMP SWITCH:3", DisplayName = "Fuel Pump R1",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["FUELSYSTEM_PUMP_TOGGLE:6"] = new SimConnect.SimVarDefinition
+        ["FUEL_PUMP_R2"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_PUMP_TOGGLE",
-            DisplayName = "Fuel Pump R2",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 6  // R2 = 6
+            Name = "FUELSYSTEM PUMP SWITCH:6", DisplayName = "Fuel Pump R2",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["FUELSYSTEM_VALVE_TOGGLE:9"] = new SimConnect.SimVarDefinition
+        ["FUEL_PUMP_C1"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_VALVE_TOGGLE",
-            DisplayName = "Fuel Pump C1 (Jet Pump)",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 9  // C1 = 9 (center tank jet pump valve)
+            Name = "FUELSYSTEM VALVE SWITCH:9", DisplayName = "Fuel Pump C1 (Jet Pump)",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["FUELSYSTEM_VALVE_TOGGLE:10"] = new SimConnect.SimVarDefinition
+        ["FUEL_PUMP_C2"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_VALVE_TOGGLE",
-            DisplayName = "Fuel Pump C2 (Jet Pump)",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 10  // C2 = 10 (center tank jet pump valve)
+            Name = "FUELSYSTEM VALVE SWITCH:10", DisplayName = "Fuel Pump C2 (Jet Pump)",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["FUELSYSTEM_VALVE_TOGGLE:3"] = new SimConnect.SimVarDefinition
         {
@@ -4056,67 +4065,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
 
-        // Fuel System Active State Variables (continuous monitoring with auto-announcement)
-        ["FUELSYSTEM PUMP ACTIVE:2"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM PUMP ACTIVE:2",
-            DisplayName = "Fuel Pump L1",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Fuel Pump L1 off", [1] = "Fuel Pump L1 active" }
-        },
-        ["FUELSYSTEM PUMP ACTIVE:5"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM PUMP ACTIVE:5",
-            DisplayName = "Fuel Pump L2",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Fuel Pump L2 Off", [1] = "Fuel Pump L2 active" }
-        },
-        ["FUELSYSTEM PUMP ACTIVE:3"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM PUMP ACTIVE:3",
-            DisplayName = "Fuel Pump R1",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Fuel Pump R1 Off", [1] = "Fuel Pump R1 active" }
-        },
-        ["FUELSYSTEM PUMP ACTIVE:6"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM PUMP ACTIVE:6",
-            DisplayName = "Fuel Pump R2",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Fuel Pump R2 Off", [1] = "Fuel Pump R2 active" }
-        },
-        ["FUELSYSTEM VALVE OPEN:9"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM VALVE OPEN:9",
-            DisplayName = "Fuel Jet Pump C1 Valve",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Fuel Jet Pump C1 Valve Closed", [1] = "Fuel Jet Pump C1 Valve Open" }
-        },
-        ["FUELSYSTEM VALVE OPEN:10"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM VALVE OPEN:10",
-            DisplayName = "Fuel Jet Pump C2 Valve",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Fuel Jet Pump C2 Valve Closed", [1] = "Fuel Jet Pump C2 Valve Open" }
-        },
+        // (Removed the FUELSYSTEM PUMP ACTIVE:2/5/3/6 and VALVE OPEN:9/10 auto-announce
+        // monitors — the new Fuel Pump L1/L2/R1/R2/C1/C2 combos above are Continuous +
+        // announced on the commanded switch, so those running-state monitors would
+        // double-speak. The crossfeed VALVE OPEN:3 monitor is kept — crossfeed stays a
+        // momentary button, not a combo.)
         ["FUELSYSTEM VALVE OPEN:3"] = new SimConnect.SimVarDefinition
         {
             Name = "FUELSYSTEM VALVE OPEN:3",
@@ -5361,13 +5314,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Fuel"] = new List<string>
         { 
-            "FUELSYSTEM_PUMP_TOGGLE:2", 
-            "FUELSYSTEM_PUMP_TOGGLE:5", 
-            "FUELSYSTEM_PUMP_TOGGLE:3", 
-            "FUELSYSTEM_PUMP_TOGGLE:6", 
-            "FUELSYSTEM_VALVE_TOGGLE:9", 
-            "FUELSYSTEM_VALVE_TOGGLE:10",
-            "FUELSYSTEM_VALVE_TOGGLE:3" 
+            "FUEL_PUMP_L1",
+            "FUEL_PUMP_L2",
+            "FUEL_PUMP_R1",
+            "FUEL_PUMP_R2",
+            "FUEL_PUMP_C1",
+            "FUEL_PUMP_C2",
+            "FUELSYSTEM_VALVE_TOGGLE:3"   // Crossfeed — momentary button (a valve, not a pump)
         },
         // Functional split that matches the FBW ECAM System Display pages — the
         // source's OWN grouping (fbw-a32nx SD/Pages/Cond + SD/Pages/Bleed): the COND
@@ -6597,7 +6550,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     // decoded string via GetEcamLineRaw instead.
                     string raw = sim.GetEcamLineRaw($"A32NX_Ewd_LOWER_{lr}_LINE_{i}");
                     string clean = SimConnect.EWDMessageLookup.CleanANSICodes(raw);
-                    if (!string.IsNullOrWhiteSpace(clean)) memos.Add(clean);
+                    if (!string.IsNullOrWhiteSpace(clean))
+                    {
+                        // Append the ECAM colour name after the memo (e.g. "AUTO BRK OFF, Amber"),
+                        // matching the live EWD monitoring announcements so the screen reader conveys
+                        // the severity colour in the Alt+E viewer too.
+                        string color = SimConnect.EWDMessageLookup.GetMessagePriority(raw);
+                        memos.Add(string.IsNullOrEmpty(color) ? clean : $"{clean}, {color}");
+                    }
                 }
 
             // No real engine data AND no memos → caller shows a placeholder.
@@ -7407,6 +7367,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // Fuel pump combos (state = FUELSYSTEM PUMP/VALVE SWITCH:n, not directly settable):
+        // main pumps fire FUELSYSTEM_PUMP_ON/_OFF; centre jet pumps fire FUELSYSTEM_VALVE_
+        // OPEN/_CLOSE (same proven path as the engine masters). Pump idx L1=2/L2=5/R1=3/R2=6;
+        // jet-pump valves C1=9/C2=10. The combo auto-announces Off/On, so no speech here.
+        if (varKey == "FUEL_PUMP_L1" || varKey == "FUEL_PUMP_L2"
+            || varKey == "FUEL_PUMP_R1" || varKey == "FUEL_PUMP_R2")
+        {
+            uint pump = varKey == "FUEL_PUMP_L1" ? 2u
+                      : varKey == "FUEL_PUMP_L2" ? 5u
+                      : varKey == "FUEL_PUMP_R1" ? 3u : 6u;
+            simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_PUMP_ON" : "FUELSYSTEM_PUMP_OFF", pump);
+            return true;
+        }
+        if (varKey == "FUEL_PUMP_C1" || varKey == "FUEL_PUMP_C2")
+        {
+            uint vId = varKey == "FUEL_PUMP_C1" ? 9u : 10u;
+            simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", vId);
+            return true;
+        }
+
         // Engine 1/2 anti-ice: the cockpit pushbutton drives the stock K-event
         // ANTI_ICE_SET_ENGn (the XMLVAR _PRESSED flag is animation-only). State is read
         // back from the stock simvar ENG ANTI ICE:n. Verified live: a calc-path
@@ -7754,10 +7734,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // managed/selected status + value (otherwise it speaks the pre-push state — see DeferReadback).
         Action readback = evt switch
         {
-            "A32NX.FCU_TO_AP_HDG_PUSH" or "A32NX.FCU_TO_AP_HDG_PULL" or "A32NX.FCU_TRK_FPA_TOGGLE_PUSH" => () => RequestFCUHeadingWithStatus(s),
+            "A32NX.FCU_HDG_PUSH" or "A32NX.FCU_HDG_PULL" or "A32NX.FCU_TRK_FPA_TOGGLE_PUSH" => () => RequestFCUHeadingWithStatus(s),
             "A32NX.FCU_SPD_PUSH" or "A32NX.FCU_SPD_PULL" or "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" => () => RequestFCUSpeedWithStatus(s),
             "A32NX.FCU_ALT_PUSH" or "A32NX.FCU_ALT_PULL" => () => RequestFCUAltitudeWithStatus(s),
-            "A32NX.FCU_VS_PUSH" or "A32NX.FCU_TO_AP_VS_PULL" => () => RequestFCUVerticalSpeedFPA(s),
+            "A32NX.FCU_VS_PUSH" or "A32NX.FCU_VS_PULL" => () => RequestFCUVerticalSpeedFPA(s),
             _ => null
         };
         if (readback != null) DeferReadback(readback);
@@ -7767,11 +7747,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public void RequestAutopilotStates(SimConnect.SimConnectManager s)
     {
         if (!s.IsConnected) return;
+        // Use the REGISTERED FCU button-light L:vars. The old _MODE_ACTIVE / _FD_ACTIVE
+        // names don't exist in FBW and weren't registered, so the requests no-op'd and
+        // the LOC/APPR/FD labels never refreshed (the reported bug).
         foreach (var v in new[] {
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
-            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE",
-            "A32NX_FMA_EXPEDITE_MODE", "A32NX_FCU_EFIS_L_FD_ACTIVE",
-            "A32NX_FCU_EFIS_R_FD_ACTIVE" })
+            "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
+            "A32NX_FMA_EXPEDITE_MODE", "A32NX_FCU_EFIS_L_FD_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_FD_LIGHT_ON" })
             s.RequestVariable(v, forceUpdate: true);
     }
 

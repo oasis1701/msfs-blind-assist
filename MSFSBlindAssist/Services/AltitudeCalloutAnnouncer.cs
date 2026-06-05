@@ -54,17 +54,24 @@ public class AltitudeCalloutAnnouncer
         if (lastAnnouncedBand < 0) { lastAnnouncedBand = newBand; return; }   // silent baseline
         if (newBand == lastAnnouncedBand) return;
 
-        // Hysteresis: require the altitude to be at least HysteresisFeet into the new band
-        // (measured from whichever boundary we just crossed) before committing.
-        double crossedBoundary = (newBand > lastAnnouncedBand ? newBand : lastAnnouncedBand + 1) * (double)BandFeet;
-        if (System.Math.Abs(altitudeFeet - crossedBoundary) < HysteresisFeet) return;
+        // Announce the 1,000-ft boundary just CROSSED — the SAME thousand whether climbing or
+        // descending (crossing 4,000 says "4000" both ways). Climbing INTO band N crosses
+        // N×1000; descending INTO band N crosses (N+1)×1000. Previously the descending callout
+        // spoke the band ENTERED, i.e. one thousand LOW ("3000" the instant you dipped below
+        // 4,000 at 3,999) — which understates the real (MSL) altitude and, over ~1,000-ft
+        // terrain, coincides with AGL so it READS as AGL. The feed is INDICATED ALTITUDE (MSL);
+        // only the announced value is corrected to name the thousand crossed, not the band below.
+        bool climbing = newBand > lastAnnouncedBand;
+        int crossedThousand = (climbing ? newBand : newBand + 1) * BandFeet;
+
+        // Hysteresis: require HysteresisFeet past that boundary before committing, so leveling
+        // off right on a round thousand doesn't flutter the callout.
+        if (System.Math.Abs(altitudeFeet - (double)crossedThousand) < HysteresisFeet) return;
 
         lastAnnouncedBand = newBand;
-        int feet = newBand * BandFeet;
         // Plain Announce (queued) so a fading altitude callout doesn't displace the most
-        // recent actionable instruction in any feature's Repeat-Last buffer. Format is the bare
-        // number ("32000", "5000") per Gus's preference — this is now the ONLY altitude callout
-        // (the duplicate legacy in-base announce was removed).
-        announcer.Announce($"{feet}");
+        // recent actionable instruction in any feature's Repeat-Last buffer. Bare number
+        // ("32000", "5000") per Gus's preference; this is the ONLY altitude callout.
+        announcer.Announce($"{crossedThousand}");
     }
 }

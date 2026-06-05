@@ -23,7 +23,7 @@ public class FBWA320VSWindow : FBWA320FCUWindowBase
         var pushButton = new Button { Text = "V/S Push (level off)", Location = new Point(20, 65), Size = new Size(180, 35), TabIndex = 2, AccessibleName = "Vertical Speed Push" };
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer);
         var pullButton = new Button { Text = "V/S Pull (engage)", Location = new Point(210, 65), Size = new Size(180, 35), TabIndex = 3, AccessibleName = "Vertical Speed Pull" };
-        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer);
+        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_VS_PULL", simConnect, announcer);
         var closeButton = new Button { Text = "Close", Location = new Point(145, 110), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
