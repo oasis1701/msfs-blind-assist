@@ -3299,7 +3299,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_PFD_LINEAR_DEVIATION_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
-            DisplayName = "Linear Deviation Active",
+            DisplayName = "Vertical Deviation",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -6590,8 +6590,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Populate the "System Display" status box with the combo's CURRENT page as soon
     // as the panel is shown — so the user doesn't have to cycle the combo to get
     // content on first display.
+    // Sim handle captured when any display panel is shown, so sibling-reading display
+    // overrides (the computed Vertical Deviation) can read the PFD cache off-render.
+    private SimConnect.SimConnectManager? _displaySim;
     public override void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
     {
+        if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
         if (panelKey != "System Display" || !simConnect.IsConnected) return;
         int page = (int)Math.Round(simConnect.GetCachedVariableValue(SdPageVar) ?? 0);
         RefreshDisplayBoxAsync(page, simConnect);
@@ -6652,6 +6656,35 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Vertical Deviation (this var is "Vertical Deviation" in the panel) — show the real
+        // deviation, not a 0/1 flag: glideslope dots on an ILS approach (GS_DEVIATION deg/0.4,
+        // >0 = above), else the FMS linear V/DEV in feet during managed descent (altitude −
+        // TARGET_ALTITUDE, >0 = above), else no guidance. Mirrors the A380.
+        if (varKey == "A32NX_PFD_LINEAR_DEVIATION_ACTIVE")
+        {
+            var s = _displaySim;
+            bool gsValid = (s?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_IS_VALID") ?? 0) > 0.5;
+            if (gsValid)
+            {
+                double dots = (s?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_DEVIATION") ?? 0) / 0.4;
+                displayText = Math.Abs(dots) < 0.05 ? "on the glideslope"
+                    : $"{Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope";
+            }
+            else if (value > 0.5)
+            {
+                double? tgt = s?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
+                double? alt = s?.GetCachedVariableValue("INDICATED ALTITUDE");
+                if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
+                {
+                    double dev = alt.Value - tgt.Value;
+                    displayText = Math.Abs(dev) < 10 ? "on profile"
+                        : $"{Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile";
+                }
+                else displayText = "active";
+            }
+            else displayText = "no vertical guidance";
+            return true;
+        }
         // Doors: passenger = INTERACTIVE POINT OPEN 0..1 fraction (Open / Closed /
         // mid-animation %); cargo = inverted *_DOOR_CARGO_LOCKED L:var. Render cleanly
         // instead of a raw "0.6" / "1".
