@@ -1055,6 +1055,31 @@ public class SimConnectManager
                     }
                 }
 
+                // CRITICAL: pad the data definition to EXACTLY BATCH_SIZE datums.
+                // The GenericBatchN struct is a FIXED BATCH_SIZE (300) doubles, but a partial
+                // batch only adds `batchVarCount` real vars. SimConnect then delivers just
+                // batchVarCount*8 bytes, while the managed SimConnect library marshals the
+                // received message with Marshal.PtrToStructure(typeof(GenericBatchN)) which copies
+                // the FULL 300*8 bytes — reading past the end of the message buffer. When that
+                // over-read crosses an unmapped page it's a 0xC0000005 access violation inside
+                // coreclr.dll (0x80131506 ExecutionEngineException) — the intermittent crash that
+                // hit the A32NX hardest (275 continuous vars => batch 1 partial => ~200-byte
+                // over-read every second). Filler datums (a benign always-valid FLOAT64 simvar)
+                // fill the unused tail of the struct; they are NEVER read back (only indices in
+                // continuousVariableIndexMap are consumed), so they are pure size padding.
+                for (int pad = batchVarCount; pad < BATCH_SIZE; pad++)
+                {
+                    sc.AddToDataDefinition(
+                        config.Item2,
+                        "SIMULATION TIME",
+                        "seconds",
+                        SIMCONNECT_DATATYPE.FLOAT64,
+                        0.0f,
+                        SIMCONNECT_UNUSED
+                    );
+                    if (pad % 50 == 0) Thread.Sleep(5); // let SimConnect drain its queue
+                }
+
                 var registerMethod = typeof(Microsoft.FlightSimulator.SimConnect.SimConnect)
                     .GetMethod("RegisterDataDefineStruct")
                     ?.MakeGenericMethod(config.Item4);
