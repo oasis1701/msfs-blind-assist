@@ -3911,6 +3911,7 @@ public class SimConnectManager
         //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
         //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
         if (IsMobiFlightConnected
+            && !string.IsNullOrEmpty(varName)
             && varName.IndexOf(' ') < 0
             && varName.IndexOf(':') < 0)
         {
