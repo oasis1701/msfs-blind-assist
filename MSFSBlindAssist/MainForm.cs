@@ -5519,7 +5519,12 @@ public partial class MainForm : Form
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
-                            MarkUiSet(varDef.Name, selectedValue);
+                            // Suppress the echo under the SAME identifier the monitor uses:
+                            // SimVarUpdated carries VarName = varKey (the dict key), NOT
+                            // varDef.Name. They coincide for plain L:vars but differ for stock
+                            // simvars given a clean key (SEATBELT_SIGN -> "CABIN SEATBELTS ALERT
+                            // SWITCH"), which is why those combos double-announced.
+                            MarkUiSet(capturedVarKey, selectedValue);
 
                             // Capture the ACTUAL current cached state BEFORE the lines below
                             // overwrite currentSimVarValues with the new selection. The
@@ -5667,7 +5672,10 @@ public partial class MainForm : Form
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
-                            MarkUiSet(varDef.Name, selectedValue);
+                            // Echo-suppress under varKey — the monitor's VarName is the dict key,
+                            // not varDef.Name (fixes double-announce on key!=Name combos like the
+                            // A380 seat-belt sign / "CABIN SEATBELTS ALERT SWITCH").
+                            MarkUiSet(varKey, selectedValue);
 
                             // Let aircraft handle special cases first (validation, conversion, multi-step logic)
                             bool aircraftHandled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
