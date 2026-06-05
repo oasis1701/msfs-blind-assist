@@ -60,6 +60,11 @@ public partial class MainForm : Form
     // procedures (which have no SimVar) from the E/WD Coherent view and announces
     // new failures. Runs whenever the A380X is active — no window needed.
     private CoherentEWDClient? coherentEWDClient;
+    // Authoritative A380 failure announcer — reads the FwsCore (presentedFailures) directly
+    // so a master caution always names its cause, even for WIP procedures the E/WD DOM
+    // doesn't render (e.g. ENG 3/4 FAIL). Owns failure call-outs; the E/WD scrape keeps
+    // memos/PFD/status (coherentEWDClient.AnnounceWarnings set false to avoid double-speak).
+    private CoherentFwsFailureClient? coherentFwsFailureClient;
     private Forms.FBWA380.FbwEfbForm? fbwA380OansForm;
     private Forms.FBWA380.FBWA380RmpForm? fbwA380RmpForm;
     // Live A380X Electronic Checklist window (normal checklists + ECP controls),
@@ -2844,14 +2849,40 @@ public partial class MainForm : Form
             if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
+            // Audio dedup: skip a memo the FwsFailureClient already calls out as an active
+            // warning (e.g. XPDR STBY — amber in the FWS list AND green in the memos).
+            if (currentAircraft is FlyByWireA380Definition a380dd && a380dd.IsTextAnActiveWarning(line))
+                return;
             announcer.Announce(line);
         };
         coherentEWDClient.Start();
+
+        // Authoritative failure announcer — reads the FwsCore (presentedFailures) directly,
+        // so a master caution always names its cause even for WIP procedures the E/WD DOM
+        // doesn't render (ENG 3/4 FAIL). It OWNS failure call-outs; the DOM scrape above
+        // therefore stops announcing warning lines (no double-speak) but keeps memos/PFD/
+        // status. The live list is pushed into the A380 def for the displays panel.
+        coherentEWDClient.AnnounceWarnings = false;
+        coherentFwsFailureClient = new CoherentFwsFailureClient();
+        coherentFwsFailureClient.FailureAnnounced += line =>
+        {
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+                    Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
+                return;
+            announcer.Announce(line);
+        };
+        coherentFwsFailureClient.FailuresChanged += (ewd, status) =>
+        {
+            if (currentAircraft is FlyByWireA380Definition a380f) a380f.SetActiveFwsFailures(ewd, status);
+        };
+        coherentFwsFailureClient.Start();
     }
 
     private void StopA380EWDMonitor()
     {
         if (currentAircraft is FlyByWireA380Definition a380def) a380def.EwdScrapeHandlesAnnounce = false;
+        coherentFwsFailureClient?.Dispose();
+        coherentFwsFailureClient = null;
         if (coherentEWDClient == null) return;
         coherentEWDClient.Dispose();
         coherentEWDClient = null;
@@ -6527,6 +6558,7 @@ public partial class MainForm : Form
         coherentEFBClient?.Dispose();
         coherentNDClient?.Dispose();
         coherentEWDClient?.Dispose();
+        coherentFwsFailureClient?.Dispose();
 
         // Clean up 787 bridge and forms
         hs787FMCForm?.Dispose();

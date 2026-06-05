@@ -143,3 +143,5 @@ tools/fbw-mcdu-probe/node_modules/
 tools/_fbw_ecam/
 # jsdom test deps for the flyPad shell reconcile (Gus A32NX)
 tools/flypad-shell-test/node_modules/
+tools/_probe/engmon/
+tools/_probe/engmon_ctrle/

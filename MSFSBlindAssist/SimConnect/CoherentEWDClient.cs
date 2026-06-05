@@ -60,6 +60,15 @@ namespace MSFSBlindAssist.SimConnect
         /// <summary>Set by the checklist window: poll + raise ECL rows only while open.</summary>
         public bool EclActive { get; set; }
 
+        /// <summary>
+        /// When false, the FAILURE/abnormal warning lines scraped from the E/WD DOM are
+        /// NOT announced here — the authoritative <see cref="CoherentFwsFailureClient"/>
+        /// (reading the FwsCore directly) owns failure call-outs, so this avoids double
+        /// speech. Memos / PFD lines / status boxes are still announced from this scrape.
+        /// Baseline + recur bookkeeping still tracks the warning lines either way.
+        /// </summary>
+        public bool AnnounceWarnings { get; set; } = true;
+
         /// <summary>True once the shared A380X_EWD connection + agents are installed.</summary>
         public bool IsConnected => _connected && _agentInstalled;
 
@@ -278,7 +287,8 @@ namespace MSFSBlindAssist.SimConnect
                 if (MenuLines.Contains(key)) continue;          // the ABN-PROC menu, not a failure
                 currentLines.Add(clean);
                 if (!_seen.Add(clean)) continue;                // already spoken / at baseline
-                fresh.Add(clean);
+                if (AnnounceWarnings) fresh.Add(clean);          // else: FwsFailureClient owns failure call-outs
+
             }
             // Memos (PARK BRK ON, ELEC EXT PWR, …) — announced from the SAME scrape so
             // the whole E/WD auto-call-out comes from one source (the SimVar

@@ -5122,7 +5122,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private int _sdRefreshSeq;   // bumped per SD-page refresh; "latest request wins" guard
     private static readonly Dictionary<int, string> _sdPageNames = new()
     {
-        [-1] = "Default automatic page", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
+        [-1] = "Default automatic", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
         [4] = "Pressurization", [5] = "Doors", [6] = "Electrical AC", [7] = "Electrical DC",
         [8] = "Fuel", [9] = "Wheel", [10] = "Hydraulics", [11] = "Flight Controls",
         [12] = "Circuit Breakers", [13] = "Cruise", [14] = "Status", [15] = "Video",
@@ -5477,6 +5477,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return "not available";
         };
         var r = new List<(string, string, Func<double, string>)>();
+        // "Default automatic page" (-1) shows the ENGINE page on the ground (what the SD
+        // auto-selects when no failure forces another page) — decode it as ENGINE so it
+        // reads as clean per-engine rows instead of falling through to the interleaved
+        // schematic DOM scrape ("0. 0. N2 % 0. 0." that the user reported).
+        if (page == -1) page = 0;
         switch (page)
         {
             case 0: // ENGINE
@@ -6075,6 +6080,51 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // + reversers + bleed + IDLE memo + the live ECAM memo / warning lines. Self-contained
     // (mirrors the SD "Upper E/WD" decode at the ECAM-CP combo) so the always-on SD path is
     // never touched. Requests the engine vars, gives the WASM a moment, then reads the cache.
+    // Active FWS content, pushed in by the CoherentFwsFailureClient (reads the FwsCore
+    // directly). Two blocks matching where the real A380 shows them:
+    //   _activeFwsFailures = E/WD block  — warnings/cautions + abnormal procedures
+    //   _activeFwsStatus   = STATUS block — inoperative systems, limitations, deferred
+    // The STATUS page can't be driven on the FBW SD (it rejects page index 14), so both are
+    // surfaced in the E/WD window — warnings at the top, STATUS clearly separated below.
+    // Volatile ref-swap = safe lock-free read from the window's build thread.
+    private volatile List<string> _activeFwsFailures = new();
+    private volatile List<string> _activeFwsStatus = new();
+    // Normalised core texts of the active E/WD warnings (e.g. "SURV XPDR STBY"), cached on
+    // each update so the live memo call-out path can suppress a memo that is ALSO an active
+    // warning (audio dedup, mirroring the E/WD-window display dedup).
+    private volatile HashSet<string> _warnCore = new(StringComparer.OrdinalIgnoreCase);
+    public void SetActiveFwsFailures(List<string> ewd, List<string> status)
+    {
+        _activeFwsFailures = ewd ?? new List<string>();
+        _activeFwsStatus = status ?? new List<string>();
+        var wc = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var w in _activeFwsFailures)
+        {
+            if (string.IsNullOrWhiteSpace(w) || w.EndsWith(":") || w.Contains("):")) continue; // header lines
+            string t = w;
+            int ci = t.LastIndexOf(',');
+            if (ci > 0) t = t.Substring(0, ci);                       // drop ", Amber"
+            int pi = t.IndexOf(": ", StringComparison.Ordinal);       // drop any "Prefix: "
+            if (pi >= 0 && pi <= 22) t = t.Substring(pi + 2);
+            wc.Add(System.Text.RegularExpressions.Regex.Replace(t, "\\s+", " ").Trim());
+        }
+        _warnCore = wc;
+    }
+
+    /// <summary>True if <paramref name="text"/> (a live memo call-out) is already shown as an
+    /// active E/WD warning, so it isn't spoken twice. Whole-phrase match so short memos
+    /// ("T.O") aren't eaten by longer warnings ("T.O SPEEDS NOT INSERTED").</summary>
+    public bool IsTextAnActiveWarning(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        string m = System.Text.RegularExpressions.Regex.Replace(text, "\\s+", " ").Trim();
+        var wc = _warnCore;
+        foreach (var w in wc)
+            if (w.Equals(m, StringComparison.OrdinalIgnoreCase) || w.EndsWith(" " + m, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
     public async Task<string> BuildEwdWindowTextAsync(SimConnectManager simConnect)
     {
         if (!simConnect.IsConnected) return "(not connected to the simulator)";
@@ -6147,6 +6197,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         int idleEngs = engs.Count(e => { var n1 = simConnect.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}"); return n1.HasValue && n1.Value <= idleLim + 2; });
         if (fmgcPhase.HasValue && fmgcPhase.Value >= 4 && idleEngs >= 3) lines.Add("IDLE");
 
+        // Core texts of the active E/WD warnings (cached in SetActiveFwsFailures) so a memo
+        // that is ALSO an active warning (e.g. XPDR STBY) isn't listed twice in the window.
+        var warnCore = _warnCore;
+
         var memos = new List<string>();
         foreach (var lr in new[] { "LEFT", "RIGHT" })
             for (int i = 1; i <= 10; i++)
@@ -6155,6 +6209,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     string mtext = EWDMessageLookupA380.GetMessage(code);
                     if (!string.IsNullOrWhiteSpace(mtext) && !mtext.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
                     {
+                        // Skip if this memo is already shown as an active warning (whole-phrase
+                        // match, so short memos like "T.O" aren't wrongly eaten by "T.O SPEEDS…").
+                        string mnorm = System.Text.RegularExpressions.Regex.Replace(mtext, "\\s+", " ").Trim();
+                        if (warnCore.Any(wc => wc.Equals(mnorm, StringComparison.OrdinalIgnoreCase)
+                                            || wc.EndsWith(" " + mnorm, StringComparison.OrdinalIgnoreCase)))
+                            continue;
                         string priority = EWDMessageLookupA380.GetMessagePriority(code);
                         memos.Add(string.IsNullOrEmpty(priority) ? mtext : $"{mtext} ({priority})");
                     }
@@ -6162,7 +6222,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         lines.Add("");
         lines.Add(memos.Count == 0 ? "Memo / warnings: none" : "Memo / warnings:");
         lines.AddRange(memos);
-        return string.Join("\r\n", lines);
+
+        // Active FWS warnings + status (authoritative, from the FwsCore) at the TOP — the
+        // CoherentFwsFailureClient supplies a grouped, already-named block (Active warnings /
+        // Procedures / Inoperative systems / Limitations). Prepend it verbatim.
+        var fwsBlock = _activeFwsFailures;
+        var outLines = new List<string>();
+        if (fwsBlock.Count > 0) outLines.AddRange(fwsBlock);
+        else outLines.Add("Active warnings: none");
+        outLines.Add("");
+        outLines.AddRange(lines);
+        // STATUS block (inoperative systems / limitations / deferred procedures) — the real
+        // A380 shows these on the SD STATUS page, but the FBW SD rejects that page index, so
+        // they ride here as a clearly-separated section. Shown only when there's something.
+        var statusBlock = _activeFwsStatus;
+        if (statusBlock.Count > 0)
+        {
+            outLines.Add("");
+            outLines.Add("===== STATUS =====");
+            outLines.AddRange(statusBlock);
+        }
+        return string.Join("\r\n", outLines);
     }
 
     // ECAM System Display (SD) window — decodes the FQMS/PRESS/APU ARINC429 words
