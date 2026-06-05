@@ -3242,6 +3242,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
             "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED",
             "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "A32NX_PFD_TARGET_ALTITUDE",
+            // Glideslope (ILS) vertical deviation — the OTHER vertical deviation, used on an
+            // ILS approach (FMS V/DEV is only active in managed descent). Cached for the PFD
+            // window's combined V/DEV readout.
+            "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION",
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
             "PFD_GROSS_WEIGHT", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",

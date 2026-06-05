@@ -231,19 +231,34 @@ public partial class PFDForm : Form
             // minus the vertical-profile target altitude. Only meaningful while it is
             // active (managed climb/descent / FINAL APP); read from the live cache so it
             // tracks the PFD. (The bare "active" flag alone wasn't useful.)
+            // Two vertical-deviation sources, whichever is giving guidance:
+            //  • ILS GLIDESLOPE (ILS approach): GS_DEVIATION is in degrees; dots = deg/0.4
+            //    (per the PFD). deviation > 0 = ABOVE the glideslope.
+            //  • FMS LINEAR V/DEV (managed descent / FINAL APP): altitude − vertical-profile
+            //    target; > 0 = above the profile. Only while LINEAR_DEVIATION_ACTIVE.
+            bool gsValid = (_simConnectManager?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_IS_VALID") ?? 0) > 0.5;
             bool vdevActive = (_simConnectManager?.GetCachedVariableValue("A32NX_PFD_LINEAR_DEVIATION_ACTIVE") ?? 0) > 0.5;
-            if (vdevActive)
+            if (gsValid)
+            {
+                double dots = (_simConnectManager?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_DEVIATION") ?? 0) / 0.4;
+                data.AppendLine(Math.Abs(dots) < 0.05
+                    ? "Vertical deviation: on the glideslope"
+                    : $"Vertical deviation: {Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope");
+            }
+            else if (vdevActive)
             {
                 double? tgt = _simConnectManager?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
                 double? alt = _simConnectManager?.GetCachedVariableValue("INDICATED ALTITUDE");
                 if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
                 {
                     double dev = alt.Value - tgt.Value;
-                    data.AppendLine($"Vertical deviation (V/DEV): {Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile");
+                    data.AppendLine(Math.Abs(dev) < 10
+                        ? "Vertical deviation (V/DEV): on profile"
+                        : $"Vertical deviation (V/DEV): {Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile");
                 }
                 else data.AppendLine("Vertical deviation (V/DEV): active");
             }
-            else data.AppendLine("Vertical deviation (V/DEV): not active");
+            else data.AppendLine("Vertical deviation: no vertical guidance (not on glideslope or in managed descent)");
             data.AppendLine($"FMGC L/DEV Request: {GetVariableValue("A32NX_FMGC_L_LDEV_REQUEST")}");
             data.AppendLine();
 
