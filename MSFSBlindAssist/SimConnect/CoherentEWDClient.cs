@@ -88,6 +88,14 @@ namespace MSFSBlindAssist.SimConnect
         // they are announced on BOTH transitions rather than deduped by text).
         private HashSet<string> _lastStatus = new(StringComparer.OrdinalIgnoreCase);
 
+        // The full active abnormal/warning PROCEDURE block (each procedure's title + its
+        // action-item steps) from the latest scrape, for the Alt+E window's "Procedure"
+        // section — so a blind pilot gets the STEPS TO ACTION, not just the failure title.
+        private readonly object _procLock = new();
+        private List<string> _activeProcedureLines = new();
+        /// <summary>Snapshot of the current E/WD procedure lines (titles + indented steps).</summary>
+        public List<string> ActiveProcedureLines { get { lock (_procLock) return new List<string>(_activeProcedureLines); } }
+
         // The fixed ABN-PROC manual-procedure menu categories (shown only when the
         // pilot opens the ABN PROC page) — exact-match so they are not mistaken for
         // an active failure ("F/CTL PRIM 1 FAULT" != the bare "F/CTL" menu entry).
@@ -279,6 +287,7 @@ namespace MSFSBlindAssist.SimConnect
             // CLEARS and later RECURS is announced again (the old behaviour kept it in
             // _seen forever, so the second occurrence was silently swallowed).
             var currentLines = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var procBlock = new List<string>();                 // title + indented steps, for Alt+E
             foreach (var w in result.warnings ?? new List<Warning>())
             {
                 string clean = Clean(w.text);
@@ -289,10 +298,14 @@ namespace MSFSBlindAssist.SimConnect
                 // sees, the same way the on-demand viewer does (the agent classifies it from the
                 // EclLine CSS class).
                 string spoken = WithColour(clean, w.colour);
+                // Full procedure block: a headline is a procedure TITLE, the rest are its
+                // action-item STEPS (indented) — surfaced in the Alt+E "Procedure" section.
+                procBlock.Add(w.headline ? spoken : "  " + spoken);
                 currentLines.Add(spoken);
                 if (!_seen.Add(spoken)) continue;               // already spoken / at baseline
                 if (AnnounceWarnings) fresh.Add(spoken);         // else: FwsFailureClient owns failure call-outs
             }
+            lock (_procLock) { _activeProcedureLines = procBlock; }
             // Memos (PARK BRK ON, ELEC EXT PWR, …) — announced from the SAME scrape so
             // the whole E/WD auto-call-out comes from one source (the SimVar
             // EWD_LOWER decode auto-announce is disabled while this monitor runs).

@@ -6230,6 +6230,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var outLines = new List<string>();
         if (fwsBlock.Count > 0) outLines.AddRange(fwsBlock);
         else outLines.Add("Active warnings: none");
+        // Procedure steps for the active failures — live-scraped from the E/WD (each
+        // procedure's title + its action-item STEPS), so a blind pilot gets what to DO,
+        // not just the failure title. Shown only while a procedure is on the E/WD.
+        var procLines = EwdMonitor?.ActiveProcedureLines;
+        if (procLines != null && procLines.Count > 0)
+        {
+            outLines.Add("");
+            outLines.Add("Procedure:");
+            outLines.AddRange(procLines);
+        }
         outLines.Add("");
         outLines.AddRange(lines);
         // STATUS block (inoperative systems / limitations / deferred procedures) — the real
