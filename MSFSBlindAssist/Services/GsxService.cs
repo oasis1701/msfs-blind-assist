@@ -2309,7 +2309,7 @@ public sealed class GsxService : IDisposable
             return string.Empty;
 
         var receiptInvoices = ExtractReceiptInvoices(html);
-        bool hasReceiptData = HasStatusReceiptData(html) || receiptInvoices.Count > 0;
+        bool hasReceiptData = receiptInvoices.Count > 0;
         var receiptChargeRows = ExtractReceiptChargeRows(html);
         string withoutReceiptData = Regex.Replace(
             html,
@@ -2323,6 +2323,8 @@ public sealed class GsxService : IDisposable
             .Concat(receiptChargeRows)
             .Distinct(StringComparer.Ordinal)
             .ToList();
+        if (!hasReceiptData)
+            chargeRows = chargeRows.Where(row => !IsInvoiceChargeRow(row)).ToList();
 
         foreach (Match match in Regex.Matches(
                      withoutReceiptData,
@@ -2365,13 +2367,6 @@ public sealed class GsxService : IDisposable
         }
 
         bool hasInvoiceRows = chargeRows.Any(IsInvoiceChargeRow);
-        if (hasReceiptData && hasInvoiceRows)
-        {
-            string invoiceAnnouncement = FormatInvoiceAnnouncement(activeRows, completedRows, chargeRows);
-            if (!string.IsNullOrWhiteSpace(invoiceAnnouncement))
-                return invoiceAnnouncement;
-            // Same fall-through reasoning as the receipt block above.
-        }
 
         bool shouldSpeakCompletedRow = latestCompletedRow is not null
             && !string.IsNullOrWhiteSpace(_lastCompletedStatusServiceText)
@@ -2783,22 +2778,23 @@ public sealed class GsxService : IDisposable
             if (!IsAnnounceableReceiptPath(path))
                 continue;
 
+            if (!File.Exists(path))
+                continue;
+
             string serviceName = InferReceiptServiceName(path);
             string total = string.Empty;
             try
             {
-                if (File.Exists(path))
-                {
-                    string receiptHtml = File.ReadAllText(path, Encoding.UTF8);
-                    serviceName = InferReceiptServiceName(path, receiptHtml);
-                    if (string.IsNullOrWhiteSpace(operatorName))
-                        operatorName = ExtractReceiptOperator(receiptHtml);
-                    total = ExtractReceiptTotal(receiptHtml);
-                }
+                string receiptHtml = File.ReadAllText(path, Encoding.UTF8);
+                serviceName = InferReceiptServiceName(path, receiptHtml);
+                if (string.IsNullOrWhiteSpace(operatorName))
+                    operatorName = ExtractReceiptOperator(receiptHtml);
+                total = ExtractReceiptTotal(receiptHtml);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read GSX receipt {path}: {ex.Message}");
+                continue;
             }
 
             invoices.Add(new ReceiptInvoice(
