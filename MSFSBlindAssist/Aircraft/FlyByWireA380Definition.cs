@@ -2500,26 +2500,30 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Placed" }
         };
 
-        // External-power availability per receptacle (read-only; the actual connect
-        // is the overhead EXT PWR pushbuttons or a ground-handling add-on like GSX).
-        // Announces when external power becomes available at the stand.
+        // External-power availability per receptacle (read-only; the connect/disconnect
+        // is done on the flyPad Ground page, the overhead EXT PWR pushbuttons, or GSX).
+        // Announces when ground power is connected/available or disconnected at the stand.
         //
-        // Read the FBW availability L-var A32NX_OVHD_ELEC_EXT_PWR_n_PB_IS_AVAILABLE
-        // (the overhead EXT PWR "AVAIL" light), NOT the stock simvar EXTERNAL POWER
-        // AVAILABLE:n. The stock simvar means only "a GPU exists at this stand" — it
-        // sits at 1 at any suitable gate regardless of whether power is actually
-        // connected to the aircraft (verified live: it read 1 with engines running and
-        // no power feeding the jet), so watching it never fired on a real GSX connect/
-        // disconnect. The FBW aspect var reflects the actual AVAIL annunciation the
-        // pilot sees and is what GSX drives through the electrical model (verified live
-        // it read 0 in the same no-power state). It is colon-free, so the data-def read
-        // is reliable (the OLD note avoided the colon-INDEXED source var
-        // A32NX_EXT_PWR_AVAIL:n — this aspect var is the readable copy of it).
+        // Read the FBW SOURCE L-var A32NX_EXT_PWR_AVAIL:n (1 = GPU connected/available at
+        // receptacle n, 0 = disconnected). This is the SINGLE source of truth that BOTH the
+        // flyPad GPU button (fbw GPUManagement.ts) and GSX (GsxSync.ts) write — verified live
+        // by toggling the flyPad GPU: A32NX_EXT_PWR_AVAIL:n flips 1<->0 exactly with it, while
+        // every other candidate stayed put.
+        //
+        // Do NOT read A32NX_OVHD_ELEC_EXT_PWR_n_PB_IS_AVAILABLE (the overhead AVAIL light) —
+        // verified live it stays 0 even while the GPU is connected (it needs the receptacle
+        // contactor / power-quality conditions, not met just by plugging in), so it NEVER fired
+        // for the flyPad path: that was the long-standing "GPU connect not announced" bug. The
+        // stock simvar EXTERNAL POWER AVAILABLE:n is useless too (stuck at 1 at any suitable
+        // gate regardless of actual connection, verified live).
+        //
+        // The name is colon-indexed; it registers as an L-var via the same L:{name} data-def
+        // path as A32NX_AUTOTHRUST_TLA:n (which reads fine), so the read is reliable.
         for (int n = 1; n <= 4; n++)
         {
             vars[$"A380X_GND_GPU_AVAIL_{n}"] = new SimVarDefinition
             {
-                Name = $"A32NX_OVHD_ELEC_EXT_PWR_{n}_PB_IS_AVAILABLE", DisplayName = $"External Power {n} Available",
+                Name = $"A32NX_EXT_PWR_AVAIL:{n}", DisplayName = $"External Power {n} Available",
                 Type = SimVarType.LVar, Units = "Bool",
                 UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" }
