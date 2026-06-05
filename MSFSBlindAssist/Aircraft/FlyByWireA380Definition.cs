@@ -2372,6 +2372,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("GEAR_RIGHT_POS", "GEAR RIGHT POSITION", "Right Gear Position", "percent");
         ReadEnum("A32NX_AUTOBRAKES_RTO_ARMED", "RTO Armed", new Dictionary<double, string> { [0] = "No", [1] = "Armed" });
 
+        // Engine mode selector — monitored via ENGINE 1's ignition switch so the MainForm
+        // watchdog can mirror it onto engines 3+4. The FBW cockpit ENG START knob template
+        // defaults ENGINE_COUNT=2 (A320 inheritance) on some installed builds, so turning it
+        // only fans TURBINE_IGNITION_SWITCH_SET to engines 1+2 — engines 3+4 then motor but
+        // never get ignition ("3/4 spin but don't light"). The knob DOES set engine 1's
+        // ignition switch (TURB ENG IGNITION SWITCH EX1:1); MainForm mirrors that onto 3+4
+        // via SET3/SET4 (live-verified to address + light the outboard engines). EX1:1 is
+        // used (not XMLVAR_ENG_MODE_SEL) because XMLVAR is force-driven by the physical knob
+        // and reverts external writes — EX1:1 is the reliable, settable, monitorable signal.
+        // Also auto-announces the selector position so a blind pilot hears it move.
+        vars["ENG_MODE_SEL_POS"] = new SimVarDefinition
+        {
+            Name = "TURB ENG IGNITION SWITCH EX1:1",
+            DisplayName = "Engine Mode Selector",
+            Type = SimVarType.SimVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "enum",
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Crank", [1] = "Norm", [2] = "Ignition / Start" }
+        };
+
         // ENGINE master / ignition position readbacks (we only sent before).
         for (int n = 1; n <= 4; n++)
         {
