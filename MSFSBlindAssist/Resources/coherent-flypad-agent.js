@@ -784,6 +784,24 @@
 
   A.markOwned = function (n) { if (n && n.setAttribute) n.setAttribute("data-fbw-ground-region", "1"); };
 
+  // A380 Quick Controls "Cabin Lighting" row — suppressed. Its rc-slider has no native
+  // input and the injected agent CANNOT write SimVars (Coherent restriction — see the
+  // CLAUDE.md flyPad note), so it can't be set from here; it surfaced as a misleading
+  // "0%Set Cabin Lighting" button. Cabin brightness/auto are now app-side panel controls
+  // (A380 Interior Lighting). Own the whole row so the generic passes skip it.
+  A.suppressCabinLighting = function (root) {
+    try {
+      var divs = root.getElementsByTagName("div");
+      for (var i = 0; i < divs.length; i++) {
+        var d = divs[i];
+        if (A.cls(d).indexOf("flex-row") < 0) continue;
+        var t = clean(d.textContent);
+        if (!t || t.length > 60 || t.toLowerCase().indexOf("cabin lighting") < 0) continue;
+        if (d.querySelector && d.querySelector(".rc-slider")) { A.markOwned(d); return; }
+      }
+    } catch (e) {}
+  };
+
   // Suppress the per-page "Fill … from SimBrief" controls on Payload/Fuel (the
   // user imports via the Dashboard). With no plan loaded only a hover-tooltip
   // caption exists; the real CloudArrowDown icon button renders only when planned
@@ -1481,6 +1499,10 @@
     // as a button in pass 1; the bar's per-leaf text is suppressed in pass 2).
     var statusLine = A.buildStatusBarLine(root);
     if (statusLine) items.push(statusLine);
+
+    // Drop the A380 cabin-lighting widget (can't be set via the agent; now an app-side
+    // Interior Lighting panel control). No-op on the A320 / when the pane is closed.
+    A.suppressCabinLighting(root);
 
     for (var i = 0; i < all.length && idx <= 400; i++) {
       var n = all[i];

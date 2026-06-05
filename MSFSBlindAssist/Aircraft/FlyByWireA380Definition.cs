@@ -436,6 +436,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         for (int n = 1; n <= 8; n++) Read($"A32NX_COND_MAIN_DECK_{n}_TEMP", $"Main Deck {n} Temperature", "celsius");
         for (int n = 1; n <= 7; n++) Read($"A32NX_COND_UPPER_DECK_{n}_TEMP", $"Upper Deck {n} Temperature", "celsius");
 
+        // ---- CABIN LIGHTING (passenger-cabin brightness) ----
+        // App-side panel controls because the flyPad rc-slider can't be set through the
+        // injected agent (Coherent blocks the agent's SimVar WRITES — see CLAUDE.md flyPad
+        // note). Written via the reliable calc path in HandleUIVariableSet. Manual
+        // brightness 0-100% (the numeric _SET box); Auto-Brightness Off/On combo; the live
+        // auto value is a read-only display.
+        vars["CABIN_BRIGHTNESS_SET"] = new SimVarDefinition
+        {
+            Name = "A32NX_CABIN_MANUAL_BRIGHTNESS", DisplayName = "Cabin Brightness (0-100 percent)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
+        vars["A32NX_CABIN_USING_AUTOBRIGHTNESS"] = new SimVarDefinition
+        {
+            Name = "A32NX_CABIN_USING_AUTOBRIGHTNESS", DisplayName = "Cabin Auto Brightness",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+        Read("A32NX_CABIN_AUTOBRIGHTNESS", "Cabin Auto Brightness Value", "number");
+
         // ---- CARGO AIR ----
         // Cargo temp selectors: settable target temp 5-25 C (FBW knob 0-300 over
         // that range -> knob = (temp - 5) * 15). Converted in HandleUIVariableSet.
@@ -2751,7 +2770,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
-            "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE"
+            "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE",
+            // Passenger-cabin lighting (moved here from the flyPad Quick Controls, which
+            // can't be set through the injected agent — see CLAUDE.md flyPad note).
+            "CABIN_BRIGHTNESS_SET", "A32NX_CABIN_USING_AUTOBRIGHTNESS", "A32NX_CABIN_AUTOBRIGHTNESS"
         };
         p["Exterior Lighting"] = new List<string>
         {
@@ -4323,6 +4345,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{value} (>L:{knob})");
             announcer.Announce($"Set to {value:0.0}");
             return true;
+        }
+        // Cabin lighting (passenger-cabin brightness). Calc-path write (the reliable FBW
+        // L:var write). The brightness box also forces Auto-Brightness OFF so the manual
+        // value actually takes effect; the auto combo is a plain 0/1 write.
+        if (varKey == "CABIN_BRIGHTNESS_SET")
+        {
+            int b = (int)Math.Max(0, Math.Min(100, Math.Round(value)));
+            simConnect.ExecuteCalculatorCode("0 (>L:A32NX_CABIN_USING_AUTOBRIGHTNESS)");
+            simConnect.ExecuteCalculatorCode($"{b} (>L:A32NX_CABIN_MANUAL_BRIGHTNESS)");
+            announcer.Announce($"Cabin brightness {b} percent");
+            return true;
+        }
+        if (varKey == "A32NX_CABIN_USING_AUTOBRIGHTNESS")
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_CABIN_USING_AUTOBRIGHTNESS)");
+            return true;   // combo announces its own Off/On
         }
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's
         // axis value (-1..1 scaled to +-16384). Values are the FBW default-style
