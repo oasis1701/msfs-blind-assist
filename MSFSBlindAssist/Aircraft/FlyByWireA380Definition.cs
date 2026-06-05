@@ -1246,9 +1246,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_RADIO_RECEIVER_GS_IS_VALID", "Glideslope Valid");
         Read("A32NX_RADIO_RECEIVER_GS_DEVIATION", "Glideslope Deviation");
 
-        var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
-            .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
-            .Concat(Forms.FBWA380.FBWA380ISISForm.AllVariableNames());
+        var windowReadVars = Forms.FBWA380.EisDisplayVars.All();
         foreach (var sdVar in windowReadVars)
         {
             if (vars.ContainsKey(sdVar)) continue;
@@ -6287,14 +6285,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         return string.Join("\r\n", outLines);
     }
 
-    // ECAM System Display (SD) window — decodes the FQMS/PRESS/APU ARINC429 words
-    // + plain SD scalars (Fuel/Engine/Press/APU/Elec/Hyd/Cond). Opened from
-    // ShowStatusPage and ShowECAM (the A380 also announces E/WD live).
-    private void ShowSystemDisplayWindow(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
-    {
-        var dialog = new Forms.FBWA380.FBWA380SystemDisplayForm(announcer, simConnect);
-        dialog.Show();
-    }
+    // (The ECAM System Display readout WINDOW was removed — SD content reads via the ECAM
+    // Control Panel "System Display Page" combo + status box; only Alt+E remains a window.)
 
     public void RequestFCUHeadingWithStatus(SimConnectManager s)
     {
