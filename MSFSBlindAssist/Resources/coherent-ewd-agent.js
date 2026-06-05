@@ -8,7 +8,8 @@
 //
 // CoherentEWDClient.cs sends this file once per connection to define
 // window.__MSFSBA_EWD, then calls __MSFSBA_EWD.scrape() -> JSON:
-//   { ok, warnings:[{text,sev,headline,selected}], memos:[text] }
+//   { ok, warnings:[{text,sev,colour,headline,selected}], memos:[{text,colour}],
+//     pfd:[{text,colour}], status:[text] }
 //
 // ES5 ONLY (Coherent GT = Chromium 49): var, no arrow funcs, no String.includes.
 
@@ -58,6 +59,39 @@
     return "";
   };
 
+  // The EWD colour NAME (what a sighted pilot sees), appended to every auto-announced
+  // line. Warnings carry the colour class on the .EclLine element itself, but MEMOS render
+  // their text via FormattedFwcText which puts the colour on a child <tspan class="Amber
+  // EWDWarn">. So check the element first, then its subtree.
+  A.colour = function (n) {
+    var cls = ["Red", "Amber", "Cyan", "White", "Green"], i, j, kids;
+    for (i = 0; i < cls.length; i++) { if (hasTok(n, cls[i])) return cls[i]; }
+    // Memos colour their text on a child <tspan class="Amber EWDWarn"> (FormattedFwcText),
+    // so search descendants. Use getElementsByTagName + classList (hasTok) rather than a
+    // querySelector class selector, which is unreliable on SVG nodes in Coherent GT (Chromium 49).
+    try {
+      kids = n.getElementsByTagName ? n.getElementsByTagName("*") : [];
+      for (j = 0; j < kids.length; j++) {
+        for (i = 0; i < cls.length; i++) { if (hasTok(kids[j], cls[i])) return cls[i]; }
+      }
+    } catch (e) { /* not searchable */ }
+    return "";
+  };
+
+  // The EWD colour NAME from the raw FWC colour code (<2m..<7m) embedded in the
+  // PFD memo/limitation string SimVars (these carry no CSS class). Same code->colour
+  // map the C# GetMessagePriority uses, read BEFORE the codes are stripped.
+  function fwcColour(s) {
+    s = s || "";
+    if (s.indexOf("<2m") >= 0) return "Red";
+    if (s.indexOf("<4m") >= 0) return "Amber";
+    if (s.indexOf("<3m") >= 0) return "Green";
+    if (s.indexOf("<5m") >= 0) return "White";
+    if (s.indexOf("<6m") >= 0) return "Cyan";
+    if (s.indexOf("<7m") >= 0) return "Gray";
+    return "";
+  }
+
   // PFD memo (3) + limitations (8) lines are FBW 'string' SimVars (NOT numeric
   // codes), so MSFSBA's numeric SimConnect read returns 0 for them — only a string
   // read from the Coherent JS context works. Read them here so the same monitor can
@@ -65,14 +99,16 @@
   A.pfdLines = function () {
     var out = [];
     try {
-      var i, s;
+      var i, raw, s;
       for (i = 1; i <= 3; i++) {
-        s = stripFwc(SimVar.GetSimVarValue("L:A32NX_PFD_MEMO_LINE_" + i, "string"));
-        if (s) out.push(s);
+        raw = SimVar.GetSimVarValue("L:A32NX_PFD_MEMO_LINE_" + i, "string");
+        s = stripFwc(raw);
+        if (s) out.push({ text: s, colour: fwcColour(raw) });
       }
       for (i = 1; i <= 8; i++) {
-        s = stripFwc(SimVar.GetSimVarValue("L:A32NX_PFD_LIMITATIONS_LINE_" + i, "string"));
-        if (s) out.push(s);
+        raw = SimVar.GetSimVarValue("L:A32NX_PFD_LIMITATIONS_LINE_" + i, "string");
+        s = stripFwc(raw);
+        if (s) out.push({ text: s, colour: fwcColour(raw) });
       }
     } catch (e) { /* SimVar may be unavailable on some views */ }
     return out;
@@ -122,6 +158,7 @@
         warnings.push({
           text: t,
           sev: A.severity(n),
+          colour: A.colour(n),
           headline: hasTok(n, "Headline"),
           selected: hasTok(n, "Selected")
         });
@@ -134,7 +171,7 @@
         if (!A.isVisible(m)) continue;
         if (m.children && m.children.length > 0 && m.tagName.toLowerCase() !== "text") continue;
         var mt = clean(m.textContent);
-        if (mt && !seen[mt]) { seen[mt] = 1; memos.push(mt); }
+        if (mt && !seen[mt]) { seen[mt] = 1; memos.push({ text: mt, colour: A.colour(m) }); }
       }
       return JSON.stringify({ ok: true, warnings: warnings, memos: memos, pfd: A.pfdLines(), status: A.statusBoxes() });
     } catch (e) {

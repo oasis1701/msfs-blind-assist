@@ -285,33 +285,38 @@ namespace MSFSBlindAssist.SimConnect
                 if (clean.Length == 0) continue;
                 string key = WipTag.Replace(clean, "").Trim();
                 if (MenuLines.Contains(key)) continue;          // the ABN-PROC menu, not a failure
-                currentLines.Add(clean);
-                if (!_seen.Add(clean)) continue;                // already spoken / at baseline
-                if (AnnounceWarnings) fresh.Add(clean);          // else: FwsFailureClient owns failure call-outs
-
+                // Append the EWD colour name so the auto-announce reads the colour a sighted pilot
+                // sees, the same way the on-demand viewer does (the agent classifies it from the
+                // EclLine CSS class).
+                string spoken = WithColour(clean, w.colour);
+                currentLines.Add(spoken);
+                if (!_seen.Add(spoken)) continue;               // already spoken / at baseline
+                if (AnnounceWarnings) fresh.Add(spoken);         // else: FwsFailureClient owns failure call-outs
             }
             // Memos (PARK BRK ON, ELEC EXT PWR, …) — announced from the SAME scrape so
             // the whole E/WD auto-call-out comes from one source (the SimVar
             // EWD_LOWER decode auto-announce is disabled while this monitor runs).
-            foreach (var m in result.memos ?? new List<string>())
+            foreach (var m in result.memos ?? new List<Labelled>())
             {
-                string clean = Clean(m);
+                string clean = Clean(m.text);
                 if (clean.Length == 0) continue;
-                currentLines.Add(clean);
-                if (!_seen.Add(clean)) continue;
-                fresh.Add(clean);
+                string spoken = WithColour(clean, m.colour);
+                currentLines.Add(spoken);
+                if (!_seen.Add(spoken)) continue;
+                fresh.Add(spoken);
             }
             // PFD memo + limitations lines (SET HOLD SPD, SPEED LIM, …). These are FBW
             // 'string' SimVars the agent reads from the JS context — MSFSBA's numeric
             // SimConnect can't (it reads 0), so this scrape is the only way to surface
             // them. Announced on change, same baseline + dedup.
-            foreach (var p in result.pfd ?? new List<string>())
+            foreach (var p in result.pfd ?? new List<Labelled>())
             {
-                string clean = Clean(p);
+                string clean = Clean(p.text);
                 if (clean.Length == 0) continue;
-                currentLines.Add(clean);
-                if (!_seen.Add(clean)) continue;
-                fresh.Add(clean);
+                string spoken = WithColour(clean, p.colour);
+                currentLines.Add(spoken);
+                if (!_seen.Add(spoken)) continue;
+                fresh.Add(spoken);
             }
 
             // EWD status-area indications (STS / ADV / FAILURE PENDING) + display
@@ -557,6 +562,12 @@ namespace MSFSBlindAssist.SimConnect
             else LineAnnounced?.Invoke(line);
         }
 
+        // Append the EWD colour name to a spoken line (", Red" / ", Amber" / ...). The agent
+        // supplies the colour from the EclLine CSS class (warnings/memos) or the FWC colour code
+        // (PFD lines). No-op when there's no colour.
+        private static string WithColour(string text, string? colour)
+            => string.IsNullOrEmpty(colour) ? text : $"{text}, {colour}";
+
         private void RaiseError(string message)
         {
             if (_syncContext != null) _syncContext.Post(_ => Error?.Invoke(message), null);
@@ -584,8 +595,8 @@ namespace MSFSBlindAssist.SimConnect
             public bool ok { get; set; }
             public string? error { get; set; }
             public List<Warning>? warnings { get; set; }
-            public List<string>? memos { get; set; }
-            public List<string>? pfd { get; set; }
+            public List<Labelled>? memos { get; set; }
+            public List<Labelled>? pfd { get; set; }
             public List<string>? status { get; set; }
         }
 
@@ -593,8 +604,16 @@ namespace MSFSBlindAssist.SimConnect
         {
             public string? text { get; set; }
             public string? sev { get; set; }
+            public string? colour { get; set; }   // EWD colour name (Red/Amber/Cyan/White/Green)
             public bool headline { get; set; }
             public bool selected { get; set; }
+        }
+
+        // A memo / PFD line carrying its EWD colour name so the auto-announce reads it.
+        private sealed class Labelled
+        {
+            public string? text { get; set; }
+            public string? colour { get; set; }
         }
 
         private sealed class EclScrapeResult
