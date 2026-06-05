@@ -242,11 +242,13 @@ public class TaxiGuidanceManager : IDisposable
     private const double MAX_TAXI_SPEED_TURN_KTS = 10.0;
     private const double MAX_TAXI_SPEED_SHARP_TURN_KTS = 8.0;  // conservative for 60°+ turns
     // Lookahead distance for the "slow for turn" warning. Scales with speed so
-    // the pilot has time to bleed off knots before the turn: 6 s of travel time
-    // at current ground speed, floored at 40 m, ceilinged at 150 m.
-    private const double TURN_SPEED_WARN_SEC_LEAD = 6.0;
-    private const double TURN_SPEED_WARN_MIN_M = 40.0;
-    private const double TURN_SPEED_WARN_MAX_M = 150.0;
+    // the pilot has time to bleed off knots before the turn. The previous 6 s /
+    // 40 m floor often fired inside the turn setup window; with tone-only
+    // guidance the pilot needs braking time before the pan cue starts asking for
+    // the turn.
+    private const double TURN_SPEED_WARN_SEC_LEAD = 20.0;
+    private const double TURN_SPEED_WARN_MIN_M = 80.0;
+    private const double TURN_SPEED_WARN_MAX_M = 350.0;
 
     // Hold-short countdown announcements (track which threshold has fired)
     private bool _holdShortOuterAnnounced = false;
@@ -1957,7 +1959,11 @@ public class TaxiGuidanceManager : IDisposable
         if (nextIdx < _route.Segments.Count)
         {
             var next = _route.Segments[nextIdx];
-            if (next.TurnDirection != "straight" && distToTargetM < turnWarnDist)
+            double turnSpecificWarnDist = turnWarnDist;
+            if (Math.Abs(next.TurnAngleDegrees) >= SHARP_TURN_ANGLE_DEG)
+                turnSpecificWarnDist = Math.Min(TURN_SPEED_WARN_MAX_M, turnWarnDist * 1.25);
+
+            if (next.TurnDirection != "straight" && distToTargetM < turnSpecificWarnDist)
             {
                 double ang = Math.Abs(next.TurnAngleDegrees);
                 if (ang >= SHARP_TURN_ANGLE_DEG) sharpTurnComing = true;
@@ -2154,50 +2160,39 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Advances _currentSegmentIndex to the segment closest to the aircraft's current position.
-    /// Only moves forward (never backward). Handles segment skipping when updates are sparse.
+    /// Advances _currentSegmentIndex only when the aircraft has actually reached
+    /// or passed the current segment end. The previous implementation picked the
+    /// nearest endpoint among several future segments; at dense/looped airports a
+    /// later endpoint can briefly be closer even though the aircraft is still
+    /// committed to the current turn, which makes the steering target jump and the
+    /// tone appear to invert without a recalculation.
     /// </summary>
     private void AdvanceToNearestSegment(double lat, double lon)
     {
         if (_route == null) return;
 
-        int bestIdx = _currentSegmentIndex;
-        double bestDist = double.MaxValue;
-
-        // Look at current segment and up to 5 segments ahead
-        int lookAhead = Math.Min(_currentSegmentIndex + 6, _route.Segments.Count);
-        for (int i = _currentSegmentIndex; i < lookAhead; i++)
+        while (_currentSegmentIndex < _route.Segments.Count - 1)
         {
-            var seg = _route.Segments[i];
+            var seg = _route.Segments[_currentSegmentIndex];
 
             double distToEnd = TaxiGraph.FastDistanceMeters(
                 lat, lon, seg.ToNode.Latitude, seg.ToNode.Longitude);
-            double distToStart = TaxiGraph.FastDistanceMeters(
-                lat, lon, seg.FromNode.Latitude, seg.FromNode.Longitude);
-            double dist = Math.Min(distToEnd, distToStart);
+            double alongTrack = SignedAlongTrackToSegmentMeters(lat, lon, seg);
 
-            if (dist < bestDist)
-            {
-                bestDist = dist;
-                bestIdx = i;
-            }
-        }
+            bool reachedEnd = distToEnd < WAYPOINT_CAPTURE_RADIUS_M;
+            bool passedEnd = alongTrack > seg.DistanceMeters + WAYPOINT_CAPTURE_RADIUS_M;
+            if (!reachedEnd && !passedEnd)
+                return;
 
-        if (bestIdx > _currentSegmentIndex)
-        {
-            // Check for hold-short points we might be skipping
-            for (int i = _currentSegmentIndex; i < bestIdx; i++)
+            if (seg.IsHoldShortPoint)
             {
-                if (_route.Segments[i].IsHoldShortPoint)
-                {
-                    _currentSegmentIndex = i + 1;
-                    _lastSegmentAdvanceTime = DateTime.Now;
-                    HandleHoldShort(_route.Segments[i]);
-                    return;
-                }
+                _currentSegmentIndex++;
+                _lastSegmentAdvanceTime = DateTime.Now;
+                HandleHoldShort(seg);
+                return;
             }
 
-            _currentSegmentIndex = bestIdx;
+            _currentSegmentIndex++;
             _lastSegmentAdvanceTime = DateTime.Now;
 
             var newSeg = _route.Segments[_currentSegmentIndex];
@@ -2212,6 +2207,19 @@ public class TaxiGuidanceManager : IDisposable
             _turnImminentAnnounced = false;
             _crossingAnnounced = false;
         }
+    }
+
+    private static double SignedAlongTrackToSegmentMeters(double lat, double lon, TaxiRouteSegment seg)
+    {
+        const double MPD = 111132.0;
+        double latMid = (seg.FromNode.Latitude + seg.ToNode.Latitude) * 0.5;
+        double mpl = MPD * Math.Cos(latMid * Math.PI / 180.0);
+        double dx = (seg.ToNode.Longitude - seg.FromNode.Longitude) * mpl;
+        double dy = (seg.ToNode.Latitude - seg.FromNode.Latitude) * MPD;
+        double px = (lon - seg.FromNode.Longitude) * mpl;
+        double py = (lat - seg.FromNode.Latitude) * MPD;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        return len < 1.0 ? 0.0 : (px * dx + py * dy) / len;
     }
 
     /// <summary>
