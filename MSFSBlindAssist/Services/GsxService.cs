@@ -153,6 +153,7 @@ public sealed class GsxService : IDisposable
                 return;
             _selectedActiveService = normalized;
             _lastAnnouncedFullText = string.Empty;
+            _forceNextLiveServiceAnnouncement = true;
         }
     }
     public string LastSettingsText => _lastSettingsText;
@@ -206,6 +207,9 @@ public sealed class GsxService : IDisposable
     // The (possibly trimmed) text passed to the screen reader on the most
     // recent announcement.
     private string _lastAnnouncementText = string.Empty;
+    // User changed the active-service combo; the next selected-service text
+    // should speak even if it looks like a recently repeated completion row.
+    private bool _forceNextLiveServiceAnnouncement;
     // Ordered list of active service names from the most recent status.html
     // parse, plus the user's current selection (null = follow GSX order).
     private List<string> _activeServiceNames = new();
@@ -1028,9 +1032,11 @@ public sealed class GsxService : IDisposable
         // so a tooltip that carries both a stale-milestone progress segment
         // AND a fresh transition segment ("rear loader leaving") still
         // announces the transition.
-        bool isThrottled = IsRepeatedBaggageProgress(text)
-            || IsRepeatedLiveServiceAnnouncement(stableText)
-            || IsThrottledServiceProgress(text);
+        bool forceAnnouncement = _forceNextLiveServiceAnnouncement;
+        bool isThrottled = !forceAnnouncement
+            && (IsRepeatedBaggageProgress(text)
+                || IsRepeatedLiveServiceAnnouncement(stableText)
+                || IsThrottledServiceProgress(text));
 
         bool exactDuplicate = string.Equals(text, _lastTooltip, StringComparison.Ordinal);
         bool stableChanged = !string.Equals(stableText, _lastStatusStableText, StringComparison.Ordinal);
@@ -1041,8 +1047,7 @@ public sealed class GsxService : IDisposable
             && DateTime.UtcNow - _lastTimerOnlyStatusAnnouncementUtc >= timerOnlyInterval;
 
         bool shouldAnnounce = !isThrottled
-            && !exactDuplicate
-            && (stableChanged || timerOnlyChangeAllowed);
+            && (forceAnnouncement || (!exactDuplicate && (stableChanged || timerOnlyChangeAllowed)));
 
         // Always keep the visible-text state current so the AccessGSX
         // tooltip textbox shows live ETA / kg / etc., even when the
@@ -1052,6 +1057,9 @@ public sealed class GsxService : IDisposable
         _lastStatusStableText = stableText;
         if (textChanged)
             TooltipChanged?.Invoke(this, EventArgs.Empty);
+
+        if (forceAnnouncement)
+            _forceNextLiveServiceAnnouncement = false;
 
         if (!shouldAnnounce)
             return;
@@ -2341,6 +2349,7 @@ public sealed class GsxService : IDisposable
             else
                 activeRows.Add(row);
         }
+        AddRunningGroundConnectionTimerRows(activeRows, completedRows, chargeRows);
 
         StatusServiceRow? latestCompletedRow = completedRows.TakeLast(1).FirstOrDefault();
         if (receiptInvoices.Count > 0)
@@ -2427,6 +2436,24 @@ public sealed class GsxService : IDisposable
     private sealed record StatusServiceRow(string Text, bool IsCompleted, bool HasStarted);
     private sealed record ReceiptInvoice(string ServiceName, string OperatorName, string Total, string Key);
 
+    private static void AddRunningGroundConnectionTimerRows(
+        List<StatusServiceRow> activeRows,
+        List<StatusServiceRow> completedRows,
+        IReadOnlyList<string> chargeRows)
+    {
+        foreach (string chargeRow in chargeRows.Where(IsRunningGroundConnectionTimerLine))
+        {
+            string serviceText = FormatGroundConnectionTimerServiceText(chargeRow);
+            if (string.IsNullOrWhiteSpace(serviceText))
+                continue;
+
+            if (activeRows.Concat(completedRows).Any(row => GroundConnectionRowsMatch(row.Text, serviceText)))
+                continue;
+
+            activeRows.Add(new StatusServiceRow(serviceText, IsCompleted: false, HasStarted: true));
+        }
+    }
+
     private string FormatGroundConnectionTimerAnnouncement(
         IReadOnlyList<StatusServiceRow> activeRows,
         IReadOnlyList<StatusServiceRow> completedRows,
@@ -2509,6 +2536,13 @@ public sealed class GsxService : IDisposable
 
     private static bool IsCompletedStatusService(string text)
     {
+        // Ground connections are a special case: after a jetway, stairs, or
+        // GPU has finished moving, GSX may describe the service as completed
+        // while also saying it is still connected. Treat that as active so
+        // the selector keeps offering it until GSX reports a disconnect.
+        if (IsConnectedGroundConnectionStatus(text))
+            return false;
+
         // GSX phrases completion announcements many ways: "Refueling
         // completed", "Boarding completed", "Catering services completed",
         // "Refueling service has been completed", "Refueling has completed",
@@ -2524,6 +2558,14 @@ public sealed class GsxService : IDisposable
         @"\bcomplete[ds]?\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex ConnectedWordRegex = new(
+        @"\bconnected\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex DisconnectedWordRegex = new(
+        @"\bdisconnected\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static bool IsStartedStatusService(string cssClass, string text)
     {
         if (IsCompletedStatusService(text))
@@ -2533,10 +2575,20 @@ public sealed class GsxService : IDisposable
         string normalizedText = text.ToLowerInvariant();
         return normalizedClass.Contains("gsx-state-performed")
             || normalizedText.Contains("is being performed")
-            || normalizedText.Contains("connected")
+            || HasConnectedStatusWord(text)
             || normalizedText.Contains("started")
             || normalizedText.Contains("in progress");
     }
+
+    private static bool IsConnectedGroundConnectionStatus(string text) =>
+        IsGroundConnectionService(text) && HasPersistentGroundConnectionStatusWord(text);
+
+    private static bool HasPersistentGroundConnectionStatusWord(string text) =>
+        HasConnectedStatusWord(text)
+        || text.Contains("docked", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasConnectedStatusWord(string text) =>
+        ConnectedWordRegex.IsMatch(text) && !DisconnectedWordRegex.IsMatch(text);
 
     private static bool IsChargeStatusLine(string text)
     {
@@ -2558,6 +2610,22 @@ public sealed class GsxService : IDisposable
 
     private static bool IsTimerStatusLine(string text) =>
         text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRunningGroundConnectionTimerLine(string text) =>
+        IsTimerStatusLine(text)
+        && text.Contains("running", StringComparison.OrdinalIgnoreCase)
+        && IsGroundConnectionService(text);
+
+    private static string FormatGroundConnectionTimerServiceText(string timerLine)
+    {
+        string serviceName = Regex.Replace(timerLine, @"\s+timer\s*:.*$", string.Empty,
+            RegexOptions.IgnoreCase);
+        serviceName = NormalizeWhitespace(serviceName);
+        if (string.IsNullOrWhiteSpace(serviceName))
+            return string.Empty;
+
+        return $"{serviceName} service is running";
+    }
 
     private static string FormatCompletedServiceTotal(string serviceText, IReadOnlyList<string> chargeRows)
     {
@@ -2894,6 +2962,7 @@ public sealed class GsxService : IDisposable
         string normalized = serviceText.ToLowerInvariant();
         return normalized.Contains("jetway")
             || normalized.Contains("operatejetways")
+            || normalized.Contains("stair")
             || normalized.Contains("gpu")
             || normalized.Contains("ground power");
     }
@@ -2958,6 +3027,7 @@ public sealed class GsxService : IDisposable
             || normalized.Contains("cargo")
             || normalized.Contains("jetway")
             || normalized.Contains("operatejetways")
+            || normalized.Contains("stair")
             || normalized.Contains("gpu")
             || normalized.Contains("ground power")
             || IsDeicingService(normalized)
@@ -3011,6 +3081,17 @@ public sealed class GsxService : IDisposable
         return rows;
     }
 
+    private static bool GroundConnectionRowsMatch(string existingServiceText, string serviceText)
+    {
+        foreach (string keyword in GetServiceChargeKeywords(serviceText))
+        {
+            if (existingServiceText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
     private static IEnumerable<string> GetServiceChargeKeywords(string serviceText)
     {
         string normalized = serviceText.ToLowerInvariant();
@@ -3023,6 +3104,9 @@ public sealed class GsxService : IDisposable
 
         if (normalized.Contains("jetway"))
             yield return "jetway";
+
+        if (normalized.Contains("stair"))
+            yield return "stair";
 
         if (normalized.Contains("catering"))
             yield return "catering";
