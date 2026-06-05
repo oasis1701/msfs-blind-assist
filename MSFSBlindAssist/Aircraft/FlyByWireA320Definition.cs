@@ -1,7 +1,6 @@
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Forms.A32NX;
 
 namespace MSFSBlindAssist.Aircraft;
 

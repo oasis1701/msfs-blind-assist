@@ -4,7 +4,6 @@ using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
-using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
 using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
