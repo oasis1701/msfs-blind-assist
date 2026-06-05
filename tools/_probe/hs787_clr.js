@@ -1,0 +1,1 @@
+(function(){try{SimVar.SetSimVarValue('H:AS01B_FMC_1_BTN_CLR','number',1);}catch(e){return 'THREW '+e.message;}return 'clr fired';})()

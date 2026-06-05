@@ -1529,6 +1529,17 @@ public partial class MainForm : Form
                         {
                             displayValue = arincText;
                         }
+                        // ARINC429 ENUM decode (mirrors the FBW ProcessSimVarUpdate announce
+                        // guard): some announced FBW discretes (e.g. APU low fuel pressure)
+                        // arrive as a huge SSM-encoded word (12884901888 = 0x3_00000000) that
+                        // matches no 0/1 ValueDescription, so they'd render as a raw ~13-billion
+                        // number. Decode to the 0/1 payload and map via ValueDescriptions.
+                        else if (varDef.ValueDescriptions is { Count: > 0 } && value >= 4294967296.0
+                                 && varDef.ValueDescriptions.TryGetValue(
+                                        System.Math.Round(new SimConnect.Arinc429Word(value).ValueOr(0f)), out string? arincEnumDesc))
+                        {
+                            displayValue = arincEnumDesc;
+                        }
                         // Check if we have value descriptions (like Off/Aligning/Aligned)
                         else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
                         {

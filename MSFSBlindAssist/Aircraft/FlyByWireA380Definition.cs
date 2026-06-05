@@ -1005,9 +1005,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("PFD_GROSS_WEIGHT", "TOTAL WEIGHT", "Gross Weight", "kilograms");
         // PFD read-out additions (source-confirmed missing). All OnRequest stock simvars
         // (NOT continuous) so they add nothing to the monitoring batch / aircraft detection.
-        Stock("PFD_V1", "AIRLINER V1 SPEED", "V1", "knots");
-        Stock("PFD_VR", "AIRLINER VR SPEED", "VR", "knots");
-        Stock("PFD_V2", "AIRLINER V2 SPEED", "V2", "knots");
+        // V1/VR/V2 come from the FBW FMS as L:vars (the MFD PERF page writes
+        // L:AIRLINER_V1/VR/V2_SPEED). The stock "AIRLINER V1 SPEED" simvars are NEVER
+        // written by the A380 -> always 0 ("not set"). Read the L:vars instead; the keys
+        // stay PFD_V* so the panel set + TryGetDisplayOverride ("not set" on 0) are unchanged.
+        vars["PFD_V1"] = new SimVarDefinition { Name = "AIRLINER_V1_SPEED", DisplayName = "V1", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots" };
+        vars["PFD_VR"] = new SimVarDefinition { Name = "AIRLINER_VR_SPEED", DisplayName = "VR", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots" };
+        vars["PFD_V2"] = new SimVarDefinition { Name = "AIRLINER_V2_SPEED", DisplayName = "V2", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots" };
         Stock("PFD_MACH", "AIRSPEED MACH", "Mach", "mach");          // decoded in TryGetDisplayOverride
         Stock("PFD_TRACK", "GPS GROUND MAGNETIC TRACK", "Track", "degrees");
         Stock("PFD_ILS_FREQ", "NAV ACTIVE FREQUENCY:3", "ILS Frequency", "MHz");
@@ -1542,7 +1546,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         Read("A32NX_APU_EGT", "APU EGT", "celsius");
         Read("A32NX_APU_FLAP_OPEN_PERCENTAGE", "APU Inlet Flap", "percent");
-        Read("A32NX_APU_FUEL_USED", "APU Fuel Used", "kilograms");
+        // APU fuel used is an ARINC429 word (FBW SD useArinc429Var) — the old plain Read
+        // showed the raw ~13.9-billion SSM word. Decode it to kg.
+        vars["A32NX_APU_FUEL_USED"] = new SimVarDefinition
+        {
+            Name = "A32NX_APU_FUEL_USED", DisplayName = "APU Fuel Used",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "kg", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        };
 
         // HYDRAULICS
         for (int n = 1; n <= 4; n++)
@@ -2295,9 +2307,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         for (int n = 1; n <= 4; n++)
         {
             Read($"A32NX_ENGINE_OIL_QTY:{n}", $"Engine {n} Oil Quantity", "quarts");
-            // Per-engine fuel used since start (kg) — the post-flight even-burn check
-            // (#107 transcript: "fuel used for each engine"). Stock indexed simvar.
-            Stock($"ENG_FUEL_USED:{n}", $"GENERAL ENG FUEL USED SINCE START:{n}", $"Engine {n} Fuel Used", "kilograms");
+            // Per-engine fuel used since start (kg) — the post-flight even-burn check.
+            // MUST read the FBW L:var A32NX_FUEL_USED:n (what the SD ENGINE page uses) — the
+            // stock GENERAL ENG FUEL USED SINCE START:n is NEVER populated by the FBW A380
+            // (it runs its own FQMS) so it read a permanent 0. Key stays ENG_FUEL_USED:n.
+            vars[$"ENG_FUEL_USED:{n}"] = new SimVarDefinition
+            {
+                Name = $"A32NX_FUEL_USED:{n}", DisplayName = $"Engine {n} Fuel Used",
+                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "kilograms"
+            };
             Stock($"ENG_VIBRATION:{n}", $"TURB ENG VIBRATION:{n}", $"Engine {n} Vibration", "number");
         }
 

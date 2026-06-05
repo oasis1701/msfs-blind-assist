@@ -1,0 +1,1 @@
+(function(){var c=document.querySelector('.wt787-cdu');var a=c.querySelectorAll('.wt787-cdu-button');var p=[];for(var i=0;i<a.length;i++){var b=a[i];if(!(b.closest('.wt787-cdu-lsk-column-left')||b.closest('.wt787-cdu-lsk-column-right')))p.push(b);}p[0].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));return 'clicked INIT_REF (MouseEvent)';})()
