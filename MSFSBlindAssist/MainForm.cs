@@ -1598,24 +1598,13 @@ public partial class MainForm : Form
 
     /// <summary>
     /// Writes new text into a (read-only) status display box WITHOUT yanking the
-    /// screen-reader review cursor back to the top on every refresh.
-    ///  • If the text is unchanged, the box is left completely untouched — no
-    ///    TextChanged, no caret move — so an idle auto-refresh is invisible.
-    ///  • If it changed, the caret (SelectionStart) is captured before the
-    ///    assignment and restored (clamped to the new length) after, so a blind
-    ///    user reading line-by-line stays where they were instead of being thrown
-    ///    back to line 1 the instant a value (FOB, N1, …) ticks.
+    /// screen-reader review cursor back to the top on every refresh. Delegates to the
+    /// shared <see cref="Forms.DisplayText.SetPreserveCaret"/>, which rewrites only the
+    /// characters that changed (so NVDA sees a localized edit, not a full content
+    /// replacement) and keeps the caret on the same line. No-ops when unchanged.
     /// </summary>
     private void SetDisplayTextPreserveCaret(TextBox box, string text)
-    {
-        if (box.Text == text) return;
-        int caret = box.SelectionStart;
-        int selLen = box.SelectionLength;
-        box.Text = text;
-        int max = box.TextLength;
-        box.SelectionStart = Math.Min(caret, max);
-        box.SelectionLength = Math.Min(selLen, Math.Max(0, max - box.SelectionStart));
-    }
+        => Forms.DisplayText.SetPreserveCaret(box, text);
 
 
     /// <summary>

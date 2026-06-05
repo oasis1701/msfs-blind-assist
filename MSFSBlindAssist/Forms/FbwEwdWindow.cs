@@ -82,16 +82,9 @@ public sealed class FbwEwdWindow : Form
             string txt = await _build();
             if (IsDisposed) return;
             if (string.IsNullOrWhiteSpace(txt)) txt = "(E/WD content not available — power up the displays / try again)";
-            // Only rewrite when the content actually changed, so a static E/WD doesn't
-            // reset the screen-reader review cursor every two seconds. When it does
-            // change, keep the caret near where it was so reading position is preserved.
-            if (_text.Text != txt)
-            {
-                int caret = Math.Min(_text.SelectionStart, txt.Length);
-                _text.Text = txt;
-                _text.SelectionStart = Math.Max(0, caret);
-                _text.SelectionLength = 0;
-            }
+            // Rewrite only the changed span and keep the reader on the same line (no-ops when
+            // unchanged) so a refresh doesn't reset the screen-reader review cursor to the top.
+            DisplayText.SetPreserveCaret(_text, txt);
             if (announce) _announcer.Announce("E W D refreshed");
         }
         catch { /* best-effort; keep the last good content */ }
