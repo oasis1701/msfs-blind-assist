@@ -4574,7 +4574,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "seconds"
         },
 
-        // ---- Bleed Air panel (parity with the A380 Overhead > Bleed Air) ----
+        // ---- Bleed panel (matches the ECAM BLEED System Display page) ----
         // All verified live. XBLEED/PACKFLOW are A32NX_KNOB_* selectors; eng bleeds +
         // hot-air + ram-air are PBs. Settable via the calculator-path catch-all.
         ["A32NX_OVHD_PNEU_ENG_1_BLEED_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
@@ -5270,7 +5270,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" }
@@ -5369,22 +5369,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "FUELSYSTEM_VALVE_TOGGLE:10",
             "FUELSYSTEM_VALVE_TOGGLE:3" 
         },
+        // Functional split that matches the FBW ECAM System Display pages — the
+        // source's OWN grouping (fbw-a32nx SD/Pages/Cond + SD/Pages/Bleed): the COND
+        // page shows the zone temperatures + HOT AIR (hotAir/trim), and the BLEED page
+        // shows the bleed sources (APU + engine bleeds), X-bleed, pack flow, PACK 1/2
+        // and RAM AIR ("Ram air", Bleed.tsx). (On the real A320 these are all one
+        // physical AIR COND overhead panel — node prefix _OVHD_AIRCOND_ — but the ECAM
+        // splits them Bleed vs Cond, the more navigable grouping for a screen reader.)
         ["Air Conditioning"] = new List<string>
         {
-            "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
-            "A32NX_OVHD_COND_PACK_1_PB_IS_ON",
-            "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
             "COND_CKPT_TEMP_SET",
             "COND_FWD_TEMP_SET",
-            "COND_AFT_TEMP_SET"
+            "COND_AFT_TEMP_SET",
+            "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON"
         },
-        ["Bleed Air"] = new List<string>
+        ["Bleed"] = new List<string>
         {
+            "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
             "A32NX_OVHD_PNEU_ENG_1_BLEED_PB_IS_AUTO",
             "A32NX_OVHD_PNEU_ENG_2_BLEED_PB_IS_AUTO",
             "A32NX_KNOB_OVHD_AIRCOND_XBLEED_Position",
             "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position",
-            "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON",
+            "A32NX_OVHD_COND_PACK_1_PB_IS_ON",
+            "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
             "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON"
         },
         ["Pressurization"] = new List<string>
