@@ -795,20 +795,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Powered" }
         },
-        // ENG MAN START pushbuttons (parity with A380 Engine Start panel) — settable
-        // L:vars, live-verified to hold a write via the calculator path.
-        ["A32NX_ENGMANSTART1_TOGGLE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_ENGMANSTART1_TOGGLE", DisplayName = "Engine 1 Manual Start",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        ["A32NX_ENGMANSTART2_TOGGLE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_ENGMANSTART2_TOGGLE", DisplayName = "Engine 2 Manual Start",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
+        // ENG MAN START pushbuttons removed: A32NX_ENGMANSTART{1,2}_TOGGLE is referenced
+        // ONLY by the cockpit model XML (button animation + light) — NOTHING in FBW's
+        // systems, instruments, or Rust reads it, so the write held but drove nothing
+        // (the classic dead-var trap). Engine start on the A320 is the pedestal "Engines"
+        // panel (ENG MODE selector + ENG MASTER), not the overhead. FADEC 1/2 above stay
+        // (they power the FADEC, consumed by A32NX_FADEC.ts).
 
         // Fuel Panel (these are events with parameters)
         ["FUELSYSTEM_PUMP_TOGGLE:2"] = new SimConnect.SimVarDefinition
@@ -1615,33 +1607,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // PEDESTAL SECTION - Engines Panel
-        ["ENGINE_1_MASTER_ON"] = new SimConnect.SimVarDefinition
+        // ENG MASTER 1/2 combos (parity with the A380): live SimVar state =
+        // FUELSYSTEM VALVE SWITCH:n (the commanded switch position, instant — the
+        // FUELSYSTEM VALVE OPEN:n physical-position var lags during the close), and the
+        // set fires FUELSYSTEM_VALVE_OPEN/CLOSE (param n) via HandleUIVariableSet.
+        // Replaces the old separate ENGINE_n_MASTER_ON / _OFF push buttons. Continuous +
+        // announced so each speaks Off/On on change like every other combo. Live-verified:
+        // firing FUELSYSTEM_VALVE_OPEN param 1 moves SWITCH:1 0->1 (engine 2 unaffected).
+        ["ENGINE_1_MASTER"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_VALVE_OPEN",
-            DisplayName = "Engine 1 Master ON",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 1
+            Name = "FUELSYSTEM VALVE SWITCH:1",
+            DisplayName = "Engine 1 Master",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["ENGINE_1_MASTER_OFF"] = new SimConnect.SimVarDefinition
+        ["ENGINE_2_MASTER"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_VALVE_CLOSE",
-            DisplayName = "Engine 1 Master OFF",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 1
-        },
-        ["ENGINE_2_MASTER_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM_VALVE_OPEN",
-            DisplayName = "Engine 2 Master ON",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 2
-        },
-        ["ENGINE_2_MASTER_OFF"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FUELSYSTEM_VALVE_CLOSE",
-            DisplayName = "Engine 2 Master OFF",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 2
+            Name = "FUELSYSTEM VALVE SWITCH:2",
+            DisplayName = "Engine 2 Master",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["ENGINE_MODE_SELECTOR"] = new SimConnect.SimVarDefinition
         {
@@ -5510,8 +5501,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_FADEC_1",
             "A32NX_OVHD_FADEC_2",
-            "A32NX_ENGMANSTART1_TOGGLE",
-            "A32NX_ENGMANSTART2_TOGGLE",
         },
         ["FCU"] = new List<string>
         {
@@ -5596,10 +5585,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Engines"] = new List<string>
         {
-            "ENGINE_1_MASTER_ON",
-            "ENGINE_1_MASTER_OFF",
-            "ENGINE_2_MASTER_ON",
-            "ENGINE_2_MASTER_OFF",
+            "ENGINE_1_MASTER",
+            "ENGINE_2_MASTER",
             "ENGINE_MODE_SELECTOR"
         },
         ["Thrust Levers"] = new List<string>
@@ -7399,6 +7386,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             string zone = varKey.Contains("CKPT") ? "CKPT" : varKey.Contains("FWD") ? "FWD" : "AFT";
             simConnect.ExecuteCalculatorCode($"{knob} (>L:A32NX_OVHD_COND_{zone}_SELECTOR_KNOB)");
             announcer.Announce($"{(zone == "CKPT" ? "Cockpit" : zone == "FWD" ? "Forward cabin" : "Aft cabin")} temperature {t:0.#} degrees");
+            return true;
+        }
+
+        // ENG MASTER 1/2 combo (state = FUELSYSTEM VALVE SWITCH:n, a SimVar that can't be
+        // written directly): the set fires FUELSYSTEM_VALVE_OPEN / _CLOSE with the valve id
+        // (param 1/2), mirroring the A380 ENG_VALVE_SWITCH handler. Live-verified the event
+        // moves SWITCH:n. The combo's own auto-announce speaks Off/On, so no speech here.
+        if (varKey == "ENGINE_1_MASTER" || varKey == "ENGINE_2_MASTER")
+        {
+            uint eng = varKey == "ENGINE_2_MASTER" ? 2u : 1u;
+            simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", eng);
             return true;
         }
 
