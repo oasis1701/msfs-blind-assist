@@ -101,17 +101,26 @@ public static class SettingsManager
         }
 
         /// <summary>
-        /// One-time seed: the Fenix raw-seconds clock counters (CLOCK CHRONO / CLOCK
-        /// ELAPSED) auto-announce every second, which is pure spam. Add them to the
-        /// Fenix disabled-monitor list by default so they stay silent; the user can
-        /// re-enable them in the Ctrl+M monitor. The seed runs once (guarded by
-        /// FenixClockMonitorSeeded) so a deliberate re-enable is never overwritten.
+        /// One-time seed of Fenix vars that should be auto-monitored but NOT spoken by
+        /// default — added to the Fenix disabled-monitor list (the combo/display still
+        /// tracks them; only the spoken call-out is gated off):
+        ///   * CLOCK CHRONO / CLOCK ELAPSED — raw-seconds counters that tick every second.
+        ///   * the four seat height/distance switches — Continuous so the combo can spring
+        ///     to "Stop" at the travel limit, but silent (the user just wants the value).
+        /// Runs once (guarded by FenixMonitorDefaultsSeeded) so a deliberate re-enable in
+        /// the Ctrl+M monitor is never overwritten.
         /// </summary>
         private static void SeedFenixMonitorDefaults(UserSettings s)
         {
-            if (s.FenixClockMonitorSeeded) return;
-            s.FenixClockMonitorSeeded = true;
-            foreach (var key in new[] { "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED" })
+            if (s.FenixMonitorDefaultsSeeded) return;
+            s.FenixMonitorDefaultsSeeded = true;
+            string[] defaultSilent =
+            {
+                "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED",
+                "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
+                "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
+            };
+            foreach (var key in defaultSilent)
             {
                 if (!s.FenixDisabledMonitorVariables.Contains(key))
                     s.FenixDisabledMonitorVariables.Add(key);
