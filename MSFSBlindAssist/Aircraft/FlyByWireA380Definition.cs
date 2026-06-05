@@ -6078,14 +6078,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
     }
 
-    // PFD/FMA readout window — reuses the shared A32NX PFDForm, which reads the
-    // current aircraft's PFD-panel vars by name (FMA modes, approach capability,
-    // PFD messages, MDA, QNH — all shared A32NX_ names the A380 now defines).
-    private void ShowPFDWindow(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
-    {
-        var dialog = new Forms.A32NX.PFDForm(announcer, simConnect) { CurrentAircraft = this };
-        dialog.Show();
-    }
+    // (The dedicated PFD/FMA readout WINDOW was removed — those flight values live on
+    // the PFD panel + the individual readout hotkeys; only the Alt+E E/WD window remains.)
 
     // Read ALL current upper-ECAM (E/WD) memo/warning lines on demand (Alt+E),
     // decoded via EWDMessageLookupA380. Reads the live cache of line codes
