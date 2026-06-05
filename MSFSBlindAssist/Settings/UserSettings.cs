@@ -143,6 +143,13 @@ public class UserSettings
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
+        // One-time seed marker: the raw-seconds clock counters (CLOCK CHRONO / CLOCK
+        // ELAPSED) tick every second and would spam the auto-announce, so they are
+        // added to FenixDisabledMonitorVariables by default (SettingsManager.Load).
+        // They remain toggleable in the Ctrl+M monitor; this flag stops them being
+        // re-seeded after the user deliberately re-enables one.
+        public bool FenixClockMonitorSeeded { get; set; } = false;
+
         // PMDG Announcement Monitor Settings — variable keys that the user has
         // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-
         // monitoring branch consults this list when the loaded aircraft's
@@ -322,6 +329,7 @@ public class UserSettings
             MajorCityAPIThreshold = MajorCityAPIThreshold,
             DistanceUnits = DistanceUnits,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
+            FenixClockMonitorSeeded = FenixClockMonitorSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),

@@ -70,7 +70,7 @@ public static class SettingsManager
                 {
                     System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
-                    Save(defaultSettings);
+                    SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
                     return defaultSettings;
                 }
 
@@ -89,6 +89,7 @@ public static class SettingsManager
                     Debug.WriteLine("[SettingsManager] Settings loaded successfully from JSON");
                 }
 
+                SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
                 return settings;
             }
             catch (Exception ex)
@@ -97,6 +98,25 @@ public static class SettingsManager
                 // Return default settings on error
                 return new UserSettings();
             }
+        }
+
+        /// <summary>
+        /// One-time seed: the Fenix raw-seconds clock counters (CLOCK CHRONO / CLOCK
+        /// ELAPSED) auto-announce every second, which is pure spam. Add them to the
+        /// Fenix disabled-monitor list by default so they stay silent; the user can
+        /// re-enable them in the Ctrl+M monitor. The seed runs once (guarded by
+        /// FenixClockMonitorSeeded) so a deliberate re-enable is never overwritten.
+        /// </summary>
+        private static void SeedFenixMonitorDefaults(UserSettings s)
+        {
+            if (s.FenixClockMonitorSeeded) return;
+            s.FenixClockMonitorSeeded = true;
+            foreach (var key in new[] { "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED" })
+            {
+                if (!s.FenixDisabledMonitorVariables.Contains(key))
+                    s.FenixDisabledMonitorVariables.Add(key);
+            }
+            Save(s);
         }
 
         /// <summary>

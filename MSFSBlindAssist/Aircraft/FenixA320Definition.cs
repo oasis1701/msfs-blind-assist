@@ -4939,7 +4939,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"} },
             ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
-            ["S_OH_CALLS_EMER_Cover"] = new SimConnect.SimVarDefinition { Name = "S_OH_CALLS_EMER_Cover", DisplayName = "Emergency Call Guard", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
+            // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
             ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Extended"} },
             ["S_HYD_GRAVITY_GEAR_EXTEND_ROTATION"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", DisplayName = "Gravity Gear Crank", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"} },
             ["S_DCDU2_DIM_BRT"] = new SimConnect.SimVarDefinition { Name = "S_DCDU2_DIM_BRT", DisplayName = "First Officer DCDU Brightness", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"} },
@@ -8896,7 +8896,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["First Officer Seat"] = new List<string> { "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO", "S_ARMREST_LEFT_FO", "S_ARMREST_RIGHT_FO" },
             ["Windows and Shades"] = new List<string> { "S_SUNSHADE_CAPT", "S_SUNSHADE_FO", "S_WINDOW_BLINDS_CAPT", "S_WINDOW_BLINDS_FO", "S_WINDOW_BLINDS_REAR_CAPT", "S_WINDOW_BLINDS_REAR_FO" },
             ["Standby Instruments"] = new List<string> { "S_STANDBY_COMPASS", "S_STANDBY_ATTITUDE_CAGE" },
-            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_PED_COCKPIT_DOOR_VIDEO", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_OH_CALLS_EMER_Cover", "S_HYD_GRAVITY_GEAR_EXTEND", "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", "S_DCDU2_DIM_BRT" },
+            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_PED_COCKPIT_DOOR_VIDEO", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", "S_DCDU2_DIM_BRT" },
 
             ["ECAM"] = new List<string>
             {
@@ -9335,7 +9335,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 case "S_PED_COCKPIT_DOOR_VIDEO":
                 case "S_OXYGEN_MASK_COVER_CAPT":
                 case "S_OXYGEN_MASK_COVER_FO":
-                case "S_OH_CALLS_EMER_Cover":
                 case "S_HYD_GRAVITY_GEAR_EXTEND":
                 case "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION":
                 case "S_DCDU2_DIM_BRT":

@@ -202,6 +202,24 @@ Details: [docs/visual-guidance.md](docs/visual-guidance.md).
 - **H:EVENT** - Hardware events (via MobiFlight WASM module)
 - **PMDGVar** - PMDG SDK variables (read via Client Data Area broadcast)
 
+### `SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06)
+
+**Every L:var write that reaches `SetLVar` is routed through the MobiFlight calculator path (`ExecuteCalculatorCode("{v} (>L:{var})")`) when MobiFlight is connected** — NOT the native `AddToDataDefinition` + `SetDataOnSimObject` write (which is unreliable for many add-on L:vars and silently reverts FBW vars a frame later). The routing lives in `SetLVar` (`SimConnectManager.cs` ~3896) and is gated:
+- **`IsMobiFlightConnected`** must be true — otherwise it falls through to the data-def write so users without the WASM module still work.
+- **Plain L:var names only** — a name containing a **space or colon** is a stock SimVar shape (`TRANSPONDER STATE:1`, `INTERACTIVE POINT OPEN:0`) and is left on the data-def path; `SetLVar` always prepends `L:` so a real caller never passes such a name through the calc branch.
+
+**So "with MobiFlight connected, does everything use the calc path except PMDG?" — essentially YES for L:var writes, with the precise scope being:**
+- **Routed through the calc path:** every plain-L:var write — panel combos/buttons (MainForm's `if (!handled) SetLVar(...)` fallback, ~MainForm.cs:5179/5217/5323/5484), the FBW per-prefix catch-alls, and every aircraft def's `SetLVar(key,value)` call (Fenix combos, etc.).
+- **NOT routed (use their own mechanism regardless of MobiFlight):** **PMDG** (writes via CDA `SetClientData`/`SendPMDGEvent` — never calls `SetLVar`), **K-events** (`SendEvent`/`TransmitClientEvent`), **H-events**, and **stock SimVars** (space/colon names, left on data-def). HS787 control writes are K/H-events, also unaffected.
+
+**Catch-all standardization across aircraft — the verdict (verified, do NOT "fix" the Fenix):** the per-control explicit cases in `FenixA320Definition.HandleUIVariableSet` are **fine, not a gap**. MainForm ALREADY provides the effective catch-all: when `HandleUIVariableSet` returns false, the combo/button paths call `SetLVar(varKey, value)` (now calc-routed). So a plain Fenix L:var combo works with NO explicit case at all. The explicit Fenix cases that *matter* are the ones doing MORE than a plain write — button transitions (`ExecuteButtonTransition`, 0→1 pulse), COM frequency (validate + Hz + `SendEvent`), and encoder increment/decrement counters — and those **cannot** be replaced by a blanket `SetLVar` catch-all without breaking. A single cross-aircraft catch-all is impossible: **PMDG** (CDA struct offsets, inversions, momentary params) and **HS787** (K/H-event tables) don't write L:vars at all, so a string-keyed `SetLVar` catch-all is meaningless for them. The standard already exists at the MainForm `SetLVar`-fallback layer; each def only adds explicit cases for non-plain-write controls.
+
+### Fenix monitor manager (Ctrl+M) — now DYNAMIC + clock counters default-off (2026-06)
+
+`FenixMonitorManagerForm` previously listed a **hardcoded 10 keys** (master warnings/cautions + ECAM CLR) — the "weird version". It now enumerates **every `UpdateFrequency.Continuous + IsAnnounced` var** from the aircraft def (mirroring `FBWA380MonitorManagerForm` / `FlyByWireA320MonitorManagerForm`), sorted by display name. Unchecked keys persist to `UserSettings.FenixDisabledMonitorVariables`; `MainForm.OnSimVarUpdated` (~683) already gates on it. The Fenix cockpit controls (seats/comfort/standby etc.) are `OnRequest` combos, so they're panel controls — not monitor entries, no auto-announce.
+
+**Default-disabled noisy clock counters:** `N_MIP_CLOCK_CHRONO` and `N_MIP_CLOCK_ELAPSED` are raw-seconds counters (`IsAnnounced`, no ValueDescriptions) that tick **every second** → pure auto-announce spam ("CLOCK CHRONO: 3723"). `SettingsManager.SeedFenixMonitorDefaults` (called once from `Load`, guarded by `UserSettings.FenixClockMonitorSeeded`) seeds both into `FenixDisabledMonitorVariables` so they're silent by default; the user can re-enable either in the Ctrl+M monitor (the flag prevents re-seeding after a deliberate re-enable).
+
 ### PMDG 777 Specific Patterns
 
 **Switch control:** Use CDA (SetClientData) with direct position values for most switches.
