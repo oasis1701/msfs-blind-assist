@@ -1831,7 +1831,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes", new Dictionary<double, string>());
         Mon("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes", new Dictionary<double, string>());
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
-        Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Linear Deviation Active");
+        Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Vertical Deviation");
         // FMS vertical-profile target altitude at the current position — the basis for
         // the PFD linear (V/DEV) deviation: deviation = current altitude − this, shown
         // only while LINEAR_DEVIATION_ACTIVE (managed climb/descent / FINAL APP).
@@ -4866,6 +4866,36 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
         // ILS/LS course — -1 (or any negative) means no course is set.
         if (varKey == "A32NX_FM_LS_COURSE") { displayText = value < 0 ? "no course set" : $"{value:000} degrees"; return true; }
+        // Vertical deviation (this var is "Vertical Deviation" in the panel) — show the actual
+        // deviation, not a 0/1 flag: glideslope dots on an ILS approach (GS_DEVIATION deg/0.4,
+        // >0 = above), else the FMS linear V/DEV in feet during managed descent (altitude −
+        // TARGET_ALTITUDE, >0 = above), else no guidance. Reads the sibling vars from the panel
+        // sim handle (all in the PFD cache group). Matches the PFD window's combined readout.
+        if (varKey == "A32NX_PFD_LINEAR_DEVIATION_ACTIVE")
+        {
+            var s = _displaySim;
+            bool gsValid = (s?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_IS_VALID") ?? 0) > 0.5;
+            if (gsValid)
+            {
+                double dots = (s?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_DEVIATION") ?? 0) / 0.4;
+                displayText = Math.Abs(dots) < 0.05 ? "on the glideslope"
+                    : $"{Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope";
+            }
+            else if (value > 0.5)
+            {
+                double? tgt = s?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
+                double? alt = s?.GetCachedVariableValue("INDICATED ALTITUDE");
+                if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
+                {
+                    double dev = alt.Value - tgt.Value;
+                    displayText = Math.Abs(dev) < 10 ? "on profile"
+                        : $"{Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile";
+                }
+                else displayText = "active";
+            }
+            else displayText = "no vertical guidance";
+            return true;
+        }
         // Cross-track error — magnitude in NM with left/right of track (FBW sign: positive = right).
         if (varKey == "A32NX_FG_CROSS_TRACK_ERROR")
         {
@@ -5172,6 +5202,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // Render-time SimConnect handle so A380SdRows fmt closures can read sibling ARINC words
     // (B1→B4 CPCS source selection, SEC1↔SEC3 rudder-trim) at paint time.
     private SimConnectManager? _sdRender;
+    // Sim handle captured when any display panel is shown, so sibling-reading display
+    // overrides (e.g. the computed Vertical Deviation) can read the PFD cache off-render.
+    private SimConnectManager? _displaySim;
 
     private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect, int pageIndex = -99, bool ewd = false)
     {
@@ -5418,6 +5451,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // down/up to get content on first display.
     public override void OnDisplayPanelShown(string panelKey, SimConnectManager simConnect)
     {
+        if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
         if (panelKey != "ECAM Control Panel" || !simConnect.IsConnected) return;
         int idx = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_ECAM_SD_CURRENT_PAGE_INDEX") ?? -1);
         RefreshSdPageDisplayAsync(simConnect, idx, ewd: idx == 16);
@@ -6234,16 +6268,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var outLines = new List<string>();
         if (fwsBlock.Count > 0) outLines.AddRange(fwsBlock);
         else outLines.Add("Active warnings: none");
-        // Procedure steps for the active failures — live-scraped from the E/WD (each
-        // procedure's title + its action-item STEPS), so a blind pilot gets what to DO,
-        // not just the failure title. Shown only while a procedure is on the E/WD.
-        var procLines = EwdMonitor?.ActiveProcedureLines;
-        if (procLines != null && procLines.Count > 0)
-        {
-            outLines.Add("");
-            outLines.Add("Procedure:");
-            outLines.AddRange(procLines);
-        }
         outLines.Add("");
         outLines.AddRange(lines);
         // STATUS block (inoperative systems / limitations / deferred procedures) — the real
@@ -6255,6 +6279,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             outLines.Add("");
             outLines.Add("===== STATUS =====");
             outLines.AddRange(statusBlock);
+        }
+        // Procedure steps (live-scraped from the E/WD: each procedure's title + its action-
+        // item STEPS) — placed at the ABSOLUTE BOTTOM, under everything else, per request, so
+        // the warnings/engine/memos/status read first and the (longest) steps come last.
+        var procLines = EwdMonitor?.ActiveProcedureLines;
+        if (procLines != null && procLines.Count > 0)
+        {
+            outLines.Add("");
+            outLines.Add("===== PROCEDURE =====");
+            outLines.AddRange(procLines);
         }
         return string.Join("\r\n", outLines);
     }
