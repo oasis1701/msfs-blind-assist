@@ -2171,6 +2171,7 @@ public class TaxiGuidanceManager : IDisposable
     {
         if (_route == null) return;
 
+        bool advanced = false;
         while (_currentSegmentIndex < _route.Segments.Count - 1)
         {
             var seg = _route.Segments[_currentSegmentIndex];
@@ -2182,7 +2183,7 @@ public class TaxiGuidanceManager : IDisposable
             bool reachedEnd = distToEnd < WAYPOINT_CAPTURE_RADIUS_M;
             bool passedEnd = alongTrack > seg.DistanceMeters + WAYPOINT_CAPTURE_RADIUS_M;
             if (!reachedEnd && !passedEnd)
-                return;
+                break;
 
             if (seg.IsHoldShortPoint)
             {
@@ -2192,21 +2193,101 @@ public class TaxiGuidanceManager : IDisposable
                 return;
             }
 
-            _currentSegmentIndex++;
-            _lastSegmentAdvanceTime = DateTime.Now;
+            AdvanceToSegmentIndex(_currentSegmentIndex + 1);
+            advanced = true;
+        }
 
-            var newSeg = _route.Segments[_currentSegmentIndex];
-            if (!string.IsNullOrEmpty(newSeg.TaxiwayName) &&
-                !newSeg.TaxiwayName.Equals(_lastAnnouncedTaxiway, StringComparison.OrdinalIgnoreCase))
+        if (!advanced)
+            RecoverSkippedSegments(lat, lon);
+    }
+
+    private void AdvanceToSegmentIndex(int newIndex)
+    {
+        if (_route == null) return;
+
+        _currentSegmentIndex = newIndex;
+        _lastSegmentAdvanceTime = DateTime.Now;
+
+        var newSeg = _route.Segments[_currentSegmentIndex];
+        if (!string.IsNullOrEmpty(newSeg.TaxiwayName) &&
+            !newSeg.TaxiwayName.Equals(_lastAnnouncedTaxiway, StringComparison.OrdinalIgnoreCase))
+        {
+            AnnounceInstruction($"Taxiway {newSeg.TaxiwayName}.");
+            _lastAnnouncedTaxiway = newSeg.TaxiwayName;
+        }
+
+        _approachAnnounced = false;
+        _turnImminentAnnounced = false;
+        _crossingAnnounced = false;
+    }
+
+    private void RecoverSkippedSegments(double lat, double lon)
+    {
+        if (_route == null) return;
+
+        int lookAhead = Math.Min(_currentSegmentIndex + 6, _route.Segments.Count);
+        int bestIdx = _currentSegmentIndex;
+        double bestScore = double.MaxValue;
+
+        for (int i = _currentSegmentIndex + 1; i < lookAhead; i++)
+        {
+            if (WouldSkipHoldShort(_currentSegmentIndex, i))
+                break;
+
+            var seg = _route.Segments[i];
+            double alongTrack = SignedAlongTrackToSegmentMeters(lat, lon, seg);
+            double capture = WAYPOINT_CAPTURE_RADIUS_M;
+            if (alongTrack < -capture || alongTrack > seg.DistanceMeters + capture)
+                continue;
+
+            double perp = PerpendicularDistanceToSegmentMeters(
+                lat, lon,
+                seg.FromNode.Latitude, seg.FromNode.Longitude,
+                seg.ToNode.Latitude, seg.ToNode.Longitude);
+            double tolerance = SegmentCenterlineToleranceMeters(seg);
+            if (perp > tolerance)
+                continue;
+
+            if (_lastGroundSpeedKts >= OFF_ROUTE_MIN_GS_KTS &&
+                Math.Abs(NormalizeAngle(_lastHeading - seg.BearingDegrees)) > 120.0)
             {
-                AnnounceInstruction($"Taxiway {newSeg.TaxiwayName}.");
-                _lastAnnouncedTaxiway = newSeg.TaxiwayName;
+                continue;
             }
 
-            _approachAnnounced = false;
-            _turnImminentAnnounced = false;
-            _crossingAnnounced = false;
+            double endpointPenalty = TaxiGraph.FastDistanceMeters(
+                lat, lon, seg.ToNode.Latitude, seg.ToNode.Longitude) * 0.05;
+            double score = perp + endpointPenalty;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestIdx = i;
+            }
         }
+
+        if (bestIdx > _currentSegmentIndex)
+            AdvanceToSegmentIndex(bestIdx);
+    }
+
+    private bool WouldSkipHoldShort(int fromIndex, int toIndex)
+    {
+        if (_route == null) return false;
+
+        for (int i = fromIndex; i < toIndex && i < _route.Segments.Count; i++)
+        {
+            if (_route.Segments[i].IsHoldShortPoint)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static double SegmentCenterlineToleranceMeters(TaxiRouteSegment seg)
+    {
+        double widthFt = seg.PathWidth > 0 ? seg.PathWidth : DEFAULT_TAXIWAY_WIDTH_FT;
+        if (widthFt > OFF_ROUTE_PERP_WIDTH_CAP_FT)
+            widthFt = OFF_ROUTE_PERP_WIDTH_CAP_FT;
+
+        return Math.Max(widthFt * 0.3048 * 0.5 + OFF_ROUTE_PERP_MARGIN_M, OFF_ROUTE_PERP_FLOOR_M);
     }
 
     private static double SignedAlongTrackToSegmentMeters(double lat, double lon, TaxiRouteSegment seg)
