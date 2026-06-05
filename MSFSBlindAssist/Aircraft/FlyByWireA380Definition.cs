@@ -4390,9 +4390,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "ENGINE_MODE_SELECTOR")
         {
             uint mode = (uint)Math.Round(value);
-            // Drive the real ignition state on all four engines (verified: this moves
-            // the stock TURB ENG IGNITION SWITCH simvar the combo now reads back).
-            for (int n = 1; n <= 4; n++) simConnect.SendEvent($"TURBINE_IGNITION_SWITCH_SET{n}", mode);
+            // Drive the real ignition state on ALL FOUR engines via the MobiFlight CALC/gauge
+            // path — NOT SendEvent. SendEvent (TransmitClientEvent) only actuated SET1/SET2;
+            // SimConnect's MapClientEventToSimEvent does NOT resolve TURBINE_IGNITION_SWITCH_
+            // SET3/SET4, so the two outboard engines never got IGN and the FADEC left them in
+            // SHUTTING (motoring to ~25% N2 with no fuel — the "engines 3/4 spin but never
+            // light" bug). Live-verified: the K: gauge event sets ign3/ign4 = 2 and the FADEC
+            // then lights them, whereas SendEvent SET3/SET4 silently no-op'd.
+            for (int n = 1; n <= 4; n++) simConnect.ExecuteCalculatorCode($"{mode} (>K:TURBINE_IGNITION_SWITCH_SET{n})");
             // Also nudge the knob-position L:var the FWS/EWD reads, so the cockpit
             // display matches (the events above don't touch it).
             simConnect.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
