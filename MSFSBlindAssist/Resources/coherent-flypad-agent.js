@@ -80,6 +80,72 @@
     return false;
   };
 
+  // True when n is inside the flyPad top STATUS BAR (bg-theme-statusbar: a fixed
+  // h-10 bar at top 0 carrying date / zulu+local time / route + sched times /
+  // SimBridge connection / battery, plus the Quick Controls gear). Used to (a)
+  // surface the gear as a button and (b) collapse the bar's ~9 text fragments
+  // into ONE status line (the per-leaf text is suppressed in the pass-2 loop).
+  A.insideStatusBar = function (n) {
+    var cur = n, g = 0;
+    while (cur && g < 8) {
+      if (A.cls(cur).indexOf("statusbar") >= 0) return true;
+      cur = cur.parentElement; g++;
+    }
+    return false;
+  };
+
+  // The Quick Controls GEAR: the only clickable, TEXT-LESS, svg-only control in
+  // the top status bar (a bare <div onClick> wrapping a <Gear/> icon — no role,
+  // no class token, no heading child), so every other classify branch misses it
+  // and it was invisible to the screen reader. Gate tightly to the status bar (a
+  // top-<45px icon with NO text anywhere inside) so we never start surfacing
+  // random icon divs on content pages. It uses onClick (not onMouseDown), so the
+  // existing clickNode (which dispatches a real click) actuates it and opens the
+  // Quick Controls pane (Align ADIRS / Finish Boarding / SimBridge / OSK / Pause
+  // at TOD / sim rate / brightness / power), whose buttons+sliders then classify
+  // normally on the next scrape.
+  A.isStatusBarIcon = function (n) {
+    try {
+      if (typeof n.onclick !== "function" && !A.hasReactClick(n)) return false;
+      if (clean(n.textContent)) return false;                 // pure icon — no text inside
+      if (!n.querySelector || !n.querySelector("svg")) return false;
+      if (n.querySelector("h1,h2,h3,h4,h5,h6")) return false;
+      var r = n.getBoundingClientRect();
+      return r.width > 0 && r.top >= 0 && r.top < 45;          // in the top status bar
+    } catch (e) { return false; }
+  };
+
+  // True when n is inside the OPEN Quick Controls pane (FBW QuickControls.tsx renders
+  // it as an `absolute z-40 bg-theme-accent` panel; the dimmer backdrop is z-30, so
+  // z-40 uniquely identifies the pane). Used to (a) relabel the sim-rate +/- chevron
+  // buttons and (b) group all the pane controls together right after the gear.
+  A.insideQuickControlsPane = function (n) {
+    var cur = n, g = 0;
+    while (cur && g < 10) {
+      if (A.hasClassToken(cur, "z-40")) return true;
+      cur = cur.parentElement; g++;
+    }
+    return false;
+  };
+
+  // The current simulation rate shown in the Quick Controls sim-rate incrementer —
+  // the `<span>{simRate}x</span>` infoBox sitting between the down/up chevron
+  // buttons. Walk up from a button and find the nearest "Nx" leaf (1x, 2x, 0.5x).
+  A.simRateValue = function (n) {
+    var cur = n, g = 0;
+    while (cur && g < 4) {
+      try {
+        var sp = cur.querySelectorAll("span, div");
+        for (var i = 0; i < sp.length; i++) {
+          var t = clean(sp[i].textContent);
+          if (/^\d+(\.\d+)?x$/i.test(t)) return t;
+        }
+      } catch (e) {}
+      cur = cur.parentElement; g++;
+    }
+    return "";
+  };
+
   // The Fuel page refuel button stacks two state icons in a FIXED order — PlayFill
   // (start, index 0) shown when stopped, StopCircleFill (stop, index 1) shown when
   // refuelling — and hides the inactive one with the `hidden` class. The first
@@ -162,6 +228,9 @@
             (A.tooltipSibling(n) || /fuel|refuel/i.test(A.nearestHeading(n)))) return "button";
       } catch (e) {}
     }
+    // Quick Controls gear (status-bar icon button). See A.isStatusBarIcon — placed
+    // last so the specific branches above win first.
+    if (A.isStatusBarIcon(n)) return "button";
     return null;
   };
 
@@ -323,6 +392,26 @@
     var href = (n.getAttribute && n.getAttribute("href")) || "";
     var heading = A.nearestHeading(n);
     if (base === "") {
+      // Quick Controls gear: its label is the TooltipWrapper caption "Click to open
+      // Quick Controls" (the gear's nextElementSibling — verified live), normalised
+      // to "Quick Controls".
+      if (A.isStatusBarIcon(n)) {
+        var qtip = A.tooltipSibling(n);
+        if (/quick control/i.test(qtip)) return "Quick Controls";
+        return qtip || "Quick Controls";
+      }
+      // Quick Controls sim-rate incrementer: two icon-only chevron buttons flanking
+      // the "Simrate" label + "Nx" value (FBW LargeQuickSettingsIncrementer). The
+      // down button carries the source class `mr-5`, the up button `ml-5`. Without
+      // this they inherit the adjacent "Simrate"/"1x" text and read meaninglessly.
+      // Append the current rate so the selected value is spoken (the "Nx" value text
+      // itself is suppressed as it sits inside the status-bar subtree).
+      if (n.tagName.toLowerCase() === "button" && A.insideQuickControlsPane(n)
+          && (A.hasClassToken(n, "mr-5") || A.hasClassToken(n, "ml-5"))) {
+        var rate = A.simRateValue(n);
+        var verb = A.hasClassToken(n, "mr-5") ? "Decrease" : "Increase";
+        return verb + " simulation rate" + (rate ? ", currently " + rate : "");
+      }
       // Refuel / boarding / deboarding action button (bg-current icon button): no
       // text/aria/title. Name it from its TooltipWrapper caption ("Begin Boarding" /
       // "Begin Deboarding") when present, else the fuel context — prefixing the live
@@ -766,6 +855,55 @@
   // whose heading it sits nearest to (by horizontal position — the DOM nests the
   // shared detent column inside one axis's subtree, so ancestry is unreliable),
   // and labels the two range numbers Low/High by their x order within the axis.
+  // Collapse the top STATUS BAR into ONE readable line — date, zulu/local time,
+  // route + scheduled out/in times, SimBridge connection, battery — instead of
+  // the ~9 scattered text fragments it otherwise scatters at the top of EVERY
+  // page. The Quick Controls gear is surfaced separately as a button (its "Click
+  // to open Quick Controls" tooltip is dropped here); the per-leaf text is
+  // suppressed in the pass-2 loop via A.insideStatusBar. SimBridge status and
+  // battery are pulled to the end (they sit on the right of the real bar, but
+  // their tooltips render at a collapsed left:16, so a raw left-sort would mis-
+  // lead them). Returns a single item (top:-1 so it reads first), or null.
+  A.buildStatusBarLine = function (root) {
+    var bar = root.querySelector('[class*="statusbar"]');
+    if (!bar) return null;
+    // When the Quick Controls pane is OPEN it renders INSIDE the bar subtree (an
+    // absolute z-40 panel + a full-screen z-30 h-screen backdrop, per FBW
+    // QuickControls.tsx), so its buttons' tooltips would pollute the status line.
+    // Its controls are surfaced as their own buttons, so skip the line while open.
+    if (bar.querySelector('[class~="z-40"]') || bar.querySelector('[class~="h-screen"]')) return null;
+    var all = bar.getElementsByTagName("*"), seen = {}, arr = [];
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (!A.isVisible(el)) continue;
+      var t = A.directText(el);
+      if (!t || t.length > 40) continue;
+      if (/quick control/i.test(t)) continue;             // the gear (its own button)
+      if (/^(true|false|undefined|null)$/i.test(t)) continue;
+      if (seen[t]) continue; seen[t] = 1;
+      var r = el.getBoundingClientRect();
+      arr.push({ left: r.left, top: r.top, t: t });
+    }
+    if (!arr.length) return null;
+    arr.sort(function (a, b) { return (a.left - b.left) || (a.top - b.top); });
+    var main = [], conn = "", batt = "";
+    for (var j = 0; j < arr.length; j++) {
+      var s = arr[j].t;
+      if (/simbridge|connected|disconnected/i.test(s)) { conn = s; continue; }
+      if (/%$/.test(s)) { batt = "battery " + s; continue; }
+      main.push(s);
+    }
+    if (conn) main.push(conn);
+    if (batt) main.push(batt);
+    if (!main.length) return null;
+    return {
+      top: -1, left: 0, idx: 0, kind: "text", tag: "div", role: "",
+      text: "Status bar: " + main.join(", "), value: "", controlType: "",
+      clickable: false, level: 0, live: "", disabled: false, options: [],
+      _axis: 0, navRail: false
+    };
+  };
+
   // The shared detent selector (TO/GA…Reverse Full) is intentionally left alone:
   // it is shared and already reads with "(selected)". Gated on an "Axis N for
   // Throttle" heading so it only fires on this page (A320 + A380 both use it).
@@ -898,6 +1036,33 @@
              ((a._col || 0) - (b._col || 0)) ||
              ((a._row || 0) - (b._row || 0)) || (a.left - b.left);
     });
+    return true;
+  };
+
+  // Pin the top status bar to the front on EVERY page: the status line first, then
+  // the Quick Controls gear — so the gear always reads right under the status line
+  // instead of landing mid-page on a two-column layout (Dashboard). When the pane is
+  // OPEN, also pull its controls (an absolute overlay the geometric sort otherwise
+  // scatters through the page — the user's "weird spot") into one block right after
+  // the gear. Uses a splice-to-front (NOT a re-sort) so the existing order of all
+  // other content — set by orderThrottleCalib / orderGroundServices / the column
+  // sort, and the nav-rail-last rule — is preserved exactly. Runs LAST.
+  A.orderQuickControls = function (items) {
+    var paneOpen = false;
+    for (var i = 0; i < items.length; i++) { if (items[i]._qc) { paneOpen = true; break; } }
+    var statusLine = [], gear = [], pane = [], rest = [];
+    for (var j = 0; j < items.length; j++) {
+      var it = items[j];
+      if (/^Status bar:/.test(it.text || "")) statusLine.push(it);
+      else if (it.text === "Quick Controls") gear.push(it);
+      else if (paneOpen && it._qc) pane.push(it);
+      else rest.push(it);
+    }
+    if (!gear.length && !statusLine.length) return false;
+    // Read the pane controls in visual order (row then left); leave `rest` untouched.
+    pane.sort(function (a, b) { return ((a._row || 0) - (b._row || 0)) || (a.left - b.left); });
+    var out = statusLine.concat(gear).concat(pane).concat(rest);
+    for (var k = 0; k < out.length; k++) items[k] = out[k];
     return true;
   };
 
@@ -1312,6 +1477,11 @@
     var groundItems = A.buildPayloadLines(root, idxRef) || A.buildFuelLines(root, idxRef) || A.buildChartLines(root, idxRef);
     if (groundItems) { for (var gi = 0; gi < groundItems.length; gi++) items.push(groundItems[gi]); idx = idxRef.v; }
 
+    // Collapse the top status bar into one line (the gear is surfaced separately
+    // as a button in pass 1; the bar's per-leaf text is suppressed in pass 2).
+    var statusLine = A.buildStatusBarLine(root);
+    if (statusLine) items.push(statusLine);
+
     for (var i = 0; i < all.length && idx <= 400; i++) {
       var n = all[i];
       if (!A.isVisible(n)) continue;
@@ -1325,6 +1495,10 @@
       // the refuel context via the section heading so Payload inputs (Passengers /
       // Cargo / ZFW) and any sliders on other pages are untouched.
       if (kind === "slider" && /refuel/i.test(A.nearestHeading(n))) continue;
+      // Quick Controls brightness rc-slider(s): screen brightness has no value for a
+      // blind pilot and the rc-slider's internal inputs read as empty "slider" lines.
+      // The Auto-Brightness toggle remains. Scoped to the status-bar/pane subtree.
+      if (kind === "slider" && A.insideStatusBar(n)) continue;
 
       var interactive = kind !== "heading";
 
@@ -1408,7 +1582,10 @@
         disabled: A.disabledFor(n), options: A.optionsFor(n),
         // Throttle-calibration axis tag (0 = not on this page / shared detent column).
         _axis: axisPanels.length ? axisOfNode(n) : 0,
-        navRail: navRail, _groundSub: groundSub
+        navRail: navRail, _groundSub: groundSub,
+        // Quick Controls pane membership — grouped right after the gear by
+        // orderQuickControls (only set when the pane is open).
+        _qc: A.insideQuickControlsPane(n)
       });
     }
 
@@ -1421,6 +1598,7 @@
       var tn = all[ti];
       if (!A.isVisible(tn)) continue;
       if (A.insideGroundRegion(tn)) continue; // owned by a Ground builder
+      if (A.insideStatusBar(tn)) continue;    // collapsed into the one status line
       if (A.classify(tn)) continue;        // already captured (interactive/heading)
       if (A.isInsideStamped(tn)) continue; // text inside a captured control
       var own = A.directText(tn);          // immediate text only -> leaf labels/values
@@ -1497,6 +1675,8 @@
     // Group the Ground page's sub-tab strip apart from its service tiles. No-op
     // on other pages.
     A.orderGroundServices(items);
+    // Group the open Quick Controls pane right after the gear (no-op when closed).
+    A.orderQuickControls(items);
 
     items = A.dedupe(items);
     A._elements = items;
