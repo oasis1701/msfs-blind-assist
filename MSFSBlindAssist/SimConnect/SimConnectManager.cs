@@ -2782,16 +2782,13 @@ public class SimConnectManager
                 }  // end fixed
             }  // end unsafe
         }
-        catch (ExecutionEngineException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CRITICAL: ExecutionEngineException caught! This is a serious CLR error.");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Variable count: {continuousVariableIndexMap.Count}");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Skipping this batch to prevent crash. Please report this issue.");
-            return;  // Abort processing this batch to prevent crash
-        }
         catch (Exception ex)
         {
+            // NOTE: a fatal CLR error during the unsafe marshalling of a received batch
+            // (heap-corruption AccessViolation → 0x80131506 ExecutionEngineException, e.g. the
+            // struct over-read fixed in 8cbb502) is NOT catchable by managed try/catch and will
+            // FailFast regardless — there is intentionally no ExecutionEngineException catch here
+            // (it is obsolete/never-raised on .NET 9). This handler covers ordinary exceptions.
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");

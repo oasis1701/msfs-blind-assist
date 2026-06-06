@@ -296,7 +296,6 @@ public class FenixMCDUService : IDisposable
 
     private static readonly HashSet<char> ColorCodeSet = new HashSet<char> { 'a', 'c', 'g', 'm', 'w', 'y' };
     private static readonly HashSet<char> SizeCodeSet = new HashSet<char> { 's', 'l' };
-    private static readonly HashSet<char> AllFormatCodes = new HashSet<char> { 'a', 'c', 'g', 'm', 'w', 'y', 's', 'l' };
 
     private static string StripFormatCodes(string text)
     {

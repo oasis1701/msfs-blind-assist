@@ -12,11 +12,6 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
     private Dictionary<string, List<string>>? _cachedPanelControls;
 
-    // Altitude tracking for thousand-foot crossing announcements
-    private double? _previousAltitude = null;
-    private int? _lastAnnouncedAltitudeThousands = null;
-    private double? _lastAnnouncedRawAltitude = null;
-
     // Elevator trim announcement toggle and debounce.
     // Toggle is protected so aircraft that source trim from a custom variable
     // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
@@ -567,9 +562,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             // settings-controlled AltitudeCalloutAnnouncer service (MainForm.OnSimVarUpdated →
             // HandleSpecialAnnouncements). This in-base announce was a DUPLICATE — the base spoke
             // "32000" while the service also spoke "32,000 feet." (Gus's note). The base announce
-            // is removed so there is exactly ONE altitude callout. We still track the value and
+            // is removed so there is exactly ONE altitude callout. We still
             // suppress the generic gate's raw "Altitude: 5234" announcement.
-            _previousAltitude = value;
             return true;
         }
 

@@ -1688,11 +1688,6 @@ public partial class ElectronicFlightBagForm : Form
         statusLabel.Text = message;
     }
 
-    private SimConnectManager.AircraftPosition? GetLastKnownPosition()
-    {
-        return _lastKnownPosition;
-    }
-
     // Airport Lookup tab handlers
     private void AirportLookupIcaoTextBox_TextChanged(object? sender, EventArgs e)
     {

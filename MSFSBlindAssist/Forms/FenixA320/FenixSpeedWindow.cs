@@ -191,7 +191,7 @@ public partial class FenixSpeedWindow : Form
         }
     }
 
-    private async System.Threading.Tasks.Task HandleSetClick()
+    private System.Threading.Tasks.Task HandleSetClick()
     {
         string input = speedTextBox.Text.Trim();
 
@@ -199,7 +199,7 @@ public partial class FenixSpeedWindow : Form
         {
             announcer.AnnounceImmediate("Please enter a speed value");
             speedTextBox.Focus();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (!double.TryParse(input, out double value))
@@ -207,7 +207,7 @@ public partial class FenixSpeedWindow : Form
             announcer.AnnounceImmediate("Invalid number format");
             speedTextBox.Focus();
             speedTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         // Accept knots (100-399) or Mach (0.10-0.99)
@@ -216,13 +216,14 @@ public partial class FenixSpeedWindow : Form
             announcer.AnnounceImmediate("Speed must be 100-399 knots or 0.10-0.99 Mach");
             speedTextBox.Focus();
             speedTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         // Convert Mach to internal representation (multiply by 100)
         int targetSpeed = value < 1.0 ? (int)(value * 100) : (int)Math.Round(value);
         _ = aircraft.SetFCUSpeed(targetSpeed, simConnect, announcer);
         speedTextBox.SelectAll();
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 
     private void HandleButtonClick(string varKey)

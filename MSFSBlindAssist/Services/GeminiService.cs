@@ -461,7 +461,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
         string responseJson;
         using (response!)
         {
-            responseJson = await response.Content.ReadAsStringAsync();
+            responseJson = await response!.Content.ReadAsStringAsync();
         }
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
 

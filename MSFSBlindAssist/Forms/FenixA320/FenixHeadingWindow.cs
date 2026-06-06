@@ -191,7 +191,7 @@ public partial class FenixHeadingWindow : Form
         }
     }
 
-    private async System.Threading.Tasks.Task HandleSetClick()
+    private System.Threading.Tasks.Task HandleSetClick()
     {
         string input = headingTextBox.Text.Trim();
 
@@ -199,7 +199,7 @@ public partial class FenixHeadingWindow : Form
         {
             announcer.AnnounceImmediate("Please enter a heading value");
             headingTextBox.Focus();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (!double.TryParse(input, out double value))
@@ -207,7 +207,7 @@ public partial class FenixHeadingWindow : Form
             announcer.AnnounceImmediate("Invalid number format");
             headingTextBox.Focus();
             headingTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (value < 0 || value > 360)
@@ -215,12 +215,13 @@ public partial class FenixHeadingWindow : Form
             announcer.AnnounceImmediate("Heading must be between 0 and 360 degrees");
             headingTextBox.Focus();
             headingTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         int targetHeading = (int)Math.Round(value);
         _ = aircraft.SetFCUHeading(targetHeading, simConnect, announcer);
         headingTextBox.SelectAll();
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 
     private void HandleButtonClick(string varKey)

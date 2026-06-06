@@ -21,7 +21,6 @@ public partial class FenixMonitorManagerForm : Form
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private CheckedListBox variableListBox = null!;
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly List<string> _keys = new();    // parallel to variableListBox.Items
     private readonly List<string> _labels = new();
     private IntPtr previousWindow;
@@ -29,7 +28,6 @@ public partial class FenixMonitorManagerForm : Form
 
     public FenixMonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
     {
-        _announcer = announcer;
 
         // Build the manageable list: every announced continuous var, by display name.
         foreach (var kv in variables)

@@ -21,7 +21,6 @@ public partial class METARReportForm : Form
         private Label asMetarLabel = null!;
         private Label statusLabel = null!;
 
-        private readonly ScreenReaderAnnouncer _announcer;
         private readonly IntPtr previousWindow;
         // Per-form AS client. Each form does its own parallel-probe detection
         // on first fetch (~1.2 s worst case when AS isn't running). We don't
@@ -35,7 +34,6 @@ public partial class METARReportForm : Form
             // Capture the current foreground window (likely the simulator)
             previousWindow = GetForegroundWindow();
 
-            _announcer = announcer;
             InitializeComponent();
             SetupAccessibility();
         }

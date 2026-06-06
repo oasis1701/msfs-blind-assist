@@ -120,20 +120,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             };
             _momentaryButtons.Add(key);
         }
-        // Push-BUTTON whose click is handled by a DEDICATED HandleUIVariableSet branch (fires a
-        // stock K-event etc.) rather than the generic _momentaryButtons L:var pulse. Used for
-        // synthetic action keys (ground services) that have no backing L:var to pulse — NOT
-        // added to _momentaryButtons so HandleUIVariableSet falls through to their event branch.
-        void EvtBtn(string key, string display)
-        {
-            vars[key] = new SimVarDefinition
-            {
-                Name = key, DisplayName = display, Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
-                RenderAsButton = true
-            };
-        }
         // Latching/momentary PB L:var as a combo (Released / Pressed).
         void Press(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" });
@@ -6569,8 +6555,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         if (_seatMotorDir.Count == 0) _seatMotorTimer?.Stop();
     }
-
-    private void StopSeatMotor() { _seatMotorDir.Clear(); _seatMotorTimer?.Stop(); }
 
     // The user asked, after the seat stops, to hear WHERE it is as a position (not just a number).
     // Spoken band + percent, derived from the approximate tracked position. Queued (not Immediate)

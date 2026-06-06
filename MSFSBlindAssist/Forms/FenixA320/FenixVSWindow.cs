@@ -177,7 +177,7 @@ public partial class FenixVSWindow : Form
         }
     }
 
-    private async System.Threading.Tasks.Task HandleSetClick()
+    private System.Threading.Tasks.Task HandleSetClick()
     {
         string input = vsTextBox.Text.Trim();
 
@@ -185,7 +185,7 @@ public partial class FenixVSWindow : Form
         {
             announcer.AnnounceImmediate("Please enter a vertical speed value");
             vsTextBox.Focus();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (!double.TryParse(input, out double value))
@@ -193,7 +193,7 @@ public partial class FenixVSWindow : Form
             announcer.AnnounceImmediate("Invalid number format");
             vsTextBox.Focus();
             vsTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (value < -6000 || value > 6000)
@@ -201,12 +201,13 @@ public partial class FenixVSWindow : Form
             announcer.AnnounceImmediate("Vertical speed must be between -6000 and 6000 feet per minute");
             vsTextBox.Focus();
             vsTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         int targetVS = (int)Math.Round(value);
         _ = aircraft.SetFCUVS(targetVS, simConnect, announcer);
         vsTextBox.SelectAll();
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 
     private void HandleButtonClick(string varKey)

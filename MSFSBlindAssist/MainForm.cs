@@ -124,7 +124,6 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? eventBatchTimer;
     private int queuedEventCount = 0;  // Track queue size (ConcurrentQueue.Count is expensive)
     private int droppedEventCount = 0;  // Diagnostic: count dropped events due to queue overflow
-    private int processedBatchCount = 0;  // Diagnostic: count processed batches
 
     // Panel loading debounce timer (prevents NVDA overload during rapid arrow navigation)
     private System.Windows.Forms.Timer? _panelLoadTimer;
@@ -168,7 +167,6 @@ public partial class MainForm : Form
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
     private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
-    private string currentFlightPhase = "";  // Track current flight phase for window title
     private IAircraftDefinition currentAircraft;
     private Dictionary<string, string>? _pmdgFieldToKeyMap;
 
@@ -529,7 +527,6 @@ public partial class MainForm : Form
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;
             droppedEventCount = 0;
-            processedBatchCount = 0;
             System.Diagnostics.Debug.WriteLine("[MainForm] Event batching timer stopped, queue cleared");
 
             announcer.Announce(status);
@@ -637,7 +634,7 @@ public partial class MainForm : Form
 
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
         // This lets each aircraft handle complex variables before generic processing
-        bool wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        bool wasProcessedByAircraft = currentAircraft!.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
         if (wasProcessedByAircraft)
         {
             // Update window title if flight phase changed (for aircraft that track flight phases)
@@ -1329,7 +1326,7 @@ public partial class MainForm : Form
                         double displayValue = value * varDef.Scale + varDef.Offset;
                         newText = $"{displayValue.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
                     }
-                    else if (varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? desc))
                     {
                         newText = desc;
                     }
@@ -1430,27 +1427,6 @@ public partial class MainForm : Form
             }
         }
         return null; // Variable not found in any panel
-    }
-
-    /// <summary>
-    /// Request variables efficiently based on the variable context
-    /// </summary>
-    private void RequestRelatedVariables(string varKey, string actionDescription)
-    {
-        string? panelName = GetPanelForVariable(varKey);
-
-        if (panelName != null)
-        {
-            // Request all variables for the panel this variable belongs to
-            simConnectManager.RequestPanelVariables(panelName, actionDescription);
-            System.Diagnostics.Debug.WriteLine($"Requesting panel '{panelName}' variables after {actionDescription}");
-        }
-        else
-        {
-            // Fallback: request just the specific variable
-            simConnectManager.RequestVariable(varKey);
-            System.Diagnostics.Debug.WriteLine($"Requesting single variable '{varKey}' after {actionDescription}");
-        }
     }
 
     private void HandleButtonStateAnnouncement(string eventName)
@@ -3069,18 +3045,6 @@ public partial class MainForm : Form
         hs787BridgeServer?.Stop();
     }
 
-    private void ShowHS787EFBDialog()
-    {
-        hotkeyManager.ExitOutputHotkeyMode();
-
-        if (hs787SimBriefForm == null || hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm = new HS787SimBriefForm(hs787BridgeServer, simConnectManager, announcer);
-        }
-
-        hs787SimBriefForm.ShowForm();
-    }
-
     private void CheckAndOfferEFBModPackage()
     {
         var allFolders = EFBModPackageManager.FindAllCommunityFolders();
@@ -3818,19 +3782,6 @@ public partial class MainForm : Form
         }
     }
 
-    private void ToggleECAMMonitoring()
-    {
-        if (!simConnectManager.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        bool isEnabled = simConnectManager.ToggleECAMMonitoring();
-        string statusMessage = isEnabled ? "E W D monitoring enabled" : "E W D monitoring disabled";
-        announcer.AnnounceImmediate(statusMessage);
-    }
-
     private void OnTakeoffAssistActiveChanged(object? sender, bool isActive)
     {
         if (isActive)
@@ -3991,6 +3942,15 @@ public partial class MainForm : Form
                 visualGuidanceManager.Stop(announce: false);
                 return;
             }
+            // Defensive: Initialize() dereferences the airport (MagVar / Altitude). Runway and
+            // airport are set as a pair today, so this won't currently fire, but guarding here
+            // mirrors the runway check and prevents an NPE if that invariant ever changes.
+            if (airport == null)
+            {
+                announcer.Announce("No destination airport selected");
+                visualGuidanceManager.Stop(announce: false);
+                return;
+            }
 
             // Get user preferences from settings
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -4026,7 +3986,7 @@ public partial class MainForm : Form
             }
 
             // Start monitoring position variables at 1 Hz
-            simConnectManager.StartVisualGuidanceMonitoring();
+            simConnectManager!.StartVisualGuidanceMonitoring();
 
             // Silence HandFly's tone if it's also active — VG's two tones use the same
             // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
@@ -5151,7 +5111,7 @@ public partial class MainForm : Form
                     {
                         if (variables.ContainsKey(varKey) && !string.IsNullOrEmpty(variables[varKey].StateVariable))
                         {
-                            simConnectManager.RequestVariable(variables[varKey].StateVariable);
+                            simConnectManager.RequestVariable(variables[varKey].StateVariable!);
                         }
                     }
                 }
@@ -5223,7 +5183,7 @@ public partial class MainForm : Form
                 {
                     if (updatingFromSim) return;   // change came from the sim, don't write back
                     double mapped = smin + (tb.Value / 100.0) * span;
-                    bool handled = currentAircraft.HandleUIVariableSet(varKey, mapped, varDef, simConnectManager, announcer);
+                    bool handled = currentAircraft.HandleUIVariableSet(varKey, mapped, varDef, simConnectManager!, announcer);
                     if (!handled) simConnectManager?.SetLVar(varDef.Name, mapped);
                 };
                 layout.Controls.Add(tb, 1, rowIndex);
@@ -5259,7 +5219,7 @@ public partial class MainForm : Form
 
                 controlButton.Click += (s2, e2) =>
                 {
-                    bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
+                    bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager!, announcer);
                     if (!handled)
                     {
                         simConnectManager?.SetLVar(varDef.Name, 1);
@@ -5356,7 +5316,7 @@ public partial class MainForm : Form
                     controlButton.Click += (s2, e2) =>
                     {
                         // Let aircraft handle special cases first (custom button logic, transitions, etc.)
-                        bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
+                        bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager!, announcer);
                         if (handled)
                         {
                             currentSimVarValues[varKey] = 1;
@@ -5666,7 +5626,7 @@ public partial class MainForm : Form
                             MarkUiSet(varKey, selectedValue);
 
                             // Let aircraft handle special cases first (validation, conversion, multi-step logic)
-                            bool aircraftHandled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
+                            bool aircraftHandled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager!, announcer);
                             if (aircraftHandled)
                             {
                                 currentSimVarValues[varKey] = selectedValue;
@@ -5680,7 +5640,7 @@ public partial class MainForm : Form
                             // Generic handling follows if aircraft didn't handle it
                             if (varDef.Type == SimVarType.PMDGVar)
                             {
-                                bool handled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
+                                bool handled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager!, announcer);
                                 if (!handled)
                                     System.Diagnostics.Debug.WriteLine($"[PMDG] Unhandled PMDGVar set: {varKey}");
                                 currentSimVarValues[varKey] = selectedValue;
@@ -5743,7 +5703,7 @@ public partial class MainForm : Form
                         System.Globalization.CultureInfo.InvariantCulture,
                         out parsedValue);
                     if (currentAircraft.HandleUIVariableSet(
-                            varKey, parsedValue, varDef, simConnectManager, announcer))
+                            varKey, parsedValue, varDef, simConnectManager!, announcer))
                     {
                         return;
                     }
@@ -5774,7 +5734,7 @@ public partial class MainForm : Form
                     else if (double.TryParse(textBox.Text, out double value))
                     {
                         // Let aircraft handle special cases first (validation, conversion, multi-step logic)
-                        if (currentAircraft.HandleUIVariableSet(varKey, value, varDef, simConnectManager, announcer))
+                        if (currentAircraft.HandleUIVariableSet(varKey, value, varDef, simConnectManager!, announcer))
                         {
                             return; // Aircraft handled it
                         }
@@ -5902,7 +5862,7 @@ public partial class MainForm : Form
                         HandleButtonStateAnnouncement(varKey);
                         // Aircraft-specific post-press read-out (e.g. FCU push/pull
                         // buttons speak the resulting value like their hotkeys do).
-                        currentAircraft.OnPanelButtonFired(varKey, simConnectManager, announcer);
+                        currentAircraft.OnPanelButtonFired(varKey, simConnectManager!, announcer);
                     }
                     else if (varDef.Type == SimVarType.HVar)
                     {
@@ -6062,7 +6022,7 @@ public partial class MainForm : Form
                 // it, so WITHOUT this call a manual F5 / Refresh re-printed the SAME stale
                 // snapshot and values like "FOB 13400 KG" never moved. Fire-and-forget: it
                 // pushes its own UpdateDisplayText when the fresh read completes (~0.6s).
-                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
 
                 // Request all values. forceUpdate=true bypasses the
                 // ProcessIndividualVariableResponse suppression that drops
@@ -6109,7 +6069,7 @@ public partial class MainForm : Form
             // Auto-populate a multi-page status box (e.g. the SD-page combo) with the
             // combo's CURRENT page, so the user doesn't have to cycle it to get content
             // on first display. No-op for panels without such a box.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
 
             // Start (or stop) the live status-box auto-refresh for THIS panel. Only panels
             // that actually built a status display (have a "_REFRESH_" button) get the timer;

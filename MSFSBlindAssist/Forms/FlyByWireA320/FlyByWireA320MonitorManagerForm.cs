@@ -21,7 +21,6 @@ public partial class FlyByWireA320MonitorManagerForm : Form
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private CheckedListBox _list = null!;
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly List<string> _keys = new();     // parallel to _list.Items
     private readonly List<string> _labels;
     private IntPtr _previousWindow;
@@ -29,7 +28,6 @@ public partial class FlyByWireA320MonitorManagerForm : Form
 
     public FlyByWireA320MonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
     {
-        _announcer = announcer;
 
         // Build the manageable list: every announced continuous var, by display name.
         foreach (var kv in variables)

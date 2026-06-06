@@ -1,3 +1,4 @@
+#nullable enable annotations
 using MSFSBlindAssist.Forms.PMDGEFB.Apps;
 
 namespace MSFSBlindAssist.Forms.PMDGEFB

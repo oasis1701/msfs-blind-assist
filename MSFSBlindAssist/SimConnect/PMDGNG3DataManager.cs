@@ -71,7 +71,6 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // State
     // ------------------------------------------------------------------
     private Microsoft.FlightSimulator.SimConnect.SimConnect? _simConnect;
-    private MobiFlightWasmModule? _mobiFlightWasm;
 
     private PMDGNG3DataStruct _lastDataSnapshot;
     private bool _hasSnapshot;
@@ -101,7 +100,6 @@ public class PMDGNG3DataManager : IPMDGDataManager
         MobiFlightWasmModule mobiFlightWasm)
     {
         _simConnect     = simConnect;
-        _mobiFlightWasm = mobiFlightWasm;
 
         try
         {

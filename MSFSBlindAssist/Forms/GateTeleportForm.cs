@@ -24,7 +24,6 @@ public partial class GateTeleportForm : Form
     private readonly double _aircraftWingspan;
 
     private readonly IAirportDataProvider _database;
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly IntPtr previousWindow;
 
     public ParkingSpot? SelectedParkingSpot { get; private set; }
@@ -36,7 +35,6 @@ public partial class GateTeleportForm : Form
         previousWindow = GetForegroundWindow();
 
         _database = database;
-        _announcer = announcer;
         _aircraftWingspan = aircraftWingspan;
         InitializeComponent();
         SetupAccessibility();

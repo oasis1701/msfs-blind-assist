@@ -23,7 +23,6 @@ public class VisualGuidanceManager : IDisposable
     // Guidance state
     private GuidancePhase currentPhase = GuidancePhase.Intercepting;
     private Runway? runway;
-    private Airport? airport;
     private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
 
@@ -50,7 +49,6 @@ public class VisualGuidanceManager : IDisposable
     private double? cachedLongitude;
     private double? cachedAGL;
     private double? cachedAltMSL;
-    private double? cachedPitch;
     private double? cachedBank;
     private double? cachedHeading;
     private double? cachedGroundTrack;  // GPS ground track for drift detection
@@ -106,7 +104,6 @@ public class VisualGuidanceManager : IDisposable
     // Guidance constants
     private const double CENTERLINE_TOLERANCE_NM = 0.3;  // On centerline if within 0.3 NM
     private const double GLIDESLOPE_CAPTURE_FT = 100.0;  // Capture glideslope when within 100 ft
-    private const double FLARE_ALTITUDE_FT = 30.0;       // Start flare at 30 ft AGL
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
 
     // Flare rate limiting constant
@@ -124,7 +121,6 @@ public class VisualGuidanceManager : IDisposable
     private const double GLIDESLOPE_LOCK_DISTANCE_NM = 1.0;  // Distance at which to lock to steady 3° angle
     private const double GLIDESLOPE_GAIN = 2.0;              // Proportional gain: fpm correction per foot of deviation
     private const double MAX_DESCENT_RATE_FPM = -1500.0;     // Maximum descent rate when high
-    private const double FLARE_TARGET_PITCH_DEG = 6.0;       // Target pitch in flare
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
@@ -283,7 +279,6 @@ public class VisualGuidanceManager : IDisposable
         DisposeTones();
 
         runway = destinationRunway;
-        airport = destinationAirport;
         guidanceWaveType = guidanceToneWaveform;
         guidanceVolume = toneVolume;
         currentToneWaveType = currentToneWaveform;
@@ -330,7 +325,6 @@ public class VisualGuidanceManager : IDisposable
         cachedLongitude = null;
         cachedAGL = null;
         cachedAltMSL = null;
-        cachedPitch = null;
         cachedBank = null;
         cachedHeading = null;
         cachedGroundTrack = null;
@@ -405,7 +399,6 @@ public class VisualGuidanceManager : IDisposable
         DisposeTones();
 
         runway = null;
-        airport = null;
         isActive = false;
 
         VisualGuidanceActiveChanged?.Invoke(this, false);
@@ -542,7 +535,6 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     public void UpdatePitch(double pitchDegrees)
     {
-        cachedPitch = pitchDegrees;
         currentPitch = pitchDegrees;  // Also update for dynamic pitch calculation
     }
     public void UpdateBank(double bankDegrees) => cachedBank = bankDegrees;

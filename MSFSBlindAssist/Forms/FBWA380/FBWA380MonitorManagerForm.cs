@@ -28,15 +28,12 @@ public partial class FBWA380MonitorManagerForm : Form
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private CheckedListBox _list = null!;
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly List<string> _keys = new();   // parallel to _list.Items
     private IntPtr _previousWindow;
     private static int _lastIndex;
 
     public FBWA380MonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
     {
-        _announcer = announcer;
-
         // Build the manageable list: every announced continuous var, by display
         // name, plus the single ECAM-memos meta-entry. EWD line vars are folded
         // into that meta-entry rather than listed individually.

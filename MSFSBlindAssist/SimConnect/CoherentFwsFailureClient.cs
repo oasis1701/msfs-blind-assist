@@ -79,7 +79,6 @@ namespace MSFSBlindAssist.SimConnect
         private HashSet<string> _activeEwdCodes = new(StringComparer.Ordinal);     // failures + procedures (per-item announce)
         private HashSet<string> _activeStatusCodes = new(StringComparer.Ordinal);  // inop + limits + deferred (summary announce)
         private List<string> _activeFormatted = new();   // E/WD block
-        private List<string> _activeStatus = new();       // STATUS-page block
         private bool _baselineDone;
 
         private CancellationTokenSource? _cts;
@@ -248,7 +247,6 @@ namespace MSFSBlindAssist.SimConnect
                 _activeEwdCodes = curEwdCodes;
                 _activeStatusCodes = statusCodes;
                 _activeFormatted = ewd;
-                _activeStatus = status;
             }
 
             // First successful poll = silent baseline (items already up at connect — e.g.

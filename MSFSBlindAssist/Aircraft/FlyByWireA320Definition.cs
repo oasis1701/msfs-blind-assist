@@ -18,7 +18,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private double? pendingAltitudeStatus = null;
     private double? pendingVSFPAValue = null;
     private double? pendingVSFPAMode = null;
-    private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
     // Boolean flags to track active FCU readout requests
     private bool isRequestingHeading = false;
@@ -28,7 +27,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // Flight phase tracking
     private string currentFlightPhase = "";
-    public string CurrentFlightPhase => currentFlightPhase;
+    public new string CurrentFlightPhase => currentFlightPhase;
 
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
@@ -5003,7 +5002,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                         DisplayName = label,
                         Type = isStock ? SimConnect.SimVarType.SimVar : SimConnect.SimVarType.LVar,
                         UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                        Units = isStock ? "number" : null
+                        Units = isStock ? "number" : null!
                     };
                 }
             }
@@ -6102,7 +6101,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // auto-register pass), each selector defaults to controller 1 AND every candidate var
     // is still emitted as a hidden registration row, so whichever the live cache later
     // picks is already registered for OnRequest reads.
-    private List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page, Func<string, double?> cache = null)
+    private List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page, Func<string, double?> cache = null!)
     {
         // ARINC429 decoders — for vars FBW publishes as ARINC words (verified via
         // useArinc429Var in the fbw-a32nx SD source: APU N/EGT/LOW_FUEL_PRESSURE_FAULT,
@@ -6117,8 +6116,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         string Pct(double v) => $"{v:0} %";
         string Psi(double v) => $"{v:0} psi";
         string C(double v) => $"{v:0} degrees";
-        string Ft(double v) => $"{v:0} feet";
-        string Fpm(double v) => $"{v:0} feet per minute";
         // Landing elevation is an ARINC429 word; the no-data sentinel (~2^32, SSM
         // not NormalOp) means the FMS is in AUTO (computes it from the dest runway).
         string LElev(double v)
@@ -6895,8 +6892,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        lastAnnouncer = announcer; // Store for when we announce
-
         // Doors — read-only auto-announce. Passenger doors (key contains _DOOR_) read the
         // stock INTERACTIVE POINT OPEN SimVar, a 0..1 FRACTION (a half-open door is e.g.
         // 0.6), so open = value > 0.05. Cargo doors (key contains _CARGO_) read the FBW
@@ -7256,7 +7251,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
 
         // Call base implementation to handle common variables (e.g., altitude thousand-foot crossings)
-        return base.ProcessSimVarUpdate(varName, value, announcer);
+        return base.ProcessSimVarUpdate(varName!, value, announcer);
     }
 
     /// <summary>
@@ -7764,7 +7759,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         s.SendEvent(evt);
         // Defer the read-out so the FBW FCU has processed the push/pull before we read the
         // managed/selected status + value (otherwise it speaks the pre-push state — see DeferReadback).
-        Action readback = evt switch
+        Action? readback = evt switch
         {
             "A32NX.FCU_HDG_PUSH" or "A32NX.FCU_HDG_PULL" or "A32NX.FCU_TRK_FPA_TOGGLE_PUSH" => () => RequestFCUHeadingWithStatus(s),
             "A32NX.FCU_SPD_PUSH" or "A32NX.FCU_SPD_PULL" or "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" => () => RequestFCUSpeedWithStatus(s),
@@ -7818,56 +7813,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
-            }
-        }
-    }
-
-    private void RequestFuelQuantityKg(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY_KG;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY_KG,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity kg: {ex.Message}");
-            }
-        }
-    }
-
-    private void RequestGrossWeightKg(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "TOTAL WEIGHT", "pounds",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_GROSS_WEIGHT_KG,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting gross weight kg: {ex.Message}");
             }
         }
     }
@@ -8023,61 +7968,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting VS speed: {ex.Message}");
-            }
-        }
-    }
-
-    private void RequestECAMMessages(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_1");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_2");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_3");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_4");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_5");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_6");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_7");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_1");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_2");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_3");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_4");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_5");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_6");
-                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_7");
-                simConnectMgr.RequestVariable("A32NX_MASTER_WARNING");
-                simConnectMgr.RequestVariable("A32NX_MASTER_CAUTION");
-                simConnectMgr.RequestVariable("A32NX_STALL_WARNING");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting ECAM messages: {ex.Message}");
-            }
-        }
-    }
-
-    private void RequestStatusMessages(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                for (int i = 1; i <= 8; i++)
-                {
-                    simConnectMgr.RequestVariable($"A32NX_STATUS_LEFT_LINE_{i}");
-                }
-                for (int i = 1; i <= 8; i++)
-                {
-                    simConnectMgr.RequestVariable($"A32NX_STATUS_RIGHT_LINE_{i}");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting status messages: {ex.Message}");
             }
         }
     }

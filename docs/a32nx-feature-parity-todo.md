@@ -149,8 +149,10 @@ doesn't transfer). This is the single deliberate skip; the parity pass is otherw
   OnRequest + not-announced (else it announces "...: None" on reset). Add the preset PROGRESS
   auto-announce ("Aircraft preset loading N percent" / "complete" — `A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS`
   Continuous+IsAnnounced + a milestone-throttled ProcessSimVarUpdate branch).
-- [ ] **Ground Equipment combos → push-BUTTONS.** Use the `EvtBtn` pattern (RenderAsButton var NOT
-  added to `_momentaryButtons`, so HandleUIVariableSet falls through to the stock-event branch).
+- [ ] **Ground Equipment combos → push-BUTTONS.** Render as a button (`RenderAsButton` var NOT
+  added to `_momentaryButtons`, so HandleUIVariableSet handles the click via a dedicated stock-event
+  branch rather than the generic momentary-pulse). (The old `EvtBtn` helper that wrapped this was
+  removed as unused — replicate the shape inline, or model it on the live `Act`/`Btn` helpers.)
   Jetway/stairs `TOGGLE_JETWAY`/`TOGGLE_RAMPTRUCK`; trucks `REQUEST_FUEL_KEY`/`_LUGGAGE`/`_CATERING`.
   Add the `JETWAY MOVING` readout (stock continuous SimVar).
 - [ ] **Oxygen Timer Reset combo → button** (`Btn`), if the A320 has it.

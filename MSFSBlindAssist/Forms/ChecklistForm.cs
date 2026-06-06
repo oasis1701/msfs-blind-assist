@@ -12,7 +12,6 @@ public partial class ChecklistForm : Form
 
     private Panel scrollPanel = null!;
     private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly string aircraftCode;
     private IntPtr previousWindow;
 
@@ -25,7 +24,6 @@ public partial class ChecklistForm : Form
 
     public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode)
     {
-        _announcer = announcer;
         this.aircraftCode = aircraftCode;
         InitializeComponent();
         SetupAccessibility();

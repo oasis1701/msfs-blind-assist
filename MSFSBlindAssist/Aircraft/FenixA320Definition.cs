@@ -12435,7 +12435,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                     if (currentInHg == null) continue;
 
                     double currentRounded = Math.Round(currentInHg.Value, 2);
-                    int delta = (int)Math.Round((targetInHg.Value - currentRounded) / 0.01, MidpointRounding.AwayFromZero);
+                    int delta = (int)Math.Round((targetInHg!.Value - currentRounded) / 0.01, MidpointRounding.AwayFromZero);
                     if (delta != 0)
                     {
                         AdjustBaroCounter(counterVar, delta, simConnect);

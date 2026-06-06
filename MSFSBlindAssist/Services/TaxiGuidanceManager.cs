@@ -103,7 +103,6 @@ public class TaxiGuidanceManager : IDisposable
     private const double APPROACH_ANNOUNCE_MIN_M = 80.0;         // floor: ~260ft at very slow taxi
     private const double APPROACH_ANNOUNCE_MAX_M = 200.0;        // ceiling: ~650ft at 30 kt+
     private const double APPROACH_ANNOUNCE_SEC_LEAD = 10.0;      // desired lead time at current ground speed
-    private const double TURN_IMMINENT_DISTANCE_M = 30.0;        // ~100ft "turn now" (base value, scaled by speed)
     private const double TURN_IMMINENT_MIN_M = 20.0;             // floor: ~65ft (slow taxi, stopped)
     private const double TURN_IMMINENT_MAX_M = 75.0;             // ceiling: ~245ft (fast jet taxi)
     private const double TURN_IMMINENT_SEC_LEAD = 4.0;           // desired lead time at current ground speed
@@ -513,8 +512,6 @@ public class TaxiGuidanceManager : IDisposable
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
     private const double LINEUP_HEADING_TOLERANCE_DEG = 5.0;             // gate default
-    private const double LINEUP_RUNWAY_HEADING_TOLERANCE_DEG = 3.0;      // runway — tighter
-    private const double LINEUP_CENTERLINE_TOLERANCE_FEET = 25.0;
     private const double GATE_ARRIVAL_RADIUS_FEET = 20.0;
 
     // Runway-lineup blend band: when far from centerline, steer toward the threshold
@@ -532,7 +529,6 @@ public class TaxiGuidanceManager : IDisposable
     // Conversion constants
     private const double METERS_TO_FEET = 3.28084;
     private const double METERS_TO_NM = 0.000539957;
-    private const double NM_TO_FEET = 6076.12;
 
     public TaxiGuidanceState State => _state;
 
@@ -841,12 +837,12 @@ public class TaxiGuidanceManager : IDisposable
             }
             else
             {
-                var paths = dataProvider.GetTaxiPaths(icao);
+                var paths = dataProvider.GetTaxiPaths(icao!);
                 if (paths.Count == 0)
                     return "No taxi path data available for this airport.";
 
-                var parking = dataProvider.GetParkingSpots(icao);
-                var starts = dataProvider.GetRunwayStarts(icao);
+                var parking = dataProvider.GetParkingSpots(icao!);
+                var starts = dataProvider.GetRunwayStarts(icao!);
 
                 _graph = TaxiGraph.Build(paths, parking, starts);
             }
@@ -2265,7 +2261,7 @@ public class TaxiGuidanceManager : IDisposable
         // be defensive), fall back to no filter rather than blocking every
         // candidate — a silent recalc bailout would suppress the legitimate
         // "Off route" announcement.
-        int? destComponentId = _graph.Nodes.ContainsKey(_destinationNodeId)
+        int? destComponentId = _graph!.Nodes.ContainsKey(_destinationNodeId)
             ? _graph.Nodes[_destinationNodeId].ComponentId
             : (int?)null;
 

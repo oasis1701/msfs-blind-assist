@@ -36,8 +36,6 @@ public class ScreenReaderAnnouncer : IDisposable
         [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-        private const uint WM_USER = 0x0400;
-
         public ScreenReaderAnnouncer(IntPtr handle)
         {
             // Initialize speech queue and timer

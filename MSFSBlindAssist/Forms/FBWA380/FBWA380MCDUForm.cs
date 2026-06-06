@@ -588,9 +588,6 @@ public class FBWA380MCDUForm : Form
     private void SendCommand(string command) => _bridgeServer.EnqueueCommand(command);
     private void SendTypeKey(string key) =>
         _bridgeServer.EnqueueCommand("type_key", new Dictionary<string, string> { ["key"] = key });
-    private void SendNavigate(string label, string key) =>
-        _bridgeServer.EnqueueCommand("navigate",
-            new Dictionary<string, string> { ["label"] = label, ["key"] = key });
 
     /// <summary>
     /// Navigate by clicking the MFD page-selector menu item with the stable id

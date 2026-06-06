@@ -45,7 +45,6 @@ public class MobiFlightWasmModule
         private const int MAX_RESPONSE_SIZE = 1024;
         private const int MAX_LVARS_SIZE = 4096;
         private const int MAX_LVARS_COUNT = 64;
-        private const int LVAR_VALUE_SIZE = 4; // 4 bytes per float
 
         // State management
         public bool IsConnected { get; private set; }
