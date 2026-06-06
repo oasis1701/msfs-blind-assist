@@ -417,6 +417,7 @@ public sealed class AirportDiagramForm : Form
         _announcer?.AnnounceImmediate(string.IsNullOrEmpty(where) ? "Position not on the airport diagram." : where);
     }
 
-    private static string Len(double metres)
-        => metres <= 0 ? "unknown" : $"{Math.Round(metres)} metres ({Math.Round(metres * 3.280839895)} feet)";
+    // Runway Length/Width come from the navdata in FEET — convert to metres for display.
+    private static string Len(double feet)
+        => feet <= 0 ? "unknown" : $"{Math.Round(feet / 3.280839895)} metres ({Math.Round(feet)} feet)";
 }
