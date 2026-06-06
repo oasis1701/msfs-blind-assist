@@ -221,10 +221,10 @@ namespace MSFSBlindAssist
             this.aircraftMenuItem.AccessibleDescription = "Select aircraft model";
             this.aircraftMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.flyByWireA320MenuItem,
-            this.fenixA320MenuItem,
-            this.pmdg777MenuItem,
             this.flyByWireA380MenuItem,
+            this.fenixA320MenuItem,
             this.pmdg737MenuItem,
+            this.pmdg777MenuItem,
             this.horizonSim787MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
