@@ -129,7 +129,6 @@ public class FBWA380MCDUForm : Form
     private Button _btnSurv = null!;
     private Button _btnDir = null!;
     private Button _btnClr = null!;
-    private Button _btnRefresh = null!;
     private Button _btnUnits = null!;
 
     private List<McduElement> _elements = new();
@@ -288,7 +287,8 @@ public class FBWA380MCDUForm : Form
         _btnAtc     = MakeBtn("&ATC COM", "ATC COM");
         _btnSurv    = MakeBtn("SUR&V",    "SURV");                 // Alt+V
         _btnClr     = MakeBtn("&CLR",     "CLR");
-        _btnRefresh = MakeBtn("Refres&h", "Refresh");
+        // NO Refresh button — the window auto-updates live on every MFD state change
+        // (the bridge pushes on change). F5 is the manual re-fetch (ProcessCmdKey).
         // Toggle the WEIGHT unit MSFSBA reads out (kilograms / pounds).
         // Mnemonic is Alt+N ("U&nits"): Alt+U already belongs to the UP page button,
         // and a shared mnemonic only CYCLES focus between the two instead of activating.
@@ -339,7 +339,6 @@ public class FBWA380MCDUForm : Form
         _btnSurv.Click    += (_, _) => SendNavigateUri("surv/controls");           // SURV CONTROLS (XPDR/TCAS/WXR/TAWS)
         _btnDir.Click     += (_, _) => SendNavigateById("",        -1, "DIR");      // KCCU only
         _btnClr.Click     += (_, _) => PerformClear();
-        _btnRefresh.Click += (_, _) => _bridgeServer.EnqueueCommand("get_mcdu_elements");
         _btnUnits.Click   += (_, _) => ToggleUnits();
 
         _mcduSelector.SelectedIndexChanged += (_, _) =>
@@ -790,11 +789,18 @@ public class FBWA380MCDUForm : Form
             PerformClear();
             e.Handled = true; e.SuppressKeyPress = true;
         }
-        else if (e.KeyCode == Keys.F5)
+    }
+
+    // F5 = manual re-fetch, form-wide (works from any control, not just the display
+    // list). The window otherwise auto-updates live on every MFD state change.
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.F5)
         {
             _bridgeServer.EnqueueCommand("get_mcdu_elements");
-            e.Handled = true;
+            return true;
         }
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     // Re-fetch the MFD page a short moment after a mutating action (a click, a

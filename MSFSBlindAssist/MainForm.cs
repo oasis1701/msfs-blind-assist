@@ -4485,6 +4485,14 @@ public partial class MainForm : Form
             coherentNDClient.Dispose();
             coherentNDClient = null;
         }
+        // The OANS window holds the ND client by reference; dispose it too so a later
+        // reopen rebuilds it against the freshly-created client (otherwise it would keep
+        // the now-disposed client and never update).
+        if (fbwA380OansForm != null && !fbwA380OansForm.IsDisposed)
+        {
+            fbwA380OansForm.Dispose();
+            fbwA380OansForm = null;
+        }
         StopA380EWDMonitor();
 
         // Dispose HS 787 forms when switching aircraft

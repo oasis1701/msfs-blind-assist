@@ -534,6 +534,9 @@ public sealed class FBWA380RmpForm : Form
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.Escape) { Hide(); return true; }
+        // F5 = manual re-scrape (the window otherwise updates live via the 300 ms sim poll
+        // + the scrape RowsUpdated event; this forces an immediate fresh read).
+        if (keyData == Keys.F5) { _ = InitialScrape(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 

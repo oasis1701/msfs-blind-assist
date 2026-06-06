@@ -65,7 +65,6 @@ public sealed class FBWA380OansForm : Form
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = false;
         KeyPreview = true;
-        KeyDown += OnFormKeyDown;
 
         _status = new Label { Location = new Point(12, 10), Size = new Size(600, 20), Text = "OANS: connecting…", AccessibleName = "OANS status" };
 
@@ -165,11 +164,6 @@ public sealed class FBWA380OansForm : Form
         if (keyData == Keys.Escape) { Hide(); return true; }
         if (keyData == Keys.F5) { Refresh2(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
-    }
-
-    private void OnFormKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.F5) { Refresh2(); e.Handled = true; e.SuppressKeyPress = true; }
     }
 
     private void Refresh2()
@@ -388,7 +382,7 @@ public sealed class FBWA380OansForm : Form
         }
         else
         {
-            sb.AppendLine("Predicted stopping distances: not computed (the FMS computes these on approach)");
+            sb.AppendLine("Predicted stopping distances: not yet computed");
         }
         return sb.ToString().TrimEnd();
     }
@@ -397,21 +391,22 @@ public sealed class FBWA380OansForm : Form
 
     private void AnnounceBtvChange()
     {
-        string spoken;
-        if (!_btv.Ready) spoken = "";
-        else if (string.IsNullOrEmpty(_btv.Runway)) spoken = "no runway";
-        else
-            spoken = $"runway {_btv.Runway}" +
-                     (string.IsNullOrEmpty(_btv.Exit)
-                         ? ", no exit"
-                         : $", exit {_btv.Exit}" + (_btv.ExitDist != null ? $", {_btv.ExitDist} metres" : ""));
+        // Dedup on the SELECTION identity only (runway + exit) — NOT the distance — so a live
+        // distance tick can never re-fire the announce; the spoken text still includes the metres.
+        string key = !_btv.Ready ? "" :
+            string.IsNullOrEmpty(_btv.Runway) ? "none" : $"{_btv.Runway}|{_btv.Exit}";
 
-        if (_firstPush) { _lastBtvSpoken = spoken; return; }   // baseline silently on first push
-        if (spoken == _lastBtvSpoken) return;
-        _lastBtvSpoken = spoken;
-        if (spoken.Length == 0) return;
-        if (spoken == "no runway") _announcer?.Announce("BTV cleared");
-        else _announcer?.Announce("BTV armed, " + spoken);
+        if (_firstPush) { _lastBtvSpoken = key; return; }   // baseline silently on first push
+        if (key == _lastBtvSpoken) return;
+        _lastBtvSpoken = key;
+        if (key.Length == 0) return;                        // OANS not available — stay silent
+        if (key == "none") { _announcer?.Announce("BTV cleared"); return; }
+
+        string spoken = $"runway {_btv.Runway}" +
+                        (string.IsNullOrEmpty(_btv.Exit)
+                            ? ", no exit"
+                            : $", exit {_btv.Exit}" + (_btv.ExitDist != null ? $", {_btv.ExitDist} metres" : ""));
+        _announcer?.Announce("BTV armed, " + spoken);
     }
 
     // ---- actions -----------------------------------------------------------
