@@ -33,8 +33,8 @@ public sealed class FBWA380OansForm : Form
     private Label _status = null!;
     private TabControl _tabs = null!;
 
-    // Map Data tab
-    private ComboBox _mapMode = null!;
+    // Map Data tab — RWY/TWY/STAND/OTHER is a RadioButtonGroup in the cockpit, so native radios.
+    private RadioButton _modeRwy = null!, _modeTwy = null!, _modeStand = null!, _modeOther = null!;
     private TextBox _mapSearch = null!;
     private Button _mapSearchBtn = null!;
     private Button _addCross = null!, _centerMap = null!, _addFlag = null!, _ldgShift = null!;
@@ -42,8 +42,8 @@ public sealed class FBWA380OansForm : Form
     private Button _armRunway = null!, _armExit = null!, _btvClear = null!;
     private TextBox _btvReadout = null!;
 
-    // ARPT SEL tab
-    private ComboBox _codeType = null!;
+    // ARPT SEL tab — ICAO/IATA/CITY NAME is a RadioButtonGroup in the cockpit, so native radios.
+    private RadioButton _typeIcao = null!, _typeIata = null!, _typeCity = null!;
     private TextBox _airportCode = null!;
     private Button _displayAirport = null!;
     private TextBox _airportInfo = null!;
@@ -58,6 +58,7 @@ public sealed class FBWA380OansForm : Form
     private bool _subscribed;
     private bool _firstPush = true;
     private bool _switchingTab;          // guard: programmatic TabControl change vs user change
+    private bool _syncingRadios;         // guard: programmatic radio Check vs user click
     private string _lastBtvSpoken = "";
 
     public FBWA380OansForm(CoherentNDClient client, ScreenReaderAnnouncer announcer)
@@ -97,45 +98,58 @@ public sealed class FBWA380OansForm : Form
 
     private void BuildMapTab(TabPage tp)
     {
-        var modeLabel = new Label { Text = "Map data &mode:", Location = new Point(12, 14), Size = new Size(110, 22) };
-        _mapMode = new ComboBox { Location = new Point(128, 11), Size = new Size(120, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Map data mode" };
-        _mapMode.SelectedIndexChanged += (_, _) => { if (!_switchingTab && _mapMode.SelectedItem is string s) ClickRadio(s); };
+        // RWY / TWY / STAND / OTHER as a native radio group (mirrors the cockpit RadioButtonGroup).
+        var modeGroup = new GroupBox { Text = "Map data mode", Location = new Point(12, 6), Size = new Size(562, 48), AccessibleName = "Map data mode" };
+        _modeRwy = AddRadio(modeGroup, "RWY", 12);
+        _modeTwy = AddRadio(modeGroup, "TWY", 92);
+        _modeStand = AddRadio(modeGroup, "STAND", 172);
+        _modeOther = AddRadio(modeGroup, "OTHER", 272);
 
-        var searchLabel = new Label { Text = "Runway or e&xit:", Location = new Point(12, 46), Size = new Size(110, 22) };
-        _mapSearch = new TextBox { Location = new Point(128, 43), Size = new Size(120, 24), AccessibleName = "Runway or exit search" };
-        _mapSearchBtn = new Button { Text = "&Search", Location = new Point(256, 42), Size = new Size(80, 26), AccessibleName = "Search runway or exit" };
+        var searchLabel = new Label { Text = "Runway or e&xit:", Location = new Point(12, 64), Size = new Size(110, 22) };
+        _mapSearch = new TextBox { Location = new Point(128, 61), Size = new Size(120, 24), AccessibleName = "Runway or exit search" };
+        _mapSearchBtn = new Button { Text = "&Search", Location = new Point(256, 60), Size = new Size(80, 26), AccessibleName = "Search runway or exit" };
         _mapSearchBtn.Click += (_, _) => SetInput(_mapSearch.Text);
 
-        _addCross = MapActionButton("ADD CROSS", new Point(12, 78));
-        _centerMap = MapActionButton("CENTER MAP ON", new Point(160, 78));
-        _addFlag = MapActionButton("ADD FLAG", new Point(308, 78));
-        _ldgShift = MapActionButton("LDG SHIFT", new Point(440, 78));
+        _addCross = MapActionButton("ADD CROSS", new Point(12, 94));
+        _centerMap = MapActionButton("CENTER MAP ON", new Point(160, 94));
+        _addFlag = MapActionButton("ADD FLAG", new Point(308, 94));
+        _ldgShift = MapActionButton("LDG SHIFT", new Point(440, 94));
 
-        var btvLabel = new Label { Text = "BTV exit selection:", Location = new Point(12, 116), Size = new Size(560, 18), Font = new Font(Font, FontStyle.Bold) };
-        var rwyLabel = new Label { Text = "BTV r&unway:", Location = new Point(12, 140), Size = new Size(86, 22) };
-        _btvRunway = new ComboBox { Location = new Point(100, 137), Size = new Size(86, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "BTV runway" };
-        _armRunway = new Button { Text = "Arm &runway", Location = new Point(192, 136), Size = new Size(110, 26), AccessibleName = "Arm BTV runway" };
+        var btvLabel = new Label { Text = "BTV exit selection:", Location = new Point(12, 130), Size = new Size(560, 18), Font = new Font(Font, FontStyle.Bold) };
+        var rwyLabel = new Label { Text = "BTV r&unway:", Location = new Point(12, 154), Size = new Size(86, 22) };
+        _btvRunway = new ComboBox { Location = new Point(100, 151), Size = new Size(86, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "BTV runway" };
+        _armRunway = new Button { Text = "Arm &runway", Location = new Point(192, 150), Size = new Size(110, 26), AccessibleName = "Arm BTV runway" };
         _armRunway.Click += (_, _) => ArmRunway();
-        var exitLabel = new Label { Text = "BTV e&xit:", Location = new Point(316, 140), Size = new Size(64, 22) };
-        _btvExit = new ComboBox { Location = new Point(382, 137), Size = new Size(86, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "BTV exit" };
-        _armExit = new Button { Text = "Arm e&xit", Location = new Point(474, 136), Size = new Size(100, 26), AccessibleName = "Arm BTV exit" };
+        var exitLabel = new Label { Text = "BTV e&xit:", Location = new Point(316, 154), Size = new Size(64, 22) };
+        _btvExit = new ComboBox { Location = new Point(382, 151), Size = new Size(86, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "BTV exit" };
+        _armExit = new Button { Text = "Arm e&xit", Location = new Point(474, 150), Size = new Size(100, 26), AccessibleName = "Arm BTV exit" };
         _armExit.Click += (_, _) => ArmExit();
-        _btvClear = new Button { Text = "&Clear BTV", Location = new Point(12, 168), Size = new Size(110, 26), AccessibleName = "Clear BTV selection" };
+        _btvClear = new Button { Text = "&Clear BTV", Location = new Point(12, 182), Size = new Size(110, 26), AccessibleName = "Clear BTV selection" };
         _btvClear.Click += (_, _) => { _client.EnqueueCommand("oans_btv_clear"); _announcer?.Announce("Clearing BTV selection"); };
 
         _btvReadout = new TextBox
         {
-            Location = new Point(12, 200), Size = new Size(562, 230),
+            Location = new Point(12, 214), Size = new Size(562, 214),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 10), AccessibleName = "BTV status", Text = ""
         };
 
         tp.Controls.AddRange(new Control[]
         {
-            modeLabel, _mapMode, searchLabel, _mapSearch, _mapSearchBtn,
+            modeGroup, searchLabel, _mapSearch, _mapSearchBtn,
             _addCross, _centerMap, _addFlag, _ldgShift,
             btvLabel, rwyLabel, _btvRunway, _armRunway, exitLabel, _btvExit, _armExit, _btvClear, _btvReadout
         });
+    }
+
+    // Add a native RadioButton to a group; a user click (not a programmatic sync) clicks the
+    // matching cockpit OANS radio element.
+    private RadioButton AddRadio(GroupBox g, string label, int x)
+    {
+        var rb = new RadioButton { Text = label, Location = new Point(x, 20), Size = new Size(Math.Max(56, 18 + label.Length * 9), 22), AccessibleName = label };
+        rb.CheckedChanged += (_, _) => { if (rb.Checked && !_syncingRadios) ClickRadio(label); };
+        g.Controls.Add(rb);
+        return rb;
     }
 
     private Button MapActionButton(string text, Point loc)
@@ -147,29 +161,31 @@ public sealed class FBWA380OansForm : Form
 
     private void BuildArptTab(TabPage tp)
     {
-        var typeLabel = new Label { Text = "Code &type:", Location = new Point(12, 14), Size = new Size(90, 22) };
-        _codeType = new ComboBox { Location = new Point(106, 11), Size = new Size(120, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Airport code type" };
-        _codeType.SelectedIndexChanged += (_, _) => { if (!_switchingTab && _codeType.SelectedItem is string s) ClickRadio(s); };
+        // ICAO / IATA / CITY NAME as a native radio group (mirrors the cockpit RadioButtonGroup).
+        var typeGroup = new GroupBox { Text = "Code type", Location = new Point(12, 6), Size = new Size(562, 48), AccessibleName = "Airport code type" };
+        _typeIcao = AddRadio(typeGroup, "ICAO", 12);
+        _typeIata = AddRadio(typeGroup, "IATA", 92);
+        _typeCity = AddRadio(typeGroup, "CITY NAME", 172);
 
-        var codeLabel = new Label { Text = "Airport &code:", Location = new Point(12, 46), Size = new Size(90, 22) };
-        _airportCode = new TextBox { Location = new Point(106, 43), Size = new Size(120, 24), AccessibleName = "Airport code", CharacterCasing = CharacterCasing.Upper };
-        _displayAirport = new Button { Text = "&Display airport", Location = new Point(234, 42), Size = new Size(130, 26), AccessibleName = "Display airport" };
+        var codeLabel = new Label { Text = "Airport &code:", Location = new Point(12, 64), Size = new Size(90, 22) };
+        _airportCode = new TextBox { Location = new Point(106, 61), Size = new Size(120, 24), AccessibleName = "Airport code", CharacterCasing = CharacterCasing.Upper };
+        _displayAirport = new Button { Text = "&Display airport", Location = new Point(234, 60), Size = new Size(130, 26), AccessibleName = "Display airport" };
         _displayAirport.Click += (_, _) => { SetInput(_airportCode.Text); ClickByText("DISPLAY AIRPORT"); };
 
-        var infoLabel = new Label { Text = "Airport &info:", Location = new Point(12, 78), Size = new Size(120, 18) };
+        var infoLabel = new Label { Text = "Airport &info:", Location = new Point(12, 94), Size = new Size(120, 18) };
         _airportInfo = new TextBox
         {
-            Location = new Point(12, 98), Size = new Size(562, 120),
+            Location = new Point(12, 114), Size = new Size(562, 110),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 10), AccessibleName = "Airport info", Text = ""
         };
 
-        var recentLabel = new Label { Text = "&Recent airports (Enter to select):", Location = new Point(12, 226), Size = new Size(320, 18) };
-        _recent = new ListBox { Location = new Point(12, 246), Size = new Size(200, 180), AccessibleName = "Recent airports" };
+        var recentLabel = new Label { Text = "&Recent airports (Enter to select):", Location = new Point(12, 232), Size = new Size(320, 18) };
+        _recent = new ListBox { Location = new Point(12, 252), Size = new Size(200, 170), AccessibleName = "Recent airports" };
         _recent.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; ActivateRecent(); } };
         _recent.DoubleClick += (_, _) => ActivateRecent();
 
-        tp.Controls.AddRange(new Control[] { typeLabel, _codeType, codeLabel, _airportCode, _displayAirport, infoLabel, _airportInfo, recentLabel, _recent });
+        tp.Controls.AddRange(new Control[] { typeGroup, codeLabel, _airportCode, _displayAirport, infoLabel, _airportInfo, recentLabel, _recent });
     }
 
     private void BuildStatusTab(TabPage tp)
@@ -272,8 +288,8 @@ public sealed class FBWA380OansForm : Form
 
     private void UpdateMapPage()
     {
-        // Mode combo from the RWY/TWY/STAND/OTHER radios.
-        SyncRadioCombo(_mapMode);
+        // Native radio group from the RWY/TWY/STAND/OTHER cockpit radios.
+        SyncRadios(_modeRwy, _modeTwy, _modeStand, _modeOther);
         // Search field placeholder value (read-only-ish; user types a new search).
         // Action buttons: enable per the live dimmed state, idx looked up by text at click time.
         _addCross.Enabled = ButtonEnabled("ADD CROSS");
@@ -295,7 +311,7 @@ public sealed class FBWA380OansForm : Form
 
     private void UpdateArptPage()
     {
-        SyncRadioCombo(_codeType);
+        SyncRadios(_typeIcao, _typeIata, _typeCity);
         DisplayText.SetPreserveCaret(_airportInfo, string.Join(Environment.NewLine, TextLines()));
         // Recent-airports list = the short clickable airport-code buttons (e.g. VCBI / LIMC),
         // i.e. uppercase 3-4 letter button texts that aren't the DISPLAY AIRPORT action.
@@ -335,21 +351,23 @@ public sealed class FBWA380OansForm : Form
     private List<string> TextLines()
         => _elems.Where(e => e.Kind == "text" && !string.IsNullOrWhiteSpace(e.Text)).Select(e => e.Text).ToList();
 
-    // Populate a combo from the scraped radio group (texts minus the "(selected)" marker), and
-    // select the active one. No-op while the combo is focused/open so a live refresh can't move
-    // the selection under the user.
-    private void SyncRadioCombo(ComboBox combo)
+    // Check the native radio matching the cockpit's "(selected)" radio. No-op while the user is
+    // on the group (any radio focused) so a live refresh can't fight mid-navigation.
+    private void SyncRadios(params RadioButton[] radios)
     {
-        if (combo.Focused || combo.DroppedDown) return;
-        var radios = _elems.Where(e => e.Kind == "radio").ToList();
-        var opts = radios.Select(r => StripMarker(r.Text)).ToList();
-        bool same = combo.Items.Count == opts.Count;
-        if (same) for (int i = 0; i < opts.Count; i++) if ((combo.Items[i] as string) != opts[i]) { same = false; break; }
-        if (!same) { combo.BeginUpdate(); combo.Items.Clear(); foreach (var o in opts) combo.Items.Add(o); combo.EndUpdate(); }
-        string? sel = radios.FirstOrDefault(r => r.Text.IndexOf("(selected)", StringComparison.OrdinalIgnoreCase) >= 0) is { } s
-            ? StripMarker(s.Text) : null;
-        if (sel != null) { int ix = combo.Items.IndexOf(sel); if (ix >= 0 && combo.SelectedIndex != ix) combo.SelectedIndex = ix; }
-        else if (combo.Items.Count > 0 && combo.SelectedIndex < 0) combo.SelectedIndex = 0;
+        if (Array.Exists(radios, r => r.Focused)) return;
+        var sel = _elems.FirstOrDefault(e => e.Kind == "radio" && e.Text.IndexOf("(selected)", StringComparison.OrdinalIgnoreCase) >= 0);
+        string? selText = sel != null ? StripMarker(sel.Text) : null;
+        _syncingRadios = true;
+        try
+        {
+            foreach (var rb in radios)
+            {
+                bool want = selText != null && rb.Text.Equals(selText, StringComparison.OrdinalIgnoreCase);
+                if (rb.Checked != want) rb.Checked = want;
+            }
+        }
+        finally { _syncingRadios = false; }
     }
 
     private void ClickRadio(string text)
