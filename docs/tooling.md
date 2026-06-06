@@ -12,7 +12,7 @@ Everything under `tools/` falls into two buckets:
 
 | Bucket | Tools | Status |
 |---|---|---|
-| **Created during the A320/A380 work** (this branch — mine + Gus's) | `coherent-eval.ps1`, `_probe/`, `fcu/`, `fp_*.{js,ps1}`, `mcdu_*.{js,ps1}`, `mfd_import_and_scrape.ps1`, `sd-page-tour.ps1`, `efb-dom-tool.js`, `fbw-mcdu-probe/`, `flypad-shell-test/`, `probe-*.ps1`, `prove-coherent-scrape.ps1`, `test-coherent-ws.ps1`, and the `*.md` reference catalogs | **Documented + organized here.** Improve/reorganize freely. |
+| **Created during the A320/A380 work** (this branch — mine + Gus's) | **`coherent.ps1` (the unified driver)**, `coherent-eval.ps1`, `_probe/`, `fcu/`, `fp_*.{js,ps1}`, `mcdu_*.{js,ps1}`, `mfd_import_and_scrape.ps1`, `sd-page-tour.ps1`, `efb-dom-tool.js`, `fbw-mcdu-probe/`, `flypad-shell-test/`, `flypad-settings-test/`, `probe-*.ps1`, `prove-coherent-scrape.ps1`, `test-coherent-ws.ps1`, and the `*.md` reference catalogs | **Documented + organized here.** Improve/reorganize freely. |
 | **Pre-existing** (on `origin/main` before the FBW work) | `tools/CDUTest`, `tools/PMDGDispatchTester` | **Leave untouched.** Documented in `CLAUDE.md` (Build Commands) only. Not part of the Coherent tooling. See §7. |
 
 This guide only reorganizes/improves the first bucket. The two PMDG tools are independent console apps with their own build story and are deliberately out of scope here.
@@ -47,13 +47,63 @@ ISISlegacy       the standby instrument (ISIS)
 - EFB            the flyPad EFB (A32NX and A380X both match)
 ```
 
-For the A32NX the analogous needles are `A32NX_*` (e.g. `A32NX_EWD_1`).
+For the A32NX the needles are (verified live — note the MCDU is `A32NX_MCDU`, not `_MFD`,
+and the SD / ISIS are **bare** needles, not `A32NX_*`):
+
+```
+A32NX_MCDU       the MCDU      A32NX_PFD_1   the PFD
+A32NX_ND_1       the ND        A32NX_EWD_1   the E/WD
+A32NX_FCU        the FCU       A32NX_SYSTEMSHOST  the systems host
+SD               the System Display      ISIS   the standby instrument
+- EFB            the flyPad (shared)
+```
+
+**Don't memorize these — run `./coherent.ps1 views` (see §2) to print every view's
+exact title + id for whatever aircraft is loaded.**
 
 ---
 
-## 2. The canonical tool — `coherent-eval.ps1` (+ `_probe/`)
+## 2. The canonical tools — `coherent.ps1` (driver) + `coherent-eval.ps1` (primitive)
 
-**`tools/coherent-eval.ps1` is the preferred entry point for all new probing.** Everything else is either a thin wrapper around the same transport, a standalone Node project, or an early bootstrap script it superseded.
+There are two layers, and you almost always want the first:
+
+### 2.0 `tools/coherent.ps1` — the UNIFIED, aircraft-agnostic driver (start here)
+
+One entry point for the four operations you actually repeat, on **any** Coherent aircraft.
+It resolves views by title, obeys the one-socket rule, and — crucially — **auto-detects the
+agent's window global** (any `window.__MSFSBA_*` exposing `scrape()`), so the *same* command
+works for every agent we ship (flypad, a380 MFD, display, EWD, ECL, RMP, OANS). No per-aircraft
+flags; no retyping inline PowerShell.
+
+```powershell
+# 1. Discover every Coherent view (title + id) for whatever aircraft is loaded
+./coherent.ps1 views
+
+# 2. Scrape a view through its agent — prints readable lines (handles BOTH agent output
+#    shapes: {elements:[{kind,text,value}]} and {rows:[...]}). Add -Raw for the JSON.
+./coherent.ps1 scrape  -Title "- EFB"    -Agent ..\MSFSBlindAssist\Resources\coherent-flypad-agent.js
+./coherent.ps1 scrape  -Title A380X_EWD  -Agent ..\MSFSBlindAssist\Resources\coherent-ewd-agent.js
+
+# 3. Click the first element whose text matches (re-scrapes first, clicks by stamped idx)
+./coherent.ps1 click   -Title "- EFB"    -Agent ...coherent-flypad-agent.js -Text "Ground"
+
+# 4. Capture a jsdom fixture (live geometry/visibility baked in) for the offline harnesses
+./coherent.ps1 capture -Title "- EFB"    -Agent ...coherent-flypad-agent.js -Out fixtures\a320-ground.html
+
+# 5. Arbitrary JS (read/write an L:var, call any agent method) — same as coherent-eval.ps1
+./coherent.ps1 eval    -Title A32NX_MCDU -Expr "SimVar.GetSimVarValue('L:A32NX_EFB_USING_METRIC_UNIT','number')"
+```
+
+`coherent.ps1` delegates the actual CDP round-trip to `coherent-eval.ps1`, so there is exactly
+ONE transport implementation. It supersedes the per-aircraft convenience wrappers (`fp_run`/
+`fp_tour`/`mcdu_run`/`mcdu_tour` and the `_probe/_click_by_text.js` / `_capture_flypad_fixture.js`
+one-offs) for everyday work; those remain as worked examples.
+
+### 2.1 `tools/coherent-eval.ps1` — the raw `Runtime.evaluate` primitive
+
+The low-level transport (L1). Use it directly when you need arbitrary one-off JS and don't want
+the driver's scrape/click/capture conveniences. Everything else is either a thin wrapper around
+the same transport, a standalone Node project, or an early bootstrap script it superseded.
 
 ```powershell
 # Read an L:var from inside the MFD view
@@ -290,9 +340,11 @@ To ground the "flyPad agent serves both FBW jets" claim, this session drove the 
 
 ## 10. Quick decision guide
 
-- **Read/write one L:var, or scrape/click one view, ad-hoc** → `coherent-eval.ps1 -Title … -Expr/-ExprFile` (inject an agent with `-PreFile` if you call `__MSFSBA_*`).
+- **List every Coherent view (any aircraft)** → `coherent.ps1 views`.
+- **Scrape / click / capture a view (any aircraft, any agent)** → `coherent.ps1 scrape|click|capture -Title … -Agent …` (auto-detects the agent global).
+- **Read/write one L:var, or arbitrary one-off JS** → `coherent.ps1 eval -Title … -Expr …` (or `coherent-eval.ps1 -Title … -Expr/-ExprFile`, injecting an agent with `-PreFile`).
 - **Reproduce a known finding** → the matching `tools/_probe/*.js` (see `_probe/README.md`).
-- **Tour all MFD / flyPad pages** → `mcdu_tour.ps1` / `fp_tour.ps1`.
+- **Tour all MFD / flyPad pages** → `mcdu_tour.ps1` / `fp_tour.ps1` (or loop `coherent.ps1 click`/`scrape`).
 - **Read the SD** → `sd-page-tour.ps1` (drive the page from the app/MCP first).
 - **Verify FCU** → `tools/fcu/fcu-read.ps1` (+ roundtrip/set).
 - **Drive the A32NX MCDU without the app** → `tools/fbw-mcdu-probe/` (Node).

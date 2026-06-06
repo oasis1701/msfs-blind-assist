@@ -9,14 +9,25 @@ param(
 # (the same path CoherentDebuggerClient.cs / CoherentEFBClient.cs use). Resolve
 # pages BY TITLE from /pagelist.json — ids shuffle every session.
 #
-# This is the single most useful A380 dev/debug tool: it lets you read/write ANY
-# L:var and scrape/click ANY Coherent DOM from inside a cockpit view, independent
-# of the SimConnect MCP (which goes stale on focus loss). Requires MSFS running
-# with the A380X loaded (the sim opens port 19999 itself — no Dev Mode needed).
+# This is the raw transport primitive (the L1 layer): it lets you read/write ANY
+# L:var and scrape/click ANY Coherent DOM from inside ANY cockpit view, on ANY
+# aircraft that renders in Coherent GT (FBW A320/A380, and other add-ons),
+# independent of the SimConnect MCP (which goes stale on focus loss). The sim opens
+# port 19999 itself — no Dev Mode needed. Requires MSFS running with a Coherent
+# aircraft loaded.
 #
-# View title-needles (pass to -Title; never hardcode ids):
-#   A380X_MFD  A380X_ND_1  A380X_FCU  A380X_PFD_1  A380X_SDv2  A380X_EWD
-#   A380X_SYSTEMSHOST   ISISlegacy   "- EFB" (flyPad)
+# For the common operations (list views / scrape / click-by-text / capture-fixture)
+# prefer the higher-level driver `tools/coherent.ps1`, which auto-detects the agent
+# global and works for every agent we ship. Use coherent-eval.ps1 directly for
+# arbitrary one-off JS.
+#
+# View title-needles (pass to -Title; never hardcode ids; run `coherent.ps1 views`
+# to discover any aircraft's needles):
+#   A380X : A380X_MFD  A380X_ND_1  A380X_FCU  A380X_PFD_1  A380X_SDv2  A380X_EWD
+#           A380X_SYSTEMSHOST  ISISlegacy
+#   A32NX : A32NX_MCDU  A32NX_ND_1  A32NX_PFD_1  A32NX_EWD_1  A32NX_FCU
+#           A32NX_SYSTEMSHOST  + the bare needles  SD  ISIS
+#   Shared: "- EFB" (the flyPad — both FBW jets)
 #
 # Examples:
 #   # Read an L:var from the MFD view
