@@ -159,6 +159,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TAXI_STATUS = 9200;        // Output mode: Y (Taxi status)
         private const int HOTKEY_TAXI_REPEAT = 9201;        // Output mode: Ctrl+Y (Repeat instruction)
         private const int HOTKEY_TAXI_FORM = 9202;          // Input mode: Shift+Y (Open taxi form)
+        private const int HOTKEY_AIRPORT_DIAGRAM = 9261;    // Input mode: Ctrl+Shift+D (Airport Diagram)
         private const int HOTKEY_TAXI_CONTINUE = 9203;      // Input mode: Y (Continue past hold-short)
         private const int HOTKEY_TAXI_STOP = 9204;          // Input mode: Ctrl+Y (Stop guidance)
         private const int HOTKEY_TAXI_WHERE_AM_I = 9205;    // Output mode: Alt+Y (Describe current location)
@@ -603,6 +604,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
                             break;
+                        case HOTKEY_AIRPORT_DIAGRAM:
+                            TriggerHotkey(HotkeyAction.ShowAirportDiagram);
+                            break;
                         case HOTKEY_TAXI_CONTINUE:
                             TriggerHotkey(HotkeyAction.TaxiContinue);
                             break;
@@ -922,6 +926,7 @@ public class HotkeyManager : IDisposable
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
+            RegisterHotKey(windowHandle, HOTKEY_AIRPORT_DIAGRAM, MOD_CONTROL | MOD_SHIFT, 0x44); // Ctrl+Shift+D (Airport Diagram)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE, MOD_NONE, 0x59);         // Y (Continue past hold-short)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_STOP, MOD_CONTROL, 0x59);          // Ctrl+Y (Stop guidance)
             RegisterHotKey(windowHandle, HOTKEY_LANDING_EXIT, MOD_SHIFT, 0x58);         // Shift+X (Landing Exit Planner)
@@ -975,6 +980,7 @@ public class HotkeyManager : IDisposable
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
+            UnregisterHotKey(windowHandle, HOTKEY_AIRPORT_DIAGRAM);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_STOP);
             UnregisterHotKey(windowHandle, HOTKEY_LANDING_EXIT);
@@ -1332,6 +1338,7 @@ public class HotkeyManager : IDisposable
         ReadOutsideTemperature,
         ReadSquawkCode,
         TaxiAssistForm,
+        ShowAirportDiagram,
         TaxiStatus,
         TaxiRepeat,
         TaxiContinue,

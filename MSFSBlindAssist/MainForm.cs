@@ -92,6 +92,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
     private TaxiGuidanceManager taxiGuidanceManager = null!;
     private TaxiAssistForm? taxiAssistForm;
+    private AirportDiagramForm? airportDiagramForm;
     private LandingExitPlanner landingExitPlanner = null!;
     private GroundTrafficMonitor groundTrafficMonitor = null!;
 
@@ -1996,6 +1997,9 @@ public partial class MainForm : Form
             case HotkeyAction.DescribeScene:
                 DescribeSceneAsync();
                 break;
+            case HotkeyAction.ShowAirportDiagram:
+                ShowAirportDiagramForm();
+                break;
             case HotkeyAction.TaxiAssistForm:
                 ShowTaxiAssistForm();
                 break;
@@ -3370,6 +3374,43 @@ public partial class MainForm : Form
 
         taxiAssistForm.Show();
         taxiAssistForm.BringToFront();
+    }
+
+    /// <summary>
+    /// Opens the accessible Airport Diagram (Ctrl+Shift+D) — browse runways/taxiways/stands and
+    /// plan an expected taxi route, reusing the taxi-guidance graph/router (read-only, no live
+    /// guidance). Global: works on any aircraft, off the user's navdata DB.
+    /// </summary>
+    private void ShowAirportDiagramForm()
+    {
+        if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
+        {
+            announcer.AnnounceImmediate("Airport database not available. Configure the database in settings.");
+            return;
+        }
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        simConnectManager.RequestAircraftPositionAsync(position =>
+        {
+            if (this.InvokeRequired) this.Invoke(() => OpenAirportDiagram(position));
+            else OpenAirportDiagram(position);
+        });
+    }
+
+    private void OpenAirportDiagram(SimConnectManager.AircraftPosition position)
+    {
+        if (airportDiagramForm == null || airportDiagramForm.IsDisposed)
+            airportDiagramForm = new AirportDiagramForm(airportDataProvider!, announcer);
+
+        string nearestIcao = "";
+        var nearby = airportDataProvider!.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
+            .Where(c => c != null && c.Length == 4)
+            .ToList();
+        if (nearby.Count > 0) nearestIcao = nearby[0];
+
+        airportDiagramForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
+        airportDiagramForm.ShowForm();
     }
 
     /// <summary>
