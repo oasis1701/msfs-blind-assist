@@ -2559,6 +2559,31 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "knots"
         },
+        // ---- Takeoff V-speeds (V1/VR/V2) — entered/computed on the MCDU PERF TAKEOFF page.
+        // The FBW FMC writes L:AIRLINER_V1/VR/V2_SPEED in knots (A32NX_FMCMainDisplay.ts);
+        // 0 = not set. Continuous + IsAnnounced (knots) so MSFSBA AUTO-ANNOUNCES the value
+        // the instant the pilot enters/changes it — "V1: 125 knots" — mirroring the Fenix
+        // MCDU V-speed entry confirmation. FormatVariableValue appends "knots" from Units;
+        // the simVarMonitor baseline + connect-grace keep the initial values silent; listed
+        // in the Ctrl+M monitor for opt-out like every other announced var. ----
+        ["PFD_V1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "AIRLINER_V1_SPEED", DisplayName = "V1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "knots"
+        },
+        ["PFD_VR"] = new SimConnect.SimVarDefinition
+        {
+            Name = "AIRLINER_VR_SPEED", DisplayName = "VR",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "knots"
+        },
+        ["PFD_V2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "AIRLINER_V2_SPEED", DisplayName = "V2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "knots"
+        },
         // ---- PFD: alpha-protection speeds (FAC1 ARINC429 words, knots; in-flight-only ----
         // -> "not available" on the ground is CORRECT). Auto-decoded by the generic ARINC path.
         ["PFD_VALPHAPROT"] = new SimConnect.SimVarDefinition

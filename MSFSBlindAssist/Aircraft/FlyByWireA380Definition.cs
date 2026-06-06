@@ -989,15 +989,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // status-box force-read of that key auto-announced gross weight every refresh. A distinct
         // display key avoids the collision; the W/Shift+W hotkeys read the separate GW_KG_CACHE.
         Stock("PFD_GROSS_WEIGHT", "TOTAL WEIGHT", "Gross Weight", "kilograms");
-        // PFD read-out additions (source-confirmed missing). All OnRequest stock simvars
-        // (NOT continuous) so they add nothing to the monitoring batch / aircraft detection.
-        // V1/VR/V2 come from the FBW FMS as L:vars (the MFD PERF page writes
-        // L:AIRLINER_V1/VR/V2_SPEED). The stock "AIRLINER V1 SPEED" simvars are NEVER
-        // written by the A380 -> always 0 ("not set"). Read the L:vars instead; the keys
-        // stay PFD_V* so the panel set + TryGetDisplayOverride ("not set" on 0) are unchanged.
-        vars["PFD_V1"] = new SimVarDefinition { Name = "AIRLINER_V1_SPEED", DisplayName = "V1", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots" };
-        vars["PFD_VR"] = new SimVarDefinition { Name = "AIRLINER_VR_SPEED", DisplayName = "VR", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots" };
-        vars["PFD_V2"] = new SimVarDefinition { Name = "AIRLINER_V2_SPEED", DisplayName = "V2", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots" };
+        // PFD read-out additions (source-confirmed missing). V1/VR/V2 come from the FBW
+        // FMS as L:vars (the MFD PERF page writes L:AIRLINER_V1/VR/V2_SPEED in knots). The
+        // stock "AIRLINER V1 SPEED" simvars are NEVER written by the A380 -> always 0
+        // ("not set"). Read the L:vars instead; the keys stay PFD_V* so the panel set +
+        // TryGetDisplayOverride ("not set" on 0) are unchanged.
+        //   These three are Continuous + IsAnnounced (knots) so MSFSBA AUTO-ANNOUNCES the
+        // value the instant the pilot enters/changes it on the MFD PERF page — "V1: 125
+        // knots" — mirroring the Fenix MCDU V-speed entry confirmation. FormatVariableValue
+        // appends "knots" from Units; the simVarMonitor baseline + connect-grace keep the
+        // initial values silent. Listed in the Ctrl+M monitor for opt-out like every other
+        // announced var. (Was OnRequest/display-only before the Fenix-parity pass.)
+        vars["PFD_V1"] = new SimVarDefinition { Name = "AIRLINER_V1_SPEED", DisplayName = "V1", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots" };
+        vars["PFD_VR"] = new SimVarDefinition { Name = "AIRLINER_VR_SPEED", DisplayName = "VR", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots" };
+        vars["PFD_V2"] = new SimVarDefinition { Name = "AIRLINER_V2_SPEED", DisplayName = "V2", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots" };
         Stock("PFD_MACH", "AIRSPEED MACH", "Mach", "mach");          // decoded in TryGetDisplayOverride
         Stock("PFD_TRACK", "GPS GROUND MAGNETIC TRACK", "Track", "degrees");
         Stock("PFD_ILS_FREQ", "NAV ACTIVE FREQUENCY:3", "ILS Frequency", "MHz");
