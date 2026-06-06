@@ -6,6 +6,23 @@ A detailed reference to every dev/debug tool in `tools/`, written for **agents (
 
 ---
 
+## Prerequisites (what you need installed to run these tools)
+
+These tools assume **MSFS is running with a Coherent aircraft loaded** (the sim opens the debugger port `:19999` itself — no Developer Mode needed). Host-side dependencies:
+
+| Dependency | Install | Needed for |
+|---|---|---|
+| **PowerShell 7+ (`pwsh`)** — *the assumed/preferred shell* | `winget install Microsoft.PowerShell` | Every `*.ps1` tool: `coherent.ps1`, `coherent-eval.ps1`, `fcu/`, `sd-page-tour.ps1`, `mcdu_*`, `fp_*`, `probe-*.ps1`. |
+| **Node.js 18+ (LTS)** | `winget install OpenJS.NodeJS.LTS` | The offline test harnesses (`flypad-settings-test/`, `flypad-shell-test/`, `perf-builder-test/`) and the Node probes (`fbw-mcdu-probe/`, `efb-dom-tool.js`). Run a one-time `npm install` in each jsdom harness folder. |
+| **.NET 9 SDK** | (see `CLAUDE.md` Build Commands) | Building MSFSBA + the .NET probe apps (`PMDGDispatchTester`, `CDUTest`). |
+| **MSFS 2020 or 2024 — running** | — | Hosts the Coherent views + the SimConnect/MobiFlight surface. |
+| **MobiFlight WASM** (optional) | (FBW/community installer) | Only for reliable L:var **writes** via the calculator path (`(>L:VAR)`); not needed for read/scrape. |
+
+> ### Use PowerShell 7 (`pwsh`), not Windows PowerShell 5.1
+> **PowerShell 7 is strongly preferred and is what every example here assumes** — invoke the tools as `pwsh -File ./coherent.ps1 …` (or `./coherent.ps1 …` from a `pwsh` prompt). 5.1 (`powershell.exe`) is the legacy, **no-longer-maintained** Windows-bundled shell; it has an older/stricter parser (e.g. it mis-parses any non-ASCII byte in a no-BOM script and rejects some modern syntax). The `.ps1` tools here are deliberately kept **ASCII-only** so they *do* still run under 5.1 as a fallback — but if anything misbehaves, **switch to `pwsh` first**. pwsh installs side-by-side with 5.1 (it doesn't replace it), is free, and is strictly better. Do **not** try to uninstall 5.1 — it's a built-in Windows OS component and removing it breaks Windows features/installers; just prefer `pwsh`.
+
+---
+
 ## 0. Scope & provenance (what this guide governs)
 
 Everything under `tools/` falls into two buckets:

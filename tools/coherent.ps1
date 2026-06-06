@@ -71,7 +71,8 @@ function Resolve-AgentPath([string]$p) {
 # Run a JS expression in a view via coherent-eval.ps1 (optionally injecting an agent first),
 # and return its raw stdout lines. Keeps ONE transport (coherent-eval.ps1 owns the socket).
 function Invoke-Eval([string]$ttl, [string]$exprText, [string]$agentPath) {
-  $tmp = [System.IO.Path]::GetTempFileName() + '.js'
+  # Use a unique .js name (NOT GetTempFileName, which creates a stray .tmp we'd leak).
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('coh_' + [guid]::NewGuid().ToString('N') + '.js')
   [System.IO.File]::WriteAllText($tmp, $exprText, (New-Object System.Text.UTF8Encoding($false)))
   try {
     if ($agentPath) { & $evalPs1 -Title $ttl -PreFile $agentPath -ExprFile $tmp 2>&1 }
