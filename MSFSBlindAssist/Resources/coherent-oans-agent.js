@@ -22,7 +22,16 @@
   var A = {};
   A.STAMP = "data-fbwa380-oans-idx";
 
-  function clean(s) { return (s || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
+  // Collapse whitespace, trim, AND drop FBW's stray "null"/"undefined"/"NaN" tokens — a
+  // template literal like `CENTER MAP ON ${entity}` renders the word "null" when nothing is
+  // selected, so a button reads "CENTER MAP ON null". Strip those standalone words.
+  function clean(s) {
+    return (s || "")
+      .replace(/\s+/g, " ")
+      .replace(/\b(?:null|undefined|NaN)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^\s+|\s+$/g, "");
+  }
   function lower(s) { return (s || "").toString().toLowerCase(); }
   A.cls = function (n) { return (n.className && n.className.toString) ? n.className.toString() : ""; };
 
@@ -59,15 +68,17 @@
     return "other";
   };
 
-  // flyPad-style controlType for the WebView2 renderer.
+  // flyPad-style controlType for the WebView2 renderer. The OANS entity-type radios
+  // (RWY/TWY/STAND/OTHER) read as a run-together blob when rendered as inline
+  // <input type=checkbox> ("RWY (selected)TWYSTANDOTHER"), so render them as plain
+  // clickable buttons instead -> each lands on its own line, "RWY (selected)" / "TWY" / ...
   A.controlType = function (kind) {
     if (kind === "input") return "text";
-    if (kind === "radio") return "checkbox";
-    return ""; // button/dropdown/menu/tab -> rendered as button/link by tag+clickable
+    return ""; // radio/button/dropdown/menu/tab -> rendered as a button/link by tag+clickable
   };
 
   A.isClickable = function (kind) {
-    return kind === "button" || kind === "dropdown" || kind === "menu" || kind === "tab";
+    return kind === "button" || kind === "dropdown" || kind === "menu" || kind === "tab" || kind === "radio";
   };
 
   A.readInputValue = function (n) {
@@ -188,10 +199,14 @@
       if (!text && kind !== "input") continue;
       n.setAttribute(A.STAMP, String(idx));
       var r = n.getBoundingClientRect();
+      // For a blank input the label line already says "blank"; emit an EMPTY value so the
+      // WebView2 text box renders empty instead of reading the placeholder dashes ("------").
+      var rawVal = kind === "input" ? A.readInputValue(n) : "";
+      var emitVal = (kind === "input" && A.isBlankValue(rawVal)) ? "" : rawVal;
       items.push({
         top: r.top - rootRect.top, left: r.left - rootRect.left,
         idx: idx, kind: kind, tag: n.tagName.toLowerCase(), role: "",
-        text: text, value: kind === "input" ? A.readInputValue(n) : "",
+        text: text, value: emitVal,
         controlType: A.controlType(kind), clickable: A.isClickable(kind),
         level: 0, live: "", disabled: n.classList.contains("disabled"), options: []
       });
@@ -339,6 +354,15 @@
       } else {
         A._emptyZoomedTicks = 0;
       }
+      // Append the accessible BTV exit-arming controls (synthetic, idx >= 9000). On the real
+      // A380 you arm BTV by clicking runway-end + exit LABELS on the map; a blind pilot can't.
+      // These call the OANS btvUtils directly so the user picks a runway + exit from a list.
+      try {
+        if (A.btvReady()) {
+          var btv = A.btvControls();
+          for (var bi = 0; bi < btv.length; bi++) els.push(btv[bi]);
+        }
+      } catch (eb) { /* never let BTV injection break the core scrape */ }
       return JSON.stringify({ ok: true, page: "OANS Airport Map / BTV", elements: els });
     } catch (e) {
       return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
@@ -370,6 +394,8 @@
   };
 
   A.clickElement = function (index) {
+    // Synthetic BTV commands live at idx >= 9000 (see btvControls); they have no DOM node.
+    if (A._btvCmd && A._btvCmd[index]) return A.runBtvCmd(index);
     var node = A.findByIdx(index);
     if (!node) return "missing";
     // A dropdown-wrapped input opens its list when the dropdown is clicked.
@@ -426,6 +452,130 @@
     A.focusField(span, spanningDiv);
     A.typeInto(span, text);
     return "ok";
+  };
+
+  // =====================================================================
+  // Accessible BTV (Brake-To-Vacate) exit arming.
+  // On the real A380 you arm BTV by CLICKING the runway-end + exit LABELS on the
+  // moving map (Oanc.tsx selectRunwayFromOans / selectExitFromOans). Those labels are
+  // SVG on the map canvas, NOT control-panel widgets, so a blind pilot can't reach them.
+  // We call the SAME Oanc methods directly via the ND instrument instance, so the user
+  // arms a runway + exit by picking from a LIST (surfaced as synthetic buttons in scrape).
+  // Live-verified at VCBI: armed RWY 22 (LDA 3351) + exit E (2835 m) with no map click.
+  // FeatureType enum (fbw-common/.../shared/src/amdb.ts): RunwayThreshold=2,
+  // RunwayElement-centerline (the runway label's associatedFeature)=4, RunwayExitLine=19.
+  // =====================================================================
+  A.FT_RWY_CENTERLINE = 4;
+  A.FT_RWY_THRESHOLD = 2;
+  A.FT_RWY_EXIT_LINE = 19;
+
+  A.oanc = function () {
+    try {
+      var nd = document.querySelector("a380x-nd");
+      return (nd && nd.fsInstrument && nd.fsInstrument.oansRef && nd.fsInstrument.oansRef.instance) || null;
+    } catch (e) { return null; }
+  };
+
+  A.btvReady = function () {
+    var o = A.oanc();
+    return !!(o && o.btvUtils && o.data && o.data.features && o.labelManager && o.labelManager.labels);
+  };
+
+  A._labelsByFeat = function (feattype, runwayPattern) {
+    var o = A.oanc(); if (!o || !o.labelManager) return [];
+    var L = o.labelManager.labels, seen = {}, out = [];
+    for (var i = 0; i < L.length; i++) {
+      var f = L[i].associatedFeature, t = L[i].text;
+      if (f && f.properties.feattype === feattype && t && (!runwayPattern || /^[0-9]{1,2}[LRC]?$/.test(t)) && !seen[t]) {
+        seen[t] = 1; out.push(t);
+      }
+    }
+    return out.sort();
+  };
+
+  A.btvRunwayList = function () { return A._labelsByFeat(A.FT_RWY_CENTERLINE, true); };
+  A.btvExitList = function () { return A._labelsByFeat(A.FT_RWY_EXIT_LINE, false); };
+
+  A._findLabel = function (feattype, name) {
+    var o = A.oanc(); if (!o || !o.labelManager) return null;
+    var L = o.labelManager.labels;
+    for (var i = 0; i < L.length; i++) {
+      var f = L[i].associatedFeature;
+      if (f && f.properties.feattype === feattype && L[i].text === name) return L[i];
+    }
+    return null;
+  };
+
+  A.armBtvRunway = function (name) {
+    var o = A.oanc(); if (!o || !o.btvUtils) return "OANS not ready";
+    var rl = A._findLabel(A.FT_RWY_CENTERLINE, name), thr = null, feats = o.data.features;
+    for (var k = 0; k < feats.length; k++) {
+      if (feats[k].properties.feattype === A.FT_RWY_THRESHOLD && feats[k].properties.idthr === name) { thr = feats[k]; break; }
+    }
+    if (!rl || !thr) return "runway " + name + " not found on map";
+    try {
+      o.btvUtils.selectRunwayFromOans((o.dataAirportIcao.get() || "") + name, rl.associatedFeature, thr);
+      return "Armed BTV runway " + name;
+    } catch (e) { return "ERR " + e; }
+  };
+
+  A.armBtvExit = function (name) {
+    var o = A.oanc(); if (!o || !o.btvUtils) return "OANS not ready";
+    if (!o.btvUtils.btvRunway || o.btvUtils.btvRunway.get() == null) return "Select a BTV runway first";
+    var ex = A._findLabel(A.FT_RWY_EXIT_LINE, name);
+    if (!ex) return "exit " + name + " not found on map";
+    try {
+      o.btvUtils.selectExitFromOans(name, ex.associatedFeature);
+      var got = o.btvUtils.btvExit.get();
+      return got ? ("Armed BTV exit " + got) : ("Exit " + name + " not valid for this runway (wrong side or too close to threshold)");
+    } catch (e) { return "ERR " + e; }
+  };
+
+  A.clearBtv = function () {
+    var o = A.oanc(); if (!o || !o.btvUtils) return "OANS not ready";
+    try { o.btvUtils.clearSelection(); return "BTV selection cleared"; } catch (e) { return "ERR " + e; }
+  };
+
+  A.btvStatusLine = function () {
+    var o = A.oanc(); if (!o || !o.btvUtils || !o.btvUtils.btvRunway) return "BTV: not available";
+    var rwy = o.btvUtils.btvRunway.get();
+    if (rwy == null) return "BTV: no runway selected";
+    var exit = o.btvUtils.btvExit ? o.btvUtils.btvExit.get() : null;
+    var dist = o.btvUtils.btvExitDistance ? Math.round(o.btvUtils.btvExitDistance.get()) : null;
+    return "BTV: runway " + rwy + (exit ? (", exit " + exit + (dist != null ? (", " + dist + " m from threshold") : "")) : ", no exit selected");
+  };
+
+  // Synthetic accessible BTV controls injected into the scrape (idx >= 9000 so they never
+  // collide with the stamped DOM controls). clickElement() routes these to the methods above.
+  A._btvCmd = {};
+  A._btvTextLine = function (t) {
+    return { top: 0, left: 0, idx: 0, kind: "text", tag: "div", role: "", text: t, value: "", controlType: "", clickable: false, level: 0, live: "", disabled: false, options: [] };
+  };
+  A._btvButton = function (idx, t) {
+    return { top: 0, left: 0, idx: idx, kind: "button", tag: "div", role: "", text: t, value: "", controlType: "", clickable: true, level: 0, live: "", disabled: false, options: [] };
+  };
+  A.btvControls = function () {
+    A._btvCmd = {};
+    if (!A.btvReady()) return [];
+    var out = [A._btvTextLine("===== BTV exit selection (accessible) ====="), A._btvTextLine(A.btvStatusLine())];
+    var bi = 9000, i;
+    var rwys = A.btvRunwayList();
+    for (i = 0; i < rwys.length; i++) { A._btvCmd[bi] = { k: "rwy", n: rwys[i] }; out.push(A._btvButton(bi, "Arm BTV runway " + rwys[i])); bi++; }
+    var o = A.oanc();
+    if (o && o.btvUtils && o.btvUtils.btvRunway && o.btvUtils.btvRunway.get() != null) {
+      var exits = A.btvExitList();
+      for (i = 0; i < exits.length; i++) { A._btvCmd[bi] = { k: "exit", n: exits[i] }; out.push(A._btvButton(bi, "Arm BTV exit " + exits[i])); bi++; }
+      A._btvCmd[bi] = { k: "clear" }; out.push(A._btvButton(bi, "Clear BTV selection")); bi++;
+    }
+    return out;
+  };
+  A.runBtvCmd = function (index) {
+    var c = A._btvCmd[index];
+    if (!c) return "missing";
+    if (c.k === "rwy") return A.armBtvRunway(c.n);
+    if (c.k === "exit") return A.armBtvExit(c.n);
+    if (c.k === "clear") return A.clearBtv();
+    return "missing";
   };
 
   A.ping = function () { return "MSFSBA_OANS_OK"; };
