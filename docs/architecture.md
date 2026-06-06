@@ -378,23 +378,26 @@ Marker interfaces (no methods) used for type checking with the `is` operator:
 
 ```
 Forms/
-├── A32NX/                          # FlyByWire A320 specific forms
-│   ├── PFDForm.cs                 # Primary Flight Display
-│   ├── NavigationDisplayForm.cs   # ND/EFIS display
-│   ├── ECAMDisplayForm.cs         # Engine/Warning Display
-│   ├── StatusDisplayForm.cs       # ECAM STATUS page
-│   └── FuelPayloadDisplayForm.cs  # Fuel and payload
-├── RunwayTeleportForm.cs          # Universal (all aircraft)
-├── GateTeleportForm.cs            # Universal (all aircraft)
-├── AnnouncementSettingsForm.cs    # Universal (all aircraft)
-├── WeatherRadarForm.cs           # Weather radar, SIGMETs, winds aloft
-└── TcasForm.cs                   # TCAS traffic display
+├── FlyByWireA320/                  # FBW A32NX forms (MCDU, monitor manager)
+├── FBWA320/                        # FBW A32NX FCU value-entry windows (Speed/Heading/Altitude/VS/AP/Baro)
+├── FBWA380/                        # FBW A380X forms (FCU windows, MCDU/MFD, flyPad EFB, RMP, OANS, ECL, monitor manager, ...)
+├── FenixA320/                      # Fenix A320 forms
+├── PMDG737/  PMDG777/  PMDGEFB/    # PMDG forms + the shared accessible EFB
+├── HS787/                          # HorizonSim 787 FMC form
+├── RunwayTeleportForm.cs           # Universal (all aircraft)
+├── GateTeleportForm.cs             # Universal (all aircraft)
+├── AnnouncementSettingsForm.cs     # Universal (all aircraft)
+├── FbwEwdWindow.cs                 # FBW E/WD pop-out window (A32NX + A380X)
+├── WeatherRadarForm.cs             # Weather radar, SIGMETs, winds aloft
+└── TcasForm.cs                     # TCAS traffic display
 ```
+
+> **Note on the FlyByWire jets:** the A32NX and A380X no longer have dedicated PFD / ND / ECAM / STATUS / ISIS display *windows* — those forms were removed. Their values are read from the accessible status-box **panels** (Sections/Panels tree); the one exception is the **E/WD**, which keeps a pop-out window (`FbwEwdWindow`, `Alt`+`E`). The window-based display pattern below still applies to the Fenix and PMDG aircraft.
 
 ### Namespace Convention
 
-- Aircraft-specific forms: `MSFSBlindAssist.Forms.A32NX`
-- Future aircraft: `MSFSBlindAssist.Forms.B737`, `MSFSBlindAssist.Forms.C172`, etc.
+- Aircraft-specific forms live in a per-aircraft subfolder and matching namespace, e.g. `MSFSBlindAssist.Forms.FlyByWireA320`, `MSFSBlindAssist.Forms.FBWA380`, `MSFSBlindAssist.Forms.FenixA320`, `MSFSBlindAssist.Forms.PMDG777`
+- Future aircraft: add a new subfolder, e.g. `MSFSBlindAssist.Forms.B737`
 - Universal forms: `MSFSBlindAssist.Forms`
 
 ### Menu Visibility Control
@@ -468,7 +471,7 @@ public class Boeing737Definition : BaseAircraftDefinition,
 When moving existing forms to subfolders, use `git mv` to preserve commit history:
 
 ```bash
-git mv MSFSBlindAssist/Forms/PFDForm.cs MSFSBlindAssist/Forms/A32NX/PFDForm.cs
+git mv MSFSBlindAssist/Forms/SomeForm.cs MSFSBlindAssist/Forms/B737/SomeForm.cs
 ```
 
 ## Other Core Components

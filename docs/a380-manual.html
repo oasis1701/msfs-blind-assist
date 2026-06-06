@@ -103,7 +103,7 @@
   <li>Press <kbd>]</kbd> (right bracket) to enter <strong>OUTPUT mode</strong> — reading things aloud (altitude, speed, displays, distances).</li>
   <li>Press <kbd>[</kbd> (left bracket) to enter <strong>INPUT mode</strong> — doing things (opening the MCDU/flyPad, autopilot, teleports, taxi).</li>
   <li><kbd>Escape</kbd> exits the active mode. Pressing the same bracket again cancels it.</li>
-  <li>A few chords are <strong>direct</strong> (no bracket needed): <kbd>Ctrl</kbd>+<kbd>M</kbd>, <kbd>Ctrl</kbd>+<kbd>E</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>, <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>.</li>
+  <li>A few chords are <strong>direct</strong> (no bracket needed): <kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> (focus the Sections list / Panels list / Status field). Almost everything else needs OUTPUT or INPUT first — including <kbd>Ctrl</kbd>+<kbd>M</kbd> (Monitor Manager), <kbd>Ctrl</kbd>+<kbd>E</kbd> (ECAM call-outs) and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (OANS), which are OUTPUT-mode chords (press <kbd>]</kbd> first).</li>
 </ul>
 <p>The full list is in <a href="#part13">Part 13</a>. Throughout this manual, where a shortcut needs a mode it is noted as "(OUTPUT)" or "(INPUT)".</p>
 
@@ -112,15 +112,12 @@
 <tr><th>Window</th><th>Open with</th><th>What it is</th></tr>
 <tr><td>MCDU / MFD</td><td>(INPUT) <kbd>Shift</kbd>+<kbd>M</kbd></td><td>The FMS pages as a flat list — flight planning lives here (<a href="#part4">Part 4</a>).</td></tr>
 <tr><td>flyPad / EFB</td><td>(INPUT) <kbd>Shift</kbd>+<kbd>T</kbd></td><td>The tablet — loading, fuel, ground services, charts, settings, checklists (<a href="#part6">Part 6</a>).</td></tr>
-<tr><td>Airport Map &amp; BTV (OANS)</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport map data and Brake-To-Vacate exit selection (<a href="#part11">Part 11</a>).</td></tr>
-<tr><td>System Display (ECAM/STATUS)</td><td>(OUTPUT) display keys</td><td>The SD pages read aloud (<a href="#part8">Part 8</a>).</td></tr>
-<tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings.</td></tr>
-<tr><td>Navigation Display</td><td>(OUTPUT) ND key</td><td>ND mode/range, the next waypoint, cross-track, ILS deviation.</td></tr>
-<tr><td>Standby Instruments (ISIS)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>I</kbd></td><td>Backup attitude, heading, speed, altitude, baro.</td></tr>
+<tr><td>Airport Map &amp; BTV (OANS)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport map data and Brake-To-Vacate exit selection (<a href="#part11">Part 11</a>).</td></tr>
+<tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings (<a href="#part8">Part 8</a>).</td></tr>
 <tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> is the static text checklist (<a href="#part7">Part 7</a>).</td></tr>
-<tr><td>Monitor Manager</td><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
+<tr><td>Monitor Manager</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
 </table>
-<p>In every display window, <kbd>F5</kbd> refreshes the reading and <kbd>Escape</kbd> closes it. The PFD/ND/ISIS windows also offer a "live scrape" with <kbd>F6</kbd>.</p>
+<p>In a pop-out window (E/WD, MCDU, flyPad, OANS, RMP, ECL), <kbd>F5</kbd> refreshes the reading and <kbd>Escape</kbd> closes it. The PFD, ND, ISIS and System Display pages do <strong>not</strong> have their own windows — they are read from the panel tree (see <a href="#part8">Part 8</a>); only the E/WD keeps a pop-out window.</p>
 
 <h3>The panel tree</h3>
 <p>Press <kbd>Ctrl</kbd>+<kbd>1</kbd> to focus the <strong>Sections</strong> list and <kbd>Ctrl</kbd>+<kbd>2</kbd> for the <strong>Panels</strong> list. Together they expose every cockpit system as a browsable tree. Many panels include a read-only "Status Display" field that lists live readouts one per line (press the panel's Refresh, or re-open it, to update). The sections are: Overhead, Glareshield, Instrument, Pedestal, Ground Services, and Displays. The settable controls inside them are catalogued in <a href="#part10">Part 10</a>.</p>
@@ -294,18 +291,19 @@
 <!-- ===================================================================== -->
 <h2 id="part8">8. Displays: PFD, ND, ISIS, System Display, E/WD</h2>
 
-<h3>PFD (Primary Flight Display)</h3>
-<p>The PFD window reads the <strong>Flight Mode Annunciator (FMA)</strong> — the autoflight modes — plus the approach capability and any PFD messages. The FMA is the most important readout in flight; MSFSBA also announces FMA changes automatically (see <a href="#part9">Part 9</a>). Tape values (speed, altitude, attitude) come from instruments and have their own hotkeys.</p>
+<p>The PFD, ND, ISIS and the System Display read from the <strong>panel tree</strong> (<kbd>Ctrl</kbd>+<kbd>2</kbd>), not from pop-out windows — each one's "Status Display" field lists its live values one per line (press the panel's Refresh, or re-open it, to update). The dedicated PFD/ND/ISIS/SD windows were removed; only the <strong>E/WD</strong> keeps its own window (<kbd>Alt</kbd>+<kbd>E</kbd>). The most important values from these displays also have their own quick hotkeys, and the FMA, ECAM warnings and other key changes are announced automatically (<a href="#part9">Part 9</a>).</p>
 
-<h3>Navigation Display (ND)</h3>
-<p>Reads the ND mode (Rose ILS/VOR/Nav, Arc, Plan) and range, the active "TO" waypoint (ident, distance, bearing, ETA), cross-track error, RNP, and localizer/glideslope deviation.</p>
+<h3>PFD (Primary Flight Display) — Displays section, "PFD" panel</h3>
+<p>The PFD panel reads the <strong>Flight Mode Annunciator (FMA)</strong> — the autoflight modes — plus the approach capability and any PFD messages. The FMA is the most important readout in flight; MSFSBA also announces FMA changes automatically (see <a href="#part9">Part 9</a>). Tape values (speed, altitude, attitude) come from instruments and have their own hotkeys.</p>
 
-<h3>Standby Instruments (ISIS)</h3>
-<p>Open with (OUTPUT) <kbd>Alt</kbd>+<kbd>I</kbd>: standby attitude (pitch and bank), magnetic heading, indicated airspeed and Mach, indicated altitude with its baro reference (STD or QNH and the setting), and the LS overlay state.</p>
+<h3>Navigation Display (ND) — Displays section, "ND" panel</h3>
+<p>Reads the ND mode (Rose ILS/VOR/Nav, Arc, Plan) and range, the active "TO" waypoint (ident, distance, bearing, ETA), cross-track error, RNP, and localizer/glideslope deviation. The active "TO" waypoint also has its own quick key, (OUTPUT) <kbd>Ctrl</kbd>+<kbd>W</kbd>.</p>
+
+<h3>Standby Instruments (ISIS) — Instrument section, "ISIS" panel</h3>
+<p>The ISIS panel reads standby attitude (pitch and bank), magnetic heading, indicated airspeed and Mach, indicated altitude with its baro reference (STD or QNH and the setting), and the LS overlay state.</p>
 
 <h3>System Display (SD) — the ECAM system pages</h3>
-<p>The SD window reads any of the A380's <strong>16 system pages</strong>: ENG, APU, BLEED, COND (air conditioning), PRESS (cabin pressure), DOOR, ELEC AC, ELEC DC, FUEL, WHEEL (wheels/brakes), HYD, F/CTL (flight controls), C/B (circuit breakers), CRZ (cruise), STATUS, VIDEO. Pick a page from the "SD page" combo and it drives the real display there, then reads it (per-tank fuel across the 11 tanks, gross weight, CG, temperatures, pressures, door states, engine parameters, and so on). If the live display is briefly unreachable it falls back to a direct sensor decode.</p>
-<p><strong>Reading an SD page straight from the panel (no window).</strong> The <strong>ECAM Control Panel</strong> (Pedestal) also has a <strong>System Display Page</strong> combo. Selecting a page there both switches the real SD <em>and</em> reads that page's decoded content aloud — so you can check any system from the panel without opening the SD window. The values read in engineering form, e.g. ENG: "N2 64.8, N3 64.1, fuel flow 810, oil quantity / temperature / pressure per engine"; BLEED: pack temperatures, bleed pressures, valve states; HYD: "GREEN 5100 PSI, YELLOW 5100 PSI", pump states. The graphical pages (Wheel/Fuel/Door) read their values too, though their on-screen schematic layout is flatter in text. Don't open the SD window and use the panel combo at the same time — they share one connection to the display.</p>
+<p>Read an SD page from the <strong>ECAM Control Panel</strong> (Pedestal): its <strong>System Display Page</strong> combo lists the A380's <strong>16 system pages</strong> — ENG, APU, BLEED, COND (air conditioning), PRESS (cabin pressure), DOOR, ELEC AC, ELEC DC, FUEL, WHEEL (wheels/brakes), HYD, F/CTL (flight controls), C/B (circuit breakers), CRZ (cruise), STATUS, VIDEO. Selecting a page both switches the real SD <em>and</em> reads that page's decoded content aloud (per-tank fuel across the 11 tanks, gross weight, CG, temperatures, pressures, door states, engine parameters, and so on); if the live display is briefly unreachable it falls back to a direct sensor decode. The values read in engineering form, e.g. ENG: "N2 64.8, N3 64.1, fuel flow 810, oil quantity / temperature / pressure per engine"; BLEED: pack temperatures, bleed pressures, valve states; HYD: "GREEN 5100 PSI, YELLOW 5100 PSI", pump states. The graphical pages (Wheel/Fuel/Door) read their values too, though their on-screen schematic layout is flatter in text.</p>
 
 <h3>E/WD (Engine/Warning Display)</h3>
 <p>Open with (OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd>: per-engine throttle/N1/EGT/fuel-flow, the memo lines, and the active warnings with their ECAM action items. <kbd>Alt</kbd>+<kbd>E</kbd> also speaks the current warnings immediately. ECAM warnings and memos are also announced automatically as they appear. You can toggle automatic E/WD call-outs with <kbd>Ctrl</kbd>+<kbd>E</kbd>.</p>
@@ -442,14 +440,13 @@
 <table>
 <tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>Ctrl</kbd>+<kbd>2</kbd> / <kbd>Ctrl</kbd>+<kbd>3</kbd></td><td>Focus the Sections list / Panels list / Status Display field of the current panel. <kbd>Ctrl</kbd>+<kbd>3</kbd> also refreshes the Status Display if it's empty, so you land on live status. (These work when INPUT mode is off; in INPUT mode the same chords are the FCU Heading / Altitude / Speed knob pulls.)</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Monitor Manager (choose what auto-announces)</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Toggle ECAM E/WD call-outs</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport Map &amp; BTV (OANS) window</td></tr>
 </table>
 
 <h3>OUTPUT mode (press <kbd>]</kbd> first) — readouts</h3>
 <table>
 <tr><th>Key</th><th>Action</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Monitor Manager (choose what auto-announces) / Toggle ECAM E/WD call-outs</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport Map &amp; BTV (OANS) window</td></tr>
 <tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL (in metres when the FCU MTRS button is on — see <a href="#part9">Part 9</a>)</td></tr>
 <tr><td><kbd>S</kbd> / <kbd>T</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>IAS / TAS / Ground Speed / Mach</td></tr>
 <tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>
@@ -458,11 +455,18 @@
 <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Last landing rate (touchdown vertical speed, fpm) / last landing peak g-force</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>H</kbd> / <kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>Shift</kbd>+<kbd>V</kbd></td><td>Read FCU Heading / Speed / Altitude / Vertical Speed</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>6</kbd></td><td>Characteristic speeds: Green Dot, S, F, VLS, VS, VFE-next</td></tr>
+<tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Total fuel on board, pounds / kilograms</td></tr>
+<tr><td><kbd>W</kbd> / <kbd>Shift</kbd>+<kbd>W</kbd></td><td>Gross weight + centre of gravity, pounds / kilograms</td></tr>
+<tr><td><kbd>L</kbd> / <kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>B</kbd></td><td>Flaps / Landing gear / Altimeter setting (baro)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd> / <kbd>N</kbd></td><td>Approach capability (CAT rating) / NAV radio tuning</td></tr>
+<tr><td><kbd>1</kbd>…<kbd>5</kbd></td><td>Read waypoint tracking slots 1–5 (set from the Fix tracking window, INPUT <kbd>Shift</kbd>+<kbd>F</kbd>)</td></tr>
 <tr><td><kbd>I</kbd> / <kbd>O</kbd> / <kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>X</kbd> / <kbd>C</kbd></td><td>Wind / Outside Temp / Local Time / Zulu Time / Squawk / Nearest City</td></tr>
-<tr><td><kbd>Shift</kbd>+<kbd>T</kbd></td><td>Toggle trim announcements</td></tr>
-<tr><td><kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>Announce TCAS traffic / Show TCAS window</td></tr>
-<tr><td><kbd>Shift</kbd>+<kbd>W</kbd> / <kbd>Shift</kbd>+<kbd>M</kbd></td><td>Weather radar / METAR report</td></tr>
-<tr><td><kbd>Alt</kbd>+<kbd>E</kbd> / <kbd>Alt</kbd>+<kbd>I</kbd></td><td>Open E/WD window / Standby (ISIS) window</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>L</kbd> / <kbd>Shift</kbd>+<kbd>T</kbd></td><td>Location Info / Toggle trim announcements</td></tr>
+<tr><td><kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>R</kbd> / <kbd>Alt</kbd>+<kbd>G</kbd></td><td>Announce TCAS traffic / Show TCAS window / Announce nearest ground traffic</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>M</kbd></td><td>Weather radar / METAR report</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>B</kbd> / <kbd>Shift</kbd>+<kbd>E</kbd></td><td>SimBrief briefing / Electronic Flight Bag (route viewer)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td><td>Cold Temperature Altitude Correction (offline calculator)</td></tr>
+<tr><td><kbd>Alt</kbd>+<kbd>E</kbd></td><td>Open the E/WD window (engine row + memos + active warnings)</td></tr>
 <tr><td><kbd>Alt</kbd>+<kbd>D</kbd></td><td>Describe Scene (AI)</td></tr>
 <tr><td><kbd>Y</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> / <kbd>Alt</kbd>+<kbd>Y</kbd></td><td>Taxi status / Repeat taxi instruction / Where am I</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> / <kbd>Ctrl</kbd>+<kbd>T</kbd> / <kbd>Ctrl</kbd>+<kbd>D</kbd> / <kbd>Ctrl</kbd>+<kbd>I</kbd></td><td>Hand-fly mode / Visual guidance / Takeoff assist / Distance to selected runway / ILS guidance</td></tr>

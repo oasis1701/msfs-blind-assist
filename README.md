@@ -27,14 +27,15 @@ This application uses Windows standard controls, screen reader announcements and
 
 ### FlyByWire Airbus A320neo
 
-- Important! The EFB (Electronic Flight Bag) is not accessible. You need mouse coordinates to be able to load your flight, payload and fuel. We hope the FBW team exposes their EFB to SimBridge, like the MCDU.
-- Panels fully supported, with some non-critical switches missing.
-- All upper ECAM messages readable, thanks to FBW's exposed variables
-- FMA (Flight Mode Annunciator) announcements
-- Text-based navigation display
-- All FCU controls accessible
-- Fuel, payload, weight and balance details fully supported
-- MCDU accessible through FBW SimBridge
+Full accessibility support for the free FlyByWire A32NX.
+- Panels fully supported across the overhead, glareshield, main instrument and pedestal sections, with read-only status fields that list live system readouts.
+- All upper ECAM (E/WD) messages, cautions and memos readable and auto-announced, thanks to FBW's exposed variables; FMA (Flight Mode Annunciator) announcements.
+- The PFD, ND, ISIS and System Display pages are read through the accessible panel status boxes; the E/WD also opens as a pop-out window (Alt+E).
+- All FCU controls accessible, with dedicated value-entry windows (speed, heading, altitude, V/S, autopilot, altimeter) and knob push/pull.
+- Fuel, payload, weight and balance details fully supported.
+- MCDU accessible directly through FBW's SimBridge for full FMS programming.
+- Accessible flyPad EFB (Electronic Flight Bag), opened with Shift+T: the live flyPad tablet is rendered as a browsable document you read and operate with your screen reader — Dashboard, Ground Services, Payload, Fuel, Settings, Navigraph, Checklists and more. (This supersedes the old mouse-coordinate workaround — the EFB is now fully accessible.)
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, hand-fly and visual landing guidance, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 
 ### Fenix A320 CEO
 
