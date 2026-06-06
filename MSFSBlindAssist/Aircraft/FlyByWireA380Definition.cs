@@ -627,6 +627,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Btn("PUSH_OVHD_CALLS_FWD", "Call Forward");
         Btn("PUSH_OVHD_CALLS_AFT", "Call Aft");
         Btn("PUSH_OVHD_CALLS_MECH", "Call Mechanic");
+        // "Signal Cabin Ready" — discoverable action button. A32NX_CABIN_READY is a
+        // READ-ONLY FWS status (a direct var write is IGNORED by the sim — live-verified:
+        // wrote 0, it stayed 1). The real cockpit trigger is a CALLS pushbutton: FwsCore
+        // sets CABIN_READY=1 whenever CALLS ALL/FWD/AFT is pressed. So this button pulses
+        // PUSH_OVHD_CALLS_ALL via a dedicated HandleUIVariableSet branch (NOT added to
+        // _momentaryButtons — that generic path would pulse the synthetic key itself).
+        // It replaces the old dead "Cabin Ready" combo that used to sit in p["Calls"]
+        // (a settable-looking box whose write did nothing). The read-only status stays in
+        // d["Cockpit"] + the A32NX_CABIN_READY Mon auto-announce.
+        vars["A380X_MSFSBA_SIGNAL_CABIN_READY"] = new SimVarDefinition
+        {
+            Name = "A380X_MSFSBA_SIGNAL_CABIN_READY", DisplayName = "Signal Cabin Ready",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
+            RenderAsButton = true
+        };
 
         // ---- SIGNS ----
         // Seat-belt sign: the REAL state is the stock simvar CABIN SEATBELTS ALERT
@@ -2700,7 +2717,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Calls"] = new List<string>
         {
             "A32NX_CALLS_EMER_ON", "A32NX_EVAC_COMMAND_TOGGLE", "A32NX_EVAC_CAPT_TOGGLE",
-            "A32NX_CABIN_READY",
+            // "Signal Cabin Ready" action button (pulses CALLS ALL → FWS sets CABIN_READY).
+            // Replaces the old read-only A32NX_CABIN_READY combo that did nothing when set;
+            // the live status stays the read-only readout in d["Cockpit"].
+            "A380X_MSFSBA_SIGNAL_CABIN_READY",
             "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
         };
         // UNIFIED Cockpit panel — the cockpit door, the sliding windows + shades, and the
@@ -4124,6 +4144,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_seatButtonMap.TryGetValue(varKey, out var seatBtn) && value > 0.5)
         {
             ToggleSeatMotor(seatBtn.PosVar, seatBtn.Dir, simConnect, announcer);
+            return true;
+        }
+        // "Signal Cabin Ready" — A32NX_CABIN_READY can't be written directly (FWS-owned,
+        // verified). FwsCore sets it to 1 while a CALLS pushbutton is pressed, so pulse
+        // CALLS ALL (1→0). The read-only A32NX_CABIN_READY Mon then auto-announces
+        // "Cabin Ready: Ready" once the FWS flips it. Handled here (not via the generic
+        // _momentaryButtons pulse) so the real CALLS var is pulsed, not the synthetic key.
+        if (varKey == "A380X_MSFSBA_SIGNAL_CABIN_READY")
+        {
+            if (value > 0.5)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_OVHD_CALLS_ALL)");
+                _ = Task.Run(async () =>
+                {
+                    try { await Task.Delay(250); simConnect.ExecuteCalculatorCode("0 (>L:PUSH_OVHD_CALLS_ALL)"); } catch { }
+                });
+                announcer.Announce("Cabin ready signalled");
+            }
             return true;
         }
         // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine

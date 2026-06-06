@@ -83,19 +83,36 @@ test('POSITION/IRS: sibling-label data rows compose as "LABEL: value unit"', () 
   assertSelectable('irs');
 });
 
-// SURV CONTROLS: each radio / toggle is prefixed with its column header so a blind
-// pilot knows which system it belongs to ("TCAS: TA/RA" vs "XPDR: AUTO"). Captured live.
-test('SURV CONTROLS: radios + toggles carry their system header, stay selectable', () => {
+// SURV CONTROLS: the page lays XPDR/TCAS side-by-side and WXR ELEVN/TILT beside the
+// WXR grid, so a flat geometric read interleaves unrelated systems. buildSurvControls
+// re-groups it into contiguous, self-labelled blocks each led by a heading
+// (XPDR → TCAS → WXR → TAWS → SURV); the headerless TCAS NORM/ABV/BLW range becomes
+// "TCAS display: …"; and SurvButton toggles read their LIVE state ("TERR SYS: ON",
+// not the ambiguous "OFF: ON"). Captured live. (Supersedes the older "headers owned,
+// never bare" behaviour — every group now intentionally LEADS with its heading.)
+test('SURV CONTROLS: logically grouped, headed, self-labelled, selectable', () => {
   const j = joined('surv_controls');
-  assert.match(j, /(^|\n)TCAS: TA\/RA(\n|$)/, 'TCAS mode radio not header-prefixed');
-  assert.match(j, /(^|\n)XPDR: AUTO(\n|$)/, 'XPDR mode radio not header-prefixed');
-  assert.match(j, /(^|\n)ELEVN\/TILT: AUTO(\n|$)/, 'ELEVN/TILT radio not header-prefixed');
-  assert.match(j, /(^|\n)WXR: AUTO(\n|$)/, 'WXR toggle not header-prefixed');
-  assert.match(j, /(^|\n)MODE: WX(\n|$)/, 'MODE toggle not header-prefixed');
-  assert.match(j, /(^|\n)TERR SYS: /, 'TERR SYS toggle not header-prefixed');
-  // the XPDR/TCAS header cells are owned → not also read as bare lines
-  assert.doesNotMatch(j, /(^|\n)XPDR(\n|$)/, 'XPDR header double-read as a bare line');
-  assert.doesNotMatch(j, /(^|\n)TCAS(\n|$)/, 'TCAS header double-read as a bare line');
+  // each group leads with its heading line
+  assert.match(j, /(^|\n)XPDR(\n|$)/, 'XPDR group heading missing');
+  assert.match(j, /(^|\n)TCAS(\n|$)/, 'TCAS group heading missing');
+  assert.match(j, /(^|\n)WXR(\n|$)/, 'WXR group heading missing');
+  assert.match(j, /(^|\n)TAWS(\n|$)/, 'TAWS group heading missing');
+  // controls stay self-labelled with their system
+  assert.match(j, /(^|\n)XPDR: AUTO(\n|$)/, 'XPDR mode radio lost its label');
+  assert.match(j, /(^|\n)TCAS: TA\/RA(\n|$)/, 'TCAS mode radio lost its label');
+  assert.match(j, /(^|\n)ELEVN\/TILT: AUTO(\n|$)/, 'ELEVN/TILT radio lost its label');
+  assert.match(j, /(^|\n)WXR: AUTO(\n|$)/, 'WXR toggle lost its label');
+  // headerless TCAS vertical-range column is now qualified
+  assert.match(j, /(^|\n)TCAS display: NORM(\n|$)/, 'TCAS NORM/ABV/BLW range not relabelled');
+  // toggles read their LIVE state, not the ambiguous "OFF: ON"
+  assert.match(j, /(^|\n)TERR SYS: (ON|OFF)(\n|$)/, 'TERR SYS toggle not reading live state');
+  assert.match(j, /(^|\n)ALT RPTG: (ON|OFF)(\n|$)/, 'ALT RPTG toggle not reading live state');
+  assert.doesNotMatch(j, /: OFF: ON(\n|$)/, 'a SurvButton still reads the ambiguous "OFF: ON"');
+  // groups are CONTIGUOUS and in logical order (XPDR → TCAS → WXR → TAWS)
+  const at = (re) => j.search(re);
+  assert.ok(at(/(^|\n)XPDR(\n|$)/) < at(/(^|\n)TCAS(\n|$)/), 'XPDR group not before TCAS');
+  assert.ok(at(/(^|\n)TCAS(\n|$)/) < at(/(^|\n)WXR(\n|$)/), 'TCAS group not before WXR');
+  assert.ok(at(/(^|\n)WXR(\n|$)/) < at(/(^|\n)TAWS(\n|$)/), 'WXR group not before TAWS');
   // selectability invariant preserved (every radio/surv/button keeps its idx)
   assertSelectable('surv_controls');
 });
