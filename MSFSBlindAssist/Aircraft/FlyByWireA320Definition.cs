@@ -610,17 +610,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
         },
+        // ENG 2 PUMP feeds the YELLOW circuit (Eng 1 = green, Eng 2 = yellow; blue has no
+        // engine-driven pump). FBW binds A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO to "yellowPumpPBOn"
+        // (Hyd.tsx). AutoOffFaultPushButton: 0 = Off, 1 = Auto.
         ["A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO",
-            DisplayName = "Blue Eng Pump",
+            DisplayName = "Yellow Eng Pump",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
         },
         ["A32NX_OVHD_HYD_ENG_2_PUMP_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OVHD_HYD_ENG_2_PUMP_PB_HAS_FAULT",
-            DisplayName = "Blue Eng Pump Fault",
+            DisplayName = "Yellow Eng Pump Fault",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
         },
@@ -638,12 +641,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
         },
+        // YELLOW ELEC PUMP is the ONE pump on this panel built as an AutoOnFaultPushButton in the
+        // FBW source (mod.rs: yellow_epump_push_button), not AutoOffFaultPushButton like the rest.
+        // It shares the _PB_IS_AUTO var, but the non-auto state is ON, not OFF: is_on() = !is_auto,
+        // and the controller pressurises the pump exactly when is_on() (mod.rs ~L3310). So 0 = On,
+        // 1 = Auto (auto only pressurises for cargo-door ops). Do NOT relabel 0 as "Off" — that was
+        // the bug where selecting "Off" actually switched the pump ON.
         ["A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
             DisplayName = "Yellow Elec Pump",
             Type = SimConnect.SimVarType.LVar,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Auto" }
         },
         ["A32NX_OVHD_HYD_EPUMPY_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
         {
