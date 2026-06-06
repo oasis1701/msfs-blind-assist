@@ -107,9 +107,9 @@ public sealed class FBWA380OansForm : Form
         _controls.KeyDown += OnControlsKeyDown;
         _controls.DoubleClick += (_, _) => ActivateSelectedControl();
 
-        var refresh = new Button { Text = "Re&fresh", Location = new Point(12, 534), Size = new Size(100, 30), AccessibleName = "Refresh" };
-        refresh.Click += (_, _) => Refresh2();
-        var close = new Button { Text = "Close", Location = new Point(120, 534), Size = new Size(100, 30), AccessibleName = "Close" };
+        // No Refresh BUTTON — the window auto-updates live on every state change (silently, with
+        // caret/selection preserved). F5 is the manual re-poll (handled in ProcessCmdKey).
+        var close = new Button { Text = "Close", Location = new Point(12, 534), Size = new Size(100, 30), AccessibleName = "Close" };
         close.Click += (_, _) => Hide();
 
         Controls.AddRange(new Control[]
@@ -117,7 +117,7 @@ public sealed class FBWA380OansForm : Form
             _status, readoutLabel, _readout, btvLabel,
             rwyLabel, _runwayCombo, _armRunwayBtn, exitLabel, _exitCombo, _armExitBtn, _clearBtn,
             searchLabel, _searchBox, _searchBtn,
-            listLabel, _controls, refresh, close
+            listLabel, _controls, close
         });
 
         int t = 1;
@@ -125,7 +125,7 @@ public sealed class FBWA380OansForm : Form
         _runwayCombo.TabIndex = t++; _armRunwayBtn.TabIndex = t++;
         _exitCombo.TabIndex = t++; _armExitBtn.TabIndex = t++; _clearBtn.TabIndex = t++;
         _searchBox.TabIndex = t++; _searchBtn.TabIndex = t++;
-        _controls.TabIndex = t++; refresh.TabIndex = t++; close.TabIndex = t;
+        _controls.TabIndex = t++; close.TabIndex = t;
     }
 
     /// <summary>Show the window (lazy creation handled by the caller); like RMP's ShowForm.</summary>
@@ -300,6 +300,11 @@ public sealed class FBWA380OansForm : Form
     // the armed value when one exists (so the combo always shows what's actually armed).
     private static void SyncCombo(ComboBox combo, List<string> options, string? armed)
     {
+        // NEVER mutate a combo the user is currently in — a live refresh must not move the
+        // selection (or rebuild the items) under the screen-reader cursor. It catches up the
+        // moment focus leaves; the readout already shows the true armed state meanwhile.
+        if (combo.Focused || combo.DroppedDown) return;
+
         bool same = combo.Items.Count == options.Count;
         if (same)
             for (int i = 0; i < options.Count; i++)
