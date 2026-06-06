@@ -3416,6 +3416,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _tlaBaselineDone;   // suppress the startup "thrust 1/2/3/4 / all" spam
     private readonly HashSet<string> _rowRopActive = new();   // active ROW/ROP/OANS warning bits
 
+    // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
+    // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
+    // hysteresis (entered icing / cleared), not as a spammy raw value. _icingActive
+    // holds the debounced state; _icingBaselineDone silences the first sample.
+    private bool _icingActive;
+    private bool _icingBaselineDone;
+    private const double ICING_DETECT_RATIO = 0.05;   // rising edge → "icing conditions"
+    private const double ICING_CLEAR_RATIO = 0.02;    // falling edge → "icing conditions cleared"
+
     // BTV (Brake-To-Vacate) rollout call-outs: current BTV state (gate) and which
     // distance thresholds have already been spoken this landing (reset between).
     private int _btvState = 0;
@@ -3508,6 +3517,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
         else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
         else if (varName == "A32NX_BETA_TARGET_ACTIVE") _betaTargetActive = value > 0.5;
+
+        // Icing conditions — A32NX_ICING_STATE_ICING_STICK_INDICATOR is the cockpit
+        // ice-accretion "stick" (the visual ice-evidence probe): a CONTINUOUS 0..1
+        // ratio (ice builds over ~120 s in icing conditions, melts over ~200 s), NOT a
+        // 0/1 flag. The old Mon {0:None,1:Icing} mapping never matched the fractional
+        // value, so the generic monitor spoke the raw number on EVERY change — the
+        // "Icing Conditions 0.1, 0.2, …" spam. Convert to a debounced discrete state and
+        // announce ONLY the transition. Honours the Ctrl+M "Icing Conditions" mute; the
+        // panel readout shows the live percentage via TryGetDisplayOverride. Returning
+        // true suppresses the generic raw-value announce.
+        if (varName == "A32NX_ICING_STATE_ICING_STICK_INDICATOR")
+        {
+            bool nowIcing = _icingActive ? value > ICING_CLEAR_RATIO : value >= ICING_DETECT_RATIO;
+            if (!_icingBaselineDone) { _icingActive = nowIcing; _icingBaselineDone = true; return true; }
+            if (nowIcing != _icingActive)
+            {
+                _icingActive = nowIcing;
+                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                    announcer.Announce(nowIcing ? "Icing conditions" : "Icing conditions cleared");
+            }
+            return true;
+        }
 
         // RMP active VHF frequency — auto-announce on change so a blind pilot hears the new
         // ACTIVE frequency after a transfer/swap (the standby stays an on-request panel readout,
@@ -4772,6 +4803,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
+        // state + live level ("Icing, 30 percent" / "None") instead of a raw "0.3".
+        if (varKey == "A32NX_ICING_STATE_ICING_STICK_INDICATOR")
+        {
+            displayText = value >= ICING_DETECT_RATIO ? $"Icing, {value * 100:0} percent" : "None";
+            return true;
+        }
         // Crew-seat position read-outs: show a spoken-style band + percent, not a raw "50".
         if (_seatMotorMeta.TryGetValue(varKey, out var sm))
         {
