@@ -653,6 +653,22 @@
     return "";
   };
 
+  // Open/closed state of a DOOR tile (user request: doors read open/closed, not the
+  // generic active/[nothing]). The state colour sits on the cursor-pointer tile
+  // WRAPPER (green = open, amber = in transit), not on the inner <h_>, so climb to
+  // the nearest cursor-pointer ancestor before reading. No colour = closed. Works in
+  // both states: on the ground the tile is the cursor-pointer button itself; in
+  // flight the door is disabled and only its inner heading surfaces, so we climb to
+  // the (disabled, colourless => "closed") wrapper.
+  A.doorOpenState = function (n) {
+    var tile = n, g = 0;
+    while (tile && g < 5) { if (A.hasClassToken(tile, "cursor-pointer")) break; tile = tile.parentElement; g++; }
+    var svc = A.serviceState(tile || n);
+    if (svc === "active") return "open";
+    if (svc === "called") return "in transit";
+    return "closed";
+  };
+
   // True when a nav-rail link or a sub-tab is the ACTIVE one. The flyPad marks
   // the selected nav-rail page link AND the selected Ground sub-tab
   // (Services/Fuel/Payload/Pushback) with the STANDALONE class token
@@ -707,6 +723,23 @@
     // the tile subtree too. Each door tile is its own small subtree, so this can't pick
     // up a neighbouring door's handler.
     try { var kids = n.getElementsByTagName("*"); for (var d = 0; d < kids.length && d < 50; d++) srcs = srcs.concat(srcsOf(kids[d])); } catch (e3) {}
+    // IN FLIGHT the door tile is DISABLED, so FBW wires the DOM onClick to undefined —
+    // the loops above find nothing. But the parent still PASSES the onClick closure
+    // (with the const-enum `/* Main1Left */` comment) as a React prop, so it survives
+    // in the FIBER's memoizedProps. Walk the fiber return chain (the closure sits ~1
+    // hop up, on the GroundServiceButton fiber) so the precise identity works disabled
+    // too. Only this door's onClick is in its own return chain (siblings aren't
+    // ancestors), so this can't borrow a neighbour's identity.
+    try {
+      function fiberOf(el) { var ks = Object.keys(el); for (var k = 0; k < ks.length; k++) if (ks[k].indexOf("__reactFiber") === 0) return el[ks[k]]; return null; }
+      var fb = null, fcur = n, fg = 0;
+      while (fcur && fg < 4 && !fb) { fb = fiberOf(fcur); if (!fb) { fcur = fcur.parentElement; fg++; } }
+      var hops = 0;
+      while (fb && hops < 6) {
+        if (fb.memoizedProps && typeof fb.memoizedProps.onClick === "function") srcs.push("" + fb.memoizedProps.onClick);
+        fb = fb.return; hops++;
+      }
+    } catch (ef) {}
     for (var i = 0; i < srcs.length; i++) {
       var m = /\/\*\s*([A-Za-z0-9]+)\s*\*\//.exec(srcs[i]);
       if (m) {
@@ -1040,10 +1073,11 @@
       if (it.navRail) { it._gband = 1e7; continue; }
       if (it._groundSub) { it._gband = 100; continue; }   // sub-tab strip, grouped
       if (it.top < 50) { it._gband = 0; continue; }        // global EFB status bar (top)
-      // Group the door service tiles together (user request) right after the sub-tab
-      // strip, ahead of the other services. Only the Services page has door buttons
-      // (Payload/Fuel builder rows aren't buttons named "door").
-      if (it.kind === "button" && /door/i.test(it.text || "")) { it._gband = 150; continue; }
+      // Group the door tiles together (user request) right after the sub-tab strip,
+      // ahead of the other services. Include heading-doors: IN FLIGHT the door tiles
+      // are disabled and surface as headings (not buttons), so a button-only gate left
+      // them ungrouped, scattered among the other service rows.
+      if ((it.kind === "button" || it.kind === "heading") && /\bdoor\b/i.test(it.text || "")) { it._gband = 150; continue; }
       it._gband = 200;                                     // all other service tiles + chocks/cones
     }
     // Within the service band keep the existing column→row order so the left
@@ -1454,6 +1488,256 @@
     return out.length ? out : null;
   };
 
+  // ---- Settings builder ---------------------------------------------------
+  // The flyPad Settings detail pages (/settings/<category>) flow through the
+  // generic pass, producing cluttered output (loose option buttons, mislabeled
+  // inputs that borrow a neighbour's label, value folded into the label, and the
+  // Audio page's rc-slider internals as phantom "slider" lines). buildSettingsLines
+  // owns the settings content region and re-emits one clean labeled line per
+  // control (name line + tight options), mirroring buildPayloadLines/buildFuelLines.
+
+  // The settings rows wrapper (div.divide-y-2) of a /settings/<category> DETAIL
+  // page, or null. Bails on the throttle Calibrate sub-page (it has "Axis N for
+  // Throttle" headings and is owned by orderThrottleCalib).
+  A.settingsContentRoot = function (root) {
+    var hs = root.getElementsByTagName("h1");
+    for (var h = 0; h < hs.length; h++) if (/Axis\s+\d+\s+for\s+Throttle/i.test(clean(hs[h].textContent))) return null;
+    var divs = root.getElementsByTagName("div");
+    for (var i = 0; i < divs.length; i++) {
+      if (A.hasClassToken(divs[i], "divide-y-2") && A.isVisible(divs[i])) {
+        var r = divs[i].getBoundingClientRect();
+        if (r.left > 100) return divs[i];     // right of the category column (not the index list)
+      }
+    }
+    return null;
+  };
+
+  // The content-area back affordance: an <a href="/settings"> that is NOT the
+  // far-left nav-rail link (left > 100).
+  A.settingsBackLink = function (root) {
+    var links = root.querySelectorAll('a[href="/settings"]');
+    for (var i = 0; i < links.length; i++) {
+      if (!A.isVisible(links[i])) continue;
+      var r = links[i].getBoundingClientRect();
+      if (r.left > 100) return links[i];
+    }
+    return null;
+  };
+
+  A.buildSettingsLines = function (root, idxRef) {
+    var rowsWrap = A.settingsContentRoot(root);
+    if (!rowsWrap) return null;
+    // Only OWN the region when it actually contains setting CONTROLS. An
+    // informational sub-page (e.g. About) uses the same divide-y-2 wrapper but holds
+    // only headings / value text; likewise a future or A320 layout whose rows we
+    // don't recognise would, if owned, be re-emitted BLANK. In both cases return null
+    // so the generic pass still surfaces the content (graceful degrade, never worse).
+    var units = A.settingUnits(rowsWrap);
+    var hasControl = false;
+    for (var u = 0; u < units.length; u++) { if (A.settingUnitHasControl(units[u].ctrl)) { hasControl = true; break; } }
+    if (!hasControl) return null;
+
+    var out = [];
+    function emit(o) { o.top = 200 + out.length * 30; o.left = 0; o._axis = 0; o.navRail = false; out.push(o); }
+
+    var back = A.settingsBackLink(root);
+    if (back) {
+      var bx = idxRef.v++; back.setAttribute("data-fbw-efb-idx", String(bx)); A.markOwned(back);
+      emit({ idx: bx, kind: "link", tag: "a", role: "", text: "Back to Settings", value: "",
+             controlType: "", clickable: true, level: 0, live: "", disabled: false, options: [] });
+    }
+
+    A.emitSettingsRows(rowsWrap, idxRef, emit, units);
+    A.markOwned(rowsWrap);
+    return out;
+  };
+
+  // True when a SettingItem control cell holds an actionable control (segmented
+  // group, toggle, input, or an action/sub-page link). Read-only — stamps nothing —
+  // so the OWN/skip decision can be made before any emission.
+  A.settingUnitHasControl = function (ctrl) {
+    if (!ctrl) return false;
+    var opts = A.selectGroupOptions(ctrl);
+    if (opts && opts.length >= 2) return true;
+    if (A.toggleNode(ctrl)) return true;
+    if (ctrl.querySelector("input, a, button")) return true;
+    var divs = ctrl.getElementsByTagName("div");
+    for (var i = 0; i < divs.length; i++) if (A.hasClassToken(divs[i], "cursor-pointer") && clean(divs[i].textContent)) return true;
+    return false;
+  };
+
+  // Emit one accessible numeric/text input line labeled `label`, stamping the click
+  // idx. Shared by the SimpleInput and Audio-volume paths.
+  A.emitSettingInput = function (input, label, idxRef, emit) {
+    var ix = idxRef.v++; input.setAttribute("data-fbw-efb-idx", String(ix));
+    emit({ idx: ix, kind: "input", tag: "input", role: "", text: label,
+           value: A.valueOf("input", input), controlType: "text", clickable: false,
+           level: 0, live: "", disabled: A.disabledFor(input), options: [] });
+  };
+
+  A.textItem = function (s) {
+    return { idx: 0, kind: "text", tag: "div", role: "", text: s, value: "",
+             controlType: "", clickable: false, level: 0, live: "", disabled: false, options: [] };
+  };
+
+  // Discover the SettingItem units under the rows wrapper. Each setting renders as
+  // a flex-row whose FIRST child is a plain text label cell and whose SECOND child
+  // is the control wrapper. Setting rows can be wrapped in div.py-4 containers
+  // (sometimes COMPOUND — two settings in one py-4, e.g. Auto Cabin Lighting toggle
+  // + Cabin Lighting Brightness slider), so we scan ALL flex-rows rather than the
+  // wrapper's direct children. A selectgroup's own inner flex-row (option spans) is
+  // excluded because its first child is a cursor-pointer option, not a text label;
+  // a slider/value row is excluded because its first child has no text.
+  A.settingUnits = function (rowsWrap) {
+    var out = [], all = rowsWrap.getElementsByTagName("*");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (!A.isVisible(el)) continue;
+      if (!A.hasClassToken(el, "flex-row")) continue;   // standalone token, not a substring of e.g. flex-row-reverse
+      var label = el.firstElementChild;
+      if (!label) continue;
+      if (A.hasClassToken(label, "cursor-pointer")) continue;   // option row, not a setting row
+      var lt = clean(label.textContent);
+      if (!lt || lt.length > 120) continue;
+      var ctrl = label.nextElementSibling;
+      if (!ctrl) continue;
+      out.push({ name: lt, ctrl: ctrl, row: el });
+    }
+    return out;
+  };
+
+  // Emit one clean line (or name + tight options) per SettingItem unit. The control
+  // cell holds a SelectGroup (span.cursor-pointer options), a Toggle div, an input,
+  // an <a> link, or an rc-slider+input (Audio); inputs/links/Audio go through
+  // emitSettingsControl.
+  A.emitSettingsRows = function (rowsWrap, idxRef, emit, units) {
+    units = units || A.settingUnits(rowsWrap);
+    for (var i = 0; i < units.length; i++) {
+      var row = units[i].row, name = units[i].name, ctrl = units[i].ctrl;
+
+      // SelectGroup: control cell holds >=2 span.cursor-pointer option leaves.
+      var opts = A.selectGroupOptions(ctrl);
+      if (opts && opts.length >= 2) {
+        if (name) emit(A.textItem(name));
+        for (var o = 0; o < opts.length; o++) {
+          var op = opts[o];
+          var ix = idxRef.v++; op.setAttribute("data-fbw-efb-idx", String(ix));
+          var sel = A.isSelectedSegment(op);   // selected = bg-theme-highlight + unselected peers
+          emit({ idx: ix, kind: "button", tag: op.tagName.toLowerCase(), role: "",
+                 text: clean(op.textContent) + (sel ? " (selected)" : ""), value: "",
+                 controlType: "", clickable: true, level: 0, live: "", disabled: A.disabledFor(op), options: [] });
+        }
+        continue;
+      }
+
+      // Toggle: a div with the rounded-full / h-8 knob shape.
+      var tog = A.toggleNode(ctrl);
+      if (tog) {
+        var tx = idxRef.v++; tog.setAttribute("data-fbw-efb-idx", String(tx));
+        emit({ idx: tx, kind: "toggle", tag: "div", role: "switch", text: name || A.toggleLabel(tog),
+               value: A.valueOf("toggle", tog), controlType: "checkbox", clickable: false,
+               level: 0, live: "", disabled: A.disabledFor(tog), options: [] });
+        continue;
+      }
+
+      // Input / link / Audio — emitSettingsControl owns the name line for these.
+      A.emitSettingsControl(row, name, ctrl, idxRef, emit);
+    }
+  };
+
+  // SelectGroup option leaves: cursor-pointer spans with their own short text in
+  // the control cell. Returns [] / null when not a segmented control.
+  A.selectGroupOptions = function (ctrl) {
+    if (!ctrl) return null;
+    var spans = ctrl.getElementsByTagName("span"), out = [];
+    for (var i = 0; i < spans.length; i++) {
+      if (!A.isVisible(spans[i])) continue;
+      if (!A.hasClassToken(spans[i], "cursor-pointer")) continue;
+      if (!clean(spans[i].textContent)) continue;
+      out.push(spans[i]);
+    }
+    return out;
+  };
+
+  // The Toggle node inside a control cell — the FBW Toggle pill (its firstElementChild
+  // is the knob, so A.valueOf("toggle") reads translate-x*). Reuse the canonical
+  // classify() toggle detection rather than re-deriving the Tailwind shape, so the
+  // two never drift.
+  A.toggleNode = function (ctrl) {
+    if (!ctrl) return null;
+    var all = ctrl.getElementsByTagName("*");
+    for (var i = 0; i < all.length; i++) {
+      if (A.classify(all[i]) === "toggle") return all[i];
+    }
+    return null;
+  };
+
+  // Emit the non-toggle, non-segmented control of a SettingItem row, labeled from
+  // the row's OWN name (fixes the borrowed-label + value-in-label bugs). Handles
+  // SimpleInput; Audio (Task 7) and sub-page/action links (Task 6) are tried first.
+  A.emitSettingsControl = function (row, name, ctrl, idxRef, emit) {
+    if (!ctrl) { if (name) emit(A.textItem(name)); return false; }
+
+    if (A.emitAudioRow(row, name, ctrl, idxRef, emit)) return true;   // Task 7
+
+    var input = ctrl.querySelector("input");
+    if (input && A.isVisible(input)) {
+      A.emitSettingInput(input, name || A.fieldName(input) || "Value", idxRef, emit);
+      return true;
+    }
+
+    if (A.emitSettingsLink(row, name, ctrl, idxRef, emit)) return true;   // Task 6
+
+    if (name) emit(A.textItem(name));
+    return false;
+  };
+
+  // Audio volume SettingItem: the control area holds an rc-slider (phantom for a
+  // screen reader) plus the real number <input>. Own the rc-slider explicitly and
+  // emit one labeled numeric control from the row name. Returns true when handled.
+  // (buildSettingsLines also owns the whole rows wrapper, so the phantom slider
+  // lines are doubly suppressed — this keeps the Audio intent explicit and scans the
+  // entire ROW for the input in case the slider and input sit in separate cells.)
+  A.emitAudioRow = function (row, name, ctrl, idxRef, emit) {
+    var slider = row.querySelector('[class*="rc-slider"]');
+    if (!slider) return false;                       // not an audio/slider row
+    A.markOwned(slider);
+    var input = row.querySelector("input");
+    if (input && A.isVisible(input)) {
+      A.emitSettingInput(input, name || A.fieldName(input) || "Volume", idxRef, emit);
+    } else if (name) {
+      emit(A.textItem(name));
+    }
+    return true;
+  };
+
+  // A SettingItem whose control opens a sub-page or performs an action ("Select",
+  // "Calibrate", "Unlink Account"). Label it "<Row name>: <action>" so the bare verb
+  // gains context. Returns true when it emitted.
+  A.emitSettingsLink = function (row, name, ctrl, idxRef, emit) {
+    if (!ctrl) return false;
+    var link = ctrl.querySelector("a, button");
+    if (!link) {
+      // Fallback: a div styled as a button. Require CLEAN own text (short, no
+      // lowercase->Uppercase merge) so a wrapper that concatenates sibling text
+      // ("SelectEnglish (US)") isn't picked as the verb / click target.
+      var divs = ctrl.getElementsByTagName("div");
+      for (var i = 0; i < divs.length; i++) {
+        if (!A.hasClassToken(divs[i], "cursor-pointer")) continue;
+        var dt = clean(divs[i].textContent);
+        if (dt && dt.length <= 30 && !/[a-z][A-Z]/.test(dt)) { link = divs[i]; break; }
+      }
+    }
+    if (!link || !A.isVisible(link)) return false;
+    var verb = clean(link.textContent);
+    if (!verb) return false;
+    var label = name ? (name + ": " + verb) : verb;
+    var ix = idxRef.v++; link.setAttribute("data-fbw-efb-idx", String(ix));
+    emit({ idx: ix, kind: "link", tag: link.tagName.toLowerCase(), role: "", text: label, value: "",
+           controlType: "", clickable: true, level: 0, live: "", disabled: A.disabledFor(link), options: [] });
+    return true;
+  };
+
   A.enumerate = function (root) {
     var stale = root.querySelectorAll("[data-fbw-efb-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbw-efb-idx");
@@ -1492,7 +1776,7 @@
     // below skip those subtrees but still surface the nav rail, sub-tabs, and the
     // boarding/refuel buttons (which sit OUTSIDE the owned subtrees).
     var idxRef = { v: idx };
-    var groundItems = A.buildPayloadLines(root, idxRef) || A.buildFuelLines(root, idxRef) || A.buildChartLines(root, idxRef);
+    var groundItems = A.buildPayloadLines(root, idxRef) || A.buildFuelLines(root, idxRef) || A.buildChartLines(root, idxRef) || A.buildSettingsLines(root, idxRef);
     if (groundItems) { for (var gi = 0; gi < groundItems.length; gi++) items.push(groundItems[gi]); idx = idxRef.v; }
 
     // Collapse the top status bar into one line (the gear is surfaced separately
@@ -1561,13 +1845,25 @@
       // wrapper holds CabinLeftDoor / Main1Left = interactive point 0). Cargo Door is
       // unique — left alone. Done BEFORE the (active)/(called) suffix so the focus-
       // stable key strip (which trims the trailing state marker) still works.
-      if (text && kind === "button" && /\bdoor\b/i.test(text) && !/cargo/i.test(text)) {
-        var did = A.doorIdentity(n);   // MSFSBA-matching full name, or "" -> column fallback
-        text = did ? did : text + (leftRel < rootRect.width * 0.5 ? " Left" : " Right");
+      // Precise/disambiguated door NAME. doorIdentity reads the door enum from the
+      // tile's click handler — now including the React fiber, so it resolves even in
+      // flight when the tile is a disabled heading. Fall back to the left/right column
+      // guess ONLY for an operable button (columns are meaningful there); for a
+      // disabled heading with no resolvable identity keep FBW's generic label rather
+      // than invent a possibly-wrong side.
+      if (text && /\bdoor\b/i.test(text) && !/cargo/i.test(text) && (kind === "button" || kind === "heading")) {
+        var did = A.doorIdentity(n);
+        if (did) text = did;
+        else if (kind === "button") text = text + (leftRel < rootRect.width * 0.5 ? " Left" : " Right");
       }
 
-      // Ground-service tiles: append the connected/called state (see A.serviceState).
-      if (text && kind === "button") {
+      // Door tiles read OPEN / CLOSED (from the tile colour) instead of the generic
+      // active / [silent-when-closed] — whether the tile is an operable button (on the
+      // ground) or a disabled heading (in flight). "in transit" covers the amber
+      // mid-move. Other ground-service tiles keep the connected/called state.
+      if (text && /\bdoor\b/i.test(text) && (kind === "button" || kind === "heading")) {
+        text = text + " (" + A.doorOpenState(n) + ")";
+      } else if (text && kind === "button") {
         var svc = A.serviceState(n);
         if (svc) text = text + " (" + svc + ")";
       }
@@ -1590,7 +1886,12 @@
       // Active tab/nav indicator: mark the selected nav-rail page and the selected
       // Ground sub-tab so the reader knows where it is. Nav-rail links read
       // "current page"; in-content sub-tabs read "selected".
-      if (text && (kind === "link" || kind === "tab") && A.isActiveTab(n)) {
+      // Settings-index category links all carry the standalone bg-theme-accent token
+      // as their BASE card background (not an active-tab marker), so isActiveTab
+      // over-reports every category as "(selected)". The index does not highlight an
+      // active category — don't suffix them; the page label names the active one.
+      var isSettingsCat = (kind === "link" && /^\/settings\//.test(hrefAttr));
+      if (text && (kind === "link" || kind === "tab") && !isSettingsCat && A.isActiveTab(n)) {
         text = text + (navRail ? " (current page)" : " (selected)");
       }
 
@@ -1857,6 +2158,9 @@
     // made every page read as "X: Checklist Reset Warning". Real sub-page titles
     // (e.g. "3rd Party Options") still get appended.
     var isNotice = /WARNING|RESET|CAUTION|NOTICE|CONFIRM|ARE YOU SURE/i.test(head);
+    // The settings detail content heading already starts with the active route name
+    // ("Settings - <Category>"), so concatenating base ("Settings") doubles it.
+    if (base && head && !isNotice && /^Settings\s*-\s*/i.test(head)) return head;
     if (base && head && !isNotice && head.toUpperCase() !== base.toUpperCase()) return base + ": " + head;
     if (base) return base;
     if (head) return head;
