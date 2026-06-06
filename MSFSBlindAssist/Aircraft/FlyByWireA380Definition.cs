@@ -6265,7 +6265,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (procLines != null && procLines.Count > 0)
         {
             outLines.Add("");
-            outLines.Add("===== PROCEDURE =====");
+            outLines.Add("Procedure");
             outLines.AddRange(procLines);
         }
         return string.Join("\r\n", outLines);
