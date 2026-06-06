@@ -354,16 +354,13 @@
       } else {
         A._emptyZoomedTicks = 0;
       }
-      // Append the accessible BTV exit-arming controls (synthetic, idx >= 9000). On the real
-      // A380 you arm BTV by clicking runway-end + exit LABELS on the map; a blind pilot can't.
-      // These call the OANS btvUtils directly so the user picks a runway + exit from a list.
-      try {
-        if (A.btvReady()) {
-          var btv = A.btvControls();
-          for (var bi = 0; bi < btv.length; bi++) els.push(btv[bi]);
-        }
-      } catch (eb) { /* never let BTV injection break the core scrape */ }
-      return JSON.stringify({ ok: true, page: "OANS Airport Map / BTV", elements: els });
+      // Structured BTV snapshot (pick-lists + armed runway/exit + predicted distances) for the
+      // native OANS form's combos/buttons/readout. On the real A380 you arm BTV by clicking the
+      // runway-end + exit LABELS on the map; a blind pilot can't, so the form drives btvUtils
+      // directly (oans_btv_arm_runway / _exit / _clear commands).
+      var btv = null;
+      try { btv = A.btvSnapshot(); } catch (eb) { btv = null; }
+      return JSON.stringify({ ok: true, page: "OANS Airport Map / BTV", elements: els, btv: btv });
     } catch (e) {
       return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
     }
@@ -394,8 +391,6 @@
   };
 
   A.clickElement = function (index) {
-    // Synthetic BTV commands live at idx >= 9000 (see btvControls); they have no DOM node.
-    if (A._btvCmd && A._btvCmd[index]) return A.runBtvCmd(index);
     var node = A.findByIdx(index);
     if (!node) return "missing";
     // A dropdown-wrapped input opens its list when the dropdown is clicked.
@@ -545,37 +540,41 @@
     return "BTV: runway " + rwy + (exit ? (", exit " + exit + (dist != null ? (", " + dist + " m from threshold") : "")) : ", no exit selected");
   };
 
-  // Synthetic accessible BTV controls injected into the scrape (idx >= 9000 so they never
-  // collide with the stamped DOM controls). clickElement() routes these to the methods above.
-  A._btvCmd = {};
-  A._btvTextLine = function (t) {
-    return { top: 0, left: 0, idx: 0, kind: "text", tag: "div", role: "", text: t, value: "", controlType: "", clickable: false, level: 0, live: "", disabled: false, options: [] };
+  // Plain-metre L:var read (works from the agent; SimVar READS are allowed, only WRITES no-op).
+  A._lvar = function (name) {
+    try { return (typeof SimVar !== "undefined") ? SimVar.GetSimVarValue("L:" + name, "number") : null; }
+    catch (e) { return null; }
   };
-  A._btvButton = function (idx, t) {
-    return { top: 0, left: 0, idx: idx, kind: "button", tag: "div", role: "", text: t, value: "", controlType: "", clickable: true, level: 0, live: "", disabled: false, options: [] };
-  };
-  A.btvControls = function () {
-    A._btvCmd = {};
-    if (!A.btvReady()) return [];
-    var out = [A._btvTextLine("===== BTV exit selection (accessible) ====="), A._btvTextLine(A.btvStatusLine())];
-    var bi = 9000, i;
-    var rwys = A.btvRunwayList();
-    for (i = 0; i < rwys.length; i++) { A._btvCmd[bi] = { k: "rwy", n: rwys[i] }; out.push(A._btvButton(bi, "Arm BTV runway " + rwys[i])); bi++; }
-    var o = A.oanc();
-    if (o && o.btvUtils && o.btvUtils.btvRunway && o.btvUtils.btvRunway.get() != null) {
-      var exits = A.btvExitList();
-      for (i = 0; i < exits.length; i++) { A._btvCmd[bi] = { k: "exit", n: exits[i] }; out.push(A._btvButton(bi, "Arm BTV exit " + exits[i])); bi++; }
-      A._btvCmd[bi] = { k: "clear" }; out.push(A._btvButton(bi, "Clear BTV selection")); bi++;
-    }
-    return out;
-  };
-  A.runBtvCmd = function (index) {
-    var c = A._btvCmd[index];
-    if (!c) return "missing";
-    if (c.k === "rwy") return A.armBtvRunway(c.n);
-    if (c.k === "exit") return A.armBtvExit(c.n);
-    if (c.k === "clear") return A.clearBtv();
-    return "missing";
+
+  // Structured BTV snapshot for the native OANS form: the runway/exit PICK-LISTS (from the map
+  // labels), the currently-armed runway/exit (from the OANS observables - these are NOT L:vars),
+  // and the predicted DRY / WET / live STOP-BAR distances + runway LDA + exit distance.
+  //   dry/wet/stop = A32NX_OANS_BTV_{DRY,WET,STOP_BAR}_DISTANCE_ESTIMATED  (plain metres; 0 until
+  //   the FMS computes the landing on approach - the STOP bar carries a ~40 m front-of-aircraft
+  //   offset on the ground, so it is only surfaced once dry/wet are actually being computed).
+  //   lda/exitDist = btvRunwayLda / btvExitDistance observables (clean metres).
+  A.btvSnapshot = function () {
+    if (!A.btvReady()) return { ready: false };
+    var o = A.oanc(), b = o.btvUtils;
+    var rwy = (b.btvRunway && b.btvRunway.get()) || null;
+    var exit = (b.btvExit && b.btvExit.get()) || null;
+    var lda = (b.btvRunwayLda && b.btvRunwayLda.get());
+    var exitDist = (b.btvExitDistance && b.btvExitDistance.get());
+    var dry = A._lvar("A32NX_OANS_BTV_DRY_DISTANCE_ESTIMATED");
+    var wet = A._lvar("A32NX_OANS_BTV_WET_DISTANCE_ESTIMATED");
+    var stop = A._lvar("A32NX_OANS_BTV_STOP_BAR_DISTANCE_ESTIMATED");
+    var computing = (dry > 0) || (wet > 0);
+    function m(v) { return (typeof v === "number" && v > 0) ? Math.round(v) : null; }
+    return {
+      ready: true,
+      runways: A.btvRunwayList(),
+      exits: rwy ? A.btvExitList() : [],
+      runway: rwy, exit: exit,
+      lda: m(lda), exitDist: m(exitDist),
+      dry: m(dry), wet: m(wet),
+      stop: computing ? m(stop) : null,
+      computing: computing
+    };
   };
 
   A.ping = function () { return "MSFSBA_OANS_OK"; };

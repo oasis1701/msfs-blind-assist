@@ -112,6 +112,15 @@ namespace MSFSBlindAssist.SimConnect
                     return $"window.__MSFSBA_OANS && __MSFSBA_OANS.clickElement({JsInt(Idx())})";
                 case "set_element_value":
                     return $"window.__MSFSBA_OANS && __MSFSBA_OANS.setValue({JsInt(Idx())},{JsStr(Val())})";
+                // Accessible BTV exit arming — drive the OANS btvUtils directly (the runway-end /
+                // exit MAP LABELS a sighted pilot clicks are unreachable to a screen reader). The
+                // native OANS form sends these; the next poll's btv snapshot reflects the result.
+                case "oans_btv_arm_runway":
+                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.armBtvRunway({JsStr(Val())})";
+                case "oans_btv_arm_exit":
+                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.armBtvExit({JsStr(Val())})";
+                case "oans_btv_clear":
+                    return "window.__MSFSBA_OANS && __MSFSBA_OANS.clearBtv()";
                 default:
                     return null;
             }
@@ -222,6 +231,16 @@ namespace MSFSBlindAssist.SimConnect
                   .Append('/').Append(e.controlType).Append('/').Append(e.clickable ? '1' : '0')
                   .Append('/').Append(e.kind).Append('/').Append(e.level)
                   .Append('/').Append(e.disabled ? '1' : '0').Append('|');
+            // The BTV snapshot (armed runway/exit + predicted distances) must also trigger a push
+            // when it changes — fold it into the dedup hash.
+            var btv = result.btv;
+            if (btv != null)
+                sb.Append("BTV|").Append(btv.ready ? '1' : '0').Append('|')
+                  .Append(btv.runway).Append('/').Append(btv.exit).Append('/')
+                  .Append(btv.lda).Append('/').Append(btv.exitDist).Append('/')
+                  .Append(btv.dry).Append('/').Append(btv.wet).Append('/').Append(btv.stop).Append('/')
+                  .Append(string.Join(",", btv.runways ?? new())).Append('/')
+                  .Append(string.Join(",", btv.exits ?? new())).Append('|');
             string elHash = sb.ToString();
             if (elHash != _lastElementsHash)
             {
@@ -246,6 +265,20 @@ namespace MSFSBlindAssist.SimConnect
                     data[$"items.{i}.disabled"] = elements[i].disabled ? "true" : "false";
                     if (elements[i].options is { Count: > 0 })
                         data[$"items.{i}.options"] = string.Join(OptionSeparator, elements[i].options!);
+                }
+                if (btv != null)
+                {
+                    data["btv.ready"] = btv.ready ? "true" : "false";
+                    data["btv.runway"] = btv.runway ?? "";
+                    data["btv.exit"] = btv.exit ?? "";
+                    data["btv.lda"] = btv.lda?.ToString() ?? "";
+                    data["btv.exitDist"] = btv.exitDist?.ToString() ?? "";
+                    data["btv.dry"] = btv.dry?.ToString() ?? "";
+                    data["btv.wet"] = btv.wet?.ToString() ?? "";
+                    data["btv.stop"] = btv.stop?.ToString() ?? "";
+                    data["btv.computing"] = btv.computing ? "true" : "false";
+                    if (btv.runways is { Count: > 0 }) data["btv.runways"] = string.Join(OptionSeparator, btv.runways);
+                    if (btv.exits is { Count: > 0 }) data["btv.exits"] = string.Join(OptionSeparator, btv.exits);
                 }
                 Raise("fbw_efb_elements", data);
             }
@@ -376,6 +409,22 @@ namespace MSFSBlindAssist.SimConnect
             public string? page { get; set; }
             public string? error { get; set; }
             public List<ScrapeElement>? elements { get; set; }
+            public BtvSnapshot? btv { get; set; }
+        }
+
+        private sealed class BtvSnapshot
+        {
+            public bool ready { get; set; }
+            public List<string>? runways { get; set; }
+            public List<string>? exits { get; set; }
+            public string? runway { get; set; }
+            public string? exit { get; set; }
+            public int? lda { get; set; }
+            public int? exitDist { get; set; }
+            public int? dry { get; set; }
+            public int? wet { get; set; }
+            public int? stop { get; set; }
+            public bool computing { get; set; }
         }
 
         private sealed class ScrapeElement

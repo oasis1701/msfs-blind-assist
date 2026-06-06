@@ -64,7 +64,7 @@ public partial class MainForm : Form
     // doesn't render (e.g. ENG 3/4 FAIL). Owns failure call-outs; the E/WD scrape keeps
     // memos/PFD/status (coherentEWDClient.AnnounceWarnings set false to avoid double-speak).
     private CoherentFwsFailureClient? coherentFwsFailureClient;
-    private Forms.FBWA380.FbwEfbForm? fbwA380OansForm;
+    private Forms.FBWA380.FBWA380OansForm? fbwA380OansForm;
     private Forms.FBWA380.FBWA380RmpForm? fbwA380RmpForm;
     // Live A380X Electronic Checklist window (normal checklists + ECP controls),
     // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
@@ -2779,13 +2779,10 @@ public partial class MainForm : Form
         hotkeyManager.ExitOutputHotkeyMode();
 
         if (coherentNDClient == null) { coherentNDClient = new CoherentNDClient(); coherentNDClient.Start(); }
-        IMcduBridge bridge = coherentNDClient;
 
         if (fbwA380OansForm == null || fbwA380OansForm.IsDisposed)
         {
-            fbwA380OansForm = new Forms.FBWA380.FbwEfbForm(
-                bridge, announcer,
-                "A380 Airport Map and BTV (OANS)", "OANS");
+            fbwA380OansForm = new Forms.FBWA380.FBWA380OansForm(coherentNDClient, announcer);
         }
         fbwA380OansForm.ShowForm();
     }
