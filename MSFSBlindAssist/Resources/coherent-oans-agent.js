@@ -546,6 +546,22 @@
     catch (e) { return null; }
   };
 
+  // Decode an ARINC429 word read as a raw double: low 32 bits = the value as an IEEE-754
+  // float32; bits 32-33 = SSM (3 = NormalOperation, 2 = FunctionalTest, 1 = NoComputedData,
+  // 0 = FailureWarning). Mirrors fbw-common arinc429.ts. ROT / turnaround are ARINC429.
+  A._arinc = function (raw) {
+    if (typeof raw !== "number" || !isFinite(raw)) return { valid: false, value: 0 };
+    var ssm = Math.floor(raw / 4294967296) % 4;     // bits 32-33
+    var bits = raw % 4294967296;                     // low 32 bits as an integer
+    if (bits < 0) bits += 4294967296;
+    try {
+      var buf = new ArrayBuffer(4), dv = new DataView(buf);
+      dv.setUint32(0, bits >>> 0, false);
+      var val = dv.getFloat32(0, false);
+      return { valid: (ssm === 3 || ssm === 2), value: val };
+    } catch (e) { return { valid: false, value: 0 }; }
+  };
+
   // Structured BTV snapshot for the native OANS form: the runway/exit PICK-LISTS (from the map
   // labels), the currently-armed runway/exit (from the OANS observables - these are NOT L:vars),
   // and the predicted DRY / WET / live STOP-BAR distances + runway LDA + exit distance.
@@ -565,6 +581,12 @@
     var stop = A._lvar("A32NX_OANS_BTV_STOP_BAR_DISTANCE_ESTIMATED");
     var computing = (dry > 0) || (wet > 0);
     function m(v) { return (typeof v === "number" && v > 0) ? Math.round(v) : null; }
+    // ROT (runway occupancy time, seconds) + turnaround times (minutes, max/idle reverse) are
+    // ARINC429 words, only valid on approach once a runway + exit are armed.
+    var rotW = A._arinc(A._lvar("A32NX_BTV_ROT"));
+    var tMaxW = A._arinc(A._lvar("A32NX_BTV_TURNAROUND_MAX_REVERSE"));
+    var tIdleW = A._arinc(A._lvar("A32NX_BTV_TURNAROUND_IDLE_REVERSE"));
+    function a(w) { return (w.valid && w.value > 0) ? Math.round(w.value) : null; }
     return {
       ready: true,
       runways: A.btvRunwayList(),
@@ -573,7 +595,12 @@
       lda: m(lda), exitDist: m(exitDist),
       dry: m(dry), wet: m(wet),
       stop: computing ? m(stop) : null,
-      computing: computing
+      computing: computing,
+      rot: a(rotW), turnMax: a(tMaxW), turnIdle: a(tIdleW),
+      // OANS/BTV distances are stored in metres but the real ND shows them in M or FT per the
+      // metric/imperial setting (A32NX_EFB_USING_METRIC_UNIT, the one MSFSBA already follows for
+      // weights). true = metres, false = feet.
+      metric: A._lvar("A32NX_EFB_USING_METRIC_UNIT") ? true : false
     };
   };
 

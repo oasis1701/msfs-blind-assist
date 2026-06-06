@@ -239,6 +239,8 @@ namespace MSFSBlindAssist.SimConnect
                   .Append(btv.runway).Append('/').Append(btv.exit).Append('/')
                   .Append(btv.lda).Append('/').Append(btv.exitDist).Append('/')
                   .Append(btv.dry).Append('/').Append(btv.wet).Append('/').Append(btv.stop).Append('/')
+                  .Append(btv.rot).Append('/').Append(btv.turnMax).Append('/').Append(btv.turnIdle).Append('/')
+                  .Append(btv.metric ? '1' : '0').Append('/')
                   .Append(string.Join(",", btv.runways ?? new())).Append('/')
                   .Append(string.Join(",", btv.exits ?? new())).Append('|');
             string elHash = sb.ToString();
@@ -276,6 +278,10 @@ namespace MSFSBlindAssist.SimConnect
                     data["btv.dry"] = btv.dry?.ToString() ?? "";
                     data["btv.wet"] = btv.wet?.ToString() ?? "";
                     data["btv.stop"] = btv.stop?.ToString() ?? "";
+                    data["btv.rot"] = btv.rot?.ToString() ?? "";
+                    data["btv.turnMax"] = btv.turnMax?.ToString() ?? "";
+                    data["btv.turnIdle"] = btv.turnIdle?.ToString() ?? "";
+                    data["btv.metric"] = btv.metric ? "true" : "false";
                     data["btv.computing"] = btv.computing ? "true" : "false";
                     if (btv.runways is { Count: > 0 }) data["btv.runways"] = string.Join(OptionSeparator, btv.runways);
                     if (btv.exits is { Count: > 0 }) data["btv.exits"] = string.Join(OptionSeparator, btv.exits);
@@ -424,6 +430,10 @@ namespace MSFSBlindAssist.SimConnect
             public int? dry { get; set; }
             public int? wet { get; set; }
             public int? stop { get; set; }
+            public int? rot { get; set; }
+            public int? turnMax { get; set; }
+            public int? turnIdle { get; set; }
+            public bool metric { get; set; }
             public bool computing { get; set; }
         }
 

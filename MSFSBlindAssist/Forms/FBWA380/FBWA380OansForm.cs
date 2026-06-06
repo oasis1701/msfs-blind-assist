@@ -39,13 +39,15 @@ public sealed class FBWA380OansForm : Form
     private Button _armRunwayBtn = null!;
     private Button _armExitBtn = null!;
     private Button _clearBtn = null!;
+    private Label _searchLabel = null!;
     private TextBox _searchBox = null!;
     private Button _searchBtn = null!;
     private ListBox _controls = null!;
 
     private List<Elem> _elems = new();
     private Btv _btv = new();
-    private int _searchIdx = -1;            // aidx of the "Runway or exit" input (-1 = none)
+    private int _searchIdx = -1;            // aidx of the active OANS text input (-1 = none)
+    private string _searchField = "Search field";  // tab-dependent: "Airport" (ARPT SEL) / "Runway or exit" (MAP DATA)
     private bool _subscribed;
     private bool _firstPush = true;
     private string _lastBtvSpoken = "";
@@ -95,8 +97,8 @@ public sealed class FBWA380OansForm : Form
         _clearBtn.Click += (_, _) => { _client.EnqueueCommand("oans_btv_clear"); _announcer?.Announce("Clearing BTV selection"); };
 
         // --- Runway / exit search (the FBW "Runway or exit" InputField is a text search box) ---
-        var searchLabel = new Label { Text = "&Search runway or exit:", Location = new Point(12, 358), Size = new Size(140, 22) };
-        _searchBox = new TextBox { Location = new Point(156, 355), Size = new Size(110, 24), AccessibleName = "Search runway or exit" };
+        _searchLabel = new Label { Text = "&Search field:", Location = new Point(12, 358), Size = new Size(140, 22) };
+        _searchBox = new TextBox { Location = new Point(156, 355), Size = new Size(110, 24), AccessibleName = "Search field" };
         _searchBtn = new Button { Text = "Search", Location = new Point(274, 354), Size = new Size(90, 26), AccessibleName = "Search" };
         _searchBtn.Click += (_, _) => DoSearch();
 
@@ -115,7 +117,7 @@ public sealed class FBWA380OansForm : Form
         {
             _status, readoutLabel, _readout, btvLabel,
             rwyLabel, _runwayCombo, _armRunwayBtn, exitLabel, _exitCombo, _armExitBtn, _clearBtn,
-            searchLabel, _searchBox, _searchBtn,
+            _searchLabel, _searchBox, _searchBtn,
             listLabel, _controls, close
         });
 
@@ -172,6 +174,17 @@ public sealed class FBWA380OansForm : Form
         _client.EnqueueCommand("get_display_elements");
     }
 
+    // The search box drives whichever text input the active tab exposes (the airport code on
+    // ARPT SEL, the runway/exit search on MAP DATA), so label it from the live field.
+    private void ApplySearchLabel()
+    {
+        string want = _searchIdx >= 0 ? _searchField : "Search field";
+        if (_searchLabel.Text != "&" + want + ":") _searchLabel.Text = "&" + want + ":";
+        if (_searchBox.AccessibleName != want) _searchBox.AccessibleName = want;
+        _searchBox.Enabled = _searchIdx >= 0;
+        _searchBtn.Enabled = _searchIdx >= 0;
+    }
+
     // ---- state intake ------------------------------------------------------
 
     private void OnState(object? sender, EFBStateUpdateEventArgs e)
@@ -186,6 +199,7 @@ public sealed class FBWA380OansForm : Form
         RenderControls();
         RenderCombos();
         RenderReadout();
+        ApplySearchLabel();
         AnnounceBtvChange();
         _firstPush = false;
     }
@@ -209,7 +223,14 @@ public sealed class FBWA380OansForm : Form
                 Disabled = d.TryGetValue(p + "disabled", out var di) && di == "true"
             };
             list.Add(el);
-            if (_searchIdx < 0 && el.Kind == "input") _searchIdx = el.Aidx;
+            if (_searchIdx < 0 && el.Kind == "input")
+            {
+                _searchIdx = el.Aidx;
+                // The input's label is tab-dependent ("Airport: …" on ARPT SEL, "Runway or exit: …"
+                // on MAP DATA). Use the part before the colon as the search-box label.
+                int colon = el.Text.IndexOf(':');
+                _searchField = colon > 0 ? el.Text.Substring(0, colon).Trim() : "Search field";
+            }
         }
         _elems = list;
     }
@@ -225,6 +246,10 @@ public sealed class FBWA380OansForm : Form
         b.Dry = ParseInt(d, "btv.dry");
         b.Wet = ParseInt(d, "btv.wet");
         b.Stop = ParseInt(d, "btv.stop");
+        b.Rot = ParseInt(d, "btv.rot");
+        b.TurnMax = ParseInt(d, "btv.turnMax");
+        b.TurnIdle = ParseInt(d, "btv.turnIdle");
+        b.Metric = !d.TryGetValue("btv.metric", out var mt) || mt != "false";   // default metric
         if (d.TryGetValue("btv.computing", out var cm)) b.Computing = cm == "true";
         b.Runways = SplitList(d, "btv.runways");
         b.Exits = SplitList(d, "btv.exits");
@@ -333,19 +358,17 @@ public sealed class FBWA380OansForm : Form
     {
         var sb = new StringBuilder();
         sb.AppendLine("OANS Airport Map / BTV");
+        // The active tab is known (it carries "(active tab)"); surface it once as a header and
+        // drop the three tab lines from the readout body (they stay in the controls list to
+        // switch between). So the readout says "Current tab: MAP DATA" instead of listing all.
+        string curTab = CurrentTab();
+        if (curTab.Length > 0) sb.AppendLine($"Current tab: {curTab}");
         sb.AppendLine();
         foreach (var el in _elems)
         {
+            if (el.Kind == "tab") continue;          // shown by the "Current tab" header above
             if (string.IsNullOrWhiteSpace(el.Text)) continue;
-            string role = el.Kind switch
-            {
-                "tab" => "",            // text already carries "(active tab)"
-                "radio" => "",          // text already carries "(selected)"
-                "input" => "",
-                "dropdown" => " (combo box)",
-                "button" => "",
-                _ => ""
-            };
+            string role = el.Kind == "dropdown" ? " (combo box)" : "";
             string line = el.Text + role;
             if (el.Disabled) line += " (dimmed)";
             sb.AppendLine(line);
@@ -359,6 +382,20 @@ public sealed class FBWA380OansForm : Form
         _status.Text = _btv.Ready ? "OANS: live" : "OANS: not available (no airport in range)";
     }
 
+    // The active OANS tab (MAP DATA / ARPT SEL / STATUS), with the "(active tab)" marker stripped.
+    private string CurrentTab()
+    {
+        foreach (var el in _elems)
+            if (el.Kind == "tab" && el.Text.IndexOf("(active tab)", StringComparison.OrdinalIgnoreCase) >= 0)
+                return el.Text.Replace("(active tab)", "", StringComparison.OrdinalIgnoreCase).Trim();
+        return "";
+    }
+
+    // Format a metre distance per the OANS unit setting (metres, or feet when imperial — the same
+    // A32NX_EFB_USING_METRIC_UNIT toggle MSFSBA follows for weights; matches what the ND shows).
+    private string Dist(int metres)
+        => _btv.Metric ? $"{metres} m" : $"{(int)Math.Round(metres * 3.280839895)} ft";
+
     private string BtvReadoutBlock()
     {
         if (!_btv.Ready) return "BTV: not available — fly within OANS range of an airport with a Navigraph AMDB map.";
@@ -367,22 +404,31 @@ public sealed class FBWA380OansForm : Form
         if (string.IsNullOrEmpty(_btv.Runway))
             sb.AppendLine("Runway: none selected");
         else
-            sb.AppendLine($"Runway: {_btv.Runway}" + (_btv.Lda != null ? $" (landing distance available {_btv.Lda} m)" : ""));
+            sb.AppendLine($"Runway: {_btv.Runway}" + (_btv.Lda != null ? $" (landing distance available {Dist(_btv.Lda.Value)})" : ""));
 
         if (string.IsNullOrEmpty(_btv.Exit))
             sb.AppendLine("Exit: none selected");
         else
-            sb.AppendLine($"Exit: {_btv.Exit}" + (_btv.ExitDist != null ? $" ({_btv.ExitDist} m from threshold)" : ""));
+            sb.AppendLine($"Exit: {_btv.Exit}" + (_btv.ExitDist != null ? $" ({Dist(_btv.ExitDist.Value)} from threshold)" : ""));
 
         if (_btv.Computing && (_btv.Dry != null || _btv.Wet != null))
         {
-            if (_btv.Dry != null) sb.AppendLine($"Predicted stop, dry runway: {_btv.Dry} m");
-            if (_btv.Wet != null) sb.AppendLine($"Predicted stop, wet runway: {_btv.Wet} m");
-            if (_btv.Stop != null) sb.AppendLine($"Live stop-bar distance: {_btv.Stop} m");
+            if (_btv.Dry != null) sb.AppendLine($"Predicted stop, dry runway: {Dist(_btv.Dry.Value)}");
+            if (_btv.Wet != null) sb.AppendLine($"Predicted stop, wet runway: {Dist(_btv.Wet.Value)}");
+            if (_btv.Stop != null) sb.AppendLine($"Live stop-bar distance: {Dist(_btv.Stop.Value)}");
         }
         else
         {
             sb.AppendLine("Predicted stopping distances: not yet computed");
+        }
+
+        // ROT (runway occupancy time) + turnaround times — the real OANS only shows these once an
+        // EXIT is selected, so gate on that to avoid surfacing stale/meaningless values.
+        if (!string.IsNullOrEmpty(_btv.Exit))
+        {
+            if (_btv.Rot != null) sb.AppendLine($"Runway occupancy time: {_btv.Rot} seconds");
+            if (_btv.TurnMax != null && _btv.TurnIdle != null)
+                sb.AppendLine($"Turnaround: {_btv.TurnMax} minutes max reverse, {_btv.TurnIdle} minutes idle reverse");
         }
         return sb.ToString().TrimEnd();
     }
@@ -405,7 +451,7 @@ public sealed class FBWA380OansForm : Form
         string spoken = $"runway {_btv.Runway}" +
                         (string.IsNullOrEmpty(_btv.Exit)
                             ? ", no exit"
-                            : $", exit {_btv.Exit}" + (_btv.ExitDist != null ? $", {_btv.ExitDist} metres" : ""));
+                            : $", exit {_btv.Exit}" + (_btv.ExitDist != null ? $", {Dist(_btv.ExitDist.Value)}" : ""));
         _announcer?.Announce("BTV armed, " + spoken);
     }
 
@@ -479,6 +525,10 @@ public sealed class FBWA380OansForm : Form
         public int? Dry;
         public int? Wet;
         public int? Stop;
+        public int? Rot;
+        public int? TurnMax;
+        public int? TurnIdle;
+        public bool Metric = true;
         public bool Computing;
     }
 }
