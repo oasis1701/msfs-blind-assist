@@ -6,27 +6,28 @@ using System.Text.Json;
 namespace MSFSBlindAssist.SimConnect
 {
     /// <summary>
-    /// Reads (and drives) the FlyByWire A380X ND OANS (Onboard Airport Navigation
-    /// System) CONTROL PANEL — the airport-map controls used for BTV (Brake-To-
-    /// Vacate) exit selection, runway/exit/airport search and LDG SHIFT — through
-    /// the MSFS Coherent GT debugger (127.0.0.1:19999), resolved to the Captain ND
-    /// Coherent view (title "A380X_ND_1"). NO injection. Runs coherent-oans-agent.js
+    /// Reads (and drives) the FlyByWire A380X ND OANS / BTV (Brake-To-Vacate) — DATA-ONLY,
+    /// ZERO-RENDER — through the MSFS Coherent GT debugger (127.0.0.1:19999), resolved to the
+    /// Captain ND Coherent view (title "A380X_ND_1"). NO injection. Runs coherent-oans-agent.js
     /// (window.__MSFSBA_OANS) inside the ND's JS context.
     ///
-    /// The OANS control panel is built from the same MFD UI widgets as the MCDU
-    /// (.mfd-input-field / .mfd-dropdown / .mfd-button / tabs), and the agent emits
-    /// elements in the SAME shape the flyPad agent uses — so this client raises the
-    /// identical fbw_efb_connected / fbw_efb_elements pushes and command
-    /// vocabulary, letting FbwEfbForm (the WebView2 browser view) render it with
-    /// no changes. The agent auto-opens the panel (it is toggled by the ND map
-    /// "MAP DATA" context-menu item) and reports when the OANS is not yet available
-    /// (no aircraft position / ADIRS not aligned).
+    /// CRITICAL: this client NEVER renders or zooms the airport map. The agent reads OANS/BTV
+    /// state directly from the ND JS instance objects (oansRef.instance.btvUtils / .labelManager /
+    /// .fmsDataStore / .dataAirportIcao) plus OANS L:vars, and drives BTV via btvUtils methods +
+    /// the msfs-sdk EventBus. It does NOT write A32NX_EFIS_L_ND_RANGE, force panel visibility, or
+    /// scrape the control-panel DOM. (The previous "ensureAirportZoom + DOM scrape" design forced
+    /// a continuous full-airport map render every poll and exhausted host memory — do not revive it.)
+    ///
+    /// PollOnce evaluates __MSFSBA_OANS.snapshot() (read-only) every PollIntervalMs and raises a
+    /// dedup'd "oans_state" push (plus "oans_connected"); FBWA380OansForm consumes those.
+    /// Command surface: get_snapshot, oans_arm_runway, oans_arm_exit, oans_clear,
+    /// oans_display_airport (one-shot user load), oans_set_manual_stop (no-Navigraph manual BTV).
     /// </summary>
     public sealed class CoherentNDClient : IMcduBridge, IDisposable
     {
         private const string DebuggerBase = "http://127.0.0.1:19999";
         private const string NdTitleNeedle = "A380X_ND_1";
-        private const int PollIntervalMs = 500;
+        private const int PollIntervalMs = 1000;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
         private const char OptionSeparator = (char)0x1f;
@@ -89,38 +90,44 @@ namespace MSFSBlindAssist.SimConnect
         {
             string? expr = BuildCommandExpression(command, payload);
             if (expr == null) return;
+            // The BTV arm/clear/manual commands return a status string (e.g. "Armed BTV exit K1" or
+            // "Exit K1 not valid for this runway …"). Surface it so a rejected exit is ANNOUNCED
+            // rather than failing silently (the form would otherwise just keep saying "none selected").
+            bool report = command is "oans_arm_runway" or "oans_arm_exit" or "oans_clear" or "oans_set_manual_stop";
             _ = Task.Run(async () =>
             {
-                try { await EvalAsync(expr); }
+                try
+                {
+                    string res = await EvalAsync(expr);
+                    if (report && !string.IsNullOrWhiteSpace(res))
+                        Raise("oans_action", new Dictionary<string, string> { ["result"] = res });
+                }
                 catch { /* a dropped command self-heals on the next poll */ }
             });
         }
 
         private string? BuildCommandExpression(string command, Dictionary<string, string>? payload)
         {
-            string Idx() => payload != null && payload.TryGetValue("index", out var i) ? i : "0";
             string Val() => payload != null && payload.TryGetValue("value", out var v) ? v : "";
 
             switch (command)
             {
-                case "get_display_elements":
-                    // Form open / refresh: open the OANS control panel (it is toggled
-                    // by the ND "MAP DATA" context-menu item) and force a re-push.
+                case "get_snapshot":
+                    // Form open / refresh: force a re-push on the next poll. NOTHING is rendered or forced.
                     _lastElementsHash = "";
-                    return "window.__MSFSBA_OANS && __MSFSBA_OANS.openPanel()";
-                case "click_display_element":
-                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.clickElement({JsInt(Idx())})";
-                case "set_element_value":
-                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.setValue({JsInt(Idx())},{JsStr(Val())})";
-                // Accessible BTV exit arming — drive the OANS btvUtils directly (the runway-end /
-                // exit MAP LABELS a sighted pilot clicks are unreachable to a screen reader). The
-                // native OANS form sends these; the next poll's btv snapshot reflects the result.
-                case "oans_btv_arm_runway":
-                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.armBtvRunway({JsStr(Val())})";
-                case "oans_btv_arm_exit":
-                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.armBtvExit({JsStr(Val())})";
-                case "oans_btv_clear":
+                    return "window.__MSFSBA_OANS ? __MSFSBA_OANS.ping() : ''";
+                // Accessible BTV — drive the OANS btvUtils directly (the runway-end / exit MAP LABELS a
+                // sighted pilot clicks are unreachable to a screen reader). Pure data ops, no render.
+                case "oans_arm_runway":
+                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.armRunway({JsStr(Val())})";
+                case "oans_arm_exit":
+                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.armExit({JsStr(Val())})";
+                case "oans_clear":
                     return "window.__MSFSBA_OANS && __MSFSBA_OANS.clearBtv()";
+                case "oans_display_airport":
+                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.displayAirport({JsStr(Val())})";
+                case "oans_set_manual_stop":
+                    return $"window.__MSFSBA_OANS && __MSFSBA_OANS.setManualStopDistance({JsInt(Val())})";
                 default:
                     return null;
             }
@@ -205,89 +212,65 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task PollOnce(CancellationToken ct)
         {
-            string raw = await EvalAsync("window.__MSFSBA_OANS ? __MSFSBA_OANS.scrape() : ''", ct);
-            if (string.IsNullOrEmpty(raw))
-            {
-                _agentInstalled = false;
-                return;
-            }
+            string raw = await EvalAsync("window.__MSFSBA_OANS ? __MSFSBA_OANS.snapshot() : ''", ct);
+            if (string.IsNullOrEmpty(raw)) { _agentInstalled = false; return; }
 
-            ScrapeResult? result;
-            try { result = JsonSerializer.Deserialize<ScrapeResult>(raw); }
+            Snapshot? s;
+            try { s = JsonSerializer.Deserialize<Snapshot>(raw); }
             catch { return; }
-            if (result == null || !result.ok) return;
+            if (s == null || !s.ok) return;
 
             _lastGoodScrapeUtc = DateTime.UtcNow;
-            if (!_connectedPushSent)
-            {
-                _connectedPushSent = true;
-                Raise("fbw_efb_connected", new Dictionary<string, string>());
-            }
+            if (!_connectedPushSent) { _connectedPushSent = true; Raise("oans_connected", new Dictionary<string, string>()); }
 
-            var elements = result.elements ?? new List<ScrapeElement>();
-            var sb = new StringBuilder((result.page ?? "") + "|" + elements.Count + "|");
-            foreach (var e in elements)
-                sb.Append(e.idx).Append(':').Append(e.text).Append('/').Append(e.value)
-                  .Append('/').Append(e.controlType).Append('/').Append(e.clickable ? '1' : '0')
-                  .Append('/').Append(e.kind).Append('/').Append(e.level)
-                  .Append('/').Append(e.disabled ? '1' : '0').Append('|');
-            // The BTV snapshot (armed runway/exit + predicted distances) must also trigger a push
-            // when it changes — fold it into the dedup hash.
-            var btv = result.btv;
-            if (btv != null)
-                sb.Append("BTV|").Append(btv.ready ? '1' : '0').Append('|')
-                  .Append(btv.runway).Append('/').Append(btv.exit).Append('/')
-                  .Append(btv.lda).Append('/').Append(btv.exitDist).Append('/')
-                  .Append(btv.dry).Append('/').Append(btv.wet).Append('/').Append(btv.stop).Append('/')
-                  .Append(btv.rot).Append('/').Append(btv.turnMax).Append('/').Append(btv.turnIdle).Append('/')
-                  .Append(btv.metric ? '1' : '0').Append('/')
-                  .Append(string.Join(",", btv.runways ?? new())).Append('/')
-                  .Append(string.Join(",", btv.exits ?? new())).Append('|');
-            string elHash = sb.ToString();
-            if (elHash != _lastElementsHash)
+            var b = s.btv ?? new BtvSnapshot();
+            var sb = new StringBuilder();
+            sb.Append(s.available ? '1' : '0').Append('|').Append(s.failed ? '1' : '0').Append('|')
+              .Append(s.airport?.icao).Append('/').Append(s.airport?.name).Append('|')
+              .Append(b.ready ? '1' : '0').Append('|').Append(b.runway).Append('/').Append(b.exit).Append('/')
+              .Append(b.lda).Append('/').Append(b.exitDist).Append('/').Append(b.dry).Append('/').Append(b.wet).Append('/')
+              .Append(b.stop).Append('/').Append(b.rot).Append('/').Append(b.turnMax).Append('/').Append(b.turnIdle).Append('/')
+              .Append(b.rwyAheadQfu).Append('/').Append(b.metric ? '1' : '0').Append('|')
+              .Append(string.Join(",", b.runways ?? new())).Append('|').Append(string.Join(",", b.exits ?? new())).Append('|')
+              .Append(s.manual?.runwayLengthM).Append('/').Append(s.manual?.manualStopDist).Append('/')
+              .Append(s.manual?.fmsLandingRunwaySelected == true ? '1' : '0').Append('|')
+              .Append(s.fms?.origin).Append('/').Append(s.fms?.dest).Append('/').Append(s.fms?.altn).Append('|')
+              .Append(s.airac);
+            string hash = sb.ToString();
+            if (hash == _lastElementsHash) return;
+            _lastElementsHash = hash;
+
+            var data = new Dictionary<string, string>
             {
-                _lastElementsHash = elHash;
-                var data = new Dictionary<string, string>
-                {
-                    ["count"] = elements.Count.ToString(),
-                    ["page"] = result.page ?? ""
-                };
-                for (int i = 0; i < elements.Count; i++)
-                {
-                    data[$"items.{i}.aidx"] = elements[i].idx.ToString();
-                    data[$"items.{i}.text"] = elements[i].text ?? "";
-                    data[$"items.{i}.tag"] = elements[i].tag ?? "";
-                    data[$"items.{i}.role"] = elements[i].role ?? "";
-                    data[$"items.{i}.value"] = elements[i].value ?? "";
-                    data[$"items.{i}.type"] = elements[i].controlType ?? "";
-                    data[$"items.{i}.clickable"] = elements[i].clickable ? "true" : "false";
-                    data[$"items.{i}.kind"] = elements[i].kind ?? "";
-                    data[$"items.{i}.level"] = elements[i].level.ToString();
-                    data[$"items.{i}.live"] = elements[i].live ?? "";
-                    data[$"items.{i}.disabled"] = elements[i].disabled ? "true" : "false";
-                    if (elements[i].options is { Count: > 0 })
-                        data[$"items.{i}.options"] = string.Join(OptionSeparator, elements[i].options!);
-                }
-                if (btv != null)
-                {
-                    data["btv.ready"] = btv.ready ? "true" : "false";
-                    data["btv.runway"] = btv.runway ?? "";
-                    data["btv.exit"] = btv.exit ?? "";
-                    data["btv.lda"] = btv.lda?.ToString() ?? "";
-                    data["btv.exitDist"] = btv.exitDist?.ToString() ?? "";
-                    data["btv.dry"] = btv.dry?.ToString() ?? "";
-                    data["btv.wet"] = btv.wet?.ToString() ?? "";
-                    data["btv.stop"] = btv.stop?.ToString() ?? "";
-                    data["btv.rot"] = btv.rot?.ToString() ?? "";
-                    data["btv.turnMax"] = btv.turnMax?.ToString() ?? "";
-                    data["btv.turnIdle"] = btv.turnIdle?.ToString() ?? "";
-                    data["btv.metric"] = btv.metric ? "true" : "false";
-                    data["btv.computing"] = btv.computing ? "true" : "false";
-                    if (btv.runways is { Count: > 0 }) data["btv.runways"] = string.Join(OptionSeparator, btv.runways);
-                    if (btv.exits is { Count: > 0 }) data["btv.exits"] = string.Join(OptionSeparator, btv.exits);
-                }
-                Raise("fbw_efb_elements", data);
-            }
+                ["available"] = s.available ? "true" : "false",
+                ["failed"] = s.failed ? "true" : "false",
+                ["airport.icao"] = s.airport?.icao ?? "",
+                ["airport.name"] = s.airport?.name ?? "",
+                ["airac"] = s.airac ?? "",
+                ["fms.origin"] = s.fms?.origin ?? "",
+                ["fms.dest"] = s.fms?.dest ?? "",
+                ["fms.altn"] = s.fms?.altn ?? "",
+                ["btv.ready"] = b.ready ? "true" : "false",
+                ["btv.runway"] = b.runway ?? "",
+                ["btv.exit"] = b.exit ?? "",
+                ["btv.lda"] = b.lda?.ToString() ?? "",
+                ["btv.exitDist"] = b.exitDist?.ToString() ?? "",
+                ["btv.dry"] = b.dry?.ToString() ?? "",
+                ["btv.wet"] = b.wet?.ToString() ?? "",
+                ["btv.stop"] = b.stop?.ToString() ?? "",
+                ["btv.rot"] = b.rot?.ToString() ?? "",
+                ["btv.turnMax"] = b.turnMax?.ToString() ?? "",
+                ["btv.turnIdle"] = b.turnIdle?.ToString() ?? "",
+                ["btv.rwyAheadQfu"] = b.rwyAheadQfu ?? "",
+                ["btv.computing"] = b.computing ? "true" : "false",
+                ["btv.metric"] = b.metric ? "true" : "false",
+                ["manual.runwayLengthM"] = s.manual?.runwayLengthM?.ToString() ?? "",
+                ["manual.manualStopDist"] = s.manual?.manualStopDist?.ToString() ?? "",
+                ["manual.fmsLandingRunwaySelected"] = s.manual?.fmsLandingRunwaySelected == true ? "true" : "false"
+            };
+            if (b.runways is { Count: > 0 }) data["btv.runways"] = string.Join(OptionSeparator, b.runways);
+            if (b.exits is { Count: > 0 }) data["btv.exits"] = string.Join(OptionSeparator, b.exits);
+            Raise("oans_state", data);
         }
 
         // ---- Runtime.evaluate over the inspector socket -----------------
@@ -409,13 +392,33 @@ namespace MSFSBlindAssist.SimConnect
             _sendLock.Dispose();
         }
 
-        private sealed class ScrapeResult
+        private sealed class Snapshot
         {
             public bool ok { get; set; }
-            public string? page { get; set; }
-            public string? error { get; set; }
-            public List<ScrapeElement>? elements { get; set; }
+            public bool available { get; set; }
+            public bool failed { get; set; }
+            public string? airac { get; set; }
+            public Airport? airport { get; set; }
+            public Fms? fms { get; set; }
             public BtvSnapshot? btv { get; set; }
+            public Manual? manual { get; set; }
+        }
+
+        private sealed class Airport { public string? icao { get; set; } public string? name { get; set; } }
+
+        private sealed class Fms
+        {
+            public string? origin { get; set; }
+            public string? dest { get; set; }
+            public string? altn { get; set; }
+            public string? landingRunway { get; set; }
+        }
+
+        private sealed class Manual
+        {
+            public int? runwayLengthM { get; set; }
+            public int? manualStopDist { get; set; }
+            public bool fmsLandingRunwaySelected { get; set; }
         }
 
         private sealed class BtvSnapshot
@@ -427,30 +430,16 @@ namespace MSFSBlindAssist.SimConnect
             public string? exit { get; set; }
             public int? lda { get; set; }
             public int? exitDist { get; set; }
+            public double? bearing { get; set; }
             public int? dry { get; set; }
             public int? wet { get; set; }
             public int? stop { get; set; }
             public int? rot { get; set; }
             public int? turnMax { get; set; }
             public int? turnIdle { get; set; }
-            public bool metric { get; set; }
+            public string? rwyAheadQfu { get; set; }
             public bool computing { get; set; }
-        }
-
-        private sealed class ScrapeElement
-        {
-            public int idx { get; set; }
-            public string? kind { get; set; }
-            public string? tag { get; set; }
-            public string? role { get; set; }
-            public string? text { get; set; }
-            public string? value { get; set; }
-            public string? controlType { get; set; }
-            public bool clickable { get; set; }
-            public int level { get; set; }
-            public string? live { get; set; }
-            public bool disabled { get; set; }
-            public List<string>? options { get; set; }
+            public bool metric { get; set; }
         }
     }
 }

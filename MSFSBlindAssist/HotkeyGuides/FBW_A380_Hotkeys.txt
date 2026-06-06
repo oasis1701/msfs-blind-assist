@@ -295,21 +295,26 @@ Live Electronic Checklist (ECL) Window (open with ] then Ctrl+Shift+C):
   (the Abnormal procedures button lists active ECAM procedures)
 
 Airport Map / BTV (OANS) Window (open with ] then Ctrl+Shift+B):
-  The OANS airport map only draws at the closest ND range, so opening the window
-  AUTO-ZOOMS the Captain ND to the airport map for you. Give it a second; press F5
-  if it still says it's loading. Read the controls with the arrow keys; Enter
-  activates a button / opens a list; type into a field then Enter; Escape closes.
-  It's a tool for the GROUND and the terminal area (taxi-out and approach) — away
-  from an airport it will say it's not available. Three tabs across the top — arrow
-  to one and press Enter:
-   ARPT SEL  Pick the airport: choose the entry mode (ICAO / IATA / CITY NAME), type
-             the code into the field + Enter, then press DISPLAY AIRPORT. ORIGIN /
-             DEST / ALTN jump to your flight-plan airports.
-   MAP DATA  Brake-To-Vacate: pick the landing RWY, read RUNWAY LENGTH and the BTV
-             STOP DISTANCE, choose the exit (TWY / STAND / OTHER). BTV MANUAL CONTROL
-             is the fallback. (The dry/wet stop distances are also exposed as readouts
-             in the panels and announced during the landing rollout.)
-   STATUS    Active / second airport database + SWAP, and the database identifier.
+  Accessible Brake-To-Vacate (BTV): pick your landing runway and the taxiway exit you
+  want to leave at, and hear the predicted stopping distances. It reads the airport
+  data directly and does NOT touch or zoom your navigation display. Read the controls
+  with the arrow keys; Enter activates a button / opens a list; type into a field then
+  Enter; Escape closes; F5 refreshes. A status line at the top says whether the full
+  Navigraph maps are loaded, or only manual BTV is available. Three tabs:
+   MAP AND BTV  Pick the BTV runway from the list + Arm runway, pick the exit + Arm
+               exit, and read back: runway + landing distance available, exit +
+               distance from threshold, the predicted dry / wet / live stop distances,
+               runway-occupancy and turnaround times, and any "runway X ahead" caution.
+               Without Navigraph maps, a Manual BTV section lets you type a stop
+               distance (then select the landing runway in the FMS).
+   AIRPORT     Load an airport's map: type the ICAO + Display airport, or use the
+               Origin / Destination / Alternate buttons. Shows the loaded airport.
+   STATUS      Whether the airport database is loaded + the AIRAC cycle.
+  Full BTV (exit lists + predicted distances) needs a Navigraph subscription and being
+  logged into Navigraph in the flyPad EFB (Shift+T). For taxi directions use Taxi
+  Assist (Y / Shift+Y), which uses the navigation database directly.
+  NOTE: the visual map controls (center map, crosses/flags, stands, de-icing, LDG
+  SHIFT) are intentionally omitted — they have no audio meaning for a blind pilot.
 
 Automatic Announcements:
   - Thrust-lever detents reached (Idle / Climb / Flex MCT / TOGA / Reverse)
