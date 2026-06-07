@@ -107,6 +107,7 @@ namespace MSFSBlindAssist.SimConnect
         /// <summary>Force a one-shot scrape now and return the rows (used by F5 refresh).</summary>
         public async Task<List<string>> ScrapeNowAsync()
         {
+            if (_disposed) return _lastRows;   // can be called from a form's F5/poll after Dispose()
             try
             {
                 if (!await EnsureConnected(_cts?.Token ?? CancellationToken.None)) return _lastRows;
@@ -170,6 +171,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
+            if (_disposed) return false;
             // Fast path: steady-state (already connected) needs no lock.
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
             await _connectLock.WaitAsync(ct);
@@ -353,7 +355,10 @@ namespace MSFSBlindAssist.SimConnect
             _cts?.Dispose();
             _http.Dispose();
             _sendLock.Dispose();
-            _connectLock.Dispose();
+            // Intentionally NOT disposing _connectLock: the background RunLoop is not joined here and
+            // may be pending on WaitAsync — disposing a SemaphoreSlim with waiters is hazardous.
+            // We never access its AvailableWaitHandle, so there is no handle to leak; Stop() cancels
+            // _cts, which makes the pending WaitAsync(ct) unblock with OperationCanceledException.
         }
 
         private sealed class ScrapeResult

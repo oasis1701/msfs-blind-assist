@@ -3372,6 +3372,21 @@ public class SimConnectManager
             return;
         }
 
+        // Record the force flag BEFORE the individual-def check below. Batch-covered vars
+        // (Continuous+IsAnnounced, no ExcludeFromBatch) have NO individual data def, so they take
+        // the early-return — but the continuous batch stream still delivers them and
+        // ProcessContinuousBatch honors forceUpdateVariables. Recording the flag here is what makes
+        // a force-read of an UNCHANGED batch-covered value actually re-fire (it previously sat after
+        // the early-return, so the flag was never set for batch-covered vars). Individual-def vars
+        // still have it consumed by ProcessIndividualVariableResponse exactly as before.
+        if (forceUpdate)
+        {
+            lock (forceUpdateVariables)
+            {
+                forceUpdateVariables.Add(varKey);
+            }
+        }
+
         if (!variableDataDefinitions.ContainsKey(varKey))
         {
             return;
@@ -3379,15 +3394,6 @@ public class SimConnectManager
 
         try
         {
-            // Track if this should force an update
-            if (forceUpdate)
-            {
-                lock (forceUpdateVariables)
-                {
-                    forceUpdateVariables.Add(varKey);
-                }
-            }
-
             int dataDefId = variableDataDefinitions[varKey];
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId,
                 (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,

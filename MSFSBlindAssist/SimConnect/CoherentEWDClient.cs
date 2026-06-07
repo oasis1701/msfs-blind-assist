@@ -209,6 +209,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
+            if (_disposed) return false;
             // Fast path: steady-state (already connected) needs no lock.
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
             await _connectLock.WaitAsync(ct);
@@ -617,7 +618,10 @@ namespace MSFSBlindAssist.SimConnect
             _cts?.Dispose();
             _http.Dispose();
             _sendLock.Dispose();
-            _connectLock.Dispose();
+            // Intentionally NOT disposing _connectLock: the background RunLoop is not joined here and
+            // may be pending on WaitAsync — disposing a SemaphoreSlim with waiters is hazardous. We
+            // never access its AvailableWaitHandle, so nothing leaks; Stop() cancels _cts, unblocking
+            // the pending WaitAsync(ct) with OperationCanceledException.
         }
 
         private sealed class ScrapeResult
