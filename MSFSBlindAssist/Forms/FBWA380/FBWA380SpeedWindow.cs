@@ -23,11 +23,11 @@ public class FBWA380SpeedWindow : FBWA380FCUWindowBase
         var setButton = new Button { Text = "Set", Location = new Point(280, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Speed" };
         setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "Speed Push (managed)", Location = new Point(20, 65), Size = new Size(165, 35), TabIndex = 2, AccessibleName = "Speed Push" };
-        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer);
+        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "Speed Pull (selected)", Location = new Point(195, 65), Size = new Size(165, 35), TabIndex = 3, AccessibleName = "Speed Pull" };
-        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer);
+        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer, readback: false);
         machButton = new Button { Text = "SPD / MACH toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Speed Mach toggle" };
-        machButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", simConnect, announcer); UpdateMachLabel(); };
+        machButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", simConnect, announcer, readback: false); UpdateMachLabel(); };
         var closeButton = new Button { Text = "Close", Location = new Point(130, 155), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
@@ -43,7 +43,11 @@ public class FBWA380SpeedWindow : FBWA380FCUWindowBase
         _modeTimer.Tick += (s, e) => UpdateMachLabel();
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUSpeedWithStatus(simConnect); UpdateMachLabel(); _modeTimer?.Start(); speedTextBox.Focus(); }
+    // Fenix-style: open SILENT. The old RequestFCUSpeedWithStatus forced a SimConnect
+    // read that announced the STALE cached value first, then the fresh one (the "previous
+    // state, then the right value" double the user heard). The value is confirmed on Set;
+    // managed/selected changes auto-announce via the always-on monitor.
+    protected override void SpeakInitialReadout() { UpdateMachLabel(); _modeTimer?.Start(); speedTextBox.Focus(); }
 
     private void UpdateMachLabel()
     {

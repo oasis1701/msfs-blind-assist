@@ -7749,7 +7749,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
-        DeferReadback(() => RequestFCUHeadingWithStatus(s));
+        // Clean readback (NOT the deferred RequestFCUHeadingWithStatus, which re-read the cache):
+        // the value we set + the cached managed dot, once, bare number to match the A380.
+        string hdgStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
+        a.AnnounceImmediate($"FCU heading {hdg:000}, {hdgStatus}");
         return true;
     }
 
@@ -7758,7 +7761,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
-        DeferReadback(() => RequestFCUSpeedWithStatus(s));
+        // Clean readback (NOT the deferred RequestFCUSpeedWithStatus): value set + cached managed
+        // dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
+        string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
+        if (internalSpeed < 100)
+            a.AnnounceImmediate($"FCU speed mach {internalSpeed / 100.0:0.00}, {spdStatus}");
+        else
+            a.AnnounceImmediate($"FCU speed {internalSpeed}, {spdStatus}");
         return true;
     }
 
@@ -7767,10 +7776,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         uint rounded = (uint)(Math.Round(feet / 100) * 100);
-        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
-        System.Threading.Thread.Sleep(50);
+        // Only force the 100-ft increment when the target isn't already a 1000-multiple (the
+        // A320 doesn't announce its increment var, so no announce-suppression is needed here).
+        if (rounded % 1000 != 0)
+        {
+            s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+            System.Threading.Thread.Sleep(50);
+        }
         s.SendEvent("A32NX.FCU_ALT_SET", rounded);
-        a.AnnounceImmediate($"Altitude set to {rounded} feet");
+        // Clean Fenix-style readback: value set + cached managed dot, bare number.
+        string altStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
+        a.AnnounceImmediate($"FCU altitude {rounded}, {altStatus}");
         return true;
     }
 
@@ -7781,19 +7797,30 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
-        a.AnnounceImmediate($"Vertical speed set to {value}");
+        // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
+        if (Math.Abs(value) < 100)
+            a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
+        else
+            a.AnnounceImmediate($"FCU vertical speed {value:0}");
         return true;
     }
 
-    // Fire a push/pull/toggle event and speak the resulting value (readback routed by
-    // the same event→readout mapping the Shift+1-4/Ctrl+1-4 knob hotkeys use).
-    public void FireFCUButton(string evt, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    // Fire a push/pull/toggle event. When readback is true (the default — used by the
+    // dedicated FCU value-entry windows where a value confirmation is wanted), also
+    // speak the resulting value (routed by the same event→readout mapping the knob
+    // hotkeys use). The window Push/Pull/mode-toggle buttons pass readback:false so the
+    // knob actuates SILENTLY (Fenix-style) and only the always-on managed-state monitor
+    // (A32NX_FCU_AFS_DISPLAY_*_MANAGED, Continuous+IsAnnounced) speaks, and only on a
+    // real Managed↔Selected transition. The old unconditional readback spoke the full
+    // value on every press — the verbose, "wonky" behaviour the user flagged.
+    public void FireFCUButton(string evt, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a, bool readback = true)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
         s.SendEvent(evt);
+        if (!readback) return;
         // Defer the read-out so the FBW FCU has processed the push/pull before we read the
         // managed/selected status + value (otherwise it speaks the pre-push state — see DeferReadback).
-        Action? readback = evt switch
+        Action? readbackAction = evt switch
         {
             "A32NX.FCU_HDG_PUSH" or "A32NX.FCU_HDG_PULL" or "A32NX.FCU_TRK_FPA_TOGGLE_PUSH" => () => RequestFCUHeadingWithStatus(s),
             "A32NX.FCU_SPD_PUSH" or "A32NX.FCU_SPD_PULL" or "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" => () => RequestFCUSpeedWithStatus(s),
@@ -7801,7 +7828,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX.FCU_VS_PUSH" or "A32NX.FCU_VS_PULL" => () => RequestFCUVerticalSpeedFPA(s),
             _ => null
         };
-        if (readback != null) DeferReadback(readback);
+        if (readbackAction != null) DeferReadback(readbackAction);
     }
 
     // Request the live AP/mode state vars so the Autopilot window can refresh labels.

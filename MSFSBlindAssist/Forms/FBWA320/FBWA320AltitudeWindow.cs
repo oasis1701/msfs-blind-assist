@@ -23,9 +23,9 @@ public class FBWA320AltitudeWindow : FBWA320FCUWindowBase
         var setButton = new Button { Text = "Set", Location = new Point(290, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Altitude" };
         setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "Altitude Push (managed)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Altitude Push" };
-        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer);
+        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "Altitude Pull (selected)", Location = new Point(205, 65), Size = new Size(175, 35), TabIndex = 3, AccessibleName = "Altitude Pull" };
-        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer);
+        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer, readback: false);
         var inc100 = new Button { Text = "Increment 100", Location = new Point(20, 110), Size = new Size(175, 35), TabIndex = 4, AccessibleName = "Increment 100 feet" };
         inc100.Click += (s, e) => aircraft.SetAltIncrement(100, simConnect);
         var inc1000 = new Button { Text = "Increment 1000", Location = new Point(205, 110), Size = new Size(175, 35), TabIndex = 5, AccessibleName = "Increment 1000 feet" };
@@ -38,7 +38,8 @@ public class FBWA320AltitudeWindow : FBWA320FCUWindowBase
         CancelButton = closeButton;
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUAltitudeReadout(simConnect); altTextBox.Focus(); }
+    // Fenix-style silent open (see FBWA320SpeedWindow): no stale-then-fresh readout.
+    protected override void SpeakInitialReadout() { altTextBox.Focus(); }
 
     private void HandleSet()
     {
@@ -46,6 +47,8 @@ public class FBWA320AltitudeWindow : FBWA320FCUWindowBase
         if (!double.TryParse(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
         if (v < 100 || v > 49000) { announcer.AnnounceImmediate("Altitude must be between 100 and 49000 feet"); altTextBox.SelectAll(); return; }
         aircraft.SetFCUAltitudeValue(v, simConnect, announcer);
+        // SelectAll keeps the field populated and gives NVDA's "<value> selected" echo,
+        // alongside the spoken "FCU altitude <value>, selected" readback — matching the A380.
         altTextBox.SelectAll();
     }
 }

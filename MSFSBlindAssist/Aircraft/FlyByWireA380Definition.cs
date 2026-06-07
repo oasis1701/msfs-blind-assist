@@ -4048,6 +4048,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // read-out switches to metres; let the generic monitor announce On/Off.
         if (varName == "A32NX_METRIC_ALT_TOGGLE") { _metricAlt = value > 0.5; return false; }
 
+        // Suppress the side-effect "Altitude Increment: 100" announce that a window-driven
+        // SetFCUAltitudeValue fires to force 100-ft granularity (the user set an altitude, not
+        // the increment). Time-boxed, so a deliberate later increment change still speaks.
+        if (varName == "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT" && DateTime.UtcNow < _altIncrAnnounceSuppressUntil)
+            return true;
+
         // ---- FCU readouts: value + managed-indicator pairs ----
         // Each Read* hotkey requests the value var(s) and the managed indicator
         // and force-updates them; we announce once the pair (or, for VS, the
@@ -6006,17 +6012,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // A320 H-events — firing the H-event does NOTHING (this is why one push of the ALT
             // knob "did nothing" and you had to push again: the first push was the dead H-event).
             // Route through FireFCUButton, exactly like the FCU window Push/Pull buttons, so a
-            // single push actually fires (and re-reads the value). Event names match the windows.
-            case HotkeyAction.FCUHeadingPush: FireFCUButton("A32NX.FCU_TO_AP_HDG_PUSH", simConnect, announcer); return true;
-            case HotkeyAction.FCUHeadingPull: FireFCUButton("A32NX.FCU_TO_AP_HDG_PULL", simConnect, announcer); return true;
-            case HotkeyAction.FCUSpeedPush: FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer); return true;
-            case HotkeyAction.FCUSpeedPull: FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer); return true;
-            case HotkeyAction.FCUAltitudePush: FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer); return true;
-            case HotkeyAction.FCUAltitudePull: FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer); return true;
+            // single push actually fires. readback:false keeps the actuation SILENT (Fenix-style)
+            // — only the managed-state monitor speaks, and only on a real Managed<->Selected
+            // transition. (The FCU value-entry windows still pass readback:true.)
+            case HotkeyAction.FCUHeadingPush: FireFCUButton("A32NX.FCU_TO_AP_HDG_PUSH", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUHeadingPull: FireFCUButton("A32NX.FCU_TO_AP_HDG_PULL", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUSpeedPush: FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUSpeedPull: FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUAltitudePush: FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUAltitudePull: FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer, readback: false); return true;
             // The A380X V/S knob is pull-to-engage (managed vertical is armed via the ALT knob),
             // so VS push is a no-op on the jet; fire the K-event anyway for consistency.
-            case HotkeyAction.FCUVSPush: FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer); return true;
-            case HotkeyAction.FCUVSPull: FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer); return true;
+            case HotkeyAction.FCUVSPush: FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUVSPull: FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer, readback: false); return true;
 
             case HotkeyAction.ReadFlaps:
             {
@@ -6438,7 +6446,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
-        RequestFCUHeadingWithStatus(s);
+        // Clean Fenix-style readback (NOT the racy RequestFCUHeadingWithStatus, which read the
+        // cache via forceUpdate and spoke the STALE value first): announce the value we just
+        // set plus the cached managed dot, once. The window's SelectAll gives the field echo.
+        string hdgStatus = (s.GetCachedVariableValue("A32NX_FCU_HDG_MANAGED_DASHES") ?? 0) > 0.5 ? "managed" : "selected";
+        a.AnnounceImmediate($"FCU heading {hdg:000}, {hdgStatus}");
         return true;
     }
 
@@ -6447,24 +6459,49 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
-        RequestFCUSpeedWithStatus(s);
+        // Clean Fenix-style readback (NOT the racy RequestFCUSpeedWithStatus): the value we set
+        // plus the cached managed dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
+        string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_SPD_MANAGED_DOT") ?? 0) > 0.5 ? "managed" : "selected";
+        if (internalSpeed < 100)
+            a.AnnounceImmediate($"FCU speed mach {internalSpeed / 100.0:0.00}, {spdStatus}");
+        else
+            a.AnnounceImmediate($"FCU speed {internalSpeed}, {spdStatus}");
         return true;
     }
+
+    // Brief window after a window-driven altitude set during which the side-effect
+    // "Altitude Increment: 100" auto-announce is suppressed (the user set an altitude,
+    // not the increment). Only armed when SetFCUAltitudeValue actually changes the increment.
+    private DateTime _altIncrAnnounceSuppressUntil = DateTime.MinValue;
 
     // feet: already converted from metres by the caller if metric.
     public bool SetFCUAltitudeValue(double feet, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         uint rounded = (uint)(Math.Round(feet / 100) * 100);
-        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
-        System.Threading.Thread.Sleep(50);
+        // FCU_ALT_SET snaps the target onto the current knob increment (100/1000 ft), so a
+        // non-thousand altitude (e.g. 4500) would land on the 1000-grid. Force 100-ft
+        // granularity FIRST — but ONLY when the target isn't already a 1000-multiple, so the
+        // common FLxx0 case (e.g. 36000) never needlessly fires the increment. When we do
+        // change it, suppress its "Altitude Increment: 100" side-effect auto-announce.
+        if (rounded % 1000 != 0)
+        {
+            _altIncrAnnounceSuppressUntil = DateTime.UtcNow.AddMilliseconds(750);
+            s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+            System.Threading.Thread.Sleep(50);
+        }
         s.SendEvent("A32NX.FCU_ALT_SET", rounded);
+        // Fenix-style readback: speak the FCU altitude + managed/selected state once, using the
+        // value we just set (no racy cache re-read) plus the cached managed dot — mirroring the
+        // "FCU altitude 36000, managed/selected" Fenix announces. The window's SelectAll
+        // separately gives NVDA's "36000 selected" field echo.
+        string altStatus = (s.GetCachedVariableValue("A32NX_FCU_ALT_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
         if (_metricAlt)
         {
             int m = (int)Math.Round(rounded * 0.3048);
-            a.AnnounceImmediate($"Altitude set to {m} metres, {rounded} feet");
+            a.AnnounceImmediate($"FCU altitude {m} metres, {altStatus}");
         }
-        else a.AnnounceImmediate($"Altitude set to {rounded} feet");
+        else a.AnnounceImmediate($"FCU altitude {rounded}, {altStatus}");
         return true;
     }
 
@@ -6475,13 +6512,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
-        a.AnnounceImmediate($"Vertical speed set to {value}");
+        // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
+        if (Math.Abs(value) < 100)
+            a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
+        else
+            a.AnnounceImmediate($"FCU vertical speed {value:0}");
         return true;
     }
 
-    // Fire a push/pull/toggle event and speak the resulting value (readback routed
-    // through OnPanelButtonFired's switch — heading/speed/alt/vs/trk-fpa/spd-mach).
-    public void FireFCUButton(string evt, SimConnectManager s, ScreenReaderAnnouncer a)
+    // Fire a push/pull/toggle event. When readback is true (the default — used by
+    // the dedicated FCU value-entry windows, where a value confirmation is wanted),
+    // also speak the resulting value via OnPanelButtonFired's switch. The input-mode
+    // FCU hotkey chords (Ctrl/Shift+1-4) pass readback:false so the knob actuates
+    // SILENTLY and only the always-on managed-state monitor (Mon "…_MANAGED…" ->
+    // "Heading/Speed/Altitude Mode: Managed/Selected", which fires only on a REAL
+    // transition) speaks — the Fenix-style behaviour the user asked for. The old
+    // unconditional readback spoke the full value on EVERY press, identical to the
+    // output-mode read query and far too verbose for a knob nudge.
+    public void FireFCUButton(string evt, SimConnectManager s, ScreenReaderAnnouncer a, bool readback = true)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
         if (evt == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH") s.ExecuteCalculatorCode(SpdMachToggleRpn);
@@ -6493,7 +6541,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // conditional RPN above; TRK/FPA toggle goes through here too — verify it separately.)
         else if (evt.StartsWith("A32NX.FCU_", StringComparison.Ordinal)) s.ExecuteCalculatorCode($"(>K:{evt})");
         else s.SendEvent(evt);
-        OnPanelButtonFired(evt, s, a);
+        if (readback) OnPanelButtonFired(evt, s, a);
     }
 
     // ---- Smooth slider ramp (motorised cockpit seats / armrests / sunshades / visors) ----

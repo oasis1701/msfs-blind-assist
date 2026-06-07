@@ -23,11 +23,11 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         var setButton = new Button { Text = "Set", Location = new Point(280, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Heading" };
         setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "Heading Push (managed)", Location = new Point(20, 65), Size = new Size(165, 35), TabIndex = 2, AccessibleName = "Heading Push" };
-        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_HDG_PUSH", simConnect, announcer);
+        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_HDG_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "Heading Pull (selected)", Location = new Point(195, 65), Size = new Size(165, 35), TabIndex = 3, AccessibleName = "Heading Pull" };
-        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_HDG_PULL", simConnect, announcer);
+        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_HDG_PULL", simConnect, announcer, readback: false);
         trkButton = new Button { Text = "HDG·V/S / TRK·FPA toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Track FPA toggle" };
-        trkButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", simConnect, announcer); UpdateTrkLabel(); };
+        trkButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", simConnect, announcer, readback: false); UpdateTrkLabel(); };
         var closeButton = new Button { Text = "Close", Location = new Point(130, 155), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
@@ -40,7 +40,8 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         _modeTimer.Tick += (s, e) => UpdateTrkLabel();
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUHeadingReadout(simConnect); UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
+    // Fenix-style silent open (see FBWA320SpeedWindow): no stale-then-fresh readout.
+    protected override void SpeakInitialReadout() { UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
 
     private void UpdateTrkLabel()
     {

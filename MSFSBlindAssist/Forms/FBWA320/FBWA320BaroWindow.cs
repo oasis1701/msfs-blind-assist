@@ -74,12 +74,10 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
 
     protected override void OnFormClosing(FormClosingEventArgs e) { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
 
-    protected override void SpeakInitialReadout()
-    {
-        simConnect.RequestVariable("A32NX_FCU_LEFT_EIS_BARO_HPA", forceUpdate: true);
-        simConnect.RequestVariable("A32NX_FCU_RIGHT_EIS_BARO_HPA", forceUpdate: true);
-        qnhTextBox.Focus();
-    }
+    // Fenix-style silent open (see FBWA320SpeedWindow): the forced baro reads
+    // auto-announced the stale-then-fresh value on open. The EFIS baro still
+    // auto-announces on a real knob change, and Set confirms the entered QNH.
+    protected override void SpeakInitialReadout() { qnhTextBox.Focus(); }
 
     private void HandleSet()
     {

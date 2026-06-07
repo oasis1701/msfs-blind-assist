@@ -21,9 +21,9 @@ public class FBWA380VSWindow : FBWA380FCUWindowBase
         var setButton = new Button { Text = "Set", Location = new Point(310, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Vertical Speed" };
         setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "V/S Push (level off)", Location = new Point(20, 65), Size = new Size(180, 35), TabIndex = 2, AccessibleName = "Vertical Speed Push" };
-        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer);
+        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "V/S Pull (engage)", Location = new Point(210, 65), Size = new Size(180, 35), TabIndex = 3, AccessibleName = "Vertical Speed Pull" };
-        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer);
+        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer, readback: false);
         var closeButton = new Button { Text = "Close", Location = new Point(145, 110), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
@@ -32,7 +32,8 @@ public class FBWA380VSWindow : FBWA380FCUWindowBase
         CancelButton = closeButton;
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUVSWithStatus(simConnect); vsTextBox.Focus(); }
+    // Fenix-style silent open (see FBWA380SpeedWindow): no stale-then-fresh readout.
+    protected override void SpeakInitialReadout() { vsTextBox.Focus(); }
 
     private void HandleSet()
     {

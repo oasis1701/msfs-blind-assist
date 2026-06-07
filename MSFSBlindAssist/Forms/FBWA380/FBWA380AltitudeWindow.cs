@@ -24,9 +24,9 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
         var setButton = new Button { Text = "Set", Location = new Point(290, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Altitude" };
         setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "Altitude Push (managed)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Altitude Push" };
-        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer);
+        pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "Altitude Pull (selected)", Location = new Point(205, 65), Size = new Size(175, 35), TabIndex = 3, AccessibleName = "Altitude Pull" };
-        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer);
+        pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer, readback: false);
         var inc100 = new Button { Text = "Increment 100", Location = new Point(20, 110), Size = new Size(175, 35), TabIndex = 4, AccessibleName = "Increment 100 feet" };
         inc100.Click += (s, e) => aircraft.SetAltIncrement(100, simConnect);
         var inc1000 = new Button { Text = "Increment 1000", Location = new Point(205, 110), Size = new Size(175, 35), TabIndex = 5, AccessibleName = "Increment 1000 feet" };
@@ -50,7 +50,8 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
         metricButton.AccessibleName = metric ? "Metric altitude toggle, currently on" : "Metric altitude toggle, currently off";
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUAltitudeWithStatus(simConnect); altTextBox.Focus(); }
+    // Fenix-style silent open (see FBWA380SpeedWindow): no stale-then-fresh readout.
+    protected override void SpeakInitialReadout() { altTextBox.Focus(); }
 
     private void HandleSet()
     {
@@ -65,6 +66,9 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
             return;
         }
         aircraft.SetFCUAltitudeValue(feet, simConnect, announcer);
+        // FENIX-STYLE TRIAL: keep the field populated after Enter (SelectAll selects the
+        // just-set value so the next entry overwrites it). With the silent set above, the
+        // still-shown value IS the confirmation — matching Fenix.
         altTextBox.SelectAll();
     }
 }
