@@ -55,14 +55,15 @@ navdatareader SQLite → LittleNavMapProvider.GetTaxiPaths()
 
 This gives the pilot the connector name (`Hold short taxiway A5`) instead of a generic parallel name (`Hold short taxiway A`) — the connector name is actionable for identifying which hold-line you're at.
 
-### Runway hold-short selection (ILS preference + synthetic back-off)
+### Runway hold-short selection (clearance-aware, ILS preference + synthetic back-off)
 
-`TruncateToHoldShort` picks the correct stopping point for a runway-destination route. Two universal-DB refinements keep it reliable across every airport the user's navdatareader build might expose:
+`TruncateToHoldShort` picks the correct stopping point for a runway-destination route. Three refinements keep it aligned with the user's clearance and reliable across every airport the user's navdatareader build might expose:
 
-1. **Prefer `ILSHoldShort` (IHS/IHSND) over `HoldShort` (HS/HSND).** If the route passes both on the way to the same runway, the ILS hold-short wins. ILS hold lines sit farther back from the runway (ICAO Annex 14: ~90–107.5 m) to protect the localizer critical area, so stopping at the IHS is always safe (it's also the correct hold line when low-vis / LVP is in force). Plain HS distances scale with runway code (30 m Code A → 90 m Code E/F). When only one type exists in the DB, whichever is present is used.
-2. **Synthetic 60 m back-off when no HS/IHS node exists.** Some airports in some DB builds have runways with no hold-short graph nodes at all (older navdata, partial Navigraph merges, small GA fields). Rather than routing the aircraft onto the runway, we walk backwards along the route from the runway lineup target and stop at the first node that is at least 60 m from it — an ICAO-Annex-14-inspired minimum distance. The final segment is marked `IsHoldShortPoint = true` so the guidance manager announces "Hold short" normally.
+1. **Prefer the final cleared taxiway when known.** If the user picked a runway destination after an explicit taxiway sequence, the form passes the final taxiway into `LoadRoute` and the display destination becomes e.g. `27L at taxiway A5`. `TruncateToHoldShort` first looks backwards for an HS/IHS node that belongs to that final cleared taxiway, so the stop point matches the connector ATC assigned instead of a different hold-short on the same runway.
+2. **Prefer `ILSHoldShort` (IHS/IHSND) over `HoldShort` (HS/HSND).** If no final-cleared-taxiway hold-short is found and the route passes both on the way to the same runway, the ILS hold-short wins. ILS hold lines sit farther back from the runway (ICAO Annex 14: ~90–107.5 m) to protect the localizer critical area, so stopping at the IHS is always safe (it's also the correct hold line when low-vis / LVP is in force). Plain HS distances scale with runway code (30 m Code A → 90 m Code E/F). When only one type exists in the DB, whichever is present is used.
+3. **Synthetic 60 m back-off when no HS/IHS node exists.** Some airports in some DB builds have runways with no hold-short graph nodes at all (older navdata, partial Navigraph merges, small GA fields). Rather than routing the aircraft onto the runway, we walk backwards along the route from the runway lineup target and stop at the first node that is at least 60 m from it — an ICAO-Annex-14-inspired minimum distance. The final segment is marked `IsHoldShortPoint = true` so the guidance manager announces "Hold short" normally.
 
-The destination name passed to `TruncateToHoldShort` (e.g. `09R`) is stamped onto the final segment's `HoldShortRunway` so the announcement is specific ("Hold short runway 09 Right") even when the hold-short node itself has no runway label.
+The destination name passed to `TruncateToHoldShort` (e.g. `09R` or `09R at taxiway A5`) is stamped onto the final segment's `HoldShortRunway` so the announcement is specific ("Hold short runway 09 Right") even when the hold-short node itself has no runway label. When takeoff-assist auto-activation fires from runway lineup, `ExtractRunwayIdFromDestinationName` strips both the `Runway ` prefix and any ` at taxiway X` suffix before sending the runway ID to takeoff assist.
 
 ### ATC-constrained routing
 
@@ -329,8 +330,8 @@ Perpendicular distance uses equirectangular projection (sub-cm accuracy at taxi 
 Opened via Input > `Shift+Y`. Tab order mirrors the way ATC says a clearance.
 
 1. **Airport ICAO** — text input, auto-filled from nearest airport on Show().
-2. **Destination type** — combo box: `Runway` or `Gate / Parking`.
-3. **Destination** — combo box: list of runways or parking spots for the chosen airport, sorted by distance from current position.
+2. **Destination type** — combo box: `Runway`, `Holding Point`, `Gate / Parking`, or `Cross Runway`.
+3. **Destination** — combo box: list of runways, holding points, parking spots, or runway crossings for the chosen airport, sorted by distance from current position.
 4. **First taxiway** — combo box: all taxiways touching the origin node, sorted nearest-first. `(None - calculate shortest path)` entry allows unconstrained routing.
 5. **Hold short after this taxiway?** — checkbox next to each taxiway combo. Checking it inserts a hold-short stop at the end of that leg.
 6. **Add taxiway** — button spawns another taxiway combo, filtered to only show taxiways that actually connect to the previous selection. Up to 20 additional taxiways.
@@ -342,6 +343,8 @@ Opened via Input > `Shift+Y`. Tab order mirrors the way ATC says a clearance.
 
 **Aircraft position is refreshed at Calculate time.** `OnCalculateClicked` reads `_simConnectManager.LastKnownPosition` immediately before route construction. Without this refresh the route would start from where the aircraft was when the form was OPENED (typically pre-pushback at the gate), and the post-pushback aircraft would already be off-route from the very first frame — the off-route detector fires and recalcs within seconds. Critical for the open-form-then-pushback workflow.
 
+**Runway, holding-point, and crossing destinations.** `Runway` routes guide to the runway hold-short/lineup flow for takeoff. `Holding Point` routes stop at a runway hold-short node without continuing into runway lineup. `Cross Runway` computes the far-side crossing node dynamically from the aircraft's current position at Calculate time, so the same runway choice works regardless of which side of the runway the aircraft is on. When a runway destination is reached via a named final taxiway, the display name keeps that context (`27L at taxiway A5`) while takeoff-assist auto-activation receives only the runway designator (`27L`).
+
 **Mnemonics (every Alt+letter unique on the form):**
 - `Alt+A` Airport (ICAO), `Alt+T` Destination type, `Alt+E` D**e**stination, `Alt+F` First taxiway
 - `Alt+H` Hold-short checkbox (cycles across all instances)
@@ -352,7 +355,7 @@ Opened via Input > `Shift+Y`. Tab order mirrors the way ATC says a clearance.
 
 **Per-row "Hold short of runway" picker** lets the user explicitly annotate an ATC-instructed runway hold-short between this taxiway and the next. Defaults to `(none)`; the dropdown lists every non-closed runway at the airport. When set, `ApplyUserRunwayHoldShorts` (called from `TaxiGuidanceManager.LoadRoute`) finds the first segment after this taxiway whose endpoint sits on the chosen runway's centerline and tags it as a hold-short. If the route doesn't cross the requested runway between this taxiway and the next, a warning is appended to the route summary announcement so the pilot knows the explicit pick was a clearance/route mismatch — the route still loads. Auto-detection (`InsertRunwayCrossingHoldShorts`) runs after this and respects user-set `HoldShortRunway` labels, so user wins on naming where both fire on the same segment.
 
-**Tab order** is set explicitly: `txtAirport → cmbDestType → cmbDestination → cmbFirstTaxiway → chkFirstHoldShort → btnAddTaxiway → pnlTaxiways → btnCalculate → btnStop`. The `pnlTaxiways` panel needs `TabStop = true` and an explicit `TabIndex` *between* Add and Calculate; without that, its inner controls land at the very end of the form's tab order (after Stop), so Tab from Add jumped past every newly-added taxiway straight to Calculate. Each new dynamic group's Combo / Hold-short / Remove gets sequential tab indices inside the panel as it is added.
+**Tab order** is set explicitly: `txtAirport → cmbDestType → cmbDestination → cmbFirstTaxiway → chkFirstHoldShort → cmbFirstHoldShortRunway → btnAddTaxiway → pnlTaxiways → btnCalculate → btnStop → txtRouteSummary`. The `pnlTaxiways` panel needs `TabStop = true` and an explicit `TabIndex` *between* Add and Calculate; without that, its inner controls land at the very end of the form's tab order (after Stop), so Tab from Add jumped past every newly-added taxiway straight to Calculate. Each new dynamic group's Combo / Hold-short / Hold-short-of-runway / Remove gets sequential tab indices inside the panel as it is added.
 
 ## Taxi Guidance Options Form
 
