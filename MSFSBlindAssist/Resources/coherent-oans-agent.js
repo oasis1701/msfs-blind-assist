@@ -107,8 +107,17 @@
     return den ? num / den : 0;
   };
 
-  // Returns the sorted list of exit names valid for the currently-armed runway, or NULL when the
-  // armed-runway threshold references aren't available (caller then falls back to the full list).
+  // Returns the exits valid for the currently-armed runway as [{name, dist}] sorted by distance
+  // from the landing threshold (closest first). `dist` is the BTV exit distance in metres (raw
+  // threshold->exit distance minus the 400 m touchdown zone == btvExitDistance for that exit, so
+  // the pick-list and the armed-exit readout report the SAME number). NULL when the armed-runway
+  // threshold references aren't available (caller then falls back to the full, unannotated list).
+  //
+  // A taxiway can contribute MORE THAN ONE exit-line feature under the same name (e.g. KSFO "Q"
+  // has a segment ~230 m off 28R's centerline AND a valid one on it). We accept a NAME if ANY of
+  // its features passes, and report the FIRST passing feature's distance. armExit() then arms that
+  // same valid feature by trying every same-named feature until one is accepted — without this, the
+  // first feature by name (often the off-runway one) was selected and silently rejected.
   A.validExitsForArmed = function () {
     var o = A.oanc(); if (!o || !o.btvUtils) return null;
     var b = o.btvUtils;
@@ -127,10 +136,11 @@
       var angle = (d1 < d2)
         ? A._pointAngle(thr[0], thr[1], e1[0], e1[1]) - A._pointAngle(e1[0], e1[1], coords[1][0], coords[1][1])
         : A._pointAngle(thr[0], thr[1], e2[0], e2[1]) - A._pointAngle(e2[0], e2[1], coords[last - 1][0], coords[last - 1][1]);
-      if (Math.abs(angle) > 120 || Math.min(d1, d2) > 50 || startDist < A.MIN_TDZ) continue; // FBW rejects
-      seen[t] = 1; out.push(t);
+      if (Math.abs(angle) > 120 || Math.min(d1, d2) > 50 || startDist < A.MIN_TDZ) continue; // FBW rejects (off-runway same-named feature)
+      seen[t] = 1; out.push({ name: t, dist: Math.round(startDist - A.MIN_TDZ) });
     }
-    return out.sort();
+    out.sort(function (a, c) { return a.dist - c.dist; });
+    return out;
   };
 
   // Cheap, side-effect-free read of the STATUS AIRAC cycle text node (textContent does not
@@ -155,6 +165,14 @@
 
       var rwy = b ? A.get(b.btvRunway) : null;
       var exit = b ? A.get(b.btvExit) : null;
+
+      // Exit pick-list (filtered to the armed runway, sorted closest-first) + a parallel distance
+      // array (metres from threshold). Falls back to the full unannotated list if the refs aren't up.
+      var ve = rwy ? A.validExitsForArmed() : null;
+      var exitNames = [], exitDists = [];
+      if (ve) { for (var ei = 0; ei < ve.length; ei++) { exitNames.push(ve[ei].name); exitDists.push(ve[ei].dist); } }
+      else if (rwy) { exitNames = A.listByFeat(A.FT_RWY_EXIT_LINE, false); }
+
       var dry = A.lvar("A32NX_OANS_BTV_DRY_DISTANCE_ESTIMATED");
       var wet = A.lvar("A32NX_OANS_BTV_WET_DISTANCE_ESTIMATED");
       var stop = A.lvar("A32NX_OANS_BTV_STOP_BAR_DISTANCE_ESTIMATED");
@@ -185,9 +203,10 @@
         btv: {
           ready: ready,
           runways: A.listByFeat(A.FT_RWY_CENTERLINE, true),
-          // Only the exits FBW would accept for the armed runway (filtered read-only); fall back to
-          // the full airport list when the armed-runway threshold refs aren't available.
-          exits: rwy ? (A.validExitsForArmed() || A.listByFeat(A.FT_RWY_EXIT_LINE, false)) : [],
+          // Exits FBW would accept for the armed runway, sorted closest-first, with a parallel
+          // distance-from-threshold array (exitDists, metres). Empty until a runway is armed.
+          exits: exitNames,
+          exitDists: exitDists,
           runway: rwy, exit: exit,
           lda: m(b ? A.get(b.btvRunwayLda) : null),
           exitDist: m(b ? A.get(b.btvExitDistance) : null),
@@ -225,14 +244,27 @@
 
   A.armExit = function (name) {
     var o = A.oanc(); if (!o || !o.btvUtils) return "OANS not ready";
-    if (!o.btvUtils.btvRunway || A.get(o.btvUtils.btvRunway) == null) return "Select a BTV runway first";
-    var ex = A.findLabel(A.FT_RWY_EXIT_LINE, name);
-    if (!ex) return "exit " + name + " not found on map";
+    var b = o.btvUtils;
+    if (!b.btvRunway || A.get(b.btvRunway) == null) return "Select a BTV runway first";
+    if (!o.labelManager || !o.labelManager.labels) return "exit " + name + " not found on map";
+    // A taxiway can expose MORE THAN ONE exit-line feature under the same name (e.g. KSFO "Q":
+    // one segment off the runway, one valid on it). selectExitFromOans accepts only the
+    // geometrically-valid feature, so try EVERY same-named exit feature until one is accepted —
+    // mirroring a sighted pilot clicking the correct exit label on the map. Picking the first
+    // feature by name silently rejected the valid exit (the user's KSFO 28R / Q bug).
+    var L = o.labelManager.labels, found = false;
     try {
-      o.btvUtils.selectExitFromOans(name, ex.associatedFeature);
-      var got = A.get(o.btvUtils.btvExit);
-      return got ? ("Armed BTV exit " + got) : ("Exit " + name + " not valid for this runway (wrong side or too close to threshold)");
+      for (var i = 0; i < L.length; i++) {
+        var f = L[i].associatedFeature;
+        if (!(f && f.properties && f.properties.feattype === A.FT_RWY_EXIT_LINE && L[i].text === name)) continue;
+        found = true;
+        b.selectExitFromOans(name, f);
+        var got = A.get(b.btvExit);
+        if (got != null) return "Armed BTV exit " + got;
+      }
     } catch (e) { return "ERR " + e; }
+    if (!found) return "exit " + name + " not found on map";
+    return "Exit " + name + " not valid for this runway (wrong side or too close to threshold)";
   };
 
   A.clearBtv = function () {

@@ -193,7 +193,7 @@ public sealed class FBWA380OansForm : Form
     private void UpdateMap()
     {
         SyncCombo(_btvRunway, _s.Runways, _s.BtvRunway);
-        SyncCombo(_btvExit, _s.Exits, _s.BtvExit);
+        SyncExitCombo(_btvExit, _s.Exits, _s.ExitDists, _s.BtvExit);
         bool armed = !string.IsNullOrEmpty(_s.BtvRunway);
         _armRunway.Enabled = _btvRunway.Items.Count > 0;
         _btvExit.Enabled = armed && _btvExit.Items.Count > 0;
@@ -270,8 +270,8 @@ public sealed class FBWA380OansForm : Form
     private void ArmExit()
     {
         if (string.IsNullOrEmpty(_s.BtvRunway)) { _announcer?.Announce("Select a BTV runway first"); return; }
-        if (_btvExit.SelectedItem is not string ex) { _announcer?.Announce("No exit selected"); return; }
-        _client.EnqueueCommand("oans_arm_exit", new Dictionary<string, string> { ["value"] = ex });
+        if (_btvExit.SelectedItem is not ExitItem ex) { _announcer?.Announce("No exit selected"); return; }
+        _client.EnqueueCommand("oans_arm_exit", new Dictionary<string, string> { ["value"] = ex.Name });
         // Success → AnnounceBtvChange (snapshot); rejection ("Exit X not valid for this runway …")
         // → AnnounceActionResult, so an invalid exit is heard instead of silently doing nothing.
     }
@@ -342,6 +342,46 @@ public sealed class FBWA380OansForm : Form
         return options.Contains(armed) ? armed : null;
     }
 
+    // Exit combo: items carry the bare exit Name (sent on arm) plus a Display that appends the
+    // distance from the threshold ("Q, 2,289 m"), so the screen reader announces how far down the
+    // runway each exit is while arrowing the list. The list arrives already sorted closest-first.
+    private sealed class ExitItem
+    {
+        public string Name = "";
+        public string Display = "";
+        public override string ToString() => Display;
+    }
+
+    private void SyncExitCombo(ComboBox combo, List<string> names, List<int> dists, string? armed)
+    {
+        if (combo.Focused || combo.DroppedDown) return;
+        bool same = combo.Items.Count == names.Count;
+        if (same)
+            for (int i = 0; i < names.Count; i++)
+                if (combo.Items[i] is not ExitItem it || it.Name != names[i] || it.Display != ExitDisplay(names[i], i, dists)) { same = false; break; }
+        string? keepName = (combo.SelectedItem as ExitItem)?.Name;
+        if (!same)
+        {
+            combo.BeginUpdate(); combo.Items.Clear();
+            for (int i = 0; i < names.Count; i++)
+                combo.Items.Add(new ExitItem { Name = names[i], Display = ExitDisplay(names[i], i, dists) });
+            combo.EndUpdate();
+        }
+        string? wantName = !string.IsNullOrEmpty(armed) ? StripIcao(armed!, names) : keepName;
+        int ix = wantName != null ? IndexOfExit(combo, wantName) : -1;
+        if (ix >= 0) { if (combo.SelectedIndex != ix) combo.SelectedIndex = ix; }
+        else if (combo.Items.Count > 0 && combo.SelectedIndex < 0) combo.SelectedIndex = 0;
+    }
+
+    private string ExitDisplay(string name, int i, List<int> dists)
+        => (dists != null && i < dists.Count) ? $"{name}, {Dist(dists[i])}" : name;
+
+    private static int IndexOfExit(ComboBox combo, string name)
+    {
+        for (int i = 0; i < combo.Items.Count; i++) if (combo.Items[i] is ExitItem it && it.Name == name) return i;
+        return -1;
+    }
+
     private sealed class Snap
     {
         public bool Available, Failed, BtvReady, Metric, Computing;
@@ -349,6 +389,7 @@ public sealed class FBWA380OansForm : Form
         public string? BtvRunway, BtvExit, RwyAheadQfu;
         public int? Lda, ExitDist, Dry, Wet, Stop, Rot, TurnMax, TurnIdle, RunwayLengthM, ManualStopDist;
         public List<string> Runways = new(); public List<string> Exits = new();
+        public List<int> ExitDists = new();
 
         public static Snap Parse(Dictionary<string, string> d)
         {
@@ -356,6 +397,13 @@ public sealed class FBWA380OansForm : Form
             bool B(string k) => d.TryGetValue(k, out var v) && v == "true";
             int? I(string k) => d.TryGetValue(k, out var v) && int.TryParse(v, out var n) ? n : null;
             List<string> L(string k) => d.TryGetValue(k, out var v) && v.Length > 0 ? new List<string>(v.Split((char)0x1f)) : new List<string>();
+            List<int> LI(string k)
+            {
+                var r = new List<int>();
+                if (d.TryGetValue(k, out var v) && v.Length > 0)
+                    foreach (var p in v.Split((char)0x1f)) if (int.TryParse(p, out var n)) r.Add(n);
+                return r;
+            }
             return new Snap
             {
                 Available = B("available"), Failed = B("failed"), BtvReady = B("btv.ready"),
@@ -366,7 +414,7 @@ public sealed class FBWA380OansForm : Form
                 Lda = I("btv.lda"), ExitDist = I("btv.exitDist"), Dry = I("btv.dry"), Wet = I("btv.wet"),
                 Stop = I("btv.stop"), Rot = I("btv.rot"), TurnMax = I("btv.turnMax"), TurnIdle = I("btv.turnIdle"),
                 RunwayLengthM = I("manual.runwayLengthM"), ManualStopDist = I("manual.manualStopDist"),
-                Runways = L("btv.runways"), Exits = L("btv.exits")
+                Runways = L("btv.runways"), Exits = L("btv.exits"), ExitDists = LI("btv.exitDists")
             };
         }
     }

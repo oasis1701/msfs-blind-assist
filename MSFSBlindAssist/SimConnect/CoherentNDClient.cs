@@ -232,6 +232,7 @@ namespace MSFSBlindAssist.SimConnect
               .Append(b.stop).Append('/').Append(b.rot).Append('/').Append(b.turnMax).Append('/').Append(b.turnIdle).Append('/')
               .Append(b.rwyAheadQfu).Append('/').Append(b.metric ? '1' : '0').Append('|')
               .Append(string.Join(",", b.runways ?? new())).Append('|').Append(string.Join(",", b.exits ?? new())).Append('|')
+              .Append(string.Join(",", b.exitDists ?? new())).Append('|')
               .Append(s.manual?.runwayLengthM).Append('/').Append(s.manual?.manualStopDist).Append('/')
               .Append(s.manual?.fmsLandingRunwaySelected == true ? '1' : '0').Append('|')
               .Append(s.fms?.origin).Append('/').Append(s.fms?.dest).Append('/').Append(s.fms?.altn).Append('|')
@@ -270,6 +271,7 @@ namespace MSFSBlindAssist.SimConnect
             };
             if (b.runways is { Count: > 0 }) data["btv.runways"] = string.Join(OptionSeparator, b.runways);
             if (b.exits is { Count: > 0 }) data["btv.exits"] = string.Join(OptionSeparator, b.exits);
+            if (b.exitDists is { Count: > 0 }) data["btv.exitDists"] = string.Join(OptionSeparator, b.exitDists);
             Raise("oans_state", data);
         }
 
@@ -426,6 +428,7 @@ namespace MSFSBlindAssist.SimConnect
             public bool ready { get; set; }
             public List<string>? runways { get; set; }
             public List<string>? exits { get; set; }
+            public List<int>? exitDists { get; set; }
             public string? runway { get; set; }
             public string? exit { get; set; }
             public int? lda { get; set; }
