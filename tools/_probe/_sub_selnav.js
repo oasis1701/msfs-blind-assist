@@ -1,1 +1,0 @@
-(function(){var A=window.__MSFSBA_A380,p=A.findRoot(A.activeMcdu);if(!p)return"NO ROOT";var tabs=p.querySelectorAll(".mfd-top-tab-navigator-bar-element-outer");for(var i=0;i<tabs.length;i++){var t=(tabs[i].textContent||"").replace(/\s+/g," ").trim().toUpperCase();if(t.indexOf("SELECTED FOR FMS")>=0){tabs[i].click();return"clicked";}}return"nf";})();

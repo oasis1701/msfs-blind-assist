@@ -1,20 +1,28 @@
-# `tools/_probe/` — live A380X Coherent probe scripts
+# `tools/_probe/` — live A380X / flyPad Coherent probe scripts
 
-Small, self-contained JavaScript snippets that run inside a live A380X Coherent GT
-view via [`../coherent-eval.ps1`](../coherent-eval.ps1). They are how almost every
-A380 feature in MSFSBA was discovered, verified, and debugged **against the running
+Small, self-contained JavaScript snippets that run inside a live Coherent GT view
+via [`../coherent-eval.ps1`](../coherent-eval.ps1). They are how almost every A380
+feature in MSFSBA was discovered, verified, and debugged **against the running
 sim** — read/write any L:var, scrape/click any cockpit DOM, walk the MCDU/flyPad,
 all independent of the SimConnect MCP (which goes stale on focus loss).
+
+This directory is intentionally kept small: it holds a **reference set** of probes
+(the ones other tools, the jsdom test suites, and CLAUDE.md point at), not the
+hundreds of throwaway one-offs that were used during development. Throwaway probes
+are fine to create locally — just don't commit them (a curated cleanup removed the
+old ad-hoc pile; see PR #85).
 
 ## How to run one
 
 ```powershell
-# From the repo's tools/ directory, with MSFS running + the A380X loaded:
-./coherent-eval.ps1 -Title A380X_MFD -ExprFile _probe\fpln_sanity.js
+# From the repo's tools/ directory, with MSFS running + the aircraft loaded.
+# Read an L:var directly (no agent needed):
+./coherent-eval.ps1 -Title A380X_MFD -Expr "SimVar.GetSimVarValue('L:A32NX_BTV_STATE','number')"
+
 # Inject the in-page agent first when the probe calls __MSFSBA_A380 / __MSFSBA_FLYPAD:
-./coherent-eval.ps1 -Title A380X_MFD `
-  -PreFile ..\MSFSBlindAssist\Resources\coherent-a380-agent.js `
-  -ExprFile _probe\surv_read.js
+./coherent-eval.ps1 -Title "- EFB" `
+  -PreFile ..\MSFSBlindAssist\Resources\coherent-flypad-agent.js `
+  -ExprFile _probe\_settings_scrape.js
 ```
 
 `-Title` resolves the view by substring from `/pagelist.json` (ids shuffle every
@@ -36,27 +44,19 @@ Each probe is an IIFE that returns a string (JSON or plain text):
 } catch(e){ return 'ERR ' + e + ' ' + (e && e.stack); } })()
 ```
 
-Read an L:var directly (no agent needed):
+## What's kept here
 
-```js
-(function(){ return SimVar.GetSimVarValue('L:A32NX_BTV_STATE','number'); })()
-```
-
-## What's here (worked catalogue)
-
-| Probe | View | Demonstrates |
-|-------|------|--------------|
-| `uisvc.js` | A380X_MFD | resolve the MFD `uiService` (the cross-system `navigateTo` key) |
-| `atccom_nav.js` / `atccom_all.js` / `atccom_read.js` / `atccom_scrape.js` | A380X_MFD | navigate + scrape the ATC COM / CPDLC + D-ATIS pages |
-| `sec_read.js` | A380X_MFD | the secondary (SEC) flight plans read like the active plan |
-| `surv_read.js` / `surv_click.js` / `surv_click2.js` / `radio_diag.js` | A380X_MFD | SURV pages; RadioButtonGroup enabled/disabled + click-actuation |
-| `btv_dist.js` | A380X_MFD | BTV predicted dry/wet/stop-bar distances (plain-metres L:vars) |
-| `rudtrim.js` | A380X_MFD | rudder-trim ARINC429 word + status, vs the stock percent |
-| `metric.js` / `metric_toggle.js` | A380X_MFD / "- EFB" | the metric/imperial EFB persistent store (`GetStoredData`/`SetStoredData`) |
-| `fpln_sanity.js` | A380X_MFD | sanity-scrape the active F-PLN with the agent injected |
-| `efb_scrape.js` / `efb_failnav.js` / `efb_ata.js` / `efb_dash.js` | "- EFB" | flyPad scrape + navigate (Failures app → ATA chapter → per-failure buttons) |
-| `pack_write.js` / `ovhd_flip.js` / `ovhd_flip2.js` / `ovhd_check.js` | A380X_MFD | **write-stick test**: flip overhead PB L:vars via the calculator path and read back after a delay (proved the "computed-output" PBs are actually settable — see CLAUDE.md #103) |
-| `ecl_diag.js` / `ecl_scrape.js` | A380X_EWD | ECL `.EclLine` presence + the agent's structured row scrape |
+| File | View / used by | Purpose |
+|------|----------------|---------|
+| `_settings_scrape.js` | "- EFB" (flypad agent) | scrape the flyPad Settings pages — the reference flyPad probe |
+| `_door_fiber.js` | "- EFB" (flypad agent) | read flyPad door identities from the React fiber (precise door names in flight) |
+| `_click_by_text.js` | any (agent) | generic click-an-element-by-its-text helper |
+| `_capture_fixture.js` | bakes `tools/perf-builder-test` fixtures | stamp `data-rect`/`data-vis` onto a live MFD scrape so `enumerateLines` runs offline under jsdom |
+| `_capture_flypad_fixture.js` | bakes `tools/flypad-settings-test` fixtures | same, for the flyPad Settings fixtures |
+| `a380_engmon.js` / `a380_engmon_full.js` | A380X_SYSTEMSHOST, via `../a380_engine_monitor.ps1` | live variable monitor (caught the ENGINE_COUNT=2 ignition-fan-out bug — CLAUDE.md "Engines 3 & 4 motor but never light") |
+| `flypad_tour.js` + `drive_tour.ps1` | "- EFB" | tour every flyPad EFB tab (ping/scrape/click/setValue) |
+| `fbw_lvars_clean.txt` | reference data | a dump of every L:var in the running A380X — grep it for a system + its synonyms |
+| `captures/mcdu_captures.md`, `captures/mfd_pages_recon.md` | reference notes | per-page MCDU/MFD scrape recon |
 
 **Write-stick testing rule (CLAUDE.md #103):** to decide whether an FBW L:var write
 sticks, ALWAYS write via the calculator path — `SimVar.SetSimVarValue('L:VAR','number',v)`
@@ -64,6 +64,5 @@ in a Coherent view, or `(>L:VAR)` via `execute_calculator_code`. NEVER use the M
 `set_lvar` (native data-def) — it silently fails for many FBW L:vars and produces false
 "reverts / uncontrollable" conclusions.
 
-These are **reference examples**, not a test suite — copy one, tweak the var/page,
-and run it to probe whatever you're working on. Throwaway one-offs are fine; just
-name them descriptively if you keep them.
+Copy one, tweak the var/page, and run it to probe whatever you're working on — but
+keep new throwaways out of version control.

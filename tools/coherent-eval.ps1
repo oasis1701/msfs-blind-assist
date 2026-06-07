@@ -32,8 +32,8 @@ param(
 # Examples:
 #   # Read an L:var from the MFD view
 #   ./coherent-eval.ps1 -Title A380X_MFD -Expr "SimVar.GetSimVarValue('L:A32NX_BTV_STATE','number')"
-#   # Inject the in-page agent first, then call it (scrape the MCDU)
-#   ./coherent-eval.ps1 -Title A380X_MFD -PreFile ..\MSFSBlindAssist\Resources\coherent-a380-agent.js -ExprFile _probe\fpln_sanity.js
+#   # Inject the in-page agent first, then call it (scrape the flyPad Settings)
+#   ./coherent-eval.ps1 -Title "- EFB" -PreFile ..\MSFSBlindAssist\Resources\coherent-flypad-agent.js -ExprFile _probe\_settings_scrape.js
 #   # Write an L:var via the MobiFlight calculator path (reliable for FBW L:vars)
 #   ./coherent-eval.ps1 -Title A380X_MFD -Expr "SimVar.SetSimVarValue('K:...', 'number', 1)"
 # See tools/_probe/README.md for the probe-file pattern and a worked catalogue.
