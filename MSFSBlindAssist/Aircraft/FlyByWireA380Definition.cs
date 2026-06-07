@@ -980,7 +980,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_EIS_DMC_SWITCHING_KNOB", "EIS / DMC Source", srcSw);
         // Magnetic vs True heading reference (the ND/FMS TRUE REF pushbutton). The
         // pilot must confirm MAG unless TRUE is required. (#107 transcript gap.)
-        Sel("A32NX_FMGC_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
+        // CORRECTED 2026-06: the control + state var the A380 instruments (PFD/ND/FCU)
+        // actually read is A32NX_PUSH_TRUE_REF, NOT A32NX_FMGC_TRUE_REF (what MSFSBA used
+        // before). Live-verified: writing FMGC_TRUE_REF=1 left PUSH_TRUE_REF (the consumed
+        // var) at 0 and changed nothing; writing PUSH_TRUE_REF=1 latched and is what the
+        // displays read. FMGC_TRUE_REF is an FMGC-internal output, not the pilot control.
+        Sel("A32NX_PUSH_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
         Sel("A32NX_CHRONO_ET_SWITCH_POS", "Elapsed Time",
             new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
 
@@ -1110,7 +1115,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "Wind direction", "degrees");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "Wind speed", "knots");
         // ND heading reference (magnetic vs true) — auto-announced on change.
-        ReadEnum("A32NX_FMGC_TRUE_REF", "Heading reference",
+        ReadEnum("A32NX_PUSH_TRUE_REF", "Heading reference",
             new Dictionary<double, string> { [0] = "magnetic", [1] = "true" });
         // ISIS speed-bugs active flag (the bug VALUES are JS-only on the FBW ISIS, no L-var;
         // the ATT-10s realign flag is likewise scrape-only). Friendly label for the status box.
@@ -2935,7 +2940,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Source Switching"] = new List<string>
         {
             "A32NX_ATT_HDG_SWITCHING_KNOB", "A32NX_AIR_DATA_SWITCHING_KNOB",
-            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF"
+            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_PUSH_TRUE_REF"
         };
         // Clock panel: the chronometer start/stop + reset buttons and the elapsed-time
         // (ET) Run/Stop/Reset knob are the controls; the elapsed-time readouts are the
@@ -3325,7 +3330,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Velocities + wind + heading reference (ARINC, decoded; "not available" on the ground).
             "A32NX_ADIRS_IR_1_GROUND_SPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED",
             "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR",
-            "A32NX_FMGC_TRUE_REF"
+            "A32NX_PUSH_TRUE_REF"
         };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
