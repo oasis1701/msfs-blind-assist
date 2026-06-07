@@ -535,6 +535,17 @@ Dual-mode hotkey system:
 - ICAO code input with autocomplete runway/gate selection
 - Integration with SimConnect for aircraft positioning
 
+### Access GSX subsystem
+**Files:** `Services/GsxService.cs`, `Forms/AccessGSXForm.cs`, `Forms/GsxSettingsForm.cs`
+
+- Accessible wrapper for GSX Ground Services Pro menu and tooltip output
+- `GsxService` tracks menu state, tooltip text, active services, settings metadata, invoices/receipts, and announcement throttling
+- `AccessGSXForm` exposes status, menu, tooltip, active-service selection, `F5` menu open, option keys, `C` settings, and `Esc` hide
+- `GsxSettingsForm` renders GSX settings as standard Windows controls and persists changed values back to GSX configuration
+- Background tooltip announcements are controlled by `UserSettings.GsxBackgroundMonitoring`
+
+See [Access GSX](gsx.md) for the full reference.
+
 ### TaxiGuidance subsystem
 **Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/TaxiGuidanceOptionsForm.cs`
 
