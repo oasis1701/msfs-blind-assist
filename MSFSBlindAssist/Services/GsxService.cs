@@ -2375,19 +2375,19 @@ public sealed class GsxService : IDisposable
         if (latestCompletedRow is not null)
             _lastCompletedStatusServiceText = latestCompletedRow.Text;
 
+        // Update the active-service registry so the form can show / hide
+        // its selector combobox. Service names come from ExtractServiceName
+        // (matches the existing throttle keys). Done here (after parsing
+        // but before row selection / timer announcements) so
+        // SelectedActiveService can drive both paths.
+        UpdateActiveServiceRegistry(activeRows);
+
         if (!shouldSpeakCompletedRow)
         {
             string groundConnectionTimerText = FormatGroundConnectionTimerAnnouncement(activeRows, completedRows, chargeRows);
             if (!string.IsNullOrWhiteSpace(groundConnectionTimerText))
                 return groundConnectionTimerText;
         }
-
-        // Update the active-service registry so the form can show / hide
-        // its selector combobox. Service names come from ExtractServiceName
-        // (matches the existing throttle keys). Done here (after parsing
-        // but before row selection) so SelectedActiveService can drive the
-        // pick below.
-        UpdateActiveServiceRegistry(activeRows);
 
         StatusServiceRow? rowToSpeak;
         if (shouldSpeakCompletedRow)
@@ -2450,12 +2450,35 @@ public sealed class GsxService : IDisposable
     }
 
     private string FormatGroundConnectionTimerAnnouncement(
-        IReadOnlyList<StatusServiceRow> activeRows,
+        List<StatusServiceRow> activeRows,
         IReadOnlyList<StatusServiceRow> completedRows,
         IReadOnlyList<string> chargeRows)
     {
         if (DateTime.UtcNow - _lastTimerOnlyStatusAnnouncementUtc < GroundConnectionTimerAnnouncementInterval)
             return string.Empty;
+
+        // When more than one persistent ground connection is active, the
+        // Access GSX selector is the user's focus. Emit the selected row in
+        // the same shape as the normal active-service path; otherwise the
+        // broad "all timers" announcement is followed by a second selected
+        // service announcement on the next poll.
+        if (activeRows.Count > 0
+            && (activeRows.Count > 1 || !string.IsNullOrWhiteSpace(_selectedActiveService)))
+        {
+            StatusServiceRow selectedRow = SelectActiveRow(activeRows);
+            if (IsGroundConnectionService(selectedRow.Text))
+            {
+                var selectedTimerRows = FindMatchingChargeRows(selectedRow.Text, chargeRows)
+                    .Where(IsTimerStatusLine)
+                    .ToList();
+                if (selectedTimerRows.Count > 0)
+                {
+                    var selectedRowsToSpeak = new List<string> { selectedRow.Text, "Current charges:" };
+                    selectedRowsToSpeak.AddRange(selectedTimerRows);
+                    return string.Join(Environment.NewLine, DeduplicateStatusRows(selectedRowsToSpeak));
+                }
+            }
+        }
 
         var rowsToSpeak = new List<string>();
         foreach (var row in activeRows
