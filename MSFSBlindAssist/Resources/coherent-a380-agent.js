@@ -703,6 +703,19 @@
     var lines = page.querySelectorAll(".mfd-fms-fpln-line");
     function cellText(L, sel) { var n = L.querySelector(sel); return n ? clean(n.textContent) : ""; }
     function isDash(s) { return !s || /^[-:.\s]+$/.test(s); }
+    // The F-PLN page has a column-header toggle (MfdFmsFpln line 1033) that swaps
+    // the two right-hand columns between SPD / ALT and EFOB / T.WIND. When it shows
+    // "EFOB ... T.WIND", efobOrSpeed renders the speed cell as EFOB (tonnes, "NN.N")
+    // and windOrAlt renders the altitude cell as the wind (direction + "/" +
+    // magnitude). Detect the mode once so the cell parser below reads the right
+    // columns; default to SPD/ALT if the header button isn't found (safe).
+    var efobWindMode = false;
+    var hdrBtn = page.querySelector(".mfd-fms-fpln-button-speed-alt");
+    if (hdrBtn) efobWindMode = clean(hdrBtn.textContent).toUpperCase().indexOf("EFOB") >= 0;
+    // Wind direction/magnitude each render as a ditto-mark (") when unchanged from
+    // the line above (formatWind). A blind pilot reads line-by-line and can't glance
+    // up, so resolve dittos by carrying the previous waypoint's value forward.
+    var prevWindDir = "", prevWindMag = "";
     for (var i = 0; i < lines.length; i++) {
       var L = lines[i];
       if (!A.isVisible(L)) continue;
@@ -764,7 +777,7 @@
       // once the FMS computes them in flight they fold in as ", 250 knots" /
       // ", flight level 350". Captured by column position WITH a value-pattern
       // guard so a mis-placed cell can never inject garbage. (Verify in flight.)
-      var spd = "", alt = "";
+      var spd = "", alt = "", efob = "", windDir = "", windMag = "";
       var cells = L.getElementsByTagName("*");
       for (var p = 0; p < cells.length; p++) {
         var pc = cells[p];
@@ -773,8 +786,25 @@
         var pt = clean(A.directText(pc));
         if (!pt || isDash(pt)) continue;
         var relX = pc.getBoundingClientRect().left - lr.left;
-        if (!spd && relX >= 300 && relX < 405 && /^(M?\.\d{2}|\d{2,3})$/.test(pt)) spd = pt;
-        else if (!alt && relX >= 405 && relX < 520 && /^(FL\d{2,3}|\d{3,5})$/.test(pt)) alt = pt;
+        if (efobWindMode) {
+          // EFOB column ("NN.N" tonnes) sits in the old speed band; the wind splits
+          // into direction (TAIL/HEAD/ddd° or ditto) + "/" + magnitude (knots or
+          // ditto) across the old altitude band. The "--.-"/"---" blanks were
+          // already dropped by isDash above; skip only the "/" separator glyph.
+          if (pt === "/") continue;
+          if (!efob && relX >= 300 && relX < 405 && /^\d{1,3}\.\d$/.test(pt)) efob = pt;
+          else if (relX >= 405 && relX < 520) {
+            if (relX < 472) { if (!windDir) windDir = pt; }   // direction slot (left)
+            else { if (!windMag) windMag = pt; }              // magnitude slot (right)
+          }
+        } else {
+          if (!spd && relX >= 300 && relX < 405 && /^(M?\.\d{2}|\d{2,3})$/.test(pt)) spd = pt;
+          else if (!alt && relX >= 405 && relX < 520 && /^(FL\d{2,3}|\d{3,5})$/.test(pt)) alt = pt;
+        }
+      }
+      if (efobWindMode) {
+        if (windDir === '"') windDir = prevWindDir; else if (windDir) prevWindDir = windDir;
+        if (windMag === '"') windMag = prevWindMag; else if (windMag) prevWindMag = windMag;
       }
 
       // Constraint markers: the "*" the MFD draws immediately to the LEFT of a SPD or
@@ -786,7 +816,7 @@
       // left-of-value position) for the met case and ADD the word "missed" for the amber
       // case. Column band (relX) says whether the marker belongs to SPD or ALT.
       var spdCon = "", altCon = "";   // "" | "met" | "missed"
-      var marks = L.querySelectorAll('[class*="fpln-leg-constraint-respected"], [class*="fpln-leg-constraint-missed"]');
+      var marks = efobWindMode ? [] : L.querySelectorAll('[class*="fpln-leg-constraint-respected"], [class*="fpln-leg-constraint-missed"]');
       for (var st = 0; st < marks.length; st++) {
         if (clean(marks[st].textContent) !== "*") continue;   // the marker glyph, not the value form (con)
         var mcls = (marks[st].className && marks[st].className.toString) ? marks[st].className.toString() : "";
@@ -808,12 +838,24 @@
       if (track) parts.push(track);               // already carries the ° glyph
       if (dist) parts.push(dist + "NM");
       if (eta) parts.push(eta);
-      if (spd) {
-        var spdBase = /^M?\./.test(spd) ? "M" + spd.replace(/^M/, "") : spd + "kts";
-        parts.push(spdCon === "missed" ? "*" + spdBase + " missed" : spdCon === "met" ? "*" + spdBase : spdBase);
+      if (efobWindMode) {
+        // EFOB/T.WIND view: read the fuel + wind a sighted pilot sees. EFOB is in
+        // tonnes ("EFOB 36.8"); wind is direction (ddd° / TAIL / HEAD) over magnitude
+        // in knots, dittos resolved above. Strip the FBW zero-padding on magnitude
+        // (007 -> 7) so the reader doesn't say "zero zero seven".
+        if (efob) parts.push("EFOB " + efob);
+        if (windDir || windMag) {
+          var wmag = windMag.replace(/^0+(?=\d)/, "");
+          parts.push("wind " + (windDir && wmag ? windDir + "/" + wmag : windDir || wmag));
+        }
+      } else {
+        if (spd) {
+          var spdBase = /^M?\./.test(spd) ? "M" + spd.replace(/^M/, "") : spd + "kts";
+          parts.push(spdCon === "missed" ? "*" + spdBase + " missed" : spdCon === "met" ? "*" + spdBase : spdBase);
+        }
+        if (con) parts.push(A.fplnConstraint(con));
+        if (alt) parts.push(altCon === "missed" ? "*" + alt + " missed" : altCon === "met" ? "*" + alt : alt);
       }
-      if (con) parts.push(A.fplnConstraint(con));
-      if (alt) parts.push(altCon === "missed" ? "*" + alt + " missed" : altCon === "met" ? "*" + alt : alt);
 
       // Make the waypoint actionable: its ident cell carries the lateral-revision
       // click handler, so Enter opens the revisions menu (FROM P.POS DIR TO,
