@@ -166,6 +166,10 @@ public partial class MainForm : Form
     private bool _buildingPanel = false;
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
     private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
+    // The control to return focus to after a status-box refresh (F5). The async refresh
+    // moves focus onto the Refresh button; the F5 handler captures the status box here so
+    // refreshButton.Click can restore it — otherwise the blind user "lands elsewhere".
+    private Control? _refreshFocusReturn = null;
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
     private IAircraftDefinition currentAircraft;
     private Dictionary<string, string>? _pmdgFieldToKeyMap;
@@ -4979,6 +4983,11 @@ public partial class MainForm : Form
                  currentControls.TryGetValue("_REFRESH_", out var refreshCtrl) &&
                  refreshCtrl is Button refreshBtn && refreshBtn.Enabled)
         {
+            // F5 must not steal focus from the status box the user is reading. Capture the
+            // box as the focus-return target BEFORE PerformClick (the async refresh moves
+            // focus onto the Refresh button); refreshButton.Click restores it when done.
+            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is Control dispC && dispC.Focused)
+                _refreshFocusReturn = dispC;
             refreshBtn.PerformClick();
             return true;
         }
@@ -5998,6 +6007,12 @@ public partial class MainForm : Form
 
             refreshButton.Click += async (s2, e2) =>
             {
+                // Where to return focus when the refresh finishes (set by the F5 handler
+                // before PerformClick moves focus onto this button). Fall back to the box
+                // if it's somehow still focused here.
+                Control? focusReturn = _refreshFocusReturn ?? (displayTextBox.Focused ? displayTextBox : null);
+                _refreshFocusReturn = null;
+
                 // Only show the "Loading..." placeholder on the FIRST populate (empty box).
                 // On subsequent refreshes — manual F5 or the periodic auto-refresh timer —
                 // keep the existing content visible so the box doesn't flash/blank every
@@ -6053,6 +6068,12 @@ public partial class MainForm : Form
 
                 // Update display - NO announcement, user will read with NVDA
                 UpdateDisplayText(displayTextBox);
+
+                // Restore focus to the status box if the refresh moved it (onto the Refresh
+                // button). Only refocuses when it actually left — a deliberate click on the
+                // Refresh button won't bounce focus back to the box.
+                if (focusReturn != null && focusReturn.IsHandleCreated && focusReturn.CanFocus && !focusReturn.Focused)
+                    focusReturn.Focus();
             };
 
             displayPanel.Controls.Add(displayTextBox);
