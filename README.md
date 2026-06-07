@@ -23,6 +23,14 @@ This application uses Windows standard controls, screen reader announcements and
 - Airport and runway lookup
 - Much more
 
+## Requirements
+
+### MobiFlight WASM module
+
+To operate cockpit switches and knobs on the **FlyByWire (A32NX and A380X)** and **Fenix A320** aircraft, MSFS Blind Assist needs the free **MobiFlight WASM module** installed. The app uses it to reliably set the aircraft's internal variables; without it, many controls on these aircraft will not respond (reading and announcements still work). PMDG and HorizonSim aircraft do not require it.
+
+Download it from the [MobiFlight WASM module download page](https://mobiflight.com/download/thank-you), then place the module in your MSFS Community folder (the same place your add-on aircraft live) and restart the simulator.
+
 ## Supported Aircraft
 
 ### FlyByWire Airbus A320neo
