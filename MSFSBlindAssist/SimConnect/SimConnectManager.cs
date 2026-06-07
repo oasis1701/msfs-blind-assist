@@ -102,6 +102,11 @@ public class SimConnectManager
     private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
     private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
+    // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
+    // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
+    // here and flushed when the bridge connects rather than dropped. Bounded + cleared on teardown.
+    private readonly Queue<(string eventName, uint data)> pendingCalcEvents = new();
+    private const int MaxPendingCalcEvents = 64;
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
     private static int nextTempDefId = 50000;  // Counter for temporary definition IDs (SetLVar/SetSimVar)
@@ -2737,11 +2742,21 @@ public class SimConnectManager
                             hasChanged = Math.Abs(lastValue - value) > 0.001; // Small tolerance for floating point
                         }
 
+                        // Honor a pending forceUpdate (RequestVariable(key, forceUpdate:true)). Batch-covered
+                        // vars (Continuous+IsAnnounced) no longer have an individual data def, so a force-read
+                        // is delivered HERE via the batch stream, not via ProcessIndividualVariableResponse —
+                        // without this a force-read of an UNCHANGED batch-covered value would never fire.
+                        bool isForceUpdate;
+                        lock (forceUpdateVariables)
+                        {
+                            isForceUpdate = forceUpdateVariables.Remove(varKey);
+                        }
+
                         // Update cache
                         lastVariableValues[varKey] = value;
 
-                        // Only fire event if value changed (or it's the first time we're seeing it)
-                        if (hasChanged || !lastVariableValues.ContainsKey(varKey))
+                        // Only fire event if value changed, was force-requested, or it's the first time we see it
+                        if (hasChanged || isForceUpdate || !lastVariableValues.ContainsKey(varKey))
                         {
                             // Check if we should only announce matches to ValueDescriptions (e.g., thrust lever detents)
                             if (varDef.OnlyAnnounceValueDescriptionMatches &&
@@ -4001,18 +4016,25 @@ public class SimConnectManager
         //      EFIS baro STD/QNH push-pull and similar.
         //   2. Dotted custom input events (e.g. A32NX.FCU_HDG_SET,
         //      A32NX.FCU_AP_1_PUSH) — the whole A380/A320 FCU/AP/ATHR.
-        if (mobiFlightWasm != null)
+        if (mobiFlightWasm != null
+            && (eventName.StartsWith("H:", StringComparison.Ordinal) || eventName.Contains('.')))
         {
-            if (eventName.StartsWith("H:", StringComparison.Ordinal))
+            if (IsMobiFlightConnected)
             {
-                ExecuteCalculatorCode($"(>{eventName})");   // momentary; no param
-                return;
+                FireCalcEvent(eventName, data);
             }
-            if (eventName.Contains('.'))
+            else
             {
-                ExecuteCalculatorCode($"{data} (>K:{eventName})");
-                return;
+                // The WASM module exists but hasn't finished connecting yet (brief post-load window).
+                // Unlike SetLVar's L:var write, these events have NO TransmitClientEvent fallback, so
+                // falling through would silently DROP them — queue and flush on connect instead.
+                lock (pendingCalcEvents)
+                {
+                    if (pendingCalcEvents.Count < MaxPendingCalcEvents)
+                        pendingCalcEvents.Enqueue((eventName, data));
+                }
             }
+            return;
         }
 
         // Map the event name to an ID if not already mapped
@@ -4028,6 +4050,30 @@ public class SimConnectManager
         simConnect.TransmitClientEvent(SIMCONNECT_OBJECT_ID_USER,
             (EVENTS)eventIds[eventName], data, GROUP_PRIORITY.HIGHEST,
             SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+    }
+
+    // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
+    // dotted custom events take the data param. Caller guarantees the bridge is connected.
+    private void FireCalcEvent(string eventName, uint data)
+    {
+        if (eventName.StartsWith("H:", StringComparison.Ordinal))
+            ExecuteCalculatorCode($"(>{eventName})");
+        else
+            ExecuteCalculatorCode($"{data} (>K:{eventName})");
+    }
+
+    // Flush any H:/dotted events queued while the WASM bridge was still connecting. Called from the
+    // MobiFlight ConnectionStatusChanged handler once IsMobiFlightConnected becomes true.
+    private void FlushPendingCalcEvents()
+    {
+        (string eventName, uint data)[] toFire;
+        lock (pendingCalcEvents)
+        {
+            if (pendingCalcEvents.Count == 0) return;
+            toFire = pendingCalcEvents.ToArray();
+            pendingCalcEvents.Clear();
+        }
+        foreach (var e in toFire) FireCalcEvent(e.eventName, e.data);
     }
 
     public void ProcessWindowMessage(ref Message m)
@@ -4162,6 +4208,8 @@ public class SimConnectManager
             mobiFlightWasm.ConnectionStatusChanged += (sender, status) =>
             {
                 System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight status: {status}");
+                // Flush any H:/dotted events fired during the connect window (see SendEvent).
+                if (IsMobiFlightConnected) FlushPendingCalcEvents();
             };
 
             mobiFlightWasm.LVarUpdated += MobiFlightWasm_LVarUpdated;
@@ -4417,6 +4465,7 @@ public class SimConnectManager
             mobiFlightWasm.Disconnect();
             mobiFlightWasm.Dispose();
             mobiFlightWasm = null;
+            lock (pendingCalcEvents) pendingCalcEvents.Clear();   // don't carry queued events across a teardown
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] MobiFlight WASM module disconnected");
         }
 

@@ -142,6 +142,11 @@ public class FBWA380MCDUForm : Form
     private int _mcduIndex = 1;
     private bool _initialPushReceived;
     private bool _resetSelection;
+    // Signature of the lines last rendered. Used to tie the "jump to top of new page" reset to the
+    // page's CONTENT actually arriving: a stale elements push for the OLD page (which can interleave
+    // after the new page's title push set _resetSelection) renders identical lines, so it must NOT
+    // consume the pending reset — otherwise the reader lands mid-list on the wrong page.
+    private string _lastRenderedSignature = "";
 
     private IntPtr _previousWindow = IntPtr.Zero;
     private System.Windows.Forms.Timer _statusTimer = null!;
@@ -384,12 +389,23 @@ public class FBWA380MCDUForm : Form
         ScheduleRefresh();
     }
 
+    // Marshal to the UI thread, tolerating the form being torn down between the IsHandleCreated
+    // check and the BeginInvoke. OnBridgeStateUpdated fires on a background receive-pool thread,
+    // so an aircraft swap / window close can destroy the handle mid-flight; an unguarded BeginInvoke
+    // would then throw on the pool thread (unobserved).
+    private void SafeBeginInvoke(Action action)
+    {
+        // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
+        try { if (IsHandleCreated) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
+    }
+
     private void OnBridgeStateUpdated(object? sender, EFBStateUpdateEventArgs e)
     {
         if (e.Type == StateTypeConnected)
         {
             _bridgeConnected = true;
-            if (IsHandleCreated) BeginInvoke(UpdateStatusLabel);
+            SafeBeginInvoke(UpdateStatusLabel);
             return;
         }
         if (e.Type == StateTypeScreen)   { HandleScreenPush(e); return; }
@@ -405,7 +421,7 @@ public class FBWA380MCDUForm : Form
         // footer/scratchpad message.
         string title = e.Data.TryGetValue("title", out var t) ? (t ?? "").Trim() : "";
         string footer = e.Data.TryGetValue("scratchpad", out var s) ? (s ?? "").Trim() : "";
-        if (IsHandleCreated) BeginInvoke(() => ApplyScreenMeta(title, footer));
+        SafeBeginInvoke(() => ApplyScreenMeta(title, footer));
     }
 
     private void ApplyScreenMeta(string title, string footer)
@@ -453,7 +469,7 @@ public class FBWA380MCDUForm : Form
             }
         }
         _elements = byPos.Values.ToList();
-        if (IsHandleCreated) BeginInvoke(RefreshDisplay);
+        SafeBeginInvoke(RefreshDisplay);
     }
 
     private void UpdateStatusLabel()
@@ -518,7 +534,15 @@ public class FBWA380MCDUForm : Form
                 _display.Items[i] = lines[i];
         _display.EndUpdate();
 
-        if (_resetSelection && _display.Items.Count > 0)
+        // Only honor the page-change reset once the NEW page's content has actually arrived.
+        // A stale old-page elements push renders the same lines it already showed, so its signature
+        // is unchanged — in that case keep the reset pending instead of jumping to line 0 of the old
+        // list (the wrong-line-after-page-change bug).
+        string signature = string.Join("", lines);
+        bool contentChanged = signature != _lastRenderedSignature;
+        _lastRenderedSignature = signature;
+
+        if (_resetSelection && contentChanged && _display.Items.Count > 0)
         {
             _display.SelectedIndex = 0;
             _resetSelection = false;

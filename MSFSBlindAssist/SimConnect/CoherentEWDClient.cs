@@ -75,6 +75,12 @@ namespace MSFSBlindAssist.SimConnect
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
         private readonly SemaphoreSlim _sendLock = new(1, 1);
+        // Serializes EnsureConnected. This client exposes public on-demand scrapes (ScrapeEclAsync from
+        // the checklist form, ScrapeDisplayAsync from the A380 def) that run on the UI thread WHILE the
+        // background RunLoop also calls EnsureConnected. Without this, two threads could ConnectAsync to
+        // the same A380X_EWD page at once, opening a SECOND inspector socket — rejected by Coherent GT
+        // (one socket per page), the exact failure this shared-socket design exists to prevent.
+        private readonly SemaphoreSlim _connectLock = new(1, 1);
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
         // Lines already spoken (or present at baseline) — kills the scroll/re-render
@@ -203,6 +209,12 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
+            // Fast path: steady-state (already connected) needs no lock.
+            if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
+            await _connectLock.WaitAsync(ct);
+            try
+            {
+            // Re-check under the lock: a concurrent caller may have just (re)connected.
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
             int? pageId = await ResolveEwdPageId(ct);
@@ -239,6 +251,8 @@ namespace MSFSBlindAssist.SimConnect
             _baselineDone = false;
             _lastEclHash = "";
             return _agentInstalled;
+            }
+            finally { _connectLock.Release(); }
         }
 
         private async Task<int?> ResolveEwdPageId(CancellationToken ct)
@@ -392,6 +406,7 @@ namespace MSFSBlindAssist.SimConnect
         /// </summary>
         public async Task<List<EclRow>?> ScrapeEclAsync()
         {
+            if (_disposed) return null;   // can be called from the checklist form after an aircraft-swap Dispose()
             try
             {
                 var ct = _cts?.Token ?? CancellationToken.None;
@@ -423,6 +438,7 @@ namespace MSFSBlindAssist.SimConnect
         /// </summary>
         public async Task<List<string>?> ScrapeDisplayAsync()
         {
+            if (_disposed) return null;   // can be called from the A380 def after an aircraft-swap Dispose()
             try
             {
                 var ct = _cts?.Token ?? CancellationToken.None;
@@ -601,6 +617,7 @@ namespace MSFSBlindAssist.SimConnect
             _cts?.Dispose();
             _http.Dispose();
             _sendLock.Dispose();
+            _connectLock.Dispose();
         }
 
         private sealed class ScrapeResult

@@ -233,7 +233,10 @@
     var o = A.oanc(); if (!o || !o.btvUtils) return "OANS not ready";
     var rl = A.findLabel(A.FT_RWY_CENTERLINE, name), thr = null, feats = (o.data && o.data.features) || [];
     for (var k = 0; k < feats.length; k++) {
-      if (feats[k].properties.feattype === A.FT_RWY_THRESHOLD && feats[k].properties.idthr === name) { thr = feats[k]; break; }
+      // Guard .properties: a malformed/partial AMDB feature can lack it, and this loop runs
+      // OUTSIDE the try below — an unguarded deref would throw uncaught out of armRunway.
+      var pk = feats[k] && feats[k].properties;
+      if (pk && pk.feattype === A.FT_RWY_THRESHOLD && pk.idthr === name) { thr = feats[k]; break; }
     }
     if (!rl || !thr) return "runway " + name + " not found on map";
     try {
@@ -252,18 +255,21 @@
     // geometrically-valid feature, so try EVERY same-named exit feature until one is accepted —
     // mirroring a sighted pilot clicking the correct exit label on the map. Picking the first
     // feature by name silently rejected the valid exit (the user's KSFO 28R / Q bug).
-    var L = o.labelManager.labels, found = false;
-    try {
-      for (var i = 0; i < L.length; i++) {
-        var f = L[i].associatedFeature;
-        if (!(f && f.properties && f.properties.feattype === A.FT_RWY_EXIT_LINE && L[i].text === name)) continue;
-        found = true;
+    var L = o.labelManager.labels, found = false, lastErr = null;
+    for (var i = 0; i < L.length; i++) {
+      var f = L[i].associatedFeature;
+      if (!(f && f.properties && f.properties.feattype === A.FT_RWY_EXIT_LINE && L[i].text === name)) continue;
+      found = true;
+      // Per-feature try/continue: a throw on one same-named feature must NOT abort the loop,
+      // or a malformed earlier feature would block the valid later one (the KSFO 28R / Q bug).
+      try {
         b.selectExitFromOans(name, f);
         var got = A.get(b.btvExit);
         if (got != null) return "Armed BTV exit " + got;
-      }
-    } catch (e) { return "ERR " + e; }
+      } catch (e) { lastErr = e; }
+    }
     if (!found) return "exit " + name + " not found on map";
+    if (lastErr) return "ERR " + lastErr;
     return "Exit " + name + " not valid for this runway (wrong side or too close to threshold)";
   };
 

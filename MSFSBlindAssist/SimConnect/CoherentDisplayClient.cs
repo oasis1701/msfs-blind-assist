@@ -38,6 +38,12 @@ namespace MSFSBlindAssist.SimConnect
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
         private readonly SemaphoreSlim _sendLock = new(1, 1);
+        // Serializes EnsureConnected: the background RunLoop poll AND the public ScrapeNowAsync (called
+        // from the UI thread by F5 / the RMP form's debounce timer) both call EnsureConnected. Without
+        // this, two threads could tear down _ws and ConnectAsync concurrently, opening a SECOND inspector
+        // socket to the same Coherent page — which Coherent GT rejects (one socket per page), the exact
+        // "display frozen / not refreshing" failure. _sendLock only covers SendAsync, not connection setup.
+        private readonly SemaphoreSlim _connectLock = new(1, 1);
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
         private CancellationTokenSource? _cts;
@@ -164,6 +170,12 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
+            // Fast path: steady-state (already connected) needs no lock.
+            if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
+            await _connectLock.WaitAsync(ct);
+            try
+            {
+            // Re-check under the lock: a concurrent caller may have just (re)connected.
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
             // Socket still OPEN but the agent went missing (an eval timed out / the page re-evaluated
@@ -202,6 +214,8 @@ namespace MSFSBlindAssist.SimConnect
             _agentInstalled = install.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
             _connected = _agentInstalled;
             return _agentInstalled;
+            }
+            finally { _connectLock.Release(); }
         }
 
         private async Task<int?> ResolvePageId(CancellationToken ct)
@@ -339,6 +353,7 @@ namespace MSFSBlindAssist.SimConnect
             _cts?.Dispose();
             _http.Dispose();
             _sendLock.Dispose();
+            _connectLock.Dispose();
         }
 
         private sealed class ScrapeResult

@@ -251,7 +251,7 @@ public class FbwEfbForm : Form
             System.Diagnostics.Debug.WriteLine($"[A380 flyPad] WebView2 init failed: {ex.Message}");
             _webViewFailed = true;
             _useBrowser = false;
-            if (IsHandleCreated) BeginInvoke(() => { SwitchToListMode(); ApplyElements(); });
+            SafeBeginInvoke(() => { SwitchToListMode(); ApplyElements(); });
         }
     }
 
@@ -262,6 +262,17 @@ public class FbwEfbForm : Form
         _contentPanel.Visible = true;
     }
 
+    // Marshal to the UI thread, tolerating the form being torn down between the IsHandleCreated
+    // check and the BeginInvoke. OnBridgeStateUpdated fires on the CoherentEFBClient receive-pool
+    // thread, so an aircraft swap can destroy the handle mid-flight — an unguarded BeginInvoke would
+    // then throw on the pool thread (unobserved), which the sibling OANS/RMP forms already guard.
+    private void SafeBeginInvoke(Action action)
+    {
+        // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
+        try { if (IsHandleCreated) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
+    }
+
     // ---- incoming elements ------------------------------------------------
 
     private void OnBridgeStateUpdated(object? sender, EFBStateUpdateEventArgs e)
@@ -269,7 +280,7 @@ public class FbwEfbForm : Form
         if (e.Type == StateTypeConnected)
         {
             _bridgeConnected = true;
-            if (IsHandleCreated) BeginInvoke(UpdateStatusLabel);
+            SafeBeginInvoke(UpdateStatusLabel);
             return;
         }
         if (e.Type != StateTypeElements) return;
@@ -312,7 +323,7 @@ public class FbwEfbForm : Form
             }
         }
         _elements = byIndex.Values.ToList();
-        if (IsHandleCreated) BeginInvoke(ApplyElements);
+        SafeBeginInvoke(ApplyElements);
     }
 
     private void UpdateStatusLabel()
