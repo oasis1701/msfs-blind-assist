@@ -567,9 +567,11 @@ public sealed class GsxGateSelector
         {
             // No safe servicing action found — this is fine.
             // The gate is already selected; the marshaller arms by default.
-            // Log the final menu entries so the real label can be tuned live.
+            // CONFIRMED LIVE at OMDB: target entry = "Show me this spot and activate"
+            // matched by SafeServicingPatterns "and activate". If this fires,
+            // the final menu has no matching entry — check walk-log and tune patterns.
             Debug.WriteLine("[GsxGateSelector] No safe servicing action identified — closing menu. Gate is already selected.");
-            WalkLog(state, "ACTION: no safe servicing action found (TUNE LIVE — patterns may need updating). Gate already selected — closing menu.");
+            WalkLog(state, "ACTION: no safe servicing action found (check patterns vs walk-log). Gate already selected — closing menu.");
             _automation.CloseMenu();
             return;
         }

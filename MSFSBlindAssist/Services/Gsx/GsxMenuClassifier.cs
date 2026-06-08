@@ -11,14 +11,18 @@
 //     forbidden — callers MUST check IsForbidden before choosing any Action.
 //   • Anything not positively classified on a final action menu is Unknown
 //     and must never be chosen.
-//   • On navigation menus, unrecognised non-gate entries become Category
-//     (drillable) by default, on the assumption that an unrecognised entry
-//     is a sub-group header rather than a dangerous action. This is safe
-//     because the DFS will only back-track through Category entries, not
-//     execute them; actual chosen leaves are always GateLeaf.
-//   • IGNORE entries (select from map, search) are classified Unknown so the
-//     DFS never drills them — they are special in-sim functions.
+//   • SAFETY: on navigation menus, unknown entries default to Unknown — NOT
+//     Category — so the DFS NEVER drills an unrecognised entry.  An entry is
+//     only classified Category when its text POSITIVELY matches a parking-group
+//     pattern (concourse/apron/terminal/etc.) or a count suffix ("N parkings").
+//     This prevents action entries like "Restart GSX", "Yes", "No",
+//     "Show me this spot and activate", and "Request Towing" from being drilled.
+//   • HARD GUARD: choice >= 10 → Ignore. GSX always appends system options as
+//     choices 10–14; real menu items are choices 0–9.
+//   • IGNORE entries (select from map, search, system options) are classified
+//     Unknown so the DFS never drills them — they are special in-sim functions.
 
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Services;   // MenuOption
 
@@ -59,15 +63,29 @@ public static class GsxMenuClassifier
     // Entries marked CONFIRMED LIVE were observed at OMDB/Dubai Intl (2026-06-08).
     // ─────────────────────────────────────────────────────────────────────────
 
-    // CONFIRMED LIVE: these are special in-sim functions — NEVER drill them.
+    // CONFIRMED LIVE: these are special in-sim functions — NEVER drill or choose them.
     // Observed at OMDB: "Select from Map" (choice 0), "Search parking..." (choice 1).
+    // System options choices 10–14: "Customize Airport positions...", "Customize Airplane...",
+    //   "GSX Settings...", "Restart GSX", "Reload Simbrief" — handled by the choice>=10 hard
+    //   guard in Classify() in addition to being listed here for belt-and-suspenders safety.
+    // Toggles on apron submenus: "Show all positions", "Hide N unsuitable positions".
     // Classified as Unknown so the DFS skips them entirely.
+    // CONFIRMED LIVE at OMDB (2026-06-08).
     private static readonly string[] IgnorePatterns =
     {
         "select from map",
-        "select from",   // broad: covers variants like "Select from list"
+        "select from",        // broad: covers variants like "Select from list"
         "search parking",
-        "search",        // broad: covers "Search parking..." and similar
+        "search",             // broad: covers "Search parking..." and similar
+        // CONFIRMED LIVE system options (also caught by choice>=10 hard guard):
+        "customize airport",  // "Customize Airport positions..."
+        "customize airplane", // "Customize Airplane..."
+        "gsx settings",       // "GSX Settings..."
+        "restart gsx",        // "Restart GSX"
+        "reload simbrief",    // "Reload Simbrief"
+        // CONFIRMED LIVE apron-submenu toggles:
+        "show all positions", // "Show all positions"
+        "unsuitable position", // "Hide N unsuitable positions" / "Show N unsuitable"
     };
 
     // CONFIRMED LIVE: pagination / next-page indicators.
@@ -86,31 +104,42 @@ public static class GsxMenuClassifier
         "back", "previous", "return", "top", "main", "<<", "◀", "←", "cancel",
     };
 
-    // TUNE LIVE — not yet observed: safe final-menu actions (arms marshaller/VDGS — what we want).
-    // Match is substring-based so "Request servicing" and "Servicing" both hit.
-    // These will be confirmed on the first real arrival run via gsx-gate-select.log.
+    // CONFIRMED LIVE at OMDB (2026-06-08): safe final-menu actions that select the gate
+    // AND arm the marshaller/VDGS.  Only entries that POSITIVELY match these patterns may
+    // be chosen by the DFS.  Entries marked CONFIRMED LIVE were observed at OMDB/A380.
+    //
+    // IMPORTANT: "request" is NOT included — "Request Progressive Taxi" and
+    // "Request Towing to Gate" both start with "request" and must NOT be chosen.
+    // "show me this spot" alone must NOT match (it is a camera-only action).
+    // Only "show me this spot and activate" (with "and activate" / "activate") is safe.
     private static readonly string[] SafeServicingPatterns =
     {
-        "servic",      // "Select for servicing", "Servicing"
-        "marshall",    // "Call Marshaller", "Marshaller"
-        "proceed",     // "Proceed to gate"
-        "request",     // "Request service"
-        "dock",        // "Dock"
-        "assist",      // "Parking assist"
-        "park",        // "Park here", "Parking"  — conservative but covers many airports
+        // CONFIRMED LIVE: arms marshaller + VDGS without moving aircraft.
+        "and activate",   // "Show me this spot and activate" — CONFIRMED LIVE at OMDB
+        // Generic servicing patterns (airports other than OMDB):
+        "servic",         // "Select for servicing", "Servicing"
+        "marshall",       // "Call Marshaller", "Marshaller"
+        "proceed",        // "Proceed to gate"
+        "dock",           // "Dock"
+        "park here",      // "Park here" — specific enough not to catch unrelated entries
     };
 
     // CONFIRMED LIVE: forbidden actions — NEVER choose these under any circumstances.
     // "Reposition Aircraft" confirmed at OMDB departure menu.
+    // "Request Towing to Gate" and "Request Progressive Taxi" confirmed at OMDB arrival
+    // stand action menu (2026-06-08).
     // Any entry containing any of these substrings is Action+Forbidden.
     private static readonly string[] ForbiddenPatterns =
     {
-        "reposition",  // CONFIRMED LIVE: "Reposition Aircraft"
-        "warp",
+        "reposition",      // CONFIRMED LIVE: "Reposition Aircraft"
+        "warp",            // "Just warp me there"
         "teleport",
-        "follow",      // "Follow Me" / "Follow-Me service"
+        "follow",          // "Follow Me" / "Follow-Me service"
         "move to",
         "relocate",
+        "towing",          // CONFIRMED LIVE: "Request Towing to Gate"
+        "progressive",     // CONFIRMED LIVE: "Request Progressive Taxi"
+        "just warp",       // explicit belt-and-suspenders for the OMDB warp entry
     };
 
     // TUNE LIVE: known parking-selection entry labels (top-level drill-in targets).
@@ -141,27 +170,83 @@ public static class GsxMenuClassifier
         "select parking",
     };
 
+    // CONFIRMED LIVE: substrings that POSITIVELY identify a navigation entry as a
+    // parking-group Category (drillable).  An entry is ONLY classified Category when
+    // its text contains at least one of these.  Everything else defaults to Unknown.
+    //
+    // This is the SAFETY gate: "Restart GSX", "Yes", "No", "Show me this spot and
+    // activate", "Request Towing", "Request Progressive Taxi" etc. do NOT contain any
+    // of these substrings and therefore remain Unknown — the DFS will never drill them.
+    //
+    // CONFIRMED LIVE at OMDB (2026-06-08): "Apron A\t(8 suitable parkings)",
+    //   "Apron C\t(33 suitable parkings)", etc.
+    private static readonly string[] CategoryPositivePatterns =
+    {
+        // Structural area keywords:
+        "apron",           // CONFIRMED LIVE: "Apron A (8 suitable parkings)"
+        "concourse",
+        "terminal",
+        "pier",
+        "gates",
+        "stands",
+        "remote",
+        "cargo",
+        "general aviation",
+        // Directional groups:
+        "north parking",
+        "south parking",
+        "east parking",
+        "west parking",
+        // Count suffixes — GSX appends these to every apron entry:
+        "parkings)",       // CONFIRMED LIVE: "(8 suitable parkings)"
+        "positions)",      // "(N positions)"
+        "suitable",        // "(N suitable" — any variant
+    };
+
+    // Regex that also recognises count-suffix patterns like "(8 suitable parkings)" or
+    // "(33 positions)" that may not be caught by the substring list above.
+    // CONFIRMED LIVE at OMDB (2026-06-08).
+    private static readonly Regex CategoryCountRegex = new Regex(
+        @"\(\s*\d+\s+(suitable|positions?|parkings?)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     // ─────────────────────────────────────────────────────────────────────────
     // Gate-leaf identity parsing.
     // ─────────────────────────────────────────────────────────────────────────
 
     // Matches the text of a stand / gate leaf.
-    // Accepted shapes (mirrors GsxProfileParser.TryParseSectionHeader + real menu observations):
-    //   "C18"      → concourse C, number 18
-    //   "C 18"     → concourse C, number 18
-    //   "C 18 L"   → concourse C, number 18, suffix L
-    //   "C18L"     → concourse C, number 18, suffix L (glued)
-    //   "218"      → pure number (no concourse)
-    //   "218L"     → number 218, suffix L
-    //   "1 A"      → number 1, suffix A
+    // Accepted shapes (CONFIRMED LIVE at OMDB + real menu observations):
+    //   "Stand C18 with Safedock© - Medium  (too small)"  → C18  CONFIRMED LIVE OMDB
+    //   "Stand C53R with Safedock© - Large"               → C53R CONFIRMED LIVE OMDB
+    //   "Gate C18"                                         → C18
+    //   "Parking C18"                                      → C18
+    //   "C18"      → C18
+    //   "C 18"     → C18
+    //   "C 18 L"   → C18L
+    //   "C18L"     → C18L
+    //   "218"      → 218
+    //   "218L"     → 218L
+    //   "1 A"      → 1A
     // The normalised identity is LETTERS + NUMBER + SUFFIX, all upper, no spaces.
-    // e.g. "C 18 L" → "C18L"; "218" → "218"; "C18" → "C18"
+    //
+    // Strategy: strip an optional leading keyword ("Stand"/"Gate"/"Parking"), then
+    // scan whitespace-delimited tokens for the first that matches the gate-ID pattern
+    // ^[A-Za-z]{0,2}\d+[A-Za-z]?$.  Trailing words like "with", "Safedock©", "-",
+    // "Medium", "(too small)" have no digit component and will never match.
+    // CONFIRMED LIVE at OMDB (2026-06-08).
 
-    // Regex: optional letters-prefix, required digits, optional letter-suffix.
-    // The letters-prefix and digits must not be empty at the same time.
-    private static readonly Regex GateLeafRegex = new Regex(
-        @"^(?:(?<concourse>[A-Za-z]{1,4})\s*)?(?<number>\d{1,4})(?:\s*(?<suffix>[A-Za-z]))?$",
+    // Gate-ID token pattern: optional 1-2 letters, required digits, optional 1 letter suffix.
+    // e.g.: C18, C53R, E7L, 218, 218L — but NOT "with", "Safedock", "Medium", "Back", etc.
+    private static readonly Regex GateIdTokenRegex = new Regex(
+        @"^(?<concourse>[A-Za-z]{0,2})(?<number>\d{1,4})(?<suffix>[A-Za-z])?$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    // Leading keyword tokens to strip before gate-ID scanning.
+    private static readonly HashSet<string> GateKeywords = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase)
+    {
+        "stand", "gate", "parking",
+    };
 
     // A concourse-only token (single letter, used in menus like "Concourse C" or just "C").
     // Only treated as a Category, never a leaf.
@@ -187,6 +272,15 @@ public static class GsxMenuClassifier
     {
         string text = (opt.Text ?? string.Empty).Trim();
 
+        // ── HARD GUARD: choice >= 10 → Ignore (CONFIRMED LIVE) ────────────
+        // GSX ALWAYS appends system options as choices 10–14:
+        //   10 "Customize Airport positions...", 11 "Customize Airplane...",
+        //   12 "GSX Settings...", 13 "Restart GSX", 14 "Reload Simbrief".
+        // Real parking-menu items are ALWAYS choices 0–9.
+        // This guard is the robust backstop — no real item is ever choice >= 10.
+        // CONFIRMED LIVE at OMDB (2026-06-08).
+        if (opt.Choice >= 10) return GsxMenuEntryKind.Unknown;
+
         // ── Final action menu ──────────────────────────────────────────────
         if (onFinalActionMenu)
         {
@@ -201,7 +295,8 @@ public static class GsxMenuClassifier
 
         // ── Navigation menu ────────────────────────────────────────────────
 
-        // CONFIRMED LIVE: ignore special in-sim functions (map picker, search).
+        // CONFIRMED LIVE: ignore special in-sim functions (map picker, search,
+        // system options, visibility toggles).
         // These must never be drilled — classify Unknown so the DFS skips them.
         if (IsIgnored(text)) return GsxMenuEntryKind.Unknown;
 
@@ -216,10 +311,17 @@ public static class GsxMenuClassifier
         // Gate leaf?
         if (LooksLikeGate(text, out _)) return GsxMenuEntryKind.GateLeaf;
 
-        // Everything else is treated as Category (drillable group).
-        // This covers: "Apron A (8 suitable parkings)", "Concourse C", "Terminal 3",
-        // "Gates 100-150", etc. — all unrecognised non-gate entries are drillable.
-        return GsxMenuEntryKind.Category;
+        // ── SAFETY: strict Category — only POSITIVE matches ───────────────
+        // An entry is only drillable (Category) when its text POSITIVELY matches a
+        // known parking-group pattern.  Everything else is Unknown and the DFS
+        // NEVER drills it.  This prevents action entries ("Restart GSX", "Yes",
+        // "No", "Show me this spot and activate", "Request Towing", etc.) from
+        // being accidentally drilled because they were unrecognised.
+        // CONFIRMED LIVE at OMDB (2026-06-08).
+        if (IsCategory(text)) return GsxMenuEntryKind.Category;
+
+        // Unknown — must never be chosen or drilled.
+        return GsxMenuEntryKind.Unknown;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -229,7 +331,17 @@ public static class GsxMenuClassifier
     /// <summary>
     /// Attempts to parse a menu entry text as a gate/stand leaf identity.
     /// Returns <see langword="true"/> and sets <paramref name="normalizedIdentity"/>
-    /// (e.g. "C18L", "218", "B36") when the text matches.
+    /// (e.g. "C18", "C53R", "218", "E7L") when the text matches.
+    /// <para>
+    /// Handles both bare IDs ("C18") and rich GSX labels:
+    /// "Stand C18 with Safedock© - Medium  (too small)" → "C18" (CONFIRMED LIVE OMDB).
+    /// Strategy: strip a leading keyword token ("Stand"/"Gate"/"Parking") if present,
+    /// then scan whitespace-delimited tokens for the first matching
+    /// <c>^[A-Za-z]{0,2}\d+[A-Za-z]?$</c>.
+    /// Words like "with", "Safedock©", "-", "Medium", "(too small)" contain no digit
+    /// and never match.
+    /// </para>
+    /// <para>CONFIRMED LIVE at OMDB (2026-06-08): "Stand C18 with Safedock© - Medium (too small)".</para>
     /// </summary>
     public static bool LooksLikeGate(string text, out string normalizedIdentity)
     {
@@ -237,23 +349,39 @@ public static class GsxMenuClassifier
         string t = text.Trim();
         if (string.IsNullOrEmpty(t)) return false;
 
-        // Pure concourse-only tokens ("A", "B", "T1", "T2") are categories, not leaves.
-        // Gate leaves always have a number component.
-        var m = GateLeafRegex.Match(t);
-        if (!m.Success) return false;
+        // Split into whitespace-delimited tokens.
+        string[] tokens = t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0) return false;
 
-        string concourse = m.Groups["concourse"].Value.ToUpperInvariant();
-        string number    = m.Groups["number"].Value;
-        string suffix    = m.Groups["suffix"].Value.ToUpperInvariant();
+        // Strip a leading keyword ("Stand", "Gate", "Parking") if present.
+        int startIdx = 0;
+        if (GateKeywords.Contains(tokens[0]))
+            startIdx = 1;
 
-        // A pure single-letter-without-number token caught by GateLeafRegex
-        // would appear as an empty number — guard against it (regex requires \d+,
-        // so this should never happen, but be explicit).
-        if (string.IsNullOrEmpty(number)) return false;
+        // Scan remaining tokens for the first gate-ID match.
+        for (int i = startIdx; i < tokens.Length; i++)
+        {
+            // Strip any surrounding punctuation/parentheses from the token.
+            string tok = tokens[i].Trim('(', ')', '-', '.', ',', '©', '®', '*', ' ');
+            if (string.IsNullOrEmpty(tok)) continue;
 
-        // Build normalised identity: CONCOURSE + NUMBER + SUFFIX (no spaces).
-        normalizedIdentity = concourse + number + suffix;
-        return true;
+            var m = GateIdTokenRegex.Match(tok);
+            if (!m.Success) continue;
+
+            string concourse = m.Groups["concourse"].Value.ToUpperInvariant();
+            string number    = m.Groups["number"].Value;
+            string suffix    = m.Groups["suffix"].Value.ToUpperInvariant();
+
+            // Must have a number component (rules out pure-letter concourse codes
+            // like "A" or "BC" which would otherwise match with number="").
+            if (string.IsNullOrEmpty(number)) continue;
+
+            // Build normalised identity: CONCOURSE + NUMBER + SUFFIX (no spaces).
+            normalizedIdentity = concourse + number + suffix;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -347,6 +475,24 @@ public static class GsxMenuClassifier
     /// </summary>
     public static bool IsSelectParkingEntry(string text)
         => ContainsAny(text, SelectParkingPatterns);
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the entry text POSITIVELY identifies a
+    /// drillable parking-group (apron, concourse, terminal, etc.).
+    /// <para>
+    /// SAFETY: this is the gate that prevents unknown entries from being treated as
+    /// drillable categories.  An entry is ONLY classified Category when this returns
+    /// <see langword="true"/> — all other unrecognised entries become Unknown and the
+    /// DFS never drills them.
+    /// </para>
+    /// <para>CONFIRMED LIVE at OMDB (2026-06-08): "Apron C\t(33 suitable parkings)".</para>
+    /// </summary>
+    public static bool IsCategory(string text)
+    {
+        if (ContainsAny(text, CategoryPositivePatterns)) return true;
+        if (CategoryCountRegex.IsMatch(text)) return true;
+        return false;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Category relevance ranking (used by GsxGateSelector DFS to drill
