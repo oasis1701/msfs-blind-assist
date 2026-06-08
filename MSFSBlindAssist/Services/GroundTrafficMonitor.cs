@@ -358,17 +358,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     // ──────────────────────────────────────────────────────────────────────────
     // Geometry helpers
 
-    private static string FormatDistance(double feet)
-    {
-        if (SettingsManager.Current.GroundTrafficUseMetres)
-        {
-            double metres = feet * 0.3048;
-            double step = metres < 100.0 ? 5.0 : 10.0;
-            int rounded = (int)(Math.Round(metres / step) * step);
-            return $"{rounded} metres";
-        }
-        return $"{RoundFeet(feet)} feet";
-    }
+    private static string FormatDistance(double feet) => DistanceFormatter.FromFeet(feet);
 
     private static string DescribeDirection(double relBearing)
     {

@@ -20,7 +20,7 @@ public class TaxiGuidanceOptionsForm : Form
     private CheckBox announceCrossingsCheckBox = null!;
     private Label gsAnnounceLabel = null!;
     private ComboBox gsAnnounceCombo = null!;
-    private CheckBox useMetresCheckBox = null!;
+    private CheckBox useFeetForDistancesCheckBox = null!;
     private CheckBox gsxAutoSelectGateCheckBox = null!;
 
     private Button okButton = null!;
@@ -34,7 +34,8 @@ public class TaxiGuidanceOptionsForm : Form
     public bool HardPanSteeringTone { get; private set; }
     public bool AnnounceCrossings { get; private set; }
     public int GroundSpeedAnnounceInterval { get; private set; }
-    public bool GroundTrafficUseMetres { get; private set; }
+    public DistanceUnit SelectedDistanceUnit =>
+        useFeetForDistancesCheckBox.Checked ? DistanceUnit.Feet : DistanceUnit.Metres;
     public bool GsxAutoSelectGateOnRoute { get; private set; }
 
     public TaxiGuidanceOptionsForm(
@@ -44,7 +45,6 @@ public class TaxiGuidanceOptionsForm : Form
         bool hardPanSteeringTone,
         bool announceCrossings,
         int groundSpeedAnnounceInterval,
-        bool groundTrafficUseMetres,
         bool gsxAutoSelectGateOnRoute = true)
     {
         SelectedToneWaveform = currentWaveform;
@@ -53,7 +53,6 @@ public class TaxiGuidanceOptionsForm : Form
         HardPanSteeringTone = hardPanSteeringTone;
         AnnounceCrossings = announceCrossings;
         GroundSpeedAnnounceInterval = groundSpeedAnnounceInterval;
-        GroundTrafficUseMetres = groundTrafficUseMetres;
         GsxAutoSelectGateOnRoute = gsxAutoSelectGateOnRoute;
         InitializeComponent();
         SetupAccessibility();
@@ -245,18 +244,16 @@ public class TaxiGuidanceOptionsForm : Form
             };
         };
 
-        // Ground traffic distance unit: metres or feet
-        useMetresCheckBox = new CheckBox
+        // App-wide distance unit toggle: feet or metres
+        useFeetForDistancesCheckBox = new CheckBox
         {
-            Text = "Show ground traffic distances in metres (default: feet)",
+            Text = "Use feet for distances (default: metres)",
             Location = new Point(20, 320),
             Size = new Size(450, 25),
-            Checked = GroundTrafficUseMetres,
-            AccessibleName = "Show ground traffic distances in metres",
-            AccessibleDescription = "When enabled, proximity alert distances (e.g. 'Traffic ahead, 100 metres') are in metres. Default is feet, which matches aviation conventions."
+            Checked = SettingsManager.Current.GroundDistanceUnit == DistanceUnit.Feet,
+            AccessibleName = "Use feet for distances; unchecked means metres",
+            AccessibleDescription = "When enabled, all ground distances (e.g. traffic alerts, taxi guidance) are announced in feet. Default is metres."
         };
-        useMetresCheckBox.CheckedChanged += (s, e) =>
-            GroundTrafficUseMetres = useMetresCheckBox.Checked;
 
         // GSX auto-select gate on route calculation. When checked, calculating
         // a taxi route to a gate also drives the GSX menu to select that gate
@@ -310,7 +307,7 @@ public class TaxiGuidanceOptionsForm : Form
             hardPanToneCheckBox,
             announceCrossingsCheckBox,
             gsAnnounceLabel, gsAnnounceCombo,
-            useMetresCheckBox,
+            useFeetForDistancesCheckBox,
             gsxAutoSelectGateCheckBox,
             okButton, cancelButton
         });
@@ -329,7 +326,7 @@ public class TaxiGuidanceOptionsForm : Form
         hardPanToneCheckBox.TabIndex = tabIdx++;
         announceCrossingsCheckBox.TabIndex = tabIdx++;
         gsAnnounceCombo.TabIndex = tabIdx++;
-        useMetresCheckBox.TabIndex = tabIdx++;
+        useFeetForDistancesCheckBox.TabIndex = tabIdx++;
         gsxAutoSelectGateCheckBox.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
