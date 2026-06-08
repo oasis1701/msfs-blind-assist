@@ -33,6 +33,9 @@ public sealed class DockingGuidanceManager : IDisposable
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
 
+    /// <summary>True while docking is actively guiding (Docking or Stopped) — used to suppress the taxi steering tone.</summary>
+    public bool IsActive { get { lock (_lock) { return _state == DockState.Docking || _state == DockState.Stopped; } } }
+
     /// <summary>Set (or clear) the destination gate the pilot is taxiing to. Resets state + audio.</summary>
     public void SetDestinationGate(ParkingSpot? gate)
     {
@@ -77,7 +80,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 {
                     case DockState.Idle:
                     case DockState.Armed:
-                        if (DockingGeometry.ShouldEngage(groundSpeedKts, doorAlongM, hdgErr)) EngageLocked(doorAlongM);
+                        if (DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr)) EngageLocked(doorAlongM);
                         else _state = DockState.Armed;
                         break;
 
@@ -85,22 +88,22 @@ public sealed class DockingGuidanceManager : IDisposable
                         if (DockingGeometry.IsOvershoot(doorAlongM))
                         {
                             _announcer.AnnounceImmediate("Stop. You have passed the stop position.");
-                            SilenceLocked(); _state = DockState.Stopped; break;
+                            _beeper.Stop(); SilenceLocked(); _state = DockState.Stopped; break;
                         }
                         if (DockingGeometry.IsStop(doorAlongM))
                         {
                             _announcer.AnnounceImmediate("Stop.");
-                            _beeper.Update(doorAlongM, active: true); // solid
+                            _beeper.Stop();
                             _tone.Stop();
                             _state = DockState.Stopped; break;
                         }
-                        if (doorAlongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
+                        if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
                         {
                             SilenceLocked(); _state = DockState.Armed; break;
                         }
                         _tone.UpdateHeadingError(hdgErr, GateWidthFeet);
                         _beeper.Update(doorAlongM, active: true);
-                        if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres)
+                        if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
                         {
                             _slowDownSaid = true;
                             _announcer.AnnounceImmediate("Slow down.");
@@ -123,6 +126,8 @@ public sealed class DockingGuidanceManager : IDisposable
         _state = DockState.Docking;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
+        for (int i = 0; i < _milestones.Count; i++)
+            if (doorAlongM < _milestones[i].TriggerMetres) _milestoneSaid[i] = true; // already past this milestone at engage
         _slowDownSaid = false;
         string dist = DistanceFormatter.FromMetres(doorAlongM);
 

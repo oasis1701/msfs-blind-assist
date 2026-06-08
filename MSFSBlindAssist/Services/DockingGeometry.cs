@@ -10,18 +10,22 @@ public static class DockingGeometry
 
     // Engage / completion thresholds (tunable).
     public const double EngageGroundSpeedKts = 15.0;
-    public const double EngageRangeMetres = 60.0;
+    /// <summary>Engage when the aircraft datum is within 50 m of the gate stop.</summary>
+    public const double EngageRangeMetres = 50.0;
     public const double EngageConeDeg = 70.0;
     public const double StopToleranceMetres = 0.5;
-    public const double OvershootMetres = 2.0;
+    /// <summary>Announce overshoot when the door is 1 m past the stop.</summary>
+    public const double OvershootMetres = 1.0;
     public const double SlowDownMetres = 6.0;
+    /// <summary>"Slow down" only fires when ground speed exceeds this threshold (kts).</summary>
+    public const double SlowDownSpeedKts = 5.0;
     public const double DisengageRangeMetres = EngageRangeMetres * 1.5;
 
     // Beep interval mapping (ms): slow when far, fast when near.
     public const double BeepIntervalFarMs = 1000.0;
     public const double BeepIntervalNearMs = 90.0;
-    // 15 m = GSX's 5-chevron (3 m each) zone; beep accelerates through it, "Slow down" at SlowDownMetres (6 m).
-    public const double BeepFarMetres = 15.0;
+    /// <summary>Beep ramps gradually over the final ~30 m of door distance.</summary>
+    public const double BeepFarMetres = 30.0;
     public const double BeepNearMetres = 2.0;
 
     /// <summary>Normalize an angle (deg) to (-180, 180].</summary>
