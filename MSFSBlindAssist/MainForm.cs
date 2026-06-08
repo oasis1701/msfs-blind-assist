@@ -137,6 +137,10 @@ public partial class MainForm : Form
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         currentAircraft = LoadAircraftFromCode(settings.LastAircraft ?? "A320");
 
+        // TODO Task 2: enable once DistanceFormatter exists
+        // MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+        //     () => MSFSBlindAssist.Settings.SettingsManager.Current.GroundDistanceUnit;
+
         InitializeComponent();
         InitializeManagers();
 

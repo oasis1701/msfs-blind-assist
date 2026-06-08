@@ -140,6 +140,14 @@ public class UserSettings
         // Units
         public string DistanceUnits { get; set; } = "miles";
 
+        /// <summary>
+        /// Unit used for user-facing ground/horizontal distance readouts
+        /// (e.g. taxi distance-to-turn, parking countdown).
+        /// Metres (0) is the ICAO default and matches GSX distances.
+        /// Feet (1) is the North American / FAA convention.
+        /// </summary>
+        public DistanceUnit GroundDistanceUnit { get; set; } = DistanceUnit.Metres;
+
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
@@ -316,6 +324,7 @@ public class UserSettings
             MajorCityPopulationThreshold = MajorCityPopulationThreshold,
             MajorCityAPIThreshold = MajorCityAPIThreshold,
             DistanceUnits = DistanceUnits,
+            GroundDistanceUnit = GroundDistanceUnit,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
