@@ -59,6 +59,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
     private TaxiGuidanceManager taxiGuidanceManager = null!;
+    private DockingGuidanceManager dockingGuidanceManager = null!;
     private TaxiAssistForm? taxiAssistForm;
     private LandingExitPlanner landingExitPlanner = null!;
     private GroundTrafficMonitor groundTrafficMonitor = null!;
@@ -262,6 +263,9 @@ public partial class MainForm : Form
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+
+        // Initialize docking guidance manager
+        dockingGuidanceManager = new DockingGuidanceManager(announcer);
 
         // Subscribe to taxi guidance state changes ONCE, here at construction time.
         // This wires SimConnect taxi-position monitoring on/off (see
@@ -811,6 +815,10 @@ public partial class MainForm : Form
                     catch { }
                 }
                 taxiGuidanceManager.UpdatePosition(
+                    pos.Latitude, pos.Longitude,
+                    pos.HeadingMagnetic, pos.MagneticVariation,
+                    pos.GroundSpeedKnots);
+                dockingGuidanceManager.UpdatePosition(
                     pos.Latitude, pos.Longitude,
                     pos.HeadingMagnetic, pos.MagneticVariation,
                     pos.GroundSpeedKnots);
@@ -2722,7 +2730,7 @@ public partial class MainForm : Form
         {
             taxiAssistForm = new TaxiAssistForm(
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector());
+                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
@@ -5675,8 +5683,9 @@ public partial class MainForm : Form
         weatherAnnouncementTimer?.Stop();
         weatherAnnouncementTimer?.Dispose();
 
-        // Clean up taxi guidance and ground traffic monitor
+        // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
+        dockingGuidanceManager?.Dispose();
         groundTrafficMonitor?.Dispose();
 
         // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not

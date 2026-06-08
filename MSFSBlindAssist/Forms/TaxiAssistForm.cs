@@ -112,6 +112,11 @@ public class TaxiAssistForm : Form
     // actual ParkingSpot to GsxGateSelector without re-querying the data provider.
     private Dictionary<string, ParkingSpot> _destinationSpotMap = new();
 
+    // Docking guidance manager: receives the selected gate so proximity audio
+    // and lateral tone can guide the pilot to the stop position. Set in
+    // OnCalculateClicked for gate destinations; cleared on runway destinations.
+    private readonly Services.DockingGuidanceManager? _dockingManager;
+
     public TaxiAssistForm(
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
@@ -120,7 +125,8 @@ public class TaxiAssistForm : Form
         TcasService? tcasService = null,
         double aircraftWingspan = 0,
         Services.GateDataSource? gateSource = null,
-        Services.Gsx.GsxGateSelector? gsxGateSelector = null)
+        Services.Gsx.GsxGateSelector? gsxGateSelector = null,
+        Services.DockingGuidanceManager? dockingManager = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
@@ -130,6 +136,7 @@ public class TaxiAssistForm : Form
         _aircraftWingspan = aircraftWingspan;
         _gateSource = gateSource;
         _gsxGateSelector = gsxGateSelector;
+        _dockingManager = dockingManager;
         InitializeFormControls();
     }
 
@@ -1459,6 +1466,19 @@ public class TaxiAssistForm : Form
         // what the router actually decided when no taxiways were picked.
         txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
         lblStatus.Text = "Route loaded. Guidance active.";
+
+        // Docking guidance: set the target gate unconditionally when heading to
+        // a gate (independent of GSX setting / availability), or clear it when
+        // heading to a runway so a prior gate target doesn't persist.
+        if (isRunwayDest)
+        {
+            _dockingManager?.SetDestinationGate(null);
+        }
+        else
+        {
+            _destinationSpotMap.TryGetValue(destName, out var destSpot);
+            _dockingManager?.SetDestinationGate(destSpot);
+        }
 
         CheckGateOccupancy(isRunwayDest, thresholdLat, thresholdLon);
 
