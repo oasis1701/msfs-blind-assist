@@ -1,4 +1,4 @@
-// GsxGateSelector — bounded DFS gate-selection over GSX's hierarchical parking menu.
+// GsxGateSelector — page-aware gate-selection over GSX's hierarchical parking menu.
 //
 // SAFETY (non-negotiable):
 //   • NEVER choose a ForbiddenAction (WARP / Follow-Me / reposition / teleport).
@@ -9,23 +9,28 @@
 //   • discoveryOnly mode NEVER chooses any leaf or action — it only walks
 //     Category/Pagination entries and logs the tree structure.
 //
-// Algorithm: bounded DFS
+// Algorithm: page-aware traversal (TraverseAsync)
 //   Open top-level menu → determine context:
 //     ARRIVAL (SetGateName == -1 OR title IsPositionSelectionMenu):
-//       The top menu IS the DFS root (apron categories are right there).
-//       Run DFS directly on it.
+//       The top menu IS the traversal root (apron categories are right there).
+//       Run TraverseAsync directly on it.
 //     DEPARTURE / PARKED (anything else):
 //       The top menu is the services menu; re-picking a gate is not possible here
 //       (the only re-pick path is "Reposition Aircraft" = forbidden WARP).
 //       Abort cleanly: announce "GSX: gate not selectable here".
 //
-//   DFS over the tree:
-//     At each menu level:
-//       1. Page through ALL pages (follow Pagination entries).
-//       2. If a GateLeaf matches the target identity → choose it.
-//       3. If no match, rank Category entries by relevance, drill best-first.
-//          Backtrack (Back entry or re-open+re-path) on subtree miss.
-//   Bounds: maxDepth=4, maxMenuReads=60, overall timeout ~30s.
+//   TraverseAsync(currentPage, depth):
+//     Budget guards (depth <= MaxDepth, menuReads <= MaxMenuReads, elapsed < OverallTimeout).
+//     Pages forward through up to MaxPagesPerLevel pages at this level, on EACH page:
+//       1. GateLeaf match ON THIS PAGE → choose it (choice is page-relative and valid
+//          because the live menu is on this exact page).
+//       2. STRONG category match ON THIS PAGE (RankCategoryRelevance >= 10, i.e. exact
+//          concourse-letter whole-token match) → drill it immediately (choice is valid
+//          for this page).  If the gate isn't inside, stop — don't thrash.
+//       3. No match and no forward pagination → stop paging at this level.
+//     Choices are ONLY sent while the live GSX menu is displaying the page that contains
+//     the entry — no pre-collection, no choice-value collision across pages.
+//   Bounds: maxDepth=4, maxMenuReads=60, maxPagesPerLevel=25, overall timeout ~30s.
 //
 // Confirmation (non-discoveryOnly):
 //   After choosing the gate leaf: read SetGateName/Number/Suffix from GsxService
@@ -52,9 +57,10 @@ namespace MSFSBlindAssist.Services.Gsx;
 /// </summary>
 public sealed class GsxGateSelector
 {
-    // ─── DFS bounds ────────────────────────────────────────────────────────
+    // ─── Traversal bounds ──────────────────────────────────────────────────
     private const int MaxDepth = 4;
     private const int MaxMenuReads = 60;
+    private const int MaxPagesPerLevel = 25; // max forward-pagination steps at each depth level
     private static readonly TimeSpan OverallTimeout = TimeSpan.FromSeconds(30);
 
     // Per-step menu-wait timeout (shorter than the overall so individual steps
@@ -186,12 +192,12 @@ public sealed class GsxGateSelector
                 return;
             }
 
-            // ── ARRIVAL: top menu IS the DFS root ────────────────────────
-            // Apron categories (A, B, C, …) are right here — run DFS at depth 0.
-            Debug.WriteLine("[GsxGateSelector] Arrival context — running DFS on top-level menu directly.");
-            WalkLog(state, "DECISION: arrival context — DFS on top-level menu directly (no drill-in).");
+            // ── ARRIVAL: top menu IS the traversal root ──────────────────
+            // Apron categories (A, B, C, …) are right here — run TraverseAsync at depth 0.
+            Debug.WriteLine("[GsxGateSelector] Arrival context — running page-aware traversal on top-level menu directly.");
+            WalkLog(state, "DECISION: arrival context — page-aware traversal on top-level menu directly (no drill-in).");
 
-            bool found = await DfsMenuAsync(state, menu, depth: 0).ConfigureAwait(true);
+            bool found = await TraverseAsync(state, menu, depth: 0).ConfigureAwait(true);
 
             if (!found && !state.Aborted)
             {
@@ -219,17 +225,45 @@ public sealed class GsxGateSelector
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // DFS core.
+    // Traversal core — page-aware (OMDB fix 2026-06-08).
     // ─────────────────────────────────────────────────────────────────────────
+    //
+    // KEY INVARIANT: ChooseAsync is ONLY called while the live GSX menu is
+    // currently displaying the page that contains the entry being chosen.
+    // This means choice values (0–9, page-relative) are always valid for the
+    // current page.  No pre-collection is done — doing so would leave the menu
+    // on the last page and make all prior-page choice values wrong.
+    //
+    // For each page at this depth:
+    //   1. Scan for a GateLeaf match → choose it immediately (valid choice).
+    //   2. Scan for a STRONG category match (score >= 10 = exact concourse letter)
+    //      → drill it immediately (valid choice).  If gate not inside, stop.
+    //   3. Advance to the next page via the forward-pagination entry (IsNextForward).
+    //   4. If no forward entry: stop paging at this level.
+    //
+    // discoveryOnly: logs all pages + gate-leaf entries; does NOT drill categories
+    // (to keep it simple and safe — no menu mutation).
+    //
+    // CONFIRMED LIVE at OMDB (2026-06-08):
+    //   Target "B 6" (identity="B6"):
+    //   Page 1 has "Apron B (N suitable parkings)" → score=10 (exact 'B' token).
+    //   ChooseAsync(choice of Apron B on page 1) drills into Apron B's stand list.
+    //   TraverseAsync(depth+1) pages through Apron B's stands and finds "Stand B6 …".
+    //   ChooseAsync(choice of Stand B6 on its page) — valid while on that page.
 
     /// <summary>
-    /// Recursive bounded DFS over the current menu.
-    /// Returns <see langword="true"/> when the target was found (and, in
-    /// non-discovery mode, chosen + confirmed).
+    /// Page-aware traversal over GSX's hierarchical parking menu.
+    /// Pages FORWARD through pages at this depth level, at each page:
+    ///   (1) checks for a GateLeaf match and chooses it while the page is live,
+    ///   (2) checks for a strong Category match (concourse score &gt;= 10) and drills
+    ///       it while the page is live — stopping at this level if the drill misses,
+    ///   (3) advances to the next page via the forward-pagination entry.
+    /// Returns <see langword="true"/> when the target was found and (non-discovery)
+    /// chosen + confirmed.
     /// </summary>
-    private async Task<bool> DfsMenuAsync(
+    private async Task<bool> TraverseAsync(
         DfsState state,
-        IReadOnlyList<GsxService.MenuOption> menu,
+        IReadOnlyList<GsxService.MenuOption> firstPage,
         int depth)
     {
         if (state.Aborted) return false;
@@ -237,279 +271,208 @@ public sealed class GsxGateSelector
         // ── Budget checks ─────────────────────────────────────────────────
         if (depth > MaxDepth)
         {
-            Debug.WriteLine($"[GsxGateSelector] DFS: maxDepth={MaxDepth} exceeded at depth={depth}.");
+            Debug.WriteLine($"[GsxGateSelector] Traverse: maxDepth={MaxDepth} exceeded at depth={depth}.");
             return false;
         }
         if (state.MenuReads >= MaxMenuReads)
         {
-            Debug.WriteLine($"[GsxGateSelector] DFS: maxMenuReads={MaxMenuReads} reached.");
+            Debug.WriteLine($"[GsxGateSelector] Traverse: maxMenuReads={MaxMenuReads} reached.");
             return false;
         }
         if (state.Overall.Elapsed >= OverallTimeout)
         {
-            Debug.WriteLine($"[GsxGateSelector] DFS: overall timeout {OverallTimeout} reached.");
+            Debug.WriteLine($"[GsxGateSelector] Traverse: overall timeout {OverallTimeout} reached.");
             return false;
         }
 
-        // ── Collect all pages at this level (follow Pagination) ───────────
-        var allOptions = await CollectAllPagesAsync(state, menu, depth).ConfigureAwait(true);
-        if (state.Aborted) return false;
+        string targetConcourse = ExtractConcoursePrefixFromIdentity(state.TargetIdentity);
+        int targetNumber = state.Target.Number;
 
-        LogMenu(allOptions, depth, label: $"DEPTH-{depth} (ALL PAGES)");
-        WalkLogMenu(state, allOptions, depth, label: $"DEPTH-{depth} (ALL PAGES)");
+        IReadOnlyList<GsxService.MenuOption> current = firstPage;
 
-        // ── Scan for a matching gate leaf ─────────────────────────────────
-        foreach (var opt in allOptions)
+        for (int pagesSeen = 0; pagesSeen < MaxPagesPerLevel; pagesSeen++)
         {
-            var kind = GsxMenuClassifier.Classify(opt, onFinalActionMenu: false);
-            if (kind != GsxMenuEntryKind.GateLeaf) continue;
+            if (state.Aborted) return false;
+            if (state.MenuReads >= MaxMenuReads) return false;
+            if (state.Overall.Elapsed >= OverallTimeout) return false;
 
-            if (!GsxMenuClassifier.LooksLikeGate(opt.Text, out string leafIdentity)) continue;
+            // Log the current page.
+            string pageLabel = $"DEPTH-{depth} PAGE-{pagesSeen}";
+            LogMenu(current, depth, label: pageLabel);
+            WalkLogMenu(state, current, depth, label: pageLabel);
 
-            Debug.WriteLine($"[GsxGateSelector] GateLeaf found: \"{opt.Text}\" → identity={leafIdentity} (target={state.TargetIdentity})");
-
-            if (!string.Equals(leafIdentity, state.TargetIdentity, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // ── MATCH ─────────────────────────────────────────────────────
-            Debug.WriteLine($"[GsxGateSelector] MATCH: \"{opt.Text}\" matches target {state.TargetLabel}.");
-            WalkLog(state, $"MATCH: leaf=\"{opt.Text}\" choice={opt.Choice} depth={depth} → choosing.");
-
-            if (state.DiscoveryOnly)
+            // ── 1) Gate-leaf match ON THIS PAGE ───────────────────────────
+            // CRITICAL: ChooseAsync is called HERE while 'current' is the live
+            // page — opt.Choice is page-relative and valid for this exact page.
+            foreach (var opt in current)
             {
-                Debug.WriteLine($"[GsxGateSelector] DISCOVERY: found gate \"{opt.Text}\" at depth={depth}. Not choosing (discoveryOnly).");
-                WalkLog(state, $"DISCOVERY: gate \"{opt.Text}\" found at depth={depth}. Not choosing.");
-                return true; // report found but don't choose
+                var kind = GsxMenuClassifier.Classify(opt, onFinalActionMenu: false);
+                if (kind != GsxMenuEntryKind.GateLeaf) continue;
+                if (!GsxMenuClassifier.LooksLikeGate(opt.Text, out string leafIdentity)) continue;
+
+                Debug.WriteLine($"[GsxGateSelector] GateLeaf: \"{opt.Text}\" → identity={leafIdentity} (target={state.TargetIdentity}) depth={depth} page={pagesSeen}");
+
+                if (!string.Equals(leafIdentity, state.TargetIdentity, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // ── MATCH ─────────────────────────────────────────────────
+                Debug.WriteLine($"[GsxGateSelector] MATCH: \"{opt.Text}\" depth={depth} page={pagesSeen}.");
+                WalkLog(state, $"MATCH: leaf=\"{opt.Text}\" choice={opt.Choice} depth={depth} page={pagesSeen} → choosing (menu is on this page).");
+
+                if (state.DiscoveryOnly)
+                {
+                    Debug.WriteLine($"[GsxGateSelector] DISCOVERY: found gate \"{opt.Text}\" at depth={depth} page={pagesSeen}. Not choosing.");
+                    WalkLog(state, $"DISCOVERY: gate \"{opt.Text}\" found at depth={depth} page={pagesSeen}. Not choosing.");
+                    return true;
+                }
+
+                // Choose the gate leaf — menu IS on this page → choice is valid.
+                IReadOnlyList<GsxService.MenuOption> finalMenu;
+                try
+                {
+                    finalMenu = await _automation.ChooseAsync(opt.Choice, StepTimeout).ConfigureAwait(true);
+                    state.MenuReads++;
+                    LogMenu(finalMenu, depth + 1, label: "FINAL-ACTION-MENU");
+                    WalkLogMenu(state, finalMenu, depth + 1, label: "FINAL-ACTION-MENU");
+                }
+                catch (Exception ex)
+                {
+                    Abort(state, $"Failed to open final action menu after choosing gate: {ex.Message}");
+                    return false;
+                }
+
+                // Give GSX a moment to update the SetGate_* L-vars (VISUAL_FRAME).
+                await Task.Delay(500).ConfigureAwait(true);
+
+                bool confirmed = GsxParkingNameEnum.Matches(
+                    _gsx.SetGateName,
+                    _gsx.SetGateNumber,
+                    _gsx.SetGateSuffix,
+                    state.Target);
+
+                Debug.WriteLine($"[GsxGateSelector] SetGate confirm: Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} → confirmed={confirmed}");
+                WalkLog(state, $"SETGATE-CONFIRM: Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} confirmed={confirmed}");
+
+                if (confirmed)
+                {
+                    Announce($"GSX: gate {state.TargetLabel} selected.");
+                    WalkLog(state, $"SUCCESS: gate {state.TargetLabel} confirmed via SetGate vars.");
+                }
+                else if (_gsx.SetGateName < 0)
+                {
+                    Announce($"GSX: gate {state.TargetLabel} selected. Confirmation pending.");
+                    WalkLog(state, $"TENTATIVE SUCCESS: SetGate vars still -1 (not yet updated). Gate leaf chosen.");
+                }
+                else
+                {
+                    Announce($"GSX: gate {state.TargetLabel} selected (SetGate mismatch — check GSX).");
+                    WalkLog(state, $"MISMATCH: SetGate vars indicate a different gate. Gate leaf was chosen but confirmation failed.");
+                }
+
+                // Best-effort: choose a safe servicing action (OPTIONAL).
+                await TryChooseSafeActionAsync(state, finalMenu).ConfigureAwait(true);
+
+                return true; // gate leaf chosen — traversal done
             }
 
-            // ── Choose the gate leaf ──────────────────────────────────────
-            // Choosing the leaf selects the gate and arms the default marshaller.
-            // The resulting menu is the final-action menu (servicing options).
-            IReadOnlyList<GsxService.MenuOption> finalMenu;
-            try
+            // ── 2) Strong category match ON THIS PAGE (non-discovery) ─────
+            // "Strong" = RankCategoryRelevance >= 10 (exact concourse-letter
+            // whole-token match, e.g. 'B' in "Apron B (N suitable parkings)").
+            // CRITICAL: ChooseAsync is called HERE while 'current' is the live
+            // page — catOpt.Choice is valid for this exact page.
+            if (!state.DiscoveryOnly)
             {
-                finalMenu = await _automation.ChooseAsync(opt.Choice, StepTimeout).ConfigureAwait(true);
-                state.MenuReads++;
-                LogMenu(finalMenu, depth + 1, label: "FINAL-ACTION-MENU");
-                WalkLogMenu(state, finalMenu, depth + 1, label: "FINAL-ACTION-MENU");
+                GsxService.MenuOption? strongCat = null;
+                int strongScore = 0;
+                foreach (var opt in current)
+                {
+                    if (GsxMenuClassifier.Classify(opt, onFinalActionMenu: false) != GsxMenuEntryKind.Category)
+                        continue;
+                    int score = GsxMenuClassifier.RankCategoryRelevance(opt.Text, targetConcourse, targetNumber);
+                    if (score >= 10 && score > strongScore)
+                    {
+                        strongCat = opt;
+                        strongScore = score;
+                    }
+                }
+
+                if (strongCat != null && depth < MaxDepth
+                    && state.MenuReads < MaxMenuReads
+                    && state.Overall.Elapsed < OverallTimeout)
+                {
+                    Debug.WriteLine($"[GsxGateSelector] Strong category match: \"{strongCat.Text}\" score={strongScore} choice={strongCat.Choice} depth={depth} page={pagesSeen} → drilling (menu is on this page).");
+                    WalkLog(state, $"STRONG-DRILL: \"{strongCat.Text}\" score={strongScore} choice={strongCat.Choice} depth={depth} page={pagesSeen} (menu is on this page).");
+
+                    IReadOnlyList<GsxService.MenuOption> subMenu;
+                    try
+                    {
+                        subMenu = await _automation.ChooseAsync(strongCat.Choice, StepTimeout).ConfigureAwait(true);
+                        state.MenuReads++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[GsxGateSelector] Failed to drill strong category \"{strongCat.Text}\": {ex.Message} — stopping.");
+                        WalkLog(state, $"STRONG-DRILL-FAIL: \"{strongCat.Text}\" {ex.Message} — stopping this level.");
+                        return false;
+                    }
+
+                    bool found = await TraverseAsync(state, subMenu, depth + 1).ConfigureAwait(true);
+                    if (found) return true;
+                    if (state.Aborted) return false;
+
+                    // Strong concourse match drilled but gate not found inside.
+                    // Don't thrash — stop at this level.  (Known limitation for
+                    // airports with no concourse-letter grouping; a later pass
+                    // will add terminal-number drilling.)
+                    Debug.WriteLine($"[GsxGateSelector] Strong category drilled but gate not found inside — stopping at depth={depth}.");
+                    WalkLog(state, $"STRONG-DRILL-MISS: gate not found inside \"{strongCat.Text}\" — stopping at depth={depth} (no thrash).");
+                    return false;
+                }
             }
-            catch (Exception ex)
+
+            // ── 3) Advance to the next forward page ───────────────────────
+            // Use IsNextForward (not IsNext alone) so "◀Previous Page" — which
+            // contains "page" / "previous" matched by PaginationPatterns — is
+            // correctly excluded as a Back entry.
+            GsxService.MenuOption? nextOpt = null;
+            foreach (var opt in current)
             {
-                Abort(state, $"Failed to open final action menu after choosing gate: {ex.Message}");
-                return false;
+                string t = opt.Text ?? string.Empty;
+                if (GsxMenuClassifier.IsNextForward(t))
+                {
+                    nextOpt = opt;
+                    break;
+                }
             }
 
-            // ── Confirm via SetGate_* L-vars ─────────────────────────────
-            // Give GSX a moment to update the L-vars (they update via VISUAL_FRAME).
-            await Task.Delay(500).ConfigureAwait(true);
+            if (nextOpt == null)
+                break; // no forward pagination — end of pages at this level
 
-            bool confirmed = GsxParkingNameEnum.Matches(
-                _gsx.SetGateName,
-                _gsx.SetGateNumber,
-                _gsx.SetGateSuffix,
-                state.Target);
-
-            Debug.WriteLine($"[GsxGateSelector] SetGate confirmation (post-leaf): Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} → confirmed={confirmed}");
-            WalkLog(state, $"SETGATE-CONFIRM: Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} confirmed={confirmed}");
-
-            if (confirmed)
-            {
-                Announce($"GSX: gate {state.TargetLabel} selected.");
-                WalkLog(state, $"SUCCESS: gate {state.TargetLabel} confirmed via SetGate vars.");
-            }
-            else if (_gsx.SetGateName < 0)
-            {
-                // SetGate vars still at -1 (GSX hasn't updated yet — treat as tentative success).
-                Announce($"GSX: gate {state.TargetLabel} selected. Confirmation pending.");
-                WalkLog(state, $"TENTATIVE SUCCESS: SetGate vars still -1 (not yet updated). Gate leaf chosen.");
-            }
-            else
-            {
-                Announce($"GSX: gate {state.TargetLabel} selected (SetGate mismatch — check GSX).");
-                WalkLog(state, $"MISMATCH: SetGate vars indicate a different gate. Gate leaf was chosen but confirmation failed.");
-            }
-
-            // ── Best-effort: choose a safe servicing action (OPTIONAL) ────
-            // The gate is already selected above. If a safe action is present we
-            // choose it (arms marshaller/VDGS explicitly); if not, that is fine.
-            await TryChooseSafeActionAsync(state, finalMenu).ConfigureAwait(true);
-
-            return true; // gate leaf was chosen — DFS is done
-        }
-
-        // ── No matching leaf on this menu — drill into Category entries ───
-        if (state.DiscoveryOnly)
-        {
-            // In discovery mode, drill into ALL categories to map the full tree.
-            return await DrillCategoriesDiscoveryAsync(state, allOptions, depth).ConfigureAwait(true);
-        }
-        else
-        {
-            return await DrillCategoriesBestFirstAsync(state, allOptions, depth).ConfigureAwait(true);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Page collector: follows all Pagination entries at the same DFS level.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private async Task<List<GsxService.MenuOption>> CollectAllPagesAsync(
-        DfsState state,
-        IReadOnlyList<GsxService.MenuOption> firstPage,
-        int depth)
-    {
-        var all = new List<GsxService.MenuOption>(firstPage);
-        var current = firstPage;
-        int paginationSteps = 0;
-        const int MaxPaginationSteps = 20; // safety cap per level
-
-        while (paginationSteps < MaxPaginationSteps
-            && state.MenuReads < MaxMenuReads
-            && state.Overall.Elapsed < OverallTimeout)
-        {
-            GsxService.MenuOption? nextOpt = FindPaginationOption(current);
-            if (nextOpt == null) break;
-
-            Debug.WriteLine($"[GsxGateSelector] Pagination at depth={depth}: \"{nextOpt.Text}\" (choice={nextOpt.Choice})");
+            Debug.WriteLine($"[GsxGateSelector] Advance page at depth={depth} page={pagesSeen}: \"{nextOpt.Text}\" (choice={nextOpt.Choice}).");
+            WalkLog(state, $"PAGE-ADVANCE: depth={depth} page={pagesSeen} → \"{nextOpt.Text}\" choice={nextOpt.Choice}.");
 
             try
             {
                 current = await _automation.ChooseAsync(nextOpt.Choice, StepTimeout).ConfigureAwait(true);
                 state.MenuReads++;
-                paginationSteps++;
-                // Add entries that are not already listed (de-dupe by choice value).
-                var existingChoices = new HashSet<int>(all.Select(o => o.Choice));
-                foreach (var o in current)
-                    if (existingChoices.Add(o.Choice))
-                        all.Add(o);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[GsxGateSelector] Pagination step failed (stopping): {ex.Message}");
+                Debug.WriteLine($"[GsxGateSelector] Page advance failed: {ex.Message} — stopping paging at depth={depth}.");
+                WalkLog(state, $"PAGE-ADVANCE-FAIL: {ex.Message} — stopping at depth={depth}.");
                 break;
             }
         }
 
-        return all;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Category drilling — best-first (non-discovery).
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private async Task<bool> DrillCategoriesBestFirstAsync(
-        DfsState state,
-        List<GsxService.MenuOption> options,
-        int depth)
-    {
-        // Extract Category entries and rank by relevance to the target.
-        string targetConcourse = ExtractConcoursePrefixFromIdentity(state.TargetIdentity);
-        int targetNumber = state.Target.Number;
-
-        var categories = options
-            .Where(o => GsxMenuClassifier.Classify(o, onFinalActionMenu: false) == GsxMenuEntryKind.Category)
-            .Select(o => (opt: o, score: GsxMenuClassifier.RankCategoryRelevance(o.Text, targetConcourse, targetNumber)))
-            .OrderByDescending(x => x.score)
-            .ThenBy(x => x.opt.Choice) // stable tie-break
-            .ToList();
-
-        Debug.WriteLine($"[GsxGateSelector] Depth={depth}: {categories.Count} categories ranked for target={state.TargetLabel}");
-        WalkLog(state, $"DRILL-BEST-FIRST: depth={depth} target={state.TargetLabel} concourse={targetConcourse} categories={categories.Count}");
-
-        foreach (var (catOpt, score) in categories)
+        // Discovery mode: log all gate-leaf entries found (we didn't drill anything).
+        if (state.DiscoveryOnly)
         {
-            if (state.Aborted) return false;
-            if (state.MenuReads >= MaxMenuReads) return false;
-            if (state.Overall.Elapsed >= OverallTimeout) return false;
-
-            Debug.WriteLine($"[GsxGateSelector] Drilling category \"{catOpt.Text}\" (score={score}, choice={catOpt.Choice}) at depth={depth}");
-            WalkLog(state, $"  DRILL: \"{catOpt.Text}\" score={score} choice={catOpt.Choice}");
-
-            IReadOnlyList<GsxService.MenuOption> subMenu;
-            try
-            {
-                subMenu = await _automation.ChooseAsync(catOpt.Choice, StepTimeout).ConfigureAwait(true);
-                state.MenuReads++;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[GsxGateSelector] Failed to drill category \"{catOpt.Text}\": {ex.Message} — backtracking.");
-                WalkLog(state, $"  DRILL-FAIL: \"{catOpt.Text}\" {ex.Message} — backtracking.");
-                // Try to backtrack.
-                await BacktrackAsync(state, options, depth).ConfigureAwait(true);
-                continue;
-            }
-
-            bool found = await DfsMenuAsync(state, subMenu, depth + 1).ConfigureAwait(true);
-            if (found) return true;
-            if (state.Aborted) return false;
-
-            // Subtree miss — backtrack to this level.
-            WalkLog(state, $"  BACKTRACK from \"{catOpt.Text}\" to depth={depth}.");
-            bool backed = await BacktrackAsync(state, options, depth).ConfigureAwait(true);
-            if (!backed)
-            {
-                // Could not backtrack — abort.
-                Abort(state, "Could not backtrack; aborting gate search.");
-                return false;
-            }
+            // Note: we've already logged every page above via WalkLogMenu.
+            Debug.WriteLine($"[GsxGateSelector] DISCOVERY: traversal at depth={depth} complete.");
+            WalkLog(state, $"DISCOVERY: traversal at depth={depth} complete (no gate choice made).");
         }
 
         return false;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Category drilling — full tree walk for discovery mode.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private async Task<bool> DrillCategoriesDiscoveryAsync(
-        DfsState state,
-        List<GsxService.MenuOption> options,
-        int depth)
-    {
-        var categories = options
-            .Where(o => GsxMenuClassifier.Classify(o, onFinalActionMenu: false) == GsxMenuEntryKind.Category)
-            .ToList();
-
-        foreach (var catOpt in categories)
-        {
-            if (state.Aborted) return false;
-            if (state.MenuReads >= MaxMenuReads) return false;
-            if (state.Overall.Elapsed >= OverallTimeout) return false;
-
-            Debug.WriteLine($"[GsxGateSelector] DISCOVERY: drilling category \"{catOpt.Text}\" (depth={depth})");
-
-            IReadOnlyList<GsxService.MenuOption> subMenu;
-            try
-            {
-                subMenu = await _automation.ChooseAsync(catOpt.Choice, StepTimeout).ConfigureAwait(true);
-                state.MenuReads++;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[GsxGateSelector] DISCOVERY: failed to drill \"{catOpt.Text}\": {ex.Message}");
-                await BacktrackAsync(state, options, depth).ConfigureAwait(true);
-                continue;
-            }
-
-            await DfsMenuAsync(state, subMenu, depth + 1).ConfigureAwait(true);
-
-            if (state.Aborted) return false;
-
-            await BacktrackAsync(state, options, depth).ConfigureAwait(true);
-        }
-
-        // Also log gate-leaf entries found at this level (for discovery).
-        foreach (var opt in options)
-        {
-            var kind = GsxMenuClassifier.Classify(opt, onFinalActionMenu: false);
-            if (kind == GsxMenuEntryKind.GateLeaf && GsxMenuClassifier.LooksLikeGate(opt.Text, out string id))
-            {
-                Debug.WriteLine($"[GsxGateSelector] DISCOVERY: gate leaf at depth={depth}: \"{opt.Text}\" identity={id}");
-            }
-        }
-
-        return false; // discovery never "finds" in the sense of choosing
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -596,50 +559,6 @@ public sealed class GsxGateSelector
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Backtracking.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Attempts to return to the parent menu level.
-    /// Prefers a Back entry on the current page; otherwise re-opens the top-level
-    /// menu and re-drills to the parent level (simplified: just re-opens root).
-    /// Returns <see langword="true"/> on success, <see langword="false"/> on failure.
-    /// </summary>
-    private async Task<bool> BacktrackAsync(
-        DfsState state,
-        IReadOnlyList<GsxService.MenuOption> currentOptions,
-        int depth)
-    {
-        if (state.Aborted) return false;
-
-        // Prefer a Back entry on the current page.
-        GsxService.MenuOption? backOpt = currentOptions
-            .FirstOrDefault(o => GsxMenuClassifier.Classify(o, onFinalActionMenu: false) == GsxMenuEntryKind.Back);
-
-        if (backOpt != null)
-        {
-            Debug.WriteLine($"[GsxGateSelector] Backtrack via Back entry \"{backOpt.Text}\" at depth={depth}.");
-            try
-            {
-                var parentMenu = await _automation.ChooseAsync(backOpt.Choice, StepTimeout).ConfigureAwait(true);
-                state.MenuReads++;
-                LogMenu(parentMenu, depth - 1, label: $"BACKTRACK-TO-DEPTH-{depth - 1}");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[GsxGateSelector] Back entry failed: {ex.Message} — will not re-open (caller handles).");
-                return false;
-            }
-        }
-
-        // No Back entry — this is normal in some GSX menu structures.
-        // The caller DFS loop will simply move on to the next candidate category.
-        Debug.WriteLine($"[GsxGateSelector] No Back entry at depth={depth} — relying on caller to try next category.");
-        return true; // caller continues with next category
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
     // Helpers.
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -660,18 +579,6 @@ public sealed class GsxGateSelector
             if (GsxMenuClassifier.IsSelectParkingEntry(opt.Text))
                 return opt;
 
-        return null;
-    }
-
-    /// <summary>
-    /// Finds the first Pagination ("next page") entry in a menu snapshot.
-    /// </summary>
-    private static GsxService.MenuOption? FindPaginationOption(
-        IReadOnlyList<GsxService.MenuOption> menu)
-    {
-        foreach (var opt in menu)
-            if (GsxMenuClassifier.Classify(opt, onFinalActionMenu: false) == GsxMenuEntryKind.Pagination)
-                return opt;
         return null;
     }
 

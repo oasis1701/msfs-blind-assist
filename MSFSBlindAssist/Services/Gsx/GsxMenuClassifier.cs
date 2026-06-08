@@ -86,6 +86,10 @@ public static class GsxMenuClassifier
         // CONFIRMED LIVE apron-submenu toggles:
         "show all positions", // "Show all positions"
         "unsuitable position", // "Hide N unsuitable positions" / "Show N unsuitable"
+        // CONFIRMED LIVE: runway-start entries — never drill or choose these.
+        // "✈ Runway 12L Start", "✈ Runway 30R Start" observed at OMDB (2026-06-08).
+        "runway",             // CONFIRMED LIVE: covers all "✈ Runway XxX Start" entries
+        "✈",                  // CONFIRMED LIVE: airplane glyph present on all runway-start entries
     };
 
     // CONFIRMED LIVE: pagination / next-page indicators.
@@ -308,17 +312,25 @@ public static class GsxMenuClassifier
         // accidentally "drill" into a WARP/reposition entry.
         if (IsForbiddenAction(text)) return GsxMenuEntryKind.Action; // forbidden on nav menu too
 
-        // Gate leaf?
-        if (LooksLikeGate(text, out _)) return GsxMenuEntryKind.GateLeaf;
-
-        // ── SAFETY: strict Category — only POSITIVE matches ───────────────
-        // An entry is only drillable (Category) when its text POSITIVELY matches a
-        // known parking-group pattern.  Everything else is Unknown and the DFS
-        // NEVER drills it.  This prevents action entries ("Restart GSX", "Yes",
-        // "No", "Show me this spot and activate", "Request Towing", etc.) from
-        // being accidentally drilled because they were unrecognised.
-        // CONFIRMED LIVE at OMDB (2026-06-08).
+        // ── Category (parking GROUP) is checked BEFORE gate-leaf ──────────
+        // A group header ("Apron A (8 suitable parkings)", "Terminal 1",
+        // "Concourse C") contains a number — a count in parens or a terminal
+        // index — that the gate-leaf parser would otherwise grab as the gate
+        // number.  Group headers are POSITIVELY identified (apron/concourse/
+        // terminal/pier/... or a "(N parkings)" count), so classify them first.
+        // CONFIRMED LIVE at OMDB (2026-06-08): "Apron A (8 suitable parkings)"
+        // was mis-parsed as gate "8" when GateLeaf was checked first.
+        //
+        // SAFETY: an entry is only drillable (Category) when it POSITIVELY
+        // matches a parking-group pattern.  Everything not Category/GateLeaf is
+        // Unknown and the DFS NEVER drills it — this keeps action/system entries
+        // ("Restart GSX", "Yes", "No", "Show me this spot and activate",
+        // "Request Towing") out of the drill path.
         if (IsCategory(text)) return GsxMenuEntryKind.Category;
+
+        // Gate leaf? (an individual stand, e.g.
+        // "Stand C18 with Safedock© - Medium  (too small)" → C18.)
+        if (LooksLikeGate(text, out _)) return GsxMenuEntryKind.GateLeaf;
 
         // Unknown — must never be chosen or drilled.
         return GsxMenuEntryKind.Unknown;
@@ -348,6 +360,10 @@ public static class GsxMenuClassifier
         normalizedIdentity = string.Empty;
         string t = text.Trim();
         if (string.IsNullOrEmpty(t)) return false;
+
+        // Strip parenthetical notes ("(too small)", "(8 suitable parkings)") so a
+        // count number inside parens can never be mistaken for the gate number.
+        t = Regex.Replace(t, @"\([^)]*\)", " ");
 
         // Split into whitespace-delimited tokens.
         string[] tokens = t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
@@ -439,6 +455,18 @@ public static class GsxMenuClassifier
     /// </summary>
     public static bool IsBack(string text)
         => ContainsAny(text, BackPatterns);
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the entry is a FORWARD pagination entry
+    /// ("Next Page ▶") but NOT a back/previous entry ("◀Previous Page").
+    /// <para>
+    /// Required because <see cref="IsNext"/> matches on "page" which is also present
+    /// in "◀Previous Page" — <see cref="IsBack"/> wins on "Previous" but the traversal
+    /// must additionally exclude back entries when searching for the forward page entry.
+    /// </para>
+    /// <para>CONFIRMED LIVE at OMDB (2026-06-08): "Next Page ▶" (forward), "◀Previous Page" (back).</para>
+    /// </summary>
+    public static bool IsNextForward(string text) => IsNext(text) && !IsBack(text);
 
     /// <summary>
     /// Returns <see langword="true"/> when the entry text matches a
