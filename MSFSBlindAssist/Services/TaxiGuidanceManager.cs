@@ -4749,8 +4749,8 @@ public class TaxiGuidanceManager : IDisposable
                         _rolloutRunway.StartLat, _rolloutRunway.StartLon,
                         _rolloutRunwayHeadingTrue);
                     double distToEndFt = (_rolloutRunway.Length * 0.3048 - alongFromStartM) * METERS_TO_FEET;
-                    int distFt = (int)Math.Max(0, Math.Round(distToEndFt));
-                    return $"Rolling out. No exit. Runway end in {distFt} feet.{gsStr}";
+                    double distFt = Math.Max(0, distToEndFt);
+                    return $"Rolling out. No exit. Runway end in {DistanceFormatter.FromFeet(distFt)}.{gsStr}";
                 }
                 return $"Rolling out. No exit planned.{gsStr}";
             }
@@ -4759,11 +4759,11 @@ public class TaxiGuidanceManager : IDisposable
             {
                 double distToExitM = TaxiGraph.FastDistanceMeters(
                     _lastLat, _lastLon, _rolloutExit.Latitude, _rolloutExit.Longitude);
-                int distFt = (int)Math.Max(0, Math.Round(distToExitM * METERS_TO_FEET));
+                double distFt = Math.Max(0, distToExitM * METERS_TO_FEET);
                 string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
                     ? "unnamed exit"
                     : $"taxiway {_rolloutExit.TaxiwayName}";
-                return $"Rolling out. {_rolloutExit.ExitType} exit {exitName} in {distFt} feet.{gsStr}";
+                return $"Rolling out. {_rolloutExit.ExitType} exit {exitName} in {DistanceFormatter.FromFeet(distFt)}.{gsStr}";
             }
 
             return $"Rolling out.{gsStr}";
@@ -4778,8 +4778,7 @@ public class TaxiGuidanceManager : IDisposable
             {
                 double distM = TaxiGraph.FastDistanceMeters(
                     _lastLat, _lastLon, _backtrackConnectionLat, _backtrackConnectionLon);
-                int distFt = (int)Math.Max(0, Math.Round(distM * METERS_TO_FEET));
-                return $"Backtracking. {distFt} feet to taxiway connection.{gsStr}";
+                return $"Backtracking. {DistanceFormatter.FromMetres(distM)} to taxiway connection.{gsStr}";
             }
             return $"Backtracking.{gsStr}";
         }
@@ -4911,7 +4910,9 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Formats a distance in meters to feet or nautical miles.
+    /// Formats a distance in meters using the active unit (via DistanceFormatter).
+    /// Distances over ~1 NM fall back to nautical miles regardless of the unit setting
+    /// (for route summaries and status readouts where NM is universally understood).
     /// </summary>
     private static string FormatDistance(double meters)
     {
@@ -4921,7 +4922,7 @@ public class TaxiGuidanceManager : IDisposable
             double nm = meters * METERS_TO_NM;
             return $"{nm:F1} nautical miles";
         }
-        return $"{(int)feet} feet";
+        return DistanceFormatter.FromMetres(meters);
     }
 
     private string BuildRouteSummary(TaxiRoute route, bool isRunwayDestination)

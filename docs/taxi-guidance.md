@@ -181,22 +181,25 @@ toneHeadingError = NormalizeAngle(desiredHeading − aircraftHeadingTrue)
 | Trigger | Distance / Condition | Announcement |
 |---|---|---|
 | Route calculated | — | `Taxi to runway 22L via Alpha, Bravo, hold short 13L, Kilo. Total distance 1.2 miles.` |
-| Start of taxi (apron first-leg look-ahead) | first movement | `Steering guidance active. Join taxiway Alpha in 200 feet.` (or `Taxiway Alpha. Steering guidance active.` if already on a named taxiway) |
+| Start of taxi (apron first-leg look-ahead) | first movement | `Steering guidance active. Join taxiway Alpha in 200 metres.` (or `Taxiway Alpha. Steering guidance active.` if already on a named taxiway). Distance shown in the active unit — 200 metres or ~650 feet depending on the Distance units setting. |
 | Taxiway change | on segment advance | `Taxiway Bravo.` |
-| Approaching turn | ~300 ft (100 m) | `In 300 feet, turn left onto taxiway Bravo.` Direction is computed from the aircraft's CURRENT heading toward the next segment's bearing — see "Verbal turn direction" below — so the spoken cue always agrees with the steering tone's pan. |
-| Turn imminent | speed-scaled ~65–245 ft | `Turn left, taxiway Bravo.` Same heading-based direction as the approaching-turn cue. |
-| Crossing taxiway | ~150 ft (50 m) | `Crossing taxiway Kilo.` (toggle in settings) |
-| Hold short countdown | 300 / 150 / 50 ft | `Hold short runway 13 Left in 300 feet.` / `Hold short runway 13 Left in 150 feet. Slow down.` (the *Slow down* suffix only fires if GS > 10 kt) / `Hold short runway 13 Left in 50 feet. Stop.` (the *Stop* suffix only fires if GS > 1 kt — no point telling a stopped pilot to stop). |
+| Approaching turn | ~300 ft / ~100 m | `In 100 metres, turn left onto taxiway Bravo.` (metres default) or `In 300 feet, turn left onto taxiway Bravo.` (feet mode). Distance is in the active unit. Direction is computed from the aircraft's CURRENT heading toward the next segment's bearing — see "Verbal turn direction" below — so the spoken cue always agrees with the steering tone's pan. |
+| Turn imminent | speed-scaled ~20–75 m / 65–245 ft | `Turn left, taxiway Bravo.` Same heading-based direction as the approaching-turn cue. |
+| Crossing taxiway | ~150 ft / ~50 m | `Crossing taxiway Kilo.` (toggle in settings) |
+| Hold short countdown | 300 / 150 / 50 ft **or** 100 / 50 / 15 m (per Distance units setting) | `Hold short runway 13 Left in 100 metres.` / `Hold short runway 13 Left in 50 metres. Slow down.` (the *Slow down* suffix only fires if GS > 10 kt) / `Hold short runway 13 Left in 15 metres. Stop.` (the *Stop* suffix only fires if GS > 1 kt). The live distance is spoken via `DistanceFormatter.FromFeet`; unit-native milestone spacing is provided by `DistanceMilestones.HoldShort`. |
 | At hold short | within radius | `Hold short runway 13 Left. Press continue when cleared.` (tone pauses) |
 | Continue pressed | — | `Crossing runway 13 Left. Taxiway Kilo.` (tone resumes) |
-| Approaching runway destination | ~300 ft | `Runway 22 Left ahead.` |
+| Approaching runway destination | ~300 ft / ~100 m | `Runway 22 Left ahead.` |
 | Runway lineup achieved | heading <1° AND cross <10 ft | `Lined up, runway 22 Left. Hold position.` Tone pauses. The *Hold position* directive is the LUAW stop cue (FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA: align with centerline and remain stationary awaiting further clearance). Convergence target matches what runway-teleport places you at (20 m back from the threshold, aligned with runway heading). |
-| Gate countdown | 50 / 20 / 10 ft | `50 feet to gate.` / `20 feet.` / `10 feet. Stop.` (the *Stop* suffix at 10 ft only fires if GS > 1 kt). |
-| Arrived at gate | within 20 ft | `Gate Alpha 25 reached.` |
+| Gate countdown | 50 / 20 / 10 ft **or** 15 / 10 / 5 m (per Distance units setting) | `15 metres to gate.` / `10 metres.` / `5 metres. Stop.` (the *Stop* suffix at the closest milestone only fires if GS > 1 kt). Unit-native spacing via `DistanceMilestones.Parking`. |
+| Arrived at gate | within 20 ft / ~6 m | `Gate Alpha 25 reached.` |
 | Off route | >50 m for >3 s | `Off route. Recalculating.` |
 | Speed warning | >30 kt straight / >12 kt turn | `Slow down.` (8 s cooldown) |
 | Runway incursion | non-route hold-short within 40 m | `Runway crossing ahead. Hold short.` (10 s cooldown) |
-| On-demand status | Output > `Y` | `Taxiway Bravo. In 400 feet turn right onto Kilo. 0.8 miles to destination.` |
+| Exit approach (landing rollout) | 1500 / 900 / 500 ft **or** 500 / 300 / 150 m (per Distance units setting) | `Approaching high-speed exit Sierra 5, 500 metres.` / `Sierra 5, 300 metres.` / `Sierra 5, 150 metres. Slow down.` Unit-native spacing via `DistanceMilestones.ExitApproach`. |
+| Runway-end countdown (missed last exit) | 1500 / 500 / 100 ft **or** 500 / 150 / 30 m (per Distance units setting) | `Runway end in 500 metres.` / `Runway end in 150 metres. Slow down.` / `Runway end in 30 metres. Stop.` Unit-native spacing via `DistanceMilestones.RunwayEnd`. |
+| Ground traffic alert | live distance, unit-aware | `Slow down, traffic ahead, 150 metres.` (metres default) or `Slow down, traffic ahead, 500 feet.` (feet mode). Via `DistanceFormatter.FromFeet` in `GroundTrafficMonitor`. |
+| On-demand status | Output > `Y` | `Taxiway Bravo. In 400 metres turn right onto Kilo. 0.8 miles to destination.` (distances in active unit; NM used for totals over ~1 NM regardless of unit setting). |
 | Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — two peripheral sites still call plain `_announcer.Announce` without populating `_lastInstruction`: (a) the LoadRoute route summary, (b) the periodic ground-speed bucket announcer — so the Repeat-Last buffer keeps the most recent actionable callout. |
 | Where am I | Output > `Alt+Y` | `Taxiway Bravo at KJFK.` / `Gate A25 at KJFK.` / `Runway 22L at KJFK.` Works with or without active guidance. |
 
@@ -218,7 +221,7 @@ Crossing announcements use a 45-second per-taxiway-name dedup window (`_recentCr
 
 ### Start of taxi — apron look-ahead
 
-If the aircraft is on an unnamed apron taxilane connector at route start, `StartGuidance` walks forward through the route segments to the first one with a non-empty `TaxiwayName`, accumulating the distance. When the distance to join exceeds 10 m the announcement becomes `"Steering guidance active. Join taxiway Alpha in 200 feet."` instead of immediately announcing the taxiway name. This matches the real-world sequence after pushback — the aircraft rolls down the stand taxilane to the apron edge before joining the first named taxiway.
+If the aircraft is on an unnamed apron taxilane connector at route start, `StartGuidance` walks forward through the route segments to the first one with a non-empty `TaxiwayName`, accumulating the distance. When the distance to join exceeds 10 m the announcement becomes `"Steering guidance active. Join taxiway Alpha in 200 metres."` (or feet, per the Distance units setting) instead of immediately announcing the taxiway name. This matches the real-world sequence after pushback — the aircraft rolls down the stand taxilane to the apron edge before joining the first named taxiway. The distance is formatted via `DistanceFormatter.FromMetres`.
 
 ### Convergence target: taxi guidance ends where teleport places you
 
@@ -227,7 +230,7 @@ For both runway and gate destinations, taxi guidance and the teleport hotkeys ar
 | Destination | Teleport places you at | Taxi guidance ends with |
 |---|---|---|
 | Runway | 20 m back from the threshold, on the centerline, heading = runway heading, on ground (`SimConnectManager.TeleportToRunway`) | Aircraft on the runway centerline, aligned with runway heading within 1° (lineup-aligned hysteresis), `Lined up, runway X. Hold position.` announced, tone paused |
-| Gate / parking | At the parking spot lat/lon, heading = gate heading, on ground (`SimConnectManager.TeleportToParkingSpot`) | Aircraft within 20 ft of the parking spot (`GATE_ARRIVAL_RADIUS_FEET`), 50/20/10 ft countdown announced, gate-lineup heading tone silent at parking heading |
+| Gate / parking | At the parking spot lat/lon, heading = gate heading, on ground (`SimConnectManager.TeleportToParkingSpot`) | Aircraft within 20 ft of the parking spot (`GATE_ARRIVAL_RADIUS_FEET`), unit-aware parking countdown announced (50/20/10 ft or 15/10/5 m per Distance units setting), gate-lineup heading tone silent at parking heading |
 
 The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA "line up and wait" procedure — align with the centerline and remain stationary awaiting further clearance from ATC. This is the universal stop point for LUAW *and* the spot where you'd briefly stop before applying takeoff thrust under "cleared for takeoff." Either way, that's the convergence target.
 
@@ -360,9 +363,41 @@ Opened from the File menu. User-tunable settings:
 
 - **Steering tone waveform** — Sine (default), Square, Triangle, Sawtooth. Picks up from `HandFlyWaveType` to share the hand-fly tone palette.
 - **Steering tone volume** — slider, default 0.05 (quiet — intended to sit under ATC chatter).
-- **Announce taxiway crossings** — checkbox, default on. Turns off the ~150 ft "Crossing taxiway X" callouts for pilots who find them chatty.
+- **Announce taxiway crossings** — checkbox, default on. Turns off the ~150 ft / ~50 m "Crossing taxiway X" callouts for pilots who find them chatty.
+- **Ground speed announcements** — off / 5 kt / 10 kt. Periodic ground-speed bucket callout during all on-ground phases.
 
 All settings persist through `UserSettings`.
+
+### Distance units
+
+`UserSettings.GroundDistanceUnit` (enum `DistanceUnit.Metres` / `DistanceUnit.Feet`, default **Metres**). Controlled by the **"Use feet for distances"** checkbox in the Taxi Guidance Options Form.
+
+**What it governs — every user-facing horizontal ground-distance readout:**
+
+- Taxi turn advance-notice and "turn now" callouts (`"In 100 metres, turn left…"` vs `"In 300 feet, turn left…"`)
+- Hold-short countdowns (100/50/15 m **or** 300/150/50 ft; live distance spoken via `DistanceFormatter.FromFeet`)
+- Parking / gate arrival countdowns (15/10/5 m **or** 50/20/10 ft; via `DistanceMilestones.Parking`)
+- Landing-exit approach callouts (500/300/150 m **or** 1500/900/500 ft; via `DistanceMilestones.ExitApproach`)
+- Runway-end countdown (500/150/30 m **or** 1500/500/100 ft; via `DistanceMilestones.RunwayEnd`)
+- On-demand status distances (`"In 400 metres turn right onto Kilo. 0.8 miles to destination."`) — totals over ~1 NM always shown in nautical miles regardless of unit setting
+- Touchdown callouts (`"Touchdown. High-speed exit K2 in 1 800 metres."`)
+- Landing exit and runway combo-box labels (`LandingExit.ToString()`, `Runway.ToString()` — short form, e.g. `"K2 — 550 m from threshold"` or `"K2 — 1 800 ft from threshold"`)
+- Ground-traffic alerts (`"Slow down, traffic ahead, 150 metres."` vs `"… 500 feet."`)
+- Backtracking distance readout in on-demand status
+
+**What it does NOT govern (intentionally out of scope):**
+
+- Altitude callouts (always feet — aviation standard, ICAO Annex 5)
+- AGL / vertical-speed callouts (always feet)
+- Takeoff-assist / visual-guidance announcements (altitude/AGL — always feet)
+- Weather visibility (reported in km / statute miles per METAR convention)
+- Internal guidance thresholds — all geometry stays metric; the unit setting is a **display-layer-only** conversion applied at announcement time via `DistanceFormatter` and the unit-native `DistanceMilestones` tables.
+
+**Why Metres is the default:**
+
+ICAO Annex 5 and most non-US airspace use metric for all ground-distance callouts (taxi, RVR, taxiway widths). GSX Pro's gate data uses metres. Feet is the US aviation standard and is available via the checkbox for pilots who prefer it.
+
+**Implementation:** `DistanceFormatter.UnitProvider` is wired to `() => SettingsManager.Current.GroundDistanceUnit` at app startup in `MainForm`. A setting change takes effect on the next callout — no restart required.
 
 ## Landing Exit Planner
 
