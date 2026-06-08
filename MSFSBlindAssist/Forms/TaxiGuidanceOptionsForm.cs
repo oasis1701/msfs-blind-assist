@@ -21,6 +21,7 @@ public class TaxiGuidanceOptionsForm : Form
     private Label gsAnnounceLabel = null!;
     private ComboBox gsAnnounceCombo = null!;
     private CheckBox useMetresCheckBox = null!;
+    private CheckBox gsxAutoSelectGateCheckBox = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -34,6 +35,7 @@ public class TaxiGuidanceOptionsForm : Form
     public bool AnnounceCrossings { get; private set; }
     public int GroundSpeedAnnounceInterval { get; private set; }
     public bool GroundTrafficUseMetres { get; private set; }
+    public bool GsxAutoSelectGateOnRoute { get; private set; }
 
     public TaxiGuidanceOptionsForm(
         HandFlyWaveType currentWaveform,
@@ -42,7 +44,8 @@ public class TaxiGuidanceOptionsForm : Form
         bool hardPanSteeringTone,
         bool announceCrossings,
         int groundSpeedAnnounceInterval,
-        bool groundTrafficUseMetres)
+        bool groundTrafficUseMetres,
+        bool gsxAutoSelectGateOnRoute = true)
     {
         SelectedToneWaveform = currentWaveform;
         SelectedVolume = currentVolume;
@@ -51,6 +54,7 @@ public class TaxiGuidanceOptionsForm : Form
         AnnounceCrossings = announceCrossings;
         GroundSpeedAnnounceInterval = groundSpeedAnnounceInterval;
         GroundTrafficUseMetres = groundTrafficUseMetres;
+        GsxAutoSelectGateOnRoute = gsxAutoSelectGateOnRoute;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -58,7 +62,7 @@ public class TaxiGuidanceOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Taxi Guidance Options";
-        Size = new Size(500, 475);
+        Size = new Size(500, 510);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -254,11 +258,26 @@ public class TaxiGuidanceOptionsForm : Form
         useMetresCheckBox.CheckedChanged += (s, e) =>
             GroundTrafficUseMetres = useMetresCheckBox.Checked;
 
+        // GSX auto-select gate on route calculation. When checked, calculating
+        // a taxi route to a gate also drives the GSX menu to select that gate
+        // so the marshaller/VDGS arms there — only when GSX is running.
+        gsxAutoSelectGateCheckBox = new CheckBox
+        {
+            Text = "Auto-select arrival gate in GSX on route calculation",
+            Location = new Point(20, 355),
+            Size = new Size(450, 25),
+            Checked = GsxAutoSelectGateOnRoute,
+            AccessibleName = "Auto-select arrival gate in GSX on route calculation",
+            AccessibleDescription = "When checked, calculating a taxi route to a gate also drives the GSX menu to select that gate so the marshaller and VDGS arm there automatically. Only fires when GSX is running."
+        };
+        gsxAutoSelectGateCheckBox.CheckedChanged += (s, e) =>
+            GsxAutoSelectGateOnRoute = gsxAutoSelectGateCheckBox.Checked;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 390),
+            Location = new Point(310, 425),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -275,7 +294,7 @@ public class TaxiGuidanceOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 390),
+            Location = new Point(395, 425),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -292,6 +311,7 @@ public class TaxiGuidanceOptionsForm : Form
             announceCrossingsCheckBox,
             gsAnnounceLabel, gsAnnounceCombo,
             useMetresCheckBox,
+            gsxAutoSelectGateCheckBox,
             okButton, cancelButton
         });
 
@@ -310,6 +330,7 @@ public class TaxiGuidanceOptionsForm : Form
         announceCrossingsCheckBox.TabIndex = tabIdx++;
         gsAnnounceCombo.TabIndex = tabIdx++;
         useMetresCheckBox.TabIndex = tabIdx++;
+        gsxAutoSelectGateCheckBox.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
 

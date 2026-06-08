@@ -248,6 +248,14 @@ public class UserSettings
         public bool GsxBackgroundMonitoring { get; set; } = false;
 
         /// <summary>
+        /// When true, calculating a route to a gate in Taxi Assist automatically
+        /// drives the GSX parking-selection menu to select that gate (so the
+        /// marshaller/VDGS arms there). Only fires when GSX is running
+        /// (CouatlStarted). Default on.
+        /// </summary>
+        public bool GsxAutoSelectGateOnRoute { get; set; } = true;
+
+        /// <summary>
         /// Creates a new UserSettings instance with default values.
         /// </summary>
         public UserSettings()
@@ -327,7 +335,8 @@ public class UserSettings
             GroundTrafficUseMetres = GroundTrafficUseMetres,
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
             Hs787SimVersionOverride = Hs787SimVersionOverride,
-            GsxBackgroundMonitoring = GsxBackgroundMonitoring
+            GsxBackgroundMonitoring = GsxBackgroundMonitoring,
+            GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute
         };
     }
 }

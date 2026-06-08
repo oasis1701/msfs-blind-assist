@@ -26,6 +26,10 @@ public class TaxiAssistForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly TaxiGuidanceManager _guidanceManager;
     private readonly Services.GateDataSource? _gateSource;
+    // When non-null, OnCalculateClicked fires GSX gate auto-select for gate destinations
+    // (if the setting is on and GSX is available). The selector is constructed in MainForm
+    // and is only non-null when _gsxService exists — so null-checking it is the availability gate.
+    private readonly Services.Gsx.GsxGateSelector? _gsxGateSelector;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
     // before computing the route, so the route starts from where the aircraft
@@ -103,6 +107,10 @@ public class TaxiAssistForm : Form
     private Dictionary<string, (double lat, double lon)> _destinationThresholdMap = new();
     // Cross-runway mode: maps display name → Runway, used to compute the far-side node at Calculate time
     private Dictionary<string, Runway> _crossRunwayMap = new();
+    // Gate mode: maps the display label (same key as _destinationNodeMap) → ParkingSpot.
+    // Populated in the gate branch of PopulateDestinations so OnCalculateClicked can pass the
+    // actual ParkingSpot to GsxGateSelector without re-querying the data provider.
+    private Dictionary<string, ParkingSpot> _destinationSpotMap = new();
 
     public TaxiAssistForm(
         IAirportDataProvider dataProvider,
@@ -111,7 +119,8 @@ public class TaxiAssistForm : Form
         MSFSBlindAssist.SimConnect.SimConnectManager? simConnectManager = null,
         TcasService? tcasService = null,
         double aircraftWingspan = 0,
-        Services.GateDataSource? gateSource = null)
+        Services.GateDataSource? gateSource = null,
+        Services.Gsx.GsxGateSelector? gsxGateSelector = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
@@ -120,6 +129,7 @@ public class TaxiAssistForm : Form
         _tcasService = tcasService;
         _aircraftWingspan = aircraftWingspan;
         _gateSource = gateSource;
+        _gsxGateSelector = gsxGateSelector;
         InitializeFormControls();
     }
 
@@ -639,6 +649,7 @@ public class TaxiAssistForm : Form
         _destinationHeadingTrueMap.Clear();
         _destinationThresholdMap.Clear();
         _crossRunwayMap.Clear();
+        _destinationSpotMap.Clear();
 
         if (_graph == null) return;
 
@@ -790,6 +801,7 @@ public class TaxiAssistForm : Form
                 _destinationHeadingMap[label] = spot.Heading;
                 _destinationHeadingTrueMap[label] = spot.Heading; // parking heading is true heading
                 _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
+                _destinationSpotMap[label] = spot;
                 cmbDestination.Items.Add(label);
             }
         }
@@ -1448,6 +1460,27 @@ public class TaxiAssistForm : Form
         CheckGateOccupancy(isRunwayDest, thresholdLat, thresholdLon);
 
         _guidanceManager.StartGuidance(settings);
+
+        // GSX gate auto-select: fire-and-forget when heading to a gate and
+        // the feature is enabled. Conditions:
+        //   - destination is a gate (not runway, not cross-runway)
+        //   - setting is on
+        //   - a selector was provided (i.e. GsxService exists in this session)
+        //   - GSX CouatlStarted is confirmed via the selector being non-null
+        //     (the selector is only built by MainForm when _gsxService != null)
+        //     PLUS the CouatlStarted live check here, so we don't drive the
+        //     menu when GSX hasn't started yet this session.
+        if (!isRunwayDest
+            && SettingsManager.Current.GsxAutoSelectGateOnRoute
+            && _gsxGateSelector != null
+            && _gsxGateSelector.CouatlStarted
+            && _destinationSpotMap.TryGetValue(destName, out var gsxSpot))
+        {
+            // The selector itself announces its outcome and never throws.
+            // Do NOT await — route loading must not block on GSX menu navigation.
+            _ = _gsxGateSelector.SelectGateAsync(gsxSpot);
+        }
+
         // Form stays open so the user can read the summary box while
         // guidance is active. They close it manually with Escape / window-X
         // or by switching focus elsewhere; Stop Guidance button is also

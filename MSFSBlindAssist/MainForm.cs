@@ -2697,13 +2697,28 @@ public partial class MainForm : Form
             () => _gsxService != null && _gsxService.CouatlStarted);
     }
 
+    /// <summary>
+    /// Constructs a <see cref="Services.Gsx.GsxGateSelector"/> when GSX is
+    /// available in this session. Returns <c>null</c> when there is no GSX
+    /// service (GSX not installed / not yet started), so callers can simply
+    /// null-check before using it.
+    /// </summary>
+    private Services.Gsx.GsxGateSelector? BuildGsxGateSelector()
+    {
+        if (_gsxService == null) return null;
+        return new Services.Gsx.GsxGateSelector(
+            _gsxService,
+            new Services.Gsx.GsxMenuAutomation(_gsxService),
+            announcer);
+    }
+
     private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
             taxiAssistForm = new TaxiAssistForm(
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan, BuildGateDataSource());
+                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector());
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
@@ -3626,7 +3641,8 @@ public partial class MainForm : Form
             currentSettings.TaxiGuidanceHardPanTone,
             currentSettings.TaxiGuidanceAnnounceCrossings,
             currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
-            currentSettings.GroundTrafficUseMetres))
+            currentSettings.GroundTrafficUseMetres,
+            currentSettings.GsxAutoSelectGateOnRoute))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -3637,6 +3653,7 @@ public partial class MainForm : Form
                 currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
                 currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
                 currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
+                currentSettings.GsxAutoSelectGateOnRoute = settingsForm.GsxAutoSelectGateOnRoute;
                 SettingsManager.Save();
 
                 statusLabel.Text = "Taxi guidance options saved successfully";

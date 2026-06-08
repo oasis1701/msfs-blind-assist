@@ -57,6 +57,13 @@ public sealed class GsxGateSelector
         _announcer  = announcer  ?? throw new ArgumentNullException(nameof(announcer));
     }
 
+    /// <summary>
+    /// <see langword="true"/> when GSX's Couatl engine has started this session
+    /// and menu automation is expected to work.
+    /// Callers should check this before invoking <see cref="SelectGateAsync"/>.
+    /// </summary>
+    public bool CouatlStarted => _gsx.CouatlStarted;
+
     // ─────────────────────────────────────────────────────────────────────────
     // Public entry point.
     // ─────────────────────────────────────────────────────────────────────────
