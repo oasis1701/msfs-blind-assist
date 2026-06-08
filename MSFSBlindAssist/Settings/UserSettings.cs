@@ -224,6 +224,11 @@ public class UserSettings
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
+        // Docking (VDGS / marshalling) guidance
+        public bool DockingGuidanceEnabled { get; set; } = true;
+        public HandFlyWaveType DockingBeepWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double DockingBeepVolume { get; set; } = 0.05;
+
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
 
@@ -345,7 +350,10 @@ public class UserSettings
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
             Hs787SimVersionOverride = Hs787SimVersionOverride,
             GsxBackgroundMonitoring = GsxBackgroundMonitoring,
-            GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute
+            GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute,
+            DockingGuidanceEnabled = DockingGuidanceEnabled,
+            DockingBeepWaveform = DockingBeepWaveform,
+            DockingBeepVolume = DockingBeepVolume
         };
     }
 }
