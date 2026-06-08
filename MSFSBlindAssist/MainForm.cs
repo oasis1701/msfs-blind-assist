@@ -74,6 +74,9 @@ public partial class MainForm : Form
     // Per-aircraft GSX door offset. Constructed once; background scan is warmed at
     // startup so the first docking session has offsets ready. Thread-safe internally.
     private readonly MSFSBlindAssist.Services.Gsx.GsxAirplaneProfile _gsxAirplaneProfile = new();
+    // Tracks ICAOs that have already triggered a Refresh() so we only rebuild the
+    // map once per distinct ICAO miss (Refresh is ~12 s on a cold disk).
+    private readonly System.Collections.Generic.HashSet<string> _refreshedIcaos = new();
 
     // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
     // event so any feature that needs to know "on ground vs airborne" right now
@@ -511,27 +514,37 @@ public partial class MainForm : Form
     /// </summary>
     private void OnAircraftIcaoTypeDetected(object? sender, string icaoType)
     {
-        try
+        // Run on a background thread so neither the UI thread nor the SimConnect
+        // thread is blocked by the GsxAirplaneProfile disk scan (~12 s on first call).
+        System.Threading.Tasks.Task.Run(() =>
         {
-            double offset = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType) ?? 0.0;
-            dockingGuidanceManager.SetDoorOffsetMetres(offset);
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Door offset for ICAO '{icaoType}': {offset:F2} m");
-
             try
             {
-                string logPath = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "MSFSBlindAssist", "logs", "docking-aircraft.log");
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
-                System.IO.File.AppendAllText(logPath,
-                    $"{DateTime.Now:HH:mm:ss}  ICAO=\"{icaoType}\"  doorOffset={offset} m{System.Environment.NewLine}");
+                double? off = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType);
+                if (off == null && _refreshedIcaos.Add(icaoType ?? ""))
+                {
+                    // First miss for this ICAO — rebuild the map in case a gsx.cfg was
+                    // written after startup (e.g. user just installed a GSX profile).
+                    _gsxAirplaneProfile.Refresh();
+                    off = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType);
+                }
+                double offset = off ?? 0.0;
+                dockingGuidanceManager.SetDoorOffsetMetres(offset);
+                System.Diagnostics.Debug.WriteLine($"[MainForm] Door offset for ICAO '{icaoType}': {offset:F2} m");
+
+                try
+                {
+                    string logPath = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "MSFSBlindAssist", "logs", "docking-aircraft.log");
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+                    System.IO.File.AppendAllText(logPath,
+                        $"{DateTime.Now:HH:mm:ss}  ICAO=\"{icaoType}\"  doorOffset={offset} m{System.Environment.NewLine}");
+                }
+                catch { /* never propagate log failures */ }
             }
-            catch { /* never propagate log failures */ }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] OnAircraftIcaoTypeDetected failed: {ex.Message}");
-        }
+            catch { }
+        });
     }
 
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
@@ -3847,6 +3860,9 @@ public partial class MainForm : Form
         {
             simConnectManager.ReregisterAllVariables();
             simConnectManager.RestartContinuousMonitoring();
+            // Re-read ATC MODEL / ICAO for the newly selected aircraft definition so
+            // the door-offset map is refreshed for the new aircraft profile.
+            simConnectManager.RequestAircraftInfo();
 
             // Start grace period for new aircraft variables to populate
             // This prevents announcement flood when hundreds of continuous variables send initial values

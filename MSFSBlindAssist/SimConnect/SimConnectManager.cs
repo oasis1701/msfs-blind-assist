@@ -254,7 +254,14 @@ public class SimConnectManager
     {
         Dummy = 0
     }
-    
+
+    /// <summary>IDs for SimConnect SubscribeToSystemEvent notifications.</summary>
+    private enum SYSTEM_EVENT_ID : uint
+    {
+        AircraftLoaded = 9000
+    }
+
+
     
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct FCUValues
@@ -1110,6 +1117,11 @@ public class SimConnectManager
         sc.OnRecvClientData += SimConnect_OnRecvClientData;
         sc.OnRecvException += SimConnect_OnRecvException;
         sc.OnRecvEnumerateInputEvents += SimConnect_OnRecvEnumerateInputEvents;
+        // AircraftLoaded fires when the user changes aircraft in-sim (or reloads).
+        // The handler re-reads ATC MODEL / ICAO so AircraftIcaoTypeDetected re-fires
+        // and the door-offset map is re-queried for the new aircraft.
+        sc.OnRecvEventFilename += SimConnect_OnRecvEventFilename;
+        sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.AircraftLoaded, "AircraftLoaded");
     }
 
     /// <summary>
@@ -1275,6 +1287,20 @@ public class SimConnectManager
     private void SimConnect_OnRecvQuit(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV data)
     {
         Disconnect();
+    }
+
+    /// <summary>
+    /// Fires when SimConnect delivers a system event that carries a filename (e.g. AircraftLoaded).
+    /// For AircraftLoaded, re-request ATC MODEL / ICAO so the door-offset map is updated for the new aircraft.
+    /// </summary>
+    private void SimConnect_OnRecvEventFilename(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data)
+    {
+        if ((SYSTEM_EVENT_ID)data.uEventID == SYSTEM_EVENT_ID.AircraftLoaded)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AircraftLoaded system event: {data.szFileName}");
+            // Re-read ATC MODEL so AircraftIcaoTypeDetected fires for the newly loaded aircraft.
+            RequestAircraftInfo();
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -2960,32 +2986,45 @@ public class SimConnectManager
     /// <summary>
     /// Extracts an ICAO type designator from the raw ATC MODEL simvar value.
     /// <para>
-    /// In MSFS the ATC MODEL simvar typically returns the raw ICAO designator directly
-    /// (e.g. "B77W", "A20N", "A388"). For localised aircraft it may be a token like
-    /// "TT:ATCCOM.AC_MODEL_B77W.0.text". In that case we extract the all-caps/digit run
-    /// between "AC_MODEL_" and ".0.text" (or the last word of the token).
+    /// Resolution order:
+    /// 1. Localisation token with AC_MODEL followed by a space or underscore and then the ICAO
+    ///    (e.g. "ATCCOM.AC_MODEL B77W.0.text" or "TT:ATCCOM.AC_MODEL_B77W.0.text").
+    ///    Regex: AC_MODEL[ _]([A-Za-z0-9]{2,6}) — group 1 uppercased.
+    /// 2. Bare ICAO: the whole trimmed string already matches ^[A-Za-z][A-Za-z0-9]{1,5}$ → uppercased.
+    /// 3. Otherwise return empty string — do NOT use a greedy right-to-left grab that can
+    ///    return wrong tokens like "NG3" or "CEO". An empty result yields offset 0, which is
+    ///    the safe fallback. The raw + extracted values are written to docking-aircraft.log for diagnosis.
     /// </para>
     /// </summary>
     public static string ExtractIcaoFromAtcModel(string? rawAtcModel)
     {
         if (string.IsNullOrWhiteSpace(rawAtcModel)) return "";
         string s = rawAtcModel.Trim();
-        // Localisation token form: TT:ATCCOM.AC_MODEL_B77W.0.text
-        int idx = s.IndexOf("AC_MODEL_", StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
+
+        // 1. Localisation token: AC_MODEL followed by space or underscore then the ICAO.
+        //    e.g. "TT:ATCCOM.AC_MODEL_B77W.0.text" → B77W
+        //         "ATCCOM.AC_MODEL B77W.0.text"     → B77W
+        var mToken = System.Text.RegularExpressions.Regex.Match(
+            s,
+            @"AC_MODEL[ _]([A-Za-z0-9]{2,6})",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (mToken.Success)
         {
-            string after = s.Substring(idx + "AC_MODEL_".Length);
-            // strip trailing ".0.text" suffix or similar
-            int dot = after.IndexOf('.');
-            string candidate = dot > 0 ? after.Substring(0, dot) : after;
-            if (!string.IsNullOrWhiteSpace(candidate)) return candidate.ToUpperInvariant();
+            string candidate = mToken.Groups[1].Value.ToUpperInvariant();
+            System.Diagnostics.Debug.WriteLine($"[ExtractIcao] token-match → '{candidate}' from '{s}'");
+            return candidate;
         }
-        // Plain form: already the ICAO designator (uppercase letters/digits, 2-6 chars)
-        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[A-Z0-9]{2,6}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+
+        // 2. Bare ICAO: whole string is already the designator (letter + 1-5 alphanum).
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[A-Za-z][A-Za-z0-9]{1,5}$"))
+        {
+            System.Diagnostics.Debug.WriteLine($"[ExtractIcao] bare-icao → '{s.ToUpperInvariant()}' from '{s}'");
             return s.ToUpperInvariant();
-        // Last resort: grab last run of uppercase letters+digits (e.g. "Boeing B77W" → "B77W")
-        var m = System.Text.RegularExpressions.Regex.Match(s, @"[A-Z][A-Z0-9]{1,5}", System.Text.RegularExpressions.RegexOptions.RightToLeft);
-        return m.Success ? m.Value.ToUpperInvariant() : "";
+        }
+
+        // 3. Unresolved — return empty so offset defaults to 0 (safe fallback).
+        System.Diagnostics.Debug.WriteLine($"[ExtractIcao] unresolved → '' from '{s}'");
+        return "";
     }
 
     private void CheckAircraftType(AircraftInfo info)
@@ -4401,6 +4440,7 @@ public class SimConnectManager
                 simConnect.OnRecvSimobjectDataBytype -= SimConnect_OnRecvSimobjectDataBytype;
                 simConnect.OnRecvClientData -= SimConnect_OnRecvClientData;
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
+                simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
 
                 System.Diagnostics.Debug.WriteLine("[SimConnectManager] Event handlers unregistered, disposing SimConnect...");
             }

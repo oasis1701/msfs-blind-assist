@@ -21,6 +21,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private readonly ProximityBeeper _beeper = new();
     private readonly object _lock = new();
 
+    private bool _disposed;
     private ParkingSpot? _gate;
     private DockState _state = DockState.Idle;
     private IReadOnlyList<DistanceMilestone> _milestones = Array.Empty<DistanceMilestone>();
@@ -44,10 +45,15 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         lock (_lock)
         {
+            if (_disposed) return;
             try
             {
                 if (_gate == null || !SettingsManager.Current.DockingGuidanceEnabled) { SilenceLocked(); return; }
 
+                // NOTE: for navdata-only gates that have no GSX StopLatitude, the target
+                // falls back to the parking-spot centre (Latitude/Longitude). In that case
+                // the door aligns to the parking centre rather than a real jetway stop
+                // position — a data limitation, not a bug.
                 double sLat = _gate.StopLatitude ?? _gate.Latitude;
                 double sLon = _gate.StopLongitude ?? _gate.Longitude;
                 double centerHdg = _gate.StopHeading ?? _gate.Heading;
@@ -151,5 +157,12 @@ public sealed class DockingGuidanceManager : IDisposable
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
     private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>(); _slowDownSaid = false; }
 
-    public void Dispose() { try { _tone.Stop(); } catch { } _beeper.Dispose(); }
+    public void Dispose()
+    {
+        // Set the flag under the lock so any in-progress UpdatePosition sees it
+        // before we tear down audio. The beeper is disposed outside the lock to
+        // avoid holding _lock across the beeper's own internal teardown.
+        lock (_lock) { if (_disposed) return; _disposed = true; try { _tone.Stop(); } catch { } }
+        _beeper.Dispose();
+    }
 }
