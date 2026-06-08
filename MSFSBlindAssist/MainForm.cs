@@ -1880,7 +1880,7 @@ public partial class MainForm : Form
         if (!ValidateDatabaseSimulatorMatch())
             return;
 
-        var dialog = new GateTeleportForm(airportDataProvider, announcer, simConnectManager.AircraftWingSpan);
+        var dialog = new GateTeleportForm(airportDataProvider, announcer, simConnectManager.AircraftWingSpan, BuildGateDataSource());
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             if (dialog.SelectedParkingSpot != null && dialog.SelectedAirport != null)
@@ -2688,13 +2688,22 @@ public partial class MainForm : Form
         });
     }
 
+    private Services.GateDataSource? BuildGateDataSource()
+    {
+        if (airportDataProvider == null) return null;
+        // GSX gates only when GSX is running this session (Couatl started) AND a profile matches.
+        return new Services.GateDataSource(
+            airportDataProvider,
+            () => _gsxService != null && _gsxService.CouatlStarted);
+    }
+
     private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
             taxiAssistForm = new TaxiAssistForm(
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan);
+                simConnectManager.AircraftWingSpan, BuildGateDataSource());
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
