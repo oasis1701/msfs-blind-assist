@@ -186,12 +186,12 @@ toneHeadingError = NormalizeAngle(desiredHeading − aircraftHeadingTrue)
 | Approaching turn | ~300 ft / ~100 m | `In 100 metres, turn left onto taxiway Bravo.` (metres default) or `In 300 feet, turn left onto taxiway Bravo.` (feet mode). Distance is in the active unit. Direction is computed from the aircraft's CURRENT heading toward the next segment's bearing — see "Verbal turn direction" below — so the spoken cue always agrees with the steering tone's pan. |
 | Turn imminent | speed-scaled ~20–75 m / 65–245 ft | `Turn left, taxiway Bravo.` Same heading-based direction as the approaching-turn cue. |
 | Crossing taxiway | ~150 ft / ~50 m | `Crossing taxiway Kilo.` (toggle in settings) |
-| Hold short countdown | 300 / 150 / 50 ft **or** 100 / 50 / 15 m (per Distance units setting) | `Hold short runway 13 Left in 100 metres.` / `Hold short runway 13 Left in 50 metres. Slow down.` (the *Slow down* suffix only fires if GS > 10 kt) / `Hold short runway 13 Left in 15 metres. Stop.` (the *Stop* suffix only fires if GS > 1 kt). The live distance is spoken via `DistanceFormatter.FromFeet`; unit-native milestone spacing is provided by `DistanceMilestones.HoldShort`. |
+| Hold short countdown | speed-proportional triggers (15 s / 8 s / 4 s lead; floors 300 / 150 / 50 ft, caps 600 / 400 / 200 ft) | `Hold short runway 13 Left in 100 metres.` / `Hold short runway 13 Left in 50 metres. Slow down.` / `Hold short runway 13 Left in 15 metres. Stop.` The **live** distance is spoken (unit-aware via `DistanceFormatter.FromFeet`) — hold-short does **not** use a milestone table, because its trigger distance scales with ground speed. The *Slow down* and *Stop* suffixes fire **unconditionally** (see Speed-aware directives). |
 | At hold short | within radius | `Hold short runway 13 Left. Press continue when cleared.` (tone pauses) |
 | Continue pressed | — | `Crossing runway 13 Left. Taxiway Kilo.` (tone resumes) |
 | Approaching runway destination | ~300 ft / ~100 m | `Runway 22 Left ahead.` |
 | Runway lineup achieved | heading <1° AND cross <10 ft | `Lined up, runway 22 Left. Hold position.` Tone pauses. The *Hold position* directive is the LUAW stop cue (FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA: align with centerline and remain stationary awaiting further clearance). Convergence target matches what runway-teleport places you at (20 m back from the threshold, aligned with runway heading). |
-| Gate countdown | 50 / 20 / 10 ft **or** 15 / 10 / 5 m (per Distance units setting) | `15 metres to gate.` / `10 metres.` / `5 metres. Stop.` (the *Stop* suffix at the closest milestone only fires if GS > 1 kt). Unit-native spacing via `DistanceMilestones.Parking`. |
+| Gate countdown | 50 / 20 / 10 ft **or** 15 / 10 / 5 m (per Distance units setting) | `15 metres to gate.` / `10 metres.` / `5 metres. Stop.` (the *Stop* suffix fires unconditionally — see Speed-aware directives). Unit-native spacing via `DistanceMilestones.ParkingArrival`. |
 | Arrived at gate | within 20 ft / ~6 m | `Gate Alpha 25 reached.` |
 | Off route | >50 m for >3 s | `Off route. Recalculating.` |
 | Speed warning | >30 kt straight / >12 kt turn | `Slow down.` (8 s cooldown) |
@@ -375,8 +375,8 @@ All settings persist through `UserSettings`.
 **What it governs — every user-facing horizontal ground-distance readout:**
 
 - Taxi turn advance-notice and "turn now" callouts (`"In 100 metres, turn left…"` vs `"In 300 feet, turn left…"`)
-- Hold-short countdowns (100/50/15 m **or** 300/150/50 ft; live distance spoken via `DistanceFormatter.FromFeet`)
-- Parking / gate arrival countdowns (15/10/5 m **or** 50/20/10 ft; via `DistanceMilestones.Parking`)
+- Hold-short countdowns (speed-proportional triggers; the **live** distance is spoken, unit-aware via `DistanceFormatter.FromFeet` — no milestone table)
+- Parking / gate arrival countdowns (15/10/5 m **or** 50/20/10 ft; via `DistanceMilestones.ParkingArrival`)
 - Landing-exit approach callouts (500/300/150 m **or** 1500/900/500 ft; via `DistanceMilestones.ExitApproach`)
 - Runway-end countdown (500/150/30 m **or** 1500/500/100 ft; via `DistanceMilestones.RunwayEnd`)
 - On-demand status distances (`"In 400 metres turn right onto Kilo. 0.8 miles to destination."`) — totals over ~1 NM always shown in nautical miles regardless of unit setting
