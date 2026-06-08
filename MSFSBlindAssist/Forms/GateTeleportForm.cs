@@ -334,7 +334,7 @@ public partial class GateTeleportForm : Form
             : _allParkingSpots.Where(p => p.GetFilterCategory() == selectedFilter).ToList();
 
         if (fitFilterCheckBox.Checked && _aircraftWingspan > 0)
-            filtered = filtered.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+            filtered = filtered.Where(p => p.FitsAircraft(_aircraftWingspan)).ToList();
 
         var query = searchTextBox.Text;
         if (!string.IsNullOrWhiteSpace(query))

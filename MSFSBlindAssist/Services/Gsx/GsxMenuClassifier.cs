@@ -92,6 +92,15 @@ public static class GsxMenuClassifier
         "✈",                  // CONFIRMED LIVE: airplane glyph present on all runway-start entries
     };
 
+    // CONFIRMED LIVE: the "Show all positions" expand toggle in apron submenus.
+    // Clicking it reveals stands hidden by the default "suitable" filter (e.g. C64
+    // at OMDB). Kept narrow so it never matches "Hide N unsuitable positions" or
+    // "Show me this spot".
+    private static readonly string[] ShowAllPositionsPatterns =
+    {
+        "show all position", // matches "Show all positions" (and singular)
+    };
+
     // CONFIRMED LIVE: pagination / next-page indicators.
     // "Next Page ▶" confirmed at OMDB (separating apron groups across pages).
     private static readonly string[] PaginationPatterns =
@@ -156,6 +165,7 @@ public static class GsxMenuClassifier
         "change parking",
         "change gate",
         "change stand",
+        "change facility",
     };
 
     internal static readonly string[] SelectParkingPatterns =
@@ -431,6 +441,18 @@ public static class GsxMenuClassifier
     /// </summary>
     public static bool IsIgnored(string text)
         => ContainsAny(text, IgnorePatterns);
+
+    /// <summary>
+    /// Returns <see langword="true"/> for the "Show all positions" expand toggle.
+    /// An apron submenu defaults to a FILTERED view (only "suitable" stands); this
+    /// toggle reveals the rest. The DFS must click it before scanning so hidden
+    /// gates become visible.
+    /// CONFIRMED LIVE at OMDB (2026-06-08): stand C64 is hidden until this is clicked.
+    /// Matches only "Show all positions" — NOT "Hide N unsuitable positions" (which
+    /// would REDUCE the list) and NOT "Show me this spot".
+    /// </summary>
+    public static bool IsShowAllPositions(string text)
+        => ContainsAny(text, ShowAllPositionsPatterns);
 
     /// <summary>
     /// Returns <see langword="true"/> when a menu title indicates that this menu

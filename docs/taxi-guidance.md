@@ -477,6 +477,77 @@ Headwind formula: `speed × cos(windDir − runwayHeading)`. Positive = headwind
 
 We do NOT auto-recommend a specific exit because that would require aircraft-performance data we don't have (approach speed, weight, brake config, etc.). Giving the pilot the headwind/tailwind number lets them choose appropriately for whatever airframe they're flying. Works with any weather source the user has active — MSFS live weather, ActiveSky, REX, or static — because SimConnect's `AMBIENT WIND DIRECTION` / `AMBIENT WIND VELOCITY` reflect the active weather model.
 
+## GSX Gate Integration
+
+When **GSX Pro** is running and has a profile for the airport, it becomes the
+**authoritative** source for gates/stands — GSX's metadata (heavy/jetway/VDGS,
+exact positions) is far more accurate than navdata's, so navdata's own
+heavy/jetway classification is never shown when GSX can answer. GSX availability
+for gate sourcing = `GsxService.CouatlStarted` (running this session) AND a
+matching profile exists. When GSX is absent, everything falls back to navdata
+unchanged.
+
+### Gate source (GSX-authoritative overlay)
+
+`GateDataSource` builds the gate list as an **overlay**: GSX metadata wins;
+position comes from the GSX `.ini` `this_parking_pos` when present, else the
+matched navdata stand's position; navdata-only stands are appended (nothing
+lost). Matching is by number + suffix, disambiguated by concourse (navdata `GC`
+→ GSX `C`). Size/heavy is derived from GSX `maxwingspan` → ICAO wingspan code
+(A&lt;15 B&lt;24 C&lt;36 D&lt;52 E&lt;65 F≥65 m; heavy = E/F), not the ambiguous
+`.ini type` enum. VDGS type (`SafeDockT42`, `Marshaller`, …) and the
+`parkingsystem_stopposition` (nose-stop) are carried on `ParkingSpot`
+(`VdgsType`, `StopLatitude/StopLongitude`, `MaxWingspanMeters`, `Source`).
+
+Profiles are parsed universally (`GsxProfileParser`) — pure-numeric gates,
+suffix glued to number (`218l`), direction-prefixed parking (`w parking 4`),
+and letter-before-number-as-concourse vs letter-after-as-suffix are all handled.
+
+### Search / concourse filter
+
+Both the Gate Teleport and Taxi Assist gate pickers have a type-to-filter box
+(`GateSearchFilter`) matching on name + number + suffix, with concourse-token
+filtering — works with or without GSX.
+
+### "Show only fitting stands" filter
+
+The fitting checkbox uses `ParkingSpot.FitsAircraft(wingspanFeet)`, which is
+**source-aware**: GSX stands compare the aircraft's wing span (converted to
+metres) against GSX's authoritative `MaxWingspanMeters`; navdata stands use the
+physical parking `Radius` (feet) vs half the wing span. A GSX stand with no
+`maxwingspan` is treated as fitting (never hidden). (The earlier code compared
+GSX's metre-based radius against a feet threshold and hid almost everything —
+fixed.)
+
+### Auto-select gate on Calculate Route
+
+Setting `GsxAutoSelectGateOnRoute` (default on). When Taxi Assist calculates a
+route to a gate and GSX is active, `GsxGateSelector` drives GSX's hierarchical
+parking menu to select that exact stand — structure-agnostic
+(terminal/concourse/flat), text-matching, and **never** chooses a WARP /
+Follow-Me / reposition entry (positive-safe-action-only, abort on uncertainty).
+
+The driver (`GsxMenuAutomation` over `GsxService`) is a **backtracking DFS**
+(`GsxGateSelector.TraverseAsync`): at each menu level it matches a gate leaf,
+else drills the best unvisited category (strongest concourse score first) and
+recurses, pressing GSX's "↑ Back" to try the next sibling when a branch misses —
+so it finds stands even when GSX files them under a different apron than their
+letter (e.g. OMDB groups C47–C64 outside "Apron C"). Apron submenus default to a
+filtered view, so the DFS clicks **"Show all positions"** first to reveal stands
+hidden by the size filter. All choices are page-relative and sent only while the
+live menu is on that page. Budget: 600 menu reads / 180 s for very large
+airports. **Changing gates:** when a gate is already selected, the top menu is
+"Change parking or service"; the selector drills its "Change Facility" entry to
+re-open the position selector, then traverses to the new stand.
+
+Success is confirmed by GSX's `FSDT_GSX_SetGate_Name/Number/Suffix` L-vars. These
+update with a lag (and briefly hold the previous gate when changing), so after
+choosing the leaf + the safe servicing action ("Show me this spot and activate",
+which arms the VDGS/marshaller) the selector **polls** the vars up to 6 s until
+they match before announcing success. Tuning lives in one place
+(`GsxMenuClassifier`); the full walk is logged to
+`%LOCALAPPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
+
 ## Reliability Notes
 
 ### High confidence

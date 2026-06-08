@@ -302,14 +302,18 @@ public sealed class GsxService : IDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         var cts = new CancellationTokenSource(timeout);
 
+        // NOTE: we intentionally do NOT fault on MenuHidden. GsxService.Choose()
+        // ALWAYS calls HideMenuInternal() (which fires MenuHidden) immediately
+        // BEFORE sending the menu choice — so a MenuHidden fires on every Choose
+        // and would race-fault this wait before GSX's real submenu (MenuChanged)
+        // arrives. We complete only on the next MenuChanged, or the timeout —
+        // which correctly covers a terminal action that opens no submenu.
         EventHandler? onMenuChanged = null;
-        EventHandler? onMenuHidden  = null;
         EventHandler? onMenuTimedOut = null;
 
         void Unsubscribe()
         {
             MenuChanged  -= onMenuChanged;
-            MenuHidden   -= onMenuHidden;
             MenuTimedOut -= onMenuTimedOut;
             cts.Dispose();
         }
@@ -317,13 +321,6 @@ public sealed class GsxService : IDisposable
         onMenuChanged = (_, _) =>
         {
             if (tcs.TrySetResult(_menuOptions.ToList()))
-                Unsubscribe();
-        };
-
-        onMenuHidden = (_, _) =>
-        {
-            if (tcs.TrySetException(
-                    new InvalidOperationException("GSX menu was hidden before a new menu arrived.")))
                 Unsubscribe();
         };
 
@@ -344,7 +341,6 @@ public sealed class GsxService : IDisposable
         });
 
         MenuChanged  += onMenuChanged;
-        MenuHidden   += onMenuHidden;
         MenuTimedOut += onMenuTimedOut;
 
         return tcs.Task;

@@ -774,9 +774,12 @@ public class TaxiAssistForm : Form
                 allSpots = Services.GateSearchFilter.Filter(allSpots, txtGateSearch.Text);
 
             // Wingspan filter: spot must be large enough for the aircraft.
-            // Radius is centre-to-edge; half-wingspan must fit within it.
+            // Source-aware (see ParkingSpot.FitsAircraft): GSX spots use the
+            // authoritative max wing span (metres); navdata spots use the physical
+            // parking radius (feet). The old "Radius >= wingspan/2" mixed units for
+            // GSX spots (metres vs a feet threshold) and filtered nearly everything out.
             if (chkFitFilter.Checked && _aircraftWingspan > 0)
-                allSpots = allSpots.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+                allSpots = allSpots.Where(p => p.FitsAircraft(_aircraftWingspan)).ToList();
 
             var parkingSpots = allSpots
                 .OrderBy(p => categoryOrder.TryGetValue(p.GetFilterCategory(), out int o) ? o : 99)

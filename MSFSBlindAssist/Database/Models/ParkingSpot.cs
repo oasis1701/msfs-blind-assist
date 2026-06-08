@@ -75,6 +75,40 @@ public class ParkingSpot
         };
     }
 
+    /// <summary>
+    /// Returns whether this spot fits an aircraft with the given wing span
+    /// (in FEET — matches <c>SimConnectManager.AircraftWingSpan</c>).
+    /// <para>
+    /// UNIT-AWARE by SOURCE:
+    ///   • GSX spots carry the authoritative max allowed wing span in METERS
+    ///     (<see cref="MaxWingspanMeters"/>) — compare directly (aircraft → metres).
+    ///     The GSX-sourced <see cref="Radius"/> is metres (maxwingspan/2), so the old
+    ///     "Radius >= wingspanFeet/2" test mixed metres with a feet threshold and
+    ///     filtered almost everything out. A GSX spot whose profile omits maxwingspan
+    ///     has no reliable size → treat it as fitting (don't hide it).
+    ///   • Navdata spots have a physical parking <see cref="Radius"/> in FEET — keep the
+    ///     original "radius holds the half-span" test (both feet).
+    /// </para>
+    /// An unknown wing span (&lt;= 0) fits everything (filter is a no-op).
+    /// </summary>
+    public bool FitsAircraft(double aircraftWingspanFeet)
+    {
+        if (aircraftWingspanFeet <= 0) return true;
+
+        if (Source == GateSource.Gsx)
+        {
+            // No GSX size info → don't filter it out (placeholder Radius is not real).
+            if (!MaxWingspanMeters.HasValue) return true;
+
+            const double feetToMeters = 0.3048;
+            double aircraftWingspanMeters = aircraftWingspanFeet * feetToMeters;
+            return MaxWingspanMeters.Value >= aircraftWingspanMeters;
+        }
+
+        // Navdata: physical parking radius (feet) must hold the half-span (feet).
+        return Radius >= aircraftWingspanFeet / 2.0;
+    }
+
     private static string FriendlyVdgs(string? vdgs)
     {
         if (string.IsNullOrWhiteSpace(vdgs)) return string.Empty;
