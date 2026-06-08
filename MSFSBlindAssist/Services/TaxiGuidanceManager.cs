@@ -62,6 +62,15 @@ public class TaxiGuidanceManager : IDisposable
     private TaxiRoute? _route;
     private TaxiGuidanceState _state = TaxiGuidanceState.Inactive;
 
+    private bool _steeringToneSuppressed;
+    /// <summary>When true, the taxi steering tone is silenced (e.g. while docking guidance owns the centerline cue near the gate).</summary>
+    public void SetSteeringToneSuppressed(bool suppressed)
+    {
+        if (_steeringToneSuppressed == suppressed) return;
+        _steeringToneSuppressed = suppressed;
+        try { if (suppressed) _steeringTone.Pause(); else _steeringTone.Resume(); } catch { }
+    }
+
     // Single lock serializing all access to _route / _graph / _state and related
     // tracking fields between the SimConnect position thread (UpdatePosition)
     // and UI-thread callers (LoadRoute, StopGuidance, ContinuePastHoldShort,
@@ -1589,8 +1598,11 @@ public class TaxiGuidanceManager : IDisposable
         // Pan-direction settings (InvertPan / HardPan) are refreshed at the
         // top of UpdatePosition so they apply uniformly to taxiing, lining-up,
         // and runway-aligned phases.
-        _steeringTone.Resume();
-        _steeringTone.UpdateHeadingError(_smoothedHeadingError, currentSeg.PathWidth);
+        if (!_steeringToneSuppressed)
+        {
+            _steeringTone.Resume();
+            _steeringTone.UpdateHeadingError(_smoothedHeadingError, currentSeg.PathWidth);
+        }
 
         // Diagnostic trace — captures raw and smoothed inputs to the steering
         // tone so post-hoc analysis can pinpoint where erratic L/R flipping
@@ -3452,14 +3464,17 @@ public class TaxiGuidanceManager : IDisposable
                 ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + rawError * HEADING_ERROR_FILTER_ALPHA
                 : rawError;
             _headingErrorInitialized = true;
-            _steeringTone.Resume();
-            // Tight explicit thresholds so the tone gives fine steering even on
-            // shallow exits (3–5°). Silent on-bearing, pans with any meaningful deviation.
-            _steeringTone.UpdateHeadingErrorWithThresholds(
-                _smoothedHeadingError,
-                ROLLOUT_EXIT_TONE_SILENT_DEG,
-                ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
-                ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
+            if (!_steeringToneSuppressed)
+            {
+                _steeringTone.Resume();
+                // Tight explicit thresholds so the tone gives fine steering even on
+                // shallow exits (3–5°). Silent on-bearing, pans with any meaningful deviation.
+                _steeringTone.UpdateHeadingErrorWithThresholds(
+                    _smoothedHeadingError,
+                    ROLLOUT_EXIT_TONE_SILENT_DEG,
+                    ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
+                    ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
+            }
         }
         else
         {
@@ -3973,18 +3988,21 @@ public class TaxiGuidanceManager : IDisposable
             {
                 _smoothedHeadingError = headingError;
                 _headingErrorInitialized = true;
-                _steeringTone.Resume(); // activate from the initial U-turn silence
+                if (!_steeringToneSuppressed) _steeringTone.Resume(); // activate from the initial U-turn silence
             }
             else
             {
                 _smoothedHeadingError = _smoothedHeadingError * (1.0 - HEADING_ERROR_FILTER_ALPHA)
                                       + headingError * HEADING_ERROR_FILTER_ALPHA;
             }
-            _steeringTone.UpdateHeadingErrorWithThresholds(
-                _smoothedHeadingError,
-                silentThresholdDeg:     0.5,
-                activationThresholdDeg: 1.0,
-                maxPanThresholdDeg:     15.0);
+            if (!_steeringToneSuppressed)
+            {
+                _steeringTone.UpdateHeadingErrorWithThresholds(
+                    _smoothedHeadingError,
+                    silentThresholdDeg:     0.5,
+                    activationThresholdDeg: 1.0,
+                    maxPanThresholdDeg:     15.0);
+            }
         }
         else
         {
@@ -4155,11 +4173,14 @@ public class TaxiGuidanceManager : IDisposable
             // past 1°. Max-pan at 15° (vs old 19.5°) gives stronger feedback
             // sooner. This is precision work at low speed — the tone has to be
             // tighter than the GPS noise floor for runway-takeoff alignment.
-            _steeringTone.UpdateHeadingErrorWithThresholds(
-                _smoothedHeadingError,
-                silentThresholdDeg: 0.5,
-                activationThresholdDeg: 1.0,
-                maxPanThresholdDeg: 15.0);
+            if (!_steeringToneSuppressed)
+            {
+                _steeringTone.UpdateHeadingErrorWithThresholds(
+                    _smoothedHeadingError,
+                    silentThresholdDeg: 0.5,
+                    activationThresholdDeg: 1.0,
+                    maxPanThresholdDeg: 15.0);
+            }
 
             // Lineup-aligned hysteresis (gates the "Lined up" announcement and
             // the steering-tone Pause). Enter when BOTH heading < 1° AND
@@ -4219,7 +4240,7 @@ public class TaxiGuidanceManager : IDisposable
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
                 _lineupAnnouncedAligned = false;
-                _steeringTone.Resume();
+                if (!_steeringToneSuppressed) _steeringTone.Resume();
             }
 
             // Stopped + misaligned → PULSE the tone on/off instead of continuous.
@@ -4243,7 +4264,7 @@ public class TaxiGuidanceManager : IDisposable
                 _lastGroundSpeedKts <= LINEUP_PULSE_MAX_GS_KTS &&
                 (Math.Abs(headingError) >= LINEUP_PULSE_MIN_HDG_ERR_DEG ||
                  absCrossFeet >= LINEUP_PULSE_MIN_CROSS_FEET);
-            _steeringTone.SetPulse(stoppedAndMisaligned);
+            if (!_steeringToneSuppressed) _steeringTone.SetPulse(stoppedAndMisaligned);
         }
         else
         {
@@ -4261,7 +4282,7 @@ public class TaxiGuidanceManager : IDisposable
             _headingErrorInitialized = true;
             // Gate lineup: use baseline (60 ft) — no strong reason to widen or
             // tighten, and gates don't have a well-defined "width" concept.
-            _steeringTone.UpdateHeadingError(_smoothedHeadingError);
+            if (!_steeringToneSuppressed) _steeringTone.UpdateHeadingError(_smoothedHeadingError);
 
             // Hysteresis (gate): enter ±4°, exit ±7°
             double enterHdg = LINEUP_HEADING_TOLERANCE_DEG - 1.0;
@@ -4279,7 +4300,7 @@ public class TaxiGuidanceManager : IDisposable
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
                 _lineupAnnouncedAligned = false;
-                _steeringTone.Resume();
+                if (!_steeringToneSuppressed) _steeringTone.Resume();
             }
         }
     }

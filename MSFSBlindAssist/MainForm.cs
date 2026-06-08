@@ -899,6 +899,9 @@ public partial class MainForm : Form
                 pos.Latitude, pos.Longitude,
                 pos.HeadingMagnetic, pos.MagneticVariation,
                 pos.GroundSpeedKnots);
+            // Suppress the taxi steering tone while docking guidance owns the centerline
+            // cue near the gate — prevents two simultaneous panning tones confusing the pilot.
+            taxiGuidanceManager.SetSteeringToneSuppressed(dockingGuidanceManager.IsActive);
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are
@@ -1774,6 +1777,7 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.TaxiStop:
                 taxiGuidanceManager.StopGuidance();
+                dockingGuidanceManager?.SetDestinationGate(null);
                 simConnectManager.StopTaxiGuidanceMonitoring();
                 announcer.AnnounceImmediate("Taxi guidance stopped.");
                 break;

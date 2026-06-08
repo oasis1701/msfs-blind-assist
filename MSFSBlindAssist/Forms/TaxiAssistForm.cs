@@ -1718,6 +1718,7 @@ public class TaxiAssistForm : Form
     private void OnStopClicked(object? sender, EventArgs e)
     {
         _guidanceManager.StopGuidance();
+        _dockingManager?.SetDestinationGate(null);
         _announcer.Announce("Taxi guidance stopped.");
         lblStatus.Text = "Guidance stopped.";
     }
