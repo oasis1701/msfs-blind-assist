@@ -78,14 +78,20 @@ public static class GsxParkingNameEnum
     /// Matching rules:
     /// <list type="bullet">
     ///   <item>Number must equal <c>spot.Number</c>.</item>
-    ///   <item>Suffix must match (case-insensitive; empty == empty).</item>
+    ///   <item>Suffix must match: GSX's numeric suffix enum is decoded via
+    ///     <see cref="EnumToLetter"/> (same A=12..Z=37 encoding as
+    ///     <c>SetGate_Name</c>); values outside 12..37 (including 0=none,
+    ///     -1=unselected) mean no suffix.  Match requires both-none OR the
+    ///     decoded letter equals the target spot's first suffix character
+    ///     (case-insensitive).</item>
     ///   <item>Concourse letter from <c>setGateName</c>:
     ///     <list type="bullet">
     ///       <item>GATE_A..GATE_Z → letter must equal the concourse letter
     ///         extracted from <c>spot.Name</c>.</item>
     ///       <item>NONE/PARKING/GATE/DOCK → no concourse letter to compare;
     ///         match on number+suffix only, which already covers pure-numeric
-    ///         parking spots.</item>
+    ///         parking spots (intentional: may over-confirm when GSX reports
+    ///         no concourse — documented behaviour).</item>
     ///     </list>
     ///   </item>
     /// </list>
@@ -94,15 +100,30 @@ public static class GsxParkingNameEnum
     /// → "A"), then take the first character if it is a letter; otherwise
     /// no concourse letter.
     /// </remarks>
-    public static bool Matches(int setGateName, int setGateNumber, string setGateSuffix, ParkingSpot spot)
+    // TUNE LIVE: confirm the exact SetGate_Suffix encoding (none=0/-1; letter via A=12..Z=37 assumed per manual) against a real suffixed gate.
+    public static bool Matches(int setGateName, int setGateNumber, int setGateSuffix, ParkingSpot spot)
     {
         // Number must match.
         if (setGateNumber != spot.Number) return false;
 
-        // Suffix must match (case-insensitive, null ≡ empty).
-        string gSuffix = setGateSuffix ?? string.Empty;
-        string sSuffix = spot.Suffix    ?? string.Empty;
-        if (!string.Equals(gSuffix, sSuffix, StringComparison.OrdinalIgnoreCase)) return false;
+        // Decode the GSX numeric suffix enum to a letter (A=12..Z=37).
+        // Values outside that range (0=none, -1=unselected, any other) → no suffix.
+        char? gsxSuffixLetter = EnumToLetter(setGateSuffix);
+        string sSuffix = spot.Suffix ?? string.Empty;
+
+        bool gsxHasSuffix  = gsxSuffixLetter.HasValue;
+        bool spotHasSuffix = !string.IsNullOrEmpty(sSuffix);
+
+        if (gsxHasSuffix != spotHasSuffix) return false;   // one has suffix, other doesn't
+
+        if (gsxHasSuffix)
+        {
+            // Both have a suffix — decoded GSX letter must equal the spot's first suffix character.
+            if (!char.ToUpperInvariant(gsxSuffixLetter!.Value)
+                    .Equals(char.ToUpperInvariant(sSuffix[0])))
+                return false;
+        }
+        // else: both have no suffix — suffix check passes.
 
         // Concourse letter check.
         char? gsxLetter = EnumToLetter(setGateName);
@@ -116,8 +137,9 @@ public static class GsxParkingNameEnum
         }
         else
         {
-            // NONE / PARKING / GATE / DOCK — no letter to match against;
+            // NONE / PARKING / GATE / DOCK — no concourse letter to match against;
             // number+suffix agreement (already checked) is sufficient.
+            // Intentional: may over-confirm when GSX reports no concourse (documented behaviour).
             return true;
         }
     }
