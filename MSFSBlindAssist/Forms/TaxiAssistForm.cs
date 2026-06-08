@@ -244,7 +244,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Destination type",
             AccessibleDescription = "Select whether to taxi to a runway, a gate/parking position, or to cross a runway"
         };
-        cmbDestType.Items.AddRange(new object[] { "Runway", "Gate / Parking", "Cross Runway" });
+        cmbDestType.Items.AddRange(new object[] { "Runway", "Gate / Parking", "Cross Runway", "Deice Area" });
         cmbDestType.SelectedIndex = 0;
         cmbDestType.SelectedIndexChanged += OnDestTypeChanged;
         y += 30;
@@ -661,6 +661,7 @@ public class TaxiAssistForm : Form
         if (_graph == null) return;
 
         bool isRunway = cmbDestType.SelectedIndex == 0;
+        bool isDeice = cmbDestType.SelectedIndex == 3;
 
         if (isRunway)
         {
@@ -739,6 +740,49 @@ public class TaxiAssistForm : Form
                         cmbDestination.Items.Add(name);
                     }
                 }
+            }
+        }
+        else if (isDeice)
+        {
+            // Deice area path: populate from GateDataSource.GetDeiceAreas().
+            // Uses the same node-resolution and _destinationSpotMap machinery as the
+            // gate path so OnCalculateClicked can resolve the spot and hand it to
+            // DockingGuidanceManager.SetDestinationGate (which handles the
+            // IsDeiceArea flag internally — emits "Deicing guidance" and uses
+            // datum alignment). MAX_PARKING_TO_GRAPH_M matches the gate path so
+            // spots without a nearby graph node are silently dropped (no way to
+            // taxi there).
+            const double MAX_DEICE_TO_GRAPH_M = 100.0;
+
+            var deiceAreas = _gateSource?.GetDeiceAreas(_currentIcao) ?? new List<ParkingSpot>();
+
+            foreach (var spot in deiceAreas.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                string label = spot.ToString();
+                if (_destinationNodeMap.ContainsKey(label)) continue;
+
+                // Prefer the GSX stop position (the docking target) for routing;
+                // fall back to the spot's base lat/lon when stop position is absent.
+                double targetLat = spot.StopLatitude.GetValueOrDefault() != 0
+                    ? spot.StopLatitude!.Value : spot.Latitude;
+                double targetLon = spot.StopLongitude.GetValueOrDefault() != 0
+                    ? spot.StopLongitude!.Value : spot.Longitude;
+
+                var nearNode = _graph.FindNearestNode(targetLat, targetLon);
+                if (nearNode == null) continue;
+
+                double dist = TaxiGraph.CalculateDistanceMeters(
+                    nearNode.Latitude, nearNode.Longitude, targetLat, targetLon);
+                if (dist > MAX_DEICE_TO_GRAPH_M) continue;
+
+                _destinationNodeMap[label] = nearNode.NodeId;
+                double stopHeading = spot.StopHeading.GetValueOrDefault() != 0
+                    ? spot.StopHeading!.Value : spot.Heading;
+                _destinationHeadingMap[label] = stopHeading;
+                _destinationHeadingTrueMap[label] = stopHeading;
+                _destinationThresholdMap[label] = (targetLat, targetLon);
+                _destinationSpotMap[label] = spot;
+                cmbDestination.Items.Add(label);
             }
         }
         else
@@ -880,6 +924,11 @@ public class TaxiAssistForm : Form
         if (!isGate)
             txtGateSearch.Text = string.Empty;
         PopulateDestinations();
+
+        // Announce "no deicing areas" immediately after populating so the user
+        // knows before pressing Calculate that the airport has nothing to route to.
+        if (cmbDestType.SelectedIndex == 3 && cmbDestination.Items.Count == 0)
+            _announcer.AnnounceImmediate("No deicing areas at this airport.");
     }
 
     private void OnFirstTaxiwayChanged(object? sender, EventArgs e)
@@ -1486,14 +1535,19 @@ public class TaxiAssistForm : Form
 
         // GSX gate auto-select: fire-and-forget when heading to a gate and
         // the feature is enabled. Conditions:
-        //   - destination is a gate (not runway, not cross-runway)
+        //   - destination is a gate (not runway, not cross-runway, not deice area)
         //   - setting is on
         //   - a selector was provided (i.e. GsxService exists in this session)
         //   - GSX CouatlStarted is confirmed via the selector being non-null
         //     (the selector is only built by MainForm when _gsxService != null)
         //     PLUS the CouatlStarted live check here, so we don't drive the
         //     menu when GSX hasn't started yet this session.
+        // NOTE: deice areas (index 3) are explicitly excluded — SelectGateAsync
+        // drives the GSX parking-gate menu, which has no deice-pad entries.
+        // DockingGuidanceManager handles deice guidance via SetDestinationGate
+        // (spot.IsDeiceArea is true) without any GSX menu interaction.
         if (!isRunwayDest
+            && cmbDestType.SelectedIndex != 3
             && SettingsManager.Current.GsxAutoSelectGateOnRoute
             && _gsxGateSelector != null
             && _gsxGateSelector.CouatlStarted
