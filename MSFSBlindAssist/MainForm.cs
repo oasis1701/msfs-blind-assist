@@ -3646,7 +3646,10 @@ public partial class MainForm : Form
             currentSettings.TaxiGuidanceAnnounceCrossings,
             currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
             currentSettings.GroundTrafficUseMetres,
-            currentSettings.GsxAutoSelectGateOnRoute))
+            currentSettings.GsxAutoSelectGateOnRoute,
+            currentSettings.DockingGuidanceEnabled,
+            currentSettings.DockingBeepWaveform,
+            currentSettings.DockingBeepVolume))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -3659,6 +3662,9 @@ public partial class MainForm : Form
                 currentSettings.GroundDistanceUnit = settingsForm.SelectedDistanceUnit;
                 currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
                 currentSettings.GsxAutoSelectGateOnRoute = settingsForm.GsxAutoSelectGateOnRoute;
+                currentSettings.DockingGuidanceEnabled = settingsForm.DockingGuidanceEnabled;
+                currentSettings.DockingBeepWaveform = settingsForm.DockingBeepWaveform;
+                currentSettings.DockingBeepVolume = settingsForm.DockingBeepVolume;
                 SettingsManager.Save();
 
                 statusLabel.Text = "Taxi guidance options saved successfully";
