@@ -784,6 +784,59 @@ on top of the `gsx.cfg` door offset that is already loaded. For the vast majorit
 of dockings the `gsx.cfg` offset alone produces correct alignment; the Python
 refinement is a known third-order effect currently out of scope.
 
+### Remote deicing guidance
+
+GSX airport profiles describe remote-deicing pads as **`is_deicearea=1`
+sections** — "special parking spots" with `this_parking_pos`,
+`parkingsystem_stopposition` (lat/lon/heading), `radius`, and
+`parkingsystem=VgdsDeIceWall`. These are not ordinary gate stands; they are
+dedicated apron pads where aircraft are parked over the pad centre while ground
+equipment applies deicing fluid.
+
+**Data pipeline:**
+- `GsxProfileParser` recognises `is_deicearea=1` sections and sets
+  `ParkingSpot.IsDeiceArea = true` on the resulting record. All other fields
+  (`StopLatitude`, `StopLongitude`, `StopHeading`, `Radius`, `UiName`) are parsed
+  identically to a normal GSX gate — the stop-position keys use the same
+  `parkingsystem_stopposition` format.
+- `GateDataSource.GetDeiceAreas(icao)` exposes the deice-pad list for an airport.
+  Deice areas are **excluded from the normal gate list** returned by
+  `GetParkingSpots` — they would be confusing destinations in the taxi-to-gate
+  flow; they are surfaced only through the dedicated Deice Area destination type.
+
+**Taxi Assist — "Deice Area" destination type:**
+`TaxiAssistForm`'s Destination type combo box includes a **"Deice Area"** entry
+alongside Runway and Gate / Parking. When selected, the Destination combo
+populates with the airport's deice pads by `UiName` (e.g., `"De-Ice Pad 1"`). If
+no GSX profile is active or the profile has no `is_deicearea=1` sections, the
+combo shows `"No deicing areas at this airport"` and the Calculate button is
+disabled. Routing to the chosen pad, hold-short insertion, and off-route
+recalculation work identically to any other gate destination — the pad's
+`this_parking_pos` lat/lon is the routing endpoint and the nearest graph node
+within `MAX_PARKING_TO_GRAPH_M` is the A* target.
+
+**Docking — datum-aligned (door offset = 0):**
+Deice areas centre the *aircraft* over the pad, not a passenger door at a jetway.
+`DockingGuidanceManager` detects `ParkingSpot.IsDeiceArea` and forces
+`doorOffset = 0` regardless of any loaded `gsx.cfg` entry — the stop position is
+the pad centre, and "Stop" fires when the aircraft datum reaches it. On engagement
+the system announces **`"Deicing guidance…"`** (followed by the distance to the
+pad) instead of the SafeDock / Marshaller / neutral docking callout used for gate
+stands. All other docking streams (proximity beeper, lateral steering tone,
+spoken distance milestones) are identical to gate docking.
+
+**Scope:** This feature covers **positioning and guidance to the deice pad**.
+The deicing service itself — calling the trucks, the fluid application sequence,
+the "deicing complete" confirmation — is GSX's own workflow, invoked through the
+GSX menu as normal. The two concerns are fully decoupled: MSFSBA's guidance ends
+at "Stop" on the pad; the pilot then interacts with GSX to request deicing.
+
+**Airport coverage:** Only applicable at airports whose GSX profile contains
+`is_deicearea=1` entries (EGLL, KDFW, KDEN, EHAM, EDDF, and similar large hubs
+with remote deicing infrastructure). Airports without a GSX profile, or whose
+profile has no deice sections, show the "No deicing areas at this airport"
+placeholder and are unaffected.
+
 
 ### High confidence
 - Graph data quality — verified across KJFK, EGLL, and GA fields; thousands of airports with named taxiways.
