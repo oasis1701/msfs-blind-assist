@@ -48,7 +48,11 @@ public sealed class GateDataSource
                 {
                     // GSX-authoritative overlay: GSX metadata wins; navdata supplies the
                     // base skeleton + positions GSX omits. See GsxNavdataMerger.
-                    var spots = GsxNavdataMerger.Merge(_navdata.GetParkingSpots(icao), gsxGates, icao);
+                    // Deice areas are GSX-only destinations — exclude them from the
+                    // normal gate list so they never appear as taxi/teleport destinations.
+                    var normalGates = gsxGates.Where(g => !g.IsDeiceArea).ToList();
+                    var spots = GsxNavdataMerger.Merge(_navdata.GetParkingSpots(icao), normalGates, icao)
+                                                .Where(s => !s.IsDeiceArea).ToList();
                     _cache[icao] = (path, stamp, spots);
                     return spots;
                 }
@@ -60,6 +64,31 @@ public sealed class GateDataSource
             }
         }
         return _navdata.GetParkingSpots(icao);
+    }
+
+    /// <summary>
+    /// Returns the GSX deice-area parking spots for the airport (IsDeiceArea == true).
+    /// These are GSX-only: never merged with navdata and never included in the normal
+    /// gate list. Returns an empty list when GSX is unavailable or the airport has no
+    /// deice areas defined in its profile.
+    /// </summary>
+    public List<ParkingSpot> GetDeiceAreas(string icao)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return new List<ParkingSpot>();
+        icao = NormalizeIcao(icao);
+
+        if (!_isGsxAvailable() || !_locator.TryFindProfile(icao, out string path))
+            return new List<ParkingSpot>();
+
+        try
+        {
+            var gsxGates = GsxProfileParser.Parse(path);
+            return GsxGateMapper.ToParkingSpots(gsxGates.Where(g => g.IsDeiceArea), icao);
+        }
+        catch
+        {
+            return new List<ParkingSpot>();
+        }
     }
 
     private static string NormalizeIcao(string icao) => icao.Trim().ToUpperInvariant();

@@ -67,8 +67,11 @@ public sealed class DockingGuidanceManager : IDisposable
                 double hdgErr = DockingGeometry.NormalizeDeg180(brg - centerHdg);
                 double alongM = DockingGeometry.AlongTrackMetres(distM, hdgErr);
                 // Door-aligned distance: stop when the DOOR reaches the gate stop, not the datum.
+                // For deice areas the aircraft datum (not a door at a jetway) aligns to the pad,
+                // so the effective offset is 0. For normal gates use the per-aircraft door offset.
                 // When offset is 0 (unknown), doorAlongM == alongM and behaviour is unchanged.
-                double doorAlongM = alongM - _doorOffsetMetres;
+                double effOffset = (_gate?.IsDeiceArea == true) ? 0.0 : _doorOffsetMetres;
+                double doorAlongM = alongM - effOffset;
 
                 switch (_state)
                 {
@@ -121,15 +124,25 @@ public sealed class DockingGuidanceManager : IDisposable
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         _slowDownSaid = false;
-        string vdgs = FriendlyVdgs(_gate?.VdgsType);
         string dist = DistanceFormatter.FromMetres(doorAlongM);
-        string orientationPhrase = string.IsNullOrEmpty(_doorSide)
-            ? ""
-            : (_gate?.HasJetway == true ? $" Jetway on your {_doorSide}." : $" Door on your {_doorSide}.");
-        string baseMsg = string.IsNullOrEmpty(vdgs)
-            ? $"Docking guidance. {dist} to stop."
-            : $"Docking guidance. {vdgs}. {dist} to stop.";
-        _announcer.AnnounceImmediate(baseMsg + orientationPhrase);
+
+        if (_gate?.IsDeiceArea == true)
+        {
+            // Deice areas: datum-aligned pad, no VDGS, no jetway/door-side phrase.
+            _announcer.AnnounceImmediate($"Deicing guidance. {dist} to stop.");
+        }
+        else
+        {
+            string vdgs = FriendlyVdgs(_gate?.VdgsType);
+            string orientationPhrase = string.IsNullOrEmpty(_doorSide)
+                ? ""
+                : (_gate?.HasJetway == true ? $" Jetway on your {_doorSide}." : $" Door on your {_doorSide}.");
+            string baseMsg = string.IsNullOrEmpty(vdgs)
+                ? $"Docking guidance. {dist} to stop."
+                : $"Docking guidance. {vdgs}. {dist} to stop.";
+            _announcer.AnnounceImmediate(baseMsg + orientationPhrase);
+        }
+
         _tone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
         _tone.HardPan = SettingsManager.Current.TaxiGuidanceHardPanTone;
         _tone.Start(SettingsManager.Current.TaxiGuidanceToneWaveform, SettingsManager.Current.TaxiGuidanceToneVolume);
