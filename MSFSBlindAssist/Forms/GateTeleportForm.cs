@@ -457,6 +457,16 @@ public partial class GateTeleportForm : Form
         return base.ProcessDialogKey(keyData);
     }
 
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.Enter && searchTextBox.Focused)
+        {
+            SearchTextBox_KeyDown(searchTextBox, new KeyEventArgs(Keys.Enter));
+            return true; // swallow Enter so AcceptButton (teleport) does not also fire
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         base.OnFormClosed(e);
