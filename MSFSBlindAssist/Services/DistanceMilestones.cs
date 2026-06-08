@@ -10,8 +10,6 @@ public readonly record struct DistanceMilestone(double TriggerMetres, string Lab
 /// </summary>
 public static class DistanceMilestones
 {
-    private const double MetresPerFoot = 0.3048;
-
     // Landing-exit approach: feet 1500/900/500 -> metres 500/300/150
     public static IReadOnlyList<DistanceMilestone> ExitApproach()
         => Build(feet: new[] { 1500, 900, 500 }, metres: new[] { 500, 300, 150 });
@@ -30,10 +28,12 @@ public static class DistanceMilestones
 
     private static IReadOnlyList<DistanceMilestone> Build(int[] feet, int[] metres)
     {
-        bool m = DistanceFormatter.IsMetres;
-        int[] vals = m ? metres : feet;
-        string unit = m ? "metres" : "feet";
-        double toMetres = m ? 1.0 : MetresPerFoot;
+        if (feet.Length != metres.Length)
+            throw new ArgumentException("feet and metres arrays must have the same length.");
+        bool isMetres = DistanceFormatter.IsMetres;
+        int[] vals = isMetres ? metres : feet;
+        string unit = isMetres ? "metres" : "feet";
+        double toMetres = isMetres ? 1.0 : DistanceFormatter.MetresPerFoot;
         var list = new List<DistanceMilestone>(vals.Length);
         foreach (int v in vals)
             list.Add(new DistanceMilestone(v * toMetres, $"{v} {unit}"));

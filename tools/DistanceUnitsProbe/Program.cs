@@ -26,6 +26,7 @@ DistanceFormatter.UnitProvider = () => DistanceUnit.Metres;
 var pm = DistanceMilestones.ParkingArrival();
 Check("parking metres labels 15/10/5", pm[0].Label == "15 metres" && pm[1].Label == "10 metres" && pm[2].Label == "5 metres");
 Check("parking metres triggers", Math.Abs(pm[0].TriggerMetres - 15) < 0.01);
+Check("parking metres triggers 15/10/5", Math.Abs(pm[1].TriggerMetres - 10) < 0.01 && Math.Abs(pm[2].TriggerMetres - 5) < 0.01);
 var xm = DistanceMilestones.ExitApproach();
 Check("exit metres labels 500/300/150", xm[0].Label == "500 metres" && xm[1].Label == "300 metres" && xm[2].Label == "150 metres");
 
@@ -35,6 +36,7 @@ Check("parking feet labels 50/20/10", pf[0].Label == "50 feet" && pf[1].Label ==
 Check("parking feet trigger metres", Math.Abs(pf[0].TriggerMetres - 50 * 0.3048) < 0.01);
 var xf = DistanceMilestones.ExitApproach();
 Check("exit feet labels 1500/900/500", xf[0].Label == "1500 feet" && xf[1].Label == "900 feet" && xf[2].Label == "500 feet");
+Check("exit feet trigger metres", Math.Abs(xf[0].TriggerMetres - 1500 * 0.3048) < 0.01);
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;
