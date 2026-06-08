@@ -13,6 +13,7 @@ public partial class GateTeleportForm : Form
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private TextBox icaoTextBox = null!;
+    private TextBox searchTextBox = null!;
     private ComboBox filterComboBox = null!;
     private CheckBox fitFilterCheckBox = null!;
     private ListBox gateListBox = null!;
@@ -25,12 +26,13 @@ public partial class GateTeleportForm : Form
 
     private readonly IAirportDataProvider _database;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly Services.GateDataSource? _gateSource;
     private readonly IntPtr previousWindow;
 
     public ParkingSpot? SelectedParkingSpot { get; private set; }
     public Airport? SelectedAirport { get; private set; }
 
-    public GateTeleportForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer, double aircraftWingspan = 0)
+    public GateTeleportForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer, double aircraftWingspan = 0, Services.GateDataSource? gateSource = null)
     {
         // Capture the current foreground window (likely the simulator)
         previousWindow = GetForegroundWindow();
@@ -38,6 +40,7 @@ public partial class GateTeleportForm : Form
         _database = database;
         _announcer = announcer;
         _aircraftWingspan = aircraftWingspan;
+        _gateSource = gateSource;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -45,7 +48,7 @@ public partial class GateTeleportForm : Form
     private void InitializeComponent()
     {
         Text = "Gate & Parking Teleport";
-        Size = new Size(400, 375);
+        Size = new Size(400, 410);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -73,6 +76,24 @@ public partial class GateTeleportForm : Form
         icaoTextBox.TextChanged += IcaoTextBox_TextChanged;
         icaoTextBox.KeyDown += IcaoTextBox_KeyDown;
 
+        // Search box (type-to-filter on name+number+suffix)
+        var searchLabel = new Label
+        {
+            Text = "&Search:",
+            Location = new Point(20, 82),
+            Size = new Size(80, 20),
+            AccessibleName = "Search gates and parking"
+        };
+        searchTextBox = new TextBox
+        {
+            Location = new Point(100, 80),
+            Size = new Size(270, 25),
+            AccessibleName = "Search gates and parking",
+            AccessibleDescription = "Type a gate letter or number to filter the list"
+        };
+        searchTextBox.TextChanged += (s, e) => { if (_allParkingSpots.Count > 0) ApplyFilter(); };
+        searchTextBox.KeyDown += SearchTextBox_KeyDown;
+
         // Filter Label and ComboBox
         var filterLabel = new Label
         {
@@ -98,7 +119,7 @@ public partial class GateTeleportForm : Form
         fitFilterCheckBox = new CheckBox
         {
             Text = "Show only fitting stands",
-            Location = new Point(20, 80),
+            Location = new Point(20, 115),
             Size = new Size(350, 20),
             Checked = _aircraftWingspan > 0,
             Enabled = _aircraftWingspan > 0,
@@ -111,14 +132,14 @@ public partial class GateTeleportForm : Form
         var gateLabel = new Label
         {
             Text = "Available Gates & Parking:",
-            Location = new Point(20, 105),
+            Location = new Point(20, 140),
             Size = new Size(180, 20),
             AccessibleName = "Available Gates and Parking"
         };
 
         gateListBox = new ListBox
         {
-            Location = new Point(20, 130),
+            Location = new Point(20, 165),
             Size = new Size(350, 150),
             AccessibleName = "Gate and Parking List",
             AccessibleDescription = "Select a gate or parking spot from the list and press Enter to teleport"
@@ -129,7 +150,7 @@ public partial class GateTeleportForm : Form
         // Status Label
         statusLabel = new Label
         {
-            Location = new Point(20, 290),
+            Location = new Point(20, 325),
             Size = new Size(350, 20),
             AccessibleName = "Status",
             Text = "Enter an airport ICAO code to see available gates and parking"
@@ -139,7 +160,7 @@ public partial class GateTeleportForm : Form
         teleportButton = new Button
         {
             Text = "Teleport",
-            Location = new Point(215, 315),
+            Location = new Point(215, 350),
             Size = new Size(75, 30),
             Enabled = false,
             AccessibleName = "Teleport to Selected Gate or Parking",
@@ -150,7 +171,7 @@ public partial class GateTeleportForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(295, 315),
+            Location = new Point(295, 350),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -160,7 +181,8 @@ public partial class GateTeleportForm : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            icaoLabel, icaoTextBox, filterLabel, filterComboBox,
+            icaoLabel, icaoTextBox, searchLabel, searchTextBox,
+            filterLabel, filterComboBox,
             fitFilterCheckBox, gateLabel, gateListBox,
             statusLabel, teleportButton, cancelButton
         });
@@ -173,11 +195,12 @@ public partial class GateTeleportForm : Form
     {
         // Set tab order for logical navigation
         icaoTextBox.TabIndex = 0;
-        filterComboBox.TabIndex = 1;
-        fitFilterCheckBox.TabIndex = 2;
-        gateListBox.TabIndex = 3;
-        teleportButton.TabIndex = 4;
-        cancelButton.TabIndex = 5;
+        searchTextBox.TabIndex = 1;
+        filterComboBox.TabIndex = 2;
+        fitFilterCheckBox.TabIndex = 3;
+        gateListBox.TabIndex = 4;
+        teleportButton.TabIndex = 5;
+        cancelButton.TabIndex = 6;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -217,6 +240,24 @@ public partial class GateTeleportForm : Form
         }
     }
 
+    private void SearchTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            if (gateListBox.Items.Count > 0)
+            {
+                gateListBox.Focus();
+                gateListBox.SelectedIndex = 0;
+            }
+            else
+            {
+                // Explicit action with no result → permitted error announce.
+                _announcer.AnnounceImmediate("No matching gates.");
+            }
+            e.Handled = true;
+        }
+    }
+
     private void LoadGatesAndParking(string icao)
     {
         try
@@ -229,7 +270,7 @@ public partial class GateTeleportForm : Form
                 return;
             }
 
-            var parkingSpots = _database.GetParkingSpots(icao);
+            var parkingSpots = (_gateSource?.GetGates(icao)) ?? _database.GetParkingSpots(icao);
             if (parkingSpots.Count == 0)
             {
                 statusLabel.Text = $"No gates or parking found for {icao}";
@@ -294,6 +335,10 @@ public partial class GateTeleportForm : Form
 
         if (fitFilterCheckBox.Checked && _aircraftWingspan > 0)
             filtered = filtered.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+
+        var query = searchTextBox.Text;
+        if (!string.IsNullOrWhiteSpace(query))
+            filtered = Services.GateSearchFilter.Filter(filtered, query);
 
         gateListBox.Items.Clear();
         gateListBox.Items.AddRange(filtered.ToArray());
