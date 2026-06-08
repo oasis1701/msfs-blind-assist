@@ -255,8 +255,8 @@ public class TaxiGuidanceOptionsForm : Form
             Location = new Point(20, 320),
             Size = new Size(450, 25),
             Checked = SettingsManager.Current.GroundDistanceUnit == DistanceUnit.Feet,
-            AccessibleName = "Use feet for distances; unchecked means metres",
-            AccessibleDescription = "When enabled, all ground distances (e.g. traffic alerts, taxi guidance) are announced in feet. Default is metres."
+            AccessibleName = "Use feet for distances",
+            AccessibleDescription = "When enabled, all ground distances (taxi guidance, runway exits, parking) are announced in feet. Default is metres."
         };
 
         // Ground traffic distance unit: metres or feet (INDEPENDENT of the app-wide Distance units setting)
