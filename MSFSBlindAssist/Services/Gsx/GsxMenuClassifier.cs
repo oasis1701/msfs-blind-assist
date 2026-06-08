@@ -491,6 +491,25 @@ public static class GsxMenuClassifier
     public static bool IsNextForward(string text) => IsNext(text) && !IsBack(text);
 
     /// <summary>
+    /// Returns <see langword="true"/> for the true "up one level" navigation entry
+    /// ("↑ Back") and <see langword="false"/> for a pagination "previous page" entry
+    /// ("◀Previous Page").
+    /// <para>
+    /// Mirror of <see cref="IsNextForward"/> on the back side. <see cref="IsBack"/>
+    /// matches on "previous" / "◀", which are ALSO present in "◀Previous Page" — a
+    /// pagination control that moves WITHIN the same level, not up a level. Backing out
+    /// with raw <see cref="IsBack"/> can grab "Previous Page" (it sorts before "↑ Back"
+    /// on a paginated submenu's later pages), leaving the DFS stuck in the same submenu.
+    /// </para>
+    /// <para>
+    /// CONFIRMED LIVE at EDDF (2026-06-08): backing out of the multi-page "C Gates"
+    /// submenu pressed "◀Previous Page" instead of "↑ Back", so the search never
+    /// reached the other terminals and reported a real stand as "not found".
+    /// </para>
+    /// </summary>
+    public static bool IsBackUp(string text) => IsBack(text) && !IsNext(text);
+
+    /// <summary>
     /// Returns <see langword="true"/> when the entry text matches a
     /// forbidden action pattern (WARP, Follow-Me, reposition, etc.).
     /// Entries matching this must NEVER be chosen.

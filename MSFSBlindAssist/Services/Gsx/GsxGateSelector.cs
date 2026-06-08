@@ -675,6 +675,13 @@ public sealed class GsxGateSelector
     /// so the caller's parent can re-read its menu and continue with the next
     /// sibling category. Best-effort: logs and returns if no Back entry exists
     /// or the press fails (never throws).
+    /// <para>
+    /// Uses <see cref="GsxMenuClassifier.IsBackUp"/> — NOT raw <c>IsBack</c> — so a
+    /// pagination "◀Previous Page" entry (which also matches the back patterns and
+    /// sorts BEFORE "↑ Back" on a submenu's later pages) is never mistaken for the
+    /// up-one-level entry. Pressing "Previous Page" would only move within the same
+    /// submenu and leave the DFS stuck there (CONFIRMED LIVE at EDDF 2026-06-08).
+    /// </para>
     /// </summary>
     private async Task BackOutAsync(
         DfsState state,
@@ -684,7 +691,7 @@ public sealed class GsxGateSelector
         foreach (var opt in current)
         {
             if (opt.Choice >= 10) continue; // appended system options are never Back
-            if (GsxMenuClassifier.IsBack(opt.Text ?? string.Empty))
+            if (GsxMenuClassifier.IsBackUp(opt.Text ?? string.Empty))
             {
                 back = opt;
                 break;
