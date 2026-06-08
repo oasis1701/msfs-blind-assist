@@ -46,6 +46,9 @@ public sealed class GsxService : IDisposable
     {
         RequestRemote,
         RequestCouatlStarted,
+        RequestSetGateName,
+        RequestSetGateNumber,
+        RequestSetGateSuffix,
     }
 
     private enum DataDefineId
@@ -54,6 +57,9 @@ public sealed class GsxService : IDisposable
         MenuOpen,
         MenuChoice,
         RemoteControl,
+        SetGateName,
+        SetGateNumber,
+        SetGateSuffix,
     }
 
     private enum GroupId
@@ -85,6 +91,28 @@ public sealed class GsxService : IDisposable
     public string MenuTitle => _menuTitle;
     public IReadOnlyList<MenuOption> MenuOptions => _menuOptions;
     public string LastTooltip => _lastTooltip;
+
+    // ── SetGate_* read-only L-vars (GSX confirmation of selected gate) ──
+    // Default -1 until GSX sets a gate. Updated via VISUAL_FRAME polling.
+
+    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Name</c> (integer enum; -1 until set).</summary>
+    public int SetGateName { get; private set; } = -1;
+
+    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Number</c> (-1 until set).</summary>
+    public int SetGateNumber { get; private set; } = -1;
+
+    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Suffix</c> (-1 until set).</summary>
+    public int SetGateSuffix { get; private set; } = -1;
+
+    // ── Serialize flag ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// True while a GSX menu is showing (set on the menu-shown path, cleared
+    /// on <see cref="MenuHidden"/>/<see cref="MenuTimedOut"/>).  The
+    /// auto-gate selector uses this to avoid driving the menu while the user
+    /// is already navigating it manually.
+    /// </summary>
+    public bool IsMenuActive { get; private set; }
 
     /// <summary>
     /// When true, the service speaks tooltip updates itself (via the injected
@@ -245,6 +273,83 @@ public sealed class GsxService : IDisposable
     /// <summary>Ask GSX to (re)open its menu. Writes L:FSDT_GSX_MENU_OPEN = 1.</summary>
     public void OpenMenu() => SendVariable(DataDefineId.MenuOpen, 1);
 
+    // ── Awaitable next-menu ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a <see cref="Task{T}"/> that completes with the next
+    /// <see cref="MenuOptions"/> snapshot when <see cref="MenuChanged"/>
+    /// fires, or faults if the menu is hidden/times out before a new menu
+    /// arrives, or if <paramref name="timeout"/> elapses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Thread safety: <see cref="MenuChanged"/>, <see cref="MenuHidden"/>,
+    /// and <see cref="MenuTimedOut"/> all fire on the WndProc / UI thread
+    /// (via <see cref="ProcessWindowMessage"/>).  The one-shot handlers
+    /// registered here therefore run on that same thread, which is consistent
+    /// with the rest of the GsxService contract.  Callers that await this on
+    /// the UI thread will resume on the UI thread (no <c>ConfigureAwait</c>
+    /// suppression), so they can touch UI controls directly.
+    /// </para>
+    /// <para>
+    /// Call this BEFORE triggering the menu action (OpenMenu / Choose) so
+    /// the completion source is registered before the event can fire.
+    /// </para>
+    /// </remarks>
+    public Task<IReadOnlyList<MenuOption>> WaitForNextMenuAsync(TimeSpan timeout)
+    {
+        var tcs = new TaskCompletionSource<IReadOnlyList<MenuOption>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var cts = new CancellationTokenSource(timeout);
+
+        EventHandler? onMenuChanged = null;
+        EventHandler? onMenuHidden  = null;
+        EventHandler? onMenuTimedOut = null;
+
+        void Unsubscribe()
+        {
+            MenuChanged  -= onMenuChanged;
+            MenuHidden   -= onMenuHidden;
+            MenuTimedOut -= onMenuTimedOut;
+            cts.Dispose();
+        }
+
+        onMenuChanged = (_, _) =>
+        {
+            if (tcs.TrySetResult(_menuOptions.ToList()))
+                Unsubscribe();
+        };
+
+        onMenuHidden = (_, _) =>
+        {
+            if (tcs.TrySetException(
+                    new InvalidOperationException("GSX menu was hidden before a new menu arrived.")))
+                Unsubscribe();
+        };
+
+        onMenuTimedOut = (_, _) =>
+        {
+            if (tcs.TrySetException(
+                    new InvalidOperationException("GSX menu timed out before a new menu arrived.")))
+                Unsubscribe();
+        };
+
+        // Register cancellation (timeout) callback — fires on the ThreadPool,
+        // but TrySetCanceled is thread-safe.
+        cts.Token.Register(() =>
+        {
+            if (tcs.TrySetException(new TimeoutException(
+                    $"WaitForNextMenuAsync: no menu arrived within {timeout}.")))
+                Unsubscribe();
+        });
+
+        MenuChanged  += onMenuChanged;
+        MenuHidden   += onMenuHidden;
+        MenuTimedOut += onMenuTimedOut;
+
+        return tcs.Task;
+    }
+
     /// <summary>Submit a menu choice (0..9 for the numbered options, 10..14 for A..E).</summary>
     public void Choose(int choice)
     {
@@ -377,6 +482,27 @@ public sealed class GsxService : IDisposable
                     SendVariable(DataDefineId.RemoteControl, 1);
                 break;
             }
+            case DataRequestId.RequestSetGateName:
+            {
+                var value = (DoubleValue)data.dwData[0];
+                SetGateName = (int)value.Value;
+                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Name = {SetGateName}");
+                break;
+            }
+            case DataRequestId.RequestSetGateNumber:
+            {
+                var value = (DoubleValue)data.dwData[0];
+                SetGateNumber = (int)value.Value;
+                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Number = {SetGateNumber}");
+                break;
+            }
+            case DataRequestId.RequestSetGateSuffix:
+            {
+                var value = (DoubleValue)data.dwData[0];
+                SetGateSuffix = (int)value.Value;
+                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Suffix = {SetGateSuffix}");
+                break;
+            }
         }
     }
 
@@ -397,10 +523,21 @@ public sealed class GsxService : IDisposable
         _simConnect.AddToDataDefinition(DataDefineId.RemoteControl, "L:FSDT_GSX_SET_REMOTECONTROL", "number",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
 
+        // SetGate read-only confirmation L-vars (GSX manual p.94+).
+        _simConnect.AddToDataDefinition(DataDefineId.SetGateName, "L:FSDT_GSX_SetGate_Name", "number",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
+        _simConnect.AddToDataDefinition(DataDefineId.SetGateNumber, "L:FSDT_GSX_SetGate_Number", "number",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
+        _simConnect.AddToDataDefinition(DataDefineId.SetGateSuffix, "L:FSDT_GSX_SetGate_Suffix", "number",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
+
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.CouatlStarted);
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.MenuOpen);
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.MenuChoice);
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.RemoteControl);
+        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateName);
+        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateNumber);
+        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateSuffix);
     }
 
     private void MapEvents()
@@ -423,6 +560,17 @@ public sealed class GsxService : IDisposable
             Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
             SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
         _simConnect.RequestDataOnSimObject(DataRequestId.RequestCouatlStarted, DataDefineId.CouatlStarted,
+            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+
+        // Poll the read-only SetGate confirmation vars on every changed frame.
+        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateName, DataDefineId.SetGateName,
+            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateNumber, DataDefineId.SetGateNumber,
+            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateSuffix, DataDefineId.SetGateSuffix,
             Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
             SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
     }
@@ -528,6 +676,7 @@ public sealed class GsxService : IDisposable
         _menuOptions.Add(new MenuOption("E", "Reload Simbrief", 14));
 
         _menuOpen = true;
+        IsMenuActive = true;
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -535,6 +684,7 @@ public sealed class GsxService : IDisposable
     {
         if (!_menuOpen && _menuOptions.Count == 0) return;
         _menuOpen = false;
+        IsMenuActive = false;
         _menuOptions.Clear();
         MenuHidden?.Invoke(this, EventArgs.Empty);
     }
