@@ -516,6 +516,17 @@ public partial class MainForm : Form
             double offset = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType) ?? 0.0;
             dockingGuidanceManager.SetDoorOffsetMetres(offset);
             System.Diagnostics.Debug.WriteLine($"[MainForm] Door offset for ICAO '{icaoType}': {offset:F2} m");
+
+            try
+            {
+                string logPath = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MSFSBlindAssist", "logs", "docking-aircraft.log");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+                System.IO.File.AppendAllText(logPath,
+                    $"{DateTime.Now:HH:mm:ss}  ICAO=\"{icaoType}\"  doorOffset={offset} m{System.Environment.NewLine}");
+            }
+            catch { /* never propagate log failures */ }
         }
         catch (Exception ex)
         {

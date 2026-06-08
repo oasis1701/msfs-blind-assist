@@ -3025,6 +3025,18 @@ public class SimConnectManager
         string icao = ExtractIcaoFromAtcModel(currentAircraftAtcModel);
         CurrentAircraftIcaoType = icao;
         System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC MODEL raw='{currentAircraftAtcModel}' → ICAO='{icao}'");
+
+        try
+        {
+            string logPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MSFSBlindAssist", "logs", "docking-aircraft.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+            System.IO.File.AppendAllText(logPath,
+                $"{DateTime.Now:HH:mm:ss}  raw ATC MODEL=\"{currentAircraftAtcModel}\"  -> extracted ICAO=\"{icao}\"{System.Environment.NewLine}");
+        }
+        catch { /* never propagate log failures */ }
+
         AircraftIcaoTypeDetected?.Invoke(this, icao);
 
         // Log whether this is the expected FBW A32NX aircraft
