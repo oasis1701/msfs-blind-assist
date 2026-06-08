@@ -283,7 +283,7 @@ public class FBWA380MCDUForm : Form
         _btnPerf    = MakeBtn("P&ERF",         "PERF");   // Alt+E
         _btnFuel    = MakeBtn("Fuel && &Load", "Fuel and Load");   // Alt+L
         _btnRadNav  = MakeBtn("&RAD NAV",      "RAD NAV");
-        _btnSecFPln = MakeBtn("&SEC FPL",      "SEC FPL");
+        _btnSecFPln = MakeBtn("SEC F&PL",      "SEC FPL");   // Alt+P (Alt+S is reserved for the scratchpad jump)
         _btnDir     = MakeBtn("&DIR",          "DIR");
         y += btnH + gap; col = 10;
 
@@ -867,6 +867,16 @@ public class FBWA380MCDUForm : Form
             _announcer.Announce("Next page");
             ScheduleRefresh();
             e.Handled = true; e.SuppressKeyPress = true;
+            return;
+        }
+
+        // Alt+S: jump to the scratchpad input (matches the A32NX MCDU form). SEC FPL's
+        // mnemonic was moved to Alt+P so this chord is free.
+        if (e.Alt && !e.Shift && e.KeyCode == Keys.S)
+        {
+            _scratchpad.Focus();
+            e.Handled = true; e.SuppressKeyPress = true;
+            return;
         }
     }
 

@@ -249,11 +249,12 @@ Navigation:
   Ctrl+Up        Previous page (PageUp also)
   Ctrl+Down      Next page (PageDown also; scrolls the F-PLN window)
   F5             Refresh
+  Alt+S          Jump to the scratchpad input
   (type)         Type into the scratchpad, then Enter
 
 MFD Page Buttons (Alt+letter):
   Alt+I  INIT     Alt+F  F-PLN    Alt+E  PERF     Alt+L  FUEL & LOAD
-  Alt+R  RAD NAV  Alt+S  SEC FPL  Alt+D  DIR      Alt+A  ATC COM
+  Alt+R  RAD NAV  Alt+P  SEC FPL  Alt+D  DIR      Alt+A  ATC COM
   Alt+V  SURV     Alt+C  CLR      Alt+H  Refresh
   Alt+N  Toggle weight units (kilograms / pounds) for MSFSBA read-outs
 

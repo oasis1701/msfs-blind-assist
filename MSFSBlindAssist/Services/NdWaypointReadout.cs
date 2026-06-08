@@ -60,7 +60,7 @@ public static class NdWaypointReadout
 
         double dist = R("A32NX_EFIS_L_TO_WPT_DISTANCE");
         announcer.AnnounceImmediate(
-            $"To waypoint {ident}, distance {dist:0.0} nautical miles, bearing {brg:000} degrees {brgRef}");
+            $"{ident}, distance {dist:0.0} nautical miles, bearing {brg:000} degrees {brgRef}");
     }
 
     // 6-bit-per-char packed ident (two doubles, 8 chars each) — same encoding the
