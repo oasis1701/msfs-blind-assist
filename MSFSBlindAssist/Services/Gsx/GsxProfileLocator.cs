@@ -28,13 +28,16 @@ public sealed class GsxProfileLocator
         // Windows file matching is case-insensitive, so "OMDB*.ini" matches "omdb-...ini".
         // Filter to stems that start with the ICAO (case-insensitive) AND satisfy at least
         // one of three rules:
-        //   1. Stem equals the ICAO exactly (e.g. "EDDF.ini").
+        //   1. Stem equals the ICAO exactly (e.g. "EDDF.ini"). Applies for any ICAO length.
         //   2. The char immediately after the ICAO is '-' or '_' (separator variants:
-        //      "omdb-24-iniBuilds.ini", "ebbr_aerosoft_v2.ini").
-        //   3. Stem simply starts with the ICAO (covers bare-concatenation names like
-        //      "rjttbasica7.ini"). GSX filenames are always ICAO-prefixed, so a stem
-        //      that starts with a 4-letter ICAO cannot belong to a different airport
-        //      (e.g. "OMDBX" would only match a query for ICAO "OMDBX", never "OMDB").
+        //      "omdb-24-iniBuilds.ini", "ebbr_aerosoft_v2.ini"). Applies for any ICAO length.
+        //   3. Stem simply starts with the ICAO — ONLY for standard 4-character ICAOs.
+        //      GSX filenames are always ICAO-prefixed, so a stem that starts with a
+        //      4-letter ICAO cannot belong to a different airport (e.g. "OMDBX" would
+        //      only match a query for ICAO "OMDBX", never "OMDB"). For shorter codes
+        //      (e.g. 3-char "LPC") this rule is unsafe — "LPC" would wrongly match
+        //      "LPCX-something.ini" — so rule 3 is skipped for non-4-char ICAOs.
+        //      Covers bare-concatenation names like "rjttbasica7.ini".
         var matches = Directory.GetFiles(_profileDir, $"{icao}*.ini")
             .Where(m =>
             {
@@ -43,7 +46,7 @@ public sealed class GsxProfileLocator
                 if (stem.Length == icao.Length) return true;                   // rule 1: exact
                 char sep = stem[icao.Length];
                 if (sep == '-' || sep == '_') return true;                     // rule 2: separator
-                return true;                                                   // rule 3: prefix fallback
+                return icao.Length == 4;                                       // rule 3: prefix fallback (4-char ICAOs only)
             })
             .ToArray();
         if (matches.Length == 0) return false;

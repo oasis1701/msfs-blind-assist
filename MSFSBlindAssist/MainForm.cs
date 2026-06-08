@@ -521,10 +521,12 @@ public partial class MainForm : Form
             try
             {
                 double? off = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType);
-                if (off == null && _refreshedIcaos.Add(icaoType ?? ""))
+                if (off == null && GsxLikelyInstalled() && _refreshedIcaos.Add(icaoType ?? ""))
                 {
                     // First miss for this ICAO — rebuild the map in case a gsx.cfg was
-                    // written after startup (e.g. user just installed a GSX profile).
+                    // written after startup (e.g. user just installed a GSX profile via
+                    // the GSX installer into %APPDATA%\Virtuali\Airplanes). Only useful
+                    // when GSX is actually installed; skip the ~12 s disk scan otherwise.
                     _gsxAirplaneProfile.Refresh();
                     off = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType);
                 }
@@ -2796,6 +2798,20 @@ public partial class MainForm : Form
             _gsxService,
             new Services.Gsx.GsxMenuAutomation(_gsxService),
             announcer);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the GSX installation folder
+    /// (%APPDATA%\Virtuali) exists, indicating GSX is likely installed.
+    /// Used to gate the per-ICAO profile rescan: the Refresh() call is only
+    /// useful to pick up a gsx.cfg written by GSX to %APPDATA%\Virtuali\Airplanes,
+    /// which never happens on a machine without GSX.
+    /// </summary>
+    private static bool GsxLikelyInstalled()
+    {
+        try { return System.IO.Directory.Exists(System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Virtuali")); }
+        catch { return false; }
     }
 
     private void OpenTaxiForm(SimConnectManager.AircraftPosition position)

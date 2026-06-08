@@ -28,7 +28,11 @@ public class TaxiAssistForm : Form
     private readonly Services.GateDataSource? _gateSource;
     // When non-null, OnCalculateClicked fires GSX gate auto-select for gate destinations
     // (if the setting is on and GSX is available). The selector is constructed in MainForm
-    // and is only non-null when _gsxService exists — so null-checking it is the availability gate.
+    // and is only non-null when GSX is installed. NOTE: the selector itself is always
+    // non-null once assigned — null-checking it tells you whether the feature is available
+    // at all, but the REAL runtime availability gate is _gsxGateSelector.CouatlStarted.
+    // A non-null selector with CouatlStarted == false means GSX is installed but not
+    // running this session; in that case auto-select silently falls through to manual routing.
     private readonly Services.Gsx.GsxGateSelector? _gsxGateSelector;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
