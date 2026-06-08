@@ -2637,7 +2637,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 "ELEC", "APU", "Fuel", "Hydraulics", "Bleed Air", "Air Conditioning",
                 "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Fire", "Oxygen",
-                "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine Start",
+                "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine FADEC and Manual Start",
                 "Recorder and Misc", "GPWS", "Reset", "Interior Lighting", "Exterior Lighting"
             },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings", "OIT" },
@@ -2816,18 +2816,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_RUDDER_TRIM_RESET", "RUDDER_TRIM_LEFT", "RUDDER_TRIM_RIGHT",
             "A32NX_TILLER_PEDAL_DISCONNECT"
         };
-        p["Engine Start"] = new List<string>
+        // Overhead engine panel — both groups are physically on the A380 overhead
+        // (FBW model nodes PUSH_OVHD_ENG_FADEC1..4 under "ENG FADEC GND PWR", and
+        // PUSH_OVHD_ENGMANSTART_1..4 + ALTN in the Eng_Man_Start group). Named to
+        // reflect BOTH families (the FADEC ground-power PBs are not "start" controls).
+        p["Engine FADEC and Manual Start"] = new List<string>
         {
             "A32NX_OVHD_FADEC_1", "A32NX_OVHD_FADEC_2", "A32NX_OVHD_FADEC_3", "A32NX_OVHD_FADEC_4",
             "A32NX_ENGMANSTART1_TOGGLE", "A32NX_ENGMANSTART2_TOGGLE",
-            "A32NX_ENGMANSTART3_TOGGLE", "A32NX_ENGMANSTART4_TOGGLE"
+            "A32NX_ENGMANSTART3_TOGGLE", "A32NX_ENGMANSTART4_TOGGLE",
+            // ALTN manual start belongs to the same overhead Eng_Man_Start group
+            // (node PUSH_OVHD_ENGMANSTARTALTN), not "Recorder and Misc".
+            "A32NX_ENGMANSTARTALTN_TOGGLE"
         };
         p["Recorder and Misc"] = new List<string>
         {
             "A32NX_RCDR_GROUND_CONTROL_ON", "A32NX_ELT_ON", "A32NX_AVIONICS_COMPLT_ON",
             "A380X_OVHD_STORM_LT",   // cockpit door video moved to the unified p["Cockpit"]
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
-            "A32NX_ENGMANSTARTALTN_TOGGLE", "A32NX_ENTERTAINMENT_CWS_OFF",
+            // ENGMANSTARTALTN moved to the "Engine FADEC and Manual Start" overhead panel.
+            "A32NX_ENTERTAINMENT_CWS_OFF",
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
         };
         p["Audio Control Panel Captain"] = new List<string>
@@ -2956,7 +2964,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // ENG MASTER 1-4 are now Off/On combos (state from the fuel-valve SimVar,
             // set fires FUELSYSTEM_VALVE_OPEN/CLOSE) — no separate On/Off buttons.
             "ENG_VALVE_SWITCH:1", "ENG_VALVE_SWITCH:2", "ENG_VALVE_SWITCH:3", "ENG_VALVE_SWITCH:4"
-            // ENG MAN START 1-4 live in the overhead "Engine Start" panel (not duplicated here).
+            // ENG MAN START 1-4 live in the overhead "Engine FADEC and Manual Start" panel (not duplicated here).
         };
         p["Thrust Levers"] = new List<string>
         {
