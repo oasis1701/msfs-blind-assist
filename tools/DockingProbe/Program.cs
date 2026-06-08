@@ -22,5 +22,11 @@ Check("engage no - too far", !DockingGeometry.ShouldEngage(10, 200, 20));
 Check("engage no - behind", !DockingGeometry.ShouldEngage(10, -5, 20));
 Check("engage no - off cone", !DockingGeometry.ShouldEngage(10, 40, 120));
 
+Check("engage no - taxi speed 20kt (new 15kt ceiling)", !DockingGeometry.ShouldEngage(20, 40, 20));
+Check("engage yes at 12kt", DockingGeometry.ShouldEngage(12, 40, 20));
+Check("stop tolerance 1.0m: IsStop(1.0) true", DockingGeometry.IsStop(1.0));
+Check("stop tolerance 1.0m: IsStop(1.2) false", !DockingGeometry.IsStop(1.2));
+Check("slow-down zone const", DockingGeometry.SlowDownMetres == 6.0);
+
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

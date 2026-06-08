@@ -25,6 +25,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private DockState _state = DockState.Idle;
     private IReadOnlyList<DistanceMilestone> _milestones = Array.Empty<DistanceMilestone>();
     private bool[] _milestoneSaid = Array.Empty<bool>();
+    private bool _slowDownSaid;
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
@@ -79,6 +80,12 @@ public sealed class DockingGuidanceManager : IDisposable
                         }
                         _tone.UpdateHeadingError(hdgErr, GateWidthFeet);
                         _beeper.Update(alongM, active: true);
+                        if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres)
+                        {
+                            _slowDownSaid = true;
+                            _announcer.AnnounceImmediate("Slow down.");
+                            return; // one callout per frame, consistent with the milestone pattern
+                        }
                         AnnounceMilestonesLocked(alongM);
                         break;
 
@@ -96,6 +103,7 @@ public sealed class DockingGuidanceManager : IDisposable
         _state = DockState.Docking;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
+        _slowDownSaid = false;
         string vdgs = FriendlyVdgs(_gate?.VdgsType);
         string dist = DistanceFormatter.FromMetres(alongM);
         _announcer.AnnounceImmediate(string.IsNullOrEmpty(vdgs)
@@ -134,7 +142,7 @@ public sealed class DockingGuidanceManager : IDisposable
     }
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
-    private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>(); }
+    private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>(); _slowDownSaid = false; }
 
     public void Dispose() { try { _tone.Stop(); } catch { } _beeper.Dispose(); }
 }
