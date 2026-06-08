@@ -72,6 +72,22 @@ public static class GsxProfileParser
         if (g == null) return;
         if (!recognized && !g.IsDeiceArea) return;
 
+        // Skip anonymous [none 0] placeholder sections — GSX uses these as filler entries
+        // with no real identity. They are NOT deice areas and have: category "none" (or empty),
+        // Number==0, empty Concourse, no Suffix, and no uiname. Multiple such placeholders
+        // can appear in one profile and would otherwise collide in the gate list.
+        // Conservative: only drop when ALL identity fields are absent. Any section with a
+        // real concourse, non-zero number, suffix, or uiname is kept unchanged.
+        if (!g.IsDeiceArea
+            && (string.IsNullOrEmpty(g.Category) || g.Category == "none")
+            && g.Number == 0
+            && string.IsNullOrEmpty(g.Concourse)
+            && string.IsNullOrEmpty(g.Suffix)
+            && string.IsNullOrEmpty(g.Uiname))
+        {
+            return;
+        }
+
         if (g.IsDeiceArea)
         {
             // Prefer the explicit uiname when the profile supplies one (e.g. EGLL "DeIcing-Vader South").
@@ -147,6 +163,23 @@ public static class GsxProfileParser
             else if (suffix.Length == 0 && IsAllLetters(t)) // standalone suffix after the number: "gate 537 l"
             {
                 suffix = t.ToUpperInvariant();
+            }
+        }
+
+        // Fallback: if no number was found yet, scan tokens for one that begins with digits
+        // followed by an underscore — e.g. "15_mars_c15" in "[gate c 15_mars_c15]" (EDDF MARS gates).
+        // Only fires when numberSet is still false; already-parsed headers are unaffected.
+        if (!numberSet)
+        {
+            for (int i = catIdx + 1; i < tokens.Length; i++)
+            {
+                var mFallback = Regex.Match(tokens[i], "^(\\d+)_");
+                if (mFallback.Success)
+                {
+                    number = int.Parse(mFallback.Groups[1].Value, CultureInfo.InvariantCulture);
+                    numberSet = true;
+                    break;
+                }
             }
         }
 

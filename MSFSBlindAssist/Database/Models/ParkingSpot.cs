@@ -127,7 +127,9 @@ public class ParkingSpot
     public override string ToString()
     {
         string baseDescription;
-        string numberPart = Number > 0 ? $"{Number}{Suffix}" : "";
+        string numberPart = Number > 0
+            ? $"{Number}{Suffix}"
+            : (!string.IsNullOrEmpty(Suffix) ? $"0{Suffix}" : "");
 
         if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(numberPart))
             baseDescription = $"{Name} {numberPart} - {GetParkingType()}";
