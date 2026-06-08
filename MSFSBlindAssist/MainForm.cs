@@ -818,11 +818,21 @@ public partial class MainForm : Form
                     pos.Latitude, pos.Longitude,
                     pos.HeadingMagnetic, pos.MagneticVariation,
                     pos.GroundSpeedKnots);
-                dockingGuidanceManager.UpdatePosition(
-                    pos.Latitude, pos.Longitude,
-                    pos.HeadingMagnetic, pos.MagneticVariation,
-                    pos.GroundSpeedKnots);
             }
+        }
+
+        // Docking guidance runs on every position update regardless of taxi-guidance
+        // state — it has its own guard (_gate == null || !DockingGuidanceEnabled → returns
+        // immediately), so calling it every frame is safe and cheap. Critically this
+        // ensures docking keeps receiving updates when taxi guidance reaches Arrived
+        // state (navdata gates), which is outside the Taxiing/LiningUp/LandingRollout gate above.
+        if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
+        {
+            var pos = e.PositionData.Value;
+            dockingGuidanceManager.UpdatePosition(
+                pos.Latitude, pos.Longitude,
+                pos.HeadingMagnetic, pos.MagneticVariation,
+                pos.GroundSpeedKnots);
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are

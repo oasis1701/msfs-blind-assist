@@ -51,8 +51,6 @@ public sealed class DockingGuidanceManager : IDisposable
                 double brg = NavigationCalculator.CalculateBearing(lat, lon, sLat, sLon);
                 double hdgErr = DockingGeometry.NormalizeDeg180(brg - centerHdg);
                 double alongM = DockingGeometry.AlongTrackMetres(distM, hdgErr);
-                // CalculateCrossTrackError(aircraftLat, aircraftLon, thresholdLat, thresholdLon, heading)
-                double crossDeg = NavigationCalculator.CalculateCrossTrackError(lat, lon, sLat, sLon, centerHdg);
 
                 switch (_state)
                 {
@@ -79,7 +77,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         {
                             SilenceLocked(); _state = DockState.Armed; break;
                         }
-                        _tone.UpdateHeadingError(crossDeg, GateWidthFeet);
+                        _tone.UpdateHeadingError(hdgErr, GateWidthFeet);
                         _beeper.Update(alongM, active: true);
                         AnnounceMilestonesLocked(alongM);
                         break;
@@ -102,6 +100,8 @@ public sealed class DockingGuidanceManager : IDisposable
         _announcer.AnnounceImmediate(string.IsNullOrEmpty(vdgs)
             ? $"Docking guidance. {dist} to stop."
             : $"Docking guidance. {vdgs}. {dist} to stop.");
+        _tone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
+        _tone.HardPan = SettingsManager.Current.TaxiGuidanceHardPanTone;
         _tone.Start(SettingsManager.Current.TaxiGuidanceToneWaveform, SettingsManager.Current.TaxiGuidanceToneVolume);
         _beeper.Start(SettingsManager.Current.DockingBeepWaveform, SettingsManager.Current.DockingBeepVolume);
     }
