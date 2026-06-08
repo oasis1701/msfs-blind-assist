@@ -14,7 +14,16 @@ public sealed class DockingGuidanceManager : IDisposable
 {
     private enum DockState { Idle, Armed, Docking, Stopped }
 
-    private const double GateWidthFeet = 20.0; // steering-tone width basis (narrow = tight centerline)
+    // Lateral steering-tone precision for docking. Docking demands a far tighter
+    // centerline hold than normal taxi. The width-scaled UpdateHeadingError overload
+    // bottoms out at silent≈1.95° / activation≈3.9° / max-pan≈19.5° (MIN_SCALE clamp
+    // at any width ≤ 25 ft), which lets the aircraft sit ~3° off the gate axis with
+    // NO audio cue — the same too-loose failure documented for runway lineup. Drive
+    // the tone with the runway-lineup precision profile instead: keep panning until
+    // the heading-to-stop is centred within ½°, re-activate past 1°, full pan by 15°.
+    private const double DockSilentThresholdDeg = 0.5;
+    private const double DockActivationThresholdDeg = 1.0;
+    private const double DockMaxPanThresholdDeg = 15.0;
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly TaxiSteeringTone _tone = new();
@@ -101,7 +110,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         {
                             SilenceLocked(); _state = DockState.Armed; break;
                         }
-                        _tone.UpdateHeadingError(hdgErr, GateWidthFeet);
+                        _tone.UpdateHeadingErrorWithThresholds(hdgErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
                         _beeper.Update(doorAlongM, active: true);
                         if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
                         {
