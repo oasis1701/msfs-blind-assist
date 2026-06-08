@@ -45,7 +45,8 @@ public static class GsxGateMapper
         VdgsType = string.IsNullOrWhiteSpace(g.VdgsType) ? null : g.VdgsType,
         MaxWingspanMeters = g.MaxWingspanMeters,
         StopLatitude = g.StopLatitude,
-        StopLongitude = g.StopLongitude
+        StopLongitude = g.StopLongitude,
+        StopHeading = g.StopHeading
     };
 
     // Size/heavy from maxwingspan (ICAO wingspan code) + section category. This is the

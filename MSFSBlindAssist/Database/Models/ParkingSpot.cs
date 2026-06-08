@@ -23,6 +23,7 @@ public class ParkingSpot
     public double? MaxWingspanMeters { get; set; }     // GSX "maxwingspan"
     public double? StopLatitude { get; set; }          // GSX parkingsystem_stopposition lat
     public double? StopLongitude { get; set; }         // GSX parkingsystem_stopposition lon
+    public double? StopHeading { get; set; }           // GSX stop-position nose heading (deg true); null for navdata-only
 
     public ParkingSpot()
     {
