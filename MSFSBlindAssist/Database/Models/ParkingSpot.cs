@@ -24,6 +24,7 @@ public class ParkingSpot
     public double? StopLatitude { get; set; }          // GSX parkingsystem_stopposition lat
     public double? StopLongitude { get; set; }         // GSX parkingsystem_stopposition lon
     public double? StopHeading { get; set; }           // GSX stop-position nose heading (deg true); null for navdata-only
+    public bool IsDeiceArea { get; set; }              // true when parsed from a GSX is_deicearea = 1 section
 
     public ParkingSpot()
     {

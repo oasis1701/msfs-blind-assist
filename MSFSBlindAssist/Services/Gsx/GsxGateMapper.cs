@@ -28,9 +28,11 @@ public static class GsxGateMapper
     public static ParkingSpot ToParkingSpot(GsxGate g, string icao) => new ParkingSpot
     {
         AirportICAO = icao,
+        // For deice areas the full display name (uiname) lives in Concourse; Number is always 0.
+        // For normal gates, Concourse is the letter prefix and Number is the stand number.
         Name = g.Concourse,
-        Number = g.Number,
-        Suffix = g.Suffix,
+        Number = g.IsDeiceArea ? 0 : g.Number,
+        Suffix = g.IsDeiceArea ? string.Empty : g.Suffix,
         Type = DeriveType(g.Category, g.MaxWingspanMeters),
         Latitude = g.Latitude,
         Longitude = g.Longitude,
@@ -46,7 +48,8 @@ public static class GsxGateMapper
         MaxWingspanMeters = g.MaxWingspanMeters,
         StopLatitude = g.StopLatitude,
         StopLongitude = g.StopLongitude,
-        StopHeading = g.StopHeading
+        StopHeading = g.StopHeading,
+        IsDeiceArea = g.IsDeiceArea
     };
 
     // Size/heavy from maxwingspan (ICAO wingspan code) + section category. This is the

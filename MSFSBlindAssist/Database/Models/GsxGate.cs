@@ -23,4 +23,5 @@ public sealed class GsxGate
     public string VdgsType { get; set; } = string.Empty;    // "parkingsystem" (e.g. SafeDockT42, Marshaller)
     public string AirlineCodes { get; set; } = string.Empty; // "airlinecodes" — comma-separated ICAO airline codes
     public string RawSectionName { get; set; } = string.Empty; // e.g. "gate c 18"
+    public bool IsDeiceArea { get; set; }                      // true when section has is_deicearea = 1
 }

@@ -21,6 +21,7 @@ public static class GsxProfileParser
     {
         var gates = new List<GsxGate>();
         GsxGate? current = null;
+        bool currentIsRecognized = false; // true = section header parsed as a gate/parking category
 
         foreach (var raw in lines)
         {
@@ -29,9 +30,19 @@ public static class GsxProfileParser
 
             if (line.StartsWith("[") && line.EndsWith("]"))
             {
-                if (current != null) gates.Add(current);
+                CommitSection(gates, current, currentIsRecognized);
                 string header = line.Substring(1, line.Length - 2).Trim();
-                current = TryParseSectionHeader(header, out var g) ? g : null;
+                if (TryParseSectionHeader(header, out var g))
+                {
+                    current = g;
+                    currentIsRecognized = true;
+                }
+                else
+                {
+                    // Unknown header — create a tentative gate in case is_deicearea = 1 appears
+                    current = new GsxGate { RawSectionName = header };
+                    currentIsRecognized = false;
+                }
                 continue;
             }
 
@@ -43,8 +54,32 @@ public static class GsxProfileParser
             string val = line.Substring(eq + 1).Trim();
             ApplyKey(current, key, val);
         }
-        if (current != null) gates.Add(current);
+        CommitSection(gates, current, currentIsRecognized);
         return gates;
+    }
+
+    // Decides whether a completed section should be added to the list.
+    // Recognized gate/parking sections are always added (existing behaviour).
+    // Unrecognized sections are added only when is_deicearea = 1 was seen.
+    // For deice areas whose Name is still empty (no uiname), fall back to a
+    // cleaned-up version of the raw section name.
+    private static void CommitSection(List<GsxGate> gates, GsxGate? g, bool recognized)
+    {
+        if (g == null) return;
+        if (!recognized && !g.IsDeiceArea) return;
+
+        if (g.IsDeiceArea && string.IsNullOrWhiteSpace(g.Concourse))
+        {
+            // Derive a display name from the raw section name: strip leading/trailing
+            // punctuation/dashes and normalise interior whitespace.
+            string raw = g.RawSectionName;
+            // Remove wrapping dash-run / bracket fragments, trim again
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"^\W+|\W+$", "").Trim();
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\s{2,}", " ");
+            g.Concourse = raw;
+        }
+
+        gates.Add(g);
     }
 
     // Handles every real-world shape seen across profiles (verified vs OMDB/EGLL/EIDW):
@@ -148,6 +183,17 @@ public static class GsxProfileParser
                 break;
             case "airlinecodes":
                 g.AirlineCodes = val.Trim();
+                break;
+            case "is_deicearea":
+                if (val.Trim() == "1") g.IsDeiceArea = true;
+                break;
+            case "uiname":
+                // Store the uiname in Concourse so CommitSection can use it as ParkingSpot.Name.
+                // Only applied to unrecognised-header sections (Category == ""), which covers all
+                // deice areas and any other non-gate section; recognised gate/parking sections
+                // already have their Concourse set from the header and must not be overwritten.
+                if (string.IsNullOrEmpty(g.Category))
+                    g.Concourse = val.Trim();
                 break;
         }
     }
