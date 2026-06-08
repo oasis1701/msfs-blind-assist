@@ -164,6 +164,11 @@ guidance not active" if pressed when VG is off).
 Ground Services:
   Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance or gate
+
 INPUT MODE - Press [ to activate
 
 Teleport:

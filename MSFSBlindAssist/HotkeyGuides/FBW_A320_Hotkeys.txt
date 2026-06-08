@@ -142,6 +142,11 @@ Note: both modes share the quick-access hotkeys. Activate hand fly mode, visual 
 Ground Services:
   Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance or gate
+
 INPUT MODE - Press left bracket to activate
 
 Teleport:
