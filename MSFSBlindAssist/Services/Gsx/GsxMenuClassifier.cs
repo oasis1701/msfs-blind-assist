@@ -322,25 +322,41 @@ public static class GsxMenuClassifier
         // accidentally "drill" into a WARP/reposition entry.
         if (IsForbiddenAction(text)) return GsxMenuEntryKind.Action; // forbidden on nav menu too
 
-        // ── Category (parking GROUP) is checked BEFORE gate-leaf ──────────
-        // A group header ("Apron A (8 suitable parkings)", "Terminal 1",
-        // "Concourse C") contains a number — a count in parens or a terminal
-        // index — that the gate-leaf parser would otherwise grab as the gate
-        // number.  Group headers are POSITIVELY identified (apron/concourse/
-        // terminal/pier/... or a "(N parkings)" count), so classify them first.
-        // CONFIRMED LIVE at OMDB (2026-06-08): "Apron A (8 suitable parkings)"
-        // was mis-parsed as gate "8" when GateLeaf was checked first.
+        // ── Group header vs. gate leaf — order is SAFETY-CRITICAL ─────────
+        // The discriminator is a parking COUNT suffix, NOT a keyword. A real group
+        // header carries "(N suitable parkings)" / "(N positions)"; an individual
+        // stand NEVER does. So:
         //
-        // SAFETY: an entry is only drillable (Category) when it POSITIVELY
-        // matches a parking-group pattern.  Everything not Category/GateLeaf is
-        // Unknown and the DFS NEVER drills it — this keeps action/system entries
-        // ("Restart GSX", "Yes", "No", "Show me this spot and activate",
-        // "Request Towing") out of the drill path.
-        if (IsCategory(text)) return GsxMenuEntryKind.Category;
+        //   1. Count suffix present → Category (definitive). Checked FIRST so a
+        //      header like "Apron A (8 suitable parkings)" or
+        //      "Terminal 3 - G Gates (G1-G16) (13 suitable parkings)" is never
+        //      mis-parsed as gate "8"/"3" by the leaf parser.
+        //      CONFIRMED LIVE at OMDB (2026-06-08).
+        //
+        //   2. Concrete stand ID → GateLeaf, EVEN IF the text also contains a
+        //      structural keyword like "cargo"/"remote"/"ramp"/"stand". This MUST
+        //      precede the keyword-based Category check below.
+        //      CONFIRMED LIVE at EDDF (2026-06-08): "Stand F211 with Safedock© -
+        //      Ramp Cargo" matched the "cargo" keyword and was wrongly drilled as a
+        //      category, so the DFS opened the stand's action menu (desyncing the
+        //      menu state) and the target "Stand F222" was never matchable as a leaf.
+        //
+        //   3. Structural keyword only (no count, no concrete ID) → Category
+        //      ("Concourse C", "Apron A", "LH Cargo Ramp").
+        //
+        // SAFETY: an entry is only drillable (Category) when it POSITIVELY matches
+        // (1) or (3). Everything not Category/GateLeaf is Unknown and the DFS NEVER
+        // drills it — keeping action/system entries ("Restart GSX", "Yes", "No",
+        // "Show me this spot and activate", "Request Towing") out of the drill path.
+        if (CategoryCountRegex.IsMatch(text)) return GsxMenuEntryKind.Category;
 
         // Gate leaf? (an individual stand, e.g.
-        // "Stand C18 with Safedock© - Medium  (too small)" → C18.)
+        // "Stand C18 with Safedock© - Medium  (too small)" → C18,
+        // "Stand F222 with Safedock© - Ramp Cargo" → F222.)
         if (LooksLikeGate(text, out _)) return GsxMenuEntryKind.GateLeaf;
+
+        // Structural-only group header (no count suffix, no concrete stand ID).
+        if (IsCategory(text)) return GsxMenuEntryKind.Category;
 
         // Unknown — must never be chosen or drilled.
         return GsxMenuEntryKind.Unknown;
