@@ -1881,23 +1881,27 @@ public class TaxiGuidanceManager : IDisposable
         double slowDownDistFt = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  8.0, 150.0, 400.0);
         double stopDistFt     = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  4.0,  50.0, 200.0);
 
+        // Hold-short speaks the LIVE distance: its triggers are speed-proportional
+        // and cannot be pre-tabulated like the fixed parking/exit/runway-end milestones.
+        string distLabel = DistanceFormatter.FromFeet(distFeet);
+
         // Fire in natural countdown order. Each block returns after announcing so
         // only one callout fires per frame — no stacking.
         if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}.");
+            AnnounceInstruction($"Hold short {what} in {distLabel}.");
             _holdShortOuterAnnounced = true;
             return;
         }
         if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
+            AnnounceInstruction($"Hold short {what} in {distLabel}. Slow down.");
             _holdShortSlowDownAnnounced = true;
             return;
         }
         if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
+            AnnounceInstruction($"Hold short {what} in {distLabel}. Stop.");
             _holdShortStopAnnounced = true;
             return;
         }
@@ -2072,7 +2076,7 @@ public class TaxiGuidanceManager : IDisposable
         if (_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
             return;
 
-        var pm = DistanceMilestones.ParkingArrival(); // far->near
+        var pm = DistanceMilestones.ParkingArrival(); // far->near: [0]=50ft/15m, [1]=20ft/10m, [2]=10ft/5m
 
         // Fire thresholds in natural order (far → mid → near). Independent `if` blocks so
         // a fast arrival that first samples inside the mid or near trigger still fires the
@@ -3309,7 +3313,7 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutApproach900Announced = true;
         }
 
-        if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)
+        if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)   // feet — turn-now handoff boundary (not a milestone)
         {
             RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
             // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
