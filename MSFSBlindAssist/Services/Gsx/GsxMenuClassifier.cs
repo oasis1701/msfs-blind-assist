@@ -1,8 +1,9 @@
 // GsxMenuClassifier — classifies one GSX MenuOption into a GsxMenuEntryKind.
 //
 // This is the ONE tunable surface for the gate-selection DFS. All literal
-// pattern arrays are at the top of the class, each marked "// TUNE LIVE" so
-// a live GSX session can update them against real menu text (Task E).
+// pattern arrays are at the top of the class, each marked "// TUNE LIVE" or
+// "// CONFIRMED LIVE" so a live GSX session can update them against real menu
+// text (Task E). Patterns confirmed at OMDB/Dubai Intl are marked CONFIRMED LIVE.
 //
 // Classification is CONSERVATIVE by design:
 //   • On a final action menu, only a positive safe-servicing match is Action.
@@ -15,6 +16,8 @@
 //     is a sub-group header rather than a dangerous action. This is safe
 //     because the DFS will only back-track through Category entries, not
 //     execute them; actual chosen leaves are always GateLeaf.
+//   • IGNORE entries (select from map, search) are classified Unknown so the
+//     DFS never drills them — they are special in-sim functions.
 
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Services;   // MenuOption
@@ -53,22 +56,39 @@ public static class GsxMenuClassifier
     // ─────────────────────────────────────────────────────────────────────────
     // TUNABLE PATTERN SETS — review + update in a live GSX session (Task E).
     // All comparisons use OrdinalIgnoreCase unless noted.
+    // Entries marked CONFIRMED LIVE were observed at OMDB/Dubai Intl (2026-06-08).
     // ─────────────────────────────────────────────────────────────────────────
 
-    // TUNE LIVE: pagination / next-page indicators seen in GSX menus.
-    private static readonly string[] PaginationPatterns =
+    // CONFIRMED LIVE: these are special in-sim functions — NEVER drill them.
+    // Observed at OMDB: "Select from Map" (choice 0), "Search parking..." (choice 1).
+    // Classified as Unknown so the DFS skips them entirely.
+    private static readonly string[] IgnorePatterns =
     {
-        "next", "more", "next page", ">>", "▶", "→", "page", "forward",
+        "select from map",
+        "select from",   // broad: covers variants like "Select from list"
+        "search parking",
+        "search",        // broad: covers "Search parking..." and similar
     };
 
-    // TUNE LIVE: back / previous / return indicators seen in GSX menus.
+    // CONFIRMED LIVE: pagination / next-page indicators.
+    // "Next Page ▶" confirmed at OMDB (separating apron groups across pages).
+    private static readonly string[] PaginationPatterns =
+    {
+        "next page",   // CONFIRMED LIVE: "Next Page ▶"
+        "next", "more", ">>", "▶", "→", "page", "forward",
+    };
+
+    // CONFIRMED LIVE: back / return indicators.
+    // "↑ Back" confirmed at OMDB sub-menus.
     private static readonly string[] BackPatterns =
     {
+        "↑ back",      // CONFIRMED LIVE: "↑ Back"
         "back", "previous", "return", "top", "main", "<<", "◀", "←", "cancel",
     };
 
-    // TUNE LIVE: safe final-menu actions (arms marshaller/VDGS — what we want).
+    // TUNE LIVE — not yet observed: safe final-menu actions (arms marshaller/VDGS — what we want).
     // Match is substring-based so "Request servicing" and "Servicing" both hit.
+    // These will be confirmed on the first real arrival run via gsx-gate-select.log.
     private static readonly string[] SafeServicingPatterns =
     {
         "servic",      // "Select for servicing", "Servicing"
@@ -80,20 +100,24 @@ public static class GsxMenuClassifier
         "park",        // "Park here", "Parking"  — conservative but covers many airports
     };
 
-    // TUNE LIVE: forbidden actions — NEVER choose these under any circumstances.
+    // CONFIRMED LIVE: forbidden actions — NEVER choose these under any circumstances.
+    // "Reposition Aircraft" confirmed at OMDB departure menu.
     // Any entry containing any of these substrings is Action+Forbidden.
     private static readonly string[] ForbiddenPatterns =
     {
+        "reposition",  // CONFIRMED LIVE: "Reposition Aircraft"
         "warp",
         "teleport",
         "follow",      // "Follow Me" / "Follow-Me service"
-        "reposition",
         "move to",
         "relocate",
     };
 
     // TUNE LIVE: known parking-selection entry labels (top-level drill-in targets).
     // Prefer "change parking" over "select parking" when both appear.
+    // NOTE: at OMDB arrival (SetGateName == -1) the top menu IS the position selector
+    // (apron categories appear directly) — no drill-in entry exists in that case.
+    // These patterns are used only when the context is parked/departure.
     internal static readonly string[] ChangeParkingPatterns =
     {
         "change parking",
@@ -107,6 +131,14 @@ public static class GsxMenuClassifier
         "select gate",
         "select stand",
         "parking",     // broad fallback
+    };
+
+    // Position-selection menu title patterns (confirmed live at OMDB).
+    // "Select Position at OMDB/Dubai Intl" — title of the arrival gate-selection menu.
+    private static readonly string[] PositionSelectionTitlePatterns =
+    {
+        "select position",
+        "select parking",
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -169,18 +201,24 @@ public static class GsxMenuClassifier
 
         // ── Navigation menu ────────────────────────────────────────────────
 
+        // CONFIRMED LIVE: ignore special in-sim functions (map picker, search).
+        // These must never be drilled — classify Unknown so the DFS skips them.
+        if (IsIgnored(text)) return GsxMenuEntryKind.Unknown;
+
         // Pagination before back (both are nav helpers).
         if (IsNext(text)) return GsxMenuEntryKind.Pagination;
         if (IsBack(text)) return GsxMenuEntryKind.Back;
 
         // Forbidden-action patterns win over gate-leaf parsing so we never
-        // accidentally "drill" into a WARP entry.
+        // accidentally "drill" into a WARP/reposition entry.
         if (IsForbiddenAction(text)) return GsxMenuEntryKind.Action; // forbidden on nav menu too
 
         // Gate leaf?
         if (LooksLikeGate(text, out _)) return GsxMenuEntryKind.GateLeaf;
 
         // Everything else is treated as Category (drillable group).
+        // This covers: "Apron A (8 suitable parkings)", "Concourse C", "Terminal 3",
+        // "Gates 100-150", etc. — all unrecognised non-gate entries are drillable.
         return GsxMenuEntryKind.Category;
     }
 
@@ -242,8 +280,26 @@ public static class GsxMenuClassifier
     }
 
     /// <summary>
+    /// Returns <see langword="true"/> when the entry text is a special in-sim
+    /// function that must NEVER be drilled by the DFS
+    /// (e.g. "Select from Map", "Search parking...").
+    /// CONFIRMED LIVE at OMDB: choice 0 = "Select from Map", choice 1 = "Search parking...".
+    /// </summary>
+    public static bool IsIgnored(string text)
+        => ContainsAny(text, IgnorePatterns);
+
+    /// <summary>
+    /// Returns <see langword="true"/> when a menu title indicates that this menu
+    /// IS the position-selection root (arrival context, un-parked).
+    /// CONFIRMED LIVE at OMDB: title = "Select Position at OMDB/Dubai Intl".
+    /// </summary>
+    public static bool IsPositionSelectionMenu(string title)
+        => ContainsAny(title, PositionSelectionTitlePatterns);
+
+    /// <summary>
     /// Returns <see langword="true"/> when the entry text matches a
     /// pagination / "next page" pattern.
+    /// CONFIRMED LIVE: "Next Page ▶" observed at OMDB.
     /// </summary>
     public static bool IsNext(string text)
         => ContainsAny(text, PaginationPatterns);
@@ -251,6 +307,7 @@ public static class GsxMenuClassifier
     /// <summary>
     /// Returns <see langword="true"/> when the entry text matches a
     /// back / return / previous navigation pattern.
+    /// CONFIRMED LIVE: "↑ Back" observed at OMDB sub-menus.
     /// </summary>
     public static bool IsBack(string text)
         => ContainsAny(text, BackPatterns);
@@ -259,6 +316,7 @@ public static class GsxMenuClassifier
     /// Returns <see langword="true"/> when the entry text matches a
     /// forbidden action pattern (WARP, Follow-Me, reposition, etc.).
     /// Entries matching this must NEVER be chosen.
+    /// CONFIRMED LIVE: "Reposition Aircraft" observed at OMDB departure menu.
     /// </summary>
     public static bool IsForbiddenAction(string text)
         => ContainsAny(text, ForbiddenPatterns);
@@ -299,9 +357,16 @@ public static class GsxMenuClassifier
     /// Scores how relevant a Category entry is to the given target identity
     /// components.  Higher = more relevant (drill here first).
     /// </summary>
-    /// <param name="categoryText">The category entry text (e.g. "Concourse C").</param>
+    /// <param name="categoryText">
+    /// The category entry text (e.g. "Concourse C", "Apron C\t(33 suitable parkings)").
+    /// </param>
     /// <param name="targetConcourse">The normalised concourse prefix from the target (may be empty).</param>
     /// <param name="targetNumber">The gate number of the target.</param>
+    /// <remarks>
+    /// CONFIRMED LIVE at OMDB: category labels look like "Apron C\t(33 suitable parkings)".
+    /// The concourse letter ("C") appears as a standalone whitespace-delimited token.
+    /// Whole-token matching (not substring) prevents "B" matching "Back" etc.
+    /// </remarks>
     public static int RankCategoryRelevance(
         string categoryText,
         string targetConcourse,
@@ -310,10 +375,36 @@ public static class GsxMenuClassifier
         string t = categoryText.ToUpperInvariant();
         int score = 0;
 
-        // Exact concourse letter match (e.g. category "C" and target is C18).
-        if (!string.IsNullOrEmpty(targetConcourse)
-            && t.Contains(targetConcourse, StringComparison.OrdinalIgnoreCase))
-            score += 10;
+        // Concourse letter match — use whole-token comparison so a single-letter
+        // concourse (e.g. "C" in "Apron C\t(33 suitable parkings)") scores high
+        // and doesn't accidentally match substrings inside words.
+        // CONFIRMED LIVE at OMDB: apron labels tokenise to ["APRON", "C", "(33", "SUITABLE", "PARKINGS)"].
+        if (!string.IsNullOrEmpty(targetConcourse))
+        {
+            // Split on any non-letter, non-digit character to get tokens.
+            string[] tokens = Regex.Split(t, @"[^A-Z0-9]+");
+            string concourseUpper = targetConcourse.ToUpperInvariant();
+            foreach (string token in tokens)
+            {
+                if (token.Length == 0) continue;
+                if (string.Equals(token, concourseUpper, StringComparison.Ordinal))
+                {
+                    score += 10; // exact whole-token match
+                    break;
+                }
+                // Fallback: the token starts with the concourse prefix (handles multi-letter).
+                if (token.StartsWith(concourseUpper, StringComparison.Ordinal) && token.Length <= concourseUpper.Length + 1)
+                {
+                    score += 6;
+                    break;
+                }
+            }
+
+            // Substring fallback for labels like "CONCOURSE C" where the letter
+            // might be glued — only award partial score to avoid false-positives.
+            if (score == 0 && t.Contains(concourseUpper, StringComparison.Ordinal))
+                score += 4;
+        }
 
         // Number-range hint (e.g. "Gates 100-150" and target is 120).
         if (targetNumber > 0)
