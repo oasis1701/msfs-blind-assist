@@ -1881,26 +1881,25 @@ public class TaxiGuidanceManager : IDisposable
         double slowDownDistFt = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  8.0, 150.0, 400.0);
         double stopDistFt     = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  4.0,  50.0, 200.0);
 
+        var hm = DistanceMilestones.HoldShort(); // far->near: [0]=300ft/100m, [1]=150ft/50m, [2]=50ft/15m
+
         // Fire in natural countdown order. Each block returns after announcing so
         // only one callout fires per frame — no stacking.
         if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
-            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
-            AnnounceInstruction($"Hold short {what} in {ft} feet.");
+            AnnounceInstruction($"Hold short {what} in {hm[0].Label}.");
             _holdShortOuterAnnounced = true;
             return;
         }
         if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
-            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
-            AnnounceInstruction($"Hold short {what} in {ft} feet. Slow down.");
+            AnnounceInstruction($"Hold short {what} in {hm[1].Label}. Slow down.");
             _holdShortSlowDownAnnounced = true;
             return;
         }
         if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
-            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
-            AnnounceInstruction($"Hold short {what} in {ft} feet. Stop.");
+            AnnounceInstruction($"Hold short {what} in {hm[2].Label}. Stop.");
             _holdShortStopAnnounced = true;
             return;
         }
@@ -2075,26 +2074,26 @@ public class TaxiGuidanceManager : IDisposable
         if (_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
             return;
 
-        double feet = distToTargetM * METERS_TO_FEET;
+        var pm = DistanceMilestones.ParkingArrival(); // far->near
 
-        // Fire thresholds in natural order (50 → 20 → 10). Independent `if` blocks so
-        // a fast arrival that first samples inside 20 ft or 10 ft still fires the
+        // Fire thresholds in natural order (far → mid → near). Independent `if` blocks so
+        // a fast arrival that first samples inside the mid or near trigger still fires the
         // earlier callouts. One announce per frame to avoid stacking.
-        if (feet < 50 && !_parkingAnnounce50)
+        if (distToTargetM < pm[0].TriggerMetres && !_parkingAnnounce50)
         {
-            AnnounceInstruction($"{_destinationName} in 50 feet.");
+            AnnounceInstruction($"{_destinationName} in {pm[0].Label}.");
             _parkingAnnounce50 = true;
             return;
         }
-        if (feet < 20 && !_parkingAnnounce20)
+        if (distToTargetM < pm[1].TriggerMetres && !_parkingAnnounce20)
         {
-            AnnounceInstruction("20 feet.");
+            AnnounceInstruction($"{pm[1].Label}.");
             _parkingAnnounce20 = true;
             return;
         }
-        if (feet < 10 && !_parkingAnnounce10)
+        if (distToTargetM < pm[2].TriggerMetres && !_parkingAnnounce10)
         {
-            AnnounceInstruction("10 feet. Stop.");
+            AnnounceInstruction($"{pm[2].Label}. Stop.");
             _parkingAnnounce10 = true;
             return;
         }
@@ -3293,10 +3292,11 @@ public class TaxiGuidanceManager : IDisposable
             ? "exit"
             : $"taxiway {_rolloutExit.TaxiwayName}";
 
-        if (!_rolloutApproach1500Announced && distToExitFeet <= 1500.0 && distToExitFeet > 900.0)
+        var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
+        if (!_rolloutApproach1500Announced && distToExitFeet <= xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
             RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
-            AnnounceInstruction($"Approaching {exitClass} {name}, 1500 feet.");
+            AnnounceInstruction($"Approaching {exitClass} {name}, {xm[0].Label}.");
             _rolloutApproach1500Announced = true;
         }
 
@@ -3304,14 +3304,14 @@ public class TaxiGuidanceManager : IDisposable
         // flash (~984 ft). Gives blind pilots a second awareness cue before the 500 ft
         // "prepare to turn" window — sighted pilots would see the first RETIL light here.
         if (!_rolloutApproach900Announced && _rolloutExit.ExitType == "High-speed"
-            && distToExitFeet <= 900.0 && distToExitFeet > 500.0)
+            && distToExitFeet <= xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
             RolloutDiag($"900-ft high-speed callout firing: distToExit={distToExitFeet:F0}ft");
-            AnnounceInstruction($"{CapFirst(name)}, 900 feet.");
+            AnnounceInstruction($"{CapFirst(name)}, {xm[1].Label}.");
             _rolloutApproach900Announced = true;
         }
 
-        if (!_rolloutApproach500Announced && distToExitFeet <= 500.0 && distToExitFeet > 150.0)
+        if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)
         {
             RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
             // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
@@ -3319,7 +3319,7 @@ public class TaxiGuidanceManager : IDisposable
             // the reason they picked one.
             bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
             string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
-            AnnounceInstruction($"{CapFirst(name)}, 500 feet.{slowSuffix}");
+            AnnounceInstruction($"{CapFirst(name)}, {xm[2].Label}.{slowSuffix}");
             _rolloutApproach500Announced = true;
         }
 
@@ -3718,28 +3718,29 @@ public class TaxiGuidanceManager : IDisposable
         // to retire the countdown when the pilot stops or maneuvers.
         if (distToEndFt <= 0) return;
 
-        if (!_rolloutEnd1500Announced && distToEndFt <= 1500.0 && distToEndFt > 500.0)
+        var rm = DistanceMilestones.RunwayEnd(); // far->near: [0]=1500ft/500m, [1]=500ft/150m, [2]=100ft/30m
+        if (!_rolloutEnd1500Announced && distToEndFt <= rm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
-            AnnounceInstruction("Runway end in 1500 feet.");
+            AnnounceInstruction($"Runway end in {rm[0].Label}.");
             _rolloutEnd1500Announced = true;
         }
 
-        if (!_rolloutEnd500Announced && distToEndFt <= 500.0 && distToEndFt > 100.0)
+        if (!_rolloutEnd500Announced && distToEndFt <= rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
             // "Slow down" is added only when the pilot still has real speed
             // to bleed off. ROLLOUT_TAXI_GS_KTS (30) is the threshold below
             // which the aircraft is at normal taxi speed and the suffix is
-            // patronising noise. The 100 ft "Stop" callout below is
-            // unconditional by contrast — at 100 ft from the end the pilot
+            // patronising noise. The near "Stop" callout below is
+            // unconditional by contrast — at that distance from the end the pilot
             // needs the directive regardless of current speed.
             string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
-            AnnounceInstruction($"Runway end in 500 feet.{slowSuffix}");
+            AnnounceInstruction($"Runway end in {rm[1].Label}.{slowSuffix}");
             _rolloutEnd500Announced = true;
         }
 
-        if (!_rolloutEnd100Announced && distToEndFt <= 100.0)
+        if (!_rolloutEnd100Announced && distToEndFt <= rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
-            AnnounceInstruction("Runway end in 100 feet. Stop.");
+            AnnounceInstruction($"Runway end in {rm[2].Label}. Stop.");
             _rolloutEnd100Announced = true;
         }
     }
