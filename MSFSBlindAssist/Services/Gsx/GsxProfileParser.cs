@@ -61,25 +61,40 @@ public static class GsxProfileParser
     // Decides whether a completed section should be added to the list.
     // Recognized gate/parking sections are always added (existing behaviour).
     // Unrecognized sections are added only when is_deicearea = 1 was seen.
-    // For deice areas whose Name is still empty (no uiname), fall back to a
-    // cleaned-up version of the raw section name.
+    // For deice areas the display label is ALWAYS derived from uiname (preferred)
+    // or a cleaned-up raw section name — regardless of what the header parse set in
+    // Concourse. This ensures that headers like "[deicing -medium- - taxiway s- abeam
+    // stand 177m -entry face south-]" (which match the "stand" token and would
+    // otherwise produce Concourse = "STAND" for every pad) get unique, human-readable
+    // labels. Normal gate/parking sections are completely unaffected.
     private static void CommitSection(List<GsxGate> gates, GsxGate? g, bool recognized)
     {
         if (g == null) return;
         if (!recognized && !g.IsDeiceArea) return;
 
-        if (g.IsDeiceArea && string.IsNullOrWhiteSpace(g.Concourse))
+        if (g.IsDeiceArea)
         {
-            // Derive a display name from the raw section name: strip leading/trailing
-            // punctuation/dashes and normalise interior whitespace.
-            string raw = g.RawSectionName;
-            // Remove wrapping dash-run / bracket fragments, trim again
-            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"^\W+|\W+$", "").Trim();
-            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\s{2,}", " ");
-            g.Concourse = raw;
+            // Prefer the explicit uiname when the profile supplies one (e.g. EGLL "DeIcing-Vader South").
+            // Fall back to a cleaned version of the raw section header so each pad is still unique.
+            string label = !string.IsNullOrWhiteSpace(g.Uiname)
+                ? g.Uiname.Trim()
+                : CleanSectionName(g.RawSectionName);
+            g.Concourse = label;
         }
 
         gates.Add(g);
+    }
+
+    // Strip surrounding brackets/dashes, collapse interior runs of dashes/spaces.
+    // e.g. "deicing -medium- - taxiway s- abeam stand 177m -entry face south-"
+    //   -> "deicing medium taxiway s abeam stand 177m entry face south"
+    private static string CleanSectionName(string raw)
+    {
+        // Replace runs of dashes (with optional surrounding spaces) with a single space.
+        string s = System.Text.RegularExpressions.Regex.Replace(raw, @"\s*-+\s*", " ");
+        // Collapse multiple spaces.
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s{2,}", " ");
+        return s.Trim();
     }
 
     // Handles every real-world shape seen across profiles (verified vs OMDB/EGLL/EIDW):
@@ -188,10 +203,14 @@ public static class GsxProfileParser
                 if (val.Trim() == "1") g.IsDeiceArea = true;
                 break;
             case "uiname":
-                // Store the uiname in Concourse so CommitSection can use it as ParkingSpot.Name.
-                // Only applied to unrecognised-header sections (Category == ""), which covers all
-                // deice areas and any other non-gate section; recognised gate/parking sections
-                // already have their Concourse set from the header and must not be overwritten.
+                // Always capture uiname so CommitSection can use it for deice-area display labels
+                // regardless of whether the section header was parsed as a gate/parking category.
+                // For normal gate/parking sections Category != "" and Concourse is already set from
+                // the header — we don't overwrite Concourse here; CommitSection reads g.Uiname only
+                // for deice areas where the override is safe and intentional.
+                g.Uiname = val.Trim();
+                // Legacy: also set Concourse for unrecognised-header sections (Category == "") so
+                // existing code paths (non-deice sections that happen to have a uiname) still work.
                 if (string.IsNullOrEmpty(g.Category))
                     g.Concourse = val.Trim();
                 break;

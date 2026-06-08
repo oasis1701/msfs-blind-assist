@@ -24,4 +24,5 @@ public sealed class GsxGate
     public string AirlineCodes { get; set; } = string.Empty; // "airlinecodes" — comma-separated ICAO airline codes
     public string RawSectionName { get; set; } = string.Empty; // e.g. "gate c 18"
     public bool IsDeiceArea { get; set; }                      // true when section has is_deicearea = 1
+    public string Uiname { get; set; } = string.Empty;          // raw "uiname" key value (always captured, used for deice labels)
 }
