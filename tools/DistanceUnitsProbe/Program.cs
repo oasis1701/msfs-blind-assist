@@ -38,5 +38,13 @@ var xf = DistanceMilestones.ExitApproach();
 Check("exit feet labels 1500/900/500", xf[0].Label == "1500 feet" && xf[1].Label == "900 feet" && xf[2].Label == "500 feet");
 Check("exit feet trigger metres", Math.Abs(xf[0].TriggerMetres - 1500 * 0.3048) < 0.01);
 
+DistanceFormatter.UnitProvider = () => DistanceUnit.Metres;
+var dm = DistanceMilestones.Docking();
+Check("docking metres labels 30/20/10/5", dm[0].Label == "30 metres" && dm[1].Label == "20 metres" && dm[2].Label == "10 metres" && dm[3].Label == "5 metres");
+DistanceFormatter.UnitProvider = () => DistanceUnit.Feet;
+var df = DistanceMilestones.Docking();
+Check("docking feet labels 100/60/30/15", df[0].Label == "100 feet" && df[1].Label == "60 feet" && df[2].Label == "30 feet" && df[3].Label == "15 feet");
+Check("docking feet labels distinct (no dup)", df[0].Label != df[1].Label && df[1].Label != df[2].Label && df[2].Label != df[3].Label);
+
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

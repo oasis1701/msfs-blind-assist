@@ -15,7 +15,6 @@ public sealed class DockingGuidanceManager : IDisposable
     private enum DockState { Idle, Armed, Docking, Stopped }
 
     private const double GateWidthFeet = 20.0; // steering-tone width basis (narrow = tight centerline)
-    private static readonly double[] MilestoneMetres = { 30, 20, 10, 5 };
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly TaxiSteeringTone _tone = new();
@@ -24,7 +23,8 @@ public sealed class DockingGuidanceManager : IDisposable
 
     private ParkingSpot? _gate;
     private DockState _state = DockState.Idle;
-    private readonly bool[] _milestoneSaid = new bool[4];
+    private IReadOnlyList<DistanceMilestone> _milestones = Array.Empty<DistanceMilestone>();
+    private bool[] _milestoneSaid = Array.Empty<bool>();
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
@@ -94,7 +94,8 @@ public sealed class DockingGuidanceManager : IDisposable
     private void EngageLocked(double alongM)
     {
         _state = DockState.Docking;
-        Array.Clear(_milestoneSaid, 0, _milestoneSaid.Length);
+        _milestones = DistanceMilestones.Docking();
+        _milestoneSaid = new bool[_milestones.Count];
         string vdgs = FriendlyVdgs(_gate?.VdgsType);
         string dist = DistanceFormatter.FromMetres(alongM);
         _announcer.AnnounceImmediate(string.IsNullOrEmpty(vdgs)
@@ -108,12 +109,12 @@ public sealed class DockingGuidanceManager : IDisposable
 
     private void AnnounceMilestonesLocked(double alongM)
     {
-        for (int i = 0; i < MilestoneMetres.Length; i++)
+        for (int i = 0; i < _milestones.Count; i++)
         {
-            if (!_milestoneSaid[i] && alongM <= MilestoneMetres[i])
+            if (!_milestoneSaid[i] && alongM <= _milestones[i].TriggerMetres)
             {
                 _milestoneSaid[i] = true;
-                _announcer.AnnounceImmediate(DistanceFormatter.FromMetres(MilestoneMetres[i]) + " to stop.");
+                _announcer.AnnounceImmediate($"{_milestones[i].Label} to stop.");
                 return;
             }
         }
@@ -133,7 +134,7 @@ public sealed class DockingGuidanceManager : IDisposable
     }
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
-    private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; Array.Clear(_milestoneSaid, 0, _milestoneSaid.Length); }
+    private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>(); }
 
     public void Dispose() { try { _tone.Stop(); } catch { } _beeper.Dispose(); }
 }

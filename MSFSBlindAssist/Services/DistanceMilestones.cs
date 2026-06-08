@@ -22,6 +22,10 @@ public static class DistanceMilestones
     public static IReadOnlyList<DistanceMilestone> ParkingArrival()
         => Build(feet: new[] { 50, 20, 10 }, metres: new[] { 15, 10, 5 });
 
+    // Docking (VDGS) distance-to-stop: feet 100/60/30/15 -> metres 30/20/10/5
+    public static IReadOnlyList<DistanceMilestone> Docking()
+        => Build(feet: new[] { 100, 60, 30, 15 }, metres: new[] { 30, 20, 10, 5 });
+
     private static IReadOnlyList<DistanceMilestone> Build(int[] feet, int[] metres)
     {
         if (feet.Length != metres.Length)
