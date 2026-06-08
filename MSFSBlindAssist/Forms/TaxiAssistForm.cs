@@ -25,6 +25,7 @@ public class TaxiAssistForm : Form
     private readonly IAirportDataProvider _dataProvider;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly TaxiGuidanceManager _guidanceManager;
+    private readonly Services.GateDataSource? _gateSource;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
     // before computing the route, so the route starts from where the aircraft
@@ -47,6 +48,8 @@ public class TaxiAssistForm : Form
     private ComboBox cmbDestType = null!;
     private Label lblDestination = null!;
     private CheckBox chkFitFilter = null!;
+    private Label lblGateSearch = null!;
+    private TextBox txtGateSearch = null!;
     private ComboBox cmbDestination = null!;
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
@@ -107,7 +110,8 @@ public class TaxiAssistForm : Form
         TaxiGuidanceManager guidanceManager,
         MSFSBlindAssist.SimConnect.SimConnectManager? simConnectManager = null,
         TcasService? tcasService = null,
-        double aircraftWingspan = 0)
+        double aircraftWingspan = 0,
+        Services.GateDataSource? gateSource = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
@@ -115,6 +119,7 @@ public class TaxiAssistForm : Form
         _simConnectManager = simConnectManager;
         _tcasService = tcasService;
         _aircraftWingspan = aircraftWingspan;
+        _gateSource = gateSource;
         InitializeFormControls();
     }
 
@@ -248,6 +253,49 @@ public class TaxiAssistForm : Form
         };
         chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex == 1) PopulateDestinations(); };
         y += 20;
+
+        // Gate search box (type-to-filter on name+number+suffix). Hidden
+        // until Gate/Parking destination type is selected.
+        lblGateSearch = new Label
+        {
+            Text = "&Gate search:",
+            Location = new System.Drawing.Point(labelX, y),
+            AutoSize = true,
+            Visible = false,
+            AccessibleName = "Gate search label"
+        };
+        y += 20;
+        txtGateSearch = new TextBox
+        {
+            Location = new System.Drawing.Point(controlX, y),
+            Width = controlWidth,
+            Visible = false,
+            AccessibleName = "Gate search",
+            AccessibleDescription = "Type a gate letter or number to filter the destination list"
+        };
+        txtGateSearch.TextChanged += (s, e) =>
+        {
+            if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
+        };
+        txtGateSearch.KeyDown += (s, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                if (cmbDestination.Items.Count > 0)
+                {
+                    cmbDestination.SelectedIndex = 0;
+                    cmbDestination.Focus();
+                }
+                else
+                {
+                    _announcer.AnnounceImmediate("No matching gates.");
+                }
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+        y += 30;
+
         cmbDestination = new ComboBox
         {
             Location = new System.Drawing.Point(controlX, y),
@@ -420,6 +468,8 @@ public class TaxiAssistForm : Form
         this.Controls.Add(cmbDestType);
         this.Controls.Add(lblDestination);
         this.Controls.Add(chkFitFilter);
+        this.Controls.Add(lblGateSearch);
+        this.Controls.Add(txtGateSearch);
         this.Controls.Add(cmbDestination);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
@@ -447,6 +497,7 @@ public class TaxiAssistForm : Form
         int tabIdx = 0;
         txtAirport.TabIndex = tabIdx++;
         cmbDestType.TabIndex = tabIdx++;
+        txtGateSearch.TabIndex = tabIdx++;
         cmbDestination.TabIndex = tabIdx++;
         chkFitFilter.TabIndex = tabIdx++;
         cmbFirstTaxiway.TabIndex = tabIdx++;
@@ -705,7 +756,11 @@ public class TaxiAssistForm : Form
                 ["Dock"] = 9, ["Other"] = 10
             };
 
-            var allSpots = _dataProvider.GetParkingSpots(_currentIcao);
+            var allSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
+
+            // Gate search filter: type-to-filter on name+number+suffix.
+            if (!string.IsNullOrEmpty(txtGateSearch.Text))
+                allSpots = Services.GateSearchFilter.Filter(allSpots, txtGateSearch.Text);
 
             // Wingspan filter: spot must be large enough for the aircraft.
             // Radius is centre-to-edge; half-wingspan must fit within it.
@@ -796,7 +851,12 @@ public class TaxiAssistForm : Form
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
     {
-        chkFitFilter.Visible = cmbDestType.SelectedIndex == 1 && _aircraftWingspan > 0;
+        bool isGate = cmbDestType.SelectedIndex == 1;
+        chkFitFilter.Visible = isGate && _aircraftWingspan > 0;
+        lblGateSearch.Visible = isGate;
+        txtGateSearch.Visible = isGate;
+        if (!isGate)
+            txtGateSearch.Text = string.Empty;
         PopulateDestinations();
     }
 
