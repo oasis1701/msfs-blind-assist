@@ -148,6 +148,10 @@ public class UserSettings
         /// </summary>
         public DistanceUnit GroundDistanceUnit { get; set; } = DistanceUnit.Metres;
 
+        // Independent of GroundDistanceUnit: ground-traffic proximity alerts have their own
+        // metres/feet toggle (default feet). Not governed by the app-wide distance-units setting.
+        public bool GroundTrafficUseMetres { get; set; } = false;
+
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
@@ -321,6 +325,7 @@ public class UserSettings
             MajorCityAPIThreshold = MajorCityAPIThreshold,
             DistanceUnits = DistanceUnits,
             GroundDistanceUnit = GroundDistanceUnit,
+            GroundTrafficUseMetres = GroundTrafficUseMetres,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,

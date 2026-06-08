@@ -3645,6 +3645,7 @@ public partial class MainForm : Form
             currentSettings.TaxiGuidanceHardPanTone,
             currentSettings.TaxiGuidanceAnnounceCrossings,
             currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
+            currentSettings.GroundTrafficUseMetres,
             currentSettings.GsxAutoSelectGateOnRoute))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
@@ -3656,6 +3657,7 @@ public partial class MainForm : Form
                 currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
                 currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
                 currentSettings.GroundDistanceUnit = settingsForm.SelectedDistanceUnit;
+                currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
                 currentSettings.GsxAutoSelectGateOnRoute = settingsForm.GsxAutoSelectGateOnRoute;
                 SettingsManager.Save();
 
