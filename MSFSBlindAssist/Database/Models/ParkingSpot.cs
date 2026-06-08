@@ -17,6 +17,13 @@ public class ParkingSpot
     public bool HasJetway { get; set; }
     public string AirlineCodes { get; set; }
 
+    // GSX-source enrichment (null/default for navdata-sourced spots).
+    public GateSource Source { get; set; } = GateSource.Navdata;
+    public string? VdgsType { get; set; }              // e.g. "SafeDockT42", "Marshaller"
+    public double? MaxWingspanMeters { get; set; }     // GSX "maxwingspan"
+    public double? StopLatitude { get; set; }          // GSX parkingsystem_stopposition lat
+    public double? StopLongitude { get; set; }         // GSX parkingsystem_stopposition lon
+
     public ParkingSpot()
     {
         AirportICAO = string.Empty;
@@ -68,6 +75,19 @@ public class ParkingSpot
         };
     }
 
+    private static string FriendlyVdgs(string? vdgs)
+    {
+        if (string.IsNullOrWhiteSpace(vdgs)) return string.Empty;
+        if (vdgs.StartsWith("Safedock", StringComparison.OrdinalIgnoreCase))  return "SafeDock";   // incl. SafeDock*
+        if (vdgs.StartsWith("Marshaller", StringComparison.OrdinalIgnoreCase)) return "Marshaller";
+        if (vdgs.StartsWith("Apis", StringComparison.OrdinalIgnoreCase))      return "APIS";
+        if (vdgs.StartsWith("Agnis", StringComparison.OrdinalIgnoreCase))     return "AGNIS";
+        if (vdgs.StartsWith("Honeywell", StringComparison.OrdinalIgnoreCase)) return "Honeywell";
+        if (vdgs.StartsWith("Rlg", StringComparison.OrdinalIgnoreCase))       return "RLG";
+        if (vdgs.StartsWith("Vgds", StringComparison.OrdinalIgnoreCase))      return "VDGS";
+        return string.Empty; // "Dummy", "1", or anything not a recognized VDGS -> no suffix
+    }
+
     public override string ToString()
     {
         string baseDescription;
@@ -84,6 +104,10 @@ public class ParkingSpot
 
         if (HasJetway)
             baseDescription += " (Jetway)";
+
+        string vdgs = FriendlyVdgs(VdgsType);
+        if (!string.IsNullOrEmpty(vdgs))
+            baseDescription += $" [{vdgs}]";
 
         return baseDescription;
     }
