@@ -26,7 +26,18 @@ public sealed class GsxProfileLocator
         if (string.IsNullOrWhiteSpace(icao) || !Directory.Exists(_profileDir)) return false;
 
         // Windows file matching is case-insensitive, so "OMDB*.ini" matches "omdb-...ini".
-        var matches = Directory.GetFiles(_profileDir, $"{icao}*.ini");
+        // Filter to stems that equal the ICAO exactly, or have '-' immediately after it
+        // (all real GSX profile names use '-' after the ICAO, e.g. omdb-24-iniBuilds.ini).
+        // Without this, "OMDB*.ini" would also match a profile for a different airport
+        // whose ICAO begins with "OMDB" (e.g. "OMDBX-...").
+        var matches = Directory.GetFiles(_profileDir, $"{icao}*.ini")
+            .Where(m =>
+            {
+                string stem = Path.GetFileNameWithoutExtension(m);
+                return stem.Equals(icao, StringComparison.OrdinalIgnoreCase)
+                    || (stem.Length > icao.Length && stem[icao.Length] == '-');
+            })
+            .ToArray();
         if (matches.Length == 0) return false;
 
         var preferred = matches.Where(m => !LooksLikeCacheHash(icao, m)).ToList();

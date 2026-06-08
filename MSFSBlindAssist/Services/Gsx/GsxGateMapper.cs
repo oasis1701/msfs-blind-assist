@@ -2,6 +2,7 @@ using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Services.Gsx;
 
+/// <summary>maps GsxGate -> ParkingSpot; size from maxwingspan + section category</summary>
 public static class GsxGateMapper
 {
     // GSX .ini "type" uses the MSFS SDK parking-type enum; ParkingSpot.Type uses
@@ -56,6 +57,7 @@ public static class GsxGateMapper
         switch ((category ?? string.Empty).ToLowerInvariant())
         {
             case "dock": return 12;
+            case "cargo": return 6; // Ramp Cargo
             case "gate":
                 return code switch { 'E' or 'F' => 13, 'D' => 11, 'C' => 10, 'A' or 'B' => 9, _ => 10 };
             default: // parking / none / ramp / etc. -> Ramp GA sizes (all read "Ramp GA")

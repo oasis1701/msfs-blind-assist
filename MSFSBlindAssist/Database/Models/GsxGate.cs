@@ -21,6 +21,6 @@ public sealed class GsxGate
     public int GsxType { get; set; }                        // raw .ini "type" (fallback only)
     public double? MaxWingspanMeters { get; set; }          // "maxwingspan" — primary size source
     public string VdgsType { get; set; } = string.Empty;    // "parkingsystem" (e.g. SafeDockT42, Marshaller)
-    public string AirlineCodes { get; set; } = string.Empty;
+    public string AirlineCodes { get; set; } = string.Empty; // "airlinecodes" — comma-separated ICAO airline codes
     public string RawSectionName { get; set; } = string.Empty; // e.g. "gate c 18"
 }

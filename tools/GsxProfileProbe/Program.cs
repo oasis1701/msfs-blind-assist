@@ -24,7 +24,8 @@ if (args.Length > 0 && args[0] == "--all")
                 if (!string.IsNullOrWhiteSpace(g.VdgsType)) vdgs.Add(g.VdgsType);
                 cats[g.Category] = cats.TryGetValue(g.Category, out int c) ? c + 1 : 1;
             }
-            string icaoG = Path.GetFileName(f).Length >= 4 ? Path.GetFileName(f)[..4].ToUpperInvariant() : "ZZZZ";
+            string stem = Path.GetFileNameWithoutExtension(f);
+            string icaoG = (stem.Length >= 4 ? stem[..4] : stem).ToUpperInvariant();
             _ = GsxGateMapper.ToParkingSpots(gg, icaoG); // must not throw
         }
         catch (Exception ex)

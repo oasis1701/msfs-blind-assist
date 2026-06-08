@@ -58,6 +58,7 @@ public static class GsxNavdataMerger
 
         string gsuf = NormSuffix(g.Suffix);
         var bySuffix = candidates.FindAll(c => NormSuffix(c.Suffix) == gsuf);
+        // GSX suffix absent / doesn't match any navdata suffix variant — widen to all candidates.
         var pool = bySuffix.Count > 0 ? bySuffix : candidates;
         if (pool.Count == 1) return pool[0];
 
