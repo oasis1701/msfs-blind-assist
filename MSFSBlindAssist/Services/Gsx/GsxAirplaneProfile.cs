@@ -8,10 +8,24 @@ namespace MSFSBlindAssist.Services.Gsx;
 /// datum (metres, forward-positive). Used to make docking stop with the DOOR aligned
 /// to the gate stop position. Fully data-driven by ICAO type — nothing hardcoded.
 /// </summary>
+
+public enum DoorSide { Unknown, Left, Right }
+
+/// <summary>
+/// Per-aircraft geometry derived from a GSX gsx.cfg profile.
+/// DoorLongitudinalMetres: preferred exit's longitudinal (2nd) column value, forward-positive.
+/// DoorLateralMetres: preferred exit's lateral (1st) column value, negative = left.
+/// WingspanMetres: abs(wingtippos 1st column) * 2, or null when not present.
+/// </summary>
+public readonly record struct GsxAircraftGeometry(double DoorLongitudinalMetres, double DoorLateralMetres, double? WingspanMetres)
+{
+    public DoorSide Side => DoorLateralMetres < 0 ? DoorSide.Left : (DoorLateralMetres > 0 ? DoorSide.Right : DoorSide.Unknown);
+}
+
 public sealed class GsxAirplaneProfile
 {
     private readonly object _lock = new();
-    private Dictionary<string, double>? _byIcao; // ICAO (upper) -> door longitudinal offset (metres)
+    private Dictionary<string, GsxAircraftGeometry>? _byIcao; // ICAO (upper) -> geometry
 
     /// <summary>Door longitudinal offset (metres, forward-positive) for the given ICAO type, or null if unknown.</summary>
     public double? GetDoorOffsetMetres(string? icaoType)
@@ -19,25 +33,34 @@ public sealed class GsxAirplaneProfile
         if (string.IsNullOrWhiteSpace(icaoType)) return null;
         EnsureBuilt();
         lock (_lock)
-            return _byIcao != null && _byIcao.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v : (double?)null;
+            return _byIcao != null && _byIcao.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v.DoorLongitudinalMetres : (double?)null;
+    }
+
+    /// <summary>Full geometry struct for the given ICAO type, or null if unknown.</summary>
+    public GsxAircraftGeometry? GetGeometry(string? icaoType)
+    {
+        if (string.IsNullOrWhiteSpace(icaoType)) return null;
+        EnsureBuilt();
+        lock (_lock)
+            return _byIcao != null && _byIcao.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v : (GsxAircraftGeometry?)null;
     }
 
     /// <summary>Force a rescan (e.g. after a new aircraft profile is created).</summary>
     public void Refresh() { lock (_lock) { _byIcao = null; } EnsureBuilt(); }
 
-    /// <summary>Build the ICAO->offset map by scanning all known gsx.cfg locations. Public for the probe.</summary>
-    public Dictionary<string, double> BuildMap()
+    /// <summary>Build the ICAO->geometry map by scanning all known gsx.cfg locations. Public for the probe.</summary>
+    public Dictionary<string, GsxAircraftGeometry> BuildMap()
     {
-        var map = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, GsxAircraftGeometry>(StringComparer.OrdinalIgnoreCase);
         foreach (var cfg in EnumerateGsxCfgFiles())
         {
             try
             {
-                var (icao, offset) = ParseDoorOffset(System.IO.File.ReadAllLines(cfg));
-                if (!string.IsNullOrWhiteSpace(icao) && offset.HasValue)
+                var (icao, geom) = ParseGeometry(System.IO.File.ReadAllLines(cfg));
+                if (!string.IsNullOrWhiteSpace(icao) && geom.HasValue)
                 {
                     var key = icao.Trim().ToUpperInvariant();
-                    if (!map.ContainsKey(key)) map[key] = offset.Value; // first found wins
+                    if (!map.ContainsKey(key)) map[key] = geom.Value; // first found wins
                 }
             }
             catch { /* skip unreadable/garbage cfg */ }
@@ -52,14 +75,16 @@ public sealed class GsxAirplaneProfile
         lock (_lock) { _byIcao ??= map; }
     }
 
-    // Parse icaotype + the preferred exit's longitudinal (2nd) value, in metres.
+    // Parse icaotype + the preferred exit's lateral (1st) and longitudinal (2nd) values,
+    // plus the [aircraft] wingtippos 1st column for wingspan. Returns full geometry.
     // PUBLIC static so the probe can unit-check parsing on literal text.
-    public static (string? icao, double? offsetMetres) ParseDoorOffset(IReadOnlyList<string> lines)
+    public static (string? icao, GsxAircraftGeometry? geom) ParseGeometry(IReadOnlyList<string> lines)
     {
         string? icao = null; int preferred = 0; bool haveAircraft = false;
-        // collect exit sections: name -> first pos line's longitudinal value
+        double? wingspan = null;
         string curSection = "";
-        var exitLongByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        // collect exit sections: name -> (lateral, longitudinal)
+        var exitByName = new Dictionary<string, (double lat, double lon)>(StringComparer.OrdinalIgnoreCase);
         var firstExitName = (string?)null;
         foreach (var raw in lines)
         {
@@ -73,13 +98,21 @@ public sealed class GsxAirplaneProfile
             {
                 if (key == "icaotype") icao = val;
                 else if (key == "preferredexit") int.TryParse(val.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(), out preferred);
+                else if (key == "wingtippos")
+                {
+                    var parts = val.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 1 && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var wt))
+                        wingspan = Math.Abs(wt) * 2.0;
+                }
             }
             else if (curSection.StartsWith("exit") && key == "pos")
             {
                 var parts = val.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2 && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lon))
+                if (parts.Length >= 2
+                    && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lat)
+                    && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lon))
                 {
-                    if (!exitLongByName.ContainsKey(curSection)) exitLongByName[curSection] = lon;
+                    if (!exitByName.ContainsKey(curSection)) exitByName[curSection] = (lat, lon);
                     firstExitName ??= curSection;
                 }
             }
@@ -87,9 +120,22 @@ public sealed class GsxAirplaneProfile
         if (!haveAircraft) return (null, null);
         // choose preferred exit section
         string? chosen = preferred >= 1 ? $"exit{preferred}" : firstExitName;
-        if (chosen != null && exitLongByName.TryGetValue(chosen, out var off)) return (icao, off);
-        if (firstExitName != null && exitLongByName.TryGetValue(firstExitName, out var off2)) return (icao, off2);
+        if (chosen != null && exitByName.TryGetValue(chosen, out var pos))
+            return (icao, new GsxAircraftGeometry(pos.lon, pos.lat, wingspan));
+        if (firstExitName != null && exitByName.TryGetValue(firstExitName, out var pos2))
+            return (icao, new GsxAircraftGeometry(pos2.lon, pos2.lat, wingspan));
         return (icao, null);
+    }
+
+    /// <summary>
+    /// Parse icaotype + preferred exit's longitudinal offset only.
+    /// Kept for backward compatibility with the probe's unit-check.
+    /// Delegates to ParseGeometry.
+    /// </summary>
+    public static (string? icao, double? offsetMetres) ParseDoorOffset(IReadOnlyList<string> lines)
+    {
+        var (icao, geom) = ParseGeometry(lines);
+        return (icao, geom?.DoorLongitudinalMetres);
     }
 
     private static IEnumerable<string> EnumerateGsxCfgFiles()

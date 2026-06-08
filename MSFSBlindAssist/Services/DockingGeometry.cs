@@ -20,7 +20,8 @@ public static class DockingGeometry
     // Beep interval mapping (ms): slow when far, fast when near.
     public const double BeepIntervalFarMs = 1000.0;
     public const double BeepIntervalNearMs = 90.0;
-    public const double BeepFarMetres = 30.0;
+    // 15 m = GSX's 5-chevron (3 m each) zone; beep accelerates through it, "Slow down" at SlowDownMetres (6 m).
+    public const double BeepFarMetres = 15.0;
     public const double BeepNearMetres = 2.0;
 
     /// <summary>Normalize an angle (deg) to (-180, 180].</summary>
