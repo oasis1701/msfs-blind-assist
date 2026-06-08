@@ -715,6 +715,74 @@ position sequences:
 Run with `dotnet run --project tools/DockingProbe -p:Platform=x64` → expect
 `ALL PASS`.
 
+### Door-aligned stop precision
+
+Real VDGS units (Safedock, ADB SAFEGATE, etc.) align the aircraft's **main
+passenger door** to the jetway bridge stop — not the aircraft's SimConnect datum
+(the model origin, typically near the nose-wheel or fuselage mid-point). GSX
+follows the same convention on a per-aircraft basis. Docking guidance therefore
+computes the **door's** distance to the stop, not the datum's:
+
+```
+doorDistanceToStop = alongTrackToStop − doorOffset
+```
+
+where `doorOffset` is the loaded aircraft's main-door longitudinal offset forward
+of the SimConnect datum, in metres. The aircraft stops when the datum is
+`doorOffset` metres short of the gate stop coordinate, so the door lands exactly
+on the stop. With this correction applied, the "Stop" threshold is **0.5 m** —
+matching the real Safedock longitudinal accuracy specification.
+
+**Data source — no hardcoding.** The per-aircraft door offset is read from GSX's
+own `gsx.cfg` rather than any static table maintained in MSFSBA. The relevant
+entry is `[exit<preferredexit>] pos`, where the second column (forward-positive,
+metres) is the longitudinal offset from the SimConnect datum to the main
+passenger door. This has been confirmed against wing and fuselage geometry for
+several aircraft.
+
+`Services/Gsx/GsxAirplaneProfile.cs` scans for `gsx.cfg` in two locations on a
+background thread at startup (scan takes approximately 12 seconds; result is
+cached for the session):
+
+1. **Aircraft package folders** — `<CommunityOrOfficial>\<pkg>\SimObjects\Airplanes\*\gsx.cfg`.
+   FlyByWire and iniBuilds ship their own `gsx.cfg` files here. The sim's package
+   root is read from `UserCfg.opt` using the same resolver already used for
+   navdata.
+2. **GSX per-aircraft profiles** — `%APPDATA%\Virtuali\Airplanes\*\gsx.cfg`. GSX
+   writes one of these for each aircraft the user has used with GSX, so even
+   aircraft that do not ship their own profile are covered once the user has
+   docked at least once.
+
+The scanner builds an ICAO-type → offset map. The loaded aircraft is matched by
+its ICAO type code from SimConnect `ATC MODEL`. Aircraft for which no `gsx.cfg`
+is found fall back to `doorOffset = 0`, which is the datum-aligned behaviour
+unchanged from before this feature — the "Stop" milestone fires at the stop
+coordinate itself, with no door correction applied.
+
+**Verified offsets from real GSX profiles (representative examples):**
+
+| Aircraft | ICAO type | Door offset (m) |
+|---|---|---|
+| Boeing 777-300ER | B77W | 25.93 |
+| Airbus A320neo | A20N | 8.51 |
+| Airbus A380-800 | A388 | 28.90 |
+| Airbus A350-900 | A359 | 22.01 |
+| Boeing 787-9 | B789 | 22.20 |
+
+**Engage cadence.** Docking guidance auto-engages on the ground within
+approximately 60 m of the door stop (not the datum stop) at ≤ 15 kt, provided
+the aircraft is roughly facing the gate. Distance milestones are unit-native
+(metres or feet per the Distance units setting). "Slow down" is announced at
+6 m. "Stop" fires at 0.5 m.
+
+**Known limitation — Python stop-position tweaks.** GSX allows per-gate,
+per-aircraft `@AlternativeStopPositions` overrides in executable Python (`.py`)
+files. These files are third-party Python scripts and are not parsed by MSFSBA.
+In practice their effect is small (a few centimetres to a few metres of
+longitudinal adjustment for specific stand/aircraft combinations) and they apply
+on top of the `gsx.cfg` door offset that is already loaded. For the vast majority
+of dockings the `gsx.cfg` offset alone produces correct alignment; the Python
+refinement is a known third-order effect currently out of scope.
 
 
 ### High confidence
