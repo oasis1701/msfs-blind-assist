@@ -30,6 +30,7 @@ public class TaxiGuidanceOptionsForm : Form
     private Label dockingBeepVolumeLabel = null!;
     private TrackBar dockingBeepVolumeTrackBar = null!;
     private Label dockingBeepVolumeValueLabel = null!;
+    private Button dockingBeepTestButton = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -383,6 +384,43 @@ public class TaxiGuidanceOptionsForm : Form
             TextAlign = ContentAlignment.MiddleLeft
         };
 
+        // Docking beep test button
+        dockingBeepTestButton = new Button
+        {
+            Text = "Test",
+            Location = new Point(20, 540),
+            Size = new Size(120, 35),
+            AccessibleName = "Test docking beep",
+            AccessibleDescription = "Play a preview of the docking proximity beep at the selected sound and volume"
+        };
+        dockingBeepTestButton.Click += async (s, e) =>
+        {
+            dockingBeepTestButton.Enabled = false;
+            var beeper = new ProximityBeeper();
+            try
+            {
+                var wf = (HandFlyWaveType)dockingBeepTypeCombo.SelectedIndex;
+                double vol = dockingBeepVolumeTrackBar.Value / 100.0;
+                beeper.Start(wf, vol);
+                // ramp 25 m -> 1 m over ~2.5 s so the acceleration + solid are audible
+                for (int i = 0; i <= 24; i++)
+                {
+                    double d = 25.0 - i; // 25 .. 1
+                    beeper.Update(d, active: true);
+                    await System.Threading.Tasks.Task.Delay(100);
+                }
+                beeper.Update(0.3, active: true); // solid
+                await System.Threading.Tasks.Task.Delay(500);
+            }
+            catch { }
+            finally
+            {
+                try { beeper.Stop(); beeper.Dispose(); } catch { }
+                if (!IsDisposed)
+                    dockingBeepTestButton.Enabled = true;
+            }
+        };
+
         // OK Button
         okButton = new Button
         {
@@ -426,6 +464,7 @@ public class TaxiGuidanceOptionsForm : Form
             dockingEnabledCheckBox,
             dockingBeepTypeLabel, dockingBeepTypeCombo,
             dockingBeepVolumeLabel, dockingBeepVolumeTrackBar, dockingBeepVolumeValueLabel,
+            dockingBeepTestButton,
             okButton, cancelButton
         });
 
@@ -449,6 +488,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingEnabledCheckBox.TabIndex = tabIdx++;
         dockingBeepTypeCombo.TabIndex = tabIdx++;
         dockingBeepVolumeTrackBar.TabIndex = tabIdx++;
+        dockingBeepTestButton.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
 
