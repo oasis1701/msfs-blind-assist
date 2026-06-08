@@ -138,6 +138,12 @@ public class UserSettings
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
 
+        // SayIntentions Settings
+        // Optional. When blank, the integration reads the API key from
+        // %LOCALAPPDATA%\SayIntentionsAI\flight.json during an active SI flight.
+        public string SayIntentionsApiKey { get; set; } = "";
+        public bool SayIntentionsAutoStartTaxiGuidance { get; set; } = true;
+
         // Gemini AI Settings
         public string GeminiApiKey { get; set; } = "";
         public bool GeminiSearchGrounding { get; set; } = false;
@@ -390,6 +396,8 @@ public class UserSettings
             GeoNamesApiUsername = GeoNamesApiUsername,
             NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
+            SayIntentionsApiKey = SayIntentionsApiKey,
+            SayIntentionsAutoStartTaxiGuidance = SayIntentionsAutoStartTaxiGuidance,
             GeminiApiKey = GeminiApiKey,
             GeminiSearchGrounding = GeminiSearchGrounding,
             GeminiModel = GeminiModel,

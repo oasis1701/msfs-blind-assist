@@ -100,6 +100,11 @@ Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
   (Open the form with Input mode > Shift+Y)
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance or gate
+
 Waypoint Tracking (use Fix Track window to add):
   1          Track Slot 1
   2          Track Slot 2

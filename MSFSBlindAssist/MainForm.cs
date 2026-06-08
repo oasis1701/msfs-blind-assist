@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -9,6 +10,7 @@ using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Hotkeys;
+using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
@@ -111,6 +113,7 @@ public partial class MainForm : Form
     private TaxiAssistForm? taxiAssistForm;
     private LandingExitPlanner landingExitPlanner = null!;
     private GroundTrafficMonitor groundTrafficMonitor = null!;
+    private SayIntentionsService sayIntentionsService = null!;
 
     // Access GSX integration — owns its own SimConnect client (distinct
     // WM_USER id 0x0403). The form is created lazily on first hotkey use and
@@ -461,6 +464,7 @@ public partial class MainForm : Form
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+        sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager
         dockingGuidanceManager = new DockingGuidanceManager(announcer);
@@ -2162,7 +2166,9 @@ public partial class MainForm : Form
             HotkeyAction.ShowFenixMCDU,
             HotkeyAction.ShowPMDGEFB,
             HotkeyAction.ShowPMDGEFBFirstOfficer,
-            HotkeyAction.TaxiStatus
+            HotkeyAction.TaxiStatus,
+            HotkeyAction.SayIntentionsLastTransmission,
+            HotkeyAction.SayIntentionsAssignedStatus
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -2516,6 +2522,15 @@ public partial class MainForm : Form
             case HotkeyAction.ReadGsxTooltip:
                 ReadLatestGsxTooltip();
                 break;
+            case HotkeyAction.SayIntentionsLastTransmission:
+                AnnounceSayIntentionsLastTransmissionAsync();
+                break;
+            case HotkeyAction.SayIntentionsAssignedStatus:
+                AnnounceSayIntentionsAssignedStatusAsync();
+                break;
+            case HotkeyAction.SayIntentionsBuildTaxiRoute:
+                BuildTaxiRouteFromSayIntentionsAsync();
+                break;
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
         }
@@ -2579,6 +2594,699 @@ public partial class MainForm : Form
         }
         announcer.AnnounceImmediate(tooltip);
     }
+
+    private async void AnnounceSayIntentionsLastTransmissionAsync()
+    {
+        try
+        {
+            var result = await sayIntentionsService.GetLastTransmissionAsync();
+            if (result.Transmission != null)
+            {
+                announcer.AnnounceImmediate($"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}");
+            }
+            else
+            {
+                announcer.AnnounceImmediate(result.Error ?? "No SayIntentions transmission available.");
+            }
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"SayIntentions transmission lookup failed. {ex.Message}");
+        }
+    }
+
+    private async void AnnounceSayIntentionsAssignedStatusAsync()
+    {
+        try
+        {
+            var result = await sayIntentionsService.GetAssignedStatusAsync();
+            var context = result.Context;
+            if (!string.IsNullOrWhiteSpace(context.Error))
+            {
+                announcer.AnnounceImmediate(context.Error);
+                return;
+            }
+
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(context.CurrentAirport))
+                parts.Add($"Current airport {context.CurrentAirport}.");
+
+            string? gate = FirstNonEmpty(context.AssignedGate, result.Parking?.Name);
+            if (!string.IsNullOrWhiteSpace(gate))
+            {
+                parts.Add(FormatSayIntentionsGateStatus(context, gate));
+                string? nearbyParking = await GetSayIntentionsNearbyParkingStatusAsync(context, gate);
+                if (!string.IsNullOrWhiteSpace(nearbyParking))
+                    parts.Add(nearbyParking);
+            }
+
+            string? departureRunway = FirstNonEmpty(
+                context.ClearedForTakeoff,
+                context.DepartureRunway,
+                context.Runway);
+            if (!string.IsNullOrWhiteSpace(departureRunway))
+                parts.Add($"Departure runway {departureRunway}.");
+
+            if (!string.IsNullOrWhiteSpace(context.ClearedForLanding))
+                parts.Add($"Cleared to land runway {context.ClearedForLanding}.");
+            else if (!string.IsNullOrWhiteSpace(context.ArrivalRunway))
+                parts.Add($"Arrival runway {context.ArrivalRunway}.");
+
+            if (parts.Count > 0)
+            {
+                announcer.AnnounceImmediate("SayIntentions status. " + string.Join(" ", parts));
+            }
+            else
+            {
+                announcer.AnnounceImmediate(result.ParkingError
+                    ?? "No SayIntentions assigned gate or runway found for the active flight.");
+            }
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"SayIntentions status lookup failed. {ex.Message}");
+        }
+    }
+
+    private async Task<string?> GetSayIntentionsNearbyParkingStatusAsync(
+        SayIntentionsFlightContext context,
+        string assignedGate)
+    {
+        if (airportDataProvider == null)
+            return null;
+
+        string? icao = FirstNonEmpty(context.CurrentAirport, context.Origin, context.Destination);
+        if (string.IsNullOrWhiteSpace(icao))
+            return null;
+
+        try
+        {
+            var position = await GetFreshAircraftPositionAsync();
+            var spots = airportDataProvider.GetParkingSpots(icao.ToUpperInvariant());
+            if (spots == null || spots.Count == 0)
+                return null;
+
+            var nearest = spots
+                .Select(spot => new
+                {
+                    Spot = spot,
+                    DistanceMeters = TaxiGraph.CalculateDistanceMeters(
+                        position.Latitude,
+                        position.Longitude,
+                        spot.Latitude,
+                        spot.Longitude)
+                })
+                .OrderBy(item => item.DistanceMeters)
+                .FirstOrDefault();
+
+            if (nearest == null || nearest.DistanceMeters > 100.0)
+                return null;
+
+            string localName = FormatSayIntentionsParkingShortName(nearest.Spot);
+            bool matchesAssigned = ParkingSpotMatches(nearest.Spot, NormalizeParkingName(assignedGate));
+            string distance = nearest.DistanceMeters < 30
+                ? "near"
+                : $"{(int)(nearest.DistanceMeters * 3.28084)} feet from";
+
+            return matchesAssigned
+                ? $"Aircraft appears {distance} assigned gate {assignedGate}."
+                : $"Aircraft appears {distance} {localName}, not assigned gate {assignedGate}.";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string FormatSayIntentionsGateStatus(
+        SayIntentionsFlightContext context,
+        string gate)
+    {
+        string? gateRole = null;
+        string? gateAirport = null;
+
+        if (SameIcao(context.CurrentAirport, context.Origin))
+        {
+            gateRole = "Departure gate";
+            gateAirport = context.Origin;
+        }
+        else if (SameIcao(context.CurrentAirport, context.Destination))
+        {
+            gateRole = "Arrival gate";
+            gateAirport = context.Destination;
+        }
+        else if (!string.IsNullOrWhiteSpace(context.Origin)
+            && string.IsNullOrWhiteSpace(context.Destination))
+        {
+            gateRole = "Departure gate";
+            gateAirport = context.Origin;
+        }
+        else if (!string.IsNullOrWhiteSpace(context.Destination)
+            && string.IsNullOrWhiteSpace(context.Origin))
+        {
+            gateRole = "Arrival gate";
+            gateAirport = context.Destination;
+        }
+
+        if (gateRole == null)
+            return $"Assigned gate {gate}. Gate role unknown.";
+
+        return string.IsNullOrWhiteSpace(gateAirport)
+            ? $"{gateRole} {gate}."
+            : $"{gateRole} {gate} at {gateAirport}.";
+    }
+
+    private static bool SameIcao(string? left, string? right)
+    {
+        return !string.IsNullOrWhiteSpace(left)
+            && !string.IsNullOrWhiteSpace(right)
+            && left.Equals(right, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async void BuildTaxiRouteFromSayIntentionsAsync()
+    {
+        if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
+        {
+            announcer.AnnounceImmediate("Airport database not available. Configure database in settings.");
+            return;
+        }
+
+        if (!ValidateDatabaseSimulatorMatch())
+            return;
+
+        announcer.AnnounceImmediate("Reading SayIntentions taxi clearance.");
+
+        try
+        {
+            var status = await sayIntentionsService.GetAssignedStatusAsync();
+            var context = status.Context;
+            if (!string.IsNullOrWhiteSpace(context.Error))
+            {
+                announcer.AnnounceImmediate(context.Error);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(context.ClearanceText))
+            {
+                var lastTransmission = await sayIntentionsService.GetLastTransmissionAsync();
+                if (lastTransmission.Transmission != null)
+                    context.ClearanceText = lastTransmission.Transmission.Message;
+            }
+
+            var position = await GetFreshAircraftPositionAsync();
+            string? icao = FirstNonEmpty(context.CurrentAirport, context.Origin, context.Destination);
+            if (string.IsNullOrWhiteSpace(icao))
+            {
+                var nearby = airportDataProvider.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
+                    .Where(c => c != null && c.Length == 4)
+                    .ToList();
+                icao = nearby.FirstOrDefault();
+            }
+
+            if (string.IsNullOrWhiteSpace(icao))
+            {
+                announcer.AnnounceImmediate("SayIntentions route unavailable. No current airport found.");
+                return;
+            }
+            icao = icao.ToUpperInvariant();
+
+            var paths = airportDataProvider.GetTaxiPaths(icao);
+            if (paths.Count == 0)
+            {
+                announcer.AnnounceImmediate($"No taxi path data available for {icao}.");
+                return;
+            }
+
+            var graph = await TaxiGraph.BuildAsync(
+                paths,
+                airportDataProvider.GetParkingSpots(icao),
+                airportDataProvider.GetRunwayStarts(icao));
+
+            var target = ResolveSayIntentionsTaxiDestination(status, graph, icao);
+            if (target == null)
+            {
+                announcer.AnnounceImmediate("SayIntentions route unavailable. No usable assigned runway or gate found.");
+                return;
+            }
+
+            var taxiwaySequence = ResolveSayIntentionsTaxiwaySequence(context, graph);
+            string? holdShortRunway = ParseHoldShortRunwayFromClearance(context.ClearanceText ?? "");
+            var form = GetOrCreateTaxiAssistForm();
+            await form.ApplyExternalRouteAsync(
+                position.Latitude,
+                position.Longitude,
+                position.HeadingMagnetic,
+                icao,
+                target.IsRunway,
+                target.Name,
+                taxiwaySequence,
+                holdShortRunway,
+                SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance);
+
+            form.Show();
+            form.BringToFront();
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"SayIntentions taxi route failed. {ex.Message}");
+        }
+    }
+
+    private async Task<SimConnectManager.AircraftPosition> GetFreshAircraftPositionAsync()
+    {
+        var fallback = simConnectManager.LastKnownPosition;
+        var tcs = new TaskCompletionSource<SimConnectManager.AircraftPosition>();
+        simConnectManager.RequestAircraftPositionAsync(position => tcs.TrySetResult(position));
+
+        Task completed = await Task.WhenAny(tcs.Task, Task.Delay(1500));
+        if (completed == tcs.Task)
+            return await tcs.Task;
+
+        if (fallback.HasValue)
+            return fallback.Value;
+
+        throw new InvalidOperationException("Aircraft position unavailable.");
+    }
+
+    private SayIntentionsTaxiTarget? ResolveSayIntentionsTaxiDestination(
+        SayIntentionsStatusResult status,
+        TaxiGraph graph,
+        string icao)
+    {
+        var context = status.Context;
+        string clearance = context.ClearanceText ?? "";
+        string? clearanceRunway = ParseRunwayFromClearance(clearance);
+        if (!string.IsNullOrWhiteSpace(clearanceRunway))
+        {
+            var target = ResolveRunwayTarget(graph, icao, clearanceRunway);
+            if (target != null)
+                return target;
+        }
+
+        string? gate = FirstNonEmpty(context.AssignedGate, status.Parking?.Name);
+        bool currentAirportIsDestination =
+            !string.IsNullOrWhiteSpace(context.CurrentAirport)
+            && !string.IsNullOrWhiteSpace(context.Destination)
+            && context.CurrentAirport.Equals(context.Destination, StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(gate) && currentAirportIsDestination)
+        {
+            var target = ResolveParkingTarget(graph, icao, gate, status.Parking);
+            if (target != null)
+                return target;
+        }
+
+        string? departureRunway = FirstNonEmpty(
+            context.ClearedForTakeoff,
+            context.DepartureRunway,
+            context.Runway);
+        if (!string.IsNullOrWhiteSpace(departureRunway))
+        {
+            var target = ResolveRunwayTarget(graph, icao, departureRunway);
+            if (target != null)
+                return target;
+        }
+
+        if (!string.IsNullOrWhiteSpace(gate))
+        {
+            var target = ResolveParkingTarget(graph, icao, gate, status.Parking);
+            if (target != null)
+                return target;
+        }
+
+        string? arrivalRunway = FirstNonEmpty(context.ClearedForLanding, context.ArrivalRunway);
+        if (!string.IsNullOrWhiteSpace(arrivalRunway))
+        {
+            var target = ResolveRunwayTarget(graph, icao, arrivalRunway);
+            if (target != null)
+                return target;
+        }
+
+        return null;
+    }
+
+    private SayIntentionsTaxiTarget? ResolveRunwayTarget(TaxiGraph graph, string icao, string runwayId)
+    {
+        string normalizedRunway = NormalizeRunwayForCompare(runwayId);
+        var startsByRunway = airportDataProvider!.GetRunwayStarts(icao)
+            .Where(s => !string.IsNullOrWhiteSpace(s.RunwayName))
+            .GroupBy(s => NormalizeRunwayForCompare(s.RunwayName), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var runway in airportDataProvider.GetRunways(icao).Where(r => !r.IsClosed))
+        {
+            if (!NormalizeRunwayForCompare(runway.RunwayID).Equals(normalizedRunway, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            double targetLat = runway.StartLat;
+            double targetLon = runway.StartLon;
+            if (startsByRunway.TryGetValue(normalizedRunway, out var start))
+            {
+                targetLat = start.Latitude;
+                targetLon = start.Longitude;
+            }
+
+            var node = graph.FindNearestNode(targetLat, targetLon);
+            if (node == null)
+                return null;
+
+            return new SayIntentionsTaxiTarget(
+                node.NodeId,
+                $"Runway {runway.RunwayID}",
+                true,
+                runway.HeadingMag,
+                runway.Heading,
+                targetLat,
+                targetLon);
+        }
+
+        return null;
+    }
+
+    private SayIntentionsTaxiTarget? ResolveParkingTarget(
+        TaxiGraph graph,
+        string icao,
+        string gate,
+        SayIntentionsParking? parking)
+    {
+        const double MaxParkingToGraphMeters = 100.0;
+        string normalizedGate = NormalizeParkingName(gate);
+        var spots = airportDataProvider!.GetParkingSpots(icao);
+
+        ParkingSpot? matchedSpot = spots.FirstOrDefault(spot =>
+            ParkingSpotMatches(spot, normalizedGate));
+
+        if (matchedSpot == null && parking?.Latitude is double lat && parking.Longitude is double lon)
+        {
+            matchedSpot = spots
+                .OrderBy(spot => TaxiGraph.CalculateDistanceMeters(lat, lon, spot.Latitude, spot.Longitude))
+                .FirstOrDefault(spot => TaxiGraph.CalculateDistanceMeters(lat, lon, spot.Latitude, spot.Longitude) <= 75.0);
+        }
+
+        if (matchedSpot != null)
+        {
+            var node = graph.FindNearestNode(matchedSpot.Latitude, matchedSpot.Longitude);
+            if (node == null)
+                return null;
+
+            double dist = TaxiGraph.CalculateDistanceMeters(
+                node.Latitude, node.Longitude, matchedSpot.Latitude, matchedSpot.Longitude);
+            if (dist > MaxParkingToGraphMeters)
+                return null;
+
+            return new SayIntentionsTaxiTarget(
+                node.NodeId,
+                matchedSpot.ToString(),
+                false,
+                matchedSpot.Heading,
+                matchedSpot.Heading,
+                matchedSpot.Latitude,
+                matchedSpot.Longitude);
+        }
+
+        if (parking?.Latitude is double parkingLat && parking.Longitude is double parkingLon)
+        {
+            var node = graph.FindNearestNode(parkingLat, parkingLon);
+            if (node == null)
+                return null;
+
+            double dist = TaxiGraph.CalculateDistanceMeters(
+                node.Latitude, node.Longitude, parkingLat, parkingLon);
+            if (dist > MaxParkingToGraphMeters)
+                return null;
+
+            double heading = parking.Heading ?? 0.0;
+            return new SayIntentionsTaxiTarget(
+                node.NodeId,
+                string.IsNullOrWhiteSpace(parking.Name) ? gate : parking.Name,
+                false,
+                heading,
+                heading,
+                parkingLat,
+                parkingLon);
+        }
+
+        return null;
+    }
+
+    private List<string> ResolveSayIntentionsTaxiwaySequence(
+        SayIntentionsFlightContext context,
+        TaxiGraph graph)
+    {
+        var knownTaxiways = graph.GetAllTaxiwayNames();
+        var resolved = new List<string>();
+
+        foreach (string value in context.TaxiwaySequence)
+        {
+            string? match = knownTaxiways.FirstOrDefault(t =>
+                NormalizeTaxiwayName(t).Equals(NormalizeTaxiwayName(value), StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(match))
+                resolved.Add(match);
+        }
+
+        if (resolved.Count > 0)
+            return DeduplicateConsecutive(resolved);
+
+        return ParseTaxiwaysFromClearance(context.ClearanceText ?? "", knownTaxiways);
+    }
+
+    private static List<string> ParseTaxiwaysFromClearance(string clearance, List<string> knownTaxiways)
+    {
+        if (string.IsNullOrWhiteSpace(clearance))
+            return new List<string>();
+
+        var viaMatch = Regex.Match(clearance, @"\bvia\b(?<route>.+)$", RegexOptions.IgnoreCase);
+        if (!viaMatch.Success)
+            return new List<string>();
+
+        string routeText = viaMatch.Groups["route"].Value;
+        routeText = Regex.Split(
+            routeText,
+            @"\b(hold\s+short|cross|contact|monitor|cleared|runway|then)\b",
+            RegexOptions.IgnoreCase)[0];
+
+        var matches = new List<(string name, int index, int length)>();
+        foreach (string taxiway in knownTaxiways.OrderByDescending(t => t.Length))
+        {
+            string pattern = BuildTaxiwayPattern(taxiway);
+            foreach (Match match in Regex.Matches(routeText, pattern, RegexOptions.IgnoreCase))
+            {
+                matches.Add((taxiway, match.Index, match.Length));
+            }
+        }
+
+        var selected = new List<(string name, int index, int end)>();
+        foreach (var match in matches.OrderBy(m => m.index).ThenByDescending(m => m.length))
+        {
+            int end = match.index + match.length;
+            if (selected.Any(s => match.index < s.end && end > s.index))
+                continue;
+            selected.Add((match.name, match.index, end));
+        }
+
+        return selected
+            .OrderBy(m => m.index)
+            .Select(m => m.name)
+            .ToList();
+    }
+
+    private static string BuildTaxiwayPattern(string taxiway)
+    {
+        string trimmed = taxiway.Trim();
+        if (Regex.IsMatch(trimmed, @"^[A-Z][A-Z0-9]*$", RegexOptions.IgnoreCase))
+        {
+            var parts = trimmed
+                .ToUpperInvariant()
+                .Select(BuildTaxiwayCharacterPattern);
+            return $@"(?<![A-Z0-9]){string.Join(@"[\s-]*", parts)}(?![A-Z0-9])";
+        }
+
+        string escaped = Regex.Escape(trimmed);
+        escaped = Regex.Replace(escaped, @"\\\s+", @"[\s-]*");
+        return $@"(?<![A-Z0-9]){escaped}(?![A-Z0-9])";
+    }
+
+    private static string BuildTaxiwayCharacterPattern(char value)
+    {
+        string nato = value switch
+        {
+            'A' => "Alpha",
+            'B' => "Bravo",
+            'C' => "Charlie",
+            'D' => "Delta",
+            'E' => "Echo",
+            'F' => "Foxtrot",
+            'G' => "Golf",
+            'H' => "Hotel",
+            'I' => "India",
+            'J' => "Juliett",
+            'K' => "Kilo",
+            'L' => "Lima",
+            'M' => "Mike",
+            'N' => "November",
+            'O' => "Oscar",
+            'P' => "Papa",
+            'Q' => "Quebec",
+            'R' => "Romeo",
+            'S' => "Sierra",
+            'T' => "Tango",
+            'U' => "Uniform",
+            'V' => "Victor",
+            'W' => "Whiskey",
+            'X' => "Xray",
+            'Y' => "Yankee",
+            'Z' => "Zulu",
+            _ => ""
+        };
+
+        string literal = Regex.Escape(value.ToString());
+        if (string.IsNullOrEmpty(nato))
+            return literal;
+
+        string extra = value == 'J'
+            ? "|Juliet"
+            : value == 'X'
+                ? "|X-ray"
+                : "";
+
+        return $@"(?:{literal}|{nato}{extra})";
+    }
+
+    private static bool ParkingSpotMatches(ParkingSpot spot, string normalizedGate)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedGate))
+            return false;
+
+        string numberPart = spot.Number > 0 ? $"{spot.Number}{spot.Suffix}" : "";
+        string[] candidates =
+        {
+            spot.ToString(),
+            TaxiGraph.FormatParkingDisplayName(spot),
+            $"{spot.Name}{numberPart}",
+            $"{spot.Name} {numberPart}",
+            numberPart
+        };
+
+        return candidates
+            .Select(NormalizeParkingName)
+            .Any(candidate => candidate.Equals(normalizedGate, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FormatSayIntentionsParkingShortName(ParkingSpot spot)
+    {
+        string numberPart = spot.Number > 0 ? $"{spot.Number}{spot.Suffix}" : "";
+        if (!string.IsNullOrWhiteSpace(spot.Name) && !string.IsNullOrWhiteSpace(numberPart))
+            return $"{spot.Name} {numberPart}";
+        if (!string.IsNullOrWhiteSpace(spot.Name))
+            return spot.Name;
+        if (!string.IsNullOrWhiteSpace(numberPart))
+            return $"Spot {numberPart}";
+        return "a parking spot";
+    }
+
+    private static string? ParseRunwayFromClearance(string clearance)
+    {
+        if (string.IsNullOrWhiteSpace(clearance))
+            return null;
+
+        var match = Regex.Match(
+            clearance,
+            @"\brunway\s*(?<runway>[0-9]{1,2}[LCR]?|(?:zero|one|two|three|four|five|six|seven|eight|nine|left|right|center|centre|[-\s])+)\b",
+            RegexOptions.IgnoreCase);
+        return match.Success
+            ? SayIntentionsService.CleanRunway(NormalizeSpokenRunway(match.Groups["runway"].Value))
+            : null;
+    }
+
+    private static string? ParseHoldShortRunwayFromClearance(string clearance)
+    {
+        if (string.IsNullOrWhiteSpace(clearance))
+            return null;
+
+        var match = Regex.Match(
+            clearance,
+            @"\bhold\s+short(?:\s+of)?\s+runway\s*(?<runway>[0-9]{1,2}[LCR]?|(?:zero|one|two|three|four|five|six|seven|eight|nine|left|right|center|centre|[-\s])+)\b",
+            RegexOptions.IgnoreCase);
+
+        return match.Success
+            ? SayIntentionsService.CleanRunway(NormalizeSpokenRunway(match.Groups["runway"].Value))
+            : null;
+    }
+
+    private static string NormalizeSpokenRunway(string value)
+    {
+        string normalized = value.ToLowerInvariant();
+        var digitWords = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["zero"] = "0",
+            ["one"] = "1",
+            ["two"] = "2",
+            ["three"] = "3",
+            ["four"] = "4",
+            ["five"] = "5",
+            ["six"] = "6",
+            ["seven"] = "7",
+            ["eight"] = "8",
+            ["nine"] = "9",
+            ["left"] = "L",
+            ["right"] = "R",
+            ["center"] = "C",
+            ["centre"] = "C"
+        };
+
+        foreach (var pair in digitWords)
+            normalized = Regex.Replace(normalized, $@"\b{pair.Key}\b", pair.Value, RegexOptions.IgnoreCase);
+
+        return Regex.Replace(normalized.ToUpperInvariant(), @"[^0-9LCR]", "");
+    }
+
+    private static string NormalizeRunwayForCompare(string value)
+    {
+        return SayIntentionsService.CleanRunway(value) ?? value.Trim().ToUpperInvariant();
+    }
+
+    private static string NormalizeParkingName(string value)
+    {
+        string cleaned = value.ToUpperInvariant();
+        cleaned = Regex.Replace(cleaned, @"\b(GATE|PARKING|SPOT|RAMP)\b", "");
+        cleaned = cleaned.Split('-')[0];
+        return Regex.Replace(cleaned, @"[^A-Z0-9]", "");
+    }
+
+    private static string NormalizeTaxiwayName(string value)
+    {
+        return Regex.Replace(value.ToUpperInvariant(), @"[^A-Z0-9]", "");
+    }
+
+    private static List<string> DeduplicateConsecutive(List<string> values)
+    {
+        var result = new List<string>();
+        foreach (string value in values)
+        {
+            if (result.Count == 0 || !result[^1].Equals(value, StringComparison.OrdinalIgnoreCase))
+                result.Add(value);
+        }
+        return result;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (string? value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+        return null;
+    }
+
+    private sealed record SayIntentionsTaxiTarget(
+        int NodeId,
+        string Name,
+        bool IsRunway,
+        double HeadingMagnetic,
+        double HeadingTrue,
+        double TargetLat,
+        double TargetLon);
 
     private void OnOutputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
@@ -3666,12 +4374,7 @@ public partial class MainForm : Form
 
     private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
     {
-        if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
-        {
-            taxiAssistForm = new TaxiAssistForm(
-                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
-        }
+        taxiAssistForm = GetOrCreateTaxiAssistForm();
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
         // GetNearbyAirportICAOs may return 3-char idents (used by GateResolver's
@@ -3698,6 +4401,18 @@ public partial class MainForm : Form
 
         taxiAssistForm.Show();
         taxiAssistForm.BringToFront();
+    }
+
+    private TaxiAssistForm GetOrCreateTaxiAssistForm()
+    {
+        if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
+        {
+            taxiAssistForm = new TaxiAssistForm(
+                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
+                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
+        }
+
+        return taxiAssistForm;
     }
 
     /// <summary>
@@ -4483,6 +5198,17 @@ public partial class MainForm : Form
         }
     }
 
+    private void SayIntentionsSettingsMenuItem_Click(object? sender, EventArgs e)
+    {
+        using (var settingsForm = new Forms.SayIntentionsSettingsForm())
+        {
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                statusLabel.Text = "SayIntentions settings saved successfully";
+                announcer.Announce("SayIntentions settings saved successfully");
+            }
+        }
+    }
 
     private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
     {

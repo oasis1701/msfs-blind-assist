@@ -171,6 +171,11 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_LOCAL_TIME = 9210;
         private const int HOTKEY_ZULU_TIME = 9211;
 
+        // SayIntentions hotkey IDs
+        private const int HOTKEY_SI_LAST_TRANSMISSION = 9216;
+        private const int HOTKEY_SI_ASSIGNED_STATUS = 9217;
+        private const int HOTKEY_SI_BUILD_TAXI_ROUTE = 9218;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -497,6 +502,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_READ_GSX_TOOLTIP:
                             TriggerHotkey(HotkeyAction.ReadGsxTooltip);
                             break;
+                        case HOTKEY_SI_LAST_TRANSMISSION:
+                            TriggerHotkey(HotkeyAction.SayIntentionsLastTransmission);
+                            break;
+                        case HOTKEY_SI_ASSIGNED_STATUS:
+                            TriggerHotkey(HotkeyAction.SayIntentionsAssignedStatus);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -603,6 +614,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_LANDING_EXIT:
                             TriggerHotkey(HotkeyAction.LandingExitPlanner);
+                            break;
+                        case HOTKEY_SI_BUILD_TAXI_ROUTE:
+                            TriggerHotkey(HotkeyAction.SayIntentionsBuildTaxiRoute);
                             break;
                         case HOTKEY_ACCESS_GSX:
                             TriggerHotkey(HotkeyAction.ShowAccessGSX);
@@ -763,6 +777,10 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
             RegisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP, MOD_CONTROL, 0x47);     // Ctrl+G (Read latest GSX tooltip)
 
+            // SayIntentions readouts (Output mode)
+            RegisterHotKey(windowHandle, HOTKEY_SI_LAST_TRANSMISSION, MOD_CONTROL, 0x53);                // Ctrl+S (Last SI transmission)
+            RegisterHotKey(windowHandle, HOTKEY_SI_ASSIGNED_STATUS, MOD_CONTROL | MOD_SHIFT, 0x53);      // Ctrl+Shift+S (SI assigned gate/runway)
+
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
@@ -861,6 +879,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I);
             UnregisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC);
             UnregisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP);
+            UnregisterHotKey(windowHandle, HOTKEY_SI_LAST_TRANSMISSION);
+            UnregisterHotKey(windowHandle, HOTKEY_SI_ASSIGNED_STATUS);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -909,6 +929,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE, MOD_NONE, 0x59);         // Y (Continue past hold-short)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_STOP, MOD_CONTROL, 0x59);          // Ctrl+Y (Stop guidance)
             RegisterHotKey(windowHandle, HOTKEY_LANDING_EXIT, MOD_SHIFT, 0x58);         // Shift+X (Landing Exit Planner)
+            RegisterHotKey(windowHandle, HOTKEY_SI_BUILD_TAXI_ROUTE, MOD_ALT | MOD_SHIFT, 0x53); // Alt+Shift+S (Build taxi route from SI)
 
             // Access GSX hotkey (Input mode). Alt+G is free here — output mode
             // Alt+G is taken by Nearest Ground Traffic, but each mode has its
@@ -964,6 +985,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_STOP);
             UnregisterHotKey(windowHandle, HOTKEY_LANDING_EXIT);
+            UnregisterHotKey(windowHandle, HOTKEY_SI_BUILD_TAXI_ROUTE);
 
             // Access GSX (Input mode Alt+G).
             UnregisterHotKey(windowHandle, HOTKEY_ACCESS_GSX);
@@ -1325,4 +1347,7 @@ public class HotkeyManager : IDisposable
         AnnounceGroundTraffic,
         ShowAccessGSX,
         ReadGsxTooltip,
+        SayIntentionsLastTransmission,
+        SayIntentionsAssignedStatus,
+        SayIntentionsBuildTaxiRoute,
     }
