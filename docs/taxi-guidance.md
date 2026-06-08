@@ -583,7 +583,139 @@ they match before announcing success. Tuning lives in one place
 (`GsxMenuClassifier`); the full walk is logged to
 `%LOCALAPPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
 
-## Reliability Notes
+## VDGS / Marshalling Docking
+
+After a taxi route to a gate is calculated, **docking guidance auto-engages** when
+the aircraft is on the ground near the selected gate's stop position — specifically
+when ground speed is low (essentially taxiing speed), the aircraft is within
+roughly 60 m of the stop position, and it is roughly facing the gate. Docking
+guidance is purely additive: it does not modify or interrupt taxi guidance, and it
+runs alongside the gate-arrival countdown from `TaxiGuidanceManager`.
+
+### What it does
+
+Three simultaneous audio feedback streams activate on engagement:
+
+1. **Lateral steering tone** — reuses `TaxiSteeringTone` (pan left/right) to keep
+   the nose on the gate centreline. The tone waveform and volume are the same as
+   the taxi steering tone setting; there is no separate waveform/volume for it.
+
+2. **Proximity beeper** (`ProximityBeeper`) — an accelerating click/beep whose
+   cadence is analogous to a car parking sensor: slow and separate far out (~60 m),
+   progressively faster as the aircraft closes, and solid (continuous) at the stop
+   position. The beep sound (waveform) and volume are independently configurable
+   in Taxi Guidance Options.
+
+3. **Spoken distance milestones** — at 30 m, 20 m, 10 m, and 5 m: `"30 metres."`,
+   `"20 metres."`, `"10 metres."`, `"5 metres."`. The final callout at the stop
+   position is **`"Stop."`**. If the aircraft overshoots (continues forward past
+   the stop), the system announces `"Stop. You have passed the stop position."`
+   immediately. Spoken distances honour the Distance units setting
+   (`DistanceFormatter` / `UserSettings.GroundDistanceUnit`).
+
+On engagement, if the VDGS type is known, the system announces it once:
+`"SafeDock guidance active."` or `"Marshaller guidance active."` If the type is
+unknown, a neutral `"Docking guidance active."` is used.
+
+### Target position precedence (universal)
+
+The stop position used for all geometry is chosen in this order of priority:
+
+1. **GSX VDGS/marshaller nose-stop** — `ParkingSpot.StopLatitude / StopLongitude /
+   StopHeading` (sourced from the GSX profile's `parkingsystem_stopposition` key
+   parsed by `GsxProfileParser`). This is the most precise position; it matches
+   what the visual SafeDock/marshaller boards display inside the sim.
+2. **GSX parking position** — the `this_parking_pos` coordinate from the GSX
+   profile (carried on `ParkingSpot` when a GSX profile is active). Accurate for
+   gate centre but may not be the precise nose-stop.
+3. **Navdata parking position** — the raw parking spot lat/lon from the
+   `LittleNavMapProvider` / navdatareader `parking` table. Least precise; used
+   when GSX is absent or has no matching profile.
+
+`StopHeading` (from the GSX profile) is the gate-facing true heading and is used
+as the centreline reference for both lateral steering and the along-track distance
+calculation.
+
+### Geometry (DockingGeometry)
+
+GSX exposes **no docking-distance L-var** — the lateral and longitudinal distance
+readouts on the visual SafeDock/marshaller board are internal rendering data with
+no SimConnect interface. Guidance is therefore computed geometrically by the
+`DockingGeometry` helper class:
+
+- **Along-track distance to stop** — great-circle distance from the aircraft's
+  current position to the stop position, projected forward along the gate
+  centreline: `d_along = d_gc × cos(headingError)`, where `headingError` is the
+  angle between the aircraft's true heading and `StopHeading`.
+- **Lateral deviation** — computed via `NavigationCalculator.CalculateCrossTrackError`
+  (the same signed cross-track helper used for runway lineup). Positive = right of
+  centreline; negative = left.
+
+All internal geometry is in metres. Spoken distances are converted at announcement
+time via `DistanceFormatter.FromMetres` to respect the user's Distance units
+setting (metres or feet).
+
+### Architecture
+
+`DockingGuidanceManager` is a standalone state machine with four states:
+
+```
+Idle → Armed → Docking → Stopped
+```
+
+- **Idle** — no gate selected, or guidance is disabled in settings.
+- **Armed** — a gate with a known stop position has been selected and the aircraft
+  is within ~60 m. Waiting for low ground speed (≤ a few knots) and a roughly
+  gate-facing heading to engage.
+- **Docking** — all three feedback streams are active. The manager feeds
+  `TaxiSteeringTone.UpdateHeadingError`, drives the `ProximityBeeper` cadence from
+  along-track distance, and fires spoken distance milestones.
+- **Stopped** — along-track distance has reached ~0 (or the aircraft has
+  overshot). Beeper silent, tone silent, `"Stop."` (or overshoot message)
+  announced.
+
+`DockingGuidanceManager.UpdatePosition(lat, lon, headingTrue, groundSpeedKts)` is
+called from the same ~30 Hz SimConnect position handler that drives
+`TaxiGuidanceManager`. The two managers are completely independent: docking
+guidance does not touch `_route`, `_state`, or any other taxi-guidance field, and
+taxi guidance does not query docking guidance. The gate-arrival countdown in
+`TaxiGuidanceManager` continues to fire normally alongside docking feedback.
+
+### Options (Taxi Guidance Options form)
+
+Two new settings appear in the Taxi Guidance Options form under a "Docking
+guidance" group:
+
+- **Docking guidance** — enable/disable toggle (default on). When off, the
+  `DockingGuidanceManager` stays in `Idle` and no beep or distance callouts fire.
+- **Docking beep sound** — waveform picker (Sine, Square, Triangle, Sawtooth) for
+  the `ProximityBeeper`. Independent of the steering-tone waveform setting.
+- **Docking beep volume** — slider, independent of the steering-tone volume slider.
+
+The **lateral steering tone** during docking reuses the existing taxi steering-tone
+waveform and volume settings (no separate control — same tone the pilot is already
+calibrated to from taxiing).
+
+### Pure-logic verification
+
+`tools/DockingProbe` is a console probe (no xUnit, per CLAUDE.md) that exercises
+`DockingGeometry` and the `DockingGuidanceManager` state machine against scripted
+position sequences:
+
+- Nominal approach: aircraft starts 60 m out, step-closes to 0 → verifies
+  milestone firings, beeper cadence steps, and final `"Stop."` announcement.
+- Overshoot: aircraft crosses the stop position → verifies the overshoot
+  announcement.
+- Lateral deviation: aircraft offset from centreline → verifies steering-tone pan
+  direction (left = steer left, right = steer right) is consistent with
+  `DockingGeometry.CrossTrackMeters` sign.
+- Target precedence: verifies GSX stop-position wins over navdata parking when
+  both are present.
+
+Run with `dotnet run --project tools/DockingProbe -p:Platform=x64` → expect
+`ALL PASS`.
+
+
 
 ### High confidence
 - Graph data quality — verified across KJFK, EGLL, and GA fields; thousands of airports with named taxiways.
