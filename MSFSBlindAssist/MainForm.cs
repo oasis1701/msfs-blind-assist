@@ -530,7 +530,15 @@ public partial class MainForm : Form
                 }
                 double offset = off ?? 0.0;
                 dockingGuidanceManager.SetDoorOffsetMetres(offset);
-                System.Diagnostics.Debug.WriteLine($"[MainForm] Door offset for ICAO '{icaoType}': {offset:F2} m");
+                var geom = _gsxAirplaneProfile.GetGeometry(icaoType);
+                string side = geom?.Side switch
+                {
+                    MSFSBlindAssist.Services.Gsx.DoorSide.Left => "left",
+                    MSFSBlindAssist.Services.Gsx.DoorSide.Right => "right",
+                    _ => ""
+                };
+                dockingGuidanceManager.SetDoorSide(side);
+                System.Diagnostics.Debug.WriteLine($"[MainForm] Door offset for ICAO '{icaoType}': {offset:F2} m, door side: '{side}'");
 
                 try
                 {

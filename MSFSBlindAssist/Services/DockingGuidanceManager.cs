@@ -28,6 +28,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool[] _milestoneSaid = Array.Empty<bool>();
     private bool _slowDownSaid;
     private double _doorOffsetMetres; // longitudinal offset (metres, forward of datum); 0 = align datum
+    private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
@@ -40,6 +41,9 @@ public sealed class DockingGuidanceManager : IDisposable
 
     /// <summary>Per-aircraft longitudinal door offset (metres, forward of datum). 0 = align the datum (no GSX data).</summary>
     public void SetDoorOffsetMetres(double metres) { lock (_lock) { _doorOffsetMetres = metres; } }
+
+    /// <summary>"left" / "right" / "" — the preferred passenger door side, for jetway orientation.</summary>
+    public void SetDoorSide(string side) { lock (_lock) { _doorSide = side ?? ""; } }
 
     public void UpdatePosition(double lat, double lon, double headingMag, double magVar, double groundSpeedKts)
     {
@@ -119,9 +123,13 @@ public sealed class DockingGuidanceManager : IDisposable
         _slowDownSaid = false;
         string vdgs = FriendlyVdgs(_gate?.VdgsType);
         string dist = DistanceFormatter.FromMetres(doorAlongM);
-        _announcer.AnnounceImmediate(string.IsNullOrEmpty(vdgs)
+        string orientationPhrase = string.IsNullOrEmpty(_doorSide)
+            ? ""
+            : (_gate?.HasJetway == true ? $" Jetway on your {_doorSide}." : $" Door on your {_doorSide}.");
+        string baseMsg = string.IsNullOrEmpty(vdgs)
             ? $"Docking guidance. {dist} to stop."
-            : $"Docking guidance. {vdgs}. {dist} to stop.");
+            : $"Docking guidance. {vdgs}. {dist} to stop.";
+        _announcer.AnnounceImmediate(baseMsg + orientationPhrase);
         _tone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
         _tone.HardPan = SettingsManager.Current.TaxiGuidanceHardPanTone;
         _tone.Start(SettingsManager.Current.TaxiGuidanceToneWaveform, SettingsManager.Current.TaxiGuidanceToneVolume);
