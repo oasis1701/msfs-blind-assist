@@ -29,6 +29,11 @@ public class SimConnectManager
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
+    /// <summary>
+    /// Fires when the loaded aircraft's ICAO type designator becomes known (on connect / aircraft change).
+    /// The string is the extracted ICAO code (e.g. "B77W", "A20N") — may be empty if unresolved.
+    /// </summary>
+    public event EventHandler<string>? AircraftIcaoTypeDetected;
 
     // Aircraft definition
     public IAircraftDefinition? CurrentAircraft { get; set; }
@@ -122,6 +127,9 @@ public class SimConnectManager
     private string currentAircraftAtcId = "";
     private string currentAircraftAirline = "";
     private string currentAircraftFlightNumber = "";
+    private string currentAircraftAtcModel = ""; // raw ATC MODEL simvar value
+    /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
+    public string CurrentAircraftIcaoType { get; private set; } = "";
 
     // Aircraft connection announcement - wait for both aircraft info and ATC data
     private AircraftInfo? pendingAircraftInfo = null;
@@ -275,6 +283,8 @@ public class SimConnectManager
         public string atcAirline;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
         public string atcFlightNumber;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string atcModel; // ATC MODEL simvar — usually the ICAO type designator (B77W, A20N, …)
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -579,6 +589,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.STRING256, 0.0f, (uint)2);
         sc.AddToDataDefinition(DATA_DEFINITIONS.ATC_ID_INFO, "ATC FLIGHT NUMBER", null,
             SIMCONNECT_DATATYPE.STRING256, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.ATC_ID_INFO, "ATC MODEL", null,
+            SIMCONNECT_DATATYPE.STRING256, 0.0f, (uint)4);
         sc.RegisterDataDefineStruct<AircraftAtcData>(DATA_DEFINITIONS.ATC_ID_INFO);
 
         // Register INIT_POSITION for teleportation
@@ -1376,7 +1388,8 @@ public class SimConnectManager
                     currentAircraftAtcId = atcData.atcId?.Trim() ?? "";
                     currentAircraftAirline = atcData.atcAirline?.Trim() ?? "";
                     currentAircraftFlightNumber = atcData.atcFlightNumber?.Trim() ?? "";
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
+                    currentAircraftAtcModel = atcData.atcModel?.Trim() ?? "";
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Model: '{currentAircraftAtcModel}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
                     atcDataReceived = true;
                     TryAnnounceConnection();
                 }
@@ -2944,6 +2957,37 @@ public class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Extracts an ICAO type designator from the raw ATC MODEL simvar value.
+    /// <para>
+    /// In MSFS the ATC MODEL simvar typically returns the raw ICAO designator directly
+    /// (e.g. "B77W", "A20N", "A388"). For localised aircraft it may be a token like
+    /// "TT:ATCCOM.AC_MODEL_B77W.0.text". In that case we extract the all-caps/digit run
+    /// between "AC_MODEL_" and ".0.text" (or the last word of the token).
+    /// </para>
+    /// </summary>
+    public static string ExtractIcaoFromAtcModel(string? rawAtcModel)
+    {
+        if (string.IsNullOrWhiteSpace(rawAtcModel)) return "";
+        string s = rawAtcModel.Trim();
+        // Localisation token form: TT:ATCCOM.AC_MODEL_B77W.0.text
+        int idx = s.IndexOf("AC_MODEL_", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            string after = s.Substring(idx + "AC_MODEL_".Length);
+            // strip trailing ".0.text" suffix or similar
+            int dot = after.IndexOf('.');
+            string candidate = dot > 0 ? after.Substring(0, dot) : after;
+            if (!string.IsNullOrWhiteSpace(candidate)) return candidate.ToUpperInvariant();
+        }
+        // Plain form: already the ICAO designator (uppercase letters/digits, 2-6 chars)
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[A-Z0-9]{2,6}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            return s.ToUpperInvariant();
+        // Last resort: grab last run of uppercase letters+digits (e.g. "Boeing B77W" → "B77W")
+        var m = System.Text.RegularExpressions.Regex.Match(s, @"[A-Z][A-Z0-9]{1,5}", System.Text.RegularExpressions.RegexOptions.RightToLeft);
+        return m.Success ? m.Value.ToUpperInvariant() : "";
+    }
+
     private void CheckAircraftType(AircraftInfo info)
     {
         // Build smart identification string based on available ATC data
@@ -2975,6 +3019,13 @@ public class SimConnectManager
         // rotaries, etc.) only exist in the catalog after the cockpit model is loaded.
         // This is the earliest reliable moment to enumerate them.
         RequestEnumerateInputEvents();
+
+        // Extract and publish the ICAO type designator so subscribers (e.g. docking guidance)
+        // can look up per-aircraft door offsets from GSX gsx.cfg files.
+        string icao = ExtractIcaoFromAtcModel(currentAircraftAtcModel);
+        CurrentAircraftIcaoType = icao;
+        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC MODEL raw='{currentAircraftAtcModel}' → ICAO='{icao}'");
+        AircraftIcaoTypeDetected?.Invoke(this, icao);
 
         // Log whether this is the expected FBW A32NX aircraft
         if (info.title.Contains("A32NX") || info.title.Contains("A320"))

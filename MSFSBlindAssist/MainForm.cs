@@ -71,6 +71,10 @@ public partial class MainForm : Form
     private GsxService? _gsxService;
     private Forms.AccessGSXForm? _accessGsxForm;
 
+    // Per-aircraft GSX door offset. Constructed once; background scan is warmed at
+    // startup so the first docking session has offsets ready. Thread-safe internally.
+    private readonly MSFSBlindAssist.Services.Gsx.GsxAirplaneProfile _gsxAirplaneProfile = new();
+
     // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
     // event so any feature that needs to know "on ground vs airborne" right now
     // can read it without making a fresh SimConnect request. Defaults to true
@@ -220,6 +224,15 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
+        simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
+
+        // Warm the GSX door-offset map in the background so docking sessions have
+        // offsets ready without blocking the UI thread for the ~12 s scan.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { _gsxAirplaneProfile.GetDoorOffsetMetres("B77W"); } // warms the map
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[MainForm] GsxAirplaneProfile warm failed: {ex.Message}"); }
+        });
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and
@@ -488,6 +501,25 @@ public partial class MainForm : Form
             {
                 System.Diagnostics.Debug.WriteLine($"[MainForm] GsxService.Stop failed: {ex.Message}");
             }
+        }
+    }
+
+    /// <summary>
+    /// Called when SimConnect resolves the loaded aircraft's ICAO type designator.
+    /// Looks up the GSX door offset and feeds it to the docking guidance manager so
+    /// stop/milestone logic aligns the passenger door, not the aircraft datum.
+    /// </summary>
+    private void OnAircraftIcaoTypeDetected(object? sender, string icaoType)
+    {
+        try
+        {
+            double offset = _gsxAirplaneProfile.GetDoorOffsetMetres(icaoType) ?? 0.0;
+            dockingGuidanceManager.SetDoorOffsetMetres(offset);
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Door offset for ICAO '{icaoType}': {offset:F2} m");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] OnAircraftIcaoTypeDetected failed: {ex.Message}");
         }
     }
 

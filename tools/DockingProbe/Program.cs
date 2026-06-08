@@ -9,7 +9,8 @@ Check("normalize -190 -> 170", Near(DockingGeometry.NormalizeDeg180(-190), 170))
 Check("along-track straight ahead = dist", Near(DockingGeometry.AlongTrackMetres(50, 0), 50, 1e-9));
 Check("along-track 90deg off ~ 0", Near(DockingGeometry.AlongTrackMetres(50, 90), 0, 1e-6));
 Check("along-track overshoot negative", DockingGeometry.AlongTrackMetres(50, 180) < 0);
-Check("stop true within tol", DockingGeometry.IsStop(1.0));
+Check("stop true at tol edge 0.5m", DockingGeometry.IsStop(0.5));
+Check("stop false just above tol 0.8m", !DockingGeometry.IsStop(0.8));
 Check("stop false beyond tol", !DockingGeometry.IsStop(5.0));
 Check("overshoot true", DockingGeometry.IsOvershoot(-3.0));
 Check("overshoot false ahead", !DockingGeometry.IsOvershoot(5.0));
@@ -24,8 +25,8 @@ Check("engage no - off cone", !DockingGeometry.ShouldEngage(10, 40, 120));
 
 Check("engage no - taxi speed 20kt (new 15kt ceiling)", !DockingGeometry.ShouldEngage(20, 40, 20));
 Check("engage yes at 12kt", DockingGeometry.ShouldEngage(12, 40, 20));
-Check("stop tolerance 1.0m: IsStop(1.0) true", DockingGeometry.IsStop(1.0));
-Check("stop tolerance 1.0m: IsStop(1.2) false", !DockingGeometry.IsStop(1.2));
+Check("stop tolerance 0.5m: IsStop(0.5) true", DockingGeometry.IsStop(0.5));
+Check("stop tolerance 0.5m: IsStop(0.8) false", !DockingGeometry.IsStop(0.8));
 Check("slow-down zone const", DockingGeometry.SlowDownMetres == 6.0);
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");

@@ -26,6 +26,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private IReadOnlyList<DistanceMilestone> _milestones = Array.Empty<DistanceMilestone>();
     private bool[] _milestoneSaid = Array.Empty<bool>();
     private bool _slowDownSaid;
+    private double _doorOffsetMetres; // longitudinal offset (metres, forward of datum); 0 = align datum
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
@@ -35,6 +36,9 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         lock (_lock) { _gate = gate; ResetLocked(); }
     }
+
+    /// <summary>Per-aircraft longitudinal door offset (metres, forward of datum). 0 = align the datum (no GSX data).</summary>
+    public void SetDoorOffsetMetres(double metres) { lock (_lock) { _doorOffsetMetres = metres; } }
 
     public void UpdatePosition(double lat, double lon, double headingMag, double magVar, double groundSpeedKts)
     {
@@ -52,45 +56,48 @@ public sealed class DockingGuidanceManager : IDisposable
                 double brg = NavigationCalculator.CalculateBearing(lat, lon, sLat, sLon);
                 double hdgErr = DockingGeometry.NormalizeDeg180(brg - centerHdg);
                 double alongM = DockingGeometry.AlongTrackMetres(distM, hdgErr);
+                // Door-aligned distance: stop when the DOOR reaches the gate stop, not the datum.
+                // When offset is 0 (unknown), doorAlongM == alongM and behaviour is unchanged.
+                double doorAlongM = alongM - _doorOffsetMetres;
 
                 switch (_state)
                 {
                     case DockState.Idle:
                     case DockState.Armed:
-                        if (DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr)) EngageLocked(alongM);
+                        if (DockingGeometry.ShouldEngage(groundSpeedKts, doorAlongM, hdgErr)) EngageLocked(doorAlongM);
                         else _state = DockState.Armed;
                         break;
 
                     case DockState.Docking:
-                        if (DockingGeometry.IsOvershoot(alongM))
+                        if (DockingGeometry.IsOvershoot(doorAlongM))
                         {
                             _announcer.AnnounceImmediate("Stop. You have passed the stop position.");
                             SilenceLocked(); _state = DockState.Stopped; break;
                         }
-                        if (DockingGeometry.IsStop(alongM))
+                        if (DockingGeometry.IsStop(doorAlongM))
                         {
                             _announcer.AnnounceImmediate("Stop.");
-                            _beeper.Update(alongM, active: true); // solid
+                            _beeper.Update(doorAlongM, active: true); // solid
                             _tone.Stop();
                             _state = DockState.Stopped; break;
                         }
-                        if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
+                        if (doorAlongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
                         {
                             SilenceLocked(); _state = DockState.Armed; break;
                         }
                         _tone.UpdateHeadingError(hdgErr, GateWidthFeet);
-                        _beeper.Update(alongM, active: true);
-                        if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres)
+                        _beeper.Update(doorAlongM, active: true);
+                        if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres)
                         {
                             _slowDownSaid = true;
                             _announcer.AnnounceImmediate("Slow down.");
                             return; // one callout per frame, consistent with the milestone pattern
                         }
-                        AnnounceMilestonesLocked(alongM);
+                        AnnounceMilestonesLocked(doorAlongM);
                         break;
 
                     case DockState.Stopped:
-                        if (alongM > DockingGeometry.DisengageRangeMetres) ResetLocked();
+                        if (doorAlongM > DockingGeometry.DisengageRangeMetres) ResetLocked();
                         break;
                 }
             }
@@ -98,14 +105,14 @@ public sealed class DockingGuidanceManager : IDisposable
         }
     }
 
-    private void EngageLocked(double alongM)
+    private void EngageLocked(double doorAlongM)
     {
         _state = DockState.Docking;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         _slowDownSaid = false;
         string vdgs = FriendlyVdgs(_gate?.VdgsType);
-        string dist = DistanceFormatter.FromMetres(alongM);
+        string dist = DistanceFormatter.FromMetres(doorAlongM);
         _announcer.AnnounceImmediate(string.IsNullOrEmpty(vdgs)
             ? $"Docking guidance. {dist} to stop."
             : $"Docking guidance. {vdgs}. {dist} to stop.");

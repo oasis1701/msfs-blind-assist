@@ -12,7 +12,7 @@ public static class DockingGeometry
     public const double EngageGroundSpeedKts = 15.0;
     public const double EngageRangeMetres = 60.0;
     public const double EngageConeDeg = 70.0;
-    public const double StopToleranceMetres = 1.0;
+    public const double StopToleranceMetres = 0.5;
     public const double OvershootMetres = 2.0;
     public const double SlowDownMetres = 6.0;
     public const double DisengageRangeMetres = EngageRangeMetres * 1.5;
