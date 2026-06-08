@@ -3271,7 +3271,7 @@ public class TaxiGuidanceManager : IDisposable
                     string newName = string.IsNullOrEmpty(earlierExit.TaxiwayName)
                         ? "earlier exit"
                         : $"taxiway {earlierExit.TaxiwayName}";
-                    string msg = $"Taking earlier exit, {newName}, {(int)Math.Round(earlierExitDistFt)} feet ahead.";
+                    string msg = $"Taking earlier exit, {newName}, {DistanceFormatter.FromFeet(earlierExitDistFt)} ahead.";
                     RolloutDiag($"UNDERSHOOT: retargeting to '{earlierExit.TaxiwayName}' at {earlierExitDistFt:F0}ft " +
                         $"(planned was '{_rolloutExit.TaxiwayName}')");
                     RetargetLandingExit(earlierExit, lat, lon, headingTrue, overrideAnnouncement: msg);
@@ -3824,7 +3824,7 @@ public class TaxiGuidanceManager : IDisposable
                 // requested exit; if we fell forward to a later one, drop it.
                 string announcement = (candidate == newExit && overrideAnnouncement != null)
                     ? overrideAnnouncement
-                    : $"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.";
+                    : $"Missed {prevName}. Retargeting {newName}, {DistanceFormatter.FromFeet(distAheadFt)} ahead.";
                 AnnounceInstruction(announcement);
                 return;
             }
