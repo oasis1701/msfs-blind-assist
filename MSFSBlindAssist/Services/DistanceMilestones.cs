@@ -22,10 +22,6 @@ public static class DistanceMilestones
     public static IReadOnlyList<DistanceMilestone> ParkingArrival()
         => Build(feet: new[] { 50, 20, 10 }, metres: new[] { 15, 10, 5 });
 
-    // Hold-short: feet 300/150/50 -> metres 100/50/15
-    public static IReadOnlyList<DistanceMilestone> HoldShort()
-        => Build(feet: new[] { 300, 150, 50 }, metres: new[] { 100, 50, 15 });
-
     private static IReadOnlyList<DistanceMilestone> Build(int[] feet, int[] metres)
     {
         if (feet.Length != metres.Length)
