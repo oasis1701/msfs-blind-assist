@@ -1206,7 +1206,7 @@ public class TaxiGuidanceManager : IDisposable
                 ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
                 : (int)Math.Round(exit.DistanceFromTouchdownFeet);
             if (distFt > 0)
-                AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
+                AnnounceInstruction($"Touchdown. {exitClass} {name} in {DistanceFormatter.FromFeet(distFt)}.");
             else
                 AnnounceInstruction($"Touchdown. {exitClass} {name}.");
         }
@@ -1304,7 +1304,7 @@ public class TaxiGuidanceManager : IDisposable
                 ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
                 : (int)Math.Round(exit.DistanceFromTouchdownFeet);
             if (distFt > 0)
-                AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
+                AnnounceInstruction($"Touchdown. {exitClass} {name} in {DistanceFormatter.FromFeet(distFt)}.");
             else
                 AnnounceInstruction($"Touchdown. {exitClass} {name}.");
         }

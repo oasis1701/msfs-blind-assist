@@ -115,11 +115,11 @@ public class LandingExitPlanner
                 $"node={exit.NodeId} currentlyAirborne={currentlyAirborne} _wasAirborne={_wasAirborne} " +
                 $"HasPendingExit={HasPendingExit}");
 
-        int distFt = (int)Math.Round(exit.DistanceFromThresholdFeet);
+        string dist = DistanceFormatter.FromFeet(exit.DistanceFromThresholdFeet);
         string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "unnamed taxiway" : $"taxiway {exit.TaxiwayName}";
         _announcer.Announce(
             $"Landing exit planned: {name} at {icao} runway {runway.RunwayID}, " +
-            $"{distFt} feet from threshold. Guidance will auto-start on touchdown.");
+            $"{dist} from threshold. Guidance will auto-start on touchdown.");
     }
 
     /// <summary>Clears any pending selection without activating.</summary>
