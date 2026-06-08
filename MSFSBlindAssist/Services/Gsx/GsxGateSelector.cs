@@ -254,7 +254,7 @@ public sealed class GsxGateSelector
                 // DFS exhausted all options without finding the gate.
                 WalkLog(state, $"RESULT: gate {targetLabel} not found after full DFS traversal.");
                 if (!discoveryOnly)
-                    Announce($"GSX: gate {targetLabel} not found in GSX menu.");
+                    Announce($"GSX: {targetLabel} not found in GSX menu.");
                 else
                     Debug.WriteLine($"[GsxGateSelector] DISCOVERY: finished traversal. Gate {targetLabel} not found (may not be listed yet).");
             }
@@ -483,17 +483,17 @@ public sealed class GsxGateSelector
 
                 if (confirmed)
                 {
-                    Announce($"GSX: gate {state.TargetLabel} selected.");
+                    Announce($"GSX: {state.TargetLabel} selected.");
                     WalkLog(state, $"SUCCESS: gate {state.TargetLabel} confirmed via SetGate vars.");
                 }
                 else if (_gsx.SetGateName < 0)
                 {
-                    Announce($"GSX: gate {state.TargetLabel} selected. Confirmation pending.");
+                    Announce($"GSX: {state.TargetLabel} selected. Confirmation pending.");
                     WalkLog(state, $"TENTATIVE SUCCESS: SetGate vars still -1 after polling. Gate leaf chosen.");
                 }
                 else
                 {
-                    Announce($"GSX: gate {state.TargetLabel} selected (SetGate mismatch — check GSX).");
+                    Announce($"GSX: {state.TargetLabel} selected (SetGate mismatch — check GSX).");
                     WalkLog(state, $"MISMATCH: SetGate vars indicate a different gate after polling. Gate leaf was chosen but confirmation failed.");
                 }
 
@@ -848,7 +848,20 @@ public sealed class GsxGateSelector
         }
         if (spot.Number > 0) sb.Append(spot.Number);
         if (!string.IsNullOrEmpty(spot.Suffix)) sb.Append(spot.Suffix.Trim().ToUpperInvariant());
-        return sb.ToString().Trim();
+        string label = sb.ToString().Trim();
+
+        // Append the parking type ("Ramp Cargo", "Gate Heavy", …) so the spoken GSX
+        // confirmation conveys what KIND of stand it is — a cargo ramp must not be
+        // announced as a bare "gate". The destination picker already shows this via
+        // ParkingSpot.ToString(); this brings the audio confirmation to parity.
+        // Skip the uninformative "None"/"Unknown" buckets.
+        if (label.Length > 0)
+        {
+            string type = spot.GetParkingType();
+            if (!string.IsNullOrEmpty(type) && type != "None" && type != "Unknown")
+                label += $" - {type}";
+        }
+        return label;
     }
 
     /// <summary>Logs all entries of a menu snapshot to Debug output.</summary>
