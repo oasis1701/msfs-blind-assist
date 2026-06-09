@@ -4306,28 +4306,61 @@ public class TaxiGuidanceManager : IDisposable
             // parked; pulse would be noise.
             _steeringTone.SetPulse(false);
 
-            double headingError = NormalizeAngle(_lineupHeadingTrue - headingTrue);
-            // Gate lineup: heading only (gates aren't lines)
-            _smoothedHeadingError = _headingErrorInitialized
-                ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + headingError * HEADING_ERROR_FILTER_ALPHA
-                : headingError;
-            _headingErrorInitialized = true;
-            // Gate lineup: use baseline (60 ft) — no strong reason to widen or
-            // tighten, and gates don't have a well-defined "width" concept.
-            if (!_steeringToneSuppressed) _steeringTone.UpdateHeadingError(_smoothedHeadingError);
+            // A gate DOES have a centerline: the lead-in line through the parking
+            // position along the gate heading. Steer to it with the SAME intercept-
+            // angle model as the runway lineup, so we correct BOTH lateral offset
+            // (cross-track) AND heading — converging precisely onto the centerline,
+            // aligned with the gate. The old heading-only cue ignored cross-track,
+            // so a pilot could stop heading-aligned but laterally offset and a few
+            // degrees of yaw off ("parked a bit to the right and askew", per GSX).
+            var track = RunwayCenterlineTracker.Compute(
+                lat, lon, headingTrue, _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
+            double headingError   = track.HeadingErrorDeg;
+            double absCrossFeet   = track.AbsCrossTrackFeet;
+            double crossTrackFeet = track.CrossTrackFeet; // signed: + = left of CL, - = right
 
-            // Hysteresis (gate): enter ±4°, exit ±7°
-            double enterHdg = LINEUP_HEADING_TOLERANCE_DEG - 1.0;
-            double exitHdg  = LINEUP_HEADING_TOLERANCE_DEG + 2.0;
-            bool enterAligned = Math.Abs(headingError) < enterHdg;
-            bool stillAligned = Math.Abs(headingError) < exitHdg;
+            const double MAX_INTERCEPT_DEG = 30.0;
+            double interceptDeg;
+            if (absCrossFeet <= LINEUP_NOISE_DEADBAND_FEET)
+                interceptDeg = 0.0;
+            else
+            {
+                double effectiveCross = absCrossFeet - LINEUP_NOISE_DEADBAND_FEET;
+                double saturationSpan = LINEUP_INTERCEPT_SAT_FEET - LINEUP_NOISE_DEADBAND_FEET;
+                double normalized = Math.Clamp(effectiveCross / saturationSpan, 0.0, 1.0);
+                interceptDeg = MAX_INTERCEPT_DEG * Math.Sqrt(normalized) * Math.Sign(crossTrackFeet);
+            }
+            double desiredHeadingTrue = _lineupHeadingTrue + interceptDeg;
+            double toneHeadingError = NormalizeAngle(desiredHeadingTrue - headingTrue);
+
+            _smoothedHeadingError = _headingErrorInitialized
+                ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + toneHeadingError * HEADING_ERROR_FILTER_ALPHA
+                : toneHeadingError;
+            _headingErrorInitialized = true;
+
+            // Precision thresholds (same as runway lineup): keep panning until the
+            // heading is centred within ½°, full pan by 15° — tighter than the old
+            // 5° gate tolerance so the final park is square on the centerline.
+            if (!_steeringToneSuppressed)
+                _steeringTone.UpdateHeadingErrorWithThresholds(_smoothedHeadingError, 0.5, 1.0, 15.0);
+
+            // Aligned hysteresis now requires BOTH heading AND cross-track tight.
+            double enterHdg = 1.0, exitHdg = 2.0;
+            double enterCtr = LINEUP_CENTERLINE_TOLERANCE_FEET * 0.5; // ~12.5 ft
+            double exitCtr  = LINEUP_CENTERLINE_TOLERANCE_FEET;       // 25 ft
+            bool enterAligned = Math.Abs(headingError) < enterHdg && absCrossFeet < enterCtr;
+            bool stillAligned = Math.Abs(headingError) < exitHdg && absCrossFeet < exitCtr;
 
             // Same as runway branch — stay in LiningUp; mute/resume via hysteresis.
             if (!_lineupAnnouncedAligned && enterAligned)
             {
                 _lineupAnnouncedAligned = true;
                 _steeringTone.Pause();
-                _announcer.AnnounceImmediate($"Aligned with {_destinationName}. Parking brake.");
+                // When docking owns the stop it announces the stop/brake at the precise
+                // position — don't pre-empt with "parking brake" the moment we're merely
+                // laterally aligned (we may still be a couple of metres short of the stop).
+                if (!_dockingActive)
+                    _announcer.AnnounceImmediate($"Aligned with {_destinationName}. Parking brake.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
