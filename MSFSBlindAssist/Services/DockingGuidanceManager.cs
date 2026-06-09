@@ -297,13 +297,15 @@ public sealed class DockingGuidanceManager : IDisposable
             intercept = MaxInterceptDeg * Math.Sqrt(Math.Clamp(eff / span, 0.0, 1.0)) * Math.Sign(crossFt);
         }
 
-        // FADE the intercept to zero over the final ~10 m so that AT the stop the cue
-        // aligns to the pure gate heading, not the convergence-biased heading. Without it,
-        // a pilot stopped slightly off-centerline hears "turn toward the line" (e.g. a slight
-        // RIGHT bias while 10 ft left) when what they actually want, stationary, is to square
-        // up to the gate (turn LEFT to the gate heading). The lateral converges during the
-        // approach; the last few feet are accepted in favour of being square.
-        const double FadeStartM = 10.0, FadeEndM = 1.0;
+        // FADE the intercept to zero over the FINAL few metres so that AT the stop the cue
+        // is the pure gate heading, not the convergence-biased heading. This mirrors a real
+        // painted lead-in line: it angles you toward the centerline, then straightens onto it
+        // right at the stop so you finish centered AND square. A stationary nose-in aircraft
+        // cannot reduce lateral offset (no sideways motion), so "keep converging" at the stop
+        // is futile and reads as a wrong-way cue (a slight RIGHT bias while 10 ft left when
+        // the pilot just wants to square LEFT to the gate). Start the fade LATE (6 m) so the
+        // lateral keeps closing as long as possible, then square up over the last ~4.5 m.
+        const double FadeStartM = 6.0, FadeEndM = 1.5;
         double fade = Math.Clamp((alongMetres - FadeEndM) / (FadeStartM - FadeEndM), 0.0, 1.0);
         intercept *= fade;
 
