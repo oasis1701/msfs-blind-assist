@@ -71,6 +71,27 @@ public class TaxiGuidanceManager : IDisposable
         try { if (suppressed) _steeringTone.Pause(); else _steeringTone.Resume(); } catch { }
     }
 
+    private bool _dockingActive;
+    /// <summary>
+    /// True when docking guidance is actively handling the destination gate/stop. While
+    /// true, taxi suppresses its OWN terminal arrival callouts (the parking countdown,
+    /// "Stop. Hold position.", and the gate-lineup verbal) so it never contradicts
+    /// docking's countdown to the precise GSX stop — which sits a few metres beyond
+    /// taxi's route-end node. Taxi still routes + steers to the gate vicinity.
+    /// </summary>
+    public void SetDockingActive(bool active) { _dockingActive = active; }
+
+    /// <summary>
+    /// True while taxi is actively steering a route — route-following (Taxiing) or gate
+    /// lineup (LiningUp). Docking reads this to mute its own lateral tone and let taxi
+    /// steer the connector turns into the gate, swapping to docking's precise lateral
+    /// cue only once taxi has finished steering.
+    /// </summary>
+    public bool IsSteeringActive
+    {
+        get { lock (_stateLock) { return _route != null && (_state == TaxiGuidanceState.Taxiing || _state == TaxiGuidanceState.LiningUp); } }
+    }
+
     // Single lock serializing all access to _route / _graph / _state and related
     // tracking fields between the SimConnect position thread (UpdatePosition)
     // and UI-thread callers (LoadRoute, StopGuidance, ContinuePastHoldShort,
@@ -2076,6 +2097,10 @@ public class TaxiGuidanceManager : IDisposable
     private void CheckParkingCountdown(double distToTargetM)
     {
         if (_route == null) return;
+        // Docking guidance owns the final approach to the precise GSX stop (a few metres
+        // beyond this route's end node), so let ITS countdown be the only one — otherwise
+        // taxi says "5 m. Stop." at the node while docking is still 20 m from the stop.
+        if (_dockingActive) return;
         if (_currentSegmentIndex != _route.Segments.Count - 1)
         {
             _parkingAnnounce50 = false;
@@ -2804,6 +2829,18 @@ public class TaxiGuidanceManager : IDisposable
         // Gate / parking destination with lineup heading data — guide heading.
         if (_hasLineupTarget)
         {
+            // Docking guidance owns the final lineup + precise stop to the GSX stop
+            // position. Hand off silently: stop the taxi tone (so docking's lateral
+            // cue resumes — IsSteeringActive goes false) and let docking make the
+            // arrival/stop callouts. Avoids taxi announcing "Align with gate / Stop"
+            // and re-engaging its tone while docking is still 20 m from the real stop.
+            if (_dockingActive)
+            {
+                _steeringTone.Stop();
+                SetState(TaxiGuidanceState.Arrived);
+                return;
+            }
+
             SetState(TaxiGuidanceState.LiningUp);
             _lineupAnnouncedAligned = false;
 

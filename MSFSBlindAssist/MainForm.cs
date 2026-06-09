@@ -895,13 +895,28 @@ public partial class MainForm : Form
         if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
         {
             var pos = e.PositionData.Value;
+
+            // Coordinate the two lateral tones BEFORE updating docking so it respects the
+            // hand-off THIS frame. Exactly one panning tone sounds at a time:
+            //   • While taxi is actively steering the route (the connector turns into the
+            //     gate), TAXI owns the cue — it has the route geometry. Mute docking's
+            //     straight-to-stop lateral tone (which would fight the turns); docking still
+            //     gives the proximity beep + distance milestones.
+            //   • Once taxi finishes steering (parked / handed off at the route end node),
+            //     docking's precise lateral cue takes over for the final metres to the stop.
+            bool taxiSteering = taxiGuidanceManager.IsSteeringActive;
+            dockingGuidanceManager.SetLateralToneSuppressed(taxiSteering);
+            taxiGuidanceManager.SetSteeringToneSuppressed(false);
+
             dockingGuidanceManager.UpdatePosition(
                 pos.Latitude, pos.Longitude,
                 pos.HeadingMagnetic, pos.MagneticVariation,
                 pos.GroundSpeedKnots);
-            // Suppress the taxi steering tone while docking guidance owns the centerline
-            // cue near the gate — prevents two simultaneous panning tones confusing the pilot.
-            taxiGuidanceManager.SetSteeringToneSuppressed(dockingGuidanceManager.IsActive);
+
+            // Tell taxi when docking owns the arrival so it drops its contradictory terminal
+            // callouts (parking countdown / "Stop. Hold position." / gate-lineup verbal) —
+            // docking's countdown to the precise GSX stop is the single source of truth.
+            taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.IsActive);
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are
@@ -1763,7 +1778,20 @@ public partial class MainForm : Form
             case HotkeyAction.TaxiStatus:
                 // Y — rolling current status from live position (current taxiway, next turn,
                 // distance to destination). Recomputed on every press from the route + position.
-                announcer.AnnounceImmediate(taxiGuidanceManager.GetStatusAnnouncement());
+                // While docking owns the final approach, report ITS distance to the precise
+                // stop — not taxi's distance to the route-end node — so the status never
+                // contradicts the live docking countdown ("25 m to gate" vs "20 m to stop").
+                if (dockingGuidanceManager.IsActive)
+                {
+                    string dockStatus = dockingGuidanceManager.GetStatusAnnouncement();
+                    announcer.AnnounceImmediate(string.IsNullOrEmpty(dockStatus)
+                        ? taxiGuidanceManager.GetStatusAnnouncement()
+                        : dockStatus);
+                }
+                else
+                {
+                    announcer.AnnounceImmediate(taxiGuidanceManager.GetStatusAnnouncement());
+                }
                 break;
             case HotkeyAction.TaxiRepeat:
                 // Ctrl+Y — replays the most recent actionable instruction (turn callout,

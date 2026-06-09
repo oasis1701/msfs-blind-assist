@@ -38,12 +38,41 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool _slowDownSaid;
     private double _doorOffsetMetres; // longitudinal offset (metres, forward of datum); 0 = align datum
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
+    private bool _lateralSuppressed; // taxi guidance is steering the route — mute docking's own lateral tone
+    private double _lastDoorAlongM;  // last door-aligned forward distance (m), for the status query
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
 
     /// <summary>True while docking is actively guiding (Docking or Stopped) — used to suppress the taxi steering tone.</summary>
     public bool IsActive { get { lock (_lock) { return _state == DockState.Docking || _state == DockState.Stopped; } } }
+
+    /// <summary>
+    /// When true, docking does NOT play its own lateral steering tone — taxi guidance
+    /// is actively steering the route (including the connector turns into the gate), so a
+    /// second panning tone would both confuse the pilot and fight the route geometry.
+    /// Docking keeps its proximity beep, distance milestones, and stop logic regardless.
+    /// Set back to false once taxi has finished steering (reached/parked) so docking
+    /// provides the final precise lateral nudge to the stop.
+    /// </summary>
+    public void SetLateralToneSuppressed(bool suppressed) { lock (_lock) { _lateralSuppressed = suppressed; } }
+
+    /// <summary>
+    /// One-line status for the manual status hotkey (Input+Y), used INSTEAD of the taxi
+    /// status while docking owns the final approach — so the two never report conflicting
+    /// distances ("25 m to gate" from taxi vs "20 m to stop" from docking). Empty when not active.
+    /// </summary>
+    public string GetStatusAnnouncement()
+    {
+        lock (_lock)
+        {
+            string what = _gate?.IsDeiceArea == true ? "deicing pad" : "stop";
+            if (_state == DockState.Stopped) return "At the stop. Hold position.";
+            if (_state == DockState.Docking)
+                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastDoorAlongM))} to {what}.";
+            return string.Empty;
+        }
+    }
 
     /// <summary>Set (or clear) the destination gate the pilot is taxiing to. Resets state + audio.</summary>
     public void SetDestinationGate(ParkingSpot? gate)
@@ -84,6 +113,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 // When offset is 0 (unknown), doorAlongM == alongM and behaviour is unchanged.
                 double effOffset = (_gate?.IsDeiceArea == true) ? 0.0 : _doorOffsetMetres;
                 double doorAlongM = alongM - effOffset;
+                _lastDoorAlongM = doorAlongM;
 
                 switch (_state)
                 {
@@ -110,7 +140,20 @@ public sealed class DockingGuidanceManager : IDisposable
                         {
                             SilenceLocked(); _state = DockState.Armed; break;
                         }
-                        _tone.UpdateHeadingErrorWithThresholds(hdgErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
+                        // Lateral cue: only when taxi guidance is NOT steering the route.
+                        // While taxi owns steering (connector turns into the gate), docking's
+                        // straight-to-stop tone would fight the route, so stay silent on it —
+                        // the beep + milestones still convey closing distance. Once taxi has
+                        // finished steering, docking resumes the precise lateral nudge.
+                        if (_lateralSuppressed)
+                        {
+                            _tone.Pause();
+                        }
+                        else
+                        {
+                            _tone.Resume();
+                            _tone.UpdateHeadingErrorWithThresholds(hdgErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
+                        }
                         _beeper.Update(doorAlongM, active: true);
                         if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
                         {
