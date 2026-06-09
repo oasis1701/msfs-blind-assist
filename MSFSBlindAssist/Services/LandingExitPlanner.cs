@@ -115,7 +115,7 @@ public class LandingExitPlanner
                 $"node={exit.NodeId} currentlyAirborne={currentlyAirborne} _wasAirborne={_wasAirborne} " +
                 $"HasPendingExit={HasPendingExit}");
 
-        string dist = DistanceFormatter.FromFeet(exit.DistanceFromThresholdFeet);
+        string dist = DistanceFormatter.FromFeet(exit.DistanceFromThresholdFeet, round: false);
         string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "unnamed taxiway" : $"taxiway {exit.TaxiwayName}";
         _announcer.Announce(
             $"Landing exit planned: {name} at {icao} runway {runway.RunwayID}, " +

@@ -19,23 +19,31 @@ public static class DistanceFormatter
     public static bool IsMetres => UnitProvider() == DistanceUnit.Metres;
 
     /// <summary>Format a metres value in the active unit, e.g. "150 metres" / "500 feet".</summary>
-    public static string FromMetres(double metres, bool shortForm = false)
-        => Format(IsMetres ? metres : metres * FeetPerMetre, IsMetres, shortForm);
+    public static string FromMetres(double metres, bool shortForm = false, bool round = true)
+        => Format(IsMetres ? metres : metres * FeetPerMetre, IsMetres, shortForm, round);
 
     /// <summary>Format a feet value in the active unit.</summary>
-    public static string FromFeet(double feet, bool shortForm = false)
-        => Format(IsMetres ? feet * MetresPerFoot : feet, IsMetres, shortForm);
+    public static string FromFeet(double feet, bool shortForm = false, bool round = true)
+        => Format(IsMetres ? feet * MetresPerFoot : feet, IsMetres, shortForm, round);
 
     public static string UnitWord(bool shortForm = false)
         => IsMetres ? (shortForm ? "m" : "metres") : (shortForm ? "ft" : "feet");
 
-    private static string Format(double value, bool metres, bool shortForm)
+    private static string Format(double value, bool metres, bool shortForm, bool round = true)
     {
         if (value < 0) value = 0;
-        double step = metres
-            ? (value < 100 ? 5 : value < 500 ? 10 : 50)
-            : (value < 200 ? 25 : 50);
-        int rounded = (int)(Math.Round(value / step) * step);
+        int rounded;
+        if (round)
+        {
+            double step = metres
+                ? (value < 100 ? 5 : value < 500 ? 10 : 50)
+                : (value < 200 ? 25 : 50);
+            rounded = (int)(Math.Round(value / step) * step);
+        }
+        else
+        {
+            rounded = (int)Math.Round(value);
+        }
         if (shortForm) return $"{rounded} {(metres ? "m" : "ft")}";
         string unit = metres
             ? (rounded == 1 ? "metre" : "metres")

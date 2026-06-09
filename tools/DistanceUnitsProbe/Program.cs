@@ -46,5 +46,15 @@ var df = DistanceMilestones.Docking();
 Check("docking feet labels 100/60/30/15", df[0].Label == "100 feet" && df[1].Label == "60 feet" && df[2].Label == "30 feet" && df[3].Label == "15 feet");
 Check("docking feet labels distinct (no dup)", df[0].Label != df[1].Label && df[1].Label != df[2].Label && df[2].Label != df[3].Label);
 
+// --- Precise (round:false) informational distances: true value, no coarse stepping ---
+DistanceFormatter.UnitProvider = () => DistanceUnit.Feet;
+Check("feet exact 12467 -> 12467 feet",          DistanceFormatter.FromFeet(12467, round: false) == "12467 feet");
+Check("feet exact short 148 -> 148 ft",          DistanceFormatter.FromFeet(148, shortForm: true, round: false) == "148 ft");
+Check("feet rounded 12467 -> 12450 feet (default)", DistanceFormatter.FromFeet(12467) == "12450 feet");
+DistanceFormatter.UnitProvider = () => DistanceUnit.Metres;
+Check("metres exact from 12467ft -> 3800 metres", DistanceFormatter.FromFeet(12467, round: false) == "3800 metres");
+Check("metres exact 3801 -> 3801 metres",         DistanceFormatter.FromMetres(3801, round: false) == "3801 metres");
+Check("metres rounded 3801 -> 3800 metres (default)", DistanceFormatter.FromMetres(3801) == "3800 metres");
+
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;
