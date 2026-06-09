@@ -11,10 +11,11 @@ Check("along-track 90deg off ~ 0", Near(DockingGeometry.AlongTrackMetres(50, 90)
 Check("along-track overshoot negative", DockingGeometry.AlongTrackMetres(50, 180) < 0);
 
 // Stop / overshoot — OvershootMetres == 1.0 now
-Check("stop true at tol edge 0.5m", DockingGeometry.IsStop(0.5));
+Check("stop true at tol edge 0.3m", DockingGeometry.IsStop(0.3));
+Check("stop false just above tightened tol 0.5m", !DockingGeometry.IsStop(0.5));
 Check("stop false just above tol 0.8m", !DockingGeometry.IsStop(0.8));
 Check("stop false beyond tol", !DockingGeometry.IsStop(5.0));
-Check("stop true at -0.5m (within [-1, 0.5])", DockingGeometry.IsStop(-0.5));
+Check("stop true at -0.5m (within [-1, 0.3])", DockingGeometry.IsStop(-0.5));
 Check("overshoot true at -3.0m", DockingGeometry.IsOvershoot(-3.0));
 Check("overshoot false ahead", !DockingGeometry.IsOvershoot(5.0));
 Check("overshoot false at -0.5m (not yet past 1m)", !DockingGeometry.IsOvershoot(-0.5));
@@ -37,8 +38,9 @@ Check("engage no - taxi speed 20kt (new 15kt ceiling)", !DockingGeometry.ShouldE
 Check("engage yes at 12kt", DockingGeometry.ShouldEngage(12, 40, 20));
 
 // Constant value asserts
-Check("stop tolerance 0.5m: IsStop(0.5) true", DockingGeometry.IsStop(0.5));
-Check("stop tolerance 0.5m: IsStop(0.8) false", !DockingGeometry.IsStop(0.8));
+Check("stop tolerance 0.3m: IsStop(0.3) true", DockingGeometry.IsStop(0.3));
+Check("stop tolerance 0.3m: IsStop(0.5) false", !DockingGeometry.IsStop(0.5));
+Check("BeepNearMetres == StopToleranceMetres (no plateau)", DockingGeometry.BeepNearMetres == DockingGeometry.StopToleranceMetres);
 Check("slow-down zone const", DockingGeometry.SlowDownMetres == 6.0);
 Check("SlowDownSpeedKts == 5.0", DockingGeometry.SlowDownSpeedKts == 5.0);
 Check("EngageRangeMetres == 50.0", DockingGeometry.EngageRangeMetres == 50.0);

@@ -409,12 +409,14 @@ public sealed class DockingGuidanceManager : IDisposable
         // right at the stop so you finish centered AND square. A stationary nose-in aircraft
         // cannot reduce lateral offset (no sideways motion), so "keep converging" at the stop
         // is futile and reads as a wrong-way cue (a slight RIGHT bias while 10 ft left when
-        // the pilot just wants to square LEFT to the gate). Start the fade even LATER now (4 m,
-        // was 6 m) so the tight-deadband intercept keeps closing the last foot or two as deep as
-        // possible, then squares over the final ~3 m. With the 1 ft deadband the residual reaching
-        // this zone is tiny, so squaring costs almost no lateral precision while still guaranteeing
-        // a square (not askew) finish.
-        const double FadeStartM = 4.0, FadeEndM = 1.0;
+        // the pilot just wants to square LEFT to the gate). Square the heading to the pure gate
+        // heading by 2.5 m out (fade 6→2.5 m), NOT crammed into the final metre. A live B77W dock
+        // entered the box ~5° over-rotated and the squaring cue only got strong in the last ~2.5 m
+        // — too late to finish the turn at 1–2 kt, so the pilot stopped mid-turn ~2° off. Finishing
+        // the square by 2.5 m gives a clear early "turn to align" cue AND leaves a straight, already-
+        // aligned creep over the final 2.5 m to the stop. The tight 1 ft deadband still centres the
+        // lateral well before this zone, so finishing square here costs ~nothing in cross-track.
+        const double FadeStartM = 6.0, FadeEndM = 2.5;
         double fade = Math.Clamp((alongMetres - FadeEndM) / (FadeStartM - FadeEndM), 0.0, 1.0);
         intercept *= fade;
 

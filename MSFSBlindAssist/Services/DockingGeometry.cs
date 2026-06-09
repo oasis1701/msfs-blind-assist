@@ -13,7 +13,13 @@ public static class DockingGeometry
     /// <summary>Engage when the aircraft datum is within 50 m of the gate stop.</summary>
     public const double EngageRangeMetres = 50.0;
     public const double EngageConeDeg = 70.0;
-    public const double StopToleranceMetres = 0.5;
+    /// <summary>
+    /// Stop band (m). The aircraft is "at the stop" from this far out to <see cref="OvershootMetres"/>
+    /// past. Tightened 0.5→0.3 m for an unforgiving park: it also gates the beeper's SOLID tone and
+    /// the "GSX docking complete." callout, so the pilot creeps until the solid tone and lands within
+    /// ~0.3 m of the exact stop instead of 0.5 m short.
+    /// </summary>
+    public const double StopToleranceMetres = 0.3;
     /// <summary>Announce overshoot when the door is 1 m past the stop.</summary>
     public const double OvershootMetres = 1.0;
     public const double SlowDownMetres = 6.0;
@@ -26,7 +32,15 @@ public static class DockingGeometry
     public const double BeepIntervalNearMs = 90.0;
     /// <summary>Beep ramps gradually over the final ~30 m of door distance.</summary>
     public const double BeepFarMetres = 30.0;
-    public const double BeepNearMetres = 2.0;
+    /// <summary>
+    /// Distance (m) at which the beep reaches its FASTEST pulse — set equal to
+    /// <see cref="StopToleranceMetres"/> so the pulse keeps accelerating right up to the point the
+    /// SOLID stop tone begins, with NO max-speed plateau before it. The old 2 m plateau made every
+    /// distance from 2 m to the stop sound identical ("fast beep"), so the pilot read fast-beep as
+    /// "stop" and parked up to ~1.5 m short, mid-alignment-turn. Now: accelerating pulse = keep
+    /// creeping; solid tone = stop, here, exactly.
+    /// </summary>
+    public const double BeepNearMetres = StopToleranceMetres;
 
     /// <summary>Normalize an angle (deg) to (-180, 180].</summary>
     public static double NormalizeDeg180(double deg)
