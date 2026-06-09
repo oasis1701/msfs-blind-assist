@@ -220,6 +220,26 @@ namespace MSFSBlindAssist.SimConnect
         {
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
+            // Socket still OPEN but the agent went missing (an eval timed out / the page
+            // re-evaluated) — re-install the agent on the SAME socket instead of reconnecting.
+            if (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                string reinstall = await EvalAsync(_agentJs, ct);
+                _agentInstalled = reinstall.IndexOf("MSFSBA_A380_INSTALLED", StringComparison.Ordinal) >= 0;
+                if (_agentInstalled) { _connected = true; return true; }
+            }
+
+            // CRITICAL: tear down any existing socket BEFORE opening a new one. Coherent GT
+            // allows only ONE inspector connection per page — opening a SECOND socket while
+            // the first is alive orphans the healthy one and blocks the page permanently.
+            if (_ws != null)
+            {
+                try { _ws.Abort(); } catch { }
+                try { _ws.Dispose(); } catch { }
+                _ws = null;
+                _agentInstalled = false;
+            }
+
             // Resolve the MFD page id by title (restart-proof).
             int? pageId = await ResolveMfdPageId(ct);
             if (pageId == null) { _connected = false; return false; }

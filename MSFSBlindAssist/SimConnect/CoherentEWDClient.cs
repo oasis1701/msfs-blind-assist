@@ -218,6 +218,44 @@ namespace MSFSBlindAssist.SimConnect
             // Re-check under the lock: a concurrent caller may have just (re)connected.
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
+            // Socket still OPEN but an agent flag went missing (an eval timed out / the page
+            // re-evaluated) — re-install the agents on the SAME socket. This is the common
+            // transient case and avoids a reconnect entirely. CRITICAL: never open a second
+            // socket while this one is alive — Coherent GT allows only ONE inspector
+            // connection per page, and replacing _ws would orphan the healthy socket and
+            // block the A380X_EWD page for the rest of the process.
+            if (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                string reinstall = await EvalAsync(_agentJs, ct);
+                _agentInstalled = reinstall.IndexOf("MSFSBA_EWD_INSTALLED", StringComparison.Ordinal) >= 0;
+                if (_agentInstalled)
+                {
+                    if (!_eclAgentInstalled && !string.IsNullOrEmpty(_eclAgentJs))
+                    {
+                        string eclReinstall = await EvalAsync(_eclAgentJs, ct);
+                        _eclAgentInstalled = eclReinstall.IndexOf("MSFSBA_ECL_INSTALLED", StringComparison.Ordinal) >= 0;
+                    }
+                    if (!_dispAgentInstalled && !string.IsNullOrEmpty(_dispAgentJs))
+                    {
+                        string dispReinstall = await EvalAsync(_dispAgentJs, ct);
+                        _dispAgentInstalled = dispReinstall.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
+                    }
+                    _connected = true;
+                    return true;
+                }
+            }
+
+            // Tear down any existing socket BEFORE opening a new one (one-socket-per-page rule).
+            if (_ws != null)
+            {
+                try { _ws.Abort(); } catch { }
+                try { _ws.Dispose(); } catch { }
+                _ws = null;
+                _agentInstalled = false;
+                _eclAgentInstalled = false;
+                _dispAgentInstalled = false;
+            }
+
             int? pageId = await ResolveEwdPageId(ct);
             if (pageId == null) { _connected = false; return false; }
 
@@ -420,7 +458,17 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<List<EclRow>?> ScrapeEclInternal(CancellationToken ct)
         {
-            if (!_eclAgentInstalled) return null;
+            if (!_eclAgentInstalled)
+            {
+                // One transient eval timeout used to latch this false until the socket
+                // actually dropped — self-heal by re-installing on the live socket
+                // (idempotent IIFE; runs under the same connection the monitor owns).
+                if (string.IsNullOrEmpty(_eclAgentJs) || _ws == null || _ws.State != WebSocketState.Open)
+                    return null;
+                string eclReinstall = await EvalAsync(_eclAgentJs, ct);
+                _eclAgentInstalled = eclReinstall.IndexOf("MSFSBA_ECL_INSTALLED", StringComparison.Ordinal) >= 0;
+                if (!_eclAgentInstalled) return null;
+            }
             string raw = await EvalAsync("window.__MSFSBA_ECL ? __MSFSBA_ECL.scrape() : ''", ct);
             if (string.IsNullOrEmpty(raw)) { _eclAgentInstalled = false; return null; }
             try
@@ -445,7 +493,17 @@ namespace MSFSBlindAssist.SimConnect
             {
                 var ct = _cts?.Token ?? CancellationToken.None;
                 if (!await EnsureConnected(ct)) return null;
-                if (!_dispAgentInstalled) return null;
+                if (!_dispAgentInstalled)
+                {
+                    // One transient eval timeout used to latch this false until the socket
+                    // actually dropped — self-heal by re-installing on the live socket
+                    // (idempotent IIFE; runs under the same connection the monitor owns).
+                    if (string.IsNullOrEmpty(_dispAgentJs) || _ws == null || _ws.State != WebSocketState.Open)
+                        return null;
+                    string dispReinstall = await EvalAsync(_dispAgentJs, ct);
+                    _dispAgentInstalled = dispReinstall.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
+                    if (!_dispAgentInstalled) return null;
+                }
                 string raw = await EvalAsync("window.__MSFSBA_DISP ? __MSFSBA_DISP.scrape() : ''", ct);
                 if (string.IsNullOrEmpty(raw)) { _dispAgentInstalled = false; return null; }
                 var res = JsonSerializer.Deserialize<DispScrapeResult>(raw);
