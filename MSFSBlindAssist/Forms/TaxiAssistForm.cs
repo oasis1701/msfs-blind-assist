@@ -121,6 +121,10 @@ public class TaxiAssistForm : Form
     // OnCalculateClicked for gate destinations; cleared on runway destinations.
     private readonly Services.DockingGuidanceManager? _dockingManager;
 
+    // Resolves the GSX .py per-aircraft stop offset for a navdata/.py gate so the
+    // docking stop moves to where GSX's VDGS would stop THIS airframe. Lazy + cached.
+    private readonly Services.Gsx.GsxStopOffsetResolver _stopOffsetResolver = new();
+
     public TaxiAssistForm(
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
@@ -1531,6 +1535,7 @@ public class TaxiAssistForm : Form
         {
             _destinationSpotMap.TryGetValue(destName, out var destSpot);
             _dockingManager?.SetDestinationGate(destSpot);
+            ApplyGsxStopOffset(destSpot);
         }
 
         CheckGateOccupancy(isRunwayDest, thresholdLat, thresholdLon);
@@ -1713,6 +1718,47 @@ public class TaxiAssistForm : Form
         }
 
         return bestNode;
+    }
+
+    /// <summary>
+    /// Computes the GSX <c>.py</c> per-aircraft stop offset for <paramref name="spot"/> and
+    /// feeds it to docking, so the stop moves to where GSX's VDGS would stop this airframe.
+    /// Only applies for NAVDATA/<c>.py</c> gates (<c>StopLatitude == null</c> — a <c>.ini</c>
+    /// gate already carries an exact GSX stop, so we don't double-offset it) and skips deice
+    /// areas (datum-aligned). Resolves the aircraft id from SimConnect ICAO + wingspan. Any
+    /// miss (no profile / unknown aircraft / parse fail) yields <see cref="Services.Gsx.GsxOffset.Zero"/>
+    /// — identical to today's behaviour. Never throws.
+    /// </summary>
+    private void ApplyGsxStopOffset(Database.Models.ParkingSpot? spot)
+    {
+        if (_dockingManager == null) return;
+
+        // Default to base position; only a successful resolution moves the stop.
+        var offset = Services.Gsx.GsxOffset.Zero;
+        try
+        {
+            if (spot != null
+                && spot.StopLatitude == null      // .ini gates already carry GSX's exact stop
+                && !spot.IsDeiceArea              // deice pads are datum-aligned
+                && _simConnectManager != null)
+            {
+                string icaoType = _simConnectManager.CurrentAircraftIcaoType;
+                double wingspanM = _simConnectManager.AircraftWingSpan > 0
+                    ? _simConnectManager.AircraftWingSpan * 0.3048 // feet -> metres
+                    : 0.0;
+                if (!string.IsNullOrWhiteSpace(icaoType))
+                {
+                    // TryResolve always yields a usable id even when it returns false (idMajor
+                    // not derived) — the raw ICAO can still hit an ICAO-keyed table, so we
+                    // evaluate with whatever id it produced regardless of the bool.
+                    Services.Gsx.GsxAircraftIdMap.TryResolve(icaoType, wingspanM, out var acId);
+                    offset = _stopOffsetResolver.Resolve(_currentIcao, spot.Number, spot.Suffix, acId);
+                }
+            }
+        }
+        catch { offset = Services.Gsx.GsxOffset.Zero; }
+
+        _dockingManager.SetStopOffset(offset);
     }
 
     private void OnStopClicked(object? sender, EventArgs e)

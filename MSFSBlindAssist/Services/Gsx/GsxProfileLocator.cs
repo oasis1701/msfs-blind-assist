@@ -58,6 +58,39 @@ public sealed class GsxProfileLocator
         return true;
     }
 
+    /// <summary>
+    /// Locates the GSX <c>.py</c> profile for an ICAO (e.g. EDDF -> "eddf-Aerosoft.py").
+    /// Filenames are scrambled but always start with the ICAO. When multiple match, returns
+    /// the most-recently-written. Used by the per-aircraft stop-offset evaluator — the LIST
+    /// path (GateDataSource) does NOT parse .py, but the docking stop offset does.
+    /// </summary>
+    public bool TryFindPyProfile(string icao, out string path)
+    {
+        path = string.Empty;
+        if (string.IsNullOrWhiteSpace(icao) || !Directory.Exists(_profileDir)) return false;
+
+        // Same ICAO-prefix matching rules as the .ini locator. Exclude the GSX "_handler.py"
+        // companion files: those carry no parking/offset tables (they hold handler callbacks),
+        // so picking one as "the profile" would yield an empty gate map. The main profile is
+        // always present alongside, so dropping the handler is safe.
+        var matches = Directory.GetFiles(_profileDir, $"{icao}*.py")
+            .Where(m =>
+            {
+                string stem = Path.GetFileNameWithoutExtension(m);
+                if (!stem.StartsWith(icao, StringComparison.OrdinalIgnoreCase)) return false;
+                if (stem.EndsWith("_handler", StringComparison.OrdinalIgnoreCase)) return false;
+                if (stem.Length == icao.Length) return true;                   // rule 1: exact
+                char sep = stem[icao.Length];
+                if (sep == '-' || sep == '_') return true;                     // rule 2: separator
+                return icao.Length == 4;                                       // rule 3: prefix fallback (4-char ICAOs only)
+            })
+            .ToArray();
+        if (matches.Length == 0) return false;
+
+        path = matches.OrderByDescending(File.GetLastWriteTimeUtc).First();
+        return true;
+    }
+
     // Cache names look like ICAO-<6..10 lowercase alnum> (e.g. KATL-ooh17umq.ini).
     // Downloaded profiles look like omdb-24-iniBuilds.ini / EDDF-Aerosoft.ini (extra
     // dashes or uppercase letters), or ebbr_aerosoft_v2.ini / rjttbasica7.ini, which

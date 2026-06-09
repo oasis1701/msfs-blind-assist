@@ -636,6 +636,46 @@ The stop position used for all geometry is chosen in this order of priority:
 as the centreline reference for both lateral steering and the along-track distance
 calculation.
 
+### GSX `.py` per-aircraft stop offset
+
+Large airports ship a GSX **Python** (`.py`) profile (≈72 installed, including
+EDDF). These are NOT parsed for the gate LIST (`GateDataSource` is `.ini`-only),
+but they DO carry per-aircraft stop math: each gate's `customOffset` function
+returns a longitudinal/lateral offset (in metres) that GSX's VDGS applies so a
+777-300 stops a few metres deeper than an A320 at the same stand. Measured at
+EDDF A66: a 777-300 stops **+5.3 m** vs the navdata base.
+
+When the destination gate is **navdata/`.py`-sourced** (i.e. `StopLatitude == null`
+— a `.ini` gate already carries an exact GSX stop, so it is never double-offset)
+and the aircraft id is known, `TaxiAssistForm.ApplyGsxStopOffset` resolves the
+offset and feeds it to `DockingGuidanceManager.SetStopOffset`:
+
+- `GsxStopOffsetResolver` locates the airport's `.py` (`GsxProfileLocator.TryFindPyProfile`,
+  most-recent match, `_handler.py` companions excluded), parses it with
+  `GsxPyProfileReader` (cached by path + last-write-time), and evaluates the gate's
+  function with `GsxPyOffsetEvaluator` for the resolved `GsxAircraftId`.
+- **Aircraft id resolution is UNIVERSAL** (`GsxAircraftIdMap.TryResolve(icao, wingspanMetres)`):
+  the PRIMARY mechanism DERIVES `idMajor`/`idMinor` from the ICAO type designator
+  pattern (Boeing `B7Xd` → 707+X·10; Airbus `A3YZ` narrowbody literal / widebody
+  300+Y·10; Embraer E-Jets literal) and the ARC code from wingspan (Annex-14:
+  A&lt;15 … F≥65 m). A thin exception table holds only genuinely irregular
+  designators (B787 bare-minor, A350 idMinor 1000, neo idMinor 1, A220). So any
+  aircraft — including ones MSFSBA has never seen — resolves to a usable id; the
+  raw ICAO is always preserved so ICAO-keyed profile tables hit regardless.
+- The evaluator's group fallback tries `"ARC-E"`, bare `"E"`, and `"Heavy"` because
+  different scenery authors key their group dicts differently (the `"ARC-X"` form
+  dominates the installed profiles).
+
+In `DockingGuidanceManager.UpdatePosition`, the stop point is shifted BEFORE any
+distance is computed: `LongitudinalMetres` along `StopHeading`, `LateralMetres`
+perpendicular (right = +), via an equirectangular metres→degrees conversion. Every
+cue (along-track, lineup, milestones) then references the shifted stop. **Deice
+areas keep the offset at `GsxOffset.Zero`** (datum-aligned pads). `GsxOffset.Zero`
+is the default and a strict no-op — the shift is skipped entirely, so behaviour is
+byte-identical to having no offset. Any miss at any layer (no profile, unknown
+aircraft, parse error) degrades to `Zero`, never worse than the bare navdata stop.
+The applied offset is logged (`stopOffL` / `stopOffLat`) in `docking.log`.
+
 ### Geometry (DockingGeometry)
 
 GSX exposes **no docking-distance L-var** — the lateral and longitudinal distance

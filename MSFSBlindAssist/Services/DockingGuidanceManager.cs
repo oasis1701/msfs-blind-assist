@@ -2,6 +2,7 @@ using System.IO;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Services.Gsx;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Services;
@@ -40,6 +41,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private double _doorOffsetMetres; // longitudinal offset (metres, forward of datum); 0 = align datum
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
     private double _lastDoorAlongM;  // last door-aligned forward distance (m), for the status query
+    private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
 
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
     private static readonly string DockLogPath = Path.Combine(
@@ -73,7 +75,9 @@ public sealed class DockingGuidanceManager : IDisposable
     /// <summary>Set (or clear) the destination gate the pilot is taxiing to. Resets state + audio.</summary>
     public void SetDestinationGate(ParkingSpot? gate)
     {
-        lock (_lock) { _gate = gate; ResetLocked(); }
+        // Clear any prior gate's stop offset — the caller recomputes + SetStopOffset for the
+        // new gate when the aircraft id is known; until then default to Zero (base position).
+        lock (_lock) { _gate = gate; _stopOffset = GsxOffset.Zero; ResetLocked(); }
     }
 
     /// <summary>Per-aircraft longitudinal door offset (metres, forward of datum). 0 = align the datum (no GSX data).</summary>
@@ -81,6 +85,15 @@ public sealed class DockingGuidanceManager : IDisposable
 
     /// <summary>"left" / "right" / "" — the preferred passenger door side, for jetway orientation.</summary>
     public void SetDoorSide(string side) { lock (_lock) { _doorSide = side ?? ""; } }
+
+    /// <summary>
+    /// GSX per-aircraft stop offset (metres) from the destination gate's <c>.py</c> profile —
+    /// <c>LongitudinalMetres</c> forward along the gate stop heading, <c>LateralMetres</c>
+    /// perpendicular (right = +). Shifts the stop TARGET so the park ends where GSX's VDGS
+    /// would stop this airframe, instead of the bare navdata base. <see cref="GsxOffset.Zero"/>
+    /// (the default, and the value for deice areas) reproduces today's behaviour exactly.
+    /// </summary>
+    public void SetStopOffset(GsxOffset offset) { lock (_lock) { _stopOffset = offset; } }
 
     public void UpdatePosition(double lat, double lon, double headingMag, double magVar, double groundSpeedKts)
     {
@@ -98,6 +111,15 @@ public sealed class DockingGuidanceManager : IDisposable
                 double sLat = _gate.StopLatitude ?? _gate.Latitude;
                 double sLon = _gate.StopLongitude ?? _gate.Longitude;
                 double centerHdg = _gate.StopHeading ?? _gate.Heading;
+
+                // Apply the GSX .py per-aircraft stop offset BEFORE any distances are computed,
+                // so every cue (distM/alongM/lineup/milestones) references the shifted stop. The
+                // offset moves the stop point LongitudinalMetres along the gate stop heading and
+                // LateralMetres perpendicular (right = +). Deice areas keep Zero (datum-aligned).
+                // With GsxOffset.Zero the shift is a no-op and behaviour is identical to before.
+                if ((_stopOffset.LongitudinalMetres != 0.0 || _stopOffset.LateralMetres != 0.0)
+                    && _gate.IsDeiceArea != true)
+                    ShiftStop(ref sLat, ref sLon, centerHdg, _stopOffset);
 
                 double distM = NavigationCalculator.CalculateDistance(lat, lon, sLat, sLon) * DockingGeometry.MetresPerNm;
                 double brg = NavigationCalculator.CalculateBearing(lat, lon, sLat, sLon);
@@ -259,10 +281,11 @@ public sealed class DockingGuidanceManager : IDisposable
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} doorAlong={5:F1} " +
                 "hdgErr={6:F1} lineupErr={7:F1} crossFt={8:F1} stopHdgTrue={9:F1} acHdgTrue={10:F1} " +
-                "offset={11:F2} deice={12}{13}",
+                "offset={11:F2} stopOffL={12:F2} stopOffLat={13:F2} deice={14}{15}",
                 DateTime.Now, _state, gs, distM, alongM, doorAlongM,
                 hdgErr, lineupErr, crossFt, stopHeadingTrue, acHdgTrue,
-                _doorOffsetMetres, _gate?.IsDeiceArea == true, Environment.NewLine));
+                _doorOffsetMetres, _stopOffset.LongitudinalMetres, _stopOffset.LateralMetres,
+                _gate?.IsDeiceArea == true, Environment.NewLine));
         }
         catch { /* logging must never break docking */ }
     }
@@ -311,6 +334,31 @@ public sealed class DockingGuidanceManager : IDisposable
 
         double desiredHdg = centerHdgTrue + intercept;
         return DockingGeometry.NormalizeDeg180(desiredHdg - acHdgTrue);
+    }
+
+    /// <summary>
+    /// Shifts the stop point (<paramref name="sLat"/>,<paramref name="sLon"/>) by the GSX
+    /// stop offset: <paramref name="offset"/>.LongitudinalMetres along <paramref name="stopHeadingTrue"/>
+    /// (forward-positive) and LateralMetres perpendicular (heading+90°, right-positive). Uses an
+    /// equirectangular metres→degrees conversion, which is exact enough at the ~tens-of-metres
+    /// scale of a gate offset. <c>GsxOffset.Zero</c> leaves the point unchanged.
+    /// </summary>
+    private static void ShiftStop(ref double sLat, ref double sLon, double stopHeadingTrue, GsxOffset offset)
+    {
+        double hdg = stopHeadingTrue * Math.PI / 180.0;
+        double perp = hdg + Math.PI / 2.0; // heading+90° = perpendicular, right of the stop heading
+        double lon_ = offset.LongitudinalMetres;
+        double lat_ = offset.LateralMetres;
+
+        double north_m = lon_ * Math.Cos(hdg) + lat_ * Math.Cos(perp);
+        double east_m = lon_ * Math.Sin(hdg) + lat_ * Math.Sin(perp);
+
+        double dLat = north_m / 111320.0;
+        double cosLat = Math.Cos(sLat * Math.PI / 180.0);
+        double dLon = Math.Abs(cosLat) > 1e-9 ? east_m / (111320.0 * cosLat) : 0.0;
+
+        sLat += dLat;
+        sLon += dLon;
     }
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
