@@ -73,11 +73,16 @@ public class TaxiGuidanceManager : IDisposable
 
     private bool _dockingActive;
     /// <summary>
-    /// True when docking guidance is actively handling the destination gate/stop. While
-    /// true, taxi suppresses its OWN terminal arrival callouts (the parking countdown,
-    /// "Stop. Hold position.", and the gate-lineup verbal) so it never contradicts
-    /// docking's countdown to the precise GSX stop — which sits a few metres beyond
-    /// taxi's route-end node. Taxi still routes + steers to the gate vicinity.
+    /// True when docking guidance OWNS the terminal arrival for the destination gate — fed from
+    /// <c>DockingGuidanceManager.OwnsArrival</c> (a gate is set and docking is enabled), NOT just
+    /// when the final approach has engaged. While true, taxi suppresses its OWN terminal arrival
+    /// callouts (the parking countdown, "Stop. Hold position.", the "Align with…"/"Destination
+    /// reached" verbal, and the gate-lineup "Parking brake.") so it never contradicts docking's
+    /// countdown to the precise GSX stop — which sits a few metres beyond taxi's route-end node.
+    /// Covering the whole approach (not just the engaged window) matters because taxi can reach
+    /// its node and try to say "Stop. Hold position." a moment before docking formally engages.
+    /// Taxi still routes + steers to the gate vicinity (its tone is muted separately, via
+    /// SetSteeringToneSuppressed, only once docking actually engages).
     /// </summary>
     public void SetDockingActive(bool active) { _dockingActive = active; }
 
@@ -2844,12 +2849,19 @@ public class TaxiGuidanceManager : IDisposable
             _smoothedHeadingError = 0.0;
             _headingErrorInitialized = false;
 
-            int hdgAnnounce = (int)Math.Round(_lineupHeadingMag);
-            double headingError = NormalizeAngle(_lineupHeadingTrue - _lastHeading);
-            string turnDir = Math.Abs(headingError) < 10 ? "" :
-                (headingError > 0 ? " Turn right." : " Turn left.");
-
-            AnnounceInstruction($"Align with {_destinationName}, heading {hdgAnnounce}.{turnDir}");
+            // When docking owns the arrival it announces the approach ("Docking guidance…")
+            // and the precise stop; taxi staying silent here avoids a contradictory "Align
+            // with X" / "Stop. Hold position." over docking's countdown. Taxi still holds
+            // LiningUp state + its (muted-while-docking) tone so steering is seamless if
+            // docking never engages.
+            if (!_dockingActive)
+            {
+                int hdgAnnounce = (int)Math.Round(_lineupHeadingMag);
+                double headingError = NormalizeAngle(_lineupHeadingTrue - _lastHeading);
+                string turnDir = Math.Abs(headingError) < 10 ? "" :
+                    (headingError > 0 ? " Turn right." : " Turn left.");
+                AnnounceInstruction($"Align with {_destinationName}, heading {hdgAnnounce}.{turnDir}");
+            }
 
             // Keep tone going for lineup guidance
             _steeringTone.Resume();
@@ -2873,8 +2885,10 @@ public class TaxiGuidanceManager : IDisposable
                 $"Off the runway at {exitName}. Hold position. " +
                 $"Open the taxi planner to set a route to your gate.");
         }
-        else
+        else if (!_dockingActive)
         {
+            // Docking, when it owns this arrival, announces the stop itself — suppress the
+            // generic "Destination reached" so the two don't double up.
             AnnounceInstruction($"{_route?.DestinationName ?? "Destination"} reached.");
         }
     }

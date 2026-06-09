@@ -11,6 +11,8 @@
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxOffset.cs" Link="Linked\GsxOffset.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxPyProfileReader.cs" Link="Linked\GsxPyProfileReader.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxPyOffsetEvaluator.cs" Link="Linked\GsxPyOffsetEvaluator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxProfileLocator.cs" Link="Linked\GsxProfileLocator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxStopOffsetResolver.cs" Link="Linked\GsxStopOffsetResolver.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\AircraftCfgCatalog.cs" Link="Linked\AircraftCfgCatalog.cs" />
   </ItemGroup>
 </Project>

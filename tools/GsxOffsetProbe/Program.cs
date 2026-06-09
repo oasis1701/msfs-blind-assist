@@ -54,6 +54,18 @@ var off66 = GsxPyOffsetEvaluator.Evaluate(eddf, 66, "", b77w);
 AssertNear(off66.LongitudinalMetres, 5.3, 0.01, "EDDF 66 B77W longitudinal == 5.3 m");
 AssertNear(off66.LateralMetres, 0.0, 0.01, "EDDF 66 B77W lateral == 0 m");
 
+// Full runtime path: locator (find eddf*.py) -> cache+parse -> evaluate. This is exactly
+// what TaxiAssistForm.ApplyGsxStopOffset calls — at BOTH .ini and navdata/.py gates. EDDF
+// has an EDDF-Aerosoft.ini, so A66 is .ini-sourced; the fix that applies the per-aircraft
+// offset to .ini gates too relies on this chain returning 5.3 m at runtime, not just the
+// direct-Load golden above. Skips cleanly if the GSX profile dir isn't present (CI).
+if (Directory.Exists(gsxDir))
+{
+    var resolver = new GsxStopOffsetResolver();
+    var rOff = resolver.Resolve("EDDF", 66, "", b77w);
+    AssertNear(rOff.LongitudinalMetres, 5.3, 0.01, "RESOLVER EDDF 66 B77W == 5.3 m (locator+parse+eval)");
+}
+
 // ---------------------------------------------------------------------------
 // 2) Suffix dispatch: 66 vs 66A vs 66B map to different functions.
 // ---------------------------------------------------------------------------

@@ -283,6 +283,12 @@ public partial class MainForm : Form
         // Initialize docking guidance manager
         dockingGuidanceManager = new DockingGuidanceManager(announcer);
 
+        // When docking reaches the precise GSX stop ("GSX docking complete."), stop taxi
+        // guidance so the whole flow ends cleanly instead of taxi sitting in LiningUp forever.
+        // Raised on the SimConnect position thread; StopGuidance is thread-safe + silent (docking
+        // already announced the stop), so no marshalling and no contradictory second callout.
+        dockingGuidanceManager.DockingCompleted += () => taxiGuidanceManager.StopGuidance();
+
         // Subscribe to taxi guidance state changes ONCE, here at construction time.
         // This wires SimConnect taxi-position monitoring on/off (see
         // OnTaxiGuidanceStateChanged). Previously the subscription only happened
@@ -909,7 +915,11 @@ public partial class MainForm : Form
             // docking owns the arrival so it drops its contradictory terminal callouts
             // (parking countdown / "Stop. Hold position." / gate-lineup verbal).
             taxiGuidanceManager.SetSteeringToneSuppressed(dockingGuidanceManager.IsActive);
-            taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.IsActive);
+            // OwnsArrival (gate set + docking enabled), NOT IsActive: taxi must drop its terminal
+            // arrival callouts for the WHOLE gate approach, including the window before docking
+            // formally engages — otherwise taxi says "Stop. Hold position." at its route-end node
+            // while docking is still guiding the aircraft a few metres deeper to the GSX stop.
+            taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.OwnsArrival);
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are

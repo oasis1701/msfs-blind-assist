@@ -1737,9 +1737,16 @@ public class TaxiAssistForm : Form
         var offset = Services.Gsx.GsxOffset.Zero;
         try
         {
+            // Apply for BOTH navdata/.py gates (StopLatitude == null, base = parking centre)
+            // AND .ini gates (StopLatitude set, base = the .ini gate position). The .py
+            // customOffset is GSX's PER-AIRCRAFT stop adjustment, which GSX adds on top of the
+            // static gate base regardless of source — that's why the same gate yields different
+            // offsets per airframe (EDDF A66: 777=5.3 m, A380=6.3 m, base=1.65 m). The earlier
+            // `StopLatitude == null` guard wrongly assumed the .ini base was already aircraft-
+            // exact, so at every .ini airport (EDDF, etc.) the 777 parked ~5 m short of GSX's
+            // real VDGS stop. Deice pads stay datum-aligned (no per-aircraft offset).
             if (spot != null
-                && spot.StopLatitude == null      // .ini gates already carry GSX's exact stop
-                && !spot.IsDeiceArea              // deice pads are datum-aligned
+                && !spot.IsDeiceArea
                 && _simConnectManager != null)
             {
                 // Snapshot the aircraft identity once, adjacently. This runs UI-thread on the

@@ -59,6 +59,24 @@ public sealed class DockingGuidanceManager : IDisposable
     public bool IsActive { get { lock (_lock) { return _state == DockState.Docking || _state == DockState.Stopped; } } }
 
     /// <summary>
+    /// True when docking owns the terminal arrival for the current destination — a gate is set
+    /// and docking guidance is enabled — REGARDLESS of whether the final approach has formally
+    /// engaged yet. Taxi uses this to suppress its OWN terminal arrival callouts for the whole
+    /// gate approach (not just the engaged window), so it never says "Stop. Hold position." at
+    /// its route-end node while docking is still guiding the aircraft a few metres deeper to the
+    /// precise GSX stop.
+    /// </summary>
+    public bool OwnsArrival { get { lock (_lock) { return _gate != null && SettingsManager.Current.DockingGuidanceEnabled; } } }
+
+    /// <summary>
+    /// Raised ONCE when the final approach reaches the stop (the "GSX docking complete." / "Stop."
+    /// moment, including an overshoot stop). Lets the host stop taxi guidance so the whole flow
+    /// ends cleanly instead of taxi sitting in LiningUp forever after the aircraft is parked.
+    /// Raised OUTSIDE the internal lock, on the SimConnect position thread.
+    /// </summary>
+    public event Action? DockingCompleted;
+
+    /// <summary>
     /// One-line status for the manual status hotkey (Output mode, Y), used INSTEAD of the
     /// taxi status while docking owns the final approach — so the two never report conflicting
     /// distances ("25 m to gate" from taxi vs "20 m to stop" from docking). Empty when not active.
@@ -119,6 +137,7 @@ public sealed class DockingGuidanceManager : IDisposable
 
     public void UpdatePosition(double lat, double lon, double headingMag, double magVar, double groundSpeedKts)
     {
+        bool fireCompleted = false;
         lock (_lock)
         {
             if (_disposed) return;
@@ -188,7 +207,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         if (DockingGeometry.IsOvershoot(doorAlongM))
                         {
                             _announcer.AnnounceImmediate("Stop. You have passed the stop position.");
-                            _beeper.Stop(); SilenceLocked(); _state = DockState.Stopped; break;
+                            _beeper.Stop(); SilenceLocked(); _state = DockState.Stopped; fireCompleted = true; break;
                         }
                         if (DockingGeometry.IsStop(doorAlongM))
                         {
@@ -206,7 +225,7 @@ public sealed class DockingGuidanceManager : IDisposable
                             _announcer.AnnounceImmediate(stopMsg);
                             _beeper.Stop();
                             _tone.Stop();
-                            _state = DockState.Stopped; break;
+                            _state = DockState.Stopped; fireCompleted = true; break;
                         }
                         if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
                         {
@@ -236,6 +255,10 @@ public sealed class DockingGuidanceManager : IDisposable
             }
             catch { SilenceLocked(); }
         }
+
+        // Fire OUTSIDE the lock: the handler calls back into TaxiGuidanceManager
+        // (its own lock), so raising it while holding _lock risks lock-order coupling.
+        if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
     private void EngageLocked(double doorAlongM)
