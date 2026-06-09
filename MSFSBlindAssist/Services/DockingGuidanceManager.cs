@@ -1,3 +1,4 @@
+using System.IO;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -40,6 +41,12 @@ public sealed class DockingGuidanceManager : IDisposable
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
     private bool _lateralSuppressed; // taxi guidance is steering the route — mute docking's own lateral tone
     private double _lastDoorAlongM;  // last door-aligned forward distance (m), for the status query
+
+    // Throttled telemetry so a live docking run can be diagnosed post-hoc.
+    private static readonly string DockLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MSFSBlindAssist", "logs", "docking.log");
+    private DateTime _lastDockLogUtc = DateTime.MinValue;
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
@@ -114,6 +121,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 double effOffset = (_gate?.IsDeiceArea == true) ? 0.0 : _doorOffsetMetres;
                 double doorAlongM = alongM - effOffset;
                 _lastDoorAlongM = doorAlongM;
+                DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, centerHdg, headingMag, magVar);
 
                 switch (_state)
                 {
@@ -230,6 +238,34 @@ public sealed class DockingGuidanceManager : IDisposable
         if (v.StartsWith("Rlg", StringComparison.OrdinalIgnoreCase)) return "RLG";
         if (v.StartsWith("Vgds", StringComparison.OrdinalIgnoreCase)) return "VDGS";
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Appends a throttled telemetry line (≤ ~2/s) so a live docking run can be diagnosed
+    /// post-hoc: state, ground speed, raw + along-track + door-aligned distances, the
+    /// lateral cross-axis angle (hdgErr), whether the lateral tone is muted by taxi,
+    /// the gate stop heading, and the aircraft heading. Path:
+    /// %LOCALAPPDATA%\MSFSBlindAssist\logs\docking.log. Never throws.
+    /// </summary>
+    private void DockLog(double gs, double distM, double alongM, double doorAlongM,
+                         double hdgErr, double stopHeadingTrue, double headingMag, double magVar)
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastDockLogUtc).TotalMilliseconds < 500) return;
+        _lastDockLogUtc = now;
+        try
+        {
+            double acHdgTrue = headingMag + magVar;
+            Directory.CreateDirectory(Path.GetDirectoryName(DockLogPath)!);
+            File.AppendAllText(DockLogPath, string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} doorAlong={5:F1} " +
+                "hdgErr={6:F1} latMuted={7} stopHdgTrue={8:F1} acHdgTrue={9:F1} offset={10:F2} deice={11}{12}",
+                DateTime.Now, _state, gs, distM, alongM, doorAlongM,
+                hdgErr, _lateralSuppressed, stopHeadingTrue, acHdgTrue,
+                _doorOffsetMetres, _gate?.IsDeiceArea == true, Environment.NewLine));
+        }
+        catch { /* logging must never break docking */ }
     }
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }

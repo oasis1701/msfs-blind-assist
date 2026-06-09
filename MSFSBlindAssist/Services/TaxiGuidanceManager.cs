@@ -4338,6 +4338,22 @@ public class TaxiGuidanceManager : IDisposable
             if (!_steeringToneSuppressed)
                 _steeringTone.UpdateHeadingErrorWithThresholds(_smoothedHeadingError, 0.5, 1.0, 15.0);
 
+            // Gate-lineup telemetry (rate-limited). seg=-2 marks gate-lineup frames
+            // (runway lineup uses -1). Columns: hdg=aircraft true heading, segBrg=the
+            // heading the tone is steering to (desired), w=_lineupHeadingTrue (the gate
+            // reference heading — should match the gate, var-corrected), nxtTurn=1 when
+            // the tone is SUPPRESSED (so I can see if docking muted it), raw=signed
+            // cross-track ft, smooth=smoothed tone error (the actual pan driver).
+            LogGuidanceFrame(
+                lat, lon, headingTrue, _lastGroundSpeedKts,
+                /* seg = gate-lineup marker */ -2,
+                /* segBrg = desired heading */ desiredHeadingTrue,
+                /* w = gate reference heading */ _lineupHeadingTrue,
+                /* nxtTurn = tone suppressed? */ _steeringToneSuppressed,
+                _lineupTargetLat, _lineupTargetLon,
+                /* raw = signed cross-track ft */ crossTrackFeet,
+                /* smooth = smoothed tone error */ _smoothedHeadingError);
+
             // Aligned hysteresis now requires BOTH heading AND cross-track tight.
             double enterHdg = 1.0, exitHdg = 2.0;
             double enterCtr = LINEUP_CENTERLINE_TOLERANCE_FEET * 0.5; // ~12.5 ft
