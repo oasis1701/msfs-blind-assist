@@ -42,6 +42,9 @@ public sealed class DockingGuidanceManager : IDisposable
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
     private double _lastDoorAlongM;  // last door-aligned forward distance (m), for the status query
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
+    // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
+    // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
+    private double? _engageRangeOverrideMetres;
 
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
     private static readonly string DockLogPath = Path.Combine(
@@ -75,9 +78,9 @@ public sealed class DockingGuidanceManager : IDisposable
     /// <summary>Set (or clear) the destination gate the pilot is taxiing to. Resets state + audio.</summary>
     public void SetDestinationGate(ParkingSpot? gate)
     {
-        // Clear any prior gate's stop offset — the caller recomputes + SetStopOffset for the
-        // new gate when the aircraft id is known; until then default to Zero (base position).
-        lock (_lock) { _gate = gate; _stopOffset = GsxOffset.Zero; ResetLocked(); }
+        // Clear any prior gate's stop offset and engage-range override — the caller recomputes
+        // + SetStopOffset / SetEngageRangeMetres for the new gate; until then defaults apply.
+        lock (_lock) { _gate = gate; _stopOffset = GsxOffset.Zero; _engageRangeOverrideMetres = null; ResetLocked(); }
     }
 
     /// <summary>Per-aircraft longitudinal door offset (metres, forward of datum). 0 = align the datum (no GSX data).</summary>
@@ -94,6 +97,25 @@ public sealed class DockingGuidanceManager : IDisposable
     /// (the default, and the value for deice areas) reproduces today's behaviour exactly.
     /// </summary>
     public void SetStopOffset(GsxOffset offset) { lock (_lock) { _stopOffset = offset; } }
+
+    /// <summary>
+    /// Override the engage range (metres) from the gate's GSX <c>gatedistancethreshold</c> value.
+    /// Clamped to [20, 70] m so an unusually small or large profile value doesn't produce a
+    /// non-functional engage window. Pass <c>null</c> (or call with no argument) to revert to
+    /// the fixed <see cref="DockingGeometry.EngageRangeMetres"/> (50 m) constant.
+    /// <para>Called from <c>TaxiAssistForm.ApplyGsxStopOffset</c> alongside the other gate
+    /// setters whenever a destination gate is selected.</para>
+    /// </summary>
+    public void SetEngageRangeMetres(double? metres)
+    {
+        lock (_lock)
+        {
+            if (metres.HasValue)
+                _engageRangeOverrideMetres = Math.Clamp(metres.Value, 20.0, 70.0);
+            else
+                _engageRangeOverrideMetres = null;
+        }
+    }
 
     public void UpdatePosition(double lat, double lon, double headingMag, double magVar, double groundSpeedKts)
     {
@@ -154,7 +176,11 @@ public sealed class DockingGuidanceManager : IDisposable
                 {
                     case DockState.Idle:
                     case DockState.Armed:
-                        if (DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr)) EngageLocked(doorAlongM);
+                        // Cue 2: use the gate's gatedistancethreshold as engage range when set.
+                        bool shouldEngage = _engageRangeOverrideMetres.HasValue
+                            ? DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr, _engageRangeOverrideMetres.Value)
+                            : DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr);
+                        if (shouldEngage) EngageLocked(doorAlongM);
                         else _state = DockState.Armed;
                         break;
 
@@ -166,7 +192,18 @@ public sealed class DockingGuidanceManager : IDisposable
                         }
                         if (DockingGeometry.IsStop(doorAlongM))
                         {
-                            _announcer.AnnounceImmediate("Stop.");
+                            // Cue 3: announce "GSX docking complete." instead of bare "Stop."
+                            // when the gate is a GSX .ini stand with a real VDGS stop position
+                            // (StopLatitude != null). Reaching OUR computed stop IS the reliable
+                            // signal — no external GSX L-var needed. Deice areas and navdata-only
+                            // gates (no VDGS stop position) keep the plain "Stop." callout.
+                            // FSDT_GSX_OPERATEJETWAYS_STATE was investigated and rejected: it
+                            // fires only when the user manually triggers the jetway, not on
+                            // aircraft arrival, so it cannot serve as an auto-docked signal.
+                            string stopMsg = (_gate?.StopLatitude != null && _gate?.IsDeiceArea != true)
+                                ? "GSX docking complete."
+                                : "Stop.";
+                            _announcer.AnnounceImmediate(stopMsg);
                             _beeper.Stop();
                             _tone.Stop();
                             _state = DockState.Stopped; break;
@@ -247,16 +284,31 @@ public sealed class DockingGuidanceManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Maps a GSX <c>parkingsystem</c> value to a brief spoken phrase for the engage callout.
+    /// Returns an empty string for types that need no callout (deice VDGS, dummy, unknown).
+    /// <para>Families confirmed against installed .ini profiles (June 2026):</para>
+    /// <list type="bullet">
+    ///   <item>Safedock*/SafeDock* → "SafeDock display"</item>
+    ///   <item>Marshaller → "Marshaller"</item>
+    ///   <item>Agnis* → "AGNIS"</item>
+    ///   <item>Apis* → "APIS"</item>
+    ///   <item>Rlg* → "lead-in lights"</item>
+    ///   <item>VgdsDeIce* — deice-area VDGS; already excluded by the deice branch, but silenced here too</item>
+    ///   <item>Vgds*, Honeywell*, Dummy, "1", unknown → empty (no callout)</item>
+    /// </list>
+    /// </summary>
     private static string FriendlyVdgs(string? v)
     {
         if (string.IsNullOrWhiteSpace(v)) return string.Empty;
-        if (v.StartsWith("Safedock", StringComparison.OrdinalIgnoreCase)) return "SafeDock";
+        if (v.StartsWith("Safedock", StringComparison.OrdinalIgnoreCase)) return "SafeDock display";
         if (v.StartsWith("Marshaller", StringComparison.OrdinalIgnoreCase)) return "Marshaller";
-        if (v.StartsWith("Apis", StringComparison.OrdinalIgnoreCase)) return "APIS";
         if (v.StartsWith("Agnis", StringComparison.OrdinalIgnoreCase)) return "AGNIS";
-        if (v.StartsWith("Honeywell", StringComparison.OrdinalIgnoreCase)) return "Honeywell";
-        if (v.StartsWith("Rlg", StringComparison.OrdinalIgnoreCase)) return "RLG";
-        if (v.StartsWith("Vgds", StringComparison.OrdinalIgnoreCase)) return "VDGS";
+        if (v.StartsWith("Apis", StringComparison.OrdinalIgnoreCase)) return "APIS";
+        if (v.StartsWith("Rlg", StringComparison.OrdinalIgnoreCase)) return "lead-in lights";
+        // VgdsDeIce* = deice-area system; already handled by the deice branch in EngageLocked,
+        // but guard here so if a deice gate somehow reaches this path it stays silent.
+        // Generic Vgds* / Honeywell* / unknown → no spoken type (not actionable for blind pilot).
         return string.Empty;
     }
 

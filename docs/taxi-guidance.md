@@ -587,10 +587,15 @@ they match before announcing success. Tuning lives in one place
 
 After a taxi route to a gate is calculated, **docking guidance auto-engages** when
 the aircraft is on the ground near the selected gate's stop position — specifically
-when ground speed is low (essentially taxiing speed), the aircraft is within
-roughly 60 m of the stop position, and it is roughly facing the gate. Docking
+when ground speed is low (≤ 15 kt), the aircraft is within the engage range of the
+stop position, and it is roughly facing the gate (within the 70° cone). Docking
 guidance is purely additive: it does not modify or interrupt taxi guidance, and it
 runs alongside the gate-arrival countdown from `TaxiGuidanceManager`.
+
+**Engage range**: For `.ini` gates that carry a `gatedistancethreshold` value (the
+distance at which GSX activates the VDGS), that value is used as the engage range
+instead of the fixed 50 m default. It is clamped to [20, 70] m. For navdata-only
+and `.py` gates (no `gatedistancethreshold`), the fixed 50 m applies.
 
 ### What it does
 
@@ -608,14 +613,32 @@ Three simultaneous audio feedback streams activate on engagement:
 
 3. **Spoken distance milestones** — at 30 m, 20 m, 10 m, and 5 m: `"30 metres."`,
    `"20 metres."`, `"10 metres."`, `"5 metres."`. The final callout at the stop
-   position is **`"Stop."`**. If the aircraft overshoots (continues forward past
-   the stop), the system announces `"Stop. You have passed the stop position."`
-   immediately. Spoken distances honour the Distance units setting
-   (`DistanceFormatter` / `UserSettings.GroundDistanceUnit`).
+   position is **`"GSX docking complete."`** for GSX `.ini` gates that have a
+   `parkingsystem_stopposition`, or **`"Stop."`** for deice pads and navdata-only
+   gates. If the aircraft overshoots, the system announces `"Stop. You have passed
+   the stop position."` immediately. Spoken distances honour the Distance units
+   setting (`DistanceFormatter` / `UserSettings.GroundDistanceUnit`).
 
-On engagement, if the VDGS type is known, the system announces it once:
-`"SafeDock guidance active."` or `"Marshaller guidance active."` If the type is
-unknown, a neutral `"Docking guidance active."` is used.
+On engagement, the system announces the gate's VDGS/guidance type once when it is
+known from the GSX `.ini` profile's `parkingsystem` key:
+
+| `parkingsystem` family | Spoken phrase |
+|---|---|
+| `Safedock*` / `SafeDock*` | "SafeDock display" |
+| `Marshaller` | "Marshaller" |
+| `Agnis*` | "AGNIS" |
+| `Apis*` | "APIS" |
+| `Rlg*` | "lead-in lights" |
+| `VgdsDeIce*` | (none — deice branch) |
+| `Vgds*`, `Honeywell*`, `Dummy`, `1` | (none — not actionable) |
+| navdata / `.py` gate (no `parkingsystem`) | (none) |
+
+For example: `"Docking guidance. SafeDock display. 45 metres to stop. Jetway on your left."`
+
+On reaching the stop position:
+- **GSX `.ini` gate** (has a `parkingsystem_stopposition`) — announces `"GSX docking complete."` and
+  silences beeper and tone.
+- **Navdata / `.py` gate or deice pad** — announces `"Stop."` as before.
 
 ### Target position precedence (universal)
 

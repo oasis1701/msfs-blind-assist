@@ -49,7 +49,8 @@ public static class GsxGateMapper
         StopLatitude = g.StopLatitude,
         StopLongitude = g.StopLongitude,
         StopHeading = g.StopHeading,
-        IsDeiceArea = g.IsDeiceArea
+        IsDeiceArea = g.IsDeiceArea,
+        GateDistanceThreshold = g.GateDistanceThreshold
     };
 
     // Size/heavy from maxwingspan (ICAO wingspan code) + section category. This is the

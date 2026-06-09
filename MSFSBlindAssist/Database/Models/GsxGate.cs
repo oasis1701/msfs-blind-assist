@@ -25,4 +25,10 @@ public sealed class GsxGate
     public string RawSectionName { get; set; } = string.Empty; // e.g. "gate c 18"
     public bool IsDeiceArea { get; set; }                      // true when section has is_deicearea = 1
     public string Uiname { get; set; } = string.Empty;          // raw "uiname" key value (always captured, used for deice labels)
+    /// <summary>
+    /// GSX "gatedistancethreshold" (metres) — the distance at which GSX activates
+    /// the VDGS for this stand. Present only in .ini profiles; null when absent.
+    /// Used by docking guidance as the engage range instead of the fixed 50 m default.
+    /// </summary>
+    public double? GateDistanceThreshold { get; set; }
 }

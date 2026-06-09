@@ -25,6 +25,13 @@ public class ParkingSpot
     public double? StopLongitude { get; set; }         // GSX parkingsystem_stopposition lon
     public double? StopHeading { get; set; }           // GSX stop-position nose heading (deg true); null for navdata-only
     public bool IsDeiceArea { get; set; }              // true when parsed from a GSX is_deicearea = 1 section
+    /// <summary>
+    /// GSX "gatedistancethreshold" (metres) — the distance at which GSX activates the VDGS
+    /// for this stand. Present only for .ini-sourced gates; null for navdata-only stands.
+    /// Docking guidance uses this as the engage range (clamped to [20, 70] m) instead of
+    /// the fixed 50 m default when non-null.
+    /// </summary>
+    public double? GateDistanceThreshold { get; set; }
 
     public ParkingSpot()
     {

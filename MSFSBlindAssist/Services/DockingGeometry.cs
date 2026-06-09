@@ -58,4 +58,15 @@ public static class DockingGeometry
            && alongMetres > 0.0
            && alongMetres < EngageRangeMetres
            && Math.Abs(NormalizeDeg180(headingErrorDeg)) < EngageConeDeg;
+
+    /// <summary>
+    /// Overload that uses an explicit engage range (metres) instead of the
+    /// <see cref="EngageRangeMetres"/> constant — used when a gate's GSX
+    /// <c>gatedistancethreshold</c> provides a stand-specific range.
+    /// </summary>
+    public static bool ShouldEngage(double groundSpeedKts, double alongMetres, double headingErrorDeg, double engageRangeMetres)
+        => groundSpeedKts < EngageGroundSpeedKts
+           && alongMetres > 0.0
+           && alongMetres < engageRangeMetres
+           && Math.Abs(NormalizeDeg180(headingErrorDeg)) < EngageConeDeg;
 }

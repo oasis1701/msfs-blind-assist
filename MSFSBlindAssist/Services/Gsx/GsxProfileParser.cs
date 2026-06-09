@@ -232,6 +232,11 @@ public static class GsxProfileParser
             case "airlinecodes":
                 g.AirlineCodes = val.Trim();
                 break;
+            case "gatedistancethreshold":
+                if (double.TryParse(val.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double gdt)
+                    && gdt > 0)
+                    g.GateDistanceThreshold = gdt;
+                break;
             case "is_deicearea":
                 if (val.Trim() == "1") g.IsDeiceArea = true;
                 break;

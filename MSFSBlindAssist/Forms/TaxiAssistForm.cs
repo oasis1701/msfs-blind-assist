@@ -1759,6 +1759,10 @@ public class TaxiAssistForm : Form
         catch { offset = Services.Gsx.GsxOffset.Zero; }
 
         _dockingManager.SetStopOffset(offset);
+
+        // Cue 2: use the gate's GSX gatedistancethreshold as the engage range when present.
+        // Null for navdata-only and .py-only gates (no threshold) → keeps the 50 m default.
+        _dockingManager.SetEngageRangeMetres(spot?.GateDistanceThreshold);
     }
 
     private void OnStopClicked(object? sender, EventArgs e)
