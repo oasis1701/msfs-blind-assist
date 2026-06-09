@@ -4300,12 +4300,6 @@ public class TaxiGuidanceManager : IDisposable
         }
         else
         {
-            // Gate lineup never pulses — pulse cue is for runway lineup only,
-            // where the pilot may sit on the runway misaligned for a long time
-            // ("line up and wait"). At a gate, you're either taxiing in or
-            // parked; pulse would be noise.
-            _steeringTone.SetPulse(false);
-
             // A gate DOES have a centerline: the lead-in line through the parking
             // position along the gate heading. Steer to it with the SAME intercept-
             // angle model as the runway lineup, so we correct BOTH lateral offset
@@ -4367,6 +4361,22 @@ public class TaxiGuidanceManager : IDisposable
                 _lineupAnnouncedAligned = false;
                 if (!_steeringToneSuppressed) _steeringTone.Resume();
             }
+
+            // Stopped but NOT yet on the centerline / not square → PULSE the tone (same
+            // cue the runway lineup uses). This is essential now that the gate uses
+            // intercept-angle: when you're off-centerline the tone steers you to the
+            // intercept-BIASED heading and then goes SILENT once you match it — so a
+            // pilot who stops there has no cue they're still a few degrees off the gate
+            // and laterally offset (GSX: "a bit to the right and askew"; ended at 323 vs
+            // the 317 gate). The pulse says "you've stopped but you're not done — keep
+            // nudging onto the centerline." Silent (and no pulse) only once genuinely
+            // aligned: cross-track < ~12.5 ft AND heading < 1°.
+            bool stoppedAndMisaligned =
+                !_lineupAnnouncedAligned &&
+                _lastGroundSpeedKts <= LINEUP_PULSE_MAX_GS_KTS &&
+                (Math.Abs(headingError) >= LINEUP_PULSE_MIN_HDG_ERR_DEG ||
+                 absCrossFeet >= LINEUP_PULSE_MIN_CROSS_FEET);
+            if (!_steeringToneSuppressed) _steeringTone.SetPulse(stoppedAndMisaligned);
         }
     }
 
