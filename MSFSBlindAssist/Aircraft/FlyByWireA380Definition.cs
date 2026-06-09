@@ -6655,6 +6655,31 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     private void StopSliderRamp() { _sliderRampTimer?.Stop(); _sliderRampTimer?.Dispose(); _sliderRampTimer = null; }
 
+    /// <summary>
+    /// Halt the seat-motor and slider-ramp timers immediately. Called by MainForm on
+    /// aircraft swap — these UI-thread timers stop themselves only on target-reached /
+    /// sim-disconnect / the 8 s cap, and sim.IsConnected stays TRUE across a swap, so
+    /// a discarded def instance kept firing (>L:SEAT_...) calc writes at the NEW
+    /// aircraft for up to ~8 s.
+    /// </summary>
+    public void StopAllMotion()
+    {
+        try
+        {
+            _seatMotorTimer?.Stop();
+            _seatMotorTimer?.Dispose();
+            _seatMotorTimer = null;
+            _seatMotorDir.Clear();
+        }
+        catch { }
+        try
+        {
+            StopSliderRamp();
+            _sliderTarget.Clear();
+        }
+        catch { }
+    }
+
     // ---- Crew-seat START/STOP motor ----
     // A seat motor RUNS while a direction is selected and HALTS on "Stopped". The motor SOUND is a
     // Wwise Continuous loop keyed to the DERIVATIVE of the position L:var, so it sustains only while

@@ -2851,9 +2851,12 @@ public partial class MainForm : Form
         coherentFwsFailureClient.Start();
     }
 
-    private void StopA380EWDMonitor()
+    private void StopA380EWDMonitor(IAircraftDefinition? owner = null)
     {
-        if (currentAircraft is FlyByWireA380Definition a380def) a380def.EwdScrapeHandlesAnnounce = false;
+        // `owner` lets the aircraft-swap cleanup clear the flag on the OUTGOING def —
+        // by the time the cleanup runs, currentAircraft is already the NEW aircraft,
+        // so the no-arg form would silently no-op when leaving the A380.
+        if ((owner ?? currentAircraft) is FlyByWireA380Definition a380def) a380def.EwdScrapeHandlesAnnounce = false;
         coherentFwsFailureClient?.Dispose();
         coherentFwsFailureClient = null;
         if (coherentEWDClient == null) return;
@@ -4332,6 +4335,15 @@ public partial class MainForm : Form
 
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
+        // Capture the OUTGOING definition BEFORE reassignment — several cleanup steps
+        // below must act on the old instance (its motion timers, its EWD-announce flag),
+        // and `currentAircraft` already points at the new aircraft by the time the
+        // cleanup block runs.
+        var oldAircraft = currentAircraft;
+        // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
+        // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
+        (oldAircraft as FlyByWireA380Definition)?.StopAllMotion();
+
         // Update the aircraft instance
         currentAircraft = newAircraft;
 
@@ -4367,6 +4379,13 @@ public partial class MainForm : Form
             simConnectManager.ReregisterAllVariables();
             simConnectManager.RestartContinuousMonitoring();
 
+            // First-detect announcer grace for a mid-session switch TO the A380 — the
+            // connect handler arms this on initial connection, but a swap reaches the
+            // A380's direct-announce ProcessSimVarUpdate branches (E/WD memo codes,
+            // flight phase) during batch re-registration without it. AnnounceImmediate
+            // (user hotkeys) is unaffected.
+            if (newAircraft is FlyByWireA380Definition) announcer.Suppressed = true;
+
             // Start grace period for new aircraft variables to populate
             // This prevents announcement flood when hundreds of continuous variables send initial values
             System.Windows.Forms.Timer gracePeriodTimer = new System.Windows.Forms.Timer();
@@ -4377,6 +4396,9 @@ public partial class MainForm : Form
                 gracePeriodTimer.Dispose();
                 simVarMonitor.EnableAnnouncements();
                 simConnectManager.EnableECAMAnnouncements();
+                // Unconditional: clearing an already-false flag is harmless, and NOT
+                // clearing it would mute every queued announce forever.
+                announcer.Suppressed = false;
                 System.Diagnostics.Debug.WriteLine("[MainForm] Aircraft switch grace period ended - announcements enabled");
             };
             gracePeriodTimer.Start();
@@ -4497,7 +4519,31 @@ public partial class MainForm : Form
             fbwA380OansForm.Dispose();
             fbwA380OansForm = null;
         }
-        StopA380EWDMonitor();
+        // The RMP window owns its own CoherentDisplayClient + three timers and hides
+        // (not closes) on user-close, so it survives a swap polling the old aircraft's
+        // view — and on return it would be reused bound to the DISCARDED def instance.
+        // Its Dispose(bool) override runs the full teardown.
+        if (fbwA380RmpForm != null && !fbwA380RmpForm.IsDisposed)
+        {
+            fbwA380RmpForm.Dispose();
+            fbwA380RmpForm = null;
+        }
+        // The ECL checklist form is bound (readonly ctor field) to the CoherentEWDClient
+        // that StopA380EWDMonitor disposes below; left alive it would be reused on the
+        // next A380 load permanently blank against the dead client.
+        if (fbwA380ChecklistForm != null && !fbwA380ChecklistForm.IsDisposed)
+        {
+            fbwA380ChecklistForm.Dispose();
+            fbwA380ChecklistForm = null;
+        }
+        // A32NX monitor manager — same stale-snapshot reason as its A380/Fenix/PMDG
+        // siblings, which are already disposed in this block.
+        if (fbwA320MonitorManagerForm != null && !fbwA320MonitorManagerForm.IsDisposed)
+        {
+            fbwA320MonitorManagerForm.Dispose();
+            fbwA320MonitorManagerForm = null;
+        }
+        StopA380EWDMonitor(oldAircraft);
 
         // Dispose HS 787 forms when switching aircraft
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)

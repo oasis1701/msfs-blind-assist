@@ -596,10 +596,28 @@ public sealed class FBWA380RmpForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        TearDown();
+        base.OnFormClosed(e);
+    }
+
+    // Idempotent teardown shared by real close AND Dispose(). The aircraft-swap
+    // cleanup calls Dispose() directly — Form.Dispose() does NOT raise FormClosed,
+    // and Close() is cancelled by the hide-on-close guard above, so without this
+    // the timers + the form-owned Coherent client survived the swap.
+    private bool _tornDown;
+    private void TearDown()
+    {
+        if (_tornDown) return;
+        _tornDown = true;
         try { _refreshTimer?.Stop(); _refreshTimer?.Dispose(); } catch { }
         try { _standbyTimer?.Stop(); _standbyTimer?.Dispose(); } catch { }
         try { _simPoll?.Stop(); _simPoll?.Dispose(); } catch { }
         try { _disp.RowsUpdated -= OnRowsUpdated; _disp.Dispose(); } catch { }
-        base.OnFormClosed(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) TearDown();
+        base.Dispose(disposing);
     }
 }
