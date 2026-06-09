@@ -42,6 +42,7 @@ public sealed class GsxService : IDisposable
     private const string GsxPackageFolderHtml = @"html_ui\InGamePanels\FSDT_GSX_Panel";
     private const string GsxMenuFileName = "menu";
     private const string GsxTooltipFileName = "tooltip";
+    private const string GsxTooltipPlaceholder = "GSX tooltip";
     private const string GsxSettingsFileName = "settings.html";
     private const string GsxStatusFileName = "status.html";
     private const string CouatlConfigFolderName = "Virtuali";
@@ -1225,12 +1226,13 @@ public sealed class GsxService : IDisposable
     //   "Bill $11617"             — currency only, no kg
     //   "fuel 8823/13001 kg"      — fuel/refuel/refueling prefix + kg pair
     //   "Aircraft 1000/4000 kg"   — GSX aircraft fuel-progress row
+    //   "Aircraft 9117->9353 kg"  — GSX aircraft before/after fuel row
     //   "5000 / 20000 kg loaded"  — bare digits + kg/lbs/%
     private static readonly Regex FuelProgressSegmentRegex = new(
         @"^\s*(?:" +
             @"bill[\s:]*\$?\d+(?:[.,]\d+)?" +
             @"|" +
-            @"(?:\[gsx\]\s+)?(?:(?:re)?fuel(?:ing)?\s+|aircraft\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?" +
+            @"(?:\[gsx\]\s+)?(?:(?:re)?fuel(?:ing)?\s+|aircraft\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*(?:/|->|\u2192)\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?" +
         @")\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -1382,6 +1384,9 @@ public sealed class GsxService : IDisposable
         return Regex.IsMatch(text,
                    @"\b\d+(?:[.,]\d+)?\s*/\s*\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\b",
                    RegexOptions.IgnoreCase)
+            || Regex.IsMatch(text,
+                   @"\b(?:aircraft\s+)?\d+(?:[.,]\d+)?\s*(?:->|\u2192)\s*\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\b",
+                   RegexOptions.IgnoreCase)
             || Regex.IsMatch(text, @"\b\d{1,3}\s*%", RegexOptions.IgnoreCase)
             || Regex.IsMatch(text,
                    @"\b\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\s+(?:loaded|uplift(?:ed)?)\b",
@@ -1397,7 +1402,7 @@ public sealed class GsxService : IDisposable
     private static bool HasAircraftFuelQuantity(string text) =>
         Regex.IsMatch(
             text,
-            @"\baircraft\s+\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\b",
+            @"\baircraft\s+\d+(?:[.,]\d+)?(?:\s*(?:->|\u2192)\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?)\b",
             RegexOptions.IgnoreCase);
 
     private static bool HasFuelBillProgress(string text) =>
@@ -1425,7 +1430,7 @@ public sealed class GsxService : IDisposable
     {
         string normalized = NormalizeWhitespace(text);
         return string.Equals(normalized, "tooltip", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalized, "gsx tooltip", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(normalized, GsxTooltipPlaceholder, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string RemoveUnsupportedLegacyTooltipLines(string tooltip)
@@ -2423,8 +2428,6 @@ public sealed class GsxService : IDisposable
             // GSX 4 stays visible across the rest of the session.
         }
 
-        bool hasInvoiceRows = chargeRows.Any(IsInvoiceChargeRow);
-
         bool shouldSpeakCompletedRow = latestCompletedRow is not null
             && !string.IsNullOrWhiteSpace(_lastCompletedStatusServiceText)
             && !string.Equals(latestCompletedRow.Text, _lastCompletedStatusServiceText, StringComparison.Ordinal);
@@ -2466,11 +2469,11 @@ public sealed class GsxService : IDisposable
         if (rowToSpeak.IsCompleted)
         {
             string total = FormatCompletedServiceTotal(rowToSpeak.Text, chargeRows);
+            if (IsCompletedRowCoveredByReceipt(rowToSpeak.Text, total, receiptInvoices))
+                return GsxTooltipPlaceholder;
+
             rowsToSpeak.Clear();
             rowsToSpeak.Add(FormatCompletedServiceAnnouncement(rowToSpeak.Text, total));
-
-            if (!hasInvoiceRows && ShouldMentionReceipt(rowToSpeak.Text, chargeRows, hasReceiptData))
-                rowsToSpeak.Add("A detailed receipt is available in the relevant GSX receipts folder.");
         }
         else if (rowToSpeak.HasStarted && chargeRows.Count > 0)
         {
@@ -2483,6 +2486,38 @@ public sealed class GsxService : IDisposable
         }
 
         return string.Join(Environment.NewLine, DeduplicateStatusRows(rowsToSpeak));
+    }
+
+    private static bool IsCompletedRowCoveredByReceipt(
+        string completedServiceText,
+        string completedTotalText,
+        IReadOnlyList<ReceiptInvoice> receiptInvoices)
+    {
+        if (receiptInvoices.Count == 0)
+            return false;
+
+        string completedTotal = ExtractMoneySummary(completedTotalText);
+        if (string.IsNullOrWhiteSpace(completedTotal))
+            return false;
+
+        var completedKeywords = GetServiceChargeKeywords(completedServiceText)
+            .Select(k => k.ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (completedKeywords.Count == 0)
+            return false;
+
+        foreach (var receipt in receiptInvoices)
+        {
+            if (!MoneySummariesMatch(completedTotal, receipt.Total))
+                continue;
+
+            bool serviceMatches = GetServiceChargeKeywords(receipt.ServiceName)
+                .Any(k => completedKeywords.Contains(k));
+            if (serviceMatches)
+                return true;
+        }
+
+        return false;
     }
 
     private sealed record StatusServiceRow(string Text, bool IsCompleted, bool HasStarted);
@@ -3010,19 +3045,6 @@ public sealed class GsxService : IDisposable
         return rows;
     }
 
-    private static bool ShouldMentionReceipt(string serviceText, IReadOnlyList<string> chargeRows, bool hasReceiptData)
-    {
-        if (!hasReceiptData)
-            return false;
-
-        if (!IsInvoiceGeneratingService(serviceText))
-            return false;
-
-        string? matchingCharge = FindMatchingChargeRow(serviceText, chargeRows);
-        return string.IsNullOrWhiteSpace(matchingCharge)
-            || IsInvoiceChargeRow(matchingCharge);
-    }
-
     private static bool IsInvoiceGeneratingService(string serviceText)
     {
         string normalized = serviceText.ToLowerInvariant();
@@ -3261,6 +3283,26 @@ public sealed class GsxService : IDisposable
             return string.Empty;
 
         return NormalizeWhitespace(matches[0].Value);
+    }
+
+    private static bool MoneySummariesMatch(string left, string right)
+    {
+        string NormalizeMoney(string value)
+        {
+            string money = ExtractMoneySummary(value);
+            if (string.IsNullOrWhiteSpace(money))
+                money = value;
+
+            return Regex.Replace(
+                    NormalizeWhitespace(money).ToUpperInvariant(),
+                    @"[^\p{L}\p{N}.]+",
+                    string.Empty);
+        }
+
+        string normalizedLeft = NormalizeMoney(left);
+        string normalizedRight = NormalizeMoney(right);
+        return normalizedLeft.Length > 0
+            && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> DeduplicateStatusRows(IEnumerable<string> rows)
