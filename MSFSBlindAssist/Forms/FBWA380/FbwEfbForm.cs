@@ -789,7 +789,8 @@ public class FbwEfbForm : Form
   // across same-page polls (values are patched in place) while a sub-tab/page switch
   // cleanly swaps controls. The live data-idx for click/set is patched in place.
   // Strip the DYNAMIC state suffixes the agent appends -- (active) / (called) /
-  // (selected) / (current page) and the colon placed/not-placed markers -- from the
+  // (selected) / (current page) / (expanded) / (collapsed) and the colon
+  // placed/not-placed markers -- from the
   // reconcile key, so a control whose state changes (a door tile activated, a rate
   // option selected) maps to the SAME node and is patched IN PLACE rather than
   // destroyed + rebuilt. Rebuilding moved the screen-reader focus off the control

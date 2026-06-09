@@ -134,6 +134,16 @@ namespace MSFSBlindAssist.SimConnect
         {
             if (_ws != null && _ws.State == WebSocketState.Open) return true;
 
+            // Hygiene: dispose any dead previous socket before replacing it (this client
+            // has no agent-install flag, so the fast path guarantees the old socket is
+            // not Open here — no second-live-socket risk, just an object leak).
+            if (_ws != null)
+            {
+                try { _ws.Abort(); } catch { }
+                try { _ws.Dispose(); } catch { }
+                _ws = null;
+            }
+
             int? pageId = await ResolvePageId(ct);
             if (pageId == null) return false;
 

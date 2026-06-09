@@ -463,6 +463,8 @@ namespace MSFSBlindAssist.SimConnect
                 // One transient eval timeout used to latch this false until the socket
                 // actually dropped — self-heal by re-installing on the live socket
                 // (idempotent IIFE; runs under the same connection the monitor owns).
+                // (Runs outside _connectLock; a timed-out eval here can transiently write
+                // false over a reinstall's true — harmless, the next scrape self-heals.)
                 var ws = _ws;
                 if (string.IsNullOrEmpty(_eclAgentJs) || ws == null || ws.State != WebSocketState.Open)
                     return null;
@@ -499,6 +501,8 @@ namespace MSFSBlindAssist.SimConnect
                     // One transient eval timeout used to latch this false until the socket
                     // actually dropped — self-heal by re-installing on the live socket
                     // (idempotent IIFE; runs under the same connection the monitor owns).
+                    // (Runs outside _connectLock; a timed-out eval here can transiently write
+                    // false over a reinstall's true — harmless, the next scrape self-heals.)
                     var ws = _ws;
                     if (string.IsNullOrEmpty(_dispAgentJs) || ws == null || ws.State != WebSocketState.Open)
                         return null;
