@@ -128,8 +128,14 @@ public class SimConnectManager
     private string currentAircraftAirline = "";
     private string currentAircraftFlightNumber = "";
     private string currentAircraftAtcModel = ""; // raw ATC MODEL simvar value
+    private string currentAircraftTitle = "";    // TITLE simvar value (aircraft.cfg [FLTSIM.N] title)
     /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
     public string CurrentAircraftIcaoType { get; private set; } = "";
+
+    // Universal aircraft.cfg ICAO catalog — the runtime fallback used ONLY when the ATC MODEL
+    // simvar doesn't resolve to a clean ICAO. Pure/dependency-light; its scan runs on a
+    // background thread and never blocks the SimConnect callback.
+    private readonly Services.AircraftCfgCatalog aircraftCfgCatalog = new();
 
     // Aircraft connection announcement - wait for both aircraft info and ATC data
     private AircraftInfo? pendingAircraftInfo = null;
@@ -513,6 +519,10 @@ public class SimConnectManager
             {
                 SimulatorVersionDetected?.Invoke(this, "MSFS 2024 detected");
             }
+
+            // Warm the universal aircraft.cfg ICAO catalog in the background so the rare
+            // ATC-MODEL-miss fallback can resolve a TITLE→ICAO without any latency. Non-blocking.
+            aircraftCfgCatalog.BeginBuild();
 
             // Check aircraft type
             RequestAircraftInfo();
@@ -3059,11 +3069,22 @@ public class SimConnectManager
         // This is the earliest reliable moment to enumerate them.
         RequestEnumerateInputEvents();
 
+        // Capture the TITLE simvar so the aircraft.cfg catalog fallback (below) can map it to
+        // an ICAO when the ATC MODEL doesn't resolve. info.title is the [FLTSIM.N] title.
+        currentAircraftTitle = info.title?.Trim() ?? "";
+
         // Extract and publish the ICAO type designator so subscribers (e.g. docking guidance)
         // can look up per-aircraft door offsets from GSX gsx.cfg files.
         string icao = ExtractIcaoFromAtcModel(currentAircraftAtcModel);
         CurrentAircraftIcaoType = icao;
         System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC MODEL raw='{currentAircraftAtcModel}' → ICAO='{icao}'");
+
+        // FALLBACK: only when the ATC MODEL gave us nothing usable (rare add-on with no clean
+        // ATC model), try the universal aircraft.cfg catalog by TITLE. The common case (ATC
+        // model present) is byte-for-byte unchanged. The catalog scan is done on a background
+        // thread — we NEVER block this SimConnect callback on the folder scan.
+        if (string.IsNullOrWhiteSpace(icao) && !string.IsNullOrWhiteSpace(currentAircraftTitle))
+            TryResolveIcaoFromCatalog(currentAircraftTitle);
 
         try
         {
@@ -3087,6 +3108,80 @@ public class SimConnectManager
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Connected to {info.title}{identification} - not FBW A32NX");
         }
+    }
+
+    /// <summary>
+    /// Fallback ICAO resolution via the universal aircraft.cfg catalog, keyed on the TITLE
+    /// simvar. Used ONLY when ATC MODEL didn't yield an ICAO. Runs entirely off the SimConnect
+    /// callback thread: if the catalog is already built we look up immediately; otherwise we
+    /// kick the background scan and re-resolve when it finishes (mirroring the door-offset map
+    /// background re-fire pattern). When a valid ICAO is found it sets
+    /// <see cref="CurrentAircraftIcaoType"/> and re-fires <see cref="AircraftIcaoTypeDetected"/>.
+    /// Never blocks the caller; never throws.
+    /// </summary>
+    private void TryResolveIcaoFromCatalog(string title)
+    {
+        // Snapshot the title so a later aircraft change can't make us publish a stale match.
+        string titleSnapshot = title;
+
+        // Do the (potentially blocking) catalog wait/lookup on a background task — NEVER on
+        // the SimConnect callback thread.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                // Kick the scan if it hasn't started; this is cheap and idempotent.
+                aircraftCfgCatalog.BeginBuild();
+
+                // EnumerateInstalled() waits for the build; but we only want the title lookup,
+                // and TryGetIcaoByTitle returns false until ready. Force readiness by waiting
+                // via EnumerateInstalled (bounded), then look up.
+                if (!aircraftCfgCatalog.IsReady)
+                    aircraftCfgCatalog.EnumerateInstalled(); // blocks here, on the background task only
+
+                if (!aircraftCfgCatalog.TryGetIcaoByTitle(titleSnapshot, out var catIcao))
+                    return;
+                if (!IsValidIcaoShape(catIcao))
+                    return;
+
+                // Guard against a race: if the aircraft changed while we scanned, the live
+                // title no longer matches our snapshot — don't clobber the newer aircraft.
+                if (!string.Equals(currentAircraftTitle, titleSnapshot, StringComparison.Ordinal))
+                    return;
+                // If ATC MODEL has since resolved an ICAO for this same aircraft, leave it.
+                if (!string.IsNullOrWhiteSpace(CurrentAircraftIcaoType))
+                    return;
+
+                CurrentAircraftIcaoType = catIcao;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SimConnectManager] ATC MODEL had no ICAO; aircraft.cfg catalog resolved TITLE='{titleSnapshot}' → ICAO='{catIcao}'");
+
+                try
+                {
+                    string logPath = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "MSFSBlindAssist", "logs", "docking-aircraft.log");
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+                    System.IO.File.AppendAllText(logPath,
+                        $"{DateTime.Now:HH:mm:ss}  catalog fallback: TITLE=\"{titleSnapshot}\"  -> ICAO=\"{catIcao}\"{System.Environment.NewLine}");
+                }
+                catch { /* never propagate log failures */ }
+
+                AircraftIcaoTypeDetected?.Invoke(this, catIcao);
+            }
+            catch { /* fallback is best-effort — never propagate */ }
+        });
+    }
+
+    /// <summary>True if <paramref name="s"/> looks like an ICAO type designator: 2–4 alphanumerics.</summary>
+    private static bool IsValidIcaoShape(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        s = s.Trim();
+        if (s.Length < 2 || s.Length > 4) return false;
+        foreach (char c in s)
+            if (!char.IsLetterOrDigit(c)) return false;
+        return true;
     }
 
     private void SimConnect_OnRecvSimobjectDataBytype(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
