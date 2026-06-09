@@ -1717,8 +1717,15 @@
       if (!gc) return JSON.stringify({ ok: false, error: "no guidance" });
       var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, flightPhase: null };
       var map = gc.alongTrackDistancesToDestination;
-      var dtd = (map && map.get) ? map.get(0) : null;        // 0 = active plan
+      var dtd = (map && map.get) ? map.get(0) : null;        // dev build: Map keyed by plan index (0 = active)
       if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
+      // RELEASE-COMPAT FALLBACK — REMOVE once an FBW A380 release ships the dev FMS API.
+      // On the current A380 *release* (live-verified on flybywire-aircraft-a380-842 0.14.0)
+      // the Map above does not exist; the guidance controller instead exposes a scalar
+      // `alongTrackDistanceToDestination` (singular). The dev build keeps the Map, so this
+      // branch only runs on release — dev behaviour is unchanged (no regression).
+      if (info.distToDest == null && typeof gc.alongTrackDistanceToDestination === "number" && isFinite(gc.alongTrackDistanceToDestination))
+        info.distToDest = gc.alongTrackDistanceToDestination;
       // Total active-plan length (last leg's cumulative distance from start), so a
       // pseudo-waypoint's distanceFromStart can be turned into distance-to-go:
       //   toGo = distToDest - (total - pwp.distanceFromStart)
@@ -1726,19 +1733,28 @@
       // the destination explicitly (NOT just the last leg with a number — that can be
       // a missed-approach/hold leg past the runway, giving a wrong datum and a wrong
       // T/D toGo). Fall back to the last finite cumulativeDistance.
-      var total = null;
-      try {
-        var plan = m.flightPlanInterface.active;
+      var planTotal = function (plan) {
+        if (!plan || !plan.allLegs) return null;
         var legs = plan.allLegs;
         var di = (typeof plan.destinationLegIndex === "number") ? plan.destinationLegIndex : -1;
         if (di >= 0 && legs[di] && legs[di].calculated && isFinite(legs[di].calculated.cumulativeDistance))
-          total = legs[di].calculated.cumulativeDistance;
-        if (total == null)
-          for (var li = legs.length - 1; li >= 0; li--) {
-            var c = legs[li] && legs[li].calculated;
-            if (c && typeof c.cumulativeDistance === "number" && isFinite(c.cumulativeDistance)) { total = c.cumulativeDistance; break; }
-          }
-      } catch (e) {}
+          return legs[di].calculated.cumulativeDistance;
+        for (var li = legs.length - 1; li >= 0; li--) {
+          var c = legs[li] && legs[li].calculated;
+          if (c && typeof c.cumulativeDistance === "number" && isFinite(c.cumulativeDistance)) return c.cumulativeDistance;
+        }
+        return null;
+      };
+      var total = null;
+      // dev build: the active plan is reachable via m.flightPlanInterface.active
+      try { total = planTotal(m.flightPlanInterface.active); } catch (e) {}
+      // RELEASE-COMPAT FALLBACK — REMOVE once an FBW A380 release ships the dev FMS API.
+      // The current release has no m.flightPlanInterface; the active plan lives at
+      // gc.flightPlanService.active (or m.flightPlanService.active). Live-verified on
+      // 0.14.0 release (dest leg cumulativeDistance). The dev build still has
+      // flightPlanInterface, so these fallbacks never execute there — no regression.
+      if (total == null) try { total = planTotal(gc.flightPlanService.active); } catch (e) {}
+      if (total == null) try { total = planTotal(m.flightPlanService.active); } catch (e) {}
       var pw = gc.currentPseudoWaypoints || [];
       for (var p = 0; p < pw.length; p++) {
         if (!pw[p]) continue; // some pseudo-waypoint slots are null in flight; deref guard
