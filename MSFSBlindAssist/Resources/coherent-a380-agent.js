@@ -1715,7 +1715,7 @@
       var m = mfd.fsInstrument.fmcService.master;
       var gc = m && m.guidanceController;
       if (!gc) return JSON.stringify({ ok: false, error: "no guidance" });
-      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, flightPhase: null };
+      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, timeToDest: null, flightPhase: null };
       var map = gc.alongTrackDistancesToDestination;
       var dtd = (map && map.get) ? map.get(0) : null;        // dev build: Map keyed by plan index (0 = active)
       if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
@@ -1755,6 +1755,24 @@
       // flightPlanInterface, so these fallbacks never execute there — no regression.
       if (total == null) try { total = planTotal(gc.flightPlanService.active); } catch (e) {}
       if (total == null) try { total = planTotal(m.flightPlanService.active); } catch (e) {}
+      // Time-to-destination (profile-aware): the same MCDU vertical-profile prediction the FMS
+      // uses for DEST UTC. profileManager.mcduProfile.waypointPredictions is a Map keyed by
+      // leg index; the destination leg's entry carries secondsFromPresent (live-verified on
+      // 0.14.0 release). Wrapped defensively — a build without this structure just yields no
+      // time, and the D readout falls back to distance-only (no regression).
+      try {
+        var actPlan = null;
+        try { actPlan = m.flightPlanInterface.active; } catch (e) {}
+        if (!actPlan) try { actPlan = gc.flightPlanService.active; } catch (e) {}
+        if (!actPlan) try { actPlan = m.flightPlanService.active; } catch (e) {}
+        var ddi = (actPlan && typeof actPlan.destinationLegIndex === "number") ? actPlan.destinationLegIndex : -1;
+        var pmgr = gc.vnavDriver && gc.vnavDriver.profileManager;
+        var preds = pmgr && pmgr.mcduProfile && pmgr.mcduProfile.waypointPredictions;
+        if (preds && preds.get && ddi >= 0) {
+          var dpr = preds.get(ddi);
+          if (dpr && typeof dpr.secondsFromPresent === "number" && isFinite(dpr.secondsFromPresent)) info.timeToDest = dpr.secondsFromPresent;
+        }
+      } catch (e) {}
       var pw = gc.currentPseudoWaypoints || [];
       for (var p = 0; p < pw.length; p++) {
         if (!pw[p]) continue; // some pseudo-waypoint slots are null in flight; deref guard

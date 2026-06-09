@@ -2693,8 +2693,14 @@ public partial class MainForm : Form
             else
             {
                 double? dd = Num("distToDest");
+                double? ddSecs = Num("timeToDest");   // FMS time-to-go (seconds), null if the profile hasn't computed it
                 if (dd.HasValue && dd.Value >= 0)
-                    announcer.AnnounceImmediate($"{Math.Round(dd.Value)} miles to destination");
+                {
+                    // Match the TOD readout format: "1355 miles to destination: 02:54:33"
+                    // (the ": HH:MM:SS" suffix is omitted when the FMS supplies no time).
+                    string eta = ddSecs.HasValue ? FormatEtaSeconds(ddSecs.Value) : "";
+                    announcer.AnnounceImmediate($"{Math.Round(dd.Value)} miles to destination{eta}");
+                }
                 else
                     announcer.AnnounceImmediate("Destination distance not available");
             }
