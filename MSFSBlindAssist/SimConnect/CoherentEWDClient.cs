@@ -463,7 +463,8 @@ namespace MSFSBlindAssist.SimConnect
                 // One transient eval timeout used to latch this false until the socket
                 // actually dropped — self-heal by re-installing on the live socket
                 // (idempotent IIFE; runs under the same connection the monitor owns).
-                if (string.IsNullOrEmpty(_eclAgentJs) || _ws == null || _ws.State != WebSocketState.Open)
+                var ws = _ws;
+                if (string.IsNullOrEmpty(_eclAgentJs) || ws == null || ws.State != WebSocketState.Open)
                     return null;
                 string eclReinstall = await EvalAsync(_eclAgentJs, ct);
                 _eclAgentInstalled = eclReinstall.IndexOf("MSFSBA_ECL_INSTALLED", StringComparison.Ordinal) >= 0;
@@ -498,7 +499,8 @@ namespace MSFSBlindAssist.SimConnect
                     // One transient eval timeout used to latch this false until the socket
                     // actually dropped — self-heal by re-installing on the live socket
                     // (idempotent IIFE; runs under the same connection the monitor owns).
-                    if (string.IsNullOrEmpty(_dispAgentJs) || _ws == null || _ws.State != WebSocketState.Open)
+                    var ws = _ws;
+                    if (string.IsNullOrEmpty(_dispAgentJs) || ws == null || ws.State != WebSocketState.Open)
                         return null;
                     string dispReinstall = await EvalAsync(_dispAgentJs, ct);
                     _dispAgentInstalled = dispReinstall.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
