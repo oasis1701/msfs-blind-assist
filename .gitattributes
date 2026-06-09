@@ -1,0 +1,4 @@
+.gitattributes text eol=lf
+.githooks/* text eol=lf
+.gitignore text eol=lf
+*.ps1 text eol=crlf
