@@ -112,6 +112,48 @@ foreach (var (icao, exp, note) in fleet)
 }
 
 // ---------------------------------------------------------------------------
+// 3c) UNIVERSAL DERIVER — never-seen designators still resolve sanely (Part 1).
+//     The exception table is a thin list; the PRIMARY path is derivation from the
+//     ICAO pattern + wingspan, so aircraft MSFSBA has never heard of still work.
+// ---------------------------------------------------------------------------
+Console.WriteLine("== Universal aircraft-id derivation (no hardcoding) ==");
+
+// B77W derives to 777/300 even though it's NOT in the (now-thin) exception table.
+GsxAircraftIdMap.TryResolve("B77W", 0, out var dB77W);
+Assert(dB77W.IdMajor == 777 && dB77W.IdMinor == 300, $"B77W derives 777/300 (got {dB77W.IdMajor}/{dB77W.IdMinor})");
+
+// A359 widebody: idMajor 350, idMinor 900-ish family (exception pins 1000 for GSX; assert >=900).
+GsxAircraftIdMap.TryResolve("A359", 64.75, out var dA359);
+Assert(dA359.IdMajor == 350, $"A359 -> idMajor 350 (got {dA359.IdMajor})");
+Assert(dA359.IdMinor >= 900, $"A359 -> idMinor >= 900 (got {dA359.IdMinor})");
+
+// Invented B79X: never-seen, but the B7X family pattern must derive idMajor 797 (707+9*10).
+Assert(GsxAircraftIdMap.TryDeriveFromIcao("B79X", out int b79xMajor, out _), "B79X derives (family pattern)");
+Assert(b79xMajor == 797, $"B79X -> idMajor 797 (707+9*10) (got {b79xMajor})");
+
+// Invented widebody A37X: A3YZ widebody rule -> 300 + 7*10 = 370 (Y=7 is in the widebody set? no:
+// our set is {3,4,5,6,8}; 7 is unknown -> idMajor 0). Assert the KNOWN families derive non-zero.
+Assert(GsxAircraftIdMap.TryDeriveFromIcao("A332", out int a332Major, out int a332Minor), "A332 derives");
+Assert(a332Major == 330 && a332Minor == 200, $"A332 -> 330/200 (got {a332Major}/{a332Minor})");
+Assert(GsxAircraftIdMap.TryDeriveFromIcao("A320", out int a320Major, out _), "A320 derives");
+Assert(a320Major == 320, $"A320 -> idMajor 320 (got {a320Major})");
+Assert(GsxAircraftIdMap.TryDeriveFromIcao("E190", out int e190Major, out _), "E190 derives");
+Assert(e190Major == 190, $"E190 -> idMajor 190 (got {e190Major})");
+
+// Wingspan -> ARC code boundaries (metres).
+Assert(GsxAircraftIdMap.ArcFromWingspanMetres(64.8) == "ARC-E", $"64.8 m -> ARC-E (got '{GsxAircraftIdMap.ArcFromWingspanMetres(64.8)}')");
+Assert(GsxAircraftIdMap.ArcFromWingspanMetres(79.75) == "ARC-F", $"79.75 m -> ARC-F (got '{GsxAircraftIdMap.ArcFromWingspanMetres(79.75)}')");
+Assert(GsxAircraftIdMap.ArcFromWingspanMetres(34.0) == "ARC-C", $"34 m -> ARC-C (got '{GsxAircraftIdMap.ArcFromWingspanMetres(34.0)}')");
+Assert(GsxAircraftIdMap.ArcFromWingspanMetres(80.5) == "ARC-F", $"80.5 m (>=80) -> ARC-F (got '{GsxAircraftIdMap.ArcFromWingspanMetres(80.5)}')");
+
+// Resolve with wingspan populates ArcCode + Group; resolve without leaves them empty.
+GsxAircraftIdMap.TryResolve("B77W", 64.8, out var b77wWs);
+Assert(b77wWs.ArcCode == "ARC-E", $"B77W @64.8m -> ARC-E (got '{b77wWs.ArcCode}')");
+Assert(!string.IsNullOrEmpty(b77wWs.Group), "B77W @64.8m -> non-empty group");
+GsxAircraftIdMap.TryResolve("B77W", 0, out var b77wNoWs);
+Assert(b77wNoWs.ArcCode.Length == 0, "B77W @0 wingspan -> empty ARC (group is last-resort only)");
+
+// ---------------------------------------------------------------------------
 // 4) ICAO-style profile (SKBO): real gates, sane evaluation.
 // ---------------------------------------------------------------------------
 Console.WriteLine("== SKBO ICAOAircraftOffsets gates ==");

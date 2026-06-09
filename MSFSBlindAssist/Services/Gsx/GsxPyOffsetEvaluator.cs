@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace MSFSBlindAssist.Services.Gsx;
@@ -38,8 +39,7 @@ public static class GsxPyOffsetEvaluator
                 return Lookup(fn.GenericTable, ac.IdMajor);
 
             case GsxPyProfileReader.IdiomKind.ByGroup:
-                return (!string.IsNullOrEmpty(ac.Group) && fn.TableGroup.TryGetValue(ac.Group, out var gv))
-                    ? ToOffset(gv) : GsxOffset.Zero;
+                return TryGroup(fn.TableGroup, ac, out var gv) ? ToOffset(gv) : GsxOffset.Zero;
 
             case GsxPyProfileReader.IdiomKind.HandleAircraftOffsets:
                 return EvaluateHandleAircraftOffsets(fn, ac);
@@ -82,9 +82,37 @@ public static class GsxPyOffsetEvaluator
             return ToOffset(icaoV);
         if (fn.AircraftValues.TryGetValue(ac.IdMajor, out var majorV))
             return ToOffset(majorV);
-        if (!string.IsNullOrEmpty(ac.Group) && fn.TableGroup.TryGetValue(ac.Group, out var groupV))
+        if (TryGroup(fn.TableGroup, ac, out var groupV))
             return ToOffset(groupV);
         return GsxOffset.Zero;
+    }
+
+    /// <summary>
+    /// Group-table lookup that tries every group-key convention real scenery authors use, so
+    /// the same airframe hits regardless of how the profile keyed its group dict:
+    ///   1. the ARC code as written ("ARC-E"),
+    ///   2. the bare ARC letter ("E"),
+    ///   3. the broad category bucket ("Heavy"/"Medium"/...).
+    /// Profiles overwhelmingly use the "ARC-X" form (confirmed by grepping the installed .py),
+    /// but a few key on the bare letter or an Aerosoft-style bucket — handling all three is free.
+    /// </summary>
+    private static bool TryGroup(
+        Dictionary<string, GsxPyProfileReader.TableValue> table, GsxAircraftId ac,
+        out GsxPyProfileReader.TableValue value)
+    {
+        value = default;
+        if (table.Count == 0) return false;
+
+        if (!string.IsNullOrEmpty(ac.ArcCode))
+        {
+            if (table.TryGetValue(ac.ArcCode, out value)) return true;         // "ARC-E"
+            string bare = ac.ArcCode.StartsWith("ARC-", StringComparison.OrdinalIgnoreCase)
+                ? ac.ArcCode.Substring(4) : ac.ArcCode;
+            if (bare.Length > 0 && table.TryGetValue(bare, out value)) return true; // "E"
+        }
+        if (!string.IsNullOrEmpty(ac.Group) && table.TryGetValue(ac.Group, out value))
+            return true;                                                          // "Heavy"
+        return false;
     }
 
     private static GsxOffset Lookup(Dictionary<int, GsxPyProfileReader.TableValue> table, int idMajor)
