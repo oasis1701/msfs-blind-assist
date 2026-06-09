@@ -69,4 +69,29 @@ public static class DockingGeometry
            && alongMetres > 0.0
            && alongMetres < engageRangeMetres
            && Math.Abs(NormalizeDeg180(headingErrorDeg)) < EngageConeDeg;
+
+    public const double MetresPerDegLat = 111320.0;
+
+    /// <summary>
+    /// Moves a stop point (degrees lat/lon) by a metric offset relative to a true heading:
+    /// <paramref name="longitudinalM"/> FORWARD along <paramref name="headingTrueDeg"/> (deeper
+    /// toward/along the gate axis) and <paramref name="lateralM"/> perpendicular, RIGHT of that
+    /// heading = positive. Equirectangular — exact at the tens-of-metres docking scale. Pure +
+    /// probe-tested (this is the one piece of load-bearing offset math; a sign error here parks
+    /// the aircraft in the wrong spot). Bearing convention matches NavigationCalculator
+    /// (0°=N, 90°=E): north = cos(hdg), east = sin(hdg).
+    /// </summary>
+    public static void ShiftStopMetres(
+        double sLat, double sLon, double headingTrueDeg,
+        double longitudinalM, double lateralM, out double newLat, out double newLon)
+    {
+        double hdg = headingTrueDeg * Math.PI / 180.0;
+        double perp = hdg + Math.PI / 2.0; // +90° = right of the heading
+        double north_m = longitudinalM * Math.Cos(hdg) + lateralM * Math.Cos(perp);
+        double east_m  = longitudinalM * Math.Sin(hdg) + lateralM * Math.Sin(perp);
+
+        newLat = sLat + north_m / MetresPerDegLat;
+        double cosLat = Math.Cos(sLat * Math.PI / 180.0);
+        newLon = sLon + (Math.Abs(cosLat) > 1e-9 ? east_m / (MetresPerDegLat * cosLat) : 0.0);
+    }
 }

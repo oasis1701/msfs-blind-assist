@@ -44,5 +44,25 @@ Check("SlowDownSpeedKts == 5.0", DockingGeometry.SlowDownSpeedKts == 5.0);
 Check("EngageRangeMetres == 50.0", DockingGeometry.EngageRangeMetres == 50.0);
 Check("BeepFarMetres == 30.0", DockingGeometry.BeepFarMetres == 30.0);
 
+// ShiftStopMetres — the GSX per-aircraft stop-offset math (pure; pins the signs + no-op).
+{
+    const double lat0 = 50.0, lon0 = 8.0;
+    DockingGeometry.ShiftStopMetres(lat0, lon0, 137.0, 0.0, 0.0, out double zLat, out double zLon);
+    Check("shift Zero no-op (lat)", zLat == lat0);
+    Check("shift Zero no-op (lon)", zLon == lon0);
+    // +longitudinal at heading 0 (north) -> stop moves NORTH (lat up), lon unchanged.
+    DockingGeometry.ShiftStopMetres(lat0, lon0, 0.0, 100.0, 0.0, out double nLat, out double nLon);
+    Check("shift +100m long @hdg0 -> north", Near(nLat, lat0 + 100.0 / 111320.0, 1e-9) && Near(nLon, lon0, 1e-9));
+    // +lateral (right) at heading 0 (north) -> stop moves EAST (lon up), lat ~unchanged.
+    DockingGeometry.ShiftStopMetres(lat0, lon0, 0.0, 0.0, 100.0, out double eLat, out double eLon);
+    Check("shift +100m lat(right) @hdg0 -> east", Near(eLat, lat0, 1e-9) && eLon > lon0);
+    // -lateral (left) at heading 0 -> WEST.
+    DockingGeometry.ShiftStopMetres(lat0, lon0, 0.0, 0.0, -100.0, out _, out double wLon);
+    Check("shift -100m lat(left) @hdg0 -> west", wLon < lon0);
+    // +longitudinal at heading 90 (east) -> forward follows heading -> EAST.
+    DockingGeometry.ShiftStopMetres(lat0, lon0, 90.0, 100.0, 0.0, out double exLat, out double exLon);
+    Check("shift +100m long @hdg90 -> east", exLon > lon0 && Near(exLat, lat0, 1e-9));
+}
+
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

@@ -396,22 +396,9 @@ public sealed class DockingGuidanceManager : IDisposable
     /// scale of a gate offset. <c>GsxOffset.Zero</c> leaves the point unchanged.
     /// </summary>
     private static void ShiftStop(ref double sLat, ref double sLon, double stopHeadingTrue, GsxOffset offset)
-    {
-        double hdg = stopHeadingTrue * Math.PI / 180.0;
-        double perp = hdg + Math.PI / 2.0; // heading+90° = perpendicular, right of the stop heading
-        double lon_ = offset.LongitudinalMetres;
-        double lat_ = offset.LateralMetres;
-
-        double north_m = lon_ * Math.Cos(hdg) + lat_ * Math.Cos(perp);
-        double east_m = lon_ * Math.Sin(hdg) + lat_ * Math.Sin(perp);
-
-        double dLat = north_m / 111320.0;
-        double cosLat = Math.Cos(sLat * Math.PI / 180.0);
-        double dLon = Math.Abs(cosLat) > 1e-9 ? east_m / (111320.0 * cosLat) : 0.0;
-
-        sLat += dLat;
-        sLon += dLon;
-    }
+        => DockingGeometry.ShiftStopMetres(
+            sLat, sLon, stopHeadingTrue,
+            offset.LongitudinalMetres, offset.LateralMetres, out sLat, out sLon);
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
     private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>(); _slowDownSaid = false; }

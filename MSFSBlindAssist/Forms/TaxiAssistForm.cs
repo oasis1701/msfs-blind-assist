@@ -1742,6 +1742,12 @@ public class TaxiAssistForm : Form
                 && !spot.IsDeiceArea              // deice pads are datum-aligned
                 && _simConnectManager != null)
             {
+                // Snapshot the aircraft identity once, adjacently. This runs UI-thread on the
+                // Calculate click (not per-frame); each field is an atomic read on x64. The only
+                // possible inconsistency is reading the ICAO and wingspan from across the ~1-frame
+                // window of an aircraft swap — and that would only mis-pick the wingspan-derived
+                // ARC group, which is the last-resort fallback (after ICAO and idMajor) and stays
+                // within the safe |offset| band, so no lock is warranted.
                 string icaoType = _simConnectManager.CurrentAircraftIcaoType;
                 double wingspanM = _simConnectManager.AircraftWingSpan > 0
                     ? _simConnectManager.AircraftWingSpan * 0.3048 // feet -> metres
