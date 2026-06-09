@@ -5509,15 +5509,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             List<string>? rows;
             if (ewd)
             {
-                // Fallback only (decode above returned nothing). The A380X_EWD view allows
-                // only ONE inspector socket, owned by the always-on CoherentEWDClient
-                // failure monitor — so scrape THROUGH it, never a second client (that
-                // rejection was the "content not available" bug).
-                rows = EwdMonitor != null ? await EwdMonitor.ScrapeDisplayAsync() : null;
-                if (rows == null)
+                // The A380X_EWD view allows only ONE inspector socket, owned by the
+                // always-on CoherentEWDClient failure monitor — scrape THROUGH it.
+                // While a monitor EXISTS, never construct a second client against the
+                // view: it can never connect (one-socket rule) and just churns. A null
+                // scrape here means a transient miss; the next refresh retries via the
+                // monitor (whose sub-agent now self-heals — see ScrapeDisplayAsync).
+                if (EwdMonitor != null)
                 {
-                    // No monitor running (shouldn't happen on the A380) → legacy direct
-                    // client, which only works when nothing else owns the socket.
+                    rows = await EwdMonitor.ScrapeDisplayAsync();
+                }
+                else
+                {
+                    // No monitor running (non-standard path) → legacy direct client,
+                    // which only works when nothing else owns the socket.
                     if (_ewdScrapeClient == null)
                     {
                         _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_EWD");
