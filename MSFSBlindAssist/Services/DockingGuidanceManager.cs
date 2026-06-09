@@ -39,7 +39,6 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool _slowDownSaid;
     private double _doorOffsetMetres; // longitudinal offset (metres, forward of datum); 0 = align datum
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
-    private bool _lateralSuppressed; // taxi guidance is steering the route — mute docking's own lateral tone
     private double _lastDoorAlongM;  // last door-aligned forward distance (m), for the status query
 
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
@@ -53,16 +52,6 @@ public sealed class DockingGuidanceManager : IDisposable
 
     /// <summary>True while docking is actively guiding (Docking or Stopped) — used to suppress the taxi steering tone.</summary>
     public bool IsActive { get { lock (_lock) { return _state == DockState.Docking || _state == DockState.Stopped; } } }
-
-    /// <summary>
-    /// When true, docking does NOT play its own lateral steering tone — taxi guidance
-    /// is actively steering the route (including the connector turns into the gate), so a
-    /// second panning tone would both confuse the pilot and fight the route geometry.
-    /// Docking keeps its proximity beep, distance milestones, and stop logic regardless.
-    /// Set back to false once taxi has finished steering (reached/parked) so docking
-    /// provides the final precise lateral nudge to the stop.
-    /// </summary>
-    public void SetLateralToneSuppressed(bool suppressed) { lock (_lock) { _lateralSuppressed = suppressed; } }
 
     /// <summary>
     /// One-line status for the manual status hotkey (Output mode, Y), used INSTEAD of the
@@ -121,7 +110,16 @@ public sealed class DockingGuidanceManager : IDisposable
                 double effOffset = (_gate?.IsDeiceArea == true) ? 0.0 : _doorOffsetMetres;
                 double doorAlongM = alongM - effOffset;
                 _lastDoorAlongM = doorAlongM;
-                DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, centerHdg, headingMag, magVar);
+
+                // Intercept-angle lineup to the gate centerline (the line through the stop
+                // along the stop heading). Corrects BOTH cross-track AND heading — this is
+                // the cue docking pans with on the final approach, so the park ends up square
+                // on the centerline instead of "a bit right and askew". hdgErr (bearing-to-
+                // stop vs centerline) is still used for the engage cone check below.
+                double acHdgTrue = headingMag + magVar;
+                double lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, out double crossFt);
+
+                DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue);
 
                 switch (_state)
                 {
@@ -148,20 +146,13 @@ public sealed class DockingGuidanceManager : IDisposable
                         {
                             SilenceLocked(); _state = DockState.Armed; break;
                         }
-                        // Lateral cue: only when taxi guidance is NOT steering the route.
-                        // While taxi owns steering (connector turns into the gate), docking's
-                        // straight-to-stop tone would fight the route, so stay silent on it —
-                        // the beep + milestones still convey closing distance. Once taxi has
-                        // finished steering, docking resumes the precise lateral nudge.
-                        if (_lateralSuppressed)
-                        {
-                            _tone.Pause();
-                        }
-                        else
-                        {
-                            _tone.Resume();
-                            _tone.UpdateHeadingErrorWithThresholds(hdgErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
-                        }
+                        // Docking owns the precise lateral cue on the final approach (taxi's
+                        // tone is muted while docking is engaged — see MainForm). Intercept-
+                        // angle to the gate centerline corrects cross-track AND converges the
+                        // heading to the gate, so the final park is square, not askew. The
+                        // connector turns happen earlier, before docking engages, and are
+                        // steered by taxi's route-following tone.
+                        _tone.UpdateHeadingErrorWithThresholds(lineupErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
                         _beeper.Update(doorAlongM, active: true);
                         if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
                         {
@@ -248,24 +239,54 @@ public sealed class DockingGuidanceManager : IDisposable
     /// %LOCALAPPDATA%\MSFSBlindAssist\logs\docking.log. Never throws.
     /// </summary>
     private void DockLog(double gs, double distM, double alongM, double doorAlongM,
-                         double hdgErr, double stopHeadingTrue, double headingMag, double magVar)
+                         double hdgErr, double lineupErr, double crossFt,
+                         double stopHeadingTrue, double acHdgTrue)
     {
         var now = DateTime.UtcNow;
         if ((now - _lastDockLogUtc).TotalMilliseconds < 500) return;
         _lastDockLogUtc = now;
         try
         {
-            double acHdgTrue = headingMag + magVar;
             Directory.CreateDirectory(Path.GetDirectoryName(DockLogPath)!);
             File.AppendAllText(DockLogPath, string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} doorAlong={5:F1} " +
-                "hdgErr={6:F1} latMuted={7} stopHdgTrue={8:F1} acHdgTrue={9:F1} offset={10:F2} deice={11}{12}",
+                "hdgErr={6:F1} lineupErr={7:F1} crossFt={8:F1} stopHdgTrue={9:F1} acHdgTrue={10:F1} " +
+                "offset={11:F2} deice={12}{13}",
                 DateTime.Now, _state, gs, distM, alongM, doorAlongM,
-                hdgErr, _lateralSuppressed, stopHeadingTrue, acHdgTrue,
+                hdgErr, lineupErr, crossFt, stopHeadingTrue, acHdgTrue,
                 _doorOffsetMetres, _gate?.IsDeiceArea == true, Environment.NewLine));
         }
         catch { /* logging must never break docking */ }
+    }
+
+    /// <summary>
+    /// Intercept-angle lineup error (degrees) to the gate centerline — the line through the
+    /// stop position (<paramref name="sLat"/>,<paramref name="sLon"/>) along the stop heading
+    /// (<paramref name="centerHdgTrue"/>). Mirrors the runway/gate lineup: the desired heading
+    /// is the centerline heading biased toward the line by an intercept that rises on a sqrt
+    /// curve with cross-track (0° at the line, up to 30° far off), so steering to it corrects
+    /// BOTH lateral offset and heading. Positive = steer right. <paramref name="crossFt"/> is
+    /// the signed cross-track (+ = left of centerline).
+    /// </summary>
+    private static double ComputeLineupError(
+        double lat, double lon, double acHdgTrue,
+        double sLat, double sLon, double centerHdgTrue, out double crossFt)
+    {
+        var track = RunwayCenterlineTracker.Compute(lat, lon, acHdgTrue, sLat, sLon, centerHdgTrue);
+        crossFt = track.CrossTrackFeet;
+        double absCross = track.AbsCrossTrackFeet;
+
+        const double MaxInterceptDeg = 30.0, DeadbandFt = 8.0, SaturationFt = 100.0;
+        double intercept = 0.0;
+        if (absCross > DeadbandFt)
+        {
+            double eff = absCross - DeadbandFt;
+            double span = SaturationFt - DeadbandFt;
+            intercept = MaxInterceptDeg * Math.Sqrt(Math.Clamp(eff / span, 0.0, 1.0)) * Math.Sign(crossFt);
+        }
+        double desiredHdg = centerHdgTrue + intercept;
+        return DockingGeometry.NormalizeDeg180(desiredHdg - acHdgTrue);
     }
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }

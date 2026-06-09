@@ -895,27 +895,20 @@ public partial class MainForm : Form
         if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
         {
             var pos = e.PositionData.Value;
-
-            // Coordinate the two lateral tones BEFORE updating docking so it respects the
-            // hand-off THIS frame. Exactly one panning tone sounds at a time:
-            //   • While taxi is actively steering the route (the connector turns into the
-            //     gate), TAXI owns the cue — it has the route geometry. Mute docking's
-            //     straight-to-stop lateral tone (which would fight the turns); docking still
-            //     gives the proximity beep + distance milestones.
-            //   • Once taxi finishes steering (parked / handed off at the route end node),
-            //     docking's precise lateral cue takes over for the final metres to the stop.
-            bool taxiSteering = taxiGuidanceManager.IsSteeringActive;
-            dockingGuidanceManager.SetLateralToneSuppressed(taxiSteering);
-            taxiGuidanceManager.SetSteeringToneSuppressed(false);
-
             dockingGuidanceManager.UpdatePosition(
                 pos.Latitude, pos.Longitude,
                 pos.HeadingMagnetic, pos.MagneticVariation,
                 pos.GroundSpeedKnots);
 
-            // Tell taxi when docking owns the arrival so it drops its contradictory terminal
-            // callouts (parking countdown / "Stop. Hold position." / gate-lineup verbal) —
-            // docking's countdown to the precise GSX stop is the single source of truth.
+            // Exactly one panning tone at a time. Docking owns the PRECISE final lineup:
+            // once it is engaged (within ~50 m of the stop, roughly aligned) it pans an
+            // intercept-angle cue to the gate centerline (heading + cross-track), so mute
+            // the taxi steering tone while docking is active. The connector turns happen
+            // earlier — before docking engages — and are steered by taxi's route-following
+            // tone (docking not yet active, so taxi is not muted there). Also tell taxi when
+            // docking owns the arrival so it drops its contradictory terminal callouts
+            // (parking countdown / "Stop. Hold position." / gate-lineup verbal).
+            taxiGuidanceManager.SetSteeringToneSuppressed(dockingGuidanceManager.IsActive);
             taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.IsActive);
         }
 
