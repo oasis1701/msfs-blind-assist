@@ -486,8 +486,12 @@
 
   A.valueOf = function (kind, n) {
     if (kind === "checkitem") {
-      // Completed = a check icon (svg) inside the item's checkbox box.
-      var box = n.querySelector(".border-4.border-current");
+      // Completed = a check icon (svg) inside the item's checkbox box. Match the box
+      // in ANY border state (mirror classify) — only the CURRENT row carries
+      // border-current, so the old ".border-4.border-current" query made every
+      // completed non-cursor item read unchecked, and "checking" that box really
+      // un-completed the item.
+      var box = n.querySelector(".border-4");
       return (box && box.querySelector("svg")) ? "true" : "false";
     }
     if (kind === "slider") return clean(n.getAttribute("aria-valuenow") || n.value || "");
