@@ -56,7 +56,7 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
     private void HandleSet()
     {
         string input = altTextBox.Text.Trim();
-        if (!double.TryParse(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
+        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
         bool metric = aircraft.MetricAlt;
         double feet = metric ? v / 0.3048 : v;
         if (feet < 100 || feet > 49000)

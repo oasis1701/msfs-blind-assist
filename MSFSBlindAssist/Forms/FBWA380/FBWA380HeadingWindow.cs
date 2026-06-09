@@ -74,7 +74,7 @@ public class FBWA380HeadingWindow : FBWA380FCUWindowBase
     private void HandleSet()
     {
         string input = headingTextBox.Text.Trim();
-        if (!double.TryParse(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); headingTextBox.SelectAll(); return; }
+        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); headingTextBox.SelectAll(); return; }
         if (v < 0 || v > 360) { announcer.AnnounceImmediate("Heading must be between 0 and 360 degrees"); headingTextBox.SelectAll(); return; }
         aircraft.SetFCUHeadingValue((int)Math.Round(v) % 360, simConnect, announcer);
         headingTextBox.SelectAll();

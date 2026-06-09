@@ -80,7 +80,7 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
     private void HandleSet()
     {
         string input = qnhTextBox.Text.Trim();
-        if (!double.TryParse(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); qnhTextBox.SelectAll(); return; }
+        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); qnhTextBox.SelectAll(); return; }
         // CAPT_QNH_SET interprets the value in the captain side's current unit and
         // fires KOHLSMAN_SET, which moves BOTH altimeters together; it also range-
         // validates and announces. The window's entry unit (`inHg`) is always kept

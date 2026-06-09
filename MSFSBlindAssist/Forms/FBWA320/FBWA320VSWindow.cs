@@ -39,7 +39,9 @@ public class FBWA320VSWindow : FBWA320FCUWindowBase
     {
         string input = vsTextBox.Text.Trim();
         if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); vsTextBox.SelectAll(); return; }
-        if (!((v >= -6000 && v <= 6000) || (v >= -9.9 && v <= 9.9))) { announcer.AnnounceImmediate("Value must be -6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA"); vsTextBox.SelectAll(); return; }
+        // V/S range check. An FPA entry (±9.9°) is inside this range too; the
+        // FCU SET event clamps/disambiguates by magnitude downstream.
+        if (!(v >= -6000 && v <= 6000)) { announcer.AnnounceImmediate("Value must be -6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA"); vsTextBox.SelectAll(); return; }
         aircraft.SetFCUVSValue(v, simConnect, announcer);
         vsTextBox.SelectAll();
     }
