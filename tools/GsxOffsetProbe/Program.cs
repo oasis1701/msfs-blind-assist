@@ -90,6 +90,28 @@ var offA388 = GsxPyOffsetEvaluator.Evaluate(eddf, 66, "", a388);
 AssertNear(offA388.LongitudinalMetres, 6.3, 0.01, "EDDF 66 A388 -> 6.3 m (generic 380)");
 
 // ---------------------------------------------------------------------------
+// 3b) FULL FLEET at EDDF A66 — the 6 aircraft the user actually flies. Pure-math,
+//     no sim load needed. Expected values read straight from customOffsetA54A58A62A66:
+//       generic table {0:0, 380:6.3}; table777 {0:1.65, 300:5.3}; table787 {0:0, 9:1.65, 10:5.3}.
+// ---------------------------------------------------------------------------
+Console.WriteLine("== EDDF A66: user's fleet (per-aircraft, no sim needed) ==");
+(string Icao, double Exp, string Note)[] fleet =
+{
+    ("B77W", 5.3,  "PMDG 777-300ER  (777/300 -> table777[300])"),
+    ("B77L", 1.65, "PMDG 777F       (777/200 -> table777 fallback[0])"),
+    ("B789", 1.65, "HS787-9         (787/9   -> table787[9])"),
+    ("A388", 6.3,  "FBW A380X       (380     -> generic[380])"),
+    ("A20N", 0.0,  "FBW A32NX       (320     -> base, not in table)"),
+    ("A320", 0.0,  "Fenix A320      (320     -> base, not in table)"),
+};
+foreach (var (icao, exp, note) in fleet)
+{
+    GsxAircraftIdMap.TryResolve(icao, out var ac);
+    var o = GsxPyOffsetEvaluator.Evaluate(eddf, 66, "", ac);
+    AssertNear(o.LongitudinalMetres, exp, 0.01, $"EDDF 66 {icao,-4} -> {exp} m  {note}");
+}
+
+// ---------------------------------------------------------------------------
 // 4) ICAO-style profile (SKBO): real gates, sane evaluation.
 // ---------------------------------------------------------------------------
 Console.WriteLine("== SKBO ICAOAircraftOffsets gates ==");
