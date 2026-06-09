@@ -5363,10 +5363,12 @@ public partial class MainForm : Form
                     combo.Items.Add("NORM");
                     combo.Items.Add("IGN");
                     
-                    // Set initial value from sim if we have it
-                    if (currentSimVarValues.ContainsKey("TURB ENG IGNITION SWITCH EX1:1"))
+                    // Set initial value from sim if we have it.
+                    // Cache is keyed by the DICT KEY (SimVarUpdated carries VarName = varKey),
+                    // not the SimVar Name — on the A380 that key is ENGINE_MODE_SELECTOR.
+                    if (currentSimVarValues.ContainsKey(varKey))
                     {
-                        double currentValue = currentSimVarValues["TURB ENG IGNITION SWITCH EX1:1"];
+                        double currentValue = currentSimVarValues[varKey];
                         combo.SelectedIndex = (int)currentValue;
                     }
                     else
@@ -5395,8 +5397,12 @@ public partial class MainForm : Form
                             simConnectManager?.SendEvent("TURBINE_IGNITION_SWITCH_SET1", mode);
                             simConnectManager?.SendEvent("TURBINE_IGNITION_SWITCH_SET2", mode);
                             simConnectManager?.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
-                            currentSimVarValues["TURB ENG IGNITION SWITCH EX1:1"] = mode;
-                            MarkUiSet("TURB ENG IGNITION SWITCH EX1:1", mode);
+                            // Suppress the echo under the SAME identifier the monitor uses:
+                            // SimVarUpdated carries VarName = varKey (the dict key), NOT
+                            // varDef.Name — storing under the Name never matched, so the
+                            // monitor re-announced every user combo change on the A380.
+                            currentSimVarValues[varKey] = mode;
+                            MarkUiSet(varKey, mode);
                         }
                     };
                     
