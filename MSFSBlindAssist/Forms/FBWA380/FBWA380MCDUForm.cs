@@ -751,29 +751,29 @@ public class FBWA380MCDUForm : Form
             int fieldIdx = SelectedElementIndex();
             if (fieldIdx > 0)
             {
-                string text = _scratchpad.Text;
-                if (!string.IsNullOrEmpty(text))
+                // The MFD silently ignores interaction with dimmed controls — say so
+                // up front for BOTH paths. The old code only checked on the empty-
+                // scratchpad click path; a typed value was destroyed and read back as
+                // if committed. Keep the scratchpad intact so the user can re-target.
+                if (SelectedElement()?.Disabled == true)
                 {
-                    // Commit the scratchpad straight to the selected field
-                    // (click + clear existing + type + ENT).
-                    _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
-                    {
-                        ["index"] = fieldIdx.ToString(),
-                        ["text"]  = text
-                    });
-                    _scratchpad.Text = "";
-                    _announcer.Announce(text);
-                    ScheduleRefresh();
+                    _announcer.Announce("Unavailable");
                 }
                 else
                 {
-                    // No pending value — just activate the element (buttons,
-                    // toggles, page-selector tabs that need no entry). If it's
-                    // disabled, say so instead of silently doing nothing (the MFD
-                    // ignores clicks on disabled controls — that read as "broken").
-                    if (SelectedElement()?.Disabled == true)
+                    string text = _scratchpad.Text;
+                    if (!string.IsNullOrEmpty(text))
                     {
-                        _announcer.Announce("Unavailable");
+                        // Commit the scratchpad straight to the selected field
+                        // (click + clear existing + type + ENT).
+                        _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
+                        {
+                            ["index"] = fieldIdx.ToString(),
+                            ["text"]  = text
+                        });
+                        _scratchpad.Text = "";
+                        _announcer.Announce(text);
+                        ScheduleRefresh();
                     }
                     else
                     {
@@ -797,13 +797,20 @@ public class FBWA380MCDUForm : Form
             int fieldIdx = SelectedElementIndex();
             if (fieldIdx > 0)
             {
-                _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
+                if (SelectedElement()?.Disabled == true)
                 {
-                    ["index"] = fieldIdx.ToString(),
-                    ["text"]  = ""
-                });
-                _announcer.Announce("Cleared");
-                ScheduleRefresh();
+                    _announcer.Announce("Unavailable");
+                }
+                else
+                {
+                    _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
+                    {
+                        ["index"] = fieldIdx.ToString(),
+                        ["text"]  = ""
+                    });
+                    _announcer.Announce("Cleared");
+                    ScheduleRefresh();
+                }
             }
             e.Handled = true; e.SuppressKeyPress = true;
         }

@@ -1951,25 +1951,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // (The A380X_EFIS_CP_BARO_PUSH/PULL H-events are NON-functional on the
         //  A380X — verified live — removed. STD/QNH is the IS_STD combo above.)
 
-        // ============================ RADIOS (RMP) ============================
-        // The A380 RMPs manage the radios on-screen, but the aircraft sits on
-        // standard MSFS COM radios — the stock COM events/SimVars (as used by
-        // the A320 RMP panel) drive and read them. Standby is the editable box;
-        // swap moves it to active.
-        for (int n = 1; n <= 3; n++)
-        {
-            vars[$"COM_STANDBY_FREQUENCY_SET:{n}"] = new SimVarDefinition
-            {
-                Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"VHF {n} Standby (set)",
-                Type = SimVarType.Event, EventParam = (uint)n
-            };
-            Act($"COM{n}_RADIO_SWAP", $"VHF {n} Swap", new Dictionary<double, string> { [0] = "Idle", [1] = "Swap active and standby" });
-            // Units "kHz" (NOT "MHz"): the stock COM freq simvars return kHz, and MainForm's
-            // formatter only has a "kHz" case (÷1000, 3 decimals -> "122.800 MHz"). "MHz" fell to
-            // the default integer format -> "123". Matches the A320.
-            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "kHz");
-            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "kHz");
-        }
+        // (The legacy stock-COM "Radios" registrations — COM_STANDBY_FREQUENCY_SET:{n},
+        //  COM{n}_RADIO_SWAP, COM_*_FREQUENCY:{n} — were removed: the FBW A380 IGNORES
+        //  the stock COM events (live-verified), and the panel that referenced them is
+        //  long gone. All tuning is RMP-only; the RMP window + the COM_ACTIVE_{n}/
+        //  COM_STANDBY_{n} read-out keys cover it.)
 
         // ============================ TRANSPONDER / ATC ============================
         // "BCO16" makes SimConnect decode the BCD-packed code to the 4-digit squawk
@@ -4015,9 +4001,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             bool? prev = capt ? _baroStdL : _baroStdR;
             if (capt) _baroStdL = std; else _baroStdR = std;
             if (prev.HasValue && prev.Value != std) // skip the baseline read
+            {
+                int last = capt ? _lastBaroL : _lastBaroR;
+                // Guard like the unit-change branch below: _lastBaroL/R start at -1 and
+                // are seeded only by a valid HPA word — STD->QNH before any valid sample
+                // would otherwise speak "QNH -1 hectopascals".
                 announcer.Announce(std
                     ? $"{(capt ? "Captain" : "First officer")} altimeter standard"
-                    : BaroPhrase(capt, capt ? _lastBaroL : _lastBaroR, true));
+                    : (last > 0
+                        ? BaroPhrase(capt, last, true)
+                        : $"{(capt ? "Captain" : "First officer")} altimeter QNH"));
+            }
             return true;
         }
         // EFIS baro UNIT lives on XMLVAR_Baro_Selector_HPA_{1,2} (1=hPa, 0=inHg) —
@@ -4465,11 +4459,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Momentary ACTION combos: fire only when the action option (value 1) is
         // chosen; the idle option (0) does nothing.
         if (varKey == "XPNDR_IDENT_ON") { if (value > 0.5) simConnect.SendEvent("XPNDR_IDENT_ON"); return true; }
-        if (varKey.StartsWith("COM", StringComparison.Ordinal) && varKey.EndsWith("_RADIO_SWAP", StringComparison.Ordinal))
-        {
-            if (value > 0.5) simConnect.SendEvent(varKey);   // key == event name
-            return true;
-        }
         // Air-cond/cargo target temperature: user enters degrees C; the FBW
         // selector knob is 0-300 over the zone's range (cockpit/cabin 18-30 C,
         // cargo 5-25 C), so knob = (temp - lo) / (hi - lo) * 300.
@@ -5090,12 +5079,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 if (value <= 0) { displayText = "--"; return true; }
                 int h = (int)(value / 3600), m = (int)((value % 3600) / 60), s2 = (int)(value % 60);
                 displayText = $"{h}:{m:D2}:{s2:D2} UTC";
-                return true;
-            }
-            case "A32NX_FG_CROSS_TRACK_ERROR":
-            {
-                double nm = value / 1852.0;
-                displayText = Math.Abs(nm) < 0.01 ? "On track" : $"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}";
                 return true;
             }
             case "A32NX_RADIO_RECEIVER_LOC_DEVIATION":
@@ -6489,11 +6472,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case "A32NX.FCU_SPD_MACH_TOGGLE_PUSH": RequestFCUSpeedWithStatus(simConnect); break;
             // HDG·V/S <-> TRK·FPA toggle: re-read heading (its label flips HDG<->TRK).
             case "A32NX.FCU_TRK_FPA_TOGGLE_PUSH": RequestFCUHeadingWithStatus(simConnect); break;
-            // VHF active/standby swap: announce the swap (the new active is then on
-            // the "VHF N Active" read-out in the panel).
-            case "COM1_RADIO_SWAP": announcer.Announce("VHF 1 active and standby swapped"); break;
-            case "COM2_RADIO_SWAP": announcer.Announce("VHF 2 active and standby swapped"); break;
-            case "COM3_RADIO_SWAP": announcer.Announce("VHF 3 active and standby swapped"); break;
         }
     }
 

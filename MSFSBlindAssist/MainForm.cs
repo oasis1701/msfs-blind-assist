@@ -1941,7 +1941,7 @@ public partial class MainForm : Form
                 }
                 else
                 {
-                    announcer.Announce("The Radio Management Panel window is only available on the A380.");
+                    announcer.AnnounceImmediate("The Radio Management Panel window is only available on the A380.");
                 }
                 break;
             case HotkeyAction.ShowOANS:
@@ -1951,7 +1951,7 @@ public partial class MainForm : Form
                 }
                 else
                 {
-                    announcer.Announce("OANS airport map is only available on the A380.");
+                    announcer.AnnounceImmediate("OANS airport map is only available on the A380.");
                 }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
