@@ -468,7 +468,10 @@ namespace MSFSBlindAssist.SimConnect
             Stop();
             _cts?.Dispose();
             _http.Dispose();
-            _sendLock.Dispose();
+            // Intentionally NOT disposing _sendLock: the background RunLoop is not joined here and
+            // may be pending on WaitAsync — disposing a SemaphoreSlim with waiters throws
+            // ObjectDisposedException on the pool thread. Stop() cancels _cts, which unblocks the
+            // waiter; the wait handle is never materialized, so nothing leaks.
         }
 
         // ---- scrape DTOs -------------------------------------------------
