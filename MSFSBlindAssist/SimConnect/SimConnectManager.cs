@@ -1526,7 +1526,7 @@ public class SimConnectManager
                 }
                 break;
 
-            // Multi-batch continuous variable monitoring (5 batches of up to 200 variables each)
+            // Multi-batch continuous variable monitoring (5 batches of up to 300 variables each)
             case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1:
                 GenericBatch1 batch1Data = (GenericBatch1)data.dwData[0];
                 ProcessContinuousBatch(1, in batch1Data);
@@ -2633,7 +2633,7 @@ public class SimConnectManager
         }
 
         // Use unsafe pointer access instead of reflection for performance and stability
-        // Each batch struct is a sequential struct of 100 doubles, so we can access directly
+        // Each batch struct is a sequential struct of 300 doubles, so we can access directly
         try
         {
             unsafe
@@ -3392,11 +3392,19 @@ public class SimConnectManager
         // a force-read of an UNCHANGED batch-covered value actually re-fire (it previously sat after
         // the early-return, so the flag was never set for batch-covered vars). Individual-def vars
         // still have it consumed by ProcessIndividualVariableResponse exactly as before.
+        // Only record keys a delivery path can consume — individual data defs or the
+        // continuous batch. Unregistered/typo'd keys otherwise sit in the set until
+        // the next clear (silent growth, misleading when debugging).
         if (forceUpdate)
         {
-            lock (forceUpdateVariables)
+            bool deliverable = variableDataDefinitions.ContainsKey(varKey)
+                               || continuousVariableIndexMap.ContainsKey(varKey);
+            if (deliverable)
             {
-                forceUpdateVariables.Add(varKey);
+                lock (forceUpdateVariables)
+                {
+                    forceUpdateVariables.Add(varKey);
+                }
             }
         }
 
@@ -3946,8 +3954,10 @@ public class SimConnectManager
             && varName.IndexOf(' ') < 0
             && varName.IndexOf(':') < 0)
         {
-            ExecuteCalculatorCode(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "{0} (>L:{1})", value, varName));
+            // Fixed-point format: the default double formatting emits scientific notation
+            // for small/large magnitudes ("1E-05"), which the MSFS RPN parser rejects.
+            ExecuteCalculatorCode(value.ToString("0.################", System.Globalization.CultureInfo.InvariantCulture)
+                + " (>L:" + varName + ")");
             return;
         }
 

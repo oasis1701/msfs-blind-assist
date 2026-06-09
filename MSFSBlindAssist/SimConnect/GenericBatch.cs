@@ -1021,9 +1021,9 @@ public struct GenericBatch
 }
 
 /// <summary>
-/// Batch 1 structure for continuous variable monitoring (variables 0-99).
+/// Batch 1 structure for continuous variable monitoring (variables 0-299).
 /// Part of multi-batch system to reduce SimConnect load per request.
-/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+/// Contains 300 double fields for batched SimConnect data requests.
 ///
 /// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
 /// ExecutionEngineException when accessing fields via unsafe pointers.
@@ -1031,7 +1031,7 @@ public struct GenericBatch
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch1
 {
-    // Capacity extended to 200 doubles (BATCH_SIZE = 200). Field NAMES are
+    // Capacity extended to 300 doubles (BATCH_SIZE = 300). Field NAMES are
     // irrelevant — ProcessContinuousBatchImpl reads the struct as a flat double[]
     // by index, and the data definition is filled in add-order; only the total
     // size (>= BATCH_SIZE doubles) matters.
@@ -1098,9 +1098,9 @@ public struct GenericBatch1
 }
 
 /// <summary>
-/// Batch 2 structure for continuous variable monitoring (variables 100-199).
+/// Batch 2 structure for continuous variable monitoring (variables 300-599).
 /// Part of multi-batch system to reduce SimConnect load per request.
-/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+/// Contains 300 double fields for batched SimConnect data requests.
 ///
 /// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
 /// ExecutionEngineException when accessing fields via unsafe pointers.
@@ -1108,7 +1108,7 @@ public struct GenericBatch1
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch2
 {
-    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    // Capacity extended to 300 doubles (BATCH_SIZE = 300) — see GenericBatch1.
     public double V200; public double V201; public double V202; public double V203; public double V204;
     public double V205; public double V206; public double V207; public double V208; public double V209;
     public double V210; public double V211; public double V212; public double V213; public double V214;
@@ -1172,9 +1172,9 @@ public struct GenericBatch2
 }
 
 /// <summary>
-/// Batch 3 structure for continuous variable monitoring (variables 200-299).
+/// Batch 3 structure for continuous variable monitoring (variables 600-899).
 /// Part of multi-batch system to reduce SimConnect load per request.
-/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+/// Contains 300 double fields for batched SimConnect data requests.
 ///
 /// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
 /// ExecutionEngineException when accessing fields via unsafe pointers.
@@ -1182,7 +1182,7 @@ public struct GenericBatch2
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch3
 {
-    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    // Capacity extended to 300 doubles (BATCH_SIZE = 300) — see GenericBatch1.
     public double V200; public double V201; public double V202; public double V203; public double V204;
     public double V205; public double V206; public double V207; public double V208; public double V209;
     public double V210; public double V211; public double V212; public double V213; public double V214;
@@ -1246,9 +1246,9 @@ public struct GenericBatch3
 }
 
 /// <summary>
-/// Batch 4 structure for continuous variable monitoring (variables 300-399).
+/// Batch 4 structure for continuous variable monitoring (variables 900-1199).
 /// Part of multi-batch system to reduce SimConnect load per request.
-/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+/// Contains 300 double fields for batched SimConnect data requests.
 ///
 /// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
 /// ExecutionEngineException when accessing fields via unsafe pointers.
@@ -1256,7 +1256,7 @@ public struct GenericBatch3
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch4
 {
-    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    // Capacity extended to 300 doubles (BATCH_SIZE = 300) — see GenericBatch1.
     public double V200; public double V201; public double V202; public double V203; public double V204;
     public double V205; public double V206; public double V207; public double V208; public double V209;
     public double V210; public double V211; public double V212; public double V213; public double V214;
@@ -1320,9 +1320,9 @@ public struct GenericBatch4
 }
 
 /// <summary>
-/// Batch 5 structure for continuous variable monitoring (variables 400-499).
+/// Batch 5 structure for continuous variable monitoring (variables 1200-1499).
 /// Part of multi-batch system to reduce SimConnect load per request.
-/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+/// Contains 300 double fields for batched SimConnect data requests.
 ///
 /// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
 /// ExecutionEngineException when accessing fields via unsafe pointers.
@@ -1330,7 +1330,7 @@ public struct GenericBatch4
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch5
 {
-    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    // Capacity extended to 300 doubles (BATCH_SIZE = 300) — see GenericBatch1.
     public double V200; public double V201; public double V202; public double V203; public double V204;
     public double V205; public double V206; public double V207; public double V208; public double V209;
     public double V210; public double V211; public double V212; public double V213; public double V214;

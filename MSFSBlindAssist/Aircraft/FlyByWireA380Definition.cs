@@ -4469,8 +4469,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 announcer.AnnounceImmediate($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius.");
                 return true;
             }
-            // Calculator path (not SetLVar — the data-def write is unreliable for FBW L:vars).
-            simConnect.ExecuteCalculatorCode($"{(value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0} (>L:{ts.Knob})");
+            // Invariant fixed-point: raw interpolation used CurrentCulture — a fractional
+            // temperature on a comma-decimal locale emitted "87,5 (>L:...)", broken RPN.
+            simConnect.ExecuteCalculatorCode(
+                ((value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                + $" (>L:{ts.Knob})");
             announcer.Announce($"{ts.Label} temperature set to {value:0} degrees");
             return true;
         }
