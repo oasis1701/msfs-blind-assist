@@ -668,9 +668,15 @@ returns a longitudinal/lateral offset (in metres) that GSX's VDGS applies so a
 777-300 stops a few metres deeper than an A320 at the same stand. Measured at
 EDDF A66: a 777-300 stops **+5.3 m** vs the navdata base.
 
-When the destination gate is **navdata/`.py`-sourced** (i.e. `StopLatitude == null`
-— a `.ini` gate already carries an exact GSX stop, so it is never double-offset)
-and the aircraft id is known, `TaxiAssistForm.ApplyGsxStopOffset` resolves the
+The offset is applied to **every non-deice gate, including `.ini` gates**. It was
+once skipped whenever the gate carried a `StopLatitude` (i.e. `.ini` gates), on the
+mistaken assumption that the `.ini` stop was already aircraft-exact. It isn't: the
+`.py` `customOffset` is GSX's **per-aircraft** adjustment layered *on top of* the
+static `.ini`/navdata base, which is why the same gate yields a different offset per
+airframe (EDDF A66: 777 = 5.3 m, A380 = 6.3 m, base = 1.65 m). Without it the 777
+parked ~5.3 m short at every `.ini` airport (EDDF included).
+
+When the aircraft id is known, `TaxiAssistForm.ApplyGsxStopOffset` resolves the
 offset and feeds it to `DockingGuidanceManager.SetStopOffset`:
 
 - `GsxStopOffsetResolver` locates the airport's `.py` (`GsxProfileLocator.TryFindPyProfile`,
@@ -688,6 +694,15 @@ offset and feeds it to `DockingGuidanceManager.SetStopOffset`:
 - The evaluator's group fallback tries `"ARC-E"`, bare `"E"`, and `"Heavy"` because
   different scenery authors key their group dicts differently (the `"ARC-X"` form
   dominates the installed profiles).
+- **The gate suffix changes the resolved function.** EDDF **A66** (no suffix) →
+  777 = **+5.3 m**, but EDDF **A66A** (suffix "A") → 777 = **0 m**: that stand's
+  function has no 777 table entry, so it correctly falls to the base 0 (an A320 at
+  the same stand gets −2.5 m, proving the function is evaluated rather than parse-
+  missed). `tools/GsxOffsetProbe` carries resolver-level asserts that lock this.
+- A `STOPOFFSET` diagnostic line (icao / gate# / suffix / `stopLatSet` / aircraft /
+  aircraft id / resolved offset) is appended to
+  `%LOCALAPPDATA%\MSFSBlindAssist\logs\docking-aircraft.log` on each route-calculate,
+  for one-glance debugging of "offset is 0" reports.
 
 In `DockingGuidanceManager.UpdatePosition`, the stop point is shifted BEFORE any
 distance is computed: `LongitudinalMetres` along `StopHeading`, `LateralMetres`
@@ -793,8 +808,9 @@ doorDistanceToStop = alongTrackToStop − doorOffset
 where `doorOffset` is the loaded aircraft's main-door longitudinal offset forward
 of the SimConnect datum, in metres. The aircraft stops when the datum is
 `doorOffset` metres short of the gate stop coordinate, so the door lands exactly
-on the stop. With this correction applied, the "Stop" threshold is **0.5 m** —
-matching the real Safedock longitudinal accuracy specification.
+on the stop. With this correction applied, the "Stop" threshold is **0.3 m**
+(`StopToleranceMetres`, see *Docking precision & GSX stop* below) — tight enough
+to land the door within jetway-bridge tolerance.
 
 **Data source — no hardcoding.** The per-aircraft door offset is read from GSX's
 own `gsx.cfg` rather than any static table maintained in MSFSBA. The relevant
@@ -836,16 +852,78 @@ coordinate itself, with no door correction applied.
 approximately 60 m of the door stop (not the datum stop) at ≤ 15 kt, provided
 the aircraft is roughly facing the gate. Distance milestones are unit-native
 (metres or feet per the Distance units setting). "Slow down" is announced at
-6 m. "Stop" fires at 0.5 m.
+6 m. "Stop" fires at 0.3 m (`StopToleranceMetres`).
 
-**Known limitation — Python stop-position tweaks.** GSX allows per-gate,
-per-aircraft `@AlternativeStopPositions` overrides in executable Python (`.py`)
-files. These files are third-party Python scripts and are not parsed by MSFSBA.
-In practice their effect is small (a few centimetres to a few metres of
-longitudinal adjustment for specific stand/aircraft combinations) and they apply
-on top of the `gsx.cfg` door offset that is already loaded. For the vast majority
-of dockings the `gsx.cfg` offset alone produces correct alignment; the Python
-refinement is a known third-order effect currently out of scope.
+**Python per-aircraft stop offsets ARE now applied.** GSX's per-gate, per-aircraft
+`customOffset` Python (`.py`) adjustments — once a documented out-of-scope
+limitation — are read and applied to the docking stop. See *GSX `.py` per-aircraft
+stop offset* above for the resolver chain; it applies to every non-deice gate
+(including `.ini` gates) on top of the `gsx.cfg` door offset.
+
+### Docking precision & GSX stop
+
+These refinements tighten the final few metres so the door lands within jetway-
+bridge tolerance and the pilot gets an unambiguous "stop here" cue.
+
+- **Docking completion stops taxi guidance.** `DockingGuidanceManager` raises a
+  `DockingCompleted` event once on the Docking → Stopped transition (including
+  overshoot), fired outside its lock. `MainForm` subscribes and calls
+  `taxiGuidanceManager.StopGuidance()` (thread-safe and silent), so the flow ends
+  cleanly instead of taxi sitting in LiningUp forever after parking.
+- **Taxi suppresses its terminal callouts for the whole gate approach.** `MainForm`
+  feeds `taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.OwnsArrival)`,
+  where `OwnsArrival` = a gate is set **and** docking is enabled — not the narrower
+  `IsActive`. So taxi's "Stop. Hold position.", "Align with X", "Destination
+  reached", and gate-lineup "Parking brake." are suppressed even *before* docking
+  formally engages, preventing taxi from telling the pilot to stop at its route-end
+  node while docking is still guiding them a few metres deeper to the GSX stop.
+  (`IsActive` still drives the steering-tone mute via `SetSteeringToneSuppressed`.)
+- **Jetway-precise lateral lineup** (`ComputeLineupError`). The intercept dead-band
+  was tightened **8 ft → 1 ft** (the 8 ft band stopped correcting cross-track below
+  8 ft, parking the aircraft up to ~2.4 m off centerline), and `SaturationFt` went
+  60 → 40 (a small residual still earns a usable correction angle). Cross-track
+  convergence is a function of distance travelled, not time
+  (`d(cross)/d(forward) = −sin(angle)`), so it closes the same per metre at 1 kt as
+  at 5 kt — no slow-speed special-casing — and the continuous sqrt ramp never
+  springs a late turn.
+- **Final alignment turn completes earlier.** The intercept-fade squares the heading
+  to pure gate heading by **2.5 m out** (`FadeStartM`/`FadeEndM` = 6/2.5, was 4/1),
+  so an over-rotated gate entry (~5° off the taxi turn) finishes the squaring turn
+  with room to creep straight in, instead of cramming it into the final metre and
+  stopping ~2° off.
+- **Precise, unforgiving stop + persistent "docked" tone.**
+  - `StopToleranceMetres` tightened **0.5 → 0.3 m** (drives gate IsStop, the solid
+    tone, and the "GSX docking complete." callout), so the pilot lands within
+    ~0.3 m of the exact stop.
+  - The beep plateau is removed: `BeepNearMetres = StopToleranceMetres`, so the
+    accelerating pulse keeps speeding up right to the stop with **no** max-speed
+    plateau. The old 2 m plateau made everything from 2 m to the stop sound
+    identical, so pilots read "fast beep" as "stop" and parked short, mid-turn.
+    Now the rule is simple: accelerating pulse = keep creeping; solid tone = stop.
+  - The solid continuous tone was previously dead code — the state machine called
+    `_beeper.Stop()` at the same 0.3 m threshold the solid tone begins, so the beep
+    just vanished at the stop. Fixed: at IsStop the lateral pan tone stops but the
+    beeper is held in its solid mode and keeps sounding through the Stopped state as
+    a "docked — hold position" marker, until the pilot ends guidance (Stop taxi
+    guidance button → `SetDestinationGate(null)` → `ResetLocked` stops it) or taxis
+    away (disengage at > 75 m).
+- **`docking.log` telemetry includes absolute coords.** Lines now carry
+  `stopLat`/`stopLon` (the computed stop target) and `acLat`/`acLon` (aircraft
+  position) alongside the relative `along`/`crossFt`, enabling a direct comparison
+  of docking's target against a known-correct GSX position.
+- **SimConnect heading-unit gotcha (live verification).** SimConnect's
+  `PLANE_HEADING_DEGREES_TRUE` / `_MAGNETIC` are returned in **radians**, not
+  degrees, despite the name — multiply by 57.2958 (180/π) to get degrees (a logged
+  5.93 = 339.7°). Latitude/Longitude are in degrees. This matters for any future
+  MCP/SimConnect live-verification of docking geometry.
+- **GSX operational note: engines OFF for services.** GSX will not offer ground
+  services (deboarding, jetway, etc.) while engines are running — it prompts "stop
+  engines to request services." This is GSX behaviour, not an MSFSBA docking bug; a
+  precise dock with engines running still won't surface service options.
+- **Verified live (EDDF A66 / B77W, engines off):** offset 5.30 m applied; docking
+  target (50.04691716, 8.56034700) heading 339.9° true; a real dock stopped ~0.6 m
+  short and 0.27 m left of centerline, and GSX accepted services — confirming the
+  target is GSX-correct.
 
 ### Remote deicing guidance
 
