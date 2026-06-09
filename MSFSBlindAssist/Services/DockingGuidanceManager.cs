@@ -382,11 +382,19 @@ public sealed class DockingGuidanceManager : IDisposable
         crossFt = track.CrossTrackFeet;
         double absCross = track.AbsCrossTrackFeet;
 
-        // Intercept ramp tuned for a gate lead-in: a touch sharper than the runway's
-        // 30°/100 ft so it actually closes a 10–15 ft entry over the approach (the gentle
-        // ramp only commanded ~7° at 13 ft and stalled there). 8 ft deadband + sqrt curve
-        // still ease it to zero on the line.
-        const double MaxInterceptDeg = 35.0, DeadbandFt = 8.0, SaturationFt = 60.0;
+        // Intercept ramp for a JETWAY-PRECISE gate lead-in. The previous 8 ft deadband stopped
+        // correcting once cross-track fell below ~8 ft, so the aircraft parked up to ~8 ft (2.4 m)
+        // off the gate centerline (a live B77W dock at EDDF A66 sat at ~8.2 ft the whole approach
+        // because it was inside the deadband from the start). Drop the deadband to 1 ft — keep a
+        // hair so SimConnect position jitter doesn't hunt the tone left/right at the exact centre —
+        // and steepen the saturation (60→40 ft) so a small residual still gets a meaningful
+        // correction angle and actually closes. KEY: cross-track convergence is a function of
+        // DISTANCE travelled, not time (d(cross)/d(forward) = −sin(angle)), so this closes the
+        // same amount per metre at 1 kt as at 5 kt — "even at 1 kt" needs no special handling, and
+        // the continuous sqrt ramp never springs a late turn. The intercept still eases to 0° at
+        // the line; the distance fade below squares the final heading so the park is precise AND
+        // not askew.
+        const double MaxInterceptDeg = 35.0, DeadbandFt = 1.0, SaturationFt = 40.0;
         double intercept = 0.0;
         if (absCross > DeadbandFt)
         {
@@ -401,9 +409,12 @@ public sealed class DockingGuidanceManager : IDisposable
         // right at the stop so you finish centered AND square. A stationary nose-in aircraft
         // cannot reduce lateral offset (no sideways motion), so "keep converging" at the stop
         // is futile and reads as a wrong-way cue (a slight RIGHT bias while 10 ft left when
-        // the pilot just wants to square LEFT to the gate). Start the fade LATE (6 m) so the
-        // lateral keeps closing as long as possible, then square up over the last ~4.5 m.
-        const double FadeStartM = 6.0, FadeEndM = 1.5;
+        // the pilot just wants to square LEFT to the gate). Start the fade even LATER now (4 m,
+        // was 6 m) so the tight-deadband intercept keeps closing the last foot or two as deep as
+        // possible, then squares over the final ~3 m. With the 1 ft deadband the residual reaching
+        // this zone is tiny, so squaring costs almost no lateral precision while still guaranteeing
+        // a square (not askew) finish.
+        const double FadeStartM = 4.0, FadeEndM = 1.0;
         double fade = Math.Clamp((alongMetres - FadeEndM) / (FadeStartM - FadeEndM), 0.0, 1.0);
         intercept *= fade;
 
