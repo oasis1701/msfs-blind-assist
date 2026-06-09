@@ -107,8 +107,15 @@ public sealed class DockingGuidanceManager : IDisposable
                 // For deice areas the aircraft datum (not a door at a jetway) aligns to the pad,
                 // so the effective offset is 0. For normal gates use the per-aircraft door offset.
                 // When offset is 0 (unknown), doorAlongM == alongM and behaviour is unchanged.
-                double effOffset = (_gate?.IsDeiceArea == true) ? 0.0 : _doorOffsetMetres;
-                double doorAlongM = alongM - effOffset;
+                // Stop the aircraft DATUM at the parking/stop position. The MSFS parking
+                // position (and a GSX stop position) is where the aircraft REFERENCE sits when
+                // correctly parked — the scenery jetway is placed to reach the door for THAT
+                // datum location. Subtracting the per-aircraft door offset was wrong: it
+                // describes where the door is on the airframe, NOT a stop offset, and it parked
+                // a B777 ~26 m short (datum a whole fuselage back — GSX read it as "way off")
+                // while starving the lateral convergence of distance. Align the datum directly.
+                // (The LATERAL door offset still feeds the "jetway on your left/right" cue.)
+                double doorAlongM = alongM;
                 _lastDoorAlongM = doorAlongM;
 
                 // Intercept-angle lineup to the gate centerline (the line through the stop
@@ -277,13 +284,12 @@ public sealed class DockingGuidanceManager : IDisposable
         crossFt = track.CrossTrackFeet;
         double absCross = track.AbsCrossTrackFeet;
 
-        // AGGRESSIVE ramp vs the runway's 30°/100 ft — a gate lead-in is short, so the
-        // lateral must close FAST within the few metres of door-travel before the stop.
-        // CONFIRMED EDDF A66A: a 28 ft entry under the gentle ramp commanded only ~14°
-        // (~0.6 ft/s lateral) and ran out of room at 19 ft left. 40°/40 ft saturation
-        // commands ~32° at 28 ft (~1.3 ft/s), converging to a few feet before the stop;
-        // the 8 ft deadband + sqrt curve still ease it smoothly to zero on the line.
-        const double MaxInterceptDeg = 40.0, DeadbandFt = 8.0, SaturationFt = 40.0;
+        // Gentle ramp (same as the runway lineup). The aggressive 40°/40 ft version only
+        // existed to compensate for the tiny convergence distance caused by the door-offset
+        // stop bug; with the datum now aligned to the parking position there's the full
+        // ~40 m of approach to converge, so this gentle ramp closes the lateral smoothly
+        // AND leaves room to unwind the intercept and square up before the stop.
+        const double MaxInterceptDeg = 30.0, DeadbandFt = 8.0, SaturationFt = 100.0;
         double intercept = 0.0;
         if (absCross > DeadbandFt)
         {
