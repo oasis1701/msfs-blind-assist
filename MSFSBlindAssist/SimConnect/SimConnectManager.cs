@@ -3078,6 +3078,19 @@ public class SimConnectManager
 
     private void TryAnnounceConnection()
     {
+        // Detection already completed — drop late duplicate (info, ATC) response pairs.
+        // The detect-retry timer re-fires RequestAircraftInfo (two PERIOD.ONCE requests)
+        // every 2 s while detection is pending; on a stalled sim load, the queued extra
+        // responses used to re-satisfy both flags and re-run the WHOLE connect pipeline
+        // (duplicate "Connected to ..." announce, PMDG data-manager re-init, a fresh
+        // 5 s announce blackout). IsFullyConnected is reset only in Disconnect().
+        if (IsFullyConnected)
+        {
+            pendingAircraftInfo = null;
+            atcDataReceived = false;
+            return;
+        }
+
         // Only announce when we have both aircraft info AND ATC data
         if (pendingAircraftInfo.HasValue && atcDataReceived)
         {
@@ -4463,6 +4476,7 @@ public class SimConnectManager
     {
         // Stop reconnect timer first to prevent it from firing during cleanup
         reconnectTimer.Stop();
+        _detectRetryTimer.Stop();
         System.Diagnostics.Debug.WriteLine("[SimConnectManager] Reconnect timer stopped");
 
         // Disconnect MobiFlight WASM module
