@@ -11,5 +11,6 @@
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxOffset.cs" Link="Linked\GsxOffset.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxPyProfileReader.cs" Link="Linked\GsxPyProfileReader.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxPyOffsetEvaluator.cs" Link="Linked\GsxPyOffsetEvaluator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\AircraftCfgCatalog.cs" Link="Linked\AircraftCfgCatalog.cs" />
   </ItemGroup>
 </Project>

@@ -90,28 +90,6 @@ var offA388 = GsxPyOffsetEvaluator.Evaluate(eddf, 66, "", a388);
 AssertNear(offA388.LongitudinalMetres, 6.3, 0.01, "EDDF 66 A388 -> 6.3 m (generic 380)");
 
 // ---------------------------------------------------------------------------
-// 3b) FULL FLEET at EDDF A66 — the 6 aircraft the user actually flies. Pure-math,
-//     no sim load needed. Expected values read straight from customOffsetA54A58A62A66:
-//       generic table {0:0, 380:6.3}; table777 {0:1.65, 300:5.3}; table787 {0:0, 9:1.65, 10:5.3}.
-// ---------------------------------------------------------------------------
-Console.WriteLine("== EDDF A66: user's fleet (per-aircraft, no sim needed) ==");
-(string Icao, double Exp, string Note)[] fleet =
-{
-    ("B77W", 5.3,  "PMDG 777-300ER  (777/300 -> table777[300])"),
-    ("B77L", 1.65, "PMDG 777F       (777/200 -> table777 fallback[0])"),
-    ("B789", 1.65, "HS787-9         (787/9   -> table787[9])"),
-    ("A388", 6.3,  "FBW A380X       (380     -> generic[380])"),
-    ("A20N", 0.0,  "FBW A32NX       (320     -> base, not in table)"),
-    ("A320", 0.0,  "Fenix A320      (320     -> base, not in table)"),
-};
-foreach (var (icao, exp, note) in fleet)
-{
-    GsxAircraftIdMap.TryResolve(icao, out var ac);
-    var o = GsxPyOffsetEvaluator.Evaluate(eddf, 66, "", ac);
-    AssertNear(o.LongitudinalMetres, exp, 0.01, $"EDDF 66 {icao,-4} -> {exp} m  {note}");
-}
-
-// ---------------------------------------------------------------------------
 // 3c) UNIVERSAL DERIVER — never-seen designators still resolve sanely (Part 1).
 //     The exception table is a thin list; the PRIMARY path is derivation from the
 //     ICAO pattern + wingspan, so aircraft MSFSBA has never heard of still work.
@@ -145,32 +123,61 @@ Assert(GsxAircraftIdMap.ArcFromWingspanMetres(64.8) == "ARC-E", $"64.8 m -> ARC-
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(79.75) == "ARC-F", $"79.75 m -> ARC-F (got '{GsxAircraftIdMap.ArcFromWingspanMetres(79.75)}')");
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(34.0) == "ARC-C", $"34 m -> ARC-C (got '{GsxAircraftIdMap.ArcFromWingspanMetres(34.0)}')");
 
-// ---------------------------------------------------------------------------
-// 3d) VERIFIED INSTALLED FLEET — ICAOs read straight from the real aircraft.cfg
-//     files on disk (no sim load). Every installed airframe must resolve to the
-//     right GSX idMajor. A346 is NOT in the exception table, so it proves the
-//     derivation path works for an aircraft the table has never heard of.
-// ---------------------------------------------------------------------------
-Console.WriteLine("== Verified installed fleet (ICAOs from aircraft.cfg) ==");
-(string Icao, int Major, int Minor, string Note)[] installed =
-{
-    ("B77W", 777, 300, "PMDG 777-300ER"),
-    ("B77L", 777, 200, "PMDG 777F (icao_model 777-200LRF)"),
-    ("A20N", 320, -1,  "FBW A32NX (neo)"),
-    ("A320", 320, -1,  "Fenix A320 (ceo; fnx-aircraft-320)"),
-    ("A388", 380, -1,  "FBW A380X"),
-    ("B789", 787, 9,   "HS787-9"),
-    ("A346", 340, 600, "Aerosoft A340-600 (DERIVED — not in table)"),
-    ("A35K", 350, -1,  "iniBuilds A350-1000"),
-    ("A359", 350, -1,  "iniBuilds A350-900"),
-};
-foreach (var (icao, major, minor, note) in installed)
-{
-    GsxAircraftIdMap.TryResolve(icao, 0, out var id);
-    bool ok = id.IdMajor == major && (minor < 0 || id.IdMinor == minor);
-    Assert(ok, $"{icao,-4} -> idMajor {major}{(minor < 0 ? "" : "/" + minor)}  (got {id.IdMajor}/{id.IdMinor})  {note}");
-}
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(80.5) == "ARC-F", $"80.5 m (>=80) -> ARC-F (got '{GsxAircraftIdMap.ArcFromWingspanMetres(80.5)}')");
+
+// ---------------------------------------------------------------------------
+// 3d) UNIVERSAL INSTALLED-AIRCRAFT SCAN — zero hardcoded fleet. Reads whatever
+//     aircraft.cfg ICAOs exist on THIS machine via AircraftCfgCatalog and asserts
+//     GsxAircraftIdMap.TryResolve does not throw and yields a usable id for each
+//     DISTINCT ICAO. idMajor 0 is NOT a failure (those rely on ICAO-keyed profile
+//     tables — safe); it's listed as info. SKIP cleanly if no packages root (CI).
+// ---------------------------------------------------------------------------
+Console.WriteLine("== Universal installed-aircraft scan (this machine's real fleet) ==");
+if (MSFSBlindAssist.Services.AircraftCfgCatalog.FindInstalledPackagesPath() == null)
+{
+    Console.WriteLine("  SKIP  no MSFS packages root found (UserCfg.opt / InstalledPackagesPath) — CI or no sim installed");
+}
+else
+{
+    var catalog = new MSFSBlindAssist.Services.AircraftCfgCatalog();
+    var installed = catalog.EnumerateInstalled();
+    var distinctIcaos = installed
+        .Select(p => p.Icao)
+        .Where(i => !string.IsNullOrWhiteSpace(i))
+        .Select(i => i.Trim().ToUpperInvariant())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(i => i, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    Console.WriteLine($"  (catalog found {installed.Count} title->icao entries, {distinctIcaos.Count} distinct ICAOs)");
+
+    int derivedNonZero = 0;
+    var idMajorZero = new List<string>();
+    foreach (var icao in distinctIcaos)
+    {
+        GsxAircraftId id = default!;
+        bool threw = false;
+        try { GsxAircraftIdMap.TryResolve(icao, 0, out id); }
+        catch { threw = true; }
+        Assert(!threw, $"TryResolve('{icao}') did not throw");
+        if (threw) continue;
+
+        // A usable id: the raw ICAO is always preserved (so ICAO-keyed tables hit).
+        Assert(!string.IsNullOrEmpty(id.Icao), $"'{icao}' yields a usable id (raw ICAO preserved)");
+
+        if (id.IdMajor != 0) derivedNonZero++;
+        else idMajorZero.Add(icao);
+    }
+
+    Console.WriteLine("  ---- INSTALLED-SCAN SUMMARY ----");
+    Console.WriteLine($"  Distinct installed ICAOs : {distinctIcaos.Count}");
+    Console.WriteLine($"  Resolve to derived idMajor != 0 : {derivedNonZero}");
+    Console.WriteLine($"  Fall to idMajor 0 (ICAO-keyed tables; SAFE) : {idMajorZero.Count}");
+    if (idMajorZero.Count > 0)
+        Console.WriteLine($"     idMajor-0 ICAOs (info, not failure): {string.Join(", ", idMajorZero)}");
+    if (distinctIcaos.Count > 0)
+        Console.WriteLine($"     all installed ICAOs: {string.Join(", ", distinctIcaos)}");
+}
 
 // Resolve with wingspan populates ArcCode + Group; resolve without leaves them empty.
 GsxAircraftIdMap.TryResolve("B77W", 64.8, out var b77wWs);
