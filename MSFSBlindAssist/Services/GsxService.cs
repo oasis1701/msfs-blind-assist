@@ -138,6 +138,7 @@ public sealed class GsxService : IDisposable
     // on every poll tick that produces a different set; ActiveServicesChanged
     // fires when the list changes.
     public IReadOnlyList<string> ActiveServiceNames => _activeServiceNames;
+    public string? DefaultActiveServiceName => _defaultActiveServiceName;
 
     // Currently selected active service for announcement / tooltip text.
     // When null, the parser picks the first active row (GSX-order default).
@@ -214,6 +215,7 @@ public sealed class GsxService : IDisposable
     // parse, plus the user's current selection (null = follow GSX order).
     private List<string> _activeServiceNames = new();
     private string? _selectedActiveService;
+    private string? _defaultActiveServiceName;
     private string _lastCompletedStatusServiceText = string.Empty;
     private string _lastSettingsText = string.Empty;
     private string _statusText = "Status: Disconnected";
@@ -695,12 +697,17 @@ public sealed class GsxService : IDisposable
         {
             _activeServiceNames = new List<string>();
             _selectedActiveService = null;
+            _defaultActiveServiceName = null;
             ActiveServicesChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     private void UpdateActiveServiceRegistry(List<StatusServiceRow> activeRows)
     {
+        string? defaultActiveServiceName = ExtractServiceName(SelectDefaultActiveRow(activeRows)?.Text ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(defaultActiveServiceName))
+            defaultActiveServiceName = null;
+
         var names = new List<string>(activeRows.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in activeRows)
@@ -714,10 +721,12 @@ public sealed class GsxService : IDisposable
 
         bool changed = names.Count != _activeServiceNames.Count
             || !names.SequenceEqual(_activeServiceNames, StringComparer.OrdinalIgnoreCase);
-        if (!changed)
+        bool defaultChanged = !string.Equals(_defaultActiveServiceName, defaultActiveServiceName, StringComparison.OrdinalIgnoreCase);
+        if (!changed && !defaultChanged)
             return;
 
         _activeServiceNames = names;
+        _defaultActiveServiceName = defaultActiveServiceName;
 
         if (!string.IsNullOrWhiteSpace(_selectedActiveService)
             && !names.Any(n => string.Equals(n, _selectedActiveService, StringComparison.OrdinalIgnoreCase)))
@@ -727,6 +736,14 @@ public sealed class GsxService : IDisposable
             // running. Reset the delta baseline so the new focus reads in full.
             _selectedActiveService = null;
             _lastAnnouncedFullText = string.Empty;
+        }
+        else if (defaultChanged && string.IsNullOrWhiteSpace(_selectedActiveService))
+        {
+            // GSX keeps persistent ground connections (GPU, jetways) active
+            // while foreground work starts. When the implicit foreground row
+            // changes, reset the delta baseline so that service reads in full.
+            _lastAnnouncedFullText = string.Empty;
+            _forceNextLiveServiceAnnouncement = true;
         }
 
         ActiveServicesChanged?.Invoke(this, EventArgs.Empty);
@@ -747,7 +764,20 @@ public sealed class GsxService : IDisposable
                 }
             }
         }
-        return activeRows[0];
+        return SelectDefaultActiveRow(activeRows) ?? activeRows[0];
+    }
+
+    private static StatusServiceRow? SelectDefaultActiveRow(List<StatusServiceRow> activeRows)
+    {
+        if (activeRows.Count == 0)
+            return null;
+
+        // Prefer the current foreground operation over persistent ground
+        // connections that can remain active for long periods. If GSX has
+        // several foreground rows, the later row is usually the top-level
+        // service currently being worked.
+        return activeRows.LastOrDefault(row => !IsGroundConnectionService(row.Text))
+            ?? activeRows[0];
     }
 
     public void SetSettingNumber(string key, double value)

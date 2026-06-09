@@ -44,6 +44,7 @@ public sealed class AccessGSXForm : Form
         UpdateStatus();
         RepopulateMenu();
         UpdateTooltip();
+        OnActiveServicesChangedUi();
     }
 
     private void BuildUi()
@@ -420,7 +421,8 @@ public sealed class AccessGSXForm : Form
                 _activeServicesCombo.Items.Add(name);
 
             int targetIndex = -1;
-            string? selected = _gsxService.SelectedActiveService;
+            string? selected = _gsxService.SelectedActiveService
+                ?? _gsxService.DefaultActiveServiceName;
             if (!string.IsNullOrWhiteSpace(selected))
             {
                 for (int i = 0; i < _activeServicesCombo.Items.Count; i++)
