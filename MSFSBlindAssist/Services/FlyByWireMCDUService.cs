@@ -60,6 +60,8 @@ public class FlyByWireMCDUService : IDisposable
         _cts?.Cancel();
         CloseWebSocket();
         SetConnected(false);
+        _cts?.Dispose();
+        _cts = null;
     }
 
     private async Task ConnectLoop(CancellationToken ct)
@@ -70,10 +72,16 @@ public class FlyByWireMCDUService : IDisposable
             {
                 await ConnectAndReceive(ct);
             }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
+            catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Connection error: {ex.Message}");
-                SetConnected(false);
+                if (!ct.IsCancellationRequested)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Connection error: {ex.Message}");
+                    SetConnected(false);
+                }
+                // Cancellation-path exceptions (socket disposed under a pending
+                // ReceiveAsync during Disconnect) are expected — swallow so they
+                // don't surface as unobserved task exceptions.
             }
 
             if (ct.IsCancellationRequested) { break; }
@@ -87,26 +95,37 @@ public class FlyByWireMCDUService : IDisposable
 
     private async Task ConnectAndReceive(CancellationToken ct)
     {
-        _ws = new ClientWebSocket();
-        await _ws.ConnectAsync(new Uri(WsUrl), ct);
-        _reconnectAttempt = 0;
-        SetConnected(true);
-        await SendRaw("requestUpdate", ct);
-
-        var buffer = new byte[131072];
-        var sb = new StringBuilder();
-        while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
+        try
         {
-            sb.Clear();
-            WebSocketReceiveResult result;
-            do
-            {
-                result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-                if (result.MessageType == WebSocketMessageType.Close) { return; }
-                sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-            } while (!result.EndOfMessage);
+            _ws = new ClientWebSocket();
+            await _ws.ConnectAsync(new Uri(WsUrl), ct);
+            _reconnectAttempt = 0;
+            SetConnected(true);
+            await SendRaw("requestUpdate", ct);
 
-            HandleMessage(sb.ToString());
+            var buffer = new byte[131072];
+            // Accumulate raw bytes and decode once at EndOfMessage — per-fragment decoding
+            // corrupts a multibyte UTF-8 char (°, arrows) split across a receive boundary.
+            var ms = new System.IO.MemoryStream();
+            while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
+            {
+                ms.SetLength(0);
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                    if (result.MessageType == WebSocketMessageType.Close) { return; }
+                    ms.Write(buffer, 0, result.Count);
+                } while (!result.EndOfMessage);
+
+                HandleMessage(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
+            }
+        }
+        finally
+        {
+            // Release this attempt's socket on every exit (close frame, exception,
+            // cancellation) — each retry previously leaked the failed instance.
+            CloseWebSocket();
         }
     }
 

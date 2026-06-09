@@ -53,22 +53,25 @@ namespace MSFSBlindAssist.SimConnect
                 using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 readCts.CancelAfter(5000);
                 var buf = new byte[131072];
-                var sb = new StringBuilder();
+                // Accumulate raw bytes and decode once at EndOfMessage — decoding each read
+                // separately corrupts a multibyte UTF-8 char split across the read boundary
+                // (same fix as the sibling Coherent clients).
+                var ms = new System.IO.MemoryStream();
                 // Skip CDP event notifications; return the frame whose id matches our request.
                 for (int i = 0; i < 60; i++)
                 {
-                    sb.Clear();
+                    ms.SetLength(0);
                     WebSocketReceiveResult res;
                     do
                     {
                         res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), readCts.Token);
                         if (res.MessageType == WebSocketMessageType.Close) return "";
-                        sb.Append(Encoding.UTF8.GetString(buf, 0, res.Count));
+                        ms.Write(buf, 0, res.Count);
                     } while (!res.EndOfMessage);
 
                     try
                     {
-                        using var doc = JsonDocument.Parse(sb.ToString());
+                        using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
                         if (doc.RootElement.TryGetProperty("id", out var idEl)
                             && idEl.ValueKind == JsonValueKind.Number && idEl.GetInt32() == 1)
                             return ExtractValue(doc.RootElement);
