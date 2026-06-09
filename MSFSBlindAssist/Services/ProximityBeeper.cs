@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading;
 using MSFSBlindAssist.Settings;
 
@@ -15,15 +16,18 @@ public sealed class ProximityBeeper : IDisposable
     private const int TimerTickMs = 15;
 
     private readonly object _lock = new();
+    private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private AudioToneGenerator? _gen;
     private System.Threading.Timer? _timer;
     private double _volume = 0.05;
     private double _intervalMs = DockingGeometry.BeepIntervalFarMs;
+    private double _smoothedIntervalMs = DockingGeometry.BeepIntervalFarMs;
     private bool _active;
     private bool _solid;
     private bool _beepOn;
     private double _sinceLastBeepMs;
     private double _beepOnElapsedMs;
+    private double _lastTickMs;
 
     public void Start(HandFlyWaveType waveform, double volume)
     {
@@ -32,6 +36,9 @@ public sealed class ProximityBeeper : IDisposable
             _volume = volume;
             _active = false; _solid = false; _beepOn = false;
             _sinceLastBeepMs = 0; _beepOnElapsedMs = 0;
+            _smoothedIntervalMs = DockingGeometry.BeepIntervalFarMs;
+            _intervalMs = DockingGeometry.BeepIntervalFarMs;
+            _lastTickMs = _stopwatch.Elapsed.TotalMilliseconds;
             if (_gen == null)
             {
                 _gen = new AudioToneGenerator();
@@ -48,7 +55,9 @@ public sealed class ProximityBeeper : IDisposable
         {
             _active = active;
             if (!active) { _solid = false; SetGenVolume(0.0); _beepOn = false; return; }
-            _intervalMs = DockingGeometry.BeepIntervalMs(distanceMetres);
+            double raw = DockingGeometry.BeepIntervalMs(distanceMetres);
+            _smoothedIntervalMs += 0.25 * (raw - _smoothedIntervalMs);
+            _intervalMs = _smoothedIntervalMs;
             _solid = distanceMetres <= DockingGeometry.StopToleranceMetres;
         }
     }
@@ -57,20 +66,25 @@ public sealed class ProximityBeeper : IDisposable
     {
         try
         {
+            double now = _stopwatch.Elapsed.TotalMilliseconds;
             lock (_lock)
             {
+                double dt = now - _lastTickMs;
+                _lastTickMs = now;
+                if (dt <= 0 || dt > 200) dt = TimerTickMs;
+
                 if (_gen == null) return;
                 if (!_active) { if (_beepOn) { SetGenVolume(0.0); _beepOn = false; } return; }
                 if (_solid) { if (!_beepOn) { SetGenVolume(_volume); _beepOn = true; } return; }
 
                 if (_beepOn)
                 {
-                    _beepOnElapsedMs += TimerTickMs;
+                    _beepOnElapsedMs += dt;
                     if (_beepOnElapsedMs >= BeepOnMs) { SetGenVolume(0.0); _beepOn = false; _sinceLastBeepMs = 0; }
                 }
                 else
                 {
-                    _sinceLastBeepMs += TimerTickMs;
+                    _sinceLastBeepMs += dt;
                     if (_sinceLastBeepMs >= _intervalMs) { SetGenVolume(_volume); _beepOn = true; _beepOnElapsedMs = 0; }
                 }
             }
