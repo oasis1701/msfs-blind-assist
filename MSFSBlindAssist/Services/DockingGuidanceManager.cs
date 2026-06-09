@@ -124,7 +124,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 // on the centerline instead of "a bit right and askew". hdgErr (bearing-to-
                 // stop vs centerline) is still used for the engage cone check below.
                 double acHdgTrue = headingMag + magVar;
-                double lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, out double crossFt);
+                double lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, alongM, out double crossFt);
 
                 DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue);
 
@@ -278,18 +278,17 @@ public sealed class DockingGuidanceManager : IDisposable
     /// </summary>
     private static double ComputeLineupError(
         double lat, double lon, double acHdgTrue,
-        double sLat, double sLon, double centerHdgTrue, out double crossFt)
+        double sLat, double sLon, double centerHdgTrue, double alongMetres, out double crossFt)
     {
         var track = RunwayCenterlineTracker.Compute(lat, lon, acHdgTrue, sLat, sLon, centerHdgTrue);
         crossFt = track.CrossTrackFeet;
         double absCross = track.AbsCrossTrackFeet;
 
-        // Gentle ramp (same as the runway lineup). The aggressive 40°/40 ft version only
-        // existed to compensate for the tiny convergence distance caused by the door-offset
-        // stop bug; with the datum now aligned to the parking position there's the full
-        // ~40 m of approach to converge, so this gentle ramp closes the lateral smoothly
-        // AND leaves room to unwind the intercept and square up before the stop.
-        const double MaxInterceptDeg = 30.0, DeadbandFt = 8.0, SaturationFt = 100.0;
+        // Intercept ramp tuned for a gate lead-in: a touch sharper than the runway's
+        // 30°/100 ft so it actually closes a 10–15 ft entry over the approach (the gentle
+        // ramp only commanded ~7° at 13 ft and stalled there). 8 ft deadband + sqrt curve
+        // still ease it to zero on the line.
+        const double MaxInterceptDeg = 35.0, DeadbandFt = 8.0, SaturationFt = 60.0;
         double intercept = 0.0;
         if (absCross > DeadbandFt)
         {
@@ -297,6 +296,17 @@ public sealed class DockingGuidanceManager : IDisposable
             double span = SaturationFt - DeadbandFt;
             intercept = MaxInterceptDeg * Math.Sqrt(Math.Clamp(eff / span, 0.0, 1.0)) * Math.Sign(crossFt);
         }
+
+        // FADE the intercept to zero over the final ~10 m so that AT the stop the cue
+        // aligns to the pure gate heading, not the convergence-biased heading. Without it,
+        // a pilot stopped slightly off-centerline hears "turn toward the line" (e.g. a slight
+        // RIGHT bias while 10 ft left) when what they actually want, stationary, is to square
+        // up to the gate (turn LEFT to the gate heading). The lateral converges during the
+        // approach; the last few feet are accepted in favour of being square.
+        const double FadeStartM = 10.0, FadeEndM = 1.0;
+        double fade = Math.Clamp((alongMetres - FadeEndM) / (FadeStartM - FadeEndM), 0.0, 1.0);
+        intercept *= fade;
+
         double desiredHdg = centerHdgTrue + intercept;
         return DockingGeometry.NormalizeDeg180(desiredHdg - acHdgTrue);
     }
