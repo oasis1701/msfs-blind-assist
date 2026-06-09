@@ -507,6 +507,20 @@ public class FbwEfbForm : Form
                 {
                     if (!tb.Focused && tb.Text != el.Value) tb.Text = el.Value;
                 }
+                else if (r.Control is Panel panel)
+                {
+                    // "text"/"select" elements render as a label+TextBox CONTAINER —
+                    // the rendered map stores the Panel, so the TextBox arm above never
+                    // matched and list-mode field values froze at first render.
+                    foreach (Control child in panel.Controls)
+                    {
+                        if (child is TextBox inner)
+                        {
+                            if (!inner.Focused && inner.Text != el.Value) inner.Text = el.Value;
+                            break;
+                        }
+                    }
+                }
             }
         }
         finally { _suppressControlEvents = false; }
