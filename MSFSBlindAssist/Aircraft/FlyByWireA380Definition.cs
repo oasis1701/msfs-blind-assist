@@ -4231,8 +4231,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             return true;
         }
-        // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
-        // speed-brake) are FBW L:vars. Don't SNAP them to the target in one write — the 3-D
+        // Speed-brake FINE slider — a 0-16383 SPOILERS *axis*, not an L:var position.
+        // MUST run BEFORE the generic RenderAsSlider branch below, which ramps the
+        // synthetic L:var (that nothing in the sim reads) and clamps to the slider's
+        // position range — i.e. the slider would do nothing to the aircraft.
+        if (varKey == "A380X_MSFSBA_SPEEDBRAKE_SLIDER")
+        {
+            int sbAxis = Math.Max(0, Math.Min(16383, (int)Math.Round(value)));
+            simConnect.ExecuteCalculatorCode($"{sbAxis} (>K:SPOILERS_SET)");
+            return true;
+        }
+        // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors)
+        // are FBW L:vars. Don't SNAP them to the target in one write — the 3-D
         // model jumps there and you only hear a single "tick" of the motor. A real motorised
         // seat moves gradually while you hold the switch, so we RAMP the L:var toward the
         // target a few units per 40 ms (calc path, on the UI thread). The FBW then plays the
@@ -4240,7 +4250,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // avoids SetLVar's data-def write, which is unreliable for FBW L:vars.)
         if (varDef.RenderAsSlider)
         {
-            RampSliderTo(varDef.Name, value, simConnect);
+            RampSliderTo(varDef.Name, value, simConnect, varDef.SliderMin, varDef.SliderMax);
             return true;
         }
         // FCU SPD/MACH toggle from a panel button: the legacy dotted event is inert on the A380's
@@ -4380,13 +4390,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             int pos = Math.Max(0, Math.Min(2, (int)Math.Round(value)));
             int[] axis = { 0, 8192, 16383 };
             simConnect.ExecuteCalculatorCode($"{axis[pos]} (>K:SPOILERS_SET)");
-            return true;
-        }
-        // Speed-brake FINE slider — the TrackBar already maps 0-100% to 0-16383; fire SPOILERS_SET.
-        if (varKey == "A380X_MSFSBA_SPEEDBRAKE_SLIDER")
-        {
-            int axis = Math.Max(0, Math.Min(16383, (int)Math.Round(value)));
-            simConnect.ExecuteCalculatorCode($"{axis} (>K:SPOILERS_SET)");
             return true;
         }
         // Ground-spoiler arm: synthetic Disarm/Arm combo -> SPOILERS_ARM_OFF / _ON.
@@ -6607,14 +6610,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // once a slider is first touched (seeded from the cache) so the ramp stays smooth.
     private readonly Dictionary<string, double> _sliderTarget = new();
     private readonly Dictionary<string, double> _sliderCurrent = new();
+    private readonly Dictionary<string, double> _sliderStep = new();
     private System.Windows.Forms.Timer? _sliderRampTimer;
     private SimConnectManager? _sliderRampSim;
 
-    private void RampSliderTo(string lvar, double target, SimConnectManager simConnect)
+    private void RampSliderTo(string lvar, double target, SimConnectManager simConnect,
+                              double rangeMin = 0.0, double rangeMax = 100.0)
     {
         _sliderRampSim = simConnect;
-        target = Math.Max(0.0, Math.Min(100.0, target));
+        target = Math.Max(rangeMin, Math.Min(rangeMax, target));
         _sliderTarget[lvar] = target;
+        // Step scales with the var's range so a 0-1 slider ramps over the same ~1.3 s
+        // as a 0-100 one (fixed 3.0 snapped 0-1 sliders to the target in one tick).
+        _sliderStep[lvar] = Math.Max(0.0005, (rangeMax - rangeMin) * 0.03);
         if (!_sliderCurrent.ContainsKey(lvar))
             _sliderCurrent[lvar] = simConnect.GetCachedVariableValue(lvar) ?? target;
         if (_sliderRampTimer == null)
@@ -6629,15 +6637,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         var sim = _sliderRampSim;
         if (sim == null || !sim.IsConnected) { StopSliderRamp(); return; }
-        const double step = 3.0;   // ~100 units in ~1.3 s — a believable seat-motor speed
         foreach (var lvar in _sliderTarget.Keys.ToList())
         {
+            double step = _sliderStep.TryGetValue(lvar, out var st) ? st : 3.0;
             double target = _sliderTarget[lvar];
             double cur = _sliderCurrent.TryGetValue(lvar, out var c) ? c : target;
             if (Math.Abs(target - cur) <= step) { cur = target; _sliderTarget.Remove(lvar); }
             else cur += Math.Sign(target - cur) * step;
             _sliderCurrent[lvar] = cur;
-            sim.ExecuteCalculatorCode(cur.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")");
+            sim.ExecuteCalculatorCode(cur.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")");
         }
         if (_sliderTarget.Count == 0) StopSliderRamp();
     }
