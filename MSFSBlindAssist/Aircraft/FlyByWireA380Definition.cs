@@ -658,7 +658,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
-            RenderAsButton = true
+            RenderAsButton = true, SuppressRestingButtonState = true
         };
 
         // ---- SIGNS ----
@@ -728,9 +728,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // (>H:VAR) on press (checked before the generic _momentaryButtons pulse path, so
         // the H-event mechanism runs instead of a no-op L:var pulse).
         vars["A32NX_CHRONO_TOGGLE"] = new SimVarDefinition
-        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true };
+        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true, SuppressRestingButtonState = true };
         vars["A32NX_CHRONO_RST"] = new SimVarDefinition
-        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true };
+        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true, SuppressRestingButtonState = true };
 
         // ---- AUDIO CONTROL PANEL (ACP) — receive selectors, RMP 1 ----
         // Which sources the captain hears (#107 transcript: "ensure VHF1 + cabin
