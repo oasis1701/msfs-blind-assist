@@ -1182,17 +1182,25 @@ public sealed class GsxService : IDisposable
         @"^\s*(?:\[gsx\]\s+)?(?:pax\s+\d{1,4}(?:\s*/\s*\d{1,4})?|\d{1,4}(?:\s*/\s*\d{1,4})?\s+(?:passengers?|pax)(?:\s+boarded)?)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Aircraft fuel quantity is GSX's rapidly-updating internal aircraft
+    // fuel row, separate from the useful fueling progress announcement.
+    // Strip it completely instead of throttling it.
+    private static readonly Regex AircraftFuelQuantitySegmentRegex = new(
+        @"^\s*(?:\[gsx\]\s+)?aircraft\s+\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // Fueling-progress-only segments (kg loaded / percentage / Bill $X).
     // Whole-segment match so anything with a transition word survives.
     // Three alternatives in the inner group:
     //   "Bill $11617"             — currency only, no kg
     //   "fuel 8823/13001 kg"      — fuel/refuel/refueling prefix + kg pair
+    //   "Aircraft 1000/4000 kg"   — GSX aircraft fuel-progress row
     //   "5000 / 20000 kg loaded"  — bare digits + kg/lbs/%
     private static readonly Regex FuelProgressSegmentRegex = new(
         @"^\s*(?:" +
             @"bill[\s:]*\$?\d+(?:[.,]\d+)?" +
             @"|" +
-            @"(?:\[gsx\]\s+)?(?:(?:re)?fuel(?:ing)?\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?" +
+            @"(?:\[gsx\]\s+)?(?:(?:re)?fuel(?:ing)?\s+|aircraft\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?" +
         @")\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -1298,15 +1306,22 @@ public sealed class GsxService : IDisposable
         if (string.IsNullOrWhiteSpace(announceText))
             return announceText;
 
+        string withoutAircraftQuantity = StripSegmentsMatching(announceText, AircraftFuelQuantitySegmentRegex);
+        if (string.IsNullOrWhiteSpace(withoutAircraftQuantity))
+            return string.Empty;
+
         string normalized = fullText.ToLowerInvariant();
-        if (!normalized.Contains("fuel") && !normalized.Contains("refuel"))
+        if (!normalized.Contains("fuel")
+            && !normalized.Contains("refuel")
+            && !HasAircraftFuelQuantity(fullText)
+            && !HasFuelBillProgress(fullText))
             return announceText;
 
         // Only throttle when the tooltip actually carries kg/percent numbers
         // — if it's a pure transition message ("hose connected", "truck
         // departing") it goes through unchanged.
         if (!HasFuelProgressNumbers(fullText))
-            return announceText;
+            return withoutAircraftQuantity;
 
         string serviceKey = BuildFixedProgressThrottleKey(fullText, "fueling");
         DateTime now = DateTime.UtcNow;
@@ -1324,12 +1339,12 @@ public sealed class GsxService : IDisposable
         if (allowed)
         {
             _lastFuelingProgressAnnouncementByService[serviceKey] = now;
-            return announceText;
+            return withoutAircraftQuantity;
         }
 
         // Within the throttle window — drop just the kg/percent segment so
         // any transition segments in the same tooltip still announce.
-        return StripSegmentsMatching(announceText, FuelProgressSegmentRegex);
+        return StripSegmentsMatching(withoutAircraftQuantity, FuelProgressSegmentRegex);
     }
 
     private static bool HasFuelProgressNumbers(string text)
@@ -1348,6 +1363,18 @@ public sealed class GsxService : IDisposable
                    @"\bbill[\s:]*\$\d+(?:[.,]\d+)?\b",
                    RegexOptions.IgnoreCase);
     }
+
+    private static bool HasAircraftFuelQuantity(string text) =>
+        Regex.IsMatch(
+            text,
+            @"\baircraft\s+\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\b",
+            RegexOptions.IgnoreCase);
+
+    private static bool HasFuelBillProgress(string text) =>
+        Regex.IsMatch(
+            text,
+            @"\bbill[\s:]*\$?\d+(?:[.,]\d+)?\b",
+            RegexOptions.IgnoreCase);
 
     private static string StripSegmentsMatching(string text, Regex regex)
     {
