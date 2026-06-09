@@ -189,7 +189,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 double acHdgTrue = headingMag + magVar;
                 double lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, alongM, out double crossFt);
 
-                DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue);
+                DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue, sLat, sLon, lat, lon);
 
                 switch (_state)
                 {
@@ -355,7 +355,8 @@ public sealed class DockingGuidanceManager : IDisposable
     /// </summary>
     private void DockLog(double gs, double distM, double alongM, double doorAlongM,
                          double hdgErr, double lineupErr, double crossFt,
-                         double stopHeadingTrue, double acHdgTrue)
+                         double stopHeadingTrue, double acHdgTrue,
+                         double stopLat, double stopLon, double acLat, double acLon)
     {
         var now = DateTime.UtcNow;
         if ((now - _lastDockLogUtc).TotalMilliseconds < 500) return;
@@ -367,11 +368,12 @@ public sealed class DockingGuidanceManager : IDisposable
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} doorAlong={5:F1} " +
                 "hdgErr={6:F1} lineupErr={7:F1} crossFt={8:F1} stopHdgTrue={9:F1} acHdgTrue={10:F1} " +
-                "offset={11:F2} stopOffL={12:F2} stopOffLat={13:F2} deice={14}{15}",
+                "offset={11:F2} stopOffL={12:F2} stopOffLat={13:F2} deice={14} " +
+                "stopLat={15:F8} stopLon={16:F8} acLat={17:F8} acLon={18:F8}{19}",
                 DateTime.Now, _state, gs, distM, alongM, doorAlongM,
                 hdgErr, lineupErr, crossFt, stopHeadingTrue, acHdgTrue,
                 _doorOffsetMetres, _stopOffset.LongitudinalMetres, _stopOffset.LateralMetres,
-                _gate?.IsDeiceArea == true, Environment.NewLine));
+                _gate?.IsDeiceArea == true, stopLat, stopLon, acLat, acLon, Environment.NewLine));
         }
         catch { /* logging must never break docking */ }
     }
