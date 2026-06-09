@@ -65,7 +65,7 @@ public class FBWA320SpeedWindow : FBWA320FCUWindowBase
     private void HandleSet()
     {
         string input = speedTextBox.Text.Trim();
-        if (!double.TryParse(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); speedTextBox.SelectAll(); return; }
+        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); speedTextBox.SelectAll(); return; }
         if (!((v >= 100 && v <= 399) || (v >= 0.10 && v <= 0.99))) { announcer.AnnounceImmediate("Speed must be 100-399 knots or 0.10-0.99 Mach"); speedTextBox.SelectAll(); return; }
         int internalSpeed = v < 1.0 ? (int)Math.Round(v * 100) : (int)Math.Round(v);
         aircraft.SetFCUSpeedValue(internalSpeed, simConnect, announcer);

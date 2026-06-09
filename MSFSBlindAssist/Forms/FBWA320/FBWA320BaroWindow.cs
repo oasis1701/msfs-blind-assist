@@ -82,7 +82,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
     private void HandleSet()
     {
         string input = qnhTextBox.Text.Trim();
-        if (!double.TryParse(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); qnhTextBox.SelectAll(); return; }
+        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); qnhTextBox.SelectAll(); return; }
         // Interpret the typed value in the window's current entry unit and convert to
         // hectopascals; FCU_EFIS_*_BARO_SET takes hPa*16 and moves that side's drum.
         double hpa = inHg ? v * 33.8639 : v;

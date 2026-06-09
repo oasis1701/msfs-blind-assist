@@ -303,6 +303,7 @@ public class FlyByWireMCDUForm : Form
 
     private void OnDisplayUpdated(MCDUDisplayData data)
     {
+        if (IsDisposed || !IsHandleCreated) return;
         _currentDisplay = data;
 
         var lines = new List<string>();
@@ -368,6 +369,7 @@ public class FlyByWireMCDUForm : Form
 
     private void OnConnectionStatusChanged(bool isConnected)
     {
+        if (IsDisposed || !IsHandleCreated) return;
         connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
         _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
     }

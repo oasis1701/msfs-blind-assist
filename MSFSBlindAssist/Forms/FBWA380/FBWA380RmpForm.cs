@@ -89,9 +89,9 @@ public sealed class FBWA380RmpForm : Form
         // Page selectors (no mnemonics — Alt+V / Alt+T are handled in OnFormKeyDown so they can't steal
         // focus onto a button). The FBW A380 RMP models only VHF + Transponder.
         var pVhf = new Button { Text = "VHF page", Location = new Point(12, 362), Size = new Size(120, 28), AccessibleName = "VHF page" };
-        pVhf.Click += (_, _) => Page("VHF", "VHF page");
+        pVhf.Click += (_, _) => Page("VHF", "VHF page", fromButton: true);
         var pSqwk = new Button { Text = "Transponder page", Location = new Point(140, 362), Size = new Size(150, 28), AccessibleName = "Transponder page" };
-        pSqwk.Click += (_, _) => Page("SQWK", "Transponder page");
+        pSqwk.Click += (_, _) => Page("SQWK", "Transponder page", fromButton: true);
 
         // VHF radio SELECT (mirrors Ctrl+1/2/3 — line keys): pick which transceiver the keypad tunes; a
         // second select of the same radio loads the typed standby (the PressLine re-press behaviour).
@@ -106,7 +106,7 @@ public sealed class FBWA380RmpForm : Form
 
         // Clear (mirrors Alt+C — page-aware: VHF held full-clear, SQWK clears the typed squawk) and Ident.
         var clear = new Button { Text = "Clear", Location = new Point(12, 458), Size = new Size(110, 28), AccessibleName = "Clear entry" };
-        clear.Click += (_, _) => { ClearEntry(); FocusDisplay(); };
+        clear.Click += (_, _) => { ClearEntry(fromButton: true); FocusDisplay(); };
         var ident = new Button { Text = "Ident", Location = new Point(128, 458), Size = new Size(110, 28), AccessibleName = "Send transponder ident" };
         ident.Click += (_, _) => { SendIdent(); FocusDisplay(); };
 
@@ -192,14 +192,14 @@ public sealed class FBWA380RmpForm : Form
     private static bool NoMods(KeyEventArgs e) => !e.Control && !e.Alt && !e.Shift;
     private static void Handled(KeyEventArgs e) { e.Handled = true; e.SuppressKeyPress = true; }
 
-    private void PressLine(int row)
+    private void PressLine(int row, bool fromButton = false)
     {
         if (_busy) return;
         bool wasSel = _selectedRowIndex == row;
         _selectedRowIndex = row;
         _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
         if (wasSel) { _standbyTimer?.Stop(); AnnounceVhfEntry(force: true); _vhfEntry = ""; }   // re-press = load -> read back
-        else { _vhfEntry = ""; _announcer?.Announce($"Radio {row + 1}"); ScheduleRefresh(); }    // new radio = fresh entry
+        else { _vhfEntry = ""; if (!fromButton) _announcer?.Announce($"Radio {row + 1}"); ScheduleRefresh(); }    // new radio = fresh entry
     }
 
     // Announce the SELECTED radio's standby as "VHF standby 1, 123.500", formatting the DIGITS the user
@@ -297,11 +297,11 @@ public sealed class FBWA380RmpForm : Form
         return sel != null ? Token(sel, "standby ") : "";
     }
 
-    private void Swap(int row)
+    private void Swap(int row, bool fromButton = false)
     {
         if (_busy) return;
         _def.SendRmpKey(_rmp, $"ADK_{row + 1}", _sim);
-        _announcer?.Announce("Swapped");
+        if (!fromButton) _announcer?.Announce("Swapped");
         ScheduleRefresh();
     }
 
@@ -321,30 +321,30 @@ public sealed class FBWA380RmpForm : Form
 
     private void EnsureVhfPage()
     {
-        if (_page != "VHF") Page("VHF", "VHF page");   // Page() already refocuses the screen + resets the entry
+        if (_page != "VHF") Page("VHF", "VHF page", fromButton: true);   // Page() already refocuses the screen + resets the entry
     }
 
     private void SelectRadioFromButton(int row)
     {
         EnsureVhfPage();
-        PressLine(row);     // first select = "Radio N"; second select of the same radio loads the standby
+        PressLine(row, fromButton: true);     // first select = "Radio N"; second select of the same radio loads the standby
         FocusDisplay();
     }
 
     private void SwapFromButton(int row)
     {
         EnsureVhfPage();
-        Swap(row);
+        Swap(row, fromButton: true);
         FocusDisplay();
     }
 
-    private void Page(string key, string spoken)
+    private void Page(string key, string spoken, bool fromButton = false)
     {
         if (_busy) return;
         _page = (key == "SQWK") ? "SQWK" : "VHF";
         _squawkEntry = ""; _vhfEntry = "";       // start each page visit with a fresh entry
         _def.SendRmpKey(_rmp, key, _sim);         // drive the cockpit RMP to match (best-effort; scrape follows)
-        _announcer?.Announce(spoken);
+        if (!fromButton) _announcer?.Announce(spoken);
         ScheduleRefresh();
         // A page switch via a button moves focus onto it; pull it back so typed digits reach the screen.
         ActiveControl = _display;
@@ -422,16 +422,16 @@ public sealed class FBWA380RmpForm : Form
         RenderFromSim();
     }
 
-    private void ClearEntry()
+    private void ClearEntry(bool fromButton = false)
     {
         if (_page == "SQWK")
         {
             _squawkEntry = "";
-            _announcer?.Announce("Cleared");
+            if (!fromButton) _announcer?.Announce("Cleared");
             RenderFromSim();
             return;
         }
-        _ = FullClear();   // VHF: held full-clear of the keypad scratchpad
+        _ = FullClear(fromButton);   // VHF: held full-clear of the keypad scratchpad
     }
 
     private void SendIdent()
@@ -440,14 +440,14 @@ public sealed class FBWA380RmpForm : Form
         _announcer?.AnnounceImmediate("Ident");
     }
 
-    private async Task FullClear()
+    private async Task FullClear(bool fromButton = false)
     {
         if (_busy) return;
         _busy = true;
         try { _def.SendRmpKeyPress(_rmp, "DIGIT_CLR", _sim); await Task.Delay(1150); }
         finally { _def.SendRmpKeyRelease(_rmp, "DIGIT_CLR", _sim); _busy = false; }
         _vhfEntry = "";
-        _announcer?.Announce("Cleared");
+        if (!fromButton) _announcer?.Announce("Cleared");
         Apply(await _disp.ScrapeNowAsync());
     }
 

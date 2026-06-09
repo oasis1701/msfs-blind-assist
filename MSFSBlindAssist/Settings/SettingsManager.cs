@@ -104,7 +104,8 @@ public static class SettingsManager
         /// One-time seed of Fenix vars that should be auto-monitored but NOT spoken by
         /// default — added to the Fenix disabled-monitor list (the combo/display still
         /// tracks them; only the spoken call-out is gated off):
-        ///   * CLOCK CHRONO / CLOCK ELAPSED — raw-seconds counters that tick every second.
+        ///   * CLOCK CHRONO / ELAPSED / UTC and the FenixQuartz chrono/ET counters —
+        ///     raw-seconds counters that tick every second.
         ///   * the four seat height/distance switches — Continuous so the combo can spring
         ///     to "Stop" at the travel limit, but silent (the user just wants the value).
         /// Runs once (guarded by FenixMonitorDefaultsSeeded) so a deliberate re-enable in
@@ -116,7 +117,8 @@ public static class SettingsManager
             s.FenixMonitorDefaultsSeeded = true;
             string[] defaultSilent =
             {
-                "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED",
+                "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED", "N_MIP_CLOCK_UTC",
+                "FNX2PLD_clockChr", "FNX2PLD_clockEt",
                 "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
                 "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
             };

@@ -615,11 +615,11 @@ public partial class MainForm : Form
         // FBW A380 engine-mode-selector watchdog: the cockpit ENG START knob only fans
         // ignition to engines 1+2 on builds whose template defaults ENGINE_COUNT=2 (the
         // A320 inheritance), so engines 3+4 motor but never light. The knob updates
-        // XMLVAR_ENG_MODE_SEL (monitored as ENG_MODE_SEL_POS); mirror its position onto
+        // XMLVAR_ENG_MODE_SEL (monitored as ENGINE_MODE_SELECTOR); mirror its position onto
         // engines 3+4 via TURBINE_IGNITION_SWITCH_SET3/4 (live-verified to address + light
         // the outboard engines). Keys on the selector var only → no feedback loop; harmless
         // when MSFSBA's own Engine Mode Selector combo is used (it already fires SET1-4).
-        if (currentAircraft?.AircraftCode == "FBW_A380" && e.VarName == "ENG_MODE_SEL_POS")
+        if (currentAircraft?.AircraftCode == "FBW_A380" && e.VarName == "ENGINE_MODE_SELECTOR")
         {
             int igPos = (int)Math.Round(e.Value);
             if (igPos >= 0 && igPos <= 2)
@@ -627,7 +627,7 @@ public partial class MainForm : Form
                 simConnectManager?.ExecuteCalculatorCode($"{igPos} (>K:TURBINE_IGNITION_SWITCH_SET3)");
                 simConnectManager?.ExecuteCalculatorCode($"{igPos} (>K:TURBINE_IGNITION_SWITCH_SET4)");
             }
-            // Fall through so ENG_MODE_SEL_POS still auto-announces its position.
+            // Fall through so ENGINE_MODE_SELECTOR still auto-announces its position.
         }
 
         // Step 2: Handle special one-off announcements (terminal cases only)
@@ -6513,6 +6513,9 @@ public partial class MainForm : Form
 
         weatherAnnouncementTimer?.Stop();
         weatherAnnouncementTimer?.Dispose();
+
+        _sdAutoRefreshTimer?.Stop();
+        _sdAutoRefreshTimer?.Dispose();
 
         // Clean up taxi guidance and ground traffic monitor
         taxiGuidanceManager?.Dispose();
