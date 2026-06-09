@@ -58,8 +58,8 @@ public sealed class DockingGuidanceManager : IDisposable
     public void SetLateralToneSuppressed(bool suppressed) { lock (_lock) { _lateralSuppressed = suppressed; } }
 
     /// <summary>
-    /// One-line status for the manual status hotkey (Input+Y), used INSTEAD of the taxi
-    /// status while docking owns the final approach — so the two never report conflicting
+    /// One-line status for the manual status hotkey (Output mode, Y), used INSTEAD of the
+    /// taxi status while docking owns the final approach — so the two never report conflicting
     /// distances ("25 m to gate" from taxi vs "20 m to stop" from docking). Empty when not active.
     /// </summary>
     public string GetStatusAnnouncement()
