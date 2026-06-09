@@ -66,8 +66,19 @@
   // old ones instead of cross-patching a Payload input onto a stale Fuel button (the
   // "duplicate rate selector / leftover Start refueling on Payload" bug). The live
   // data-idx used for click/setValue is carried on each control and patched in place.
+  // Strip the DYNAMIC state suffixes the agent appends -- (active) / (called) /
+  // (selected) / (current page) / (expanded) / (collapsed) and the colon
+  // placed/not-placed markers -- from the reconcile key, so a control whose state
+  // changes maps to the SAME node and is patched IN PLACE rather than destroyed +
+  // rebuilt (rebuilding moves the screen-reader focus off the control the user just
+  // activated). Mirrors the shipping inline shell in FbwEfbForm.cs — keep in sync.
+  function baseLabel(t){
+    return (t || "")
+      .replace(/\s*\((active|called|selected|current page|expanded|collapsed)\)\s*$/i, "")
+      .replace(/:\s*(placed|not placed)\s*$/i, "");
+  }
   function keyOf(e){
-    return e.kind + "|" + (e.controlType || "") + "|" + (e.text || "");
+    return e.kind + "|" + (e.controlType || "") + "|" + baseLabel(e.text);
   }
 
   function buildEl(e){

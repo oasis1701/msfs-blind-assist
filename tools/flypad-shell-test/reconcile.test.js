@@ -189,3 +189,26 @@ test('a status message never rebuilds or touches #root', () => {
   assert.strictEqual(s.byId('status').textContent, 'Live: "Ground" (updated 2s ago)', 'status text not applied');
   assert.strictEqual(s.root().innerHTML, rootBefore, 'status message mutated #root');
 });
+
+test('state-suffix change reuses the node in place (NVDA focus preservation)', () => {
+  const s = loadShell();
+  s.render({ page: 'Ground', elements: [
+    { idx: 21, kind: 'button', controlType: '', text: 'Door Fwd', clickable: true },
+  ] });
+  const before = [...s.root().querySelectorAll('button')]
+    .find((b) => b.textContent.indexOf('Door Fwd') === 0);
+  assert.ok(before, 'baseline button not rendered');
+
+  // Same control gains the dynamic "(active)" suffix — the reconcile key strips it
+  // (baseLabel), so the node must be REUSED (patched in place), not destroyed +
+  // rebuilt: rebuilding moves the screen-reader focus off the control the user
+  // just activated.
+  s.render({ page: 'Ground', elements: [
+    { idx: 21, kind: 'button', controlType: '', text: 'Door Fwd (active)', clickable: true },
+  ] });
+  const after = [...s.root().querySelectorAll('button')]
+    .find((b) => b.textContent.indexOf('Door Fwd') === 0);
+  assert.ok(after, 'button missing after state change');
+  assert.strictEqual(after, before, 'state-suffix change destroyed and rebuilt the node');
+  assert.match(after.textContent, /\(active\)/, 'visible label did not update');
+});
