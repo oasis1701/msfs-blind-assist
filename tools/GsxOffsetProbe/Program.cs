@@ -144,6 +144,31 @@ Assert(e190Major == 190, $"E190 -> idMajor 190 (got {e190Major})");
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(64.8) == "ARC-E", $"64.8 m -> ARC-E (got '{GsxAircraftIdMap.ArcFromWingspanMetres(64.8)}')");
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(79.75) == "ARC-F", $"79.75 m -> ARC-F (got '{GsxAircraftIdMap.ArcFromWingspanMetres(79.75)}')");
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(34.0) == "ARC-C", $"34 m -> ARC-C (got '{GsxAircraftIdMap.ArcFromWingspanMetres(34.0)}')");
+
+// ---------------------------------------------------------------------------
+// 3d) VERIFIED INSTALLED FLEET — ICAOs read straight from the real aircraft.cfg
+//     files on disk (no sim load). Every installed airframe must resolve to the
+//     right GSX idMajor. A346 is NOT in the exception table, so it proves the
+//     derivation path works for an aircraft the table has never heard of.
+// ---------------------------------------------------------------------------
+Console.WriteLine("== Verified installed fleet (ICAOs from aircraft.cfg) ==");
+(string Icao, int Major, int Minor, string Note)[] installed =
+{
+    ("B77W", 777, 300, "PMDG 777-300ER"),
+    ("B77L", 777, 200, "PMDG 777F (icao_model 777-200LRF)"),
+    ("A20N", 320, -1,  "FBW A32NX (neo)"),
+    ("A388", 380, -1,  "FBW A380X"),
+    ("B789", 787, 9,   "HS787-9"),
+    ("A346", 340, 600, "Aerosoft A340-600 (DERIVED — not in table)"),
+    ("A35K", 350, -1,  "iniBuilds A350-1000"),
+    ("A359", 350, -1,  "iniBuilds A350-900"),
+};
+foreach (var (icao, major, minor, note) in installed)
+{
+    GsxAircraftIdMap.TryResolve(icao, 0, out var id);
+    bool ok = id.IdMajor == major && (minor < 0 || id.IdMinor == minor);
+    Assert(ok, $"{icao,-4} -> idMajor {major}{(minor < 0 ? "" : "/" + minor)}  (got {id.IdMajor}/{id.IdMinor})  {note}");
+}
 Assert(GsxAircraftIdMap.ArcFromWingspanMetres(80.5) == "ARC-F", $"80.5 m (>=80) -> ARC-F (got '{GsxAircraftIdMap.ArcFromWingspanMetres(80.5)}')");
 
 // Resolve with wingspan populates ArcCode + Group; resolve without leaves them empty.
