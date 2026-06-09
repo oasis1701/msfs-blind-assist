@@ -85,6 +85,20 @@
     return roots[idx] || roots[1] || roots[2];
   };
 
+  // Resolve the MFD-side container an element belongs to (LEFT/RIGHT parent div),
+  // falling back to document. Used to scope label/header scans so a dropdown on one
+  // pilot's MFD can't read the selected value off the OTHER pilot's MFD.
+  A.mfdRootOf = function (n) {
+    var cur = n;
+    var hops = 0;
+    while (cur && cur !== document.body && hops < 60) {
+      if (cur.id === "MFD_LEFT_PARENT_DIV" || cur.id === "MFD_RIGHT_PARENT_DIV") return cur;
+      cur = cur.parentElement;
+      hops++;
+    }
+    return document;
+  };
+
   // Status flags that share the .mfd-title-bar-text class but aren't a title.
   A.TITLE_FLAGS = { "PENALTY": 1, "EO": 1, "TMPY": 1, "SEC": 1 };
 
@@ -935,7 +949,8 @@
   // nothing. Verified live on ARRIVAL: RWY→"30R", APPR/VIA/STAR/TRANS→"" (unset).
   A.comboSelectedValue = function (label, node) {
     if (!label) return "";
-    var all = document.getElementsByTagName("*");
+    var scope = A.mfdRootOf(node);
+    var all = scope.getElementsByTagName("*");
     var hdr = null, i;
     for (i = 0; i < all.length; i++) {
       if (all[i] === node || (node.contains && node.contains(all[i]))) continue;
@@ -966,9 +981,14 @@
   };
 
   A.enumerateLines = function (root) {
-    var stale = root.querySelectorAll("[data-fbwa380-mcdu-idx]");
+    // Sweep stale stamps DOCUMENT-wide, not just under the active root: both pilot
+    // MFDs share one document, and clickElement/sendToField resolve stamps with a
+    // document-wide querySelector — a root-scoped sweep left the OTHER side's old
+    // stamps alive, so after a Captain->FO switch a click on idx N matched the
+    // Captain's stale node first in document order.
+    var stale = document.querySelectorAll("[data-fbwa380-mcdu-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-mcdu-idx");
-    var staleP = root.querySelectorAll("[data-fbwa380-perf-owned]");
+    var staleP = document.querySelectorAll("[data-fbwa380-perf-owned]");
     for (var sp = 0; sp < staleP.length; sp++) staleP[sp].removeAttribute("data-fbwa380-perf-owned");
 
     var page = root.querySelector(".mfd-navigator-container") || root;
@@ -1153,7 +1173,7 @@
       // merge them with each other or with neighbouring text.
       if (cur.idx === 0 && cur.kind === "text" && !cur.fpln && !cur.perf && mergedLines.length > 0) {
         var prev = mergedLines[mergedLines.length - 1];
-        if (prev.idx === 0 && prev.kind === "text" && !prev.fpln
+        if (prev.idx === 0 && prev.kind === "text" && !prev.fpln && !prev.perf
             && !cur.isStatusItem && !prev.isStatusItem
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
           // Compose label→value→unit groups so a row of sibling cells reads as
@@ -1241,7 +1261,7 @@
             }
           }
         }
-        var sel = document.querySelector(".mfd-fms-fpln-line-ident.selected[data-fbwa380-mcdu-idx], .mfd-fms-fpln-line-special.selected[data-fbwa380-mcdu-idx], .mfd-button.opened[data-fbwa380-mcdu-idx]");
+        var sel = root.querySelector(".mfd-fms-fpln-line-ident.selected[data-fbwa380-mcdu-idx], .mfd-fms-fpln-line-special.selected[data-fbwa380-mcdu-idx], .mfd-button.opened[data-fbwa380-mcdu-idx]");
         if (sel) return parseInt(sel.getAttribute("data-fbwa380-mcdu-idx"), 10);
         return -1;
       };
