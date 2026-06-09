@@ -64,6 +64,17 @@ if (Directory.Exists(gsxDir))
     var resolver = new GsxStopOffsetResolver();
     var rOff = resolver.Resolve("EDDF", 66, "", b77w);
     AssertNear(rOff.LongitudinalMetres, 5.3, 0.01, "RESOLVER EDDF 66 B77W == 5.3 m (locator+parse+eval)");
+
+    // Suffix DOES change the function: A66A -> customOffsetA54586266A, whose table has NO 777
+    // entry (only A220/A320-family/Embraer + a 737 sub-table), so the 777 correctly falls to the
+    // base 0. This is the live-verified case: the pilot picked A66A and GSX applies 0 to the 777.
+    var rOffA = resolver.Resolve("EDDF", 66, "A", b77w);
+    AssertNear(rOffA.LongitudinalMetres, 0.0, 0.01, "RESOLVER EDDF 66A B77W == 0 m (no 777 entry -> base)");
+    // Proof the A66A function is actually evaluated (not a parse miss): an A320 DOES get its
+    // generic-table value of -2.5 m at A66A. If this were a parse failure both would read 0.
+    GsxAircraftIdMap.TryResolve("A320", 34.1, out var a320b);
+    var rOffA320 = resolver.Resolve("EDDF", 66, "A", a320b);
+    AssertNear(rOffA320.LongitudinalMetres, -2.5, 0.01, "RESOLVER EDDF 66A A320 == -2.5 m (generic[320], proves eval)");
 }
 
 // ---------------------------------------------------------------------------

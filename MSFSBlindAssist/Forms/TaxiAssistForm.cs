@@ -1735,6 +1735,11 @@ public class TaxiAssistForm : Form
 
         // Default to base position; only a successful resolution moves the stop.
         var offset = Services.Gsx.GsxOffset.Zero;
+        // Diagnostic breadcrumbs for the stop-offset chain (why stopOffL was 0 at runtime).
+        string dIcaoType = "", dAcId = "";
+        int dNumber = spot?.Number ?? -1;
+        string dSuffix = spot?.Suffix ?? "<null>";
+        bool dStopLatSet = spot?.StopLatitude != null;
         try
         {
             // Apply for BOTH navdata/.py gates (StopLatitude == null, base = parking centre)
@@ -1756,6 +1761,7 @@ public class TaxiAssistForm : Form
                 // ARC group, which is the last-resort fallback (after ICAO and idMajor) and stays
                 // within the safe |offset| band, so no lock is warranted.
                 string icaoType = _simConnectManager.CurrentAircraftIcaoType;
+                dIcaoType = icaoType ?? "<null>";
                 double wingspanM = _simConnectManager.AircraftWingSpan > 0
                     ? _simConnectManager.AircraftWingSpan * 0.3048 // feet -> metres
                     : 0.0;
@@ -1765,11 +1771,28 @@ public class TaxiAssistForm : Form
                     // not derived) — the raw ICAO can still hit an ICAO-keyed table, so we
                     // evaluate with whatever id it produced regardless of the bool.
                     Services.Gsx.GsxAircraftIdMap.TryResolve(icaoType, wingspanM, out var acId);
+                    dAcId = $"{acId.Icao}/maj{acId.IdMajor}/min{acId.IdMinor}";
                     offset = _stopOffsetResolver.Resolve(_currentIcao, spot.Number, spot.Suffix, acId);
                 }
             }
         }
-        catch { offset = Services.Gsx.GsxOffset.Zero; }
+        catch (Exception ex) { offset = Services.Gsx.GsxOffset.Zero; dAcId += $" EX:{ex.GetType().Name}"; }
+
+        // One-line diagnostic so a live dock reveals exactly why the offset resolved the way it
+        // did (airport icao, gate number/suffix as parsed, whether a .ini stop was present, the
+        // resolved aircraft id, and the final offset). Never throws.
+        try
+        {
+            string p = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MSFSBlindAssist", "logs", "docking-aircraft.log");
+            System.IO.File.AppendAllText(p, string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:HH:mm:ss}  STOPOFFSET  icao='{1}' gate#={2} suffix='{3}' stopLatSet={4} ac='{5}' acId={6} -> long={7:F2} lat={8:F2}{9}",
+                DateTime.Now, _currentIcao, dNumber, dSuffix, dStopLatSet, dIcaoType, dAcId,
+                offset.LongitudinalMetres, offset.LateralMetres, Environment.NewLine));
+        }
+        catch { }
 
         _dockingManager.SetStopOffset(offset);
 
