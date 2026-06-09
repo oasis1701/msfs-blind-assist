@@ -36,6 +36,11 @@ public sealed class FBWA380ChecklistForm : Form
     private Label _status = null!;
     private List<EclRow> _rows = new();
     private HashSet<string> _lastChecked = new();
+    // True once any Apply has established the checked-items baseline. The old
+    // `_lastChecked.Count > 0` proxy conflated "no baseline yet" with "baseline =
+    // zero checked", silencing the FIRST item to tick on a fresh checklist (and
+    // again after every RESET / navigation into an all-unchecked checklist).
+    private bool _baselineApplied;
     private string _lastAppliedHash = "";   // last row-set rendered — skip identical re-applies
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
@@ -228,6 +233,11 @@ public sealed class FBWA380ChecklistForm : Form
 
     private void Apply(List<EclRow> rows, bool announceChecks, bool force = false)
     {
+        // The shared EWD client raises EclRowsUpdated via a queued SynchronizationContext
+        // post — an in-flight push can land AFTER the aircraft-swap cleanup disposed this
+        // form. Touching disposed controls below is then undefined-ish (and any announce
+        // would be a ghost callout).
+        if (IsDisposed) return;
         if (rows == null || rows.Count == 0)
         {
             if (!_haveRows) _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
@@ -253,7 +263,7 @@ public sealed class FBWA380ChecklistForm : Form
         // pilot performs actions) — the core accessibility win.
         var nowChecked = new HashSet<string>(rows.Where(r => r.Checked && !string.IsNullOrEmpty(r.text)).Select(r => r.text));
         var present = new HashSet<string>(rows.Where(r => !string.IsNullOrEmpty(r.text)).Select(r => r.text));
-        if (announceChecks && _lastChecked.Count > 0)
+        if (announceChecks && _baselineApplied)
         {
             // Newly ticked (sensed auto-completion as the pilot performs the action,
             // e.g. SEAT BELTS as the signs go on)...
@@ -266,6 +276,7 @@ public sealed class FBWA380ChecklistForm : Form
                 if (!nowChecked.Contains(t) && present.Contains(t)) _announcer?.Announce($"{t}, unchecked");
         }
         _lastChecked = nowChecked;
+        _baselineApplied = true;
 
         _rows = rows;
         int keep = _list.SelectedIndex;
