@@ -80,6 +80,16 @@ public sealed class GsxGateSelector
     // can fail fast and the overall Stopwatch catches the budget).
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(8);
 
+    // GSX/Couatl can DROP a menu trigger when two menu operations fire back-to-back
+    // (CONFIRMED LIVE at EDDF: a drill issued ~3 ms after the preceding back-out timed
+    // out with an empty menu, aborting the whole search). Mitigate with (a) a short
+    // settle delay after a back-out so the next drill isn't sent mid-transition, and
+    // (b) a retry/recovery on any choose that yields no menu (re-read first — GSX may
+    // have transitioned but the MenuChanged event raced the wait registration).
+    private const int MaxChooseAttempts = 2;
+    private static readonly TimeSpan MenuSettleDelay = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan MenuRetryDelay = TimeSpan.FromMilliseconds(400);
+
     // After choosing the gate leaf + servicing action, GSX updates its SetGate_*
     // confirmation L-vars with a lag (and, when CHANGING gates, they briefly hold
     // the previous gate). Poll them up to this long before deciding the outcome.
@@ -530,16 +540,11 @@ public sealed class GsxGateSelector
                     Debug.WriteLine($"[GsxGateSelector] Drill category \"{bestCat.Text}\" score={bestScore} choice={bestCat.Choice} depth={depth} (visited {drilledCats.Count}).");
                     WalkLog(state, $"DRILL: \"{bestCat.Text}\" score={bestScore} choice={bestCat.Choice} depth={depth} (visited {drilledCats.Count}).");
 
-                    IReadOnlyList<GsxService.MenuOption> subMenu;
-                    try
+                    var subMenu = await ChooseWithRetryAsync(state, bestCat.Choice, $"drill \"{bestCat.Text}\"").ConfigureAwait(true);
+                    if (subMenu == null || subMenu.Count == 0)
                     {
-                        subMenu = await _automation.ChooseAsync(bestCat.Choice, StepTimeout).ConfigureAwait(true);
-                        state.MenuReads++;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[GsxGateSelector] Failed to drill category \"{bestCat.Text}\": {ex.Message}.");
-                        WalkLog(state, $"DRILL-FAIL: \"{bestCat.Text}\" {ex.Message} — re-reading current menu.");
+                        Debug.WriteLine($"[GsxGateSelector] Failed to drill category \"{bestCat.Text}\" after {MaxChooseAttempts} attempts.");
+                        WalkLog(state, $"DRILL-GIVEUP: \"{bestCat.Text}\" — no submenu after {MaxChooseAttempts} attempts; re-reading parent and continuing.");
                         current = _gsx.MenuOptions.ToList();
                         continue;
                     }
@@ -590,17 +595,14 @@ public sealed class GsxGateSelector
             Debug.WriteLine($"[GsxGateSelector] Advance page at depth={depth} step={step} (page {pageAdvances}): \"{nextOpt.Text}\" (choice={nextOpt.Choice}).");
             WalkLog(state, $"PAGE-ADVANCE: depth={depth} step={step} page={pageAdvances} → \"{nextOpt.Text}\" choice={nextOpt.Choice}.");
 
-            try
+            var paged = await ChooseWithRetryAsync(state, nextOpt.Choice, $"page-advance depth={depth}").ConfigureAwait(true);
+            if (paged == null || paged.Count == 0)
             {
-                current = await _automation.ChooseAsync(nextOpt.Choice, StepTimeout).ConfigureAwait(true);
-                state.MenuReads++;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[GsxGateSelector] Page advance failed: {ex.Message} — stopping paging at depth={depth}.");
-                WalkLog(state, $"PAGE-ADVANCE-FAIL: {ex.Message} — stopping at depth={depth}.");
+                Debug.WriteLine($"[GsxGateSelector] Page advance failed after {MaxChooseAttempts} attempts — stopping paging at depth={depth}.");
+                WalkLog(state, $"PAGE-ADVANCE-GIVEUP: depth={depth} — no page after {MaxChooseAttempts} attempts; stopping paging.");
                 break;
             }
+            current = paged;
         }
 
         // ── Level exhausted without finding the gate ──────────────────────
@@ -708,12 +710,54 @@ public sealed class GsxGateSelector
         {
             await _automation.ChooseAsync(back.Choice, StepTimeout).ConfigureAwait(true);
             state.MenuReads++;
+            // Let GSX settle before the parent issues its next drill — a drill sent
+            // immediately after a back-out can be dropped by Couatl (EDDF timeout).
+            await Task.Delay(MenuSettleDelay).ConfigureAwait(true);
             WalkLog(state, $"BACKOUT: pressed \"{back.Text}\" choice={back.Choice} → now title=\"{_gsx.MenuTitle}\".");
         }
         catch (Exception ex)
         {
             WalkLog(state, $"BACKOUT-FAIL: {ex.Message}.");
         }
+    }
+
+    /// <summary>
+    /// Sends a menu choice and returns the resulting menu, retrying when GSX yields no
+    /// menu. GSX/Couatl occasionally drops a trigger sent too soon after a prior menu
+    /// operation, and sometimes fires its <c>MenuChanged</c> event a hair before
+    /// <see cref="GsxService.WaitForNextMenuAsync"/> registers. On a timeout we therefore
+    /// (1) re-read the live menu — if GSX actually transitioned (count &gt; 0), use it;
+    /// otherwise (2) wait briefly and re-send the choice, up to <see cref="MaxChooseAttempts"/>.
+    /// Returns <see langword="null"/> when no menu could be obtained.
+    /// </summary>
+    private async Task<IReadOnlyList<GsxService.MenuOption>?> ChooseWithRetryAsync(
+        DfsState state, int choice, string what)
+    {
+        for (int attempt = 1; attempt <= MaxChooseAttempts; attempt++)
+        {
+            try
+            {
+                var menu = await _automation.ChooseAsync(choice, StepTimeout).ConfigureAwait(true);
+                state.MenuReads++;
+                return menu;
+            }
+            catch (Exception ex)
+            {
+                // Missed-event recovery: GSX may have transitioned but the event raced
+                // the wait registration — if a fresh menu is live, use it.
+                var live = _gsx.MenuOptions;
+                if (live != null && live.Count > 0)
+                {
+                    state.MenuReads++;
+                    WalkLog(state, $"CHOOSE-RECOVER ({what}) attempt {attempt}: live menu has {live.Count} entries — using it.");
+                    return live.ToList();
+                }
+                WalkLog(state, $"CHOOSE-FAIL ({what}) attempt {attempt}/{MaxChooseAttempts}: {ex.Message}");
+                if (attempt < MaxChooseAttempts)
+                    await Task.Delay(MenuRetryDelay).ConfigureAwait(true);
+            }
+        }
+        return null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
