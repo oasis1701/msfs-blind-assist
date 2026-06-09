@@ -157,6 +157,7 @@ Console.WriteLine("== Verified installed fleet (ICAOs from aircraft.cfg) ==");
     ("B77W", 777, 300, "PMDG 777-300ER"),
     ("B77L", 777, 200, "PMDG 777F (icao_model 777-200LRF)"),
     ("A20N", 320, -1,  "FBW A32NX (neo)"),
+    ("A320", 320, -1,  "Fenix A320 (ceo; fnx-aircraft-320)"),
     ("A388", 380, -1,  "FBW A380X"),
     ("B789", 787, 9,   "HS787-9"),
     ("A346", 340, 600, "Aerosoft A340-600 (DERIVED — not in table)"),
