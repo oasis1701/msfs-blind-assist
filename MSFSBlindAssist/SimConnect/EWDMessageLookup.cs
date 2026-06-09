@@ -621,9 +621,9 @@ public static class EWDMessageLookup
         // This is what \x1b4m becomes after SimConnect corruption
         cleaned = Regex.Replace(cleaned, @"ƴm", "");
 
-        // Pass 3: Remove digit+m patterns (like 4m from underline codes)
-        // No word boundaries - just remove them anywhere
-        cleaned = Regex.Replace(cleaned, @"\d+m", "");
+        // Pass 3: Remove stray 1-2 digit SGR residue (like "4m" from \x1b4m underline codes)
+        // ONLY when not preceded by a digit — so real values like "FL 350m" are preserved.
+        cleaned = Regex.Replace(cleaned, @"(?<!\d)\d{1,2}m", "");
 
         // Pass 4: Remove )m pattern (from reset codes like \x1b)m)
         cleaned = Regex.Replace(cleaned, @"\)m", "");

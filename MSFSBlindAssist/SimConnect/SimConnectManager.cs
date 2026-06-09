@@ -1216,7 +1216,7 @@ public class SimConnectManager
         // Clear existing registrations
         variableDataDefinitions.Clear();
         lastVariableValues.Clear();
-        forceUpdateVariables.Clear();
+        lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
 
         // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
         nextDataDefinitionId = 1000;
@@ -4593,7 +4593,7 @@ public class SimConnectManager
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         eventIds.Clear();
-        forceUpdateVariables.Clear();
+        lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         ecamStringData.Clear();
         ecamAnnouncementData.Clear();
         previousECAMMessages.Clear();

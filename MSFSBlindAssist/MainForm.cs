@@ -3228,16 +3228,8 @@ public partial class MainForm : Form
             pmdgEFBForm = null;
         }
 
-        if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
-        {
-            fbwA380MCDUForm.Dispose();
-            fbwA380MCDUForm = null;
-        }
-        if (fbwEfbForm != null && !fbwEfbForm.IsDisposed)
-        {
-            fbwEfbForm.Dispose();
-            fbwEfbForm = null;
-        }
+        // NOTE: fbwA380MCDUForm / fbwEfbForm are Coherent-client-driven, not bridge-server-driven —
+        // their disposal lives in the SwitchAircraft cleanup path (above this call), not here.
 
         efbBridgeServer?.Stop();
     }

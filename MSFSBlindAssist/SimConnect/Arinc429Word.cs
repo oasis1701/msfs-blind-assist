@@ -47,7 +47,7 @@ public readonly struct Arinc429Word
 
     /// <summary>1-based ARINC bit (1..32) when data is present, else the fallback.</summary>
     public bool BitValueOr(int bit, bool fallback) =>
-        (Ssm == 0b11 || Ssm == 0b10) ? ((_raw32 >> (bit - 1)) & 1) != 0 : fallback;
+        (bit >= 1 && bit <= 32 && (Ssm == 0b11 || Ssm == 0b10)) ? ((_raw32 >> (bit - 1)) & 1) != 0 : fallback;
 
     /// <summary>
     /// Convenience: format the value for a screen-reader readout, or "invalid"

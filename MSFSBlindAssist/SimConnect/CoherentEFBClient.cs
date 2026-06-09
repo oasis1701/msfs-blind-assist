@@ -167,6 +167,7 @@ namespace MSFSBlindAssist.SimConnect
             var url = new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}");
             await ws.ConnectAsync(url, ct);
             _ws = ws;
+            foreach (var kv in _pending) kv.Value.TrySetCanceled();   // cancel evals orphaned by the reconnect (else they hang to timeout)
             _pending.Clear();
             _ = Task.Run(() => ReceiveLoop(ws, ct));
 
@@ -335,12 +336,14 @@ namespace MSFSBlindAssist.SimConnect
         private async Task ReceiveLoop(ClientWebSocket ws, CancellationToken ct)
         {
             var buf = new byte[131072];
-            var sb = new StringBuilder();
+            // Accumulate raw bytes and decode once at EndOfMessage — decoding each read
+            // separately corrupts a multibyte UTF-8 char split across the read boundary.
+            var ms = new System.IO.MemoryStream();
             try
             {
                 while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
                 {
-                    sb.Clear();
+                    ms.SetLength(0);
                     WebSocketReceiveResult res;
                     do
                     {
@@ -350,10 +353,10 @@ namespace MSFSBlindAssist.SimConnect
                             _connected = false; _agentInstalled = false;
                             return;
                         }
-                        sb.Append(Encoding.UTF8.GetString(buf, 0, res.Count));
+                        ms.Write(buf, 0, res.Count);
                     } while (!res.EndOfMessage);
 
-                    DispatchMessage(sb.ToString());
+                    DispatchMessage(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
                 }
             }
             catch (OperationCanceledException) { }
