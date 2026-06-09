@@ -4027,6 +4027,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsButton = true,
+            SuppressRestingButtonState = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
         },
         ["CLEAR_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
@@ -4037,6 +4038,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsButton = true,
+            SuppressRestingButtonState = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
         },
         ["CLEAR_MASTER_CAUTION"] = new SimConnect.SimVarDefinition
@@ -4047,6 +4049,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsButton = true,
+            SuppressRestingButtonState = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
         },
         ["CLEAR_MASTER_CAUTION_FO"] = new SimConnect.SimVarDefinition
@@ -4057,6 +4060,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsButton = true,
+            SuppressRestingButtonState = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
         },
         ["A32NX_AUTOBRAKES_ARMED_MODE"] = new SimConnect.SimVarDefinition

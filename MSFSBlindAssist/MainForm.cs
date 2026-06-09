@@ -1356,14 +1356,16 @@ public partial class MainForm : Form
                     else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 0)
                     {
                         // Mirror the build-time button-label logic (the RenderAsButton branch):
-                        // a momentary push-button (ECAM-CP keys, calls, acks, tests) has no
-                        // meaningful RESTING state, so the value 0 (Released / Off / Idle) must
-                        // NOT be appended — otherwise this live update relabels e.g. "ECAM All"
-                        // to "ECAM All: Released", which the screen reader reads aloud. Only
-                        // append a non-zero (active / latched) state; reset to the plain
-                        // DisplayName on the resting value. The functional dispatch keys on the
-                        // var name/events, never the label, so this is purely cosmetic.
-                        string newLabel = (value != 0 && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                        // resting-state (value 0) suppression is OPT-IN via
+                        // SuppressRestingButtonState, set only by the FBW momentary-button
+                        // helpers (ECAM-CP keys, calls, acks, tests) — a momentary push-button
+                        // has no meaningful RESTING state, so relabelling e.g. "ECAM All" to
+                        // "ECAM All: Released" reads as noise. By DEFAULT the value-0 label
+                        // shows: on PMDG ("LNAV: Off") and HS787 ("Baro STD: QNH") it IS
+                        // meaningful state and must not be silenced. The functional dispatch
+                        // keys on the var name/events, never the label, so this is cosmetic.
+                        string newLabel = ((value != 0 || !varDef.SuppressRestingButtonState)
+                                           && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
                             ? $"{varDef.DisplayName}: {stateText}"
                             : varDef.DisplayName;
                         if (btn.Text != newLabel)
@@ -5214,12 +5216,16 @@ public partial class MainForm : Form
                 }
                 else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2 && currentSimVarValues.ContainsKey(varKey))
                 {
-                    // Fallback for non-Fenix buttons that still use ValueDescriptions. Skip the
-                    // RESTING state (value 0 = Off/Idle): a momentary push-button has no
-                    // meaningful resting value, so appending it read as noise ("Chronometer
-                    // Start / Stop: Idle, button"). Only show a non-zero (active/latched) state.
+                    // Fallback for non-Fenix buttons that still use ValueDescriptions.
+                    // Resting-state (value 0 = Off/Idle) suppression is OPT-IN via
+                    // SuppressRestingButtonState, set only by the FBW momentary-button helpers
+                    // — a momentary push-button has no meaningful resting value, so appending
+                    // it read as noise ("Chronometer Start / Stop: Idle, button"). By DEFAULT
+                    // the value-0 label shows: PMDG 777 MCP buttons ("LNAV: Off") and the
+                    // HS787 Baro STD ("QNH") use value-0 descriptions that ARE meaningful state.
                     double val = currentSimVarValues[varKey];
-                    if (val != 0 && varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
+                    if ((val != 0 || !varDef.SuppressRestingButtonState)
+                        && varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
                         buttonText = $"{varDef.DisplayName}: {stateText}";
                 }
 

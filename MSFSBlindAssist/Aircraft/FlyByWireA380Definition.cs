@@ -116,7 +116,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // L:var 1→0 and speaks "<name> pressed".
                 IsAnnounced = false,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
-                RenderAsButton = true
+                RenderAsButton = true,
+                SuppressRestingButtonState = true
             };
             _momentaryButtons.Add(key);
         }
@@ -139,7 +140,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // 2026-06). The click routes through _momentaryButtons → pulse 1→0 + speak
                 // "<name> pressed". MSFSBA's own ECL/SD code pulses these via the calculator
                 // path directly (not HandleUIVariableSet), so those internal pulses stay silent.
-                RenderAsButton = true
+                RenderAsButton = true,
+                SuppressRestingButtonState = true
             };
             _momentaryButtons.Add(key);
         }
@@ -590,7 +592,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         void SeatBtn(string key, string display) => vars[key] = new SimVarDefinition
         {
             Name = key, DisplayName = display, Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, RenderAsButton = true
+            UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, RenderAsButton = true,
+            SuppressRestingButtonState = true
         };
         // The real 0..100 position vars, registered read-only so the motor can seed its tracked
         // position from a fresh cache (force-read on start/stop) for an accurate spoken read-out.

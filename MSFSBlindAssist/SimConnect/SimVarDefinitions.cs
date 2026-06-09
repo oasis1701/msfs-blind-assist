@@ -55,6 +55,15 @@ public class SimVarDefinition
 
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
+    /// <summary>
+    /// When true (opt-in, set by the FBW momentary-button helpers), the panel label
+    /// SUPPRESSES the value-0 resting state ("Released"/"Off"/"Idle") — a momentary
+    /// push-button has no meaningful resting value, so appending it reads as noise.
+    /// MUST stay opt-in: PMDG 777 MCP buttons and the HS787 Baro STD use value-0
+    /// descriptions that ARE meaningful state ("LNAV: Off", "Baro STD: QNH") and a
+    /// blanket suppression silenced them (PR #85 review finding M4).
+    /// </summary>
+    public bool SuppressRestingButtonState { get; set; }
     // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
     // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
     // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,
