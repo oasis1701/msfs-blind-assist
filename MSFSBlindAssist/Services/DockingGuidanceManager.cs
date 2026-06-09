@@ -277,7 +277,13 @@ public sealed class DockingGuidanceManager : IDisposable
         crossFt = track.CrossTrackFeet;
         double absCross = track.AbsCrossTrackFeet;
 
-        const double MaxInterceptDeg = 30.0, DeadbandFt = 8.0, SaturationFt = 100.0;
+        // AGGRESSIVE ramp vs the runway's 30°/100 ft — a gate lead-in is short, so the
+        // lateral must close FAST within the few metres of door-travel before the stop.
+        // CONFIRMED EDDF A66A: a 28 ft entry under the gentle ramp commanded only ~14°
+        // (~0.6 ft/s lateral) and ran out of room at 19 ft left. 40°/40 ft saturation
+        // commands ~32° at 28 ft (~1.3 ft/s), converging to a few feet before the stop;
+        // the 8 ft deadband + sqrt curve still ease it smoothly to zero on the line.
+        const double MaxInterceptDeg = 40.0, DeadbandFt = 8.0, SaturationFt = 40.0;
         double intercept = 0.0;
         if (absCross > DeadbandFt)
         {
