@@ -223,8 +223,14 @@ public sealed class DockingGuidanceManager : IDisposable
                                 ? "GSX docking complete."
                                 : "Stop.";
                             _announcer.AnnounceImmediate(stopMsg);
-                            _beeper.Stop();
-                            _tone.Stop();
+                            _tone.Stop(); // lateral steering done — kill the pan tone
+                            // Hold a SOLID continuous tone (the beeper's _solid mode fires when
+                            // doorAlongM <= StopTolerance) as a "docked — hold position" marker.
+                            // Do NOT stop the beeper here: the pilot wants the tone to persist until
+                            // they end guidance (Stop button → SetDestinationGate(null) → ResetLocked)
+                            // or taxi away. Previously _beeper.Stop() at the same 0.3 m threshold the
+                            // solid tone begins made the solid tone dead code — the beep just vanished.
+                            _beeper.Update(doorAlongM, active: true);
                             _state = DockState.Stopped; fireCompleted = true; break;
                         }
                         if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
@@ -249,6 +255,11 @@ public sealed class DockingGuidanceManager : IDisposable
                         break;
 
                     case DockState.Stopped:
+                        // Keep the solid "docked — hold position" tone sounding (doorAlongM is ~0
+                        // while parked, so the beeper stays in its continuous _solid mode) until the
+                        // pilot ends guidance (Stop button → SetDestinationGate(null) → ResetLocked,
+                        // which stops the beeper) or taxis away (disengage below).
+                        _beeper.Update(doorAlongM, active: true);
                         if (doorAlongM > DockingGeometry.DisengageRangeMetres) ResetLocked();
                         break;
                 }
