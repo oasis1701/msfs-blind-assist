@@ -5604,9 +5604,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Engines"] = new List<string>
         {
+            "ENGINE_MODE_SELECTOR",
             "ENGINE_1_MASTER",
-            "ENGINE_2_MASTER",
-            "ENGINE_MODE_SELECTOR"
+            "ENGINE_2_MASTER"
         },
         ["Thrust Levers"] = new List<string>
         {
