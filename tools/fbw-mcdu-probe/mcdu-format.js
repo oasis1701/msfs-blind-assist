@@ -64,22 +64,27 @@ function parseSegments(cell) {
 }
 
 // Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
-// right, centred centre. Replaces the old "drop blanks and join" approach, which made
-// a right-only cell collapse onto the LEFT of the line. Trailing space is trimmed;
-// leading space is preserved so right-only content stays on the right.
+// right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
+// column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
+// trimming the padding and re-centring used to run the time into the speed
+// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
+// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
 function positionLine(left, center, right, width) {
   width = width || 24;
   var buf = new Array(width);
   for (var i = 0; i < width; i++) { buf[i] = ' '; }
   function place(s, start) {
-    for (var j = 0; j < s.length; j++) { var p = start + j; if (p >= 0 && p < width) { buf[p] = s[j]; } }
+    for (var j = 0; j < s.length; j++) {
+      var p = start + j;
+      if (s[j] !== ' ' && p >= 0 && p < width) { buf[p] = s[j]; }
+    }
   }
-  var l = (left || '').replace(/\s+$/, '');
-  var c = (center || '').replace(/^\s+|\s+$/g, '');
-  var r = (right || '').replace(/\s+$/, '');
+  var l = left || '';
+  var c = center || '';
+  var r = right || '';
   place(l, 0);
-  if (c.length) { place(c, Math.max(0, Math.floor((width - c.length) / 2))); }
-  if (r.length) { place(r, Math.max(0, width - r.length)); }
+  if (c.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.length) / 2))); }
+  if (r.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.length)); }
   return buf.join('').replace(/\s+$/, '');
 }
 

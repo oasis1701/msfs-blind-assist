@@ -143,3 +143,19 @@ test('positionLine centres a centre-only cell', () => {
   assert.strictEqual(out.trim(), 'AVAILABLE RUNWAYS');
   assert.ok(out.startsWith('   '), 'centre cell not indented: ' + JSON.stringify(out));
 });
+
+test('positionLine keeps a gap between centre time and right speed/alt (F-PLN)', () => {
+  // Live-captured F-PLN value row shape: centre carries the FBW {sp} padding
+  // ("2053" + 4 spaces), right is a 10-char SPD/ALT cell. The old trim-and-recentre
+  // ran the time straight into the speed: "2053.78/ FL370".
+  const out = fmt.positionLine('DANGR', '2053    ', '.78/ FL370');
+  assert.strictEqual(out.indexOf('2053.78'), -1, 'time ran into speed: ' + JSON.stringify(out));
+  assert.ok(/2053 +\.78\/ FL370$/.test(out), 'columns not aligned: ' + JSON.stringify(out));
+});
+
+test('positionLine honours right-cell trailing padding (F-PLN ditto row)', () => {
+  // Live-captured: right cell '.78/   "  ' has two trailing spaces — FBW uses them
+  // to column-align the ditto mark; the content must shift left accordingly.
+  const out = fmt.positionLine('DANGR', '2053    ', '.78/   "  ');
+  assert.ok(/^DANGR +2053 +\.78\/ +"$/.test(out), JSON.stringify(out));
+});

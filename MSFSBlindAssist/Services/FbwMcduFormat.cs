@@ -89,19 +89,21 @@ public static class FbwMcduFormat
 
     /// <summary>
     /// Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
-    /// right, centred centre — instead of dropping blank columns and joining, which made a
-    /// right-only cell collapse onto the LEFT of the line. Trailing space trimmed; leading
-    /// space preserved so right-only content stays on the right.
+    /// right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
+    /// column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
+    /// trimming the padding and re-centring used to run the time into the speed
+    /// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
+    /// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
     /// </summary>
     public static string PositionLine(string left, string center, string right, int width = 24)
     {
         var buf = new char[width];
         for (int i = 0; i < width; i++) { buf[i] = ' '; }
-        Place(buf, (left ?? "").TrimEnd(), 0);
-        string c = (center ?? "").Trim();
-        if (c.Length > 0) { Place(buf, c, Math.Max(0, (width - c.Length) / 2)); }
-        string r = (right ?? "").TrimEnd();
-        if (r.Length > 0) { Place(buf, r, Math.Max(0, width - r.Length)); }
+        Place(buf, left ?? "", 0);
+        string c = center ?? "";
+        if (c.Trim().Length > 0) { Place(buf, c, Math.Max(0, (width - c.Length) / 2)); }
+        string r = right ?? "";
+        if (r.Trim().Length > 0) { Place(buf, r, Math.Max(0, width - r.Length)); }
         return new string(buf).TrimEnd();
 
         static void Place(char[] dst, string s, int start)
@@ -109,7 +111,7 @@ public static class FbwMcduFormat
             for (int j = 0; j < s.Length; j++)
             {
                 int p = start + j;
-                if (p >= 0 && p < dst.Length) { dst[p] = s[j]; }
+                if (s[j] != ' ' && p >= 0 && p < dst.Length) { dst[p] = s[j]; }
             }
         }
     }
