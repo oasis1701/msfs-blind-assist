@@ -1191,10 +1191,7 @@ public class SimConnectManager
     {
         try
         {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string dir = System.IO.Path.Combine(appData, "MSFSBlindAssist", "logs");
-            System.IO.Directory.CreateDirectory(dir);
-            string path = System.IO.Path.Combine(dir, "input_events.txt");
+            string path = MSFSBlindAssist.Utils.AppLogs.PathFor("input_events.txt");
             using var writer = new System.IO.StreamWriter(path, append: false);
             writer.WriteLine($"# InputEvent catalog — generated {DateTime.Now:s}");
             writer.WriteLine($"# Aircraft: {CurrentAircraft?.AircraftName ?? "(unknown)"}");
@@ -3088,10 +3085,7 @@ public class SimConnectManager
 
         try
         {
-            string logPath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MSFSBlindAssist", "logs", "docking-aircraft.log");
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+            string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
             System.IO.File.AppendAllText(logPath,
                 $"{DateTime.Now:HH:mm:ss}  raw ATC MODEL=\"{currentAircraftAtcModel}\"  -> extracted ICAO=\"{icao}\"{System.Environment.NewLine}");
         }
@@ -3158,10 +3152,7 @@ public class SimConnectManager
 
                 try
                 {
-                    string logPath = System.IO.Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "MSFSBlindAssist", "logs", "docking-aircraft.log");
-                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+                    string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
                     System.IO.File.AppendAllText(logPath,
                         $"{DateTime.Now:HH:mm:ss}  catalog fallback: TITLE=\"{titleSnapshot}\"  -> ICAO=\"{catIcao}\"{System.Environment.NewLine}");
                 }

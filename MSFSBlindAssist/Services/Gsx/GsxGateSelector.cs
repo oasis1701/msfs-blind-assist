@@ -46,7 +46,7 @@
 //
 // File logging:
 //   Every run appends a timestamped walk-log to
-//   %LOCALAPPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log
+//   %APPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log (the canonical AppLogs folder)
 //   so one real arrival run captures the full menu tree (labels, kinds, decisions)
 //   and the final SetGate values.  IO exceptions never break the selector.
 
@@ -98,11 +98,9 @@ public sealed class GsxGateSelector
 
     // ─── Walk-log file ─────────────────────────────────────────────────────
     // Appended per run so a single real arrival captures the full menu tree.
-    // Path: %LOCALAPPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log
+    // Path: AppLogs canonical folder, gsx-gate-select.log.
     // IO exceptions are caught and never propagate.
-    private static readonly string WalkLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "MSFSBlindAssist", "logs", "gsx-gate-select.log");
+    private static readonly string WalkLogPath = Utils.AppLogs.PathFor("gsx-gate-select.log");
 
     // ─── Dependencies ──────────────────────────────────────────────────────
     private readonly GsxService _gsx;

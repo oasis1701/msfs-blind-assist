@@ -587,7 +587,7 @@ choosing the leaf + the safe servicing action ("Show me this spot and activate",
 which arms the VDGS/marshaller) the selector **polls** the vars up to 6 s until
 they match before announcing success. Tuning lives in one place
 (`GsxMenuClassifier`); the full walk is logged to
-`%LOCALAPPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
+`%APPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
 
 **Matching and reentrancy hardening:**
 
@@ -745,7 +745,7 @@ offset and feeds it to `DockingGuidanceManager.SetStopOffset`:
   missed). `tools/GsxOffsetProbe` carries resolver-level asserts that lock this.
 - A `STOPOFFSET` diagnostic line (icao / gate# / suffix / `stopLatSet` / aircraft /
   aircraft id / resolved offset) is appended to
-  `%LOCALAPPDATA%\MSFSBlindAssist\logs\docking-aircraft.log` on each route-calculate,
+  `%APPDATA%\MSFSBlindAssist\logs\docking-aircraft.log` on each route-calculate,
   for one-glance debugging of "offset is 0" reports.
 
 In `DockingGuidanceManager.UpdatePosition`, the stop point is shifted BEFORE any

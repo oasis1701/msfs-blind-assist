@@ -63,9 +63,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private const double DetailRangeMetres = 150.0;
 
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
-    private static readonly string DockLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "MSFSBlindAssist", "logs", "docking.log");
+    private static readonly string DockLogPath = Utils.AppLogs.PathFor("docking.log");
     private DateTime _lastDockLogUtc = DateTime.MinValue;
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
@@ -444,7 +442,7 @@ public sealed class DockingGuidanceManager : IDisposable
     /// angle (hdgErr), the intercept lineup error + signed cross-track, the gate stop heading,
     /// the aircraft heading, the applied GSX stop offset, and absolute stop/aircraft coords.
     /// Only written near the gate or while engaged (see wantDetail in UpdatePosition). Path:
-    /// %LOCALAPPDATA%\MSFSBlindAssist\logs\docking.log. Never throws.
+    /// the canonical AppLogs folder (%APPDATA%\MSFSBlindAssist\logs\docking.log). Never throws.
     /// </summary>
     private void DockLog(double gs, double distM, double alongM,
                          double hdgErr, double lineupErr, double crossFt,

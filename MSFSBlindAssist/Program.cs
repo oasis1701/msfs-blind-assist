@@ -31,9 +31,10 @@ static class Program
                 StartupLogger.Log("========================================");
                 StartupLogger.LogSystemInfo();
 
-                // One-time, best-effort move of legacy Roaming-root *.log files into the
-                // canonical %LOCALAPPDATA%\MSFSBlindAssist\logs folder, so testers have
-                // exactly ONE place to find logs even after running older builds.
+                // One-time, best-effort move of legacy log files (Roaming-root *.log and
+                // the former %LOCALAPPDATA% logs folder) into the canonical
+                // %APPDATA%\MSFSBlindAssist\logs folder, so testers have exactly ONE
+                // place to find logs even after running older builds.
                 AppLogs.MigrateLegacyLogs();
                 StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
 

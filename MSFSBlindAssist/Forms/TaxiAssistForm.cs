@@ -1846,13 +1846,9 @@ public class TaxiAssistForm : Form
         // resolved aircraft id, and the final offset). Never throws.
         try
         {
-            string p = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MSFSBlindAssist", "logs", "docking-aircraft.log");
-            // Ensure the logs directory exists — on a fresh install %LOCALAPPDATA%
-            // \MSFSBlindAssist\logs may not have been created yet, and AppendAllText
-            // throws DirectoryNotFoundException rather than creating it.
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(p)!);
+            // AppLogs.PathFor ensures the logs folder exists on a fresh install
+            // (AppendAllText throws DirectoryNotFoundException rather than creating it).
+            string p = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
             System.IO.File.AppendAllText(p, string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0:HH:mm:ss}  STOPOFFSET  icao='{1}' gate#={2} suffix='{3}' stopLatSet={4} ac='{5}' acId={6} -> long={7:F2} lat={8:F2}{9}",
