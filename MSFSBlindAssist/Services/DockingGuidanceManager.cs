@@ -212,15 +212,24 @@ public sealed class DockingGuidanceManager : IDisposable
                     lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, alongM, out crossFt);
                     DockLog(groundSpeedKts, distM, alongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue, sLat, sLon, lat, lon);
                 }
+                double absCrossM = Math.Abs(crossFt) * 0.3048;
 
                 switch (_state)
                 {
                     case DockState.Idle:
                     case DockState.Armed:
                         // Cue 2: use the gate's gatedistancethreshold as engage range when set.
-                        bool shouldEngage = _engageRangeOverrideMetres.HasValue
-                            ? DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr, _engageRangeOverrideMetres.Value)
-                            : DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr);
+                        // Engage is additionally gated on cross-track FEASIBILITY (see
+                        // DockingGeometry.ShouldEngage): while the aircraft is still on the
+                        // apron lane / mid gate-turn with more lateral offset than the
+                        // intercept profile can close, docking stays Armed and taxi guidance
+                        // keeps the tone for the turn — the engage-latched arrival ownership
+                        // this class documents. crossFt is only computed when wantDetail, but
+                        // wantDetail is always true within engage range (distM < 150 ≥ any
+                        // engage range), so gate the check on it for safety.
+                        bool shouldEngage = wantDetail && DockingGeometry.ShouldEngage(
+                            groundSpeedKts, alongM, hdgErr, absCrossM,
+                            _engageRangeOverrideMetres ?? DockingGeometry.EngageRangeMetres);
                         if (shouldEngage) EngageLocked(alongM);
                         else _state = DockState.Armed;
                         break;
@@ -235,7 +244,24 @@ public sealed class DockingGuidanceManager : IDisposable
                             SilenceLocked(); _overshootStop = true;
                             _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
-                        if (DockingGeometry.IsStop(alongM))
+                        // Lateral miss — the approach can no longer converge (off the centerline
+                        // in the squaring zone by more than the full intercept could close).
+                        // Announce a verbal stop-and-retry instead of letting the tone steer
+                        // garbage (KATL C55 2026-06-10: the squaring fade snapped the cue to the
+                        // raw gate heading while ~75 ft off the line — a sudden hard right pan).
+                        // No cross-track feet in the phrase — the tone is the lateral instrument;
+                        // a feet quantity has no spatial reference for a blind pilot.
+                        // Deice pads are wide and datum-aligned; they keep along-only semantics.
+                        if (_gate?.IsDeiceArea != true && DockingGeometry.IsLateralMiss(alongM, absCrossM))
+                        {
+                            string side = crossFt > 0 ? "left" : "right"; // + = left of centerline
+                            _announcer.AnnounceImmediate(
+                                $"Stop. Too far {side} of the gate centerline. Back up and try again.");
+                            SilenceLocked(); _overshootStop = true;
+                            _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
+                        }
+                        if (DockingGeometry.IsStop(alongM)
+                            && (_gate?.IsDeiceArea == true || absCrossM <= DockingGeometry.StopMaxCrossMetres))
                         {
                             // Cue 3: announce "GSX docking complete." instead of bare "Stop."
                             // when the gate is a GSX .ini stand with a real VDGS stop position
@@ -245,6 +271,12 @@ public sealed class DockingGuidanceManager : IDisposable
                             // FSDT_GSX_OPERATEJETWAYS_STATE was investigated and rejected: it
                             // fires only when the user manually triggers the jetway, not on
                             // aircraft arrival, so it cannot serve as an auto-docked signal.
+                            // Cross-gated (non-deice): "docking complete" requires the aircraft
+                            // within StopMaxCrossMetres of the centerline — without it, the KATL
+                            // C55 run would have announced a good dock 60 ft off the gate axis.
+                            // Narrow residual band (cross 2.0–2.21 m at along 0–0.3 m): neither
+                            // stop nor lateral-miss fires; the pilot creeps on and gets the
+                            // overshoot "Stop." at −1 m — still a verbal closure.
                             string stopMsg = (_gate?.StopLatitude != null && _gate?.IsDeiceArea != true)
                                 ? "GSX docking complete."
                                 : "Stop.";
@@ -454,45 +486,23 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         var track = RunwayCenterlineTracker.Compute(lat, lon, acHdgTrue, sLat, sLon, centerHdgTrue);
         crossFt = track.CrossTrackFeet;
-        double absCross = track.AbsCrossTrackFeet;
 
-        // Intercept ramp for a JETWAY-PRECISE gate lead-in. The previous 8 ft deadband stopped
-        // correcting once cross-track fell below ~8 ft, so the aircraft parked up to ~8 ft (2.4 m)
-        // off the gate centerline (a live B77W dock at EDDF A66 sat at ~8.2 ft the whole approach
-        // because it was inside the deadband from the start). Drop the deadband to 1 ft — keep a
-        // hair so SimConnect position jitter doesn't hunt the tone left/right at the exact centre —
-        // and steepen the saturation (60→40 ft) so a small residual still gets a meaningful
-        // correction angle and actually closes. KEY: cross-track convergence is a function of
-        // DISTANCE travelled, not time (d(cross)/d(forward) = −sin(angle)), so this closes the
-        // same amount per metre at 1 kt as at 5 kt — "even at 1 kt" needs no special handling, and
-        // the continuous sqrt ramp never springs a late turn. The intercept still eases to 0° at
-        // the line; the distance fade below squares the final heading so the park is precise AND
-        // not askew.
-        const double MaxInterceptDeg = 35.0, DeadbandFt = 1.0, SaturationFt = 40.0;
-        double intercept = 0.0;
-        if (absCross > DeadbandFt)
-        {
-            double eff = absCross - DeadbandFt;
-            double span = SaturationFt - DeadbandFt;
-            intercept = MaxInterceptDeg * Math.Sqrt(Math.Clamp(eff / span, 0.0, 1.0)) * Math.Sign(crossFt);
-        }
-
-        // FADE the intercept to zero over the FINAL few metres so that AT the stop the cue
-        // is the pure gate heading, not the convergence-biased heading. This mirrors a real
-        // painted lead-in line: it angles you toward the centerline, then straightens onto it
-        // right at the stop so you finish centered AND square. A stationary nose-in aircraft
-        // cannot reduce lateral offset (no sideways motion), so "keep converging" at the stop
-        // is futile and reads as a wrong-way cue (a slight RIGHT bias while 10 ft left when
-        // the pilot just wants to square LEFT to the gate). Square the heading to the pure gate
-        // heading by 2.5 m out (fade 6→2.5 m), NOT crammed into the final metre. A live B77W dock
-        // entered the box ~5° over-rotated and the squaring cue only got strong in the last ~2.5 m
-        // — too late to finish the turn at 1–2 kt, so the pilot stopped mid-turn ~2° off. Finishing
-        // the square by 2.5 m gives a clear early "turn to align" cue AND leaves a straight, already-
-        // aligned creep over the final 2.5 m to the stop. The tight 1 ft deadband still centres the
-        // lateral well before this zone, so finishing square here costs ~nothing in cross-track.
-        const double FadeStartM = 6.0, FadeEndM = 2.5;
-        double fade = Math.Clamp((alongMetres - FadeEndM) / (FadeStartM - FadeEndM), 0.0, 1.0);
-        intercept *= fade;
+        // Intercept ramp + squaring fade live in DockingGeometry.LineupInterceptDeg so the
+        // probe pins the exact numbers. Design notes preserved from the live tuning passes:
+        //   • 1 ft deadband / 40 ft saturation (EDDF A66 B77W: the old 8 ft deadband parked
+        //     the aircraft ~8 ft off the line because it never corrected inside it). Cross
+        //     convergence is a function of DISTANCE travelled, not time, so the profile
+        //     closes the same amount per metre at 1 kt as at 5 kt.
+        //   • Squaring fade 6 → 2.5 m: finish the align turn early enough to complete it at
+        //     creep speed (the B77W entered the box ~5° over-rotated when the fade was
+        //     crammed into the final metre).
+        //   • The fade is CROSS-GATED (full ≤ 4 ft, off ≥ 8 ft): keyed on along-track alone
+        //     it snapped the desired heading from (gate−35°) to the raw gate heading while
+        //     the aircraft was still ~75 ft off the line — the KATL C55 (2026-06-10) sudden
+        //     hard-right pan. Off the line, the cue keeps converging until the lateral-miss
+        //     callout adjudicates; the miss fires from the same squaring zone, so the tone
+        //     never silently steers an unreachable approach.
+        double intercept = DockingGeometry.LineupInterceptDeg(crossFt, alongMetres);
 
         double desiredHdg = centerHdgTrue + intercept;
         return DockingGeometry.NormalizeDeg180(desiredHdg - acHdgTrue);

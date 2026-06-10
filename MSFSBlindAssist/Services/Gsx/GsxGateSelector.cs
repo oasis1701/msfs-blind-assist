@@ -385,7 +385,7 @@ public sealed class GsxGateSelector
             return false;
         }
 
-        string targetConcourse = ExtractConcoursePrefixFromIdentity(state.TargetIdentity);
+        string targetConcourse = GsxMenuClassifier.ExtractConcoursePrefix(state.TargetIdentity);
         int targetNumber = state.Target.Number;
 
         IReadOnlyList<GsxService.MenuOption> current = firstPage;
@@ -483,7 +483,7 @@ public sealed class GsxGateSelector
 
                 Debug.WriteLine($"[GsxGateSelector] GateLeaf: \"{opt.Text}\" → identity={leafIdentity} (target={state.TargetIdentity}) depth={depth} step={step}");
 
-                if (!LeafMatchesTarget(leafIdentity, state.TargetIdentity, out bool bareNumberFallback))
+                if (!GsxMenuClassifier.LeafMatchesTarget(leafIdentity, state.TargetIdentity, out bool bareNumberFallback))
                     continue;
 
                 // ── MATCH ─────────────────────────────────────────────────
@@ -906,61 +906,9 @@ public sealed class GsxGateSelector
         return null;
     }
 
-    /// <summary>
-    /// Extracts the concourse prefix (the leading letters) from a normalised
-    /// gate identity string (e.g. "C18L" → "C", "218" → "").
-    /// </summary>
-    private static string ExtractConcoursePrefixFromIdentity(string identity)
-    {
-        int i = 0;
-        while (i < identity.Length && char.IsLetter(identity[i])) i++;
-        return i > 0 ? identity.Substring(0, i) : string.Empty;
-    }
-
-    /// <summary>
-    /// Decides whether a menu LEAF identity matches the TARGET identity. Tries an exact
-    /// OrdinalIgnoreCase compare first; on a miss, applies a conservative BARE-NUMBER
-    /// fallback and sets <paramref name="bareNumberFallback"/> when that is what matched.
-    /// <para>
-    /// EGLL 'P 209' case: the navdata merger borrows the navdata letter ('P') to give the
-    /// stand a display name, so the TARGET identity is "P209" — but GSX's OWN menu shows the
-    /// stand letterless ("Parking 209" → leaf identity "209"). The exact compare then never
-    /// matches. When the LEAF has NO concourse letter before its digits (pattern: digits
-    /// optionally followed by a single letter suffix), the letter on the target is navdata
-    /// display decoration only: GSX itself has no concourse for that stand. We therefore strip
-    /// the target's leading letters and compare the remainder (number+suffix) to the leaf.
-    /// </para>
-    /// <para>
-    /// SAFETY: this is strict — it only fires when the LEAF is letterless, and only accepts an
-    /// EXACT match of the stripped (number+suffix) remainder. A letterless menu leaf means GSX
-    /// has no concourse for that stand, so two same-number letterless entries can't coexist on
-    /// one page (GSX would be showing two identical entries) — no ambiguity is possible.
-    /// </para>
-    /// </summary>
-    private static bool LeafMatchesTarget(string leafIdentity, string targetIdentity, out bool bareNumberFallback)
-    {
-        bareNumberFallback = false;
-        if (string.Equals(leafIdentity, targetIdentity, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Only fall back when the LEAF itself carries no concourse letter (digits, then an
-        // optional single-letter suffix). A lettered leaf means GSX HAS a concourse, so the
-        // target's letter is meaningful and must match exactly (handled by the exact compare).
-        string leafPrefix = ExtractConcoursePrefixFromIdentity(leafIdentity);
-        if (leafPrefix.Length > 0) return false;
-
-        // Strip the target's leading letters and compare the remainder exactly.
-        string targetPrefix = ExtractConcoursePrefixFromIdentity(targetIdentity);
-        if (targetPrefix.Length == 0) return false; // both letterless → already handled by exact compare
-        string targetStripped = targetIdentity.Substring(targetPrefix.Length);
-
-        if (string.Equals(leafIdentity, targetStripped, StringComparison.OrdinalIgnoreCase))
-        {
-            bareNumberFallback = true;
-            return true;
-        }
-        return false;
-    }
+    // NOTE: leaf-vs-target matching (LeafMatchesTarget + ExtractConcoursePrefix) moved to
+    // GsxMenuClassifier — the one tunable surface — so tools/GsxGateSelectProbe can pin the
+    // KATL/EGLL letterless-leaf regression cases via a linked compile.
 
     /// <summary>
     /// Builds a short human-readable label for a <see cref="ParkingSpot"/>

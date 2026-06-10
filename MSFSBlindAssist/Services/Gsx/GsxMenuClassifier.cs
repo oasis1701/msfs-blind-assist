@@ -445,6 +445,69 @@ public static class GsxMenuClassifier
     }
 
     /// <summary>
+    /// Extracts the concourse prefix (the leading letters) from a normalised
+    /// gate identity string (e.g. "C18L" → "C", "218" → "").
+    /// </summary>
+    public static string ExtractConcoursePrefix(string identity)
+    {
+        int i = 0;
+        while (i < identity.Length && char.IsLetter(identity[i])) i++;
+        return i > 0 ? identity.Substring(0, i) : string.Empty;
+    }
+
+    /// <summary>
+    /// Decides whether a menu LEAF identity matches the TARGET identity. Tries an exact
+    /// OrdinalIgnoreCase compare first; on a miss, applies a conservative BARE-NUMBER
+    /// fallback and sets <paramref name="bareNumberFallback"/> when that is what matched.
+    /// <para>
+    /// The fallback exists because GSX's own menus frequently show stands LETTERLESS while
+    /// the navdata target carries the concourse letter:
+    ///   • EGLL "P 209": the navdata merger borrows the navdata letter ('P') for display, so
+    ///     the target identity is "P209" — GSX's menu shows "Parking 209" → leaf "209".
+    ///   • KATL (CONFIRMED from the 2026-06-10 walk-log): every concourse submenu lists
+    ///     bare "Gate 55"-style leaves — the letter exists only in the category title
+    ///     ("Concourse C (C1-C55)") — so target "C55" can never exact-match a leaf. The DFS
+    ///     paged straight past "Gate 55" inside Concourse C and reported the gate not found.
+    /// When the LEAF has NO concourse letter before its digits, the letter on the target is
+    /// display decoration as far as GSX is concerned: strip it and compare the remainder
+    /// (number+suffix) exactly.
+    /// </para>
+    /// <para>
+    /// SAFETY: this only fires when the LEAF is letterless, and only accepts an EXACT match
+    /// of the stripped (number+suffix) remainder. Two same-number letterless entries can't
+    /// coexist on one page (GSX would be showing two identical entries). ACROSS categories
+    /// they CAN coexist (KATL: every concourse has a "Gate 1") — the DFS's strongest-first
+    /// category ranking (RankCategoryRelevance scores the target's concourse letter +10)
+    /// drills the correct concourse before any sibling, so the first bare-number match is
+    /// inside the right group.
+    /// </para>
+    /// </summary>
+    public static bool LeafMatchesTarget(string leafIdentity, string targetIdentity, out bool bareNumberFallback)
+    {
+        bareNumberFallback = false;
+        if (string.Equals(leafIdentity, targetIdentity, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Only fall back when the LEAF itself carries no concourse letter (digits, then an
+        // optional single-letter suffix). A lettered leaf means GSX HAS a concourse, so the
+        // target's letter is meaningful and must match exactly (handled by the exact compare).
+        string leafPrefix = ExtractConcoursePrefix(leafIdentity);
+        if (leafPrefix.Length > 0) return false;
+
+        // Strip the target's leading letters and compare the remainder exactly.
+        string targetPrefix = ExtractConcoursePrefix(targetIdentity);
+        if (targetPrefix.Length == 0) return false; // both letterless → already handled by exact compare
+        string targetStripped = targetIdentity.Substring(targetPrefix.Length);
+
+        if (string.Equals(leafIdentity, targetStripped, StringComparison.OrdinalIgnoreCase))
+        {
+            bareNumberFallback = true;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Returns the normalised identity for matching against a target
     /// <see cref="MSFSBlindAssist.Database.Models.ParkingSpot"/>:
     /// concourse-letter(s) + number + suffix, all upper, no spaces.
