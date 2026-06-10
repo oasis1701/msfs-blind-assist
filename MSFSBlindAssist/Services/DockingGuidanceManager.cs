@@ -35,16 +35,32 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool _disposed;
     private ParkingSpot? _gate;
     private DockState _state = DockState.Idle;
+    // Lock-free mirror of "state is Docking or Stopped", updated under _lock at every state
+    // transition. The 30 Hz MainForm position handler reads IsActive right after UpdatePosition;
+    // a volatile read here avoids a second lock acquisition per frame (the SettingsManager
+    // static lock is contended by Save(), which holds it across a JSON serialize + disk write).
+    private volatile bool _isActiveSnap;
     private IReadOnlyList<DistanceMilestone> _milestones = Array.Empty<DistanceMilestone>();
     private bool[] _milestoneSaid = Array.Empty<bool>();
     private bool _slowDownSaid;
-    private double _doorOffsetMetres; // longitudinal offset (metres, forward of datum); 0 = align datum
+    private bool _overshootStop;      // the Stopped state was entered via overshoot — no solid "docked" tone
+    private DateTime _stoppedSinceUtc = DateTime.MinValue; // first frame of a gs<0.5 kt standstill while Docking
+    private bool _stoppedShortSaid;   // one-shot for the stopped-short reminder; re-arms on movement
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
-    private double _lastDoorAlongM;  // last door-aligned forward distance (m), for the status query
+    private double _lastDoorAlongM;  // last forward distance to stop (m), for the status query
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
     private double? _engageRangeOverrideMetres;
+
+    /// <summary>How long the aircraft must sit still (gs &lt; 0.5 kt) mid-approach before the stopped-short reminder fires.</summary>
+    private const double StoppedShortSeconds = 4.0;
+    /// <summary>Stopped-short reminder only fires inside this window (m) — past the stop band, short of the gate.</summary>
+    private const double StoppedShortMaxMetres = 10.0;
+    /// <summary>Backing up this far past the stop re-arms the state machine (Stopped → Idle) so a retry dock re-engages.</summary>
+    private const double RearmBackupMetres = 3.0;
+    /// <summary>Far-field telemetry/lineup math is skipped beyond this raw distance (m) unless engaged.</summary>
+    private const double DetailRangeMetres = 150.0;
 
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
     private static readonly string DockLogPath = Path.Combine(
@@ -55,18 +71,18 @@ public sealed class DockingGuidanceManager : IDisposable
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
 
-    /// <summary>True while docking is actively guiding (Docking or Stopped) — used to suppress the taxi steering tone.</summary>
-    public bool IsActive { get { lock (_lock) { return _state == DockState.Docking || _state == DockState.Stopped; } } }
-
     /// <summary>
-    /// True when docking owns the terminal arrival for the current destination — a gate is set
-    /// and docking guidance is enabled — REGARDLESS of whether the final approach has formally
-    /// engaged yet. Taxi uses this to suppress its OWN terminal arrival callouts for the whole
-    /// gate approach (not just the engaged window), so it never says "Stop. Hold position." at
-    /// its route-end node while docking is still guiding the aircraft a few metres deeper to the
-    /// precise GSX stop.
+    /// True while docking is actively guiding (Docking or Stopped). Drives BOTH taxi-side
+    /// couplings in MainForm: the steering-tone mute AND the terminal arrival-callout
+    /// suppression (<c>SetDockingActive</c>). ENGAGE-LATCHED by design: taxi speaks its normal
+    /// arrival callouts (parking countdown, "Stop. Hold position.", "Destination reached") right
+    /// up until docking actually engages — so a navdata gate where docking never engages (wrong
+    /// approach cone, stop &gt; engage range, heading data off) still gets the full taxi arrival
+    /// sequence instead of total verbal silence. Once engaged, docking owns the rest of the
+    /// arrival (through Stopped) and taxi stays quiet so the two never contradict. Lock-free
+    /// volatile read — safe from the per-frame MainForm handler.
     /// </summary>
-    public bool OwnsArrival { get { lock (_lock) { return _gate != null && SettingsManager.Current.DockingGuidanceEnabled; } } }
+    public bool IsActive => _isActiveSnap;
 
     /// <summary>
     /// Raised ONCE when the final approach reaches the stop (the "GSX docking complete." / "Stop."
@@ -100,9 +116,6 @@ public sealed class DockingGuidanceManager : IDisposable
         // + SetStopOffset / SetEngageRangeMetres for the new gate; until then defaults apply.
         lock (_lock) { _gate = gate; _stopOffset = GsxOffset.Zero; _engageRangeOverrideMetres = null; ResetLocked(); }
     }
-
-    /// <summary>Per-aircraft longitudinal door offset (metres, forward of datum). 0 = align the datum (no GSX data).</summary>
-    public void SetDoorOffsetMetres(double metres) { lock (_lock) { _doorOffsetMetres = metres; } }
 
     /// <summary>"left" / "right" / "" — the preferred passenger door side, for jetway orientation.</summary>
     public void SetDoorSide(string side) { lock (_lock) { _doorSide = side ?? ""; } }
@@ -143,7 +156,17 @@ public sealed class DockingGuidanceManager : IDisposable
             if (_disposed) return;
             try
             {
-                if (_gate == null || !SettingsManager.Current.DockingGuidanceEnabled) { SilenceLocked(); return; }
+                if (_gate == null || !SettingsManager.Current.DockingGuidanceEnabled)
+                {
+                    // Disabling docking (or losing the gate) MID-APPROACH must fully reset, not
+                    // just silence: leaving _state latched at Docking/Stopped kept IsActive true
+                    // forever, so MainForm went on muting taxi's steering tone every frame and the
+                    // pilot had NO lateral cue for the final gate turn until something called
+                    // SetDestinationGate. ResetLocked returns to Idle and clears the snapshot.
+                    if (_state != DockState.Idle) ResetLocked();
+                    else SilenceLocked();
+                    return;
+                }
 
                 // NOTE: for navdata-only gates that have no GSX StopLatitude, the target
                 // falls back to the parking-spot centre (Latitude/Longitude). In that case
@@ -165,31 +188,30 @@ public sealed class DockingGuidanceManager : IDisposable
                 double distM = NavigationCalculator.CalculateDistance(lat, lon, sLat, sLon) * DockingGeometry.MetresPerNm;
                 double brg = NavigationCalculator.CalculateBearing(lat, lon, sLat, sLon);
                 double hdgErr = DockingGeometry.NormalizeDeg180(brg - centerHdg);
+                // Forward distance to the stop. The aircraft DATUM stops at the parking/stop
+                // position: the MSFS parking position (and a GSX stop position) is where the
+                // aircraft REFERENCE sits when correctly parked — the scenery jetway is placed to
+                // reach the door for THAT datum location. (An earlier build subtracted the
+                // per-aircraft gsx.cfg door offset here; that was wrong — it describes where the
+                // door is ON the airframe, not a stop offset — and parked a B777 ~26 m short.
+                // Do not reintroduce it. The door SIDE still feeds the jetway-side cue.)
                 double alongM = DockingGeometry.AlongTrackMetres(distM, hdgErr);
-                // Door-aligned distance: stop when the DOOR reaches the gate stop, not the datum.
-                // For deice areas the aircraft datum (not a door at a jetway) aligns to the pad,
-                // so the effective offset is 0. For normal gates use the per-aircraft door offset.
-                // When offset is 0 (unknown), doorAlongM == alongM and behaviour is unchanged.
-                // Stop the aircraft DATUM at the parking/stop position. The MSFS parking
-                // position (and a GSX stop position) is where the aircraft REFERENCE sits when
-                // correctly parked — the scenery jetway is placed to reach the door for THAT
-                // datum location. Subtracting the per-aircraft door offset was wrong: it
-                // describes where the door is on the airframe, NOT a stop offset, and it parked
-                // a B777 ~26 m short (datum a whole fuselage back — GSX read it as "way off")
-                // while starving the lateral convergence of distance. Align the datum directly.
-                // (The LATERAL door offset still feeds the "jetway on your left/right" cue.)
-                double doorAlongM = alongM;
-                _lastDoorAlongM = doorAlongM;
+                _lastDoorAlongM = alongM;
 
                 // Intercept-angle lineup to the gate centerline (the line through the stop
-                // along the stop heading). Corrects BOTH cross-track AND heading — this is
-                // the cue docking pans with on the final approach, so the park ends up square
-                // on the centerline instead of "a bit right and askew". hdgErr (bearing-to-
-                // stop vs centerline) is still used for the engage cone check below.
+                // along the stop heading) — the cue docking pans with on the final approach.
+                // Only computed near the gate / while engaged: in Idle/Armed at taxi distances
+                // it fed nothing but the telemetry line, and the log itself has no diagnostic
+                // value 3 km from the stop (it also cost an open/append/close file write 2×/s
+                // on the SimConnect thread, under this lock, for the entire taxi).
+                bool wantDetail = _state == DockState.Docking || _state == DockState.Stopped || distM < DetailRangeMetres;
                 double acHdgTrue = headingMag + magVar;
-                double lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, alongM, out double crossFt);
-
-                DockLog(groundSpeedKts, distM, alongM, doorAlongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue, sLat, sLon, lat, lon);
+                double lineupErr = 0.0, crossFt = 0.0;
+                if (wantDetail)
+                {
+                    lineupErr = ComputeLineupError(lat, lon, acHdgTrue, sLat, sLon, centerHdg, alongM, out crossFt);
+                    DockLog(groundSpeedKts, distM, alongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue, sLat, sLon, lat, lon);
+                }
 
                 switch (_state)
                 {
@@ -199,17 +221,21 @@ public sealed class DockingGuidanceManager : IDisposable
                         bool shouldEngage = _engageRangeOverrideMetres.HasValue
                             ? DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr, _engageRangeOverrideMetres.Value)
                             : DockingGeometry.ShouldEngage(groundSpeedKts, alongM, hdgErr);
-                        if (shouldEngage) EngageLocked(doorAlongM);
+                        if (shouldEngage) EngageLocked(alongM);
                         else _state = DockState.Armed;
                         break;
 
                     case DockState.Docking:
-                        if (DockingGeometry.IsOvershoot(doorAlongM))
+                        if (DockingGeometry.IsOvershoot(alongM))
                         {
                             _announcer.AnnounceImmediate("Stop. You have passed the stop position.");
-                            _beeper.Stop(); SilenceLocked(); _state = DockState.Stopped; fireCompleted = true; break;
+                            // Silence (don't dispose) the beeper so a back-up-and-retry dock can
+                            // re-engage with working audio; mark the stop as an overshoot so the
+                            // Stopped state doesn't hold the solid "docked" tone over a bad park.
+                            SilenceLocked(); _overshootStop = true;
+                            _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
-                        if (DockingGeometry.IsStop(doorAlongM))
+                        if (DockingGeometry.IsStop(alongM))
                         {
                             // Cue 3: announce "GSX docking complete." instead of bare "Stop."
                             // when the gate is a GSX .ini stand with a real VDGS stop position
@@ -225,17 +251,17 @@ public sealed class DockingGuidanceManager : IDisposable
                             _announcer.AnnounceImmediate(stopMsg);
                             _tone.Stop(); // lateral steering done — kill the pan tone
                             // Hold a SOLID continuous tone (the beeper's _solid mode fires when
-                            // doorAlongM <= StopTolerance) as a "docked — hold position" marker.
+                            // alongM <= StopTolerance) as a "docked — hold position" marker.
                             // Do NOT stop the beeper here: the pilot wants the tone to persist until
                             // they end guidance (Stop button → SetDestinationGate(null) → ResetLocked)
-                            // or taxi away. Previously _beeper.Stop() at the same 0.3 m threshold the
-                            // solid tone begins made the solid tone dead code — the beep just vanished.
-                            _beeper.Update(doorAlongM, active: true);
-                            _state = DockState.Stopped; fireCompleted = true; break;
+                            // or move off the stop. Previously _beeper.Stop() at the same 0.3 m
+                            // threshold the solid tone begins made the solid tone dead code.
+                            _beeper.Update(alongM, active: true);
+                            _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
                         if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
                         {
-                            SilenceLocked(); _state = DockState.Armed; break;
+                            SilenceLocked(); _state = DockState.Armed; _isActiveSnap = false; break;
                         }
                         // Docking owns the precise lateral cue on the final approach (taxi's
                         // tone is muted while docking is engaged — see MainForm). Intercept-
@@ -244,23 +270,53 @@ public sealed class DockingGuidanceManager : IDisposable
                         // connector turns happen earlier, before docking engages, and are
                         // steered by taxi's route-following tone.
                         _tone.UpdateHeadingErrorWithThresholds(lineupErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
-                        _beeper.Update(doorAlongM, active: true);
-                        if (!_slowDownSaid && doorAlongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
+                        _beeper.Update(alongM, active: true);
+                        if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
                         {
                             _slowDownSaid = true;
                             _announcer.AnnounceImmediate("Slow down.");
                             return; // one callout per frame, consistent with the milestone pattern
                         }
-                        AnnounceMilestonesLocked(doorAlongM);
+                        AnnounceMilestonesLocked(alongM);
+                        // Stopped-short reminder: engaged, parked mid-approach (past the milestones,
+                        // short of the stop band), sitting still. Without this the pilot gets an
+                        // endless fast-but-not-solid beep and no verbal closure — taxi's own
+                        // "Stop. Hold position." stopped-in-zone cue is suppressed while docking
+                        // owns the arrival, so docking must provide the closure itself.
+                        if (groundSpeedKts < 0.5)
+                        {
+                            if (_stoppedSinceUtc == DateTime.MinValue) _stoppedSinceUtc = DateTime.UtcNow;
+                            else if (!_stoppedShortSaid
+                                     && alongM > DockingGeometry.StopToleranceMetres
+                                     && alongM <= StoppedShortMaxMetres
+                                     && (DateTime.UtcNow - _stoppedSinceUtc).TotalSeconds >= StoppedShortSeconds)
+                            {
+                                _stoppedShortSaid = true;
+                                _announcer.AnnounceImmediate(
+                                    $"{DistanceFormatter.FromMetres(alongM)} to stop. Continue forward.");
+                            }
+                        }
+                        else { _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false; }
                         break;
 
                     case DockState.Stopped:
-                        // Keep the solid "docked — hold position" tone sounding (doorAlongM is ~0
-                        // while parked, so the beeper stays in its continuous _solid mode) until the
-                        // pilot ends guidance (Stop button → SetDestinationGate(null) → ResetLocked,
-                        // which stops the beeper) or taxis away (disengage below).
-                        _beeper.Update(doorAlongM, active: true);
-                        if (doorAlongM > DockingGeometry.DisengageRangeMetres) ResetLocked();
+                        // Keep the solid "docked — hold position" tone sounding while parked on the
+                        // stop (alongM ~0 keeps the beeper in its continuous _solid mode) — except
+                        // after an overshoot stop, where a "docked" marker over a bad park would
+                        // mislead. Ends when the pilot ends guidance (Stop button →
+                        // SetDestinationGate(null) → ResetLocked) or moves off the stop (below).
+                        if (!_overshootStop) _beeper.Update(alongM, active: true);
+                        // Two escape paths, both required:
+                        // • ABSOLUTE distance (not along-track) for taxi-away — along-track goes
+                        //   NEGATIVE once the stop is behind the aircraft, so the old
+                        //   `alongM > 75` check could never fire for a forward taxi-out and the
+                        //   state (and solid tone) latched forever. Raw distance works in every
+                        //   direction, including a next-flight stale gate hundreds of km away.
+                        // • BACK-UP re-arm for a retry: a pilot who overshoots (or wants a better
+                        //   park) backs up a few metres — re-arming to Idle lets the normal
+                        //   Idle/Armed → ShouldEngage path re-engage with fresh milestones.
+                        if (distM > DockingGeometry.DisengageRangeMetres || alongM > RearmBackupMetres)
+                            ResetLocked();
                         break;
                 }
             }
@@ -272,15 +328,19 @@ public sealed class DockingGuidanceManager : IDisposable
         if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
-    private void EngageLocked(double doorAlongM)
+    private void EngageLocked(double alongM)
     {
         _state = DockState.Docking;
+        _isActiveSnap = true;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
-            if (doorAlongM < _milestones[i].TriggerMetres) _milestoneSaid[i] = true; // already past this milestone at engage
+            if (alongM < _milestones[i].TriggerMetres) _milestoneSaid[i] = true; // already past this milestone at engage
         _slowDownSaid = false;
-        string dist = DistanceFormatter.FromMetres(doorAlongM);
+        _overshootStop = false;
+        _stoppedSinceUtc = DateTime.MinValue;
+        _stoppedShortSaid = false;
+        string dist = DistanceFormatter.FromMetres(alongM);
 
         if (_gate?.IsDeiceArea == true)
         {
@@ -353,7 +413,7 @@ public sealed class DockingGuidanceManager : IDisposable
     /// the gate stop heading, and the aircraft heading. Path:
     /// %LOCALAPPDATA%\MSFSBlindAssist\logs\docking.log. Never throws.
     /// </summary>
-    private void DockLog(double gs, double distM, double alongM, double doorAlongM,
+    private void DockLog(double gs, double distM, double alongM,
                          double hdgErr, double lineupErr, double crossFt,
                          double stopHeadingTrue, double acHdgTrue,
                          double stopLat, double stopLon, double acLat, double acLon)
@@ -366,13 +426,13 @@ public sealed class DockingGuidanceManager : IDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(DockLogPath)!);
             File.AppendAllText(DockLogPath, string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} doorAlong={5:F1} " +
-                "hdgErr={6:F1} lineupErr={7:F1} crossFt={8:F1} stopHdgTrue={9:F1} acHdgTrue={10:F1} " +
-                "offset={11:F2} stopOffL={12:F2} stopOffLat={13:F2} deice={14} " +
-                "stopLat={15:F8} stopLon={16:F8} acLat={17:F8} acLon={18:F8}{19}",
-                DateTime.Now, _state, gs, distM, alongM, doorAlongM,
+                "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} " +
+                "hdgErr={5:F1} lineupErr={6:F1} crossFt={7:F1} stopHdgTrue={8:F1} acHdgTrue={9:F1} " +
+                "stopOffL={10:F2} stopOffLat={11:F2} deice={12} " +
+                "stopLat={13:F8} stopLon={14:F8} acLat={15:F8} acLon={16:F8}{17}",
+                DateTime.Now, _state, gs, distM, alongM,
                 hdgErr, lineupErr, crossFt, stopHeadingTrue, acHdgTrue,
-                _doorOffsetMetres, _stopOffset.LongitudinalMetres, _stopOffset.LateralMetres,
+                _stopOffset.LongitudinalMetres, _stopOffset.LateralMetres,
                 _gate?.IsDeiceArea == true, stopLat, stopLon, acLat, acLon, Environment.NewLine));
         }
         catch { /* logging must never break docking */ }
@@ -450,14 +510,21 @@ public sealed class DockingGuidanceManager : IDisposable
             offset.LongitudinalMetres, offset.LateralMetres, out sLat, out sLon);
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
-    private void ResetLocked() { SilenceLocked(); try { _beeper.Stop(); } catch { } _state = DockState.Idle; _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>(); _slowDownSaid = false; }
+    private void ResetLocked()
+    {
+        SilenceLocked(); try { _beeper.Stop(); } catch { }
+        _state = DockState.Idle; _isActiveSnap = false;
+        _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
+        _slowDownSaid = false; _overshootStop = false;
+        _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;
+    }
 
     public void Dispose()
     {
         // Set the flag under the lock so any in-progress UpdatePosition sees it
         // before we tear down audio. The beeper is disposed outside the lock to
         // avoid holding _lock across the beeper's own internal teardown.
-        lock (_lock) { if (_disposed) return; _disposed = true; try { _tone.Stop(); } catch { } }
+        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; try { _tone.Stop(); } catch { } }
         _beeper.Dispose();
     }
 }

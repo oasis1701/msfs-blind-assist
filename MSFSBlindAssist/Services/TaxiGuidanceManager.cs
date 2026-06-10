@@ -73,29 +73,20 @@ public class TaxiGuidanceManager : IDisposable
 
     private bool _dockingActive;
     /// <summary>
-    /// True when docking guidance OWNS the terminal arrival for the destination gate — fed from
-    /// <c>DockingGuidanceManager.OwnsArrival</c> (a gate is set and docking is enabled), NOT just
-    /// when the final approach has engaged. While true, taxi suppresses its OWN terminal arrival
-    /// callouts (the parking countdown, "Stop. Hold position.", the "Align with…"/"Destination
-    /// reached" verbal, and the gate-lineup "Parking brake.") so it never contradicts docking's
-    /// countdown to the precise GSX stop — which sits a few metres beyond taxi's route-end node.
-    /// Covering the whole approach (not just the engaged window) matters because taxi can reach
-    /// its node and try to say "Stop. Hold position." a moment before docking formally engages.
-    /// Taxi still routes + steers to the gate vicinity (its tone is muted separately, via
-    /// SetSteeringToneSuppressed, only once docking actually engages).
+    /// True while docking guidance is ENGAGED on the destination gate (its state machine is in
+    /// Docking or Stopped) — fed per-frame from <c>DockingGuidanceManager.IsActive</c>. While
+    /// true, taxi suppresses its OWN terminal arrival callouts (the parking countdown, "Stop.
+    /// Hold position.", the "Align with…"/"Destination reached" verbal, and the gate-lineup
+    /// "Parking brake.") so it never contradicts docking's countdown to the precise GSX stop —
+    /// which sits a few metres beyond taxi's route-end node. ENGAGE-LATCHED by design: before
+    /// docking engages, taxi speaks its normal arrival sequence — so a gate where docking never
+    /// engages (approach outside the cone, stop beyond engage range, navdata heading off) still
+    /// gets full verbal arrival guidance instead of total silence. Do NOT widen this back to
+    /// "a gate is set" semantics — that silenced every navdata user's gate arrival.
+    /// Written and read on the same marshalled UI-thread frame (write follows taxi's own
+    /// UpdatePosition in the MainForm handler), so a plain bool is safe; worst case one frame stale.
     /// </summary>
     public void SetDockingActive(bool active) { _dockingActive = active; }
-
-    /// <summary>
-    /// True while taxi is actively steering a route — route-following (Taxiing) or gate
-    /// lineup (LiningUp). Docking reads this to mute its own lateral tone and let taxi
-    /// steer the connector turns into the gate, swapping to docking's precise lateral
-    /// cue only once taxi has finished steering.
-    /// </summary>
-    public bool IsSteeringActive
-    {
-        get { lock (_stateLock) { return _route != null && (_state == TaxiGuidanceState.Taxiing || _state == TaxiGuidanceState.LiningUp); } }
-    }
 
     // Single lock serializing all access to _route / _graph / _state and related
     // tracking fields between the SimConnect position thread (UpdatePosition)
@@ -1900,6 +1891,12 @@ public class TaxiGuidanceManager : IDisposable
             return;
         }
 
+        // All three callouts already fired — nothing left to compute. (Without this
+        // early-out the live-distance label below was re-formatted ~30×/s for the
+        // entire stationary wait at the hold line: pure garbage on the position thread.)
+        if (_holdShortOuterAnnounced && _holdShortSlowDownAnnounced && _holdShortStopAnnounced)
+            return;
+
         double distFeet = distToTargetM * METERS_TO_FEET;
         string what = !string.IsNullOrEmpty(currentSeg.HoldShortRunway)
             ? currentSeg.HoldShortRunway
@@ -1921,25 +1918,25 @@ public class TaxiGuidanceManager : IDisposable
 
         // Hold-short speaks the LIVE distance: its triggers are speed-proportional
         // and cannot be pre-tabulated like the fixed parking/exit/runway-end milestones.
-        string distLabel = DistanceFormatter.FromFeet(distFeet);
+        // Formatted only inside the firing branch — not per frame.
 
         // Fire in natural countdown order. Each block returns after announcing so
         // only one callout fires per frame — no stacking.
         if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {distLabel}.");
+            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}.");
             _holdShortOuterAnnounced = true;
             return;
         }
         if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {distLabel}. Slow down.");
+            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
             _holdShortSlowDownAnnounced = true;
             return;
         }
         if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {distLabel}. Stop.");
+            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
             _holdShortStopAnnounced = true;
             return;
         }
@@ -2116,6 +2113,10 @@ public class TaxiGuidanceManager : IDisposable
 
         // Runway destination: hold-short countdown owns the callouts — skip parking.
         if (_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
+            return;
+
+        // All milestones fired — skip the per-frame table build (it allocates).
+        if (_parkingAnnounce50 && _parkingAnnounce20 && _parkingAnnounce10)
             return;
 
         var pm = DistanceMilestones.ParkingArrival(); // far->near: [0]=50ft/15m, [1]=20ft/10m, [2]=10ft/5m
@@ -3342,45 +3343,55 @@ public class TaxiGuidanceManager : IDisposable
         // in BeginLandingRollout). Use ">= threshold" with a generous
         // window so a fast aircraft skipping past 1500 ft between frames
         // doesn't lose the announcement.
-        string exitClass = _rolloutExit.ExitType switch
+        // Skip the per-frame label/table builds once all have fired (they allocate at
+        // 30 Hz during the most latency-sensitive audio phase). The 900 ft cue only
+        // exists for high-speed exits, so it counts as "done" for the other types.
+        // NOT an early return — the turn-now callout and exit handoff below must
+        // keep running every frame.
+        bool approachCalloutsDone = _rolloutApproach1500Announced && _rolloutApproach500Announced
+            && (_rolloutApproach900Announced || _rolloutExit.ExitType != "High-speed");
+        if (!approachCalloutsDone)
         {
-            "High-speed" => "high-speed exit",
-            "End"        => "runway-end exit",
-            _            => "exit"
-        };
-        string name = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
-            ? "exit"
-            : $"taxiway {_rolloutExit.TaxiwayName}";
+            string exitClass = _rolloutExit.ExitType switch
+            {
+                "High-speed" => "high-speed exit",
+                "End"        => "runway-end exit",
+                _            => "exit"
+            };
+            string name2 = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+                ? "exit"
+                : $"taxiway {_rolloutExit.TaxiwayName}";
 
-        var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
-        if (!_rolloutApproach1500Announced && distToExitFeet <= xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
-        {
-            RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
-            AnnounceInstruction($"Approaching {exitClass} {name}, {xm[0].Label}.");
-            _rolloutApproach1500Announced = true;
-        }
+            var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
+            if (!_rolloutApproach1500Announced && distToExitFeet <= xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
+            {
+                RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
+                AnnounceInstruction($"Approaching {exitClass} {name2}, {xm[0].Label}.");
+                _rolloutApproach1500Announced = true;
+            }
 
-        // High-speed exits only: extra callout at 900 ft, analogous to the first RETIL
-        // flash (~984 ft). Gives blind pilots a second awareness cue before the 500 ft
-        // "prepare to turn" window — sighted pilots would see the first RETIL light here.
-        if (!_rolloutApproach900Announced && _rolloutExit.ExitType == "High-speed"
-            && distToExitFeet <= xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
-        {
-            RolloutDiag($"900-ft high-speed callout firing: distToExit={distToExitFeet:F0}ft");
-            AnnounceInstruction($"{CapFirst(name)}, {xm[1].Label}.");
-            _rolloutApproach900Announced = true;
-        }
+            // High-speed exits only: extra callout at 900 ft, analogous to the first RETIL
+            // flash (~984 ft). Gives blind pilots a second awareness cue before the 500 ft
+            // "prepare to turn" window — sighted pilots would see the first RETIL light here.
+            if (!_rolloutApproach900Announced && _rolloutExit.ExitType == "High-speed"
+                && distToExitFeet <= xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
+            {
+                RolloutDiag($"900-ft high-speed callout firing: distToExit={distToExitFeet:F0}ft");
+                AnnounceInstruction($"{CapFirst(name2)}, {xm[1].Label}.");
+                _rolloutApproach900Announced = true;
+            }
 
-        if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)   // feet — turn-now handoff boundary (not a milestone)
-        {
-            RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
-            // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
-            // approach speed for those exits; telling the pilot to slow down contradicts
-            // the reason they picked one.
-            bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
-            string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
-            AnnounceInstruction($"{CapFirst(name)}, {xm[2].Label}.{slowSuffix}");
-            _rolloutApproach500Announced = true;
+            if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)   // feet — turn-now handoff boundary (not a milestone)
+            {
+                RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
+                // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
+                // approach speed for those exits; telling the pilot to slow down contradicts
+                // the reason they picked one.
+                bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
+                string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
+                AnnounceInstruction($"{CapFirst(name2)}, {xm[2].Label}.{slowSuffix}");
+                _rolloutApproach500Announced = true;
+            }
         }
 
         if (!_rolloutTurnNowAnnounced && distToExitFeet <= 150.0)
@@ -3396,7 +3407,10 @@ public class TaxiGuidanceManager : IDisposable
             // initial input, not a committed turn — "gentle" prevents over-rotation.
             // ≥ 20°: genuine RETs and normal exits warrant a deliberate turn input.
             string turnWord = _rolloutExit.ExitAngleDegrees < 20.0 ? "Gentle" : "Turn";
-            AnnounceInstruction($"{turnWord} {dir} now, {name}.");
+            string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+                ? "exit"
+                : $"taxiway {_rolloutExit.TaxiwayName}";
+            AnnounceInstruction($"{turnWord} {dir} now, {exitName}.");
             _rolloutTurnNowAnnounced = true;
             // Normal exits (50–110°): reset the heading-error smoother immediately
             // so the ExitBearingTrue-based tone below starts with a sharp hard-pan
@@ -3780,6 +3794,11 @@ public class TaxiGuidanceManager : IDisposable
         // stay quiet here and rely on the stopped/turn transitions above
         // to retire the countdown when the pilot stops or maneuvers.
         if (distToEndFt <= 0) return;
+
+        // All three fired — skip the per-frame table build (it allocates). Nothing
+        // follows in this method, so the early return is safe.
+        if (_rolloutEnd1500Announced && _rolloutEnd500Announced && _rolloutEnd100Announced)
+            return;
 
         var rm = DistanceMilestones.RunwayEnd(); // far->near: [0]=1500ft/500m, [1]=500ft/150m, [2]=100ft/30m
         if (!_rolloutEnd1500Announced && distToEndFt <= rm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
@@ -4368,10 +4387,22 @@ public class TaxiGuidanceManager : IDisposable
                 /* raw = signed cross-track ft */ crossTrackFeet,
                 /* smooth = smoothed tone error */ _smoothedHeadingError);
 
-            // Aligned hysteresis now requires BOTH heading AND cross-track tight.
-            double enterHdg = 1.0, exitHdg = 2.0;
-            double enterCtr = LINEUP_CENTERLINE_TOLERANCE_FEET * 0.5; // ~12.5 ft
-            double exitCtr  = LINEUP_CENTERLINE_TOLERANCE_FEET;       // 25 ft
+            // Aligned hysteresis — heading AND cross-track, but the PRECISION depends on
+            // who finishes the park. The synthetic centerline runs through the navdata
+            // parking point, which is routinely metres off the real stand markings:
+            // • Docking ENGAGED (_dockingActive): docking's own tone + 0.3 m stop own the
+            //   precision and taxi's verbal is suppressed anyway — keep the tight
+            //   runway-grade band so the brief pre-mute window can't flap.
+            // • Docking NOT engaged (disabled / never engaged): taxi IS the arrival
+            //   guidance. Use the forgiving band — requiring ~12 ft to a possibly-offset
+            //   navdata point left correctly-parked pilots permanently "not aligned"
+            //   (no "Parking brake." cue) even though they were square on the real stand.
+            double enterHdg = _dockingActive ? 1.0 : LINEUP_HEADING_TOLERANCE_DEG - 1.0;        // 1° / 4°
+            double exitHdg  = _dockingActive ? 2.0 : LINEUP_HEADING_TOLERANCE_DEG + 2.0;        // 2° / 7°
+            double enterCtr = _dockingActive ? LINEUP_CENTERLINE_TOLERANCE_FEET * 0.5
+                                             : LINEUP_CENTERLINE_TOLERANCE_FEET;                // 12.5 / 25 ft
+            double exitCtr  = _dockingActive ? LINEUP_CENTERLINE_TOLERANCE_FEET
+                                             : LINEUP_CENTERLINE_TOLERANCE_FEET * 1.6;          // 25 / 40 ft
             bool enterAligned = Math.Abs(headingError) < enterHdg && absCrossFeet < enterCtr;
             bool stillAligned = Math.Abs(headingError) < exitHdg && absCrossFeet < exitCtr;
 
@@ -4392,21 +4423,15 @@ public class TaxiGuidanceManager : IDisposable
                 if (!_steeringToneSuppressed) _steeringTone.Resume();
             }
 
-            // Stopped but NOT yet on the centerline / not square → PULSE the tone (same
-            // cue the runway lineup uses). This is essential now that the gate uses
-            // intercept-angle: when you're off-centerline the tone steers you to the
-            // intercept-BIASED heading and then goes SILENT once you match it — so a
-            // pilot who stops there has no cue they're still a few degrees off the gate
-            // and laterally offset (GSX: "a bit to the right and askew"; ended at 323 vs
-            // the 317 gate). The pulse says "you've stopped but you're not done — keep
-            // nudging onto the centerline." Silent (and no pulse) only once genuinely
-            // aligned: cross-track < ~12.5 ft AND heading < 1°.
-            bool stoppedAndMisaligned =
-                !_lineupAnnouncedAligned &&
-                _lastGroundSpeedKts <= LINEUP_PULSE_MAX_GS_KTS &&
-                (Math.Abs(headingError) >= LINEUP_PULSE_MIN_HDG_ERR_DEG ||
-                 absCrossFeet >= LINEUP_PULSE_MIN_CROSS_FEET);
-            if (!_steeringToneSuppressed) _steeringTone.SetPulse(stoppedAndMisaligned);
+            // Gate lineup never pulses. The runway-style stopped-misaligned pulse was
+            // briefly enabled here for parking precision, but precision parking is now
+            // docking guidance's job (its engaged tone + 0.3 m stop): while docking is
+            // engaged taxi's tone is muted entirely, and while it is NOT engaged the
+            // reference is a navdata parking point that can sit metres off the real
+            // stand — pulsing 3 Hz at a correctly-parked pilot demanding precision to
+            // a wrong point is a misfeature. (Runway lineup keeps its pulse — its
+            // centerline reference is authoritative.)
+            if (!_steeringToneSuppressed) _steeringTone.SetPulse(false);
         }
     }
 
