@@ -5150,15 +5150,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_MASTER_CAUTION",
             "A32NX_AUTOPILOT_AUTOLAND_WARNING"
         },
-        ["Radios"] = new List<string>
+        // RMP readout: tuned frequencies (rendered as MHz via TryGetDisplayOverride)
+        // first, then which radio the mic transmits on. (The former separate "Radios"
+        // panel was merged into RMP — frequency tuning IS the RMP on the A320.)
+        ["RMP"] = new List<string>
         {
             "COM_ACTIVE_FREQUENCY:1",
             "COM_STANDBY_FREQUENCY:1",
             "COM_ACTIVE_FREQUENCY:2",
-            "COM_STANDBY_FREQUENCY:2"
-        },
-        ["RMP"] = new List<string>
-        {
+            "COM_STANDBY_FREQUENCY:2",
             "COM_TRANSMIT:1",
             "COM_TRANSMIT:2",
             "COM_TRANSMIT:3"
@@ -5285,7 +5285,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" }
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" }
         // "Ground Services" (Doors + Ground Equipment) was removed — doors are read-only
         // auto-announced status now and ground services are done via the flyPad Ground
         // page (parity with the A380, which has no Doors panel).
@@ -5658,17 +5658,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_SWITCH_TCAS_TRAFFIC_POSITION",
             "A32NX_SWITCH_TCAS_POSITION"
         },
-        ["Radios"] = new List<string>
+        // RMP = the one radio panel (the former "Radios" panel was merged in). Tab
+        // order is deliberate: the frequency-management controls come FIRST so tuning
+        // is one Tab away from the panel list; the rarely-touched RMP power/mode
+        // switches sit at the end.
+        ["RMP"] = new List<string>
         {
             "COM_STANDBY_FREQUENCY_SET:1",
             "COM_ACTIVE_FREQUENCY_SET:1",
             "COM1_RADIO_SWAP",
             "COM_STANDBY_FREQUENCY_SET:2",
             "COM_ACTIVE_FREQUENCY_SET:2",
-            "COM2_RADIO_SWAP"
-        },
-        ["RMP"] = new List<string>
-        {
+            "COM2_RADIO_SWAP",
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
         },
