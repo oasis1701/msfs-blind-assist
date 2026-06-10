@@ -31,6 +31,12 @@ static class Program
                 StartupLogger.Log("========================================");
                 StartupLogger.LogSystemInfo();
 
+                // One-time, best-effort move of legacy Roaming-root *.log files into the
+                // canonical %LOCALAPPDATA%\MSFSBlindAssist\logs folder, so testers have
+                // exactly ONE place to find logs even after running older builds.
+                AppLogs.MigrateLegacyLogs();
+                StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
+
                 // Allocate a console for NVDA to monitor (do this early for logging)
                 StartupLogger.Log("Allocating console window...");
                 AllocConsole();

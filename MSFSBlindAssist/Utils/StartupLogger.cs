@@ -5,7 +5,11 @@ namespace MSFSBlindAssist.Utils;
 
 /// <summary>
 /// Logs startup initialization steps to help diagnose launch failures.
-/// Logs are written to both Debug output and a file in the user's temp directory.
+/// Logs are written to both Debug output and <c>startup.log</c> in the canonical
+/// MSFSBA logs folder (<see cref="AppLogs.Dir"/>) — NOT the temp directory, so a
+/// tester finds it next to every other MSFSBA log. The file is truncated at each
+/// launch: launch-failure diagnosis only ever needs the most recent run, and a
+/// single stable filename beats an ever-growing pile of timestamped temp files.
 /// </summary>
 public static class StartupLogger
 {
@@ -15,10 +19,17 @@ public static class StartupLogger
 
     static StartupLogger()
     {
-        // Create log file in temp directory with timestamp
-        string tempPath = Path.GetTempPath();
-        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        LogFilePath = Path.Combine(tempPath, $"MSFSBlindAssist_Startup_{timestamp}.log");
+        LogFilePath = AppLogs.PathFor("startup.log");
+        try
+        {
+            // Truncate per launch with a run header (this logger exists to diagnose
+            // THIS launch; prior runs' content is noise). Never throw from a static
+            // ctor — a failed truncate just means the appends below inherit the old
+            // content, which is harmless.
+            File.WriteAllText(LogFilePath,
+                $"# MSFSBlindAssist startup log — run started {DateTime.Now:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}");
+        }
+        catch { /* keep going; appends may still work */ }
     }
 
     /// <summary>

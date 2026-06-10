@@ -46,11 +46,9 @@ public class LandingExitPlanner
     private const double LANDING_MIN_GS_KNOTS = 40.0;
 
     // Diagnostic log so we can see why activation didn't fire when only the
-    // "On ground" callout was heard at touchdown. Same pattern as taxi router:
-    // ApplicationData\MSFSBlindAssist\landing_exit.log.
-    private static readonly string DiagLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "landing_exit.log");
+    // "On ground" callout was heard at touchdown. Lives with every other MSFSBA
+    // log in the canonical %LOCALAPPDATA%\MSFSBlindAssist\logs folder (AppLogs).
+    private static readonly string DiagLogPath = Utils.AppLogs.PathFor("landing_exit.log");
 
     private static void DiagLog(string msg)
     {

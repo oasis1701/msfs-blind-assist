@@ -897,9 +897,7 @@ public partial class MainForm : Form
                     _diagLoggedFirstRolloutPos = true;
                     try
                     {
-                        string diagPath = System.IO.Path.Combine(
-                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                            "MSFSBlindAssist", "landing_exit.log");
+                        string diagPath = MSFSBlindAssist.Utils.AppLogs.PathFor("landing_exit.log");
                         System.IO.File.AppendAllText(diagPath,
                             $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] First TAXI_GUIDANCE_POSITION in LandingRollout: " +
                             $"lat={pos.Latitude:F6} lon={pos.Longitude:F6} hdgMag={pos.HeadingMagnetic:F1} " +
@@ -2960,9 +2958,7 @@ public partial class MainForm : Form
         // them with the rollout-phase per-frame log entries.
         try
         {
-            string diagPath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MSFSBlindAssist", "landing_exit.log");
+            string diagPath = MSFSBlindAssist.Utils.AppLogs.PathFor("landing_exit.log");
             System.IO.File.AppendAllText(diagPath,
                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] OnTaxiGuidanceStateChanged newState={newState}{Environment.NewLine}");
         }

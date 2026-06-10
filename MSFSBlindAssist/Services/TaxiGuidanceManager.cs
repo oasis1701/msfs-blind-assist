@@ -236,9 +236,7 @@ public class TaxiGuidanceManager : IDisposable
     // APPENDS a session header (preserving prior sessions' traces for post-flight analysis),
     // so the file grows across sessions. To bound that growth it is truncated at LoadRoute
     // time once it exceeds MAX_GUIDANCE_LOG_BYTES.
-    private static readonly string GuidanceLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "taxi_guidance.log");
+    private static readonly string GuidanceLogPath = Utils.AppLogs.PathFor("taxi_guidance.log");
     private DateTime _lastGuidanceLogTime = DateTime.MinValue;
     private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
     // Size cap for the cross-session diagnostic trace. A single taxi tops out ≈2 MB
@@ -5165,9 +5163,7 @@ public class TaxiGuidanceManager : IDisposable
     // rollout-phase per-frame loop is interleaved with the planner's touchdown
     // events. Cheap (one File.AppendAllText per ~few seconds during rollout);
     // entirely removed once we've identified the root cause of the RJAA bug.
-    private static readonly string _rolloutDiagPath = System.IO.Path.Combine(
-        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "landing_exit.log");
+    private static readonly string _rolloutDiagPath = Utils.AppLogs.PathFor("landing_exit.log");
 
     private static void RolloutDiag(string msg)
     {

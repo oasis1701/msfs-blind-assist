@@ -71,6 +71,10 @@ This lazy-loading pattern keeps the tree lightweight (fewer total nodes) and avo
 
 `NavdataReaderBuilder.GetDefaultDatabasePath` delegates to the resolver and is safe for reads. The MS Store package name for FS2024 is `Microsoft.Limitless_8wekyb3d8bbwe` (not "FlightSimulator2024"); FS2020 is `Microsoft.FlightSimulator_8wekyb3d8bbwe`. Both are referenced in `NavdataReaderBuilder.GetMSFSBasePath` when resolving `UserCfg.opt` for the scenery base path.
 
+### Diagnostic Logs — ONE folder, via `Utils/AppLogs`
+
+**CRITICAL:** Every diagnostic log lives in `%LOCALAPPDATA%\MSFSBlindAssist\logs` and every log path MUST be resolved through `Utils/AppLogs.PathFor("name.log")` — never hand-build a log path. Historically logs were scattered (taxi/rollout logs in the Roaming root `%APPDATA%\MSFSBlindAssist\`, the startup log in `%TEMP%`, GSX/docking logs in Local\logs), which made "send me your logs" support unanswerable — testers opened Roaming, found settings + databases, and no logs. `AppLogs.MigrateLegacyLogs()` (called once at startup in `Program.Main`) best-effort moves any legacy Roaming-root `*.log` into the canonical folder. Current files: `taxi_guidance.log`, `taxi_router.log`, `landing_exit.log`, `gsx-gate-select.log`, `docking.log`, `docking-aircraft.log`, `startup.log` (truncated per launch), `input_events.txt`. The tester instruction is always: **Windows+R → `%LOCALAPPDATA%\MSFSBlindAssist\logs`**. Settings + databases stay in Roaming — only logs live in Local (machine-specific diagnostics shouldn't roam).
+
 ### Taxi Guidance
 
 **Feature:** Turn-by-turn taxi assistance — stereo-panned steering tone + spoken announcements, driven by a graph built from the navdatareader `taxi_path` / `start` / `parking` tables. Works on any airport the user's DB exposes.
