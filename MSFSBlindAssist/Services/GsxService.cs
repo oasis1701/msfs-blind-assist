@@ -1854,8 +1854,7 @@ public sealed class GsxService : IDisposable
         value = string.Empty;
 
         var iniTarget = GetIniTarget(item);
-        if (savedValues.TryGetValue(iniTarget.Key, out string? savedValue)
-            || savedValues.TryGetValue(item.Key, out savedValue))
+        if (savedValues.TryGetValue(GetIniLookupKey(iniTarget.Section, iniTarget.Key), out string? savedValue))
         {
             value = FormatSettingValueForUi(item, savedValue);
             return true;
@@ -1869,6 +1868,14 @@ public sealed class GsxService : IDisposable
         if (item.Key.StartsWith("audioDevice_", StringComparison.OrdinalIgnoreCase)
             && string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase))
         {
+            if (string.IsNullOrWhiteSpace(iniValue))
+            {
+                var noAudioChoice = item.Choices.FirstOrDefault(choice =>
+                    Math.Abs(choice.Value) < 0.000001
+                    || choice.Label.Contains("no audio", StringComparison.OrdinalIgnoreCase));
+                return noAudioChoice is null ? item.Value : FormatInvariantNumber(noAudioChoice.Value);
+            }
+
             string normalizedSaved = NormalizeAudioDeviceName(iniValue);
             foreach (var choice in item.Choices)
             {
@@ -1948,6 +1955,7 @@ public sealed class GsxService : IDisposable
         StripUtf8BomIfPresent(configPath);
 
         bool inSettingsSection = false;
+        string currentSection = string.Empty;
         try
         {
             foreach (string rawLine in File.ReadLines(configPath, Encoding.UTF8))
@@ -1959,6 +1967,7 @@ public sealed class GsxService : IDisposable
                 if (line.StartsWith('[') && line.EndsWith(']'))
                 {
                     string section = line[1..^1].Trim();
+                    currentSection = section;
                     inSettingsSection =
                         string.Equals(section, GsxConfigSectionName, StringComparison.OrdinalIgnoreCase)
                         || string.Equals(section, CommonConfigSectionName, StringComparison.OrdinalIgnoreCase);
@@ -1975,7 +1984,7 @@ public sealed class GsxService : IDisposable
                 string key = line[..equals].Trim();
                 string value = line[(equals + 1)..].Trim();
                 if (key.Length > 0)
-                    result[key] = value;
+                    result[GetIniLookupKey(currentSection, key)] = value;
             }
         }
         catch (Exception ex)
@@ -2139,15 +2148,20 @@ public sealed class GsxService : IDisposable
         string text = NormalizeWhitespace(value)
             .Replace("★", string.Empty)
             .Replace("â˜…", string.Empty)
+            .Replace("Ã¢Ëœâ€¦", string.Empty)
             .Trim();
 
         text = Regex.Replace(text, @"^Default\s+[—-]\s+", string.Empty, RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"^Default\s+[â€”-]\s+", string.Empty, RegexOptions.IgnoreCase);
         return text;
     }
 
     private static bool IsPercentStoredAsUnitInterval(GsxSettingItem item) =>
         item.Key.StartsWith("audioVolume", StringComparison.OrdinalIgnoreCase)
         && !string.Equals(item.Key, "ui_volume", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetIniLookupKey(string section, string key) =>
+        section.Trim().ToLowerInvariant() + "\0" + key.Trim().ToLowerInvariant();
 
     private static string FormatInvariantNumber(double value) =>
         value.ToString("0.###", CultureInfo.InvariantCulture);
