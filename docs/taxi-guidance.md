@@ -544,6 +544,12 @@ Both the Gate Teleport and Taxi Assist gate pickers have a type-to-filter box
 (`GateSearchFilter`) matching on name + number + suffix, with concourse-token
 filtering — works with or without GSX.
 
+**Per-ICAO gate-list cache.** `TaxiAssistForm` caches the airport's gate list as
+(spot, resolved graph node) pairs per ICAO; the search box and the fitting filter
+then filter **in memory** on each keystroke (matching the `GateTeleportForm`
+pattern). Do not reintroduce per-keystroke directory enumeration + navdata query
++ per-spot nearest-node resolution on the UI thread.
+
 ### "Show only fitting stands" filter
 
 The fitting checkbox uses `ParkingSpot.FitsAircraft(wingspanFeet)`, which is
@@ -583,14 +589,33 @@ they match before announcing success. Tuning lives in one place
 (`GsxMenuClassifier`); the full walk is logged to
 `%LOCALAPPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
 
+**Matching and reentrancy hardening:**
+
+- **Bare-number leaf fallback.** A letterless GSX menu leaf ("Parking 209") now
+  matches a navdata-lettered target ("P 209" — the letter was borrowed by the
+  merger for display) on bare number alone. Exact identity match is always tried
+  first; the fallback is logged as `MATCH-BARENUMBER`. Fixes a guaranteed
+  "not found" at EGLL-style airports.
+- **`SelectGateAsync` reentrancy latch** (`Interlocked`). Two Calculate clicks
+  could interleave two DFS traversals on one live GSX menu — the `IsMenuActive`
+  guard reads false during every menu transition, so it cannot prevent the
+  overlap — pressing arbitrary wrong entries. The second call now fails fast.
+- **Classifier ordering** (`GsxMenuClassifier`): the `"(N suitable parkings)"`
+  count-suffix Category check runs **before** the Back check (a group like
+  "Main Apron (12 suitable parkings)" classified as Back made every stand inside
+  unreachable and desynced `BackOutAsync`), and the "main"/"top" back-patterns
+  are full phrases ("main menu" / "back to top") so apron and terminal names
+  cannot false-positive as Back.
+
 ## VDGS / Marshalling Docking
 
 After a taxi route to a gate is calculated, **docking guidance auto-engages** when
 the aircraft is on the ground near the selected gate's stop position — specifically
 when ground speed is low (≤ 15 kt), the aircraft is within the engage range of the
 stop position, and it is roughly facing the gate (within the 70° cone). Docking
-guidance is purely additive: it does not modify or interrupt taxi guidance, and it
-runs alongside the gate-arrival countdown from `TaxiGuidanceManager`.
+guidance never modifies taxi guidance's route or state; until it actually engages,
+taxi runs its normal arrival sequence in full, and once engaged docking owns the
+arrival callouts (see *Engage-latched arrival ownership* below).
 
 **Engage range**: For `.ini` gates that carry a `gatedistancethreshold` value (the
 distance at which GSX activates the VDGS), that value is used as the engage range
@@ -642,22 +667,37 @@ On reaching the stop position:
 
 ### Target position precedence (universal)
 
-The stop position used for all geometry is chosen in this order of priority:
+Two different "positions" exist per spot, and they have different priority chains:
 
-1. **GSX VDGS/marshaller nose-stop** — `ParkingSpot.StopLatitude / StopLongitude /
-   StopHeading` (sourced from the GSX profile's `parkingsystem_stopposition` key
-   parsed by `GsxProfileParser`). This is the most precise position; it matches
-   what the visual SafeDock/marshaller boards display inside the sim.
-2. **GSX parking position** — the `this_parking_pos` coordinate from the GSX
-   profile (carried on `ParkingSpot` when a GSX profile is active). Accurate for
-   gate centre but may not be the precise nose-stop.
-3. **Navdata parking position** — the raw parking spot lat/lon from the
-   `LittleNavMapProvider` / navdatareader `parking` table. Least precise; used
-   when GSX is absent or has no matching profile.
+**Docking stop target** — `DockingGuidanceManager` reads the preserved
+`ParkingSpot.StopLatitude / StopLongitude / StopHeading` fields **directly**
+(sourced from the GSX profile's `parkingsystem_stopposition` key parsed by
+`GsxProfileParser`) and falls back to the spot's position when they are absent.
+The stop position is the most precise docking reference; it matches what the
+visual SafeDock/marshaller boards display inside the sim. `StopHeading` is the
+gate-facing true heading used as the centreline reference for both lateral
+steering and the along-track distance calculation.
 
-`StopHeading` (from the GSX profile) is the gate-facing true heading and is used
-as the centreline reference for both lateral steering and the along-track distance
-calculation.
+**Spot position (display / teleport / routing)** — chosen by `GsxNavdataMerger`
+in this order:
+
+1. **GSX parking position** — the `this_parking_pos` coordinate (the actual
+   aircraft-datum parking position).
+2. **Navdata parking position** — the raw parking spot lat/lon from the
+   `LittleNavMapProvider` / navdatareader `parking` table (also an aircraft-datum
+   location).
+3. **GSX VDGS nose-stop** — LAST resort only. The stop position is a **nose-stop
+   reference, not an aircraft-datum spawn**: teleporting at it placed the datum
+   metres deep into the stand, sometimes at heading 0 when `StopHeading` was
+   absent. (It previously sat second, ahead of navdata, which mis-placed
+   stop-position-only gates.) Demoting it loses nothing for docking — the `Stop*`
+   fields are carried on the spot separately, so docking still drives to the real
+   nose-stop.
+
+**No cross-concourse coordinate borrowing.** When a GSX gate has a concourse, the
+merger only borrows a navdata candidate's coordinates if the normalized concourses
+match; otherwise the spot is **dropped** rather than silently routing a blind
+pilot to the wrong pier (e.g. "A12" listed at B12's position).
 
 ### GSX `.py` per-aircraft stop offset
 
@@ -688,7 +728,11 @@ offset and feeds it to `DockingGuidanceManager.SetStopOffset`:
   pattern (Boeing `B7Xd` → 707+X·10; Airbus `A3YZ` narrowbody literal / widebody
   300+Y·10; Embraer E-Jets literal) and the ARC code from wingspan (Annex-14:
   A&lt;15 … F≥65 m). A thin exception table holds only genuinely irregular
-  designators (B787 bare-minor, A350 idMinor 1000, neo idMinor 1, A220). So any
+  designators (B787 bare-minor, A350 idMinor 1000, neo idMinor 1, A220, and the
+  **737 MAX family** — `B37M`/`B38M`/`B39M`/`B3XM` → 737 family with
+  closest-gauge minor, because the `B3xM` designators break the `B7Xd` pattern
+  and resolved idMajor 0, silently losing every idMajor-keyed `.py` stop offset;
+  probe asserts lock this). So any
   aircraft — including ones MSFSBA has never seen — resolves to a usable id; the
   raw ICAO is always preserved so ICAO-keyed profile tables hit regardless.
 - The evaluator's group fallback tries `"ARC-E"`, bare `"E"`, and `"Heavy"` because
@@ -743,21 +787,28 @@ Idle → Armed → Docking → Stopped
 
 - **Idle** — no gate selected, or guidance is disabled in settings.
 - **Armed** — a gate with a known stop position has been selected and the aircraft
-  is within ~60 m. Waiting for low ground speed (≤ a few knots) and a roughly
-  gate-facing heading to engage.
+  is near the engage range (50 m default, or `gatedistancethreshold` clamped to
+  [20, 70] m). Waiting for low ground speed and a roughly gate-facing heading to
+  engage.
 - **Docking** — all three feedback streams are active. The manager feeds
   `TaxiSteeringTone.UpdateHeadingError`, drives the `ProximityBeeper` cadence from
   along-track distance, and fires spoken distance milestones.
 - **Stopped** — along-track distance has reached ~0 (or the aircraft has
-  overshot). Beeper silent, tone silent, `"Stop."` (or overshoot message)
-  announced.
+  overshot). Lateral tone silent; the beeper holds a solid "docked — hold
+  position" tone (except after an overshoot stop, where a "docked" marker over a
+  bad park would mislead). **Stopped is escapable** — see *Docking state
+  lifecycle* under *Docking precision & GSX stop* below: taxiing away (absolute
+  distance > 75 m, any direction) disengages, and backing up > 3 m re-arms to
+  Idle so a retry dock re-engages with fresh audio and milestones.
 
 `DockingGuidanceManager.UpdatePosition(lat, lon, headingTrue, groundSpeedKts)` is
 called from the same ~30 Hz SimConnect position handler that drives
-`TaxiGuidanceManager`. The two managers are completely independent: docking
-guidance does not touch `_route`, `_state`, or any other taxi-guidance field, and
-taxi guidance does not query docking guidance. The gate-arrival countdown in
-`TaxiGuidanceManager` continues to fire normally alongside docking feedback.
+`TaxiGuidanceManager`. Docking never touches `_route`, `_state`, or any other
+taxi-guidance field. The coupling runs the other way only, per frame in MainForm:
+`SetSteeringToneSuppressed(IsActive)` (tone mute) and `SetDockingActive(IsActive)`
+(arrival-callout ownership) — both driven by docking's engage-latched `IsActive`
+snapshot, so taxi's gate-arrival countdown fires normally **until docking
+engages** and is suppressed from then on.
 
 ### Options (Taxi Guidance Options form)
 
@@ -793,72 +844,49 @@ position sequences:
 Run with `dotnet run --project tools/DockingProbe -p:Platform=x64` → expect
 `ALL PASS`.
 
-### Door-aligned stop precision
+### Datum-aligned stop & door-side cue
 
-Real VDGS units (Safedock, ADB SAFEGATE, etc.) align the aircraft's **main
-passenger door** to the jetway bridge stop — not the aircraft's SimConnect datum
-(the model origin, typically near the nose-wheel or fuselage mid-point). GSX
-follows the same convention on a per-aircraft basis. Docking guidance therefore
-computes the **door's** distance to the stop, not the datum's:
+The aircraft **DATUM** stops at the parking/stop position. An MSFS parking
+position — and a GSX stop position — is where the aircraft *reference* (the model
+origin) sits when correctly parked; the scenery jetway is placed to reach the
+door for that datum location. Docking guidance therefore drives the datum to the
+stop coordinate with **no door correction**: the "Stop" threshold is **0.3 m**
+(`StopToleranceMetres`, see *Docking precision & GSX stop* below).
 
-```
-doorDistanceToStop = alongTrackToStop − doorOffset
-```
+**Do NOT reintroduce a door-offset subtraction.** An earlier build subtracted the
+per-aircraft `gsx.cfg` door offset from the along-track distance
+(`doorDistanceToStop = alongTrackToStop − doorOffset`). That was wrong — the
+`gsx.cfg` `[exit] pos` longitudinal column describes where the door is **on the
+airframe**, not a stop offset — and it parked a B777 ~26 m short of the gate.
+After the datum-alignment fix the offset survived only as dead telemetry-only
+plumbing (`SetDoorOffsetMetres`); that plumbing is now **removed end-to-end**.
+Per-airframe stop depth is handled by the GSX `.py` per-aircraft stop offset (see
+*GSX `.py` per-aircraft stop offset* above), which shifts the stop **target**
+the way GSX's own VDGS does.
 
-where `doorOffset` is the loaded aircraft's main-door longitudinal offset forward
-of the SimConnect datum, in metres. The aircraft stops when the datum is
-`doorOffset` metres short of the gate stop coordinate, so the door lands exactly
-on the stop. With this correction applied, the "Stop" threshold is **0.3 m**
-(`StopToleranceMetres`, see *Docking precision & GSX stop* below) — tight enough
-to land the door within jetway-bridge tolerance.
+**What `gsx.cfg` still feeds: the door SIDE cue.**
+`Services/Gsx/GsxAirplaneProfile.cs` reads each aircraft's `gsx.cfg`
+`[exit<preferredexit>] pos` lateral (first) column — negative = left — to
+announce *"Jetway on your left/right."* (or *"Door on your …"* for stands
+without a jetway) at docking engage. The scan covers aircraft package folders
+(`…\SimObjects\Airplanes\*\gsx.cfg`, package root from `UserCfg.opt`) and GSX's
+per-aircraft profiles (`%APPDATA%\Virtuali\Airplanes\*\gsx.cfg`), runs on a
+background thread, and is cached for the session. Hardening: the map build is
+**single-flight via `Lazy`** (concurrent multi-second scans can't race), the
+directory walk is **depth-bounded (6)** so texture/sound trees are never crawled,
+and `UserCfg.opt` parsing **excludes `InstalledPackagesPathNextBoot`** lines
+(which could resolve a not-yet-active packages path after a relocation).
+`MainForm.OnAircraftIcaoTypeDetected` locks its `_refreshedIcaos` set and
+rechecks the ICAO is still current before publishing the door side, so a late
+refresh for the previous aircraft cannot clobber the new one. Aircraft with no
+`gsx.cfg` simply get no door-side phrase.
 
-**Data source — no hardcoding.** The per-aircraft door offset is read from GSX's
-own `gsx.cfg` rather than any static table maintained in MSFSBA. The relevant
-entry is `[exit<preferredexit>] pos`, where the second column (forward-positive,
-metres) is the longitudinal offset from the SimConnect datum to the main
-passenger door. This has been confirmed against wing and fuselage geometry for
-several aircraft.
-
-`Services/Gsx/GsxAirplaneProfile.cs` scans for `gsx.cfg` in two locations on a
-background thread at startup (scan takes approximately 12 seconds; result is
-cached for the session):
-
-1. **Aircraft package folders** — `<CommunityOrOfficial>\<pkg>\SimObjects\Airplanes\*\gsx.cfg`.
-   FlyByWire and iniBuilds ship their own `gsx.cfg` files here. The sim's package
-   root is read from `UserCfg.opt` using the same resolver already used for
-   navdata.
-2. **GSX per-aircraft profiles** — `%APPDATA%\Virtuali\Airplanes\*\gsx.cfg`. GSX
-   writes one of these for each aircraft the user has used with GSX, so even
-   aircraft that do not ship their own profile are covered once the user has
-   docked at least once.
-
-The scanner builds an ICAO-type → offset map. The loaded aircraft is matched by
-its ICAO type code from SimConnect `ATC MODEL`. Aircraft for which no `gsx.cfg`
-is found fall back to `doorOffset = 0`, which is the datum-aligned behaviour
-unchanged from before this feature — the "Stop" milestone fires at the stop
-coordinate itself, with no door correction applied.
-
-**Verified offsets from real GSX profiles (representative examples):**
-
-| Aircraft | ICAO type | Door offset (m) |
-|---|---|---|
-| Boeing 777-300ER | B77W | 25.93 |
-| Airbus A320neo | A20N | 8.51 |
-| Airbus A380-800 | A388 | 28.90 |
-| Airbus A350-900 | A359 | 22.01 |
-| Boeing 787-9 | B789 | 22.20 |
-
-**Engage cadence.** Docking guidance auto-engages on the ground within
-approximately 60 m of the door stop (not the datum stop) at ≤ 15 kt, provided
-the aircraft is roughly facing the gate. Distance milestones are unit-native
-(metres or feet per the Distance units setting). "Slow down" is announced at
-6 m. "Stop" fires at 0.3 m (`StopToleranceMetres`).
-
-**Python per-aircraft stop offsets ARE now applied.** GSX's per-gate, per-aircraft
-`customOffset` Python (`.py`) adjustments — once a documented out-of-scope
-limitation — are read and applied to the docking stop. See *GSX `.py` per-aircraft
-stop offset* above for the resolver chain; it applies to every non-deice gate
-(including `.ini` gates) on top of the `gsx.cfg` door offset.
+**Engage cadence.** Docking guidance auto-engages on the ground within the engage
+range of the stop (50 m default, or the gate's `gatedistancethreshold` clamped to
+[20, 70] m) at ≤ 15 kt, provided the aircraft is roughly facing the gate.
+Distance milestones are unit-native (metres or feet per the Distance units
+setting). "Slow down" is announced at 6 m. "Stop" fires at 0.3 m
+(`StopToleranceMetres`).
 
 ### Docking precision & GSX stop
 
@@ -870,14 +898,23 @@ bridge tolerance and the pilot gets an unambiguous "stop here" cue.
   overshoot), fired outside its lock. `MainForm` subscribes and calls
   `taxiGuidanceManager.StopGuidance()` (thread-safe and silent), so the flow ends
   cleanly instead of taxi sitting in LiningUp forever after parking.
-- **Taxi suppresses its terminal callouts for the whole gate approach.** `MainForm`
-  feeds `taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.OwnsArrival)`,
-  where `OwnsArrival` = a gate is set **and** docking is enabled — not the narrower
-  `IsActive`. So taxi's "Stop. Hold position.", "Align with X", "Destination
-  reached", and gate-lineup "Parking brake." are suppressed even *before* docking
-  formally engages, preventing taxi from telling the pilot to stop at its route-end
-  node while docking is still guiding them a few metres deeper to the GSX stop.
-  (`IsActive` still drives the steering-tone mute via `SetSteeringToneSuppressed`.)
+- **Engage-latched arrival ownership.** `MainForm` feeds
+  `taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.IsActive)`, where
+  `IsActive` = the docking state machine is **engaged** (Docking or Stopped) — a
+  lock-free volatile snapshot, so the per-frame read costs no lock (and no
+  SettingsManager static-lock acquisition). Taxi speaks its FULL arrival
+  sequence — parking countdown, "Stop. Hold position.", "Align with X",
+  "Destination reached", "Parking brake." — right up until docking actually
+  engages; once engaged, docking owns the arrival through Stopped and taxi stays
+  quiet so the two never contradict. **Do NOT widen this back to gate-set
+  semantics** (the removed `OwnsArrival` = gate set + docking enabled): with that
+  design, a navdata gate where docking never engages — approach outside the 70°
+  cone, stop beyond engage range, approximate navdata heading — arrived in
+  **total verbal silence**. The deliberate trade: a brief sequential overlap is
+  possible (taxi's stop callout fires, then docking engages with its own
+  countdown a moment later); that overlap is self-correcting and far better than
+  silent arrivals. The same `IsActive` read also drives the steering-tone mute
+  via `SetSteeringToneSuppressed`.
 - **Jetway-precise lateral lineup** (`ComputeLineupError`). The intercept dead-band
   was tightened **8 ft → 1 ft** (the 8 ft band stopped correcting cross-track below
   8 ft, parking the aircraft up to ~2.4 m off centerline), and `SaturationFt` went
@@ -906,7 +943,56 @@ bridge tolerance and the pilot gets an unambiguous "stop here" cue.
     beeper is held in its solid mode and keeps sounding through the Stopped state as
     a "docked — hold position" marker, until the pilot ends guidance (Stop taxi
     guidance button → `SetDestinationGate(null)` → `ResetLocked` stops it) or taxis
-    away (disengage at > 75 m).
+    or backs away (see the lifecycle bullet below). An **overshoot stop does NOT
+    hold the solid tone** (a "docked" marker over a bad park would mislead) and no
+    longer disposes the beeper, so a retry dock re-engages with working audio.
+- **Docking state lifecycle — Stopped is escapable, every state is exitable.**
+  - **Taxi-away disengage uses ABSOLUTE distance, not along-track.** Along-track
+    goes **negative** once the stop is behind the aircraft, so the old
+    `alongM > 75` check could never fire for a forward taxi-out and the Stopped
+    state (with its solid tone) latched forever. Raw distance > 75 m
+    (`DisengageRangeMetres`) now disengages in any direction — including a stale
+    next-flight gate hundreds of kilometres away.
+  - **Backing up > 3 m past the stop re-arms to Idle** (`RearmBackupMetres`): a
+    pilot who overshoots (or wants a better park) backs up a few metres and the
+    normal Idle/Armed → `ShouldEngage` path re-engages with fresh audio and fresh
+    milestones.
+  - **Disabling docking (or losing the gate) mid-approach fully resets**
+    (`ResetLocked`, not just silence). Leaving `_state` latched at Docking/Stopped
+    kept `IsActive` true forever, so MainForm went on muting taxi's steering tone
+    every frame and the pilot had no lateral cue for the final gate turn.
+  - **Stopped-short closure.** Engaged + sitting still (gs < 0.5 kt) for ≥ 4 s with
+    0.3–10 m still to go → *"X to stop. Continue forward."* Taxi's own
+    stopped-in-zone "Stop. Hold position." cue is suppressed while docking owns
+    the arrival, so docking must provide the verbal closure itself — otherwise the
+    pilot gets an endless fast-but-not-solid beep and no explanation.
+  - **Stale-gate lifecycle.** Takeoff-assist activation and `LandingRollout` entry
+    both clear the docking gate (`SetDestinationGate(null)`) — the previous
+    arrival is over. Without this, a stale departure gate could keep `IsActive`
+    latched on landing and mute the landing-exit rollout steering tone. (The
+    absolute-distance disengage also self-heals this, but takeoff is the
+    unambiguous boundary.)
+- **Gate-lineup "aligned" band is docking-aware; gate lineup never pulses.** The
+  aligned hysteresis in the gate-lineup branch is **tight (enter 1° / 12.5 ft,
+  exit 2° / 25 ft) only while docking is engaged** (`_dockingActive` — docking's
+  tone and 0.3 m stop own the precision, and taxi's verbal is suppressed anyway,
+  so the tight band just keeps the brief pre-mute window from flapping) and
+  **forgiving (enter 4° / 25 ft, exit 7° / 40 ft) otherwise**: the synthetic
+  centerline runs through the navdata parking point, which is routinely metres
+  off the real stand markings, and demanding ~12 ft to a possibly-offset point
+  left correctly-parked pilots permanently "not aligned" with no "Parking brake."
+  cue. The runway-style stopped-misaligned **pulse was briefly enabled for gate
+  lineup and is removed — do not re-add it**: precision parking is docking's job,
+  and pulsing 3 Hz at a correctly-parked pilot demanding precision to a wrong
+  point is a misfeature. Runway lineup keeps its pulse (its centerline reference
+  is authoritative).
+- **Hot-path gating.** Docking's far-field telemetry + lineup math run only when
+  engaged or within 150 m raw distance (`DetailRangeMetres`) — at taxi distances
+  they fed nothing but the `docking.log` line, which cost an open/append/close
+  file write twice per second on the SimConnect thread, under the docking lock,
+  for the entire taxi. Similarly on the taxi side, the hold-short / parking /
+  exit-approach / runway-end callout paths early-out once all their latches have
+  fired — don't reintroduce per-frame milestone-table builds.
 - **`docking.log` telemetry includes absolute coords.** Lines now carry
   `stopLat`/`stopLon` (the computed stop target) and `acLat`/`acLon` (aircraft
   position) alongside the relative `along`/`crossFt`, enabling a direct comparison
@@ -956,11 +1042,12 @@ recalculation work identically to any other gate destination — the pad's
 `this_parking_pos` lat/lon is the routing endpoint and the nearest graph node
 within `MAX_PARKING_TO_GRAPH_M` is the A* target.
 
-**Docking — datum-aligned (door offset = 0):**
-Deice areas centre the *aircraft* over the pad, not a passenger door at a jetway.
-`DockingGuidanceManager` detects `ParkingSpot.IsDeiceArea` and forces
-`doorOffset = 0` regardless of any loaded `gsx.cfg` entry — the stop position is
-the pad centre, and "Stop" fires when the aircraft datum reaches it. On engagement
+**Docking — pad-centre stop (no `.py` stop offset, no door-side phrase):**
+Deice areas centre the *aircraft* over the pad. All docking is datum-aligned (see
+*Datum-aligned stop & door-side cue*), and for deice pads `DockingGuidanceManager`
+additionally keeps the GSX `.py` per-aircraft stop offset at `GsxOffset.Zero` —
+the stop position is the pad centre, and "Stop" fires when the aircraft datum
+reaches it. On engagement
 the system announces **`"Deicing guidance…"`** (followed by the distance to the
 pad) instead of the SafeDock / Marshaller / neutral docking callout used for gate
 stands. All other docking streams (proximity beeper, lateral steering tone,
@@ -1028,7 +1115,7 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `CROSSING_DEDUP_WINDOW_SEC` | 45.0 | Per-taxiway-name crossing announcement dedup |
 | `MAX_TAXI_SPEED_STRAIGHT_KTS` | 30.0 | Speed-warning threshold on straight segments |
 | `MAX_TAXI_SPEED_TURN_KTS` | 12.0 | Speed-warning threshold in / approaching turns |
-| `LINEUP_HEADING_TOLERANCE_DEG` | 5.0 | Gate-lineup hysteresis center (enter at 4°, exit at 7°) |
+| `LINEUP_HEADING_TOLERANCE_DEG` | 5.0 | Gate-lineup hysteresis center — docking-aware band: enter 4° / exit 7° normally, tightened to enter 1° / exit 2° only while docking is engaged |
 | Runway-lineup heading hysteresis (literals in `UpdateLineup`) | enter 1° / exit 2° | "Lined up" announcement only fires when heading is within 1° of runway heading; tone re-resumes if drifted past 2°. Was 2°/5° but was leaving pilots 3° off with no cue |
 | Runway-lineup centerline hysteresis (literals in `UpdateLineup`) | enter 10 ft / exit 20 ft | Same as above but for cross-track. Tightened from 15/30 |
 | Runway-lineup tone thresholds (literals at the `UpdateHeadingErrorWithThresholds` call) | silent 0.5° / activation 1° / max-pan 15° | Bypasses width scaling. Tone keeps panning until heading is centered within ½°; resumes if drifted past 1° |
