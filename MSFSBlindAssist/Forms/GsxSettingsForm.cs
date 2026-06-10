@@ -392,7 +392,6 @@ public sealed class GsxSettingsForm : Form
         };
 
         SeedCommitted(item, textBox.Text);
-        textBox.TextChanged += (_, _) => CommitText(item, textBox.Text);
         textBox.Leave += (_, _) => CommitText(item, textBox.Text);
         textBox.KeyDown += (_, e) =>
         {
