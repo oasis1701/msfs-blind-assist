@@ -132,6 +132,13 @@ Assert(dA359.IdMinor >= 900, $"A359 -> idMinor >= 900 (got {dA359.IdMinor})");
 Assert(GsxAircraftIdMap.TryDeriveFromIcao("B79X", out int b79xMajor, out _), "B79X derives (family pattern)");
 Assert(b79xMajor == 797, $"B79X -> idMajor 797 (707+9*10) (got {b79xMajor})");
 
+// 737 MAX: the 'B3xM' designators break the B7xx family pattern, so they MUST resolve via the
+// exception table to the 737 family (idMajor 737) with the closest-gauge minor — not idMajor 0.
+GsxAircraftIdMap.TryResolve("B38M", 35.9, out var b38m);
+Assert(b38m.IdMajor == 737 && b38m.IdMinor == 800, $"B38M -> 737/800 (got {b38m.IdMajor}/{b38m.IdMinor})");
+GsxAircraftIdMap.TryResolve("B39M", 35.9, out var b39m);
+Assert(b39m.IdMajor == 737 && b39m.IdMinor == 900, $"B39M -> 737/900 (got {b39m.IdMajor}/{b39m.IdMinor})");
+
 // Invented widebody A37X: A3YZ widebody rule -> 300 + 7*10 = 370 (Y=7 is in the widebody set? no:
 // our set is {3,4,5,6,8}; 7 is unknown -> idMajor 0). Assert the KNOWN families derive non-zero.
 Assert(GsxAircraftIdMap.TryDeriveFromIcao("A332", out int a332Major, out int a332Minor), "A332 derives");

@@ -24,29 +24,55 @@ public readonly record struct GsxAircraftGeometry(double DoorLongitudinalMetres,
 
 public sealed class GsxAirplaneProfile
 {
+    // Bound the recursive gsx.cfg search below each package's SimObjects tree so a deep
+    // texture/sound tree can never stall the scan. Real gsx.cfg files live a few levels down;
+    // 6 is comfortable headroom (mirrors AircraftCfgCatalog.MaxScanDepth).
+    private const int MaxScanDepth = 6;
+
     private readonly object _lock = new();
-    private Dictionary<string, GsxAircraftGeometry>? _byIcao; // ICAO (upper) -> geometry
+
+    // SINGLE-FLIGHT build: the map lives behind a Lazy with ExecutionAndPublication, so the
+    // multi-second gsx.cfg scan runs EXACTLY ONCE even when two callers race (e.g. MainForm's
+    // startup warm task and the first AircraftIcaoTypeDetected handler) — the loser BLOCKS on
+    // and reuses the winner's result rather than launching a second concurrent scan. Refresh()
+    // swaps in a fresh Lazy under the lock so a later rescan picks up new profiles.
+    private Lazy<Dictionary<string, GsxAircraftGeometry>> _lazyMap;
+
+    public GsxAirplaneProfile()
+    {
+        _lazyMap = NewLazyMap();
+    }
+
+    private Lazy<Dictionary<string, GsxAircraftGeometry>> NewLazyMap()
+        => new Lazy<Dictionary<string, GsxAircraftGeometry>>(
+            BuildMap, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private Dictionary<string, GsxAircraftGeometry> Map
+    {
+        get { Lazy<Dictionary<string, GsxAircraftGeometry>> lazy; lock (_lock) { lazy = _lazyMap; } return lazy.Value; }
+    }
 
     /// <summary>Door longitudinal offset (metres, forward-positive) for the given ICAO type, or null if unknown.</summary>
     public double? GetDoorOffsetMetres(string? icaoType)
     {
         if (string.IsNullOrWhiteSpace(icaoType)) return null;
-        EnsureBuilt();
-        lock (_lock)
-            return _byIcao != null && _byIcao.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v.DoorLongitudinalMetres : (double?)null;
+        return Map.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v.DoorLongitudinalMetres : (double?)null;
     }
 
     /// <summary>Full geometry struct for the given ICAO type, or null if unknown.</summary>
     public GsxAircraftGeometry? GetGeometry(string? icaoType)
     {
         if (string.IsNullOrWhiteSpace(icaoType)) return null;
-        EnsureBuilt();
-        lock (_lock)
-            return _byIcao != null && _byIcao.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v : (GsxAircraftGeometry?)null;
+        return Map.TryGetValue(icaoType.Trim().ToUpperInvariant(), out var v) ? v : (GsxAircraftGeometry?)null;
     }
 
     /// <summary>Force a rescan (e.g. after a new aircraft profile is created).</summary>
-    public void Refresh() { lock (_lock) { _byIcao = null; } EnsureBuilt(); }
+    public void Refresh()
+    {
+        Lazy<Dictionary<string, GsxAircraftGeometry>> fresh = NewLazyMap();
+        lock (_lock) { _lazyMap = fresh; }
+        _ = fresh.Value; // trigger the single rebuild now (still single-flight via the Lazy)
+    }
 
     /// <summary>Build the ICAO->geometry map by scanning all known gsx.cfg locations. Public for the probe.</summary>
     public Dictionary<string, GsxAircraftGeometry> BuildMap()
@@ -66,13 +92,6 @@ public sealed class GsxAirplaneProfile
             catch { /* skip unreadable/garbage cfg */ }
         }
         return map;
-    }
-
-    private void EnsureBuilt()
-    {
-        lock (_lock) { if (_byIcao != null) return; }
-        var map = BuildMap();
-        lock (_lock) { _byIcao ??= map; }
     }
 
     // Parse icaotype + the preferred exit's lateral (1st) and longitudinal (2nd) values,
@@ -161,7 +180,11 @@ public sealed class GsxAirplaneProfile
                 {
                     string simobj = System.IO.Path.Combine(pkg, "SimObjects");
                     if (!System.IO.Directory.Exists(simobj)) continue; // only aircraft packages have SimObjects
-                    foreach (var f in SafeFilesRecursive(simobj, "gsx.cfg"))
+                    // Depth-bounded walk (NOT narrowed to Airplanes — gsx.cfg locations vary).
+                    // Mirrors AircraftCfgCatalog's MaxScanDepth approach so texture/sound trees are
+                    // never crawled: real gsx.cfg files sit a few levels under SimObjects, so the
+                    // bound caps a deep texture tree from stalling the scan.
+                    foreach (var f in EnumerateCfgBounded(simobj, "gsx.cfg", 0))
                         yield return f;
                 }
         }
@@ -185,11 +208,17 @@ public sealed class GsxAirplaneProfile
                 foreach (var l in System.IO.File.ReadAllLines(c))
                 {
                     var t = l.Trim();
-                    if (t.StartsWith("InstalledPackagesPath", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int q1 = t.IndexOf('"'); int q2 = t.LastIndexOf('"');
-                        if (q2 > q1 && q1 >= 0) { var p = t.Substring(q1 + 1, q2 - q1 - 1); if (System.IO.Directory.Exists(p)) return p; }
-                    }
+                    // Match the ACTIVE packages path only. "InstalledPackagesPathNextBoot" also
+                    // StartsWith "InstalledPackagesPath" but points at a NOT-YET-ACTIVE location
+                    // (set after a user relocates packages) — resolving it would scan the wrong
+                    // tree. Mirror AircraftCfgCatalog's two-check pattern: accept the prefix, then
+                    // explicitly reject the NextBoot variant.
+                    if (!t.StartsWith("InstalledPackagesPath", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (t.StartsWith("InstalledPackagesPathNextBoot", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    int q1 = t.IndexOf('"'); int q2 = t.LastIndexOf('"');
+                    if (q2 > q1 && q1 >= 0) { var p = t.Substring(q1 + 1, q2 - q1 - 1); if (System.IO.Directory.Exists(p)) return p; }
                 }
             }
             catch { }
@@ -197,10 +226,26 @@ public sealed class GsxAirplaneProfile
         return null;
     }
 
+    /// <summary>
+    /// Depth-bounded recursive search for files named <paramref name="pattern"/> under
+    /// <paramref name="dir"/>. Caps recursion at <see cref="MaxScanDepth"/> so a deeply
+    /// nested texture tree can't stall the scan. Never throws (per-directory access is
+    /// wrapped in the Safe* helpers).
+    /// </summary>
+    private static IEnumerable<string> EnumerateCfgBounded(string dir, string pattern, int depth)
+    {
+        foreach (var f in SafeFiles(dir, pattern))
+            yield return f;
+
+        if (depth >= MaxScanDepth) yield break;
+
+        foreach (var sub in SafeDirs(dir))
+            foreach (var f in EnumerateCfgBounded(sub, pattern, depth + 1))
+                yield return f;
+    }
+
     private static IEnumerable<string> SafeDirs(string path)
     { string[] r; try { r = System.IO.Directory.GetDirectories(path); } catch { return Array.Empty<string>(); } return r; }
     private static IEnumerable<string> SafeFiles(string path, string pattern)
     { string[] r; try { r = System.IO.Directory.GetFiles(path, pattern); } catch { return Array.Empty<string>(); } return r; }
-    private static IEnumerable<string> SafeFilesRecursive(string path, string pattern)
-    { string[] r; try { r = System.IO.Directory.GetFiles(path, pattern, System.IO.SearchOption.AllDirectories); } catch { return Array.Empty<string>(); } return r; }
 }

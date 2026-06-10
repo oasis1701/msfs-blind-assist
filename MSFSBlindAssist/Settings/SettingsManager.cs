@@ -104,32 +104,44 @@ public static class SettingsManager
         /// </summary>
         public static void Save(UserSettings settings)
         {
-            lock (_lock)
+            // Hold _lock ONLY for the in-memory work: serializing the mutable,
+            // shared settings object to a string and publishing the reference.
+            // The disk write happens OUTSIDE the lock, against the already-built
+            // string. _lock is the same lock the 30 Hz SimConnect position path
+            // contends for via SettingsManager.Current; holding it across
+            // File.WriteAllText (which can block for the full duration of an
+            // antivirus-scanned %APPDATA% write) would stall audio-guidance frames
+            // whenever an options dialog is OK'd mid-approach. The serialized
+            // string is an immutable snapshot, so writing it after releasing the
+            // lock is race-free even if another thread mutates the settings object
+            // and re-saves concurrently — each Save writes its own snapshot.
+            string json;
+            try
             {
-                try
+                lock (_lock)
                 {
-                    // Ensure directory exists
-                    if (!Directory.Exists(SettingsDirectory))
-                    {
-                        Directory.CreateDirectory(SettingsDirectory);
-                    }
+                    // Serialize to JSON with formatting (reads the mutable shared
+                    // object — must be under the lock).
+                    json = JsonSerializer.Serialize(settings, JsonOptions);
 
-                    // Serialize to JSON with formatting
-                    string json = JsonSerializer.Serialize(settings, JsonOptions);
-
-                    // Write to file
-                    File.WriteAllText(SettingsFilePath, json);
-
-                    // Update current settings reference
+                    // Update current settings reference.
                     _currentSettings = settings;
+                }
 
-                    Debug.WriteLine($"[SettingsManager] Settings saved to {SettingsFilePath}");
-                }
-                catch (Exception ex)
+                // Ensure directory exists, then write — both outside the lock.
+                if (!Directory.Exists(SettingsDirectory))
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error saving settings: {ex.Message}");
-                    throw;
+                    Directory.CreateDirectory(SettingsDirectory);
                 }
+
+                File.WriteAllText(SettingsFilePath, json);
+
+                Debug.WriteLine($"[SettingsManager] Settings saved to {SettingsFilePath}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error saving settings: {ex.Message}");
+                throw;
             }
         }
 

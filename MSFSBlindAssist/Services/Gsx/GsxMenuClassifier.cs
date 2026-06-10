@@ -111,10 +111,15 @@ public static class GsxMenuClassifier
 
     // CONFIRMED LIVE: back / return indicators.
     // "↑ Back" confirmed at OMDB sub-menus.
+    // NOTE: the bare words "main" and "top" were REMOVED — they false-positived on
+    // live-menu group labels whose names contain them (e.g. "Main Apron (12 suitable
+    // parkings)" → matched "main"; "Top Deck" → matched "top"), classifying real
+    // drillable parking groups as Back. Replaced with full-phrase forms ("main menu",
+    // "back to top") that only match genuine navigation entries.
     private static readonly string[] BackPatterns =
     {
         "↑ back",      // CONFIRMED LIVE: "↑ Back"
-        "back", "previous", "return", "top", "main", "<<", "◀", "←", "cancel",
+        "back", "previous", "return", "back to top", "main menu", "<<", "◀", "←", "cancel",
     };
 
     // CONFIRMED LIVE at OMDB (2026-06-08): safe final-menu actions that select the gate
@@ -316,6 +321,19 @@ public static class GsxMenuClassifier
 
         // Pagination before back (both are nav helpers).
         if (IsNext(text)) return GsxMenuEntryKind.Pagination;
+
+        // ── Count-suffix CATEGORY check — MUST precede IsBack ──────────────
+        // A "(N suitable parkings)" / "(N positions)" suffix is the DEFINITIVE
+        // group-header signal and must WIN over any BackPattern substring. The
+        // live menu groups apron headers like "Main Apron (12 suitable parkings)"
+        // or "Top Deck (5 suitable parkings)" whose NAMES would otherwise trip the
+        // back-pattern substrings ("main"/"top" historically, now full-phrase). It
+        // is SAFE to test before IsBack here because pagination ("Next/Previous
+        // Page") entries — the only nav helpers that could carry a back substring —
+        // NEVER carry a count suffix, and IsIgnored + IsNext already ran above.
+        // CONFIRMED LIVE at OMDB (2026-06-08): "Apron A (8 suitable parkings)".
+        if (CategoryCountRegex.IsMatch(text)) return GsxMenuEntryKind.Category;
+
         if (IsBack(text)) return GsxMenuEntryKind.Back;
 
         // Forbidden-action patterns win over gate-leaf parsing so we never
@@ -327,10 +345,11 @@ public static class GsxMenuClassifier
         // header carries "(N suitable parkings)" / "(N positions)"; an individual
         // stand NEVER does. So:
         //
-        //   1. Count suffix present → Category (definitive). Checked FIRST so a
-        //      header like "Apron A (8 suitable parkings)" or
+        //   1. Count suffix present → Category (definitive). Already checked ABOVE,
+        //      before IsBack, so a header like "Apron A (8 suitable parkings)" or
         //      "Terminal 3 - G Gates (G1-G16) (13 suitable parkings)" is never
-        //      mis-parsed as gate "8"/"3" by the leaf parser.
+        //      mis-parsed as gate "8"/"3" by the leaf parser AND never mis-classified
+        //      as Back when its name carries a back-pattern substring.
         //      CONFIRMED LIVE at OMDB (2026-06-08).
         //
         //   2. Concrete stand ID → GateLeaf, EVEN IF the text also contains a
@@ -348,7 +367,6 @@ public static class GsxMenuClassifier
         // (1) or (3). Everything not Category/GateLeaf is Unknown and the DFS NEVER
         // drills it — keeping action/system entries ("Restart GSX", "Yes", "No",
         // "Show me this spot and activate", "Request Towing") out of the drill path.
-        if (CategoryCountRegex.IsMatch(text)) return GsxMenuEntryKind.Category;
 
         // Gate leaf? (an individual stand, e.g.
         // "Stand C18 with Safedock© - Medium  (too small)" → C18,

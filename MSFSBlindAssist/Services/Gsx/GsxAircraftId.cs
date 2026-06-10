@@ -46,6 +46,14 @@ public static class GsxAircraftIdMap
             ["B788"] = new("B788", 787, 8, "Heavy", "ARC-E"),
             ["B789"] = new("B789", 787, 9, "Heavy", "ARC-E"),
             ["B78X"] = new("B78X", 787, 10, "Heavy", "ARC-E"),
+            // Boeing 737 MAX: ICAO gave the MAX 'B3xM' designators (B37M/B38M/B39M/B3XM) that
+            // break the B7xx family pattern, so the deriver's `icao[1]=='7'` Boeing gate misses
+            // them entirely and they fall to idMajor 0 (losing every idMajor-keyed .py offset).
+            // GSX's own .py tables key the MAX as the 737 FAMILY with the closest-gauge minor.
+            ["B37M"] = new("B37M", 737, 700, "Medium", "ARC-C"),
+            ["B38M"] = new("B38M", 737, 800, "Medium", "ARC-C"),
+            ["B39M"] = new("B39M", 737, 900, "Medium", "ARC-C"),
+            ["B3XM"] = new("B3XM", 737, 900, "Medium", "ARC-C"),
             // A350: GSX uses idMinor 1000 for both -900 and -1000K (irregular vs. the
             // A33x->Z*100 rule that would give 900 / 0).
             ["A359"] = new("A359", 350, 1000, "Heavy", "ARC-E"),

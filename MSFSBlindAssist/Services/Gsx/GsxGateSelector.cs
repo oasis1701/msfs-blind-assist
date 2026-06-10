@@ -109,6 +109,16 @@ public sealed class GsxGateSelector
     private readonly GsxMenuAutomation _automation;
     private readonly ScreenReaderAnnouncer _announcer;
 
+    // ─── Reentrancy guard ──────────────────────────────────────────────────
+    // A live DFS drives the ONE in-sim GSX menu by pressing page-relative choices.
+    // Two concurrent SelectGateAsync calls (e.g. a double Calculate-click) would
+    // interleave their drills/back-outs on that single shared menu and press wrong
+    // entries. The IsMenuActive guard is NOT sufficient: GsxService.Choose sets
+    // IsMenuActive=false before each press, so a second call slipping in between two
+    // presses of the first run sees IsMenuActive==false and passes. This 0→1 latch
+    // (Interlocked) admits exactly one selection at a time.
+    private int _selectionInProgress;
+
     public GsxGateSelector(
         GsxService gsx,
         GsxMenuAutomation automation,
@@ -147,6 +157,27 @@ public sealed class GsxGateSelector
     /// </remarks>
     public async Task SelectGateAsync(ParkingSpot target, bool discoveryOnly = false)
     {
+        // ── Reentrancy guard: admit exactly ONE selection at a time ───────
+        // CompareExchange(ref, 1, 0) atomically sets the latch to 1 only if it was 0;
+        // a non-zero return means a selection is already running on the shared live
+        // menu, so we ignore this call (mirrors the "not found" announcement path).
+        if (System.Threading.Interlocked.CompareExchange(ref _selectionInProgress, 1, 0) != 0)
+        {
+            Debug.WriteLine("[GsxGateSelector] Selection already in progress — ignoring concurrent call.");
+            try
+            {
+                // Walk-log via a throwaway state so the concurrent attempt is visible in the log.
+                File.AppendAllText(WalkLogPath,
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] CONCURRENT: selection already in progress — ignoring this call.{Environment.NewLine}");
+            }
+            catch { /* logging must never crash the selector */ }
+            if (!discoveryOnly)
+                Announce("GSX: selection already in progress.");
+            return;
+        }
+
+        try
+        {
         // ── Guard: user is already mid-menu ──────────────────────────────
         if (_gsx.IsMenuActive)
         {
@@ -281,6 +312,12 @@ public sealed class GsxGateSelector
         finally
         {
             WalkLog(state, $"=== run complete elapsed={state.Overall.Elapsed.TotalSeconds:F1}s menuReads={state.MenuReads} aborted={state.Aborted} ===");
+        }
+        }
+        finally
+        {
+            // Release the reentrancy latch so the next selection can run.
+            System.Threading.Interlocked.Exchange(ref _selectionInProgress, 0);
         }
     }
 
@@ -446,12 +483,14 @@ public sealed class GsxGateSelector
 
                 Debug.WriteLine($"[GsxGateSelector] GateLeaf: \"{opt.Text}\" → identity={leafIdentity} (target={state.TargetIdentity}) depth={depth} step={step}");
 
-                if (!string.Equals(leafIdentity, state.TargetIdentity, StringComparison.OrdinalIgnoreCase))
+                if (!LeafMatchesTarget(leafIdentity, state.TargetIdentity, out bool bareNumberFallback))
                     continue;
 
                 // ── MATCH ─────────────────────────────────────────────────
                 Debug.WriteLine($"[GsxGateSelector] MATCH: \"{opt.Text}\" depth={depth} step={step}.");
                 WalkLog(state, $"MATCH: leaf=\"{opt.Text}\" choice={opt.Choice} depth={depth} step={step} → choosing (menu is on this page).");
+                if (bareNumberFallback)
+                    WalkLog(state, $"MATCH-BARENUMBER: leaf \"{leafIdentity}\" has no concourse letter; matched target \"{state.TargetIdentity}\" by stripping the navdata-borrowed letter (e.g. EGLL 'P 209' vs GSX menu 'Parking 209').");
 
                 if (state.DiscoveryOnly)
                 {
@@ -876,6 +915,51 @@ public sealed class GsxGateSelector
         int i = 0;
         while (i < identity.Length && char.IsLetter(identity[i])) i++;
         return i > 0 ? identity.Substring(0, i) : string.Empty;
+    }
+
+    /// <summary>
+    /// Decides whether a menu LEAF identity matches the TARGET identity. Tries an exact
+    /// OrdinalIgnoreCase compare first; on a miss, applies a conservative BARE-NUMBER
+    /// fallback and sets <paramref name="bareNumberFallback"/> when that is what matched.
+    /// <para>
+    /// EGLL 'P 209' case: the navdata merger borrows the navdata letter ('P') to give the
+    /// stand a display name, so the TARGET identity is "P209" — but GSX's OWN menu shows the
+    /// stand letterless ("Parking 209" → leaf identity "209"). The exact compare then never
+    /// matches. When the LEAF has NO concourse letter before its digits (pattern: digits
+    /// optionally followed by a single letter suffix), the letter on the target is navdata
+    /// display decoration only: GSX itself has no concourse for that stand. We therefore strip
+    /// the target's leading letters and compare the remainder (number+suffix) to the leaf.
+    /// </para>
+    /// <para>
+    /// SAFETY: this is strict — it only fires when the LEAF is letterless, and only accepts an
+    /// EXACT match of the stripped (number+suffix) remainder. A letterless menu leaf means GSX
+    /// has no concourse for that stand, so two same-number letterless entries can't coexist on
+    /// one page (GSX would be showing two identical entries) — no ambiguity is possible.
+    /// </para>
+    /// </summary>
+    private static bool LeafMatchesTarget(string leafIdentity, string targetIdentity, out bool bareNumberFallback)
+    {
+        bareNumberFallback = false;
+        if (string.Equals(leafIdentity, targetIdentity, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Only fall back when the LEAF itself carries no concourse letter (digits, then an
+        // optional single-letter suffix). A lettered leaf means GSX HAS a concourse, so the
+        // target's letter is meaningful and must match exactly (handled by the exact compare).
+        string leafPrefix = ExtractConcoursePrefixFromIdentity(leafIdentity);
+        if (leafPrefix.Length > 0) return false;
+
+        // Strip the target's leading letters and compare the remainder exactly.
+        string targetPrefix = ExtractConcoursePrefixFromIdentity(targetIdentity);
+        if (targetPrefix.Length == 0) return false; // both letterless → already handled by exact compare
+        string targetStripped = targetIdentity.Substring(targetPrefix.Length);
+
+        if (string.Equals(leafIdentity, targetStripped, StringComparison.OrdinalIgnoreCase))
+        {
+            bareNumberFallback = true;
+            return true;
+        }
+        return false;
     }
 
     /// <summary>

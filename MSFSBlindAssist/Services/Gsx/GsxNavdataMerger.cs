@@ -27,13 +27,24 @@ public static class GsxNavdataMerger
         {
             ParkingSpot? nav = FindNavMatch(g, byNumber);
 
+            // Position-priority chain (display / teleport / routing position for the spot):
+            //   1. GSX this_parking_pos (the actual aircraft-datum parking position),
+            //   2. navdata position (also an aircraft-datum location),
+            //   3. GSX stop position — LAST resort.
+            // The stop position is a VDGS NOSE-STOP reference, not an aircraft datum: using it
+            // as the spot's position teleports the aircraft datum AT the nose-stop point —
+            // metres deep into the stand, possibly at heading 0 when StopHeading is absent.
+            // It must therefore be the final fallback. The true stop is NOT lost: GsxGateMapper
+            // copies StopLatitude/StopLongitude/StopHeading onto the spot separately, so docking
+            // still drives to the real nose-stop. (Previously this chain put the stop position
+            // SECOND, ahead of navdata, which mis-placed stop-position-only gates.)
             double lat, lon, hdg;
             if (g.HasParkingPos)
             { lat = g.Latitude; lon = g.Longitude; hdg = g.Heading; }
-            else if (g.StopLatitude.HasValue && g.StopLongitude.HasValue)
-            { lat = g.StopLatitude.Value; lon = g.StopLongitude.Value; hdg = g.StopHeading ?? nav?.Heading ?? 0; }
             else if (nav != null)
             { lat = nav.Latitude; lon = nav.Longitude; hdg = nav.Heading; }
+            else if (g.StopLatitude.HasValue && g.StopLongitude.HasValue)
+            { lat = g.StopLatitude.Value; lon = g.StopLongitude.Value; hdg = g.StopHeading ?? nav?.Heading ?? 0; }
             else
             { continue; } // unplaceable -> drop
 
@@ -60,14 +71,26 @@ public static class GsxNavdataMerger
         var bySuffix = candidates.FindAll(c => NormSuffix(c.Suffix) == gsuf);
         // GSX suffix absent / doesn't match any navdata suffix variant — widen to all candidates.
         var pool = bySuffix.Count > 0 ? bySuffix : candidates;
-        if (pool.Count == 1) return pool[0];
 
         string gc = NormConcourse(g.Concourse);
+
+        // SAFETY: when the GSX gate HAS a concourse, a navdata candidate may ONLY be borrowed
+        // when its normalized concourse matches. Borrowing across concourses ("A12" pulling
+        // "B12"'s coords) would route a blind pilot to the WRONG pier with no audible hint —
+        // worse than dropping the spot from the list. So the concourse filter is applied to
+        // BOTH the pool.Count==1 early return AND the final fallback. When the gate has NO
+        // concourse, we keep the previous best-effort behaviour (any same-number candidate).
         if (gc.Length > 0)
         {
+            if (pool.Count == 1)
+                return NormConcourse(pool[0].Name) == gc ? pool[0] : null;
+
             var byConc = pool.FindAll(c => NormConcourse(c.Name) == gc);
-            if (byConc.Count > 0) return byConc[0];
+            return byConc.Count > 0 ? byConc[0] : null; // no concourse match -> drop (don't borrow wrong pier)
         }
+
+        // No GSX concourse — best-effort placement against any same-number candidate.
+        if (pool.Count == 1) return pool[0];
         return pool[0]; // best-effort
     }
 

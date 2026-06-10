@@ -116,6 +116,22 @@ public class TaxiAssistForm : Form
     // actual ParkingSpot to GsxGateSelector without re-querying the data provider.
     private Dictionary<string, ParkingSpot> _destinationSpotMap = new();
 
+    // Gate-branch cache (Fix: per-keystroke gate-list rebuild). PopulateDestinations
+    // runs on every txtGateSearch keystroke, every chkFitFilter toggle, and on each
+    // dest-type change. The expensive work in the GATE branch — GateDataSource.GetGates
+    // (directory enumeration / uncached navdata DB query at .py-only airports like EDDF),
+    // plus a _graph.FindNearestNode + distance check per spot — depends ONLY on the
+    // airport (ICAO + graph), not on the search text or fit filter. We resolve it ONCE
+    // per airport into _cachedGateSpots (spot + its routing node id), and each
+    // PopulateDestinations pass merely applies the search + wingspan filters and rebuilds
+    // the combo/map entries in memory. Mirrors how GateTeleportForm loads once + filters.
+    //
+    // The wingspan fit-filter is deliberately NOT baked into the cache: _aircraftWingspan
+    // can change between passes (mid-session aircraft swap), so it must re-apply per pass
+    // against the full cached list.
+    private List<(ParkingSpot spot, int nodeId)>? _cachedGateSpots;
+    private string _cachedGateSpotsIcao = "";
+
     // Docking guidance manager: receives the selected gate so proximity audio
     // and lateral tone can guide the pilot to the stop position. Set in
     // OnCalculateClicked for gate destinations; cleared on runway destinations.
@@ -565,6 +581,12 @@ public class TaxiAssistForm : Form
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
         _currentIcao = icao.ToUpperInvariant();
+        // Invalidate the gate-branch resolution cache — the new airport has a
+        // different graph + parking layout. The cache is also re-validated by
+        // ICAO inside the GATE branch of PopulateDestinations (defence in depth),
+        // but clearing here frees the old airport's spots immediately.
+        _cachedGateSpots = null;
+        _cachedGateSpotsIcao = "";
         _destinationNodeMap.Clear();
         _destinationHeadingMap.Clear();
 
@@ -771,10 +793,17 @@ public class TaxiAssistForm : Form
 
                 // Prefer the GSX stop position (the docking target) for routing;
                 // fall back to the spot's base lat/lon when stop position is absent.
-                double targetLat = spot.StopLatitude.GetValueOrDefault() != 0
-                    ? spot.StopLatitude!.Value : spot.Latitude;
-                double targetLon = spot.StopLongitude.GetValueOrDefault() != 0
-                    ? spot.StopLongitude!.Value : spot.Longitude;
+                // Test HasValue, not "!= 0": null is the only correct "absent"
+                // signal. A stop coordinate or heading that legitimately normalizes
+                // to exactly 0.0 — a due-north (0°) stop heading, or the rare 0.0°
+                // lon/lat — is a real value, and a `GetValueOrDefault() != 0` test
+                // would discard it and silently substitute the parking-position
+                // value. This mirrors DockingGuidanceManager's `StopHeading ?? Heading`
+                // null-coalescing convention.
+                double targetLat = spot.StopLatitude.HasValue
+                    ? spot.StopLatitude.Value : spot.Latitude;
+                double targetLon = spot.StopLongitude.HasValue
+                    ? spot.StopLongitude.Value : spot.Longitude;
 
                 var nearNode = _graph.FindNearestNode(targetLat, targetLon);
                 if (nearNode == null) continue;
@@ -784,8 +813,8 @@ public class TaxiAssistForm : Form
                 if (dist > MAX_DEICE_TO_GRAPH_M) continue;
 
                 _destinationNodeMap[label] = nearNode.NodeId;
-                double stopHeading = spot.StopHeading.GetValueOrDefault() != 0
-                    ? spot.StopHeading!.Value : spot.Heading;
+                double stopHeading = spot.StopHeading.HasValue
+                    ? spot.StopHeading.Value : spot.Heading;
                 _destinationHeadingMap[label] = stopHeading;
                 _destinationHeadingTrueMap[label] = stopHeading;
                 _destinationThresholdMap[label] = (targetLat, targetLon);
@@ -816,6 +845,35 @@ public class TaxiAssistForm : Form
             // radius, the spot is dropped — there's no way to taxi there.
             const double MAX_PARKING_TO_GRAPH_M = 100.0;
 
+            // ── Load-once resolution (cached per airport) ──────────────────────
+            // Resolve the heavy per-airport work — GetGates + per-spot nearest-node
+            // lookup + distance gate — ONCE per ICAO into _cachedGateSpots. This is
+            // what made every keystroke expensive: it re-enumerated GSX profile
+            // directories / re-ran the uncached navdata DB query and walked the graph
+            // per spot, synchronously on the UI thread (a screen-reader-responsiveness
+            // hazard). The search text and fit filter do NOT affect node resolution,
+            // so caching it is behaviour-preserving.
+            if (_cachedGateSpots == null
+                || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
+            {
+                var sourceSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
+                var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
+                foreach (var spot in sourceSpots)
+                {
+                    var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
+                    if (nearNode == null) continue;
+
+                    double dist = TaxiGraph.CalculateDistanceMeters(
+                        nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
+                    if (dist > MAX_PARKING_TO_GRAPH_M) continue;
+
+                    resolved.Add((spot, nearNode.NodeId));
+                }
+                _cachedGateSpots = resolved;
+                _cachedGateSpotsIcao = _currentIcao;
+            }
+
+            // ── Per-pass filter + ordering (cheap, in-memory) ─────────────────
             // Category display order matching GateTeleportForm: gates first
             // (small → extra), then ramp types, then dock/other.
             var categoryOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
@@ -826,40 +884,43 @@ public class TaxiAssistForm : Form
                 ["Dock"] = 9, ["Other"] = 10
             };
 
-            var allSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
+            IEnumerable<(ParkingSpot spot, int nodeId)> filtered = _cachedGateSpots;
 
-            // Gate search filter: type-to-filter on name+number+suffix.
+            // Gate search filter: type-to-filter on name+number+suffix. Run against
+            // the cached resolved list per keystroke (GateSearchFilter operates on
+            // ParkingSpot, so project, filter, then re-pair with the node id).
             if (!string.IsNullOrEmpty(txtGateSearch.Text))
-                allSpots = Services.GateSearchFilter.Filter(allSpots, txtGateSearch.Text);
+            {
+                var matched = new HashSet<ParkingSpot>(
+                    Services.GateSearchFilter.Filter(_cachedGateSpots.Select(r => r.spot).ToList(), txtGateSearch.Text));
+                filtered = filtered.Where(r => matched.Contains(r.spot));
+            }
 
-            // Wingspan filter: spot must be large enough for the aircraft.
+            // Wingspan filter: spot must be large enough for the aircraft. Applied
+            // PER PASS against the cached (unfiltered) list — never baked into the
+            // cache — because _aircraftWingspan can change between passes (mid-session
+            // aircraft swap) and chkFitFilter toggles re-run PopulateDestinations.
             // Source-aware (see ParkingSpot.FitsAircraft): GSX spots use the
             // authoritative max wing span (metres); navdata spots use the physical
             // parking radius (feet). The old "Radius >= wingspan/2" mixed units for
             // GSX spots (metres vs a feet threshold) and filtered nearly everything out.
             if (chkFitFilter.Checked && _aircraftWingspan > 0)
-                allSpots = allSpots.Where(p => p.FitsAircraft(_aircraftWingspan)).ToList();
+                filtered = filtered.Where(r => r.spot.FitsAircraft(_aircraftWingspan));
 
-            var parkingSpots = allSpots
-                .OrderBy(p => categoryOrder.TryGetValue(p.GetFilterCategory(), out int o) ? o : 99)
-                .ThenBy(p => p.Number > 0 ? p.Number : int.MaxValue)
-                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            // Same ordering as before: category, then number, then name.
+            var parkingSpots = filtered
+                .OrderBy(r => categoryOrder.TryGetValue(r.spot.GetFilterCategory(), out int o) ? o : 99)
+                .ThenBy(r => r.spot.Number > 0 ? r.spot.Number : int.MaxValue)
+                .ThenBy(r => r.spot.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            foreach (var spot in parkingSpots)
+            foreach (var (spot, nodeId) in parkingSpots)
             {
                 // ParkingSpot.ToString() format matches the gate-teleport dialog.
                 string label = spot.ToString();
                 if (_destinationNodeMap.ContainsKey(label)) continue;
 
-                var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
-                if (nearNode == null) continue;
-
-                double dist = TaxiGraph.CalculateDistanceMeters(
-                    nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
-                if (dist > MAX_PARKING_TO_GRAPH_M) continue;
-
-                _destinationNodeMap[label] = nearNode.NodeId;
+                _destinationNodeMap[label] = nodeId;
                 _destinationHeadingMap[label] = spot.Heading;
                 _destinationHeadingTrueMap[label] = spot.Heading; // parking heading is true heading
                 _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
@@ -1786,6 +1847,10 @@ public class TaxiAssistForm : Form
             string p = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "MSFSBlindAssist", "logs", "docking-aircraft.log");
+            // Ensure the logs directory exists — on a fresh install %LOCALAPPDATA%
+            // \MSFSBlindAssist\logs may not have been created yet, and AppendAllText
+            // throws DirectoryNotFoundException rather than creating it.
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(p)!);
             System.IO.File.AppendAllText(p, string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0:HH:mm:ss}  STOPOFFSET  icao='{1}' gate#={2} suffix='{3}' stopLatSet={4} ac='{5}' acId={6} -> long={7:F2} lat={8:F2}{9}",
