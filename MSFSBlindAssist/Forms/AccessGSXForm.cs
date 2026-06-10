@@ -503,7 +503,27 @@ public sealed class AccessGSXForm : Form
     {
         if (_settingsForm is { IsDisposed: false })
         {
-            _settingsForm.Close();
+            // The service re-publishes ~1 s after opening (GSX writes the
+            // real settings.html asynchronously; the first parse only sees
+            // the Python stub). Refresh the open window in place —
+            // recreating it would yank screen-reader focus, re-announce the
+            // window, and fire the old form's FormClosed/HideMenu side
+            // effects.
+            // hadItems is false on the first publish because the settings.html
+            // stub parses to zero items.
+            bool hadItems = _settingsForm.HasItems;
+            bool rebuilt = _settingsForm.RefreshItems(_gsxService.SettingsItems);
+            if (rebuilt && !hadItems && _settingsForm.HasItems)
+            {
+                // Background state change (not user-triggered): the stub
+                // placeholder was silently replaced by the real settings.
+                try { _announcer.Announce("GSX settings loaded."); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] settings announce failed: {ex.Message}");
+                }
+            }
+            return;
         }
 
         _settingsForm = new GsxSettingsForm(_gsxService, _announcer, _gsxService.SettingsItems);
@@ -514,12 +534,9 @@ public sealed class AccessGSXForm : Form
             OnMenuHiddenUi();
         };
         _settingsForm.ShowForm();
-
-        try { _announcer.Announce("GSX Settings opened."); }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] settings announce failed: {ex.Message}");
-        }
+        // No "opened" announcement: the screen reader announces the newly
+        // focused window itself (project rule: never announce direct user
+        // interactions).
     }
 
     // ─────────────────────────────────────────────────────────────────────

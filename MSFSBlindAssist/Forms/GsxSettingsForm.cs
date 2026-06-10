@@ -8,7 +8,7 @@ public sealed class GsxSettingsForm : Form
 {
     private readonly GsxService _gsxService;
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly IReadOnlyList<GsxService.GsxSettingItem> _items;
+    private IReadOnlyList<GsxService.GsxSettingItem> _items;
     private readonly ListBox _tabSelector = new();
     private readonly Panel _settingsHost = new();
     private readonly Dictionary<string, FlowLayoutPanel> _tabPages = new(StringComparer.OrdinalIgnoreCase);
@@ -22,7 +22,10 @@ public sealed class GsxSettingsForm : Form
     {
         _gsxService = gsxService ?? throw new ArgumentNullException(nameof(gsxService));
         _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
-        _items = items ?? Array.Empty<GsxService.GsxSettingItem>();
+        // Snapshot: GsxService.SettingsItems returns its internal list, which it
+        // mutates in place (Clear + AddRange) before raising SettingsChanged.
+        // Holding a copy here means BuildItemsSignature can detect what changed.
+        _items = items?.ToArray() ?? Array.Empty<GsxService.GsxSettingItem>();
 
         BuildUi();
         PopulateSettings();
@@ -37,6 +40,45 @@ public sealed class GsxSettingsForm : Form
         TopMost = false;
         SelectSectionList();
     }
+
+    public bool HasItems => _items.Count > 0;
+
+    /// <summary>
+    /// Replace the displayed settings with a fresh parse, rebuilding the UI
+    /// only when the content actually changed. GSX writes settings.html
+    /// asynchronously (the parse right after pressing C usually sees only
+    /// the Python stub), so the service re-publishes ~1 s later — refreshing
+    /// in place keeps screen-reader focus instead of recreating the window.
+    /// Returns true when the UI was rebuilt.
+    /// </summary>
+    public bool RefreshItems(IReadOnlyList<GsxService.GsxSettingItem>? items)
+    {
+        items ??= Array.Empty<GsxService.GsxSettingItem>();
+        if (BuildItemsSignature(items) == BuildItemsSignature(_items))
+            return false;
+
+        _items = items.ToArray();
+        PopulateSettings();
+        SelectSectionList();
+        return true;
+    }
+
+    // Record equality won't work here: GsxSettingItem.Choices is an
+    // IReadOnlyList property, which records compare by reference.
+    // Use ASCII control characters as separators so free-text fields
+    // (Label, Tip, Value, etc.) that may contain '|', ';', or ':' can
+    // never collide across field boundaries.
+    private static string BuildItemsSignature(IReadOnlyList<GsxService.GsxSettingItem> items) =>
+        string.Join("\n", items.Select(i =>
+            string.Join("",
+                i.Key, i.Type, i.Label, i.Value, i.Category, i.Tip,
+                i.InfoValue, i.ButtonText,
+                i.Min?.ToString(CultureInfo.InvariantCulture) ?? "",
+                i.Max?.ToString(CultureInfo.InvariantCulture) ?? "",
+                i.Step?.ToString(CultureInfo.InvariantCulture) ?? "",
+                i.Unit,
+                string.Join("", i.Choices.Select(c =>
+                    c.Value.ToString(CultureInfo.InvariantCulture) + "" + c.Label)))));
 
     private void BuildUi()
     {
@@ -102,6 +144,8 @@ public sealed class GsxSettingsForm : Form
     {
         _tabSelector.Items.Clear();
         _settingsHost.Controls.Clear();
+        foreach (var page in _tabPages.Values)
+            page.Dispose();
         _tabPages.Clear();
         _closeCommitters.Clear();
         _lastCommittedValues.Clear();
