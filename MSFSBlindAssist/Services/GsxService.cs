@@ -1238,6 +1238,13 @@ public sealed class GsxService : IDisposable
         @"^\s*(?:\[gsx\]\s+)?(?:bags|baggage)(?:\s+(?:un)?load(?:ing|ed))?\s+\d{1,3}\s*%(?:\s+(?:un)?load(?:ing|ed))?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Capture-group twin of BagsSegmentRegex — keep the two patterns in sync.
+    // Used by TryExtractBagsPercent so the milestone gate can only arm when
+    // StripSegmentsMatching(BagsSegmentRegex) can actually strip the segment.
+    private static readonly Regex BagsSegmentCaptureRegex = new(
+        @"^\s*(?:\[gsx\]\s+)?(?:bags|baggage)(?:\s+(?:un)?load(?:ing|ed))?\s+(\d{1,3})\s*%(?:\s+(?:un)?load(?:ing|ed))?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private string StripThrottledPaxSegments(string announceText, string fullText)
     {
         if (string.IsNullOrWhiteSpace(announceText))
@@ -1318,16 +1325,15 @@ public sealed class GsxService : IDisposable
     private static bool TryExtractBagsPercent(string text, out int percent)
     {
         percent = 0;
-        var match = Regex.Match(
-            text,
-            @"\b(?:bags|baggage)(?:\s+(?:un)?load(?:ing|ed))?\s+(\d{1,3})\s*%",
-            RegexOptions.IgnoreCase);
-        if (!match.Success)
-            return false;
-        if (!int.TryParse(match.Groups[1].Value, out int p))
-            return false;
-        percent = Math.Clamp(p, 0, 100);
-        return true;
+        foreach (string segment in SplitTooltipParts(text))
+        {
+            var match = BagsSegmentCaptureRegex.Match(segment);
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out int p))
+                continue;
+            percent = Math.Clamp(p, 0, 100);
+            return true;
+        }
+        return false;
     }
 
     private string StripThrottledFuelSegments(string announceText, string fullText)
