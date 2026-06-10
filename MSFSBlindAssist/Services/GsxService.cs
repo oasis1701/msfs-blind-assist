@@ -1047,12 +1047,6 @@ public sealed class GsxService : IDisposable
         if (IsPlaceholderLiveServiceText(text))
             return;
 
-        // Note: boarding-pax-milestone and fueling-kg-milestone are no longer
-        // applied here as service-wide throttles. They're applied per-segment
-        // further down (StripThrottledPaxSegments / StripThrottledFuelSegments)
-        // so a tooltip that carries both a stale-milestone progress segment
-        // AND a fresh transition segment ("rear loader leaving") still
-        // announces the transition.
         bool forceAnnouncement = _forceNextLiveServiceAnnouncement;
         // Baggage / pax / fuel progress are milestone-gated PER-SEGMENT in
         // StripThrottledBagsSegments / StripThrottledPaxSegments /
@@ -1547,22 +1541,6 @@ public sealed class GsxService : IDisposable
         return false;
     }
 
-    private bool IsThrottledServiceProgress(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-
-        if (IsCompletedStatusService(text) || IsInvoiceAnnouncement(text))
-            return false;
-
-        // Boarding-pax and fueling-kg progress are now milestone-gated
-        // per-segment in StripThrottledPaxSegments / StripThrottledFuelSegments,
-        // so a tooltip that pairs a stale-milestone progress segment with a
-        // fresh transition (truck arriving, loader leaving, etc.) still
-        // announces the transition.
-        return false;
-    }
-
     // Boarding-progress milestones — chosen so the user hears:
     //   * pax 0 (service started, nobody on yet)
     //   * pax 1 (boarding has actually begun)
@@ -1575,18 +1553,6 @@ public sealed class GsxService : IDisposable
         if (passengers <= 0) return 0;
         if (passengers < BoardingPassengerAnnouncementInterval) return 1;
         return (passengers / BoardingPassengerAnnouncementInterval) + 1;
-    }
-
-    private static string BuildProgressThrottleKey(string text, string fallbackService)
-    {
-        string serviceName = ExtractServiceName(text);
-        if (string.IsNullOrWhiteSpace(serviceName) || serviceName.Length > 80)
-            serviceName = fallbackService;
-
-        string serviceOperator = ExtractServiceOperator(text);
-        return string.IsNullOrWhiteSpace(serviceOperator)
-            ? serviceName
-            : $"{serviceName}|{serviceOperator}";
     }
 
     // Variant used by the progress throttles (fueling, boarding). Always uses
@@ -1644,9 +1610,6 @@ public sealed class GsxService : IDisposable
         passengers = Math.Clamp(int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture), 0, 999);
         return true;
     }
-
-    private static bool IsInvoiceAnnouncement(string text) =>
-        NormalizeWhitespace(text).Contains(" invoice ", StringComparison.OrdinalIgnoreCase);
 
     private static TimeSpan GetTimerOnlyAnnouncementInterval(string text) =>
         IsGroundConnectionService(text)
@@ -2567,12 +2530,6 @@ public sealed class GsxService : IDisposable
         return rows;
     }
 
-    private static bool HasStatusReceiptData(string html) =>
-        Regex.IsMatch(
-            html,
-            @"<span\s+class=""[^""]*\bgsx-receipt-data\b[^""]*""[^>]*>",
-            RegexOptions.Singleline | RegexOptions.IgnoreCase);
-
     private static string RenderStatusFragmentAsText(string html)
     {
         string text = Regex.Replace(html, @"<\s*br\s*/?\s*>", "\n",
@@ -2739,77 +2696,6 @@ public sealed class GsxService : IDisposable
         return string.IsNullOrWhiteSpace(totalPhrase)
             ? $"{serviceName} completed."
             : $"{serviceName} completed, {totalPhrase}.";
-    }
-
-    private string FormatInvoiceAnnouncement(
-        IReadOnlyList<StatusServiceRow> activeRows,
-        IReadOnlyList<StatusServiceRow> completedRows,
-        IReadOnlyList<string> chargeRows)
-    {
-        if (!chargeRows.Any(IsInvoiceChargeRow))
-            return string.Empty;
-
-        var serviceRows = completedRows
-            .Where(row => IsInvoiceGeneratingService(row.Text))
-            .Reverse()
-            .Concat(activeRows
-                .Where(row => IsInvoiceGeneratingService(row.Text))
-                .Reverse())
-            .ToList();
-
-        StatusServiceRow? serviceRow = null;
-        string invoiceRow = string.Empty;
-        foreach (var candidate in serviceRows)
-        {
-            string? matchingInvoice = FindMatchingChargeRows(candidate.Text, chargeRows)
-                .LastOrDefault(IsInvoiceChargeRow);
-            if (string.IsNullOrWhiteSpace(matchingInvoice))
-                continue;
-
-            serviceRow = candidate;
-            invoiceRow = matchingInvoice;
-            break;
-        }
-
-        if (serviceRow is null || string.IsNullOrWhiteSpace(invoiceRow))
-        {
-            invoiceRow = chargeRows.LastOrDefault(IsInvoiceChargeRow)
-                ?? chargeRows.LastOrDefault(row => !string.IsNullOrWhiteSpace(ExtractMoneySummary(row)))
-                ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(invoiceRow))
-                return string.Empty;
-
-            serviceRow = activeRows
-                .Concat(completedRows)
-                .LastOrDefault(row => IsInvoiceGeneratingService(row.Text));
-        }
-
-        string serviceName = serviceRow is null
-            ? InferInvoiceServiceName(invoiceRow)
-            : ExtractServiceName(serviceRow.Text);
-        string serviceOperator = serviceRow is null
-            ? ExtractServiceOperator(invoiceRow)
-            : ExtractServiceOperator(serviceRow.Text);
-        if (string.IsNullOrWhiteSpace(serviceOperator)
-            && !string.IsNullOrWhiteSpace(serviceName)
-            && _lastServiceOperatorByName.TryGetValue(serviceName, out string? cachedOperator))
-        {
-            serviceOperator = cachedOperator;
-        }
-
-        string total = ExtractMoneySummary(invoiceRow);
-        if (string.IsNullOrWhiteSpace(total))
-            return string.Empty;
-
-        string invoiceKey = NormalizeWhitespace($"{serviceName}|{serviceOperator}|{total}|{invoiceRow}");
-        if (!_announcedInvoiceKeys.Add(invoiceKey))
-            return string.Empty;
-
-        string operatorPhrase = string.IsNullOrWhiteSpace(serviceOperator)
-            ? string.Empty
-            : $" from {serviceOperator}";
-
-        return $"{serviceName} invoice available{operatorPhrase}. Total {NormalizeWhitespace(total)}. More information can be found by viewing the invoice.";
     }
 
     private string FormatReceiptInvoiceAnnouncement(IReadOnlyList<ReceiptInvoice> receiptInvoices)
@@ -3029,21 +2915,6 @@ public sealed class GsxService : IDisposable
                 || IsFuelInvoiceText(normalized)
                 || IsHandlingInvoiceText(normalized)
                 || IsPassengerBusInvoiceText(normalized));
-    }
-
-    private static string InferInvoiceServiceName(string invoiceRow)
-    {
-        string normalized = invoiceRow.ToLowerInvariant();
-        if (IsFuelInvoiceText(normalized))
-            return "Fueling";
-        if (IsCateringInvoiceText(normalized))
-            return "Catering";
-        if (IsHandlingInvoiceText(normalized))
-            return "Handling";
-        if (IsPassengerBusInvoiceText(normalized))
-            return "Passenger bus";
-
-        return "Service";
     }
 
     private static bool IsCateringInvoiceText(string normalized) =>

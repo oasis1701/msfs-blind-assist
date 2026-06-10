@@ -480,39 +480,10 @@ public sealed class GsxSettingsForm : Form
             _lastCommittedValues[item.Key] = value;
     }
 
-    private void SelectFirstInput()
-    {
-        if (_settingsHost.Controls.Count == 0)
-            return;
-
-        foreach (Control control in _settingsHost.Controls)
-        {
-            if (SelectFirstInput(control))
-                return;
-        }
-    }
-
     private void SelectSectionList()
     {
         if (_tabSelector.Items.Count > 0)
             _tabSelector.Select();
-    }
-
-    private static bool SelectFirstInput(Control parent)
-    {
-        foreach (Control child in parent.Controls)
-        {
-            if (child.CanSelect && child is not Label)
-            {
-                child.Select();
-                return true;
-            }
-
-            if (SelectFirstInput(child))
-                return true;
-        }
-
-        return false;
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -599,11 +570,6 @@ public sealed class GsxSettingsForm : Form
             }
 
             base.OnKeyDown(e);
-        }
-
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            base.OnMouseUp(e);
         }
 
         private bool ApplyKey(Keys keyCode)
