@@ -6,8 +6,11 @@ namespace MSFSBlindAssist.Forms.FBWA320;
 
 // A320 Baro window: enter QNH once (applies to BOTH altimeters via the proven
 // A32NX.FCU_EFIS_L/R_BARO_SET events, hPa*16 encoding — the same route the old
-// Set-Altimeter dialog used); STD/QNH toggle (writes *_EIS_BARO_IS_STD both sides)
-// and hPa/inHg toggle (entry unit + XMLVAR_Baro_Selector both sides). Mirrors the
+// Set-Altimeter dialog used); STD/QNH toggle fires the A32NX.FCU_EFIS_L/R_BARO_PULL
+// (STD) / _BARO_PUSH (QNH) knob events — live-verified 2026-06; the old
+// *_EIS_BARO_IS_STD L:var write is DEAD on the new-FCU A32NX (holds a value but
+// drives nothing; stays 0 even while actually in STD — do not revert to it).
+// hPa/inHg toggle = entry unit + XMLVAR_Baro_Selector both sides. Mirrors the
 // A380 Baro window's shape. The captain/FO EFIS baro vars auto-announce on change.
 public class FBWA320BaroWindow : FBWA320FCUWindowBase
 {
@@ -62,10 +65,12 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
 
     private void RefreshModeLabels()
     {
-        // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD, 1=hPa, 2=inHg.
-        inHg = (simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE") ?? 1) >= 1.5;
+        // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD, 1=hPa, 2=inHg. While in STD
+        // the mode carries no unit information, so keep the last known entry unit.
+        double mode = simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE") ?? 1;
+        bool std = mode < 0.5;
+        if (!std) inHg = mode >= 1.5;
         RefreshUnitLabel();
-        bool std = (simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD") ?? 0) > 0.5;
         stdButton.Text = std ? "STD (both) — ACTIVE" : "STD (both)";
         stdButton.AccessibleName = std ? "Standard pressure both sides, active" : "Standard pressure both sides";
         qnhButton.Text = std ? "QNH (both)" : "QNH (both) — ACTIVE";
@@ -101,9 +106,12 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
 
     private void SetStd(bool std)
     {
-        int val = std ? 1 : 0;
-        simConnect.ExecuteCalculatorCode($"{val} (>L:A32NX_FCU_LEFT_EIS_BARO_IS_STD)");
-        simConnect.ExecuteCalculatorCode($"{val} (>L:A32NX_FCU_RIGHT_EIS_BARO_IS_STD)");
+        // PULL = STD, PUSH = back to QNH (the FCU preserves the preselected QNH value) —
+        // the same knob events the cockpit fires; reachable via TransmitClientEvent like
+        // the proven A32NX.FCU_EFIS_*_BARO_SET. Live-verified round-trip 2026-06.
+        string action = std ? "PULL" : "PUSH";
+        simConnect.SendEvent($"A32NX.FCU_EFIS_L_BARO_{action}", 0);
+        simConnect.SendEvent($"A32NX.FCU_EFIS_R_BARO_{action}", 0);
         announcer.AnnounceImmediate(std ? "Standard, both sides" : "QNH, both sides");
     }
 
