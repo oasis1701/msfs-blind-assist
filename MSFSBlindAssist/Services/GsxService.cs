@@ -679,6 +679,7 @@ public sealed class GsxService : IDisposable
         _lastFuelingProgressAnnouncementByService.Clear();
         _lastBagsMilestoneByOperation.Clear();
         _recentLiveServiceAnnouncements.Clear();
+        _lastServiceOperatorByName.Clear();
         _announcedInvoiceKeys.Clear();
         _lastCompletedStatusServiceText = string.Empty;
         _lastTimerOnlyStatusAnnouncementUtc = DateTime.MinValue;

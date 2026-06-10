@@ -384,6 +384,10 @@ public sealed class GroundTrafficMonitor : IDisposable
                 _positionValid = true;
             }
 
+            // RequestAiTrafficData is async — its response arrives after this
+            // callback returns, so the summary below is built from the
+            // PREVIOUS traffic snapshot (at most one poll old). Own position
+            // above IS fresh; the request refreshes traffic for the next query.
             _sim.RequestAiTrafficData();
             PruneStaleAircraft();
             _announcer.AnnounceImmediate(GetNearestTrafficSummary());

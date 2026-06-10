@@ -57,6 +57,10 @@ public sealed class GsxSettingsForm : Form
         if (BuildItemsSignature(items) == BuildItemsSignature(_items))
             return false;
 
+        // Flush pending edits against the OLD seed table before the rebuild
+        // disposes the controls — same semantics as closing the window.
+        CommitAllSettings();
+
         _items = items.ToArray();
         PopulateSettings();
         SelectSectionList();

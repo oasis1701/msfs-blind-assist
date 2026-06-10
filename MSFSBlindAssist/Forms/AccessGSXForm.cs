@@ -248,6 +248,10 @@ public sealed class AccessGSXForm : Form
 
         if (keyCode == Keys.Escape)
         {
+            // An open active-services dropdown owns Escape (closes the
+            // dropdown); only hide the window when nothing is dropped down.
+            if (_activeServicesCombo.DroppedDown)
+                return base.ProcessCmdKey(ref msg, keyData);
             Hide();
             return true;
         }
