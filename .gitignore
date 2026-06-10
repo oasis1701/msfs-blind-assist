@@ -106,7 +106,6 @@ $RECYCLE.BIN/
 *.private.md
 *.local.md
 docs/superpowers
-.git-local-hooks/
 
 # Temporary files
 *.tmp
