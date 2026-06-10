@@ -36,7 +36,8 @@ public class FlyByWireMCDUForm : Form
     // F/E/R/U/K/M/A/T/O for Init/Dir/Prog/Fpln/Perf/Rad/Fuel/Atc/Menu/Airport/Data/Ovfy.
     // Sec F-PLN has no plain accelerator (Alt+Shift+F, handled in Form_KeyDown, like
     // Fenix). Up/Down/Prev/Next carry no letter accelerator — they have dedicated keys
-    // (Page Up/Down, Alt+Up/Down/Left/Right).
+    // (Page Up/Down, Alt+Up/Down/Left/Right; plain Left/Right also page when the display
+    // list is focused, matching the Fenix MCDU).
     private static readonly (string Label, string Key)[] PageButtons =
     {
         ("&Init", "INIT"), ("&Dir", "DIR"), ("&Prog", "PROG"), ("&Fpln", "FPLN"), ("P&erf", "PERF"),
@@ -173,10 +174,22 @@ public class FlyByWireMCDUForm : Form
     private void McduDisplay_KeyDown(object? sender, KeyEventArgs e)
     {
         // Backspace = CLR, but ONLY in the display (the scratchpad needs Backspace to
-        // edit text). Slew / page keys are handled globally in Form_KeyDown.
+        // edit text). Plain Left/Right page multi-page forms (PERF 1/2, INIT, ...)
+        // like the Fenix MCDU; Up/Down stay free to read display lines. The same
+        // paging also works window-wide via Alt+Left/Right in Form_KeyDown.
         if (e.KeyCode == Keys.Back)
         {
             _ = _service.SendButtonPress("CLR");
+            e.Handled = true; e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.Left && !e.Alt && !e.Control)
+        {
+            _ = _service.SendButtonPress("PREVPAGE");
+            e.Handled = true; e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.Right && !e.Alt && !e.Control)
+        {
+            _ = _service.SendButtonPress("NEXTPAGE");
             e.Handled = true; e.SuppressKeyPress = true;
         }
     }

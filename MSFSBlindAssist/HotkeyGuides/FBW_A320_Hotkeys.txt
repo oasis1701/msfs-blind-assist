@@ -275,9 +275,11 @@ MCDU Page Buttons:
   Alt+O          OVFLY
   Alt+C          CLR
 
-Alt+Arrow Navigation:
-  Alt+Left       Previous page (of a multi-page form, e.g. PERF 1/2)
-  Alt+Right      Next page
+Arrow Navigation:
+  Left           Previous page (of a multi-page form, e.g. PERF 1/2) — display list focused
+  Right          Next page — display list focused
+  Alt+Left       Previous page (works from anywhere in the window)
+  Alt+Right      Next page (works from anywhere in the window)
   Alt+Up         Scroll up
   Alt+Down       Scroll down
 
