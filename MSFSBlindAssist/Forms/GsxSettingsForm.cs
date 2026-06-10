@@ -272,6 +272,7 @@ public sealed class GsxSettingsForm : Form
             Height = 28,
             AccessibleName = item.Label
         };
+        SeedCommitted(item, ((double)(checkBox.Checked ? 1 : 0)).ToString(CultureInfo.InvariantCulture));
         checkBox.CheckedChanged += (_, _) =>
         {
             CommitNumber(item, checkBox.Checked ? 1 : 0);
@@ -302,6 +303,8 @@ public sealed class GsxSettingsForm : Form
             }
         }
 
+        if (combo.SelectedItem is ChoiceItem initialChoice)
+            SeedCommitted(item, initialChoice.Value.ToString(CultureInfo.InvariantCulture));
         combo.SelectedIndexChanged += (_, _) =>
         {
             if (combo.SelectedItem is not ChoiceItem choice) return;
@@ -332,6 +335,7 @@ public sealed class GsxSettingsForm : Form
             AccessibleName = item.Label
         };
 
+        SeedCommitted(item, ((double)numeric.Value).ToString(CultureInfo.InvariantCulture));
         numeric.ValueChanged += (_, _) =>
         {
             CommitNumber(item, (double)numeric.Value);
@@ -367,6 +371,7 @@ public sealed class GsxSettingsForm : Form
             AccessibleName = item.Label
         };
 
+        SeedCommitted(item, ((double)trackBar.Value).ToString(CultureInfo.InvariantCulture));
         trackBar.ValueChanged += (_, _) => CommitNumber(item, trackBar.Value);
         _closeCommitters.Add(() => CommitNumber(item, trackBar.Value));
 
@@ -386,6 +391,7 @@ public sealed class GsxSettingsForm : Form
             AccessibleName = item.Label
         };
 
+        SeedCommitted(item, textBox.Text);
         textBox.TextChanged += (_, _) => CommitText(item, textBox.Text);
         textBox.Leave += (_, _) => CommitText(item, textBox.Text);
         textBox.KeyDown += (_, e) =>
@@ -462,6 +468,17 @@ public sealed class GsxSettingsForm : Form
 
         _lastCommittedValues[item.Key] = value;
         return true;
+    }
+
+    // Record a control's INITIAL value as already-committed so the
+    // FormClosing CommitAllSettings pass only writes values the user
+    // actually changed. Without this, ShouldCommit treats every never-
+    // touched key as new and closing the window rewrites the whole GSX
+    // config through lossy UI<->INI round-trips.
+    private void SeedCommitted(GsxService.GsxSettingItem item, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Key))
+            _lastCommittedValues[item.Key] = value;
     }
 
     private void SelectFirstInput()
