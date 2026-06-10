@@ -1784,11 +1784,13 @@ public class TaxiAssistForm : Form
     /// <summary>
     /// Computes the GSX <c>.py</c> per-aircraft stop offset for <paramref name="spot"/> and
     /// feeds it to docking, so the stop moves to where GSX's VDGS would stop this airframe.
-    /// Only applies for NAVDATA/<c>.py</c> gates (<c>StopLatitude == null</c> — a <c>.ini</c>
-    /// gate already carries an exact GSX stop, so we don't double-offset it) and skips deice
-    /// areas (datum-aligned). Resolves the aircraft id from SimConnect ICAO + wingspan. Any
-    /// miss (no profile / unknown aircraft / parse fail) yields <see cref="Services.Gsx.GsxOffset.Zero"/>
-    /// — identical to today's behaviour. Never throws.
+    /// Applies to ALL non-deice gates — <c>.ini</c> gates INCLUDED: the <c>.py</c>
+    /// <c>customOffset</c> is GSX's per-aircraft adjustment layered ON TOP of the static
+    /// <c>.ini</c>/navdata base (EDDF A66: 777 = 5.3 m, A380 = 6.3 m, base = 1.65 m), so a
+    /// <c>.ini</c> stop position is NOT aircraft-exact on its own. Deice pads stay
+    /// datum-aligned (no offset). Resolves the aircraft id from SimConnect ICAO + wingspan.
+    /// Any miss (no profile / unknown aircraft / parse fail) yields
+    /// <see cref="Services.Gsx.GsxOffset.Zero"/> — the safe base position. Never throws.
     /// </summary>
     private void ApplyGsxStopOffset(Database.Models.ParkingSpot? spot)
     {

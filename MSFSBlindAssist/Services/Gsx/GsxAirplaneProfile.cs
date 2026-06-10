@@ -4,9 +4,12 @@ namespace MSFSBlindAssist.Services.Gsx;
 
 /// <summary>
 /// Reads GSX per-aircraft gsx.cfg files (package folders + %APPDATA%\Virtuali\Airplanes)
-/// and exposes the preferred passenger door's longitudinal offset from the aircraft
-/// datum (metres, forward-positive). Used to make docking stop with the DOOR aligned
-/// to the gate stop position. Fully data-driven by ICAO type — nothing hardcoded.
+/// and exposes the preferred passenger door's geometry (lateral side + longitudinal
+/// position) and wingspan, keyed by ICAO type — nothing hardcoded. Docking consumes
+/// ONLY the door SIDE (the spoken "jetway on your left/right" cue): the stop math
+/// aligns the aircraft DATUM to the stop position, NOT the door — subtracting the
+/// door's longitudinal offset parked a B777 ~26 m short (see DockingGuidanceManager).
+/// The longitudinal value is still parsed for diagnostics/wingspan fallback only.
 /// </summary>
 
 public enum DoorSide { Unknown, Left, Right }

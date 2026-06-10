@@ -20,7 +20,7 @@ public static class DockingGeometry
     /// ~0.3 m of the exact stop instead of 0.5 m short.
     /// </summary>
     public const double StopToleranceMetres = 0.3;
-    /// <summary>Announce overshoot when the door is 1 m past the stop.</summary>
+    /// <summary>Announce overshoot when the aircraft datum is 1 m past the stop.</summary>
     public const double OvershootMetres = 1.0;
     public const double SlowDownMetres = 6.0;
     /// <summary>"Slow down" only fires when ground speed exceeds this threshold (kts).</summary>
@@ -30,7 +30,7 @@ public static class DockingGeometry
     // Beep interval mapping (ms): slow when far, fast when near.
     public const double BeepIntervalFarMs = 1000.0;
     public const double BeepIntervalNearMs = 90.0;
-    /// <summary>Beep ramps gradually over the final ~30 m of door distance.</summary>
+    /// <summary>Beep ramps gradually over the final ~30 m of forward distance to the stop.</summary>
     public const double BeepFarMetres = 30.0;
     /// <summary>
     /// Distance (m) at which the beep reaches its FASTEST pulse — set equal to

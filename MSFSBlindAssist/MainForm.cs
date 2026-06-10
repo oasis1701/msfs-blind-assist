@@ -71,11 +71,14 @@ public partial class MainForm : Form
     private GsxService? _gsxService;
     private Forms.AccessGSXForm? _accessGsxForm;
 
-    // Per-aircraft GSX door offset. Constructed once; background scan is warmed at
-    // startup so the first docking session has offsets ready. Thread-safe internally.
+    // Per-aircraft gsx.cfg geometry — docking consumes only the door SIDE (the spoken
+    // "jetway on your left/right" cue); the stop math is datum-aligned and takes no door
+    // offset. Constructed once; background scan is warmed at startup so the first docking
+    // session has the side ready. Thread-safe internally (single-flight Lazy build).
     private readonly MSFSBlindAssist.Services.Gsx.GsxAirplaneProfile _gsxAirplaneProfile = new();
-    // Tracks ICAOs that have already triggered a Refresh() so we only rebuild the
-    // map once per distinct ICAO miss (Refresh is ~12 s on a cold disk).
+    // Tracks ICAOs that have already triggered a Refresh() so we only rebuild the map once
+    // per distinct ICAO miss (a Refresh re-scans the package folders — seconds on a cold
+    // disk). Mutated from concurrent Task.Run handlers — always lock(_refreshedIcaos).
     private readonly System.Collections.Generic.HashSet<string> _refreshedIcaos = new();
 
     // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
@@ -911,11 +914,16 @@ public partial class MainForm : Form
             }
         }
 
-        // Docking guidance runs on every position update regardless of taxi-guidance
-        // state — it has its own guard (_gate == null || !DockingGuidanceEnabled → returns
-        // immediately), so calling it every frame is safe and cheap. Critically this
-        // ensures docking keeps receiving updates when taxi guidance reaches Arrived
-        // state (navdata gates), which is outside the Taxiing/LiningUp/LandingRollout gate above.
+        // Docking guidance runs on every TAXI_GUIDANCE_POSITION frame regardless of
+        // taxi-guidance state — it has its own guard (_gate == null / disabled / not Idle
+        // → reset), so calling it every frame is safe and cheap. NOTE the feed itself is
+        // taxi-scoped: OnTaxiGuidanceStateChanged stops position monitoring when taxi
+        // reaches Arrived/Inactive, so docking gets NO frames after that point. That is
+        // fine by design — arrival ownership is engage-latched (docking has either already
+        // finished, or never engaged and taxi announced the arrival), the parked solid
+        // tone is self-sustaining until the pilot presses Stop, and stale docking state is
+        // cleared at the next flight boundary (takeoff-assist / LandingRollout) or healed
+        // by the absolute-distance disengage on the next route's frames.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
         {
             var pos = e.PositionData.Value;

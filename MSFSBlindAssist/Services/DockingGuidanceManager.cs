@@ -47,7 +47,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private DateTime _stoppedSinceUtc = DateTime.MinValue; // first frame of a gs<0.5 kt standstill while Docking
     private bool _stoppedShortSaid;   // one-shot for the stopped-short reminder; re-arms on movement
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
-    private double _lastDoorAlongM;  // last forward distance to stop (m), for the status query
+    private double _lastAlongM;  // last forward (along-track) distance to the stop (m), for the status query
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -104,7 +104,7 @@ public sealed class DockingGuidanceManager : IDisposable
             string what = _gate?.IsDeiceArea == true ? "deicing pad" : "stop";
             if (_state == DockState.Stopped) return "At the stop. Hold position.";
             if (_state == DockState.Docking)
-                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastDoorAlongM))} to {what}.";
+                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}.";
             return string.Empty;
         }
     }
@@ -196,7 +196,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 // door is ON the airframe, not a stop offset — and parked a B777 ~26 m short.
                 // Do not reintroduce it. The door SIDE still feeds the jetway-side cue.)
                 double alongM = DockingGeometry.AlongTrackMetres(distM, hdgErr);
-                _lastDoorAlongM = alongM;
+                _lastAlongM = alongM;
 
                 // Intercept-angle lineup to the gate centerline (the line through the stop
                 // along the stop heading) — the cue docking pans with on the final approach.
@@ -408,9 +408,10 @@ public sealed class DockingGuidanceManager : IDisposable
 
     /// <summary>
     /// Appends a throttled telemetry line (≤ ~2/s) so a live docking run can be diagnosed
-    /// post-hoc: state, ground speed, raw + along-track + door-aligned distances, the
-    /// lateral cross-axis angle (hdgErr), whether the lateral tone is muted by taxi,
-    /// the gate stop heading, and the aircraft heading. Path:
+    /// post-hoc: state, ground speed, raw + along-track distances, the bearing-vs-centerline
+    /// angle (hdgErr), the intercept lineup error + signed cross-track, the gate stop heading,
+    /// the aircraft heading, the applied GSX stop offset, and absolute stop/aircraft coords.
+    /// Only written near the gate or while engaged (see wantDetail in UpdatePosition). Path:
     /// %LOCALAPPDATA%\MSFSBlindAssist\logs\docking.log. Never throws.
     /// </summary>
     private void DockLog(double gs, double distM, double alongM,

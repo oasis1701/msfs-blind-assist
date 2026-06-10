@@ -110,7 +110,7 @@ public class TaxiGuidanceManager : IDisposable
     private bool _isLandingExitRoute = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
-    private bool _approachAnnounced = false;      // "In X feet, turn..." at ~300ft
+    private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
     private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
     private bool _crossingAnnounced = false;       // "Crossing taxiway X" at ~150ft
     private int _lastCrossingNodeId = -1;          // suppress re-announce for same node
@@ -2850,11 +2850,12 @@ public class TaxiGuidanceManager : IDisposable
             _smoothedHeadingError = 0.0;
             _headingErrorInitialized = false;
 
-            // When docking owns the arrival it announces the approach ("Docking guidance…")
-            // and the precise stop; taxi staying silent here avoids a contradictory "Align
-            // with X" / "Stop. Hold position." over docking's countdown. Taxi still holds
-            // LiningUp state + its (muted-while-docking) tone so steering is seamless if
-            // docking never engages.
+            // _dockingActive here means docking has ENGAGED (engage-latched semantics): it
+            // already announced "Docking guidance… X to stop" and owns the countdown to the
+            // precise stop, so taxi stays silent to avoid a contradictory "Align with X" over
+            // it. When docking has NOT engaged (the common navdata case), taxi announces the
+            // alignment normally — this is the pilot's only arrival guidance then. Taxi holds
+            // LiningUp state either way; its tone is muted separately while docking is active.
             if (!_dockingActive)
             {
                 int hdgAnnounce = (int)Math.Round(_lineupHeadingMag);
