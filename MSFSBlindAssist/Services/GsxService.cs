@@ -1870,9 +1870,11 @@ public sealed class GsxService : IDisposable
         {
             if (string.IsNullOrWhiteSpace(iniValue))
             {
+                // Prefer the label match — value 0 is not guaranteed to be
+                // the "No Audio" entry if GSX numbers real devices from zero.
                 var noAudioChoice = item.Choices.FirstOrDefault(choice =>
-                    Math.Abs(choice.Value) < 0.000001
-                    || choice.Label.Contains("no audio", StringComparison.OrdinalIgnoreCase));
+                        choice.Label.Contains("no audio", StringComparison.OrdinalIgnoreCase))
+                    ?? item.Choices.FirstOrDefault(choice => Math.Abs(choice.Value) < 0.000001);
                 return noAudioChoice is null ? item.Value : FormatInvariantNumber(noAudioChoice.Value);
             }
 
@@ -2149,10 +2151,13 @@ public sealed class GsxService : IDisposable
             .Replace("★", string.Empty)
             .Replace("â˜…", string.Empty)
             .Replace("Ã¢Ëœâ€¦", string.Empty)
+            // Mojibake em-dash: normalize the three-char sequence to a real
+            // em-dash BEFORE the prefix strip below — a regex character class
+            // matches a single char, so `[â€”-]` could never match it.
+            .Replace("â€”", "—")
             .Trim();
 
         text = Regex.Replace(text, @"^Default\s+[—-]\s+", string.Empty, RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, @"^Default\s+[â€”-]\s+", string.Empty, RegexOptions.IgnoreCase);
         return text;
     }
 
