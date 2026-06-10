@@ -73,7 +73,7 @@ public sealed class GsxSettingsForm : Form
     // (Label, Tip, Value, etc.) that may contain '|', ';', or ':' can
     // never collide across field boundaries.
     private static string BuildItemsSignature(IReadOnlyList<GsxService.GsxSettingItem> items) =>
-        string.Join("\n", items.Select(i =>
+        string.Join("\x1e", items.Select(i =>
             string.Join("",
                 i.Key, i.Type, i.Label, i.Value, i.Category, i.Tip,
                 i.InfoValue, i.ButtonText,
@@ -494,6 +494,10 @@ public sealed class GsxSettingsForm : Form
     {
         if ((keyData & Keys.KeyCode) == Keys.Escape)
         {
+            // An open choice dropdown owns Escape (closes the dropdown);
+            // only close the window when nothing is dropped down.
+            if (ActiveControl is ComboBox { DroppedDown: true })
+                return base.ProcessCmdKey(ref msg, keyData);
             Close();
             return true;
         }

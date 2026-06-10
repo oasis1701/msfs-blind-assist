@@ -237,6 +237,12 @@ public sealed class AccessGSXForm : Form
         if (keyCode == Keys.C && !control && !alt && !shift && _gsxService.MenuOptions.Count > 0)
         {
             _gsxService.OpenSettings();
+            // OpenSettings publishes synchronously on the UI thread, so the
+            // form exists by now. The refresh-in-place path deliberately
+            // never steals focus on background republishes — refocus only
+            // here, on the explicit user keypress.
+            if (_settingsForm is { IsDisposed: false })
+                _settingsForm.ShowForm();
             return true;
         }
 
