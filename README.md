@@ -14,6 +14,7 @@ This application uses Windows standard controls, screen reader announcements and
 - Global hotkeys for accessing a comprehensive set of features, such as on-demand readout of heading/speed/altitude/VS and many more
 - Continuous monitoring of aircraft systems and announcing changes, for example, Master Warning and Master Caution alerts and many more.
 - Turn-by-turn taxi guidance with a stereo-panned audio steering tone ("taxiway localizer") and spoken announcements for turns, taxiway crossings, hold-shorts and arrivals. Enter your ATC clearance and the app routes you through the exact taxiways — works on any airport the user's database covers, not just major hubs.
+- Accessible GSX Ground Services Pro window with screen-reader-readable menu, tooltip, service progress, invoices/receipts, and GSX settings access.
 - Capability to teleport to and from gates to runways, still available for users who prefer it or for quick repositioning.
 - Additional tools to assist visually impaired pilots to fly, for example, take-off assistance which announces when the pilot is deviating from the runway, as well as pitch monitoring.
 - Touchdown feedback on every aircraft: read your last landing rate (touchdown vertical speed) and the peak g-force of the landing with a hotkey.
