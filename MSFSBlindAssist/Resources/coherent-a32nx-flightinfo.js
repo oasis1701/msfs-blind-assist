@@ -8,6 +8,8 @@
 //                flightPlanInfo.distanceFromAircraft (the FMS's own dist-to-go; vanishes once
 //                passed). NOT (DECEL) — a separate decel point that lingers ahead.
 //   timeToTD/TC: FMS time-to-go (flightPlanInfo.secondsFromPresent), accounts for the profile
+//   timeToDest : FMS time-to-go to the destination (vertical-profile prediction, seconds;
+//                same number the MCDU's DEST UTC is derived from; null until computed)
 //   flightPhase: A32NX_FMGC_FLIGHT_PHASE (>=4 = descent/approach/... = past TOD)
 (function () {
   try {
@@ -16,11 +18,29 @@
     var gc = fms && fms.guidanceController;
     if (!gc) return JSON.stringify({ ok: false, error: "FMS not ready" });
 
-    var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, flightPhase: null };
+    var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, timeToDest: null, flightPhase: null };
 
     var map = gc.alongTrackDistancesToDestination;
     var dtd = (map && map.get) ? map.get(0) : null;   // 0 = active plan
     if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
+
+    // Time-to-destination (profile-aware): the same vertical-profile prediction the
+    // MCDU's DEST UTC comes from. Live-verified on the A32NX:
+    // vnavDriver.profileManager.mcduProfile.waypointPredictions is a Map keyed by leg
+    // index; the destination leg's entry carries secondsFromPresent. Wrapped
+    // defensively — a build without this structure just yields no time and the D
+    // readout stays distance-only (mirrors the A380 agent's flightInfo()).
+    try {
+      var plan = null;
+      try { plan = gc.flightPlanService.active; } catch (e) {}
+      var ddi = (plan && typeof plan.destinationLegIndex === "number") ? plan.destinationLegIndex : -1;
+      var pmgr = gc.vnavDriver && gc.vnavDriver.profileManager;
+      var preds = pmgr && pmgr.mcduProfile && pmgr.mcduProfile.waypointPredictions;
+      if (preds && preds.get && ddi >= 0) {
+        var dpr = preds.get(ddi);
+        if (dpr && typeof dpr.secondsFromPresent === "number" && isFinite(dpr.secondsFromPresent)) info.timeToDest = dpr.secondsFromPresent;
+      }
+    } catch (e) {}
 
     var pw = gc.currentPseudoWaypoints || [];
     for (var p = 0; p < pw.length; p++) {
