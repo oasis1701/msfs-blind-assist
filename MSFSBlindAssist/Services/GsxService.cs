@@ -231,7 +231,6 @@ public sealed class GsxService : IDisposable
     private readonly List<GsxSettingItem> _settingsItems = new();
     private readonly Dictionary<string, DataDefineId> _dynamicSettingDefinitions = new(StringComparer.OrdinalIgnoreCase);
     private int _nextDynamicSettingDefinition = DynamicSettingDefinitionStart;
-    private readonly Dictionary<string, (int Percent, DateTime SeenAt)> _lastBaggageProgressByOperation = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _recentLiveServiceAnnouncements = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _lastServiceOperatorByName = new(StringComparer.OrdinalIgnoreCase);
     // Timestamp per fueling-service key of the last announce that included
@@ -247,9 +246,6 @@ public sealed class GsxService : IDisposable
     private readonly Dictionary<string, int> _lastBagsMilestoneByOperation = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _announcedInvoiceKeys = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan LiveServiceRepeatWindow = TimeSpan.FromMinutes(10);
-    private static readonly Regex PercentRegex = new(
-        @"\b(\d{1,3})\s*%",
-        RegexOptions.Compiled);
 
     public GsxService(IntPtr windowHandle, ScreenReaderAnnouncer announcer)
     {
@@ -682,7 +678,6 @@ public sealed class GsxService : IDisposable
         _lastBoardingPassengerAnnouncementByService.Clear();
         _lastFuelingProgressAnnouncementByService.Clear();
         _lastBagsMilestoneByOperation.Clear();
-        _lastBaggageProgressByOperation.Clear();
         _recentLiveServiceAnnouncements.Clear();
         _announcedInvoiceKeys.Clear();
         _lastCompletedStatusServiceText = string.Empty;
@@ -1059,10 +1054,14 @@ public sealed class GsxService : IDisposable
         // AND a fresh transition segment ("rear loader leaving") still
         // announces the transition.
         bool forceAnnouncement = _forceNextLiveServiceAnnouncement;
+        // Baggage / pax / fuel progress are milestone-gated PER-SEGMENT in
+        // StripThrottledBagsSegments / StripThrottledPaxSegments /
+        // StripThrottledFuelSegments, so a tooltip pairing a stale progress
+        // segment with a fresh transition ("rear loader leaving") still
+        // announces the transition. Only completion/invoice repeats are
+        // suppressed whole.
         bool isThrottled = !forceAnnouncement
-            && (IsRepeatedBaggageProgress(text)
-                || IsRepeatedLiveServiceAnnouncement(stableText)
-                || IsThrottledServiceProgress(text));
+            && IsRepeatedLiveServiceAnnouncement(stableText);
 
         bool exactDuplicate = string.Equals(text, _lastTooltip, StringComparison.Ordinal);
         bool stableChanged = !string.Equals(stableText, _lastStatusStableText, StringComparison.Ordinal);
@@ -1231,9 +1230,12 @@ public sealed class GsxService : IDisposable
         @")\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // Whole-segment match for "bags N%" / "baggage N%".
+    // Whole-segment match for "bags N%" / "baggage N%" / "baggage loading N%"
+    // / "bags N% unloaded". Broad enough to catch GSX's progress phrasings;
+    // any segment carrying other info (truck arriving, loader leaving) still
+    // fails the whole-segment match and announces.
     private static readonly Regex BagsSegmentRegex = new(
-        @"^\s*(?:\[gsx\]\s+)?(?:bags|baggage)\s+\d{1,3}\s*%\s*$",
+        @"^\s*(?:\[gsx\]\s+)?(?:bags|baggage)(?:\s+(?:un)?load(?:ing|ed))?\s+\d{1,3}\s*%(?:\s+(?:un)?load(?:ing|ed))?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private string StripThrottledPaxSegments(string announceText, string fullText)
@@ -1318,7 +1320,7 @@ public sealed class GsxService : IDisposable
         percent = 0;
         var match = Regex.Match(
             text,
-            @"\b(?:bags|baggage)\s+(\d{1,3})\s*%",
+            @"\b(?:bags|baggage)(?:\s+(?:un)?load(?:ing|ed))?\s+(\d{1,3})\s*%",
             RegexOptions.IgnoreCase);
         if (!match.Success)
             return false;
@@ -1647,54 +1649,6 @@ public sealed class GsxService : IDisposable
 
     private static bool IsTimerStatusText(string text) =>
         text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
-
-    private bool IsRepeatedBaggageProgress(string tooltip)
-    {
-        if (!TryParseBaggageProgress(tooltip, out string operation, out int percent))
-            return false;
-
-        DateTime now = DateTime.UtcNow;
-        if (_lastBaggageProgressByOperation.TryGetValue(operation, out var lastProgress)
-            && percent == lastProgress.Percent)
-        {
-            return true;
-        }
-
-        _lastBaggageProgressByOperation[operation] = (percent, now);
-        return false;
-    }
-
-    private static bool TryParseBaggageProgress(string tooltip, out string operation, out int percent)
-    {
-        operation = string.Empty;
-        percent = 0;
-
-        if (string.IsNullOrWhiteSpace(tooltip))
-            return false;
-
-        foreach (string line in tooltip.ReplaceLineEndings("\n").Split('\n'))
-        {
-            string normalizedLine = line.ToLowerInvariant();
-            if (!normalizedLine.Contains("baggage"))
-                continue;
-
-            var match = PercentRegex.Match(normalizedLine);
-            if (!match.Success || !int.TryParse(match.Groups[1].Value, out percent))
-                continue;
-
-            if (normalizedLine.Contains("unloading") || normalizedLine.Contains("unloaded"))
-                operation = "unloading";
-            else if (normalizedLine.Contains("loading") || normalizedLine.Contains("loaded"))
-                operation = "loading";
-            else
-                continue;
-
-            percent = Math.Clamp(percent, 0, 100);
-            return true;
-        }
-
-        return false;
-    }
 
     private void ReloadAndPublishSettings()
     {
