@@ -391,11 +391,6 @@ public sealed class GsxService : IDisposable
                 System.Diagnostics.Debug.WriteLine(
                     $"[GsxService] ReceiveMessage null reference (expected during disconnect): {ex.Message}");
             }
-            catch (AccessViolationException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[GsxService] ReceiveMessage access violation ignored: {ex.Message}");
-            }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine(

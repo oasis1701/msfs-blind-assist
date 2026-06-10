@@ -3898,13 +3898,6 @@ public class SimConnectManager
                 // SimConnect became null between check and call - log and ignore
                 System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage null reference (expected during disconnect): {ex.Message}");
             }
-            catch (AccessViolationException ex)
-            {
-                // SimConnect's native marshaller can occasionally throw a corrupted
-                // packet/access violation while the sim or another SimConnect client
-                // is busy. Drop the packet instead of taking down the whole app.
-                System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage access violation ignored: {ex.Message}");
-            }
             catch (Exception ex)
             {
                 // Unexpected exception - log but don't crash
