@@ -75,6 +75,12 @@ public class TaxiGuidanceManager : IDisposable
     private string _destinationName = "";
     private string _icao = "";
     private List<string>? _originalTaxiwaySequence;
+    // Set only by explicit route loads. Automatic recalculation must preserve
+    // this value so a live reroute cannot silently move a runway hold point
+    // from the user's selected last taxiway (for example N2) to another valid
+    // hold point (for example N1). A new explicit route with a different last
+    // taxiway updates it.
+    private string? _preferredRunwayHoldShortTaxiway;
 
     // Current tracking state
     private int _currentSegmentIndex = 0;
@@ -870,8 +876,9 @@ public class TaxiGuidanceManager : IDisposable
             // route start where it's supposed to, regardless of the aircraft's
             // current orientation.
             int routeDestinationNodeId = destinationNodeId;
-            string? destinationFinalTaxiway = ExtractFinalTaxiwayFromDestinationName(destinationName);
-            string? finalClearedTaxiway = destinationFinalTaxiway ?? taxiwaySequence?.LastOrDefault();
+            string? finalClearedTaxiway = DeterminePreferredRunwayHoldShortTaxiway(
+                isRunwayDestination, destinationName, taxiwaySequence);
+            _preferredRunwayHoldShortTaxiway = isRunwayDestination ? finalClearedTaxiway : null;
             if (isRunwayDestination && !string.IsNullOrWhiteSpace(finalClearedTaxiway))
             {
                 var selectedHoldShort = FindSelectedRunwayHoldShortNode(
@@ -2478,10 +2485,17 @@ public class TaxiGuidanceManager : IDisposable
         // after an auto-recalc the pilot would roll straight onto the runway instead
         // of stopping at the hold-short line.
         if (_isRunwayLineup)
+        {
+            // Preserve the explicit route's selected runway-entry taxiway across
+            // automatic recalculations. Only a fresh LoadRoute with a different
+            // last taxiway should move this hold point.
             TruncateToHoldShort(
                 newRoute,
                 _destinationName,
-                ExtractFinalTaxiwayFromDestinationName(_destinationName) ?? remainingSequence?.LastOrDefault());
+                _preferredRunwayHoldShortTaxiway
+                    ?? ExtractFinalTaxiwayFromDestinationName(_destinationName)
+                    ?? remainingSequence?.LastOrDefault());
+        }
 
         _route = newRoute;
         _currentSegmentIndex = 0;
@@ -4409,6 +4423,18 @@ public class TaxiGuidanceManager : IDisposable
 
         string taxiway = destinationName[(suffix + marker.Length)..].Trim();
         return string.IsNullOrWhiteSpace(taxiway) ? null : taxiway;
+    }
+
+    private static string? DeterminePreferredRunwayHoldShortTaxiway(
+        bool isRunwayDestination,
+        string destinationName,
+        List<string>? taxiwaySequence)
+    {
+        if (!isRunwayDestination)
+            return null;
+
+        return ExtractFinalTaxiwayFromDestinationName(destinationName)
+            ?? taxiwaySequence?.LastOrDefault();
     }
 
     /// <summary>
