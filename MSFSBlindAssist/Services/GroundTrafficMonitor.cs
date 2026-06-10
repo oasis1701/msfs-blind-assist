@@ -64,6 +64,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Hotkey summary: announce this many nearest aircraft
     private const int SUMMARY_MAX_AIRCRAFT = 3;
 
+    // Safety net for the deferred hotkey summary: announce from whatever has
+    // arrived if the sweep-completed marker never does (unobserved in practice;
+    // the user's own aircraft is always in the sweep so the marker should
+    // always fire).
+    private const int SUMMARY_SWEEP_TIMEOUT_MS = 1500;
+
     private const int POLL_INTERVAL_MS = 3000;
     private const double NM_TO_FEET = 6076.12;
 
@@ -81,15 +87,25 @@ public sealed class GroundTrafficMonitor : IDisposable
     private double _ownLat, _ownLon, _ownHeadingTrue, _ownGS;
     private bool _positionValid;
 
+    // True while a hotkey summary is waiting for its requested traffic sweep
+    // to complete. UI-thread only (SimConnect callbacks and WinForms timers
+    // both run on the message pump), so no lock is needed.
+    private bool _summaryPending;
+    private readonly System.Windows.Forms.Timer _summaryTimeout;
+
     public GroundTrafficMonitor(ScreenReaderAnnouncer announcer, SimConnectManager sim)
     {
         _announcer = announcer;
         _sim = sim;
         _sim.AiTrafficReceived += OnAiTrafficReceived;
+        _sim.AiTrafficSweepCompleted += OnAiTrafficSweepCompleted;
 
         _timer = new System.Windows.Forms.Timer { Interval = POLL_INTERVAL_MS };
         _timer.Tick += OnTick;
         _timer.Start();
+
+        _summaryTimeout = new System.Windows.Forms.Timer { Interval = SUMMARY_SWEEP_TIMEOUT_MS };
+        _summaryTimeout.Tick += (_, _) => CompleteSummaryAnnounce();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -355,6 +371,62 @@ public sealed class GroundTrafficMonitor : IDisposable
         return sb.ToString().TrimEnd();
     }
 
+    public void AnnounceNearestTrafficSummary()
+    {
+        if (!_sim.IsConnected)
+        {
+            _announcer.AnnounceImmediate("Ground traffic monitor not connected to the simulator.");
+            return;
+        }
+
+        _sim.RequestAircraftPositionAsync(position =>
+        {
+            bool onGround = position.SimOnGround >= 0.5;
+            _sim.LastKnownOnGround = onGround;
+
+            if (!onGround)
+            {
+                _announcer.AnnounceImmediate("Ground traffic monitor not active in flight.");
+                return;
+            }
+
+            double hdgTrue = NormalizeDeg(position.HeadingMagnetic + position.MagneticVariation);
+            lock (_lock)
+            {
+                _ownLat = position.Latitude;
+                _ownLon = position.Longitude;
+                _ownHeadingTrue = hdgTrue;
+                _ownGS = position.GroundSpeedKnots;
+                _positionValid = true;
+            }
+
+            // Defer the announcement until the sweep we just requested
+            // completes (AiTrafficSweepCompleted = the sweep's final entry).
+            // The 3-second poll is fully suppressed while taxi guidance is
+            // idle, so this request is often the ONLY thing populating the
+            // dictionary — announcing synchronously here read a stale (usually
+            // empty) snapshot and said "no traffic" at a busy airport. The
+            // timeout is a safety net that announces from whatever arrived.
+            _summaryPending = true;
+            _summaryTimeout.Stop();
+            _summaryTimeout.Start();
+            _sim.RequestAiTrafficData();
+        });
+    }
+
+    private void OnAiTrafficSweepCompleted(object? sender, EventArgs e) => CompleteSummaryAnnounce();
+
+    private void CompleteSummaryAnnounce()
+    {
+        // Background OnTick sweeps complete too; only speak when a hotkey
+        // summary is actually waiting.
+        if (!_summaryPending) return;
+        _summaryPending = false;
+        _summaryTimeout.Stop();
+        PruneStaleAircraft();
+        _announcer.AnnounceImmediate(GetNearestTrafficSummary());
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Geometry helpers
 
@@ -396,8 +468,11 @@ public sealed class GroundTrafficMonitor : IDisposable
     public void Dispose()
     {
         _sim.AiTrafficReceived -= OnAiTrafficReceived;
+        _sim.AiTrafficSweepCompleted -= OnAiTrafficSweepCompleted;
         _timer.Stop();
         _timer.Dispose();
+        _summaryTimeout.Stop();
+        _summaryTimeout.Dispose();
     }
 }
 

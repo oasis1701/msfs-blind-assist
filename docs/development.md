@@ -68,6 +68,14 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 
+### Access GSX
+
+- **`Services/GsxService.cs`**: GSX menu/tooltip bridge, active-service tracking, announcement throttling, invoice/receipt parsing, and GSX settings persistence
+- **`Forms/AccessGSXForm.cs`**: Accessible GSX menu, tooltip, active-services selector, keyboard shortcuts, and settings launcher
+- **`Forms/GsxSettingsForm.cs`**: Screen-reader-friendly GSX settings editor built from GSX's published settings metadata
+
+See [Access GSX](gsx.md) for the full feature reference.
+
 ### User Interface
 
 - **`Forms/RunwayTeleportForm.cs`**: Runway selection dialog
