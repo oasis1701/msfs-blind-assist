@@ -4932,11 +4932,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" }
         },
+        // Dome light: stock 3-state switch — state = LIGHT POTENTIOMETER:7 (0 off /
+        // 20 dim / 100 bright), set = CABIN_LIGHTS_SET + LIGHT_POTENTIOMETER_7_SET
+        // (A320_NEO_INTERIOR.xml:2153). A32NX_OVHD_INTLT_DOME is an A380-only var.
         ["A32NX_OVHD_INTLT_DOME"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_INTLT_DOME", DisplayName = "Dome Light",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Dim", [2] = "Bright" }
+            Name = "LIGHT POTENTIOMETER:7", DisplayName = "Dome Light",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [20] = "Dim", [100] = "Bright" }
         },
 
         // ---- DOORS — read-only auto-announced status (parity with A380, NO combos). ----
@@ -7615,6 +7619,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
             if (wantOn)
                 simConnect.ExecuteCalculatorCode($"{(pos >= 2 ? 100 : 75)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
+            return true;
+        }
+
+        // Dome light: mirror the cockpit XML (A320_NEO_INTERIOR.xml:2153-2155).
+        // BRT=100: 1 (>K:2:CABIN_LIGHTS_SET) 100 (>K:LIGHT_POTENTIOMETER_7_SET)
+        // DIM=20:  1 (>K:2:CABIN_LIGHTS_SET) 20  (>K:LIGHT_POTENTIOMETER_7_SET)
+        // OFF=0:   0 (>K:2:CABIN_LIGHTS_SET) 0   (>K:LIGHT_POTENTIOMETER_7_SET)
+        if (varKey == "A32NX_OVHD_INTLT_DOME")
+        {
+            int pct = (int)Math.Round(value);
+            int onOff = pct > 0 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"{onOff} (>K:2:CABIN_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCode($"{pct} (>K:LIGHT_POTENTIOMETER_7_SET)");
             return true;
         }
 
