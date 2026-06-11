@@ -3967,15 +3967,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string>
             { [0] = "10 NM", [1] = "20 NM", [2] = "40 NM", [3] = "80 NM", [4] = "160 NM", [5] = "320 NM" }
         },
+        // LS (ILS) pushbutton per side — dev FCU: control = A32NX.FCU_EFIS_*_LS_PUSH
+        // input event, state = the FCU's *_LS_LIGHT_ON output. The old
+        // A32NX_EFIS_*_LS_BUTTON_IS_ON L:var no longer exists (held writes but drove
+        // nothing — dead-var trap).
         ["A32NX_EFIS_L_LS_BUTTON_IS_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_EFIS_L_LS_BUTTON_IS_ON", DisplayName = "ILS",
+            Name = "A32NX_FCU_EFIS_L_LS_LIGHT_ON", DisplayName = "ILS",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["A32NX_EFIS_R_LS_BUTTON_IS_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_EFIS_R_LS_BUTTON_IS_ON", DisplayName = "ILS",
+            Name = "A32NX_FCU_EFIS_R_LS_LIGHT_ON", DisplayName = "ILS",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
@@ -7651,6 +7655,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 else
                     simConnect.SendEvent(varKey.Contains("_GEN_2_") ? "TOGGLE_ALTERNATOR2" : "TOGGLE_ALTERNATOR1");
             }
+            return true;
+        }
+
+        // LS button: fire the FCU input event only when desired != current (toggle).
+        // The def's Name is the FCU's LIGHT output — never write it.
+        if (varKey == "A32NX_EFIS_L_LS_BUTTON_IS_ON" || varKey == "A32NX_EFIS_R_LS_BUTTON_IS_ON")
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn)
+                simConnect.SendEvent(varKey.Contains("_L_") ? "A32NX.FCU_EFIS_L_LS_PUSH" : "A32NX.FCU_EFIS_R_LS_PUSH");
             return true;
         }
 
