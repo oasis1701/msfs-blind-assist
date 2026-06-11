@@ -697,15 +697,18 @@
     return startIdx;
   };
 
-  // Decode an F-PLN altitude constraint token, kept terse for a screen reader:
-  // "+N" = "above N" (at or above), "-N" = "below N" (at or below), plain "N" = the
-  // bare hard altitude. The above/below marker is what distinguishes a constraint
-  // from the FMS-predicted altitude (which reads as a bare number). (Speed
-  // constraints live in the speed column, handled separately, not here.)
+  // Decode an F-PLN altitude constraint token into the SPOKEN form (the phrasing is
+  // the spec — documented in CLAUDE.md and live-verified with screen-reader users):
+  // "+N" = "at or above N feet", "-N" = "at or below N feet", plain "N" = "at N feet"
+  // (an "FLnnn" token reads "flight level nnn"). The at-or-above/below wording is
+  // what distinguishes a constraint from the FMS-predicted altitude (which reads as
+  // "N feet" / "flight level N"). (Speed constraints live in the speed column,
+  // handled separately, not here.)
   A.fplnConstraint = function (c) {
-    if (c.charAt(0) === "+") return "above " + c.substring(1);
-    if (c.charAt(0) === "-") return "below " + c.substring(1);
-    return c;
+    var pre = "at ", v = c;
+    if (v.charAt(0) === "+") { pre = "at or above "; v = v.substring(1); }
+    else if (v.charAt(0) === "-") { pre = "at or below "; v = v.substring(1); }
+    return /^FL\d/.test(v) ? pre + "flight level " + v.substring(2) : pre + v + " feet";
   };
 
   // Build ONE clean line per F-PLN waypoint. The MFD draws the flight plan as a
@@ -737,9 +740,13 @@
     // a HoneywellMCDU '"' span when the prediction is unchanged from the previous
     // waypoint) — tracked in prevSpd/prevAlt and resolved identically.
     var prevWindDir = "", prevWindMag = "", prevSpd = "", prevAlt = "";
-    // "240" -> "240kts", ".82"/"M.82" -> "M.82" — shared by the prediction and the
-    // constraint-only speed cell (formatSpeed renders ".NN" for a Mach constraint).
-    function fmtSpd(s) { return /^M?\./.test(s) ? "M" + s.replace(/^M/, "") : s + "kts"; }
+    // Spoken value rendering (the phrasing is the SPEC — CLAUDE.md, live-verified
+    // with the blind user): "240" -> "240 knots", ".82"/"M.82" -> "Mach .82";
+    // "FL380" -> "flight level 380", "5000" -> "5000 feet". Shared by the
+    // predictions, the constraint-only cells (formatSpeed renders ".NN" for a Mach
+    // constraint) and the hold-speed row.
+    function fmtSpd(s) { return /^M?\./.test(s) ? "Mach " + s.replace(/^M/, "") : s + " knots"; }
+    function fmtAlt(s) { return /^FL\d/.test(s) ? "flight level " + s.substring(2) : s + " feet"; }
     for (var i = 0; i < lines.length; i++) {
       var L = lines[i];
       if (!A.isVisible(L)) continue;
@@ -891,27 +898,32 @@
       }
 
       var parts = [ident];
-      // Screen-faithful order (user choice): mirror the MFD's own column layout —
-      // IDENT, airway, then the leg TRACK then DISTANCE (upper row, left→right), then
-      // the waypoint-row columns TIME, SPD, ALT. Terse fragments (no "via"/"track"/
-      // "ETA" prefixes, no "NM"/"knots"/"feet" words). The "*" constraint marker is
-      // kept (a real on-screen cue, not noise); a missed constraint also reads "missed".
-      // A leg reads "FOLET, SERFR4, 343°, 8NM, 00:15, *240kts, *8000" (met) or
-      // "… *240kts missed" (will not make the restriction).
-      if (anno) parts.push(anno);
-      if (track) parts.push(track);               // already carries the ° glyph
-      if (dist) parts.push(dist + "NM");
+      // SPOKEN phrasing (THE SPEC — documented in CLAUDE.md and live-verified with
+      // the blind user): "IDENT, via AIRWAY, N NM, track T°, <speed>, <constraint>,
+      // <altitude>, ETA hh:mm". The connector words ("via", "track", "ETA", "Mach",
+      // "flight level", " NM"/" knots"/" feet") are what make the line parse by EAR
+      // — bare "J102, 261°, 29NM" is token salad through a screen reader. Keep the
+      // procedure/airway name on EVERY leg (NOT deduped): for a blind pilot it is
+      // situational awareness about which points belong to the SID / STAR / airway.
+      // The "*" constraint marker is kept (a real on-screen cue, not noise); a
+      // missed constraint also reads "missed". A leg reads "FOLET, via SERFR4,
+      // 8 NM, track 343°, *240 knots, *8000 feet, ETA 00:15" (met) or
+      // "… *240 knots missed …" (will not make the restriction).
+      if (anno) parts.push("via " + anno);
+      if (dist) parts.push(dist + " NM");
+      if (track) parts.push("track " + track);    // already carries the ° glyph
       if (fpa) parts.push("FPA " + fpa);          // descent flight-path angle column
-      if (eta) parts.push(eta);
       // Hold leg: the time column holds the hold SPEED (labelled "SPD" on screen),
-      // not an ETA — read it with the same on-screen label so it can't be mistaken
-      // for a time ("HOLD L, SPD 210kts"). SPD/ALT cells are emptied by FBW here.
-      if (isHoldRow && holdSpd) parts.push("SPD " + fmtSpd(holdSpd));
+      // not an ETA — read it as a speed so it can't be mistaken for a time
+      // ("HOLD L, speed 210 knots"). SPD/ALT cells are emptied by FBW here.
+      if (isHoldRow && holdSpd) parts.push("speed " + fmtSpd(holdSpd));
       if (efobWindMode) {
-        // EFOB/T.WIND view: read the fuel + wind a sighted pilot sees. EFOB is in
+        // EFOB/T.WIND view: read the fuel + wind a sighted pilot sees (ETA + EFOB +
+        // wind — the live-verified order on the OMDB approach window). EFOB is in
         // tonnes ("EFOB 36.8"); wind is direction (ddd° / TAIL / HEAD) over magnitude
         // in knots, dittos resolved above. Strip the FBW zero-padding on magnitude
         // (007 -> 7) so the reader doesn't say "zero zero seven".
+        if (eta) parts.push("ETA " + eta);
         if (efob) parts.push("EFOB " + efob);
         if (windDir || windMag) {
           var wmag = windMag.replace(/^0+(?=\d)/, "");
@@ -923,14 +935,18 @@
           parts.push(spdCon === "missed" ? "*" + spdBase + " missed" : spdCon === "met" ? "*" + spdBase : spdBase);
         } else if (conSpd) {
           // speed CONSTRAINT shown because no prediction exists yet (mutually
-          // exclusive with spd in formatSpeed) — e.g. "250kts" / "M.82"
-          parts.push(fmtSpd(conSpd));
+          // exclusive with spd in formatSpeed) — "at 250 knots" / "at Mach .82"
+          parts.push("at " + fmtSpd(conSpd));
         }
         // altitude constraint; the literal "WINDOW" is a two-altitude window whose
         // values FBW does not render into the F-PLN (only the word) — read it as
         // "altitude window" instead of dropping it.
         if (conAlt) parts.push(conAlt.toUpperCase() === "WINDOW" ? "altitude window" : A.fplnConstraint(conAlt));
-        if (alt) parts.push(altCon === "missed" ? "*" + alt + " missed" : altCon === "met" ? "*" + alt : alt);
+        if (alt) {
+          var altBase = fmtAlt(alt);
+          parts.push(altCon === "missed" ? "*" + altBase + " missed" : altCon === "met" ? "*" + altBase : altBase);
+        }
+        if (eta) parts.push("ETA " + eta);
       }
 
       // Make the waypoint actionable: its ident cell carries the lateral-revision

@@ -181,13 +181,16 @@ test('DEPARTURE: selector dropdowns show their selected value, stay selectable',
 // MfdFmsFpln.tsx ~1087-1148) folds into one spoken line, and the SPD/ALT ditto marks
 // (the HoneywellMCDU '"' rendered when a prediction is unchanged from the line above,
 // formatSpeed ~1887 / formatAltitude ~1808) are resolved by carrying the previous
-// waypoint's value forward — every cruise leg after (T/C) repeats M.84 / FL380.
+// waypoint's value forward — every cruise leg after (T/C) repeats the SPOKEN
+// "Mach .84, flight level 380" (the screen-reader phrasing is the spec, CLAUDE.md).
 test('F-PLN: destination footer spoken, SPD/ALT dittos carried forward', () => {
   const list = els('fpln');
   const j = list.map((e) => e.text).join('\n');
   assert.match(j, /(^|\n)Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29\.4 KLB(\n|$)/, 'destination footer line missing');
-  assert.match(j, /RYLIE, J102, 261°, 29NM, 18:04, M\.84, FL380/, 'SPD/ALT dittos not carried forward');
-  assert.match(j, /JASSE, 264°, 27NM, 19:06, M\.84, FL380/, 'ditto carry broke down-plan');
+  assert.match(j, /RYLIE, via J102, 29 NM, track 261°, Mach \.84, flight level 380, ETA 18:04/, 'SPD/ALT dittos not carried forward in spoken form');
+  assert.match(j, /JASSE, 27 NM, track 264°, Mach \.84, flight level 380, ETA 19:06/, 'ditto carry broke down-plan');
+  // the spoken connectors must never regress to terse fragments again
+  assert.doesNotMatch(j, /29NM|M\.84|FL380/, 'terse fragments regressed (spoken phrasing is the spec)');
   // the destination ident / DEST buttons stay clickable
   assert.ok(list.some((e) => e.kind === 'button' && e.text === 'KLAX24R' && e.idx > 0), 'dest ident button lost');
   assertSelectable('fpln');
@@ -200,21 +203,23 @@ test('F-PLN: destination footer spoken, SPD/ALT dittos carried forward', () => {
 //  - a two-altitude WINDOW constraint (FBW renders only the literal "WINDOW",
 //    ~1861) reads as "altitude window" instead of being dropped;
 //  - the descent FPA upper-row column ("3.0", ~1658) is appended as "FPA 3.0";
-//  - hold rows (~1693) read the time-column hold speed as "SPD 210kts", not as
-//    a bogus ETA;
+//  - hold rows (~1693) read the time-column hold speed as "speed 210 knots", not
+//    as a bogus ETA;
 //  - visible TMPY/EO title flags (ActivePageTitleBar.tsx:66-78) append to the
 //    title line; hidden PENALTY stays silent and no raw flag leaks as own line.
+// All values read in the SPOKEN style ("250 knots" / "at or above 5000 feet" /
+// "Mach .82" / "5000 feet") — the screen-reader phrasing is the spec (CLAUDE.md).
 test('F-PLN polish: constraints, WINDOW, FPA, hold rows, title flags', () => {
   const list = els('fpln_polish');
   const j = list.map((e) => e.text).join('\n');
   assert.match(j, /(^|\n)ACTIVE\/F-PLN \(engine out\) \(temporary\)(\n|$)/, 'title flags not appended to the title line');
   assert.doesNotMatch(j, /\(penalty\)/, 'hidden PENALTY flag leaked');
   assert.doesNotMatch(j, /(^|\n)(TMPY|EO)(\n|$)/, 'raw flag span leaked as its own line');
-  assert.match(j, /(^|\n)WAYPT1, J102, 261°, 29NM, FPA 3\.0, 18:04, 250kts, 5000(\n|$)/, 'FPA column not read');
-  assert.match(j, /(^|\n)WAYPT2, J102, 259°, 41NM, 18:09, 250kts, 5000(\n|$)/, 'SPD/ALT dittos not resolved');
-  assert.match(j, /(^|\n)WAYPT3, 252°, 157NM, 250kts, above 5000(\n|$)/, 'coexisting SPD+ALT constraints not both read');
-  assert.match(j, /(^|\n)WAYPT4, 250°, 10NM, altitude window(\n|$)/, 'WINDOW constraint dropped');
-  assert.match(j, /(^|\n)HOLD L, SPD 210kts(\n|$)/, 'hold speed not labelled (misread as ETA)');
+  assert.match(j, /(^|\n)WAYPT1, via J102, 29 NM, track 261°, FPA 3\.0, 250 knots, 5000 feet, ETA 18:04(\n|$)/, 'FPA column not read');
+  assert.match(j, /(^|\n)WAYPT2, via J102, 41 NM, track 259°, 250 knots, 5000 feet, ETA 18:09(\n|$)/, 'SPD/ALT dittos not resolved');
+  assert.match(j, /(^|\n)WAYPT3, 157 NM, track 252°, at 250 knots, at or above 5000 feet(\n|$)/, 'coexisting SPD+ALT constraints not both read');
+  assert.match(j, /(^|\n)WAYPT4, 10 NM, track 250°, altitude window(\n|$)/, 'WINDOW constraint dropped');
+  assert.match(j, /(^|\n)HOLD L, speed 210 knots(\n|$)/, 'hold speed not labelled (misread as ETA)');
   assert.match(j, /(^|\n)Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29\.4 KLB(\n|$)/, 'destination footer missing');
   assertSelectable('fpln_polish');
 });
