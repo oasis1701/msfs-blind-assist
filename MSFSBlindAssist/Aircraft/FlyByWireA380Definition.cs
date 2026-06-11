@@ -4647,6 +4647,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varKey == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
         {
             int side = varKey.Contains("LEFT") ? 1 : 2;
+            SimConnectManager.LogTransport($"[A380 Baro] set {varKey} = {value}");
             simConnect.SendEvent($"H:A380X_EFIS_CP_BARO_{(value > 0.5 ? "PUSH" : "PULL")}_{side}", 0);
             return true;
         }

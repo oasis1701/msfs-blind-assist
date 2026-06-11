@@ -4026,16 +4026,40 @@ public class SimConnectManager
     /// Useful for atomic read-modify-write operations on LVars.
     /// Example: "(L:E_FCU_EFIS1_BARO) 5 + (>L:E_FCU_EFIS1_BARO)"
     /// </summary>
+    /// <summary>
+    /// Always-on transport diagnostics (%LOCALAPPDATA%/MSFSBlindAssist/logs/transport.log):
+    /// every calc-path write, H:/dotted gate decision and MobiFlight lifecycle event, so a
+    /// "control does nothing" report can be traced to the exact dead hop without a debugger.
+    /// </summary>
+    public static void LogTransport(string message)
+    {
+        try
+        {
+            string log = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MSFSBlindAssist", "logs", "transport.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(log)!);
+            System.IO.File.AppendAllText(log, $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
+        }
+        catch { }
+    }
+
     public void ExecuteCalculatorCode(string rpnCode)
     {
-        if (!IsConnected || mobiFlightWasm == null) return;
+        if (!IsConnected || mobiFlightWasm == null)
+        {
+            LogTransport($"[Calc] DROPPED (IsConnected={IsConnected}, wasm={(mobiFlightWasm != null ? "present" : "null")}): {rpnCode}");
+            return;
+        }
 
         try
         {
+            LogTransport($"[Calc] {rpnCode}");
             mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}");
         }
         catch (Exception ex)
         {
+            LogTransport($"[Calc] EXCEPTION: {ex.Message} for {rpnCode}");
             System.Diagnostics.Debug.WriteLine($"Error executing calculator code: {ex.Message}");
         }
     }
@@ -4099,6 +4123,7 @@ public class SimConnectManager
                 {
                     if (pendingCalcEvents.Count < MaxPendingCalcEvents)
                         pendingCalcEvents.Enqueue((eventName, data));
+                    LogTransport($"[Event] QUEUED (bridge not responding yet, depth {pendingCalcEvents.Count}): {eventName}");
                 }
             }
             return;

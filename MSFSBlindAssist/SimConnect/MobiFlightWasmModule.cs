@@ -267,6 +267,7 @@ public class MobiFlightWasmModule
             }
             catch (Exception ex)
             {
+                SimConnectManager.LogTransport($"[MF] SendMFCommand FAILED '{command}': {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"[MobiFlight] Failed to send command '{command}': {ex.Message}");
             }
         }
@@ -392,6 +393,7 @@ public class MobiFlightWasmModule
         {
             if (HasModuleResponded) return;
             HasModuleResponded = true;
+            SimConnectManager.LogTransport("[MF] first module response received — calc path OPEN");
             ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM responding");
         }
 
@@ -663,6 +665,7 @@ public class MobiFlightWasmModule
             try
             {
                 registrationTimeoutOccurred = true;
+                SimConnectManager.LogTransport($"[MF] registration TIMEOUT (responded so far: {HasModuleResponded})");
                 System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
                 // A present module can stay silent on a duplicate registration (e.g.
