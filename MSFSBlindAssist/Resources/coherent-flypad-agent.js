@@ -385,6 +385,29 @@
       base = ch ? clean(ch.textContent) : clean(n.textContent);
     }
 
+    // ATC page tune buttons: every FrequencyCard repeats bare "Set Active" /
+    // "Set Standby" — prefix the card's callsign + frequency so multiple
+    // controllers stay distinguishable: "UNICOM 122.800: Set Active". Live DOM
+    // (2026-06-11): the buttons sit in their OWN h2s inside the opacity-0 hover
+    // overlay; the card proper carries the bg-theme-secondary token and its
+    // first two non-button h2s are callsign + frequency (ATC.tsx FrequencyCard).
+    if (base === "Set Active" || base === "Set Standby") {
+      var card = n, hops = 0;
+      while (card && hops < 6) {
+        var cc = " " + ((card.className && card.className.baseVal !== undefined) ? card.className.baseVal : (card.className || "")) + " ";
+        if (cc.indexOf(" bg-theme-secondary ") >= 0 && card.querySelectorAll) {
+          var h2s = card.querySelectorAll("h2"), names = [];
+          for (var hi = 0; hi < h2s.length && names.length < 2; hi++) {
+            var ht = clean(h2s[hi].textContent);
+            if (ht && ht !== "Set Active" && ht !== "Set Standby") names.push(ht);
+          }
+          if (names.length > 0) return names.join(" ") + ": " + base;
+          break;
+        }
+        card = card.parentElement; hops++;
+      }
+    }
+
     var lower = base.toLowerCase();
     var generic = (base === "" || lower === "go to page" || lower === "go to" || lower === "open");
     if (!generic) return base;
