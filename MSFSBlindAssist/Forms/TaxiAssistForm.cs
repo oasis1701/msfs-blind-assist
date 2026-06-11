@@ -92,7 +92,6 @@ public class TaxiAssistForm : Form
     private TaxiGraph? _graph;
     private string _currentIcao = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
-    private bool _taxiwaySelectionExplicit;
     private bool _firstTaxiwaySelectionExplicit;
 
     // Destination nodes for routing
@@ -280,7 +279,6 @@ public class TaxiAssistForm : Form
         cmbFirstTaxiway.SelectedIndexChanged += OnFirstTaxiwayChanged;
         cmbFirstTaxiway.SelectionChangeCommitted += (s, e) =>
         {
-            _taxiwaySelectionExplicit = true;
             _firstTaxiwaySelectionExplicit = true;
         };
 
@@ -505,7 +503,6 @@ public class TaxiAssistForm : Form
         // from the previous airport if the new one fails to load below.
         cmbFirstTaxiway.Items.Clear();
         ClearAllAdditionalTaxiways();
-        _taxiwaySelectionExplicit = false;
         _firstTaxiwaySelectionExplicit = false;
         _airportRunwayIds = new List<string>();
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
@@ -830,7 +827,6 @@ public class TaxiAssistForm : Form
             cmbFirstTaxiway.SelectedIndex = 0;
         }
 
-        _taxiwaySelectionExplicit = false;
         _firstTaxiwaySelectionExplicit = false;
     }
 
@@ -871,7 +867,15 @@ public class TaxiAssistForm : Form
         if (string.IsNullOrEmpty(previousTaxiway) || previousTaxiway.StartsWith("(None"))
             return;
 
-        _taxiwaySelectionExplicit = true;
+        if (_additionalTaxiways.Count == 0)
+        {
+            // Pressing "Add Taxiway" from the auto-suggested first row is an
+            // explicit acceptance of that first taxiway. Without this, a
+            // restarted mid-taxi amendment could visually start at F OUTER but
+            // calculate only the later rows (for example N, N2), losing the
+            // intended runway hold-short point.
+            _firstTaxiwaySelectionExplicit = true;
+        }
 
         // Get heuristically-connected taxiways (within 2 named-taxiway crossings).
         // The dropdown then lists ALL airport taxiways: connected ones first
@@ -995,7 +999,6 @@ public class TaxiAssistForm : Form
 
         int capturedIndex = index;
         combo.SelectedIndexChanged += (s, ev) => OnAdditionalTaxiwayChanged(capturedIndex);
-        combo.SelectionChangeCommitted += (s, ev) => _taxiwaySelectionExplicit = true;
 
         var holdShortChk = new CheckBox
         {
@@ -1409,7 +1412,7 @@ public class TaxiAssistForm : Form
         }
         bool isRunwayDest = cmbDestType.SelectedIndex == 0;
 
-        if (isRunwayDest && _taxiwaySelectionExplicit && taxiwaySequence.Count > 0)
+        if (isRunwayDest && taxiwaySequence.Count > 0)
         {
             var intersectionNode = FindRunwayIntersectionDestinationNode(
                 taxiwaySequence[^1], destName, destNodeId, thresholdLat, thresholdLon);
