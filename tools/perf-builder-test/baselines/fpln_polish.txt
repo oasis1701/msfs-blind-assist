@@ -1,11 +1,11 @@
 # fpln_polish
 text | idx 0 | ACTIVE/F-PLN (engine out) (temporary)
-text | idx 0 |                        DIST FPA  SPD   ALT     TIME
-fplnwpt | idx 3 | WAYPT1    J102    261° 29   3.0  250   5000    18:04
-fplnwpt | idx 4 | WAYPT2    J102    259° 41        "     "       18:09
-fplnwpt | idx 5 | WAYPT3            252° 157       250   +5000
-fplnwpt | idx 6 | WAYPT4            250° 10              WINDOW
-fplnwpt | idx 7 | HOLD L                                         SPD 210
+text | idx 0 |               TRK DIST SPD  ALT    TIME
+fplnwpt | idx 3 | WAYPT1  J102  261 29   250  5000   18:04 FPA 3.0
+fplnwpt | idx 4 | WAYPT2  J102  259 41   "    "      18:09
+fplnwpt | idx 5 | WAYPT3        252 157  250  +5000
+fplnwpt | idx 6 | WAYPT4        250 10        WINDOW
+fplnwpt | idx 7 | HOLD L                             SPD 210
 text | idx 0 | Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29.4 KLB
 button | idx 2 | DEST
 button | idx 1 | KLAX24R
