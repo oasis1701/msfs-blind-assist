@@ -421,24 +421,28 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Nav & Logo switch (A32NX_LIGHTS_NAV_LOGO) uses the indexed K:2:NAV_LIGHTS_SET /
         // K:2:LOGO_LIGHTS_SET calc RPN in HandleUIVariableSet instead.
         // Runway turn-off lights. The real A320 has ONE RWY TURN OFF switch
-        // (SWITCH_OVHD_EXTLT_RWY) driving BOTH lights: left = circuit 21 (LIGHT TAXI:2),
-        // right = circuit 22 (LIGHT TAXI:3). MSFSBA exposes a single combo (this :21 entry,
-        // displayed as "Runway Turn Off Lights") whose set drives BOTH circuits — see the
-        // CIRCUIT_SWITCH_ON:21 branch in MainForm's lighting block. Circuit 21's state is the
-        // representative read-back. The :22 entry below is kept as a read-only state source
-        // (no longer its own panel control) so the combined branch can sync the right circuit.
-        ["CIRCUIT_SWITCH_ON:21"] = new SimConnect.SimVarDefinition
+        // (SWITCH_OVHD_EXTLT_RWY, A320_NEO_INTERIOR.xml:1880-1895). It reads state from
+        // LIGHT TAXI:2 (left) and LIGHT TAXI:3 (right) and fires the indexed K:2:TAXI_LIGHTS_SET
+        // RPN: "INDEX VALUE (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
+        // Airbus.xml:250-255). MSFSBA exposes a single combo (this "LIGHT TAXI:2" entry, displayed
+        // as "Runway Turn Off Lights") whose set drives BOTH sides via that same RPN — see the
+        // "LIGHT TAXI:2" branch in MainForm's lighting block. LIGHT TAXI:2 is the representative
+        // read-back. The "LIGHT TAXI:3" entry below is kept as a read-only state source so the
+        // combined branch can re-read the right side after firing. Using LIGHT TAXI:2/3 (not
+        // CIRCUIT SWITCH ON:21/22) keeps MSFSBA in sync with the cockpit switch, FBW presets,
+        // and the EFB, which all drive LIGHT TAXI:2/3 via TAXI_LIGHTS_SET and never the circuits.
+        ["LIGHT TAXI:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "CIRCUIT SWITCH ON:21",
+            Name = "LIGHT TAXI:2",
             DisplayName = "Runway Turn Off Lights",
             Type = SimConnect.SimVarType.SimVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "bool",
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["CIRCUIT_SWITCH_ON:22"] = new SimConnect.SimVarDefinition
+        ["LIGHT TAXI:3"] = new SimConnect.SimVarDefinition
         {
-            Name = "CIRCUIT SWITCH ON:22",
+            Name = "LIGHT TAXI:3",
             DisplayName = "Right RWY Turn Off Light (state only)",
             Type = SimConnect.SimVarType.SimVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
@@ -5487,7 +5491,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "LIGHT BEACON",
             "LIGHT WING",
             "A32NX_LIGHTS_NAV_LOGO",
-            "CIRCUIT_SWITCH_ON:21",
+            "LIGHT TAXI:2",
             "LANDING_LIGHTS_ON_THIRD_PARTY",
             "LANDING_LIGHTS_OFF_THIRD_PARTY"
         },

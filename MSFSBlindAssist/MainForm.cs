@@ -5465,7 +5465,7 @@ public partial class MainForm : Form
                 // Special handling for Lighting controls
                 else if (varKey == "LIGHTING_LANDING_1" || varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3" ||
                          varKey == "LIGHTING_STROBE_0" || varKey == "LIGHT BEACON" || varKey == "LIGHT WING" ||
-                         varKey == "CIRCUIT_SWITCH_ON:21")
+                         varKey == "LIGHT TAXI:2")
                 {
                     ComboBox combo = new ComboBox();
                     combo.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -5612,29 +5612,23 @@ public partial class MainForm : Form
                             {
                                 simConnectManager?.SendEvent("WING_LIGHTS_SET", (uint)selectedValue);
                             }
-                            else if (capturedVarKey == "CIRCUIT_SWITCH_ON:21") // Runway Turn Off Lights (single switch -> both circuits)
+                            else if (capturedVarKey == "LIGHT TAXI:2") // Runway Turn Off Lights (single switch -> both sides)
                             {
-                                // The real A320 has ONE RWY TURN OFF switch driving BOTH lights
-                                // (left = circuit 21, right = circuit 22). This single combo drives
-                                // both. ELECTRICAL_CIRCUIT_TOGGLE is toggle-only, so toggle each
-                                // circuit independently only when it differs from the desired state
-                                // (self-heals if the two ever got out of sync). priorCachedState is
-                                // circuit 21 captured BEFORE the overwrite above; circuit 22's cache
-                                // isn't overwritten here (a different key) and falls back to 21's
-                                // state when not yet known.
-                                bool wantOn = selectedValue == 1;
-                                bool leftOn = priorCachedState == 1;
-                                if (wantOn != leftOn)
-                                    simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 21);
-                                double rightState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:22")
-                                    ? currentSimVarValues["CIRCUIT_SWITCH_ON:22"] : priorCachedState;
-                                bool rightOn = rightState == 1;
-                                if (wantOn != rightOn)
-                                    simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 22);
-                                // Refresh both actual states so an external (cockpit) change can't
-                                // leave the next decision stale.
-                                simConnectManager?.RequestVariable("CIRCUIT_SWITCH_ON:21", forceUpdate: true);
-                                simConnectManager?.RequestVariable("CIRCUIT_SWITCH_ON:22", forceUpdate: true);
+                                // The real A320 has ONE RWY TURN OFF switch (SWITCH_OVHD_EXTLT_RWY)
+                                // driving BOTH lights via the cockpit template RPN:
+                                //   "INDEX VALUE (>K:2:TAXI_LIGHTS_SET)"
+                                // (FBW_Switch_LeftClick_MouseWheel, Airbus.xml lines 250-255;
+                                //  SIMVAR_INDEX_1=2 / SIMVAR_INDEX_2=3, TOGGLE_EVENT=TAXI_LIGHTS_SET)
+                                // This mirrors that exactly so LIGHT TAXI:2/3, FBW presets, and the
+                                // EFB all stay in sync. The old ELECTRICAL_CIRCUIT_TOGGLE path drove
+                                // circuits 21/22 directly, which desynchronised LIGHT TAXI:2/3.
+                                int on = selectedValue == 1 ? 1 : 0;
+                                simConnectManager?.ExecuteCalculatorCode($"2 {on} (>K:2:TAXI_LIGHTS_SET)");
+                                simConnectManager?.ExecuteCalculatorCode($"3 {on} (>K:2:TAXI_LIGHTS_SET)");
+                                // Refresh both LIGHT TAXI state vars so an external (cockpit) change
+                                // can't leave the next read stale.
+                                simConnectManager?.RequestVariable("LIGHT TAXI:2", forceUpdate: true);
+                                simConnectManager?.RequestVariable("LIGHT TAXI:3", forceUpdate: true);
                             }
                         }
                     };
