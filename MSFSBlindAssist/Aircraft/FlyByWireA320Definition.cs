@@ -7518,13 +7518,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's axis
         // value (-1..1 scaled to +-16384). FBW default-style calibration (Reverse -1.0 /
-        // Rev Idle -0.70 / Idle -0.44 / Climb -0.10 / Flex-MCT 0.53 / TOGA 1.0); the
-        // throttle mapping snaps the lever to the detent. Idle verified live to snap to
-        // the A320 idle dead-zone. Two engines on the A320.
+        // Rev Idle -0.80 / Idle -0.50 / Climb 0.0 / Flex-MCT 0.50 / TOGA 1.0); the
+        // throttle mapping snaps the lever to the detent. Values are the FBW default-
+        // calibration band centers; custom EFB calibrations may differ — see pass-2 checklist. Two engines on the A320.
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
             int didx = (int)Math.Round(value);
-            double[] detentAxis = { -1.0, -0.70, -0.44, -0.10, 0.53, 1.0 };
+            // Band CENTERS of the FBW default calibration (ThrottleAxisMapping.h):
+            // REV [-1,-0.95] / REV-IDLE [-0.85,-0.75] / IDLE [-0.55,-0.45] /
+            // CLB [-0.05,0.05] / FLX [0.45,0.55] / TOGA [0.95,1]. The old -0.70 fell
+            // in the gap between REV-IDLE and IDLE and never reached the detent.
+            double[] detentAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
             string[] dnames = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
             if (didx < 0 || didx >= detentAxis.Length) return true;
             uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[didx] * 16384));
