@@ -71,15 +71,17 @@ public class SimConnectManager
 
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
-    // Gate on the handshake-CONFIRMED registration, not the optimistic IsConnected
-    // (set unconditionally at the end of Initialize even when the WASM module is
-    // absent — the failure arrives as an async SimConnect exception that never
-    // resets it). Without the module, SetLVar must fall through to the data-def
-    // write and H:/dotted events must queue; a permanently-true gate sent them
-    // into a dead client-data area. Pre-registration L:var writes briefly use the
-    // data-def path — acceptable; the pendingCalcEvents queue still flushes on the
-    // "client registered" ConnectionStatusChanged.
-    public bool IsMobiFlightConnected => mobiFlightWasm?.IsRegistered == true;
+    // Gate on EVIDENCE the WASM module is present (any response received), not on
+    // the optimistic IsConnected (set unconditionally at the end of Initialize even
+    // when the module is absent) and NOT on IsRegistered either: the calc path uses
+    // the DEFAULT MobiFlight.Command channel, which works without the FBWBA
+    // registration — the documented "Timeout - Using Fallback" state must keep calc
+    // writes flowing (an IsRegistered gate silently queued every H:/dotted event —
+    // the A380 "STD combo bounces back" regression, live-debugged 2026-06-11).
+    // Without the module no response ever arrives → SetLVar falls through to the
+    // data-def write and H:/dotted events queue, as designed. The pendingCalcEvents
+    // queue flushes on the first-response ConnectionStatusChanged.
+    public bool IsMobiFlightConnected => mobiFlightWasm?.HasModuleResponded == true;
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 

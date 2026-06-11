@@ -49,6 +49,14 @@ public class MobiFlightWasmModule
         // State management
         public bool IsConnected { get; private set; }
         public bool IsRegistered { get; private set; }
+        // True once ANY response has arrived from the WASM module (registration
+        // Finished, MF.Pong, lvar traffic, ...). This — not IsRegistered — is the
+        // correct "module present" gate for the DEFAULT-channel calc path
+        // (ExecuteCalculatorCode), which works without the FBWBA registration: the
+        // documented "Timeout - Using Fallback" state must keep calc writes flowing
+        // (gating them on IsRegistered silently queued every H:/dotted event — the
+        // A380 "STD combo does nothing" regression, live-debugged 2026-06-11).
+        public bool HasModuleResponded { get; private set; }
         public bool CanSendHVars => IsConnected; // Allow immediate sending through default channel
         public string ConnectionStatus
         {
@@ -377,9 +385,20 @@ public class MobiFlightWasmModule
             }
         }
 
+        // Any inbound traffic proves the WASM module is present — flip the
+        // presence flag and notify (the SimConnectManager handler flushes the
+        // pending calc-event queue on this signal).
+        private void MarkModuleResponded()
+        {
+            if (HasModuleResponded) return;
+            HasModuleResponded = true;
+            ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM responding");
+        }
+
         private void ProcessResponse(string response)
         {
             System.Diagnostics.Debug.WriteLine($"[MobiFlight] Received response: {response}");
+            MarkModuleResponded();
 
             if (response.StartsWith($"MF.Clients.Add.{CLIENT_NAME}.Finished"))
             {
@@ -496,6 +515,7 @@ public class MobiFlightWasmModule
         {
             try
             {
+                MarkModuleResponded();
                 // Process default MobiFlight channel LVar updates
                 for (int i = 0; i < defaultChannelLVarList.Count && i < MAX_LVARS_COUNT; i++)
                 {
@@ -645,6 +665,13 @@ public class MobiFlightWasmModule
                 registrationTimeoutOccurred = true;
                 System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
+                // A present module can stay silent on a duplicate registration (e.g.
+                // MSFSBA restarted within one sim session) — elicit a pong on the
+                // default channel so HasModuleResponded still flips when it's alive.
+                // Marshal like the heartbeat does: this is a threadpool callback and
+                // SimConnect calls must run on the owning thread.
+                if (!HasModuleResponded)
+                    _syncContext?.Post(_ => { try { if (IsConnected && !HasModuleResponded) SendMFCommand("MF.Ping"); } catch { } }, null);
             }
             catch { /* never let the timeout callback take down the app */ }
         }
@@ -657,6 +684,7 @@ public class MobiFlightWasmModule
                 registrationTimer?.Stop();
                 IsConnected = false;
                 IsRegistered = false;
+                HasModuleResponded = false;
                 registrationTimeoutOccurred = false;
                 registeredLVars.Clear();
                 lvarList.Clear();
