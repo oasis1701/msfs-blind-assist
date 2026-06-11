@@ -623,6 +623,54 @@
     return null;
   };
 
+  // SelectInput membership for the read-order regroup: returns {root, isOpt}
+  // when n belongs to a SelectInput — isOpt=true for nodes inside the OPEN
+  // options panel (the .absolute.z-10 child; the chevron svg is .absolute too,
+  // so the z-10 token is required), isOpt=false for the value cell / chevron.
+  A.selectInputContext = function (n) {
+    try {
+      var cur = n, hops = 0, panel = null;
+      while (cur && cur.nodeType === 1 && hops < 8) {
+        var c = " " + lower(A.cls(cur)) + " ";
+        if (c.indexOf(" absolute ") >= 0 && c.indexOf(" z-10 ") >= 0) panel = cur;
+        if (A.isSelectInputRoot(cur)) return { root: cur, isOpt: !!panel };
+        cur = cur.parentElement; hops++;
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  // Pull each open SelectInput's option items into one contiguous block placed
+  // right after the dropdown's own item(s) (its value cell while open) — the
+  // geometric sort otherwise interleaves the absolute overlay's options with
+  // unrelated fields (live: "Good (5)" between Landing Weight and Wind).
+  // Mirrors the MCDU agent's menu-under-opener regroup. No-op when closed.
+  A.orderSelectOptions = function (items) {
+    var roots = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (it._selRoot && it._selOpt && roots.indexOf(it._selRoot) < 0) roots.push(it._selRoot);
+    }
+    for (var r = 0; r < roots.length; r++) {
+      var root = roots[r], opts = [], rest = [];
+      for (var j = 0; j < items.length; j++) {
+        if (items[j]._selRoot === root && items[j]._selOpt) opts.push(items[j]);
+        else rest.push(items[j]);
+      }
+      if (!opts.length) continue;
+      var anchor = -1;
+      for (var k = 0; k < rest.length; k++) {
+        if (rest[k]._selRoot === root && !rest[k]._selOpt) anchor = k; // last in-root item
+      }
+      opts.sort(function (a, b) { return a.top - b.top; }); // visual = DOM order
+      var insertAt = anchor >= 0 ? anchor + 1 : rest.length;
+      var args = [insertAt, 0].concat(opts);
+      Array.prototype.splice.apply(rest, args);
+      items.length = 0;
+      Array.prototype.push.apply(items, rest);
+    }
+  };
+
   // True when the control is disabled: native disabled / aria-disabled, or FBW's
   // Tailwind idioms — pointer-events-none / opacity-20 / grayscale on the node or
   // a near ancestor (FBW disables via wrapper divs; synthetic click() would bypass
@@ -1982,6 +2030,10 @@
       var thisIdx = 0;
       if (interactive) { thisIdx = idx; n.setAttribute("data-fbw-efb-idx", String(idx)); idx++; }
 
+      // SelectInput membership — orderSelectOptions pulls an open dropdown's
+      // options into one block right after the dropdown's own items.
+      var selCtx = A.selectInputContext(n);
+
       // Active tab/nav indicator: mark the selected nav-rail page and the selected
       // Ground sub-tab so the reader knows where it is. Nav-rail links read
       // "current page"; in-content sub-tabs read "selected".
@@ -2007,7 +2059,8 @@
         navRail: navRail, _groundSub: groundSub,
         // Quick Controls pane membership — grouped right after the gear by
         // orderQuickControls (only set when the pane is open).
-        _qc: A.insideQuickControlsPane(n)
+        _qc: A.insideQuickControlsPane(n),
+        _selRoot: selCtx ? selCtx.root : null, _selOpt: !!(selCtx && selCtx.isOpt)
       });
     }
 
@@ -2038,12 +2091,14 @@
       // are the rail's full-name tooltips (e.g. "Navigation & Charts", "Air Traffic
       // Control") that duplicate the nav LINKS and aren't clickable.
       if (tLeft < 100 && tTop > 12) continue;
+      var tSelCtx = A.selectInputContext(tn);
       items.push({
         top: tTop, left: tLeft,
         idx: 0, kind: "text", tag: tn.tagName.toLowerCase(), role: "",
         text: own, value: "", controlType: "", clickable: false,
         level: 0, live: A.liveFor(tn), disabled: false, options: [],
-        _axis: axisPanels.length ? axisOfNode(tn) : 0, navRail: false
+        _axis: axisPanels.length ? axisOfNode(tn) : 0, navRail: false,
+        _selRoot: tSelCtx ? tSelCtx.root : null, _selOpt: !!(tSelCtx && tSelCtx.isOpt)
       });
     }
 
@@ -2099,6 +2154,11 @@
     A.orderGroundServices(items);
     // Group the open Quick Controls pane right after the gear (no-op when closed).
     A.orderQuickControls(items);
+    // Group an open SelectInput's options right after the dropdown (no-op closed).
+    A.orderSelectOptions(items);
+    // _selRoot holds a DOM ELEMENT (identity key for the regroup) — strip it
+    // before the items are JSON-serialized (cyclic-structure crash otherwise).
+    for (var sx = 0; sx < items.length; sx++) items[sx]._selRoot = null;
 
     items = A.dedupe(items);
     A._elements = items;

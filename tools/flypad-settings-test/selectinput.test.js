@@ -71,3 +71,40 @@ test('a plain bordered div without the chevron/value shape is NOT a SelectInput'
   const A = w.__MSFSBA_FLYPAD;
   assert.strictEqual(A.isSelectInputRoot(w.document.querySelector('[data-si="root"]')), false);
 });
+
+test('orderSelectOptions: open-dropdown options regroup right after the dropdown items', () => {
+  const w = load('<div></div>');
+  const A = w.__MSFSBA_FLYPAD;
+  const root = {}; // identity token standing in for the SelectInput root element
+  const items = [
+    { text: 'Runway Condition', top: 10, _selRoot: null, _selOpt: false },
+    { text: 'Dry (6)', top: 12, _selRoot: root, _selOpt: false },
+    { text: 'Landing Weight', top: 20, _selRoot: null, _selOpt: false },
+    { text: 'Good (5)', top: 30, _selRoot: root, _selOpt: true },
+    { text: 'Overweight Procedure', top: 40, _selRoot: null, _selOpt: false },
+    { text: 'Medium (3)', top: 50, _selRoot: root, _selOpt: true },
+    { text: 'Calculate', top: 90, _selRoot: null, _selOpt: false },
+  ];
+  A.orderSelectOptions(items);
+  assert.deepStrictEqual(items.map((i) => i.text), [
+    'Runway Condition', 'Dry (6)', 'Good (5)', 'Medium (3)',
+    'Landing Weight', 'Overweight Procedure', 'Calculate',
+  ]);
+});
+
+test('scrape() serializes pages containing a SelectInput (no cyclic _selRoot leak)', () => {
+  // one CLOSED labeled dropdown (composed label must surface) + one OPEN one
+  // (mounted options = the cyclic-_selRoot risk case for serialization).
+  const w = load(labeled('Runway Condition', selectInput('Dry')) + selectInput('OFP', { options: ['METAR'] }));
+  const A = w.__MSFSBA_FLYPAD;
+  // raw-JSDOM shims (the fixture harness normally provides these): everything
+  // visible, monotonically increasing rects so row clustering works.
+  A.isVisible = function () { return true; };
+  let y = 0;
+  w.Element.prototype.getBoundingClientRect = function () {
+    y += 10; return { top: y, left: 120, right: 220, bottom: y + 8, width: 100, height: 8 };
+  };
+  const out = JSON.parse(A.scrape());
+  assert.strictEqual(out.ok, true, 'scrape failed: ' + (out.error || ''));
+  assert.ok(out.elements.some((e) => /Runway Condition: Dry/.test(e.text)), 'composed dropdown missing from scrape');
+});
