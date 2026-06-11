@@ -573,6 +573,9 @@ public class MobiFlightWasmModule
         {
             if (!IsRegistered && !registrationTimeoutOccurred)
             {
+                // Pre-timeout startup window (≤2 s): the HVar is DROPPED, not queued —
+                // make that visible in transport.log instead of silent.
+                SimConnectManager.LogTransport($"[MF] HVar DROPPED (registration pending): {hvar}");
                 System.Diagnostics.Debug.WriteLine($"[MobiFlight] Cannot send H-variable - not registered and no timeout: {hvar}");
                 return;
             }
