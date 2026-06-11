@@ -62,6 +62,20 @@
 
   A.get = function (sub) { try { return (sub && sub.get) ? sub.get() : null; } catch (e) { return null; } };
 
+  // "Runway ahead" gate: the OANS_WORD_1 ARINC discrete, bit 11 (1-based), SSM-valid.
+  // btvUtils.rwyAheadQfu goes stale when the monitor early-bails (stopped / >40 kt).
+  // Bit 11 (1-based) = (low32 >> 10) & 1, matching C# Arinc429Word.BitValueOr(11).
+  A.rwyAheadActive = function () {
+    try {
+      var raw = A.lvar("A32NX_OANS_WORD_1");
+      if (typeof raw !== "number" || !isFinite(raw)) return false;
+      var ssm = Math.floor(raw / 4294967296) % 4;
+      if (ssm !== 3) return false;
+      var bits = raw % 4294967296; if (bits < 0) bits += 4294967296;
+      return (Math.floor(bits / 1024) % 2) === 1; // bit 11 = 2^10
+    } catch (e) { return false; }
+  };
+
   // Runway / exit pick-lists from the loaded AMDB map labels (populated on airport load,
   // independent of ND zoom — no render needed).
   A.listByFeat = function (feattype, runwayPattern) {
@@ -214,7 +228,7 @@
           dry: m(dry), wet: m(wet), stop: computing ? m(stop) : null,
           computing: computing,
           rot: ar(rot), turnMax: ar(tMax), turnIdle: ar(tIdle),
-          rwyAheadQfu: b ? (b.rwyAheadQfu || "") : "",
+          rwyAheadQfu: (b && A.rwyAheadActive()) ? (b.rwyAheadQfu || "") : "",
           metric: A.lvar("A32NX_EFB_USING_METRIC_UNIT") ? true : false
         },
         manual: {
@@ -240,8 +254,13 @@
     }
     if (!rl || !thr) return "runway " + name + " not found on map";
     try {
-      o.btvUtils.selectRunwayFromOans((A.get(o.dataAirportIcao) || "") + name, rl.associatedFeature, thr);
-      return "Armed BTV runway " + name;
+      var want = (A.get(o.dataAirportIcao) || "") + name;
+      o.btvUtils.selectRunwayFromOans(want, rl.associatedFeature, thr);
+      // selectRunwayFromOans is async — but the btvRunway observable is set
+      // synchronously before its first await, so an immediate read-back is valid.
+      var got = A.get(o.btvUtils.btvRunway);
+      if (got != null && String(got) === String(want)) return "Armed BTV runway " + name;
+      return "Runway " + name + " was not accepted";
     } catch (e) { return "ERR " + e; }
   };
 
@@ -265,7 +284,9 @@
       try {
         b.selectExitFromOans(name, f);
         var got = A.get(b.btvExit);
-        if (got != null) return "Armed BTV exit " + got;
+        // Success ONLY when btvExit now equals the requested name — a rejected
+        // select leaves the PREVIOUS exit in place (re-arm false-success bug).
+        if (got != null && String(got) === String(name)) return "Armed BTV exit " + got;
       } catch (e) { lastErr = e; }
     }
     if (!found) return "exit " + name + " not found on map";
@@ -303,7 +324,8 @@
   // BTV consumes oansManualStoppingDistance; user must also select the landing runway in the FMS.
   A.setManualStopDistance = function (metres) {
     var bus = A.bus(); if (!bus) return "no bus";
-    var v = parseFloat(metres); if (!isFinite(v) || v <= 0) return "bad value";
+    var v = parseFloat(metres);
+    if (!isFinite(v) || v <= 400 || v > 4000) return "Stop distance must be more than 400 and at most 4000 metres";
     try { bus.pub("oansManualStoppingDistance", v, true); return "manual stop distance " + Math.round(v) + " m"; }
     catch (e) { return "ERR " + e; }
   };
