@@ -2662,8 +2662,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["PFD_AUTOLAND"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMGC_1_DISCRETE_WORD_4", DisplayName = "Autoland capability",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "number"
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "number"
         },
         // ---- ND: GS / TAS / wind (ADIRS ARINC429 BNR words) ----
         ["A32NX_ADIRS_IR_1_GROUND_SPEED"] = new SimConnect.SimVarDefinition
@@ -3234,18 +3234,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 [0] = "NONE", [10] = "HDG", [11] = "TRACK", [20] = "NAV", [30] = "LOC_CPT",
                 [31] = "LOC_TRACK", [32] = "LAND", [33] = "FLARE", [34] = "ROLL_OUT",
                 [40] = "RWY", [41] = "RWY_TRACK", [50] = "GA_TRACK"
-            }
-        },
-        ["A32NX_APPROACH_CAPABILITY"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_APPROACH_CAPABILITY",
-            DisplayName = "Approach Capability",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string>
-            {
-                [0] = "NONE", [1] = "CAT1", [2] = "CAT2", [3] = "CAT3 SINGLE", [4] = "CAT3 DUAL"
             }
         },
         ["A32NX_FMA_LATERAL_ARMED"] = new SimConnect.SimVarDefinition
@@ -5200,7 +5188,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_FMA_LATERAL_ARMED",
             "A32NX_AUTOTHRUST_MODE",
             "A32NX_AUTOTHRUST_STATUS",
-            "A32NX_APPROACH_CAPABILITY",
             "A32NX_PFD_TARGET_ALTITUDE",
             "PLANE_PITCH_DEGREES",
             "PLANE_BANK_DEGREES",
@@ -6015,20 +6002,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Helper methods for A32NX-specific hotkey actions
     private void HandleReadApproachCapability(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        // Get cached value immediately
-        var cachedValue = simConnect.GetCachedVariableValue("A32NX_APPROACH_CAPABILITY");
+        // A32NX_APPROACH_CAPABILITY no longer exists in FBW — decode the FMGC FG
+        // discrete word 4 (same source the PFD FMA uses).
+        var cachedValue = simConnect.GetCachedVariableValue("PFD_AUTOLAND");
         if (cachedValue.HasValue)
         {
-            string capabilityText = cachedValue.Value switch
-            {
-                0 => "RNP APCH",
-                1 => "CAT 1",
-                2 => "CAT 2",
-                3 => "CAT 3 Single",
-                4 => "CAT 3 Dual",
-                _ => $"Unknown ({cachedValue.Value})"
-            };
-            announcer.AnnounceImmediate($"Approach capability: {capabilityText}");
+            var w = new SimConnect.Arinc429Word(cachedValue.Value);
+            string cap = (!w.IsNormalOperation && !w.IsFunctionalTest) ? "none computed"
+                : w.BitValueOr(25, false) ? "LAND 3 dual"
+                : w.BitValueOr(24, false) ? "LAND 3 single"
+                : w.BitValueOr(23, false) ? "LAND 2" : "none computed";
+            announcer.AnnounceImmediate($"Approach capability: {cap}");
         }
         else
         {
@@ -6081,6 +6065,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // status box shows the selected page's content, populated on selection — no
     // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
     // EFIS baro (altimeter) state — auto-announced on knob turn + read on demand (B).
+    private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private double _baroHpa = -1;          // last decoded captain baro, hectopascals
     private int _baroMode = -1;            // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD,1=hPa,2=inHg
     private int _lastAnnouncedBaroHpa = -1;
@@ -7211,6 +7196,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 }
             }
             return true; // Processed
+        }
+
+        // Autoland capability (FMGC FG discrete word 4, bits 23/24/25). Announce
+        // decoded transitions only; suppress the raw ARINC word from the generic path.
+        if (varName == "PFD_AUTOLAND")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            string cap = (!w.IsNormalOperation && !w.IsFunctionalTest) ? "none"
+                : w.BitValueOr(25, false) ? "LAND 3 dual"
+                : w.BitValueOr(24, false) ? "LAND 3 single"
+                : w.BitValueOr(23, false) ? "LAND 2" : "none";
+            if (_lastAutolandCap != null && _lastAutolandCap != cap && cap != "none")
+                announcer.Announce($"Approach capability {cap}");
+            _lastAutolandCap = cap;
+            return true;
         }
 
         // ECAM Control Panel LED state announcements (A32NX-specific)
