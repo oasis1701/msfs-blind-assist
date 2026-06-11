@@ -1691,11 +1691,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A32NX_ENG_{n}_ON_FIRE", $"Engine {n} On Fire", fireVd);
             for (int b = 1; b <= 2; b++)
             {
-                ReadEnum($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_ARMED", $"Engine {n} Agent {b} Squib", armedVd);
-                ReadEnum($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_DISCHARGED", $"Engine {n} Agent {b} Discharged", dischVd);
+                ReadEnum($"A32NX_FIRE_SQUIB_{b}_ENG_{n}_IS_ARMED", $"Engine {n} Agent {b} Squib", armedVd);
+                ReadEnum($"A32NX_FIRE_SQUIB_{b}_ENG_{n}_IS_DISCHARGED", $"Engine {n} Agent {b} Discharged", dischVd);
             }
         }
-        ReadEnum("A32NX_OVHD_FIRE_SQUIB_1_APU_1_IS_DISCHARGED", "APU Agent Discharged", dischVd);
+        ReadEnum("A32NX_FIRE_SQUIB_1_APU_1_IS_DISCHARGED", "APU Agent Discharged", dischVd);
 
         // ADIRS
         for (int n = 1; n <= 3; n++)
@@ -3134,11 +3134,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             fire.Add($"A32NX_ENG_{n}_ON_FIRE");
             for (int b = 1; b <= 2; b++)
             {
-                fire.Add($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_ARMED");
-                fire.Add($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_DISCHARGED");
+                fire.Add($"A32NX_FIRE_SQUIB_{b}_ENG_{n}_IS_ARMED");
+                fire.Add($"A32NX_FIRE_SQUIB_{b}_ENG_{n}_IS_DISCHARGED");
             }
         }
-        fire.Add("A32NX_OVHD_FIRE_SQUIB_1_APU_1_IS_DISCHARGED");
+        fire.Add("A32NX_FIRE_SQUIB_1_APU_1_IS_DISCHARGED");
         d["Fire"] = fire;
 
         var adirs = new List<string> { "A32NX_ADIRS_REMAINING_IR_ALIGNMENT_TIME" };
