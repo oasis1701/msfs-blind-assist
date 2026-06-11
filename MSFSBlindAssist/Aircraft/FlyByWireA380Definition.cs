@@ -1959,8 +1959,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
 
-        // (The A380X_EFIS_CP_BARO_PUSH/PULL H-events are NON-functional on the
-        //  A380X — verified live — removed. STD/QNH is the IS_STD combo above.)
+        // (STD/QNH is the KOHLSMAN-backed combo above, driven by the
+        //  H:A380X_EFIS_CP_BARO_PULL/PUSH_{n} events in HandleUIVariableSet — the
+        //  supported dev-FBW path per MsfsBaroManager.ts. An earlier live test on an
+        //  older build judged those H-events non-functional; dev FBW consumes them.)
 
         // (The legacy stock-COM "Radios" registrations — COM_STANDBY_FREQUENCY_SET:{n},
         //  COM{n}_RADIO_SWAP, COM_*_FREQUENCY:{n} — were removed: the FBW A380 IGNORES

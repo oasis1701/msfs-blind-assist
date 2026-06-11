@@ -19,11 +19,15 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public static class NdWaypointReadout
 {
+    // TRUE-REF source differs per jet: the A380 registers A32NX_PUSH_TRUE_REF (the
+    // real pilot input there; FMGC_TRUE_REF has no A380 writer), the A32NX registers
+    // A32NX_FMGC_TRUE_REF. Both are listed; the unregistered one is a harmless no-op
+    // request and reads 0 from the cache, so OR-ing the two reads is correct.
     private static readonly List<string> Vars = new()
     {
         "A32NX_EFIS_L_TO_WPT_IDENT_0", "A32NX_EFIS_L_TO_WPT_IDENT_1",
         "A32NX_EFIS_L_TO_WPT_DISTANCE", "A32NX_EFIS_L_TO_WPT_BEARING",
-        "A32NX_EFIS_L_TO_WPT_TRUE_BEARING", "A32NX_FMGC_TRUE_REF",
+        "A32NX_EFIS_L_TO_WPT_TRUE_BEARING", "A32NX_FMGC_TRUE_REF", "A32NX_PUSH_TRUE_REF",
     };
 
     /// <summary>
@@ -51,7 +55,7 @@ public static class NdWaypointReadout
             return;
         }
 
-        bool trueRef = R("A32NX_FMGC_TRUE_REF") > 0.5;
+        bool trueRef = R("A32NX_FMGC_TRUE_REF") > 0.5 || R("A32NX_PUSH_TRUE_REF") > 0.5;
         double trueBrg = R("A32NX_EFIS_L_TO_WPT_TRUE_BEARING");
         double brg; string brgRef;
         if (trueRef && trueBrg >= 0) { brg = trueBrg; brgRef = "true"; }
