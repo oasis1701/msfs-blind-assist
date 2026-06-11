@@ -942,10 +942,14 @@ public partial class MainForm : Form
             // (taxi says "Stop. Hold position." at its route-end node and docking engages a moment
             // later with "Docking guidance… X to stop") is sequential and self-correcting — far
             // better than the silent-arrival failure mode of suppressing for the whole approach.
-            // IsActive is a lock-free volatile snapshot, so these two reads cost no lock.
+            // IsActive / IsArmedAwaitingEngage are lock-free volatile snapshots — no lock cost.
             bool dockingActive = dockingGuidanceManager.IsActive;
             taxiGuidanceManager.SetSteeringToneSuppressed(dockingActive);
             taxiGuidanceManager.SetDockingActive(dockingActive);
+            // Pre-engage window: docking armed with the GSX stop still ahead — taxi's
+            // arrival wording redirects forward instead of saying "parking brake" at
+            // the navdata point (KATL F3 2026-06-11: 26 s parked short, docking Armed).
+            taxiGuidanceManager.SetDockingPending(dockingGuidanceManager.IsArmedAwaitingEngage);
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are

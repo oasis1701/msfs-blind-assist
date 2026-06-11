@@ -40,6 +40,17 @@ public sealed class DockingGuidanceManager : IDisposable
     // a volatile read here avoids a second lock acquisition per frame (the SettingsManager
     // static lock is contended by Save(), which holds it across a JSON serialize + disk write).
     private volatile bool _isActiveSnap;
+    // Lock-free mirror of "Armed with a resolved stop target still meaningfully
+    // AHEAD of the aircraft" — the pre-engage window in which taxi guidance must
+    // say "continue ahead for docking" instead of "parking brake" / "hold
+    // position". KATL F3 2026-06-11: the GSX stop (incl. the 777's 11.3 m .py
+    // offset) sat ~34 m past the navdata parking point while the gate's GSX
+    // gatedistancethreshold shrank the engage range to ~24 m — the pilot was
+    // told "Parking brake." at the navdata point and sat for 26 s with docking
+    // Armed-but-not-engaged until they crept forward on their own. Updated every
+    // frame in the Idle/Armed branch; cleared on engage, reset, dispose.
+    private volatile bool _armedAwaitingSnap;
+    private const double PENDING_MIN_AHEAD_M = 3.0;   // stop ≈ navdata point → normal wording
     private IReadOnlyList<DistanceMilestone> _milestones = Array.Empty<DistanceMilestone>();
     private bool[] _milestoneSaid = Array.Empty<bool>();
     private bool _slowDownSaid;
@@ -81,6 +92,16 @@ public sealed class DockingGuidanceManager : IDisposable
     /// volatile read — safe from the per-frame MainForm handler.
     /// </summary>
     public bool IsActive => _isActiveSnap;
+
+    /// <summary>
+    /// True while docking is ARMED for the current gate with a stop target still
+    /// meaningfully ahead of the aircraft (along-track &gt; 3 m) but not yet engaged —
+    /// the window where taxi guidance reaches its navdata endpoint first and must
+    /// redirect the pilot FORWARD ("continue ahead for docking guidance") instead of
+    /// announcing "parking brake" / "hold position" at the wrong spot. Lock-free
+    /// volatile read — safe from the per-frame MainForm handler.
+    /// </summary>
+    public bool IsArmedAwaitingEngage => _armedAwaitingSnap;
 
     /// <summary>
     /// Raised ONCE when the final approach reaches the stop (the "GSX docking complete." / "Stop."
@@ -228,6 +249,12 @@ public sealed class DockingGuidanceManager : IDisposable
                         bool shouldEngage = wantDetail && DockingGeometry.ShouldEngage(
                             groundSpeedKts, alongM, hdgErr, absCrossM,
                             _engageRangeOverrideMetres ?? DockingGeometry.EngageRangeMetres);
+                        // Pre-engage "stop is still ahead" snapshot for taxi's arrival
+                        // wording (see _armedAwaitingSnap). Computed only with detail
+                        // math available — far-field frames leave the last value, which
+                        // is false until the aircraft first comes within detail range.
+                        if (wantDetail)
+                            _armedAwaitingSnap = !shouldEngage && alongM > PENDING_MIN_AHEAD_M;
                         if (shouldEngage) EngageLocked(alongM);
                         else _state = DockState.Armed;
                         break;
@@ -361,7 +388,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private void EngageLocked(double alongM)
     {
         _state = DockState.Docking;
-        _isActiveSnap = true;
+        _isActiveSnap = true; _armedAwaitingSnap = false;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
@@ -522,7 +549,7 @@ public sealed class DockingGuidanceManager : IDisposable
     private void ResetLocked()
     {
         SilenceLocked(); try { _beeper.Stop(); } catch { }
-        _state = DockState.Idle; _isActiveSnap = false;
+        _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;
@@ -533,7 +560,7 @@ public sealed class DockingGuidanceManager : IDisposable
         // Set the flag under the lock so any in-progress UpdatePosition sees it
         // before we tear down audio. The beeper is disposed outside the lock to
         // avoid holding _lock across the beeper's own internal teardown.
-        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; try { _tone.Stop(); } catch { } }
+        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; _armedAwaitingSnap = false; try { _tone.Stop(); } catch { } }
         _beeper.Dispose();
     }
 }

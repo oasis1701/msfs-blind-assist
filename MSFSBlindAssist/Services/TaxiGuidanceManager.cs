@@ -88,6 +88,21 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     public void SetDockingActive(bool active) { _dockingActive = active; }
 
+    /// <summary>
+    /// True while docking guidance is ARMED for this gate with the GSX stop position
+    /// still AHEAD of the aircraft, but not yet engaged (see
+    /// DockingGuidanceManager.IsArmedAwaitingEngage). In that window taxi's arrival
+    /// wording must redirect the pilot FORWARD — "continue ahead for docking
+    /// guidance" — instead of "Parking brake." / "hold position": the GSX stop is
+    /// routinely tens of metres past the navdata parking point where taxi's route
+    /// ends, and the gate's GSX gatedistancethreshold can shrink docking's engage
+    /// range below that gap (KATL F3 2026-06-11: pilot parked-on-instruction at
+    /// 33.7 m and sat 26 s with docking Armed). Same write/read pattern as
+    /// SetDockingActive (one frame stale at worst).
+    /// </summary>
+    public void SetDockingPending(bool pending) { _dockingPending = pending; }
+    private bool _dockingPending;
+
     // Single lock serializing all access to _route / _graph / _state and related
     // tracking fields between the SimConnect position thread (UpdatePosition)
     // and UI-thread callers (LoadRoute, StopGuidance, ContinuePastHoldShort,
@@ -2308,7 +2323,11 @@ public class TaxiGuidanceManager : IDisposable
         }
         if (distToTargetM < pm[2].TriggerMetres && !_parkingAnnounce10)
         {
-            AnnounceInstruction($"{pm[2].Label}. Stop.");
+            // Docking pending: the GSX stop is still ahead of the navdata point this
+            // countdown measures to — a "Stop." directive here parks the pilot short.
+            AnnounceInstruction(_dockingPending
+                ? $"{pm[2].Label}. Continue ahead for docking."
+                : $"{pm[2].Label}. Stop.");
             _parkingAnnounce10 = true;
             return;
         }
@@ -2317,10 +2336,13 @@ public class TaxiGuidanceManager : IDisposable
         // aircraft hasn't actually arrived, so a `"{gate}. Stop."` callout reads
         // misleadingly like an arrival announcement. The dedicated arrival
         // announcement fires separately when the aircraft is within the
-        // arrival radius.
+        // arrival radius. With docking PENDING the correct instruction is the
+        // opposite — keep rolling until docking engages (KATL F3 2026-06-11).
         if (_parkingAnnounce50 && !_parkingAnnounce10 && _lastGroundSpeedKts < 1.0)
         {
-            AnnounceInstruction("Stop. Hold position.");
+            AnnounceInstruction(_dockingPending
+                ? "Docking guidance ahead. Continue forward."
+                : "Stop. Hold position.");
             _parkingAnnounce10 = true;
         }
     }
@@ -3083,7 +3105,10 @@ public class TaxiGuidanceManager : IDisposable
                 double headingError = NormalizeAngle(_lineupHeadingTrue - _lastHeading);
                 string turnDir = Math.Abs(headingError) < 10 ? "" :
                     (headingError > 0 ? " Turn right." : " Turn left.");
-                AnnounceInstruction($"Align with {_destinationName}, heading {hdgAnnounce}.{turnDir}");
+                // Docking pending: the GSX stop is still ahead — tell the pilot now
+                // so the arrival doesn't read as "park here" (see SetDockingPending).
+                string dockNote = _dockingPending ? " Then continue ahead for docking guidance." : "";
+                AnnounceInstruction($"Align with {_destinationName}, heading {hdgAnnounce}.{turnDir}{dockNote}");
             }
 
             // Keep tone going for lineup guidance
@@ -4637,8 +4662,13 @@ public class TaxiGuidanceManager : IDisposable
                 // When docking owns the stop it announces the stop/brake at the precise
                 // position — don't pre-empt with "parking brake" the moment we're merely
                 // laterally aligned (we may still be a couple of metres short of the stop).
+                // Docking PENDING (armed, GSX stop still ahead, not yet engaged): saying
+                // "Parking brake." here parks the pilot tens of metres short of the real
+                // stop (KATL F3: 26 s stationary at 33.7 m) — redirect them forward.
                 if (!_dockingActive)
-                    _announcer.AnnounceImmediate($"Aligned with {_destinationName}. Parking brake.");
+                    _announcer.AnnounceImmediate(_dockingPending
+                        ? $"Aligned with {_destinationName}. Continue ahead. Docking guidance will take over."
+                        : $"Aligned with {_destinationName}. Parking brake.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
@@ -5181,9 +5211,13 @@ public class TaxiGuidanceManager : IDisposable
 
             // Aligned: the tone is intentionally muted (we paused it on
             // alignment). Say so explicitly so a silent tone reads as
-            // "done, hold position" rather than "lost / broken".
+            // "done, hold position" rather than "lost / broken". With docking
+            // PENDING the pilot must keep rolling to the GSX stop — a status
+            // query must never tell them to hold short of it (KATL F3).
             if (_lineupAnnouncedAligned)
-                return $"Lined up {_destinationName}, heading {hdg}. Aligned — hold position.";
+                return _dockingPending
+                    ? $"Lined up {_destinationName}, heading {hdg}. Continue ahead for docking guidance."
+                    : $"Lined up {_destinationName}, heading {hdg}. Aligned — hold position.";
 
             // Not yet aligned: surface distance-to-go so a silent tone
             // (between hysteresis pulses, or while the system is busy) still
