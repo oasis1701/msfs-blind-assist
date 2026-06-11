@@ -71,7 +71,15 @@ public class SimConnectManager
 
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
-    public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
+    // Gate on the handshake-CONFIRMED registration, not the optimistic IsConnected
+    // (set unconditionally at the end of Initialize even when the WASM module is
+    // absent — the failure arrives as an async SimConnect exception that never
+    // resets it). Without the module, SetLVar must fall through to the data-def
+    // write and H:/dotted events must queue; a permanently-true gate sent them
+    // into a dead client-data area. Pre-registration L:var writes briefly use the
+    // data-def path — acceptable; the pendingCalcEvents queue still flushes on the
+    // "client registered" ConnectionStatusChanged.
+    public bool IsMobiFlightConnected => mobiFlightWasm?.IsRegistered == true;
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
