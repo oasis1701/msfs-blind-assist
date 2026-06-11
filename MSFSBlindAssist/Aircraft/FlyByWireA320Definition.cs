@@ -6012,7 +6012,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 : w.BitValueOr(25, false) ? "LAND 3 dual"
                 : w.BitValueOr(24, false) ? "LAND 3 single"
                 : w.BitValueOr(23, false) ? "LAND 2" : "none computed";
-            announcer.AnnounceImmediate($"Approach capability: {cap}");
+            announcer.AnnounceImmediate($"Approach capability {cap}");
         }
         else
         {
