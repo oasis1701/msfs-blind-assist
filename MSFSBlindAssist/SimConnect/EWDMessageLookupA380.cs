@@ -1566,7 +1566,20 @@ public static class EWDMessageLookupA380
     public static string GetRawMessage(long code)
         => Messages.TryGetValue(code.ToString("D9"), out string? raw) ? raw : "";
 
-    /// <summary>Colour/priority word (Red/Amber/Green/...) via the A320 lookup.</summary>
+    /// <summary>Colour/priority word (Red/Amber/Green/Cyan/Magenta/White) for an A380 code.
+    /// Uses the A380 FWC colour map (FormattedFwcText.tsx:106-133):
+    ///   &lt;2m=Red, &lt;4m=Amber, &lt;3m=Green, &lt;5m=Cyan, &lt;6m=Magenta, &lt;7m=White.
+    /// Falls back to the A320 lookup (returns "") on a miss.</summary>
     public static string GetMessagePriority(long code)
-        => EWDMessageLookup.GetMessagePriority(GetRawMessage(code));
+    {
+        string raw = GetRawMessage(code);
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        if (raw.Contains("<2m")) return "Red";
+        if (raw.Contains("<4m")) return "Amber";
+        if (raw.Contains("<3m")) return "Green";
+        if (raw.Contains("<5m")) return "Cyan";
+        if (raw.Contains("<6m")) return "Magenta";
+        if (raw.Contains("<7m")) return "White";
+        return "";
+    }
 }

@@ -86,9 +86,9 @@
     if (s.indexOf("<2m") >= 0) return "Red";
     if (s.indexOf("<4m") >= 0) return "Amber";
     if (s.indexOf("<3m") >= 0) return "Green";
-    if (s.indexOf("<5m") >= 0) return "White";
-    if (s.indexOf("<6m") >= 0) return "Cyan";
-    if (s.indexOf("<7m") >= 0) return "Gray";
+    if (s.indexOf("<5m") >= 0) return "Cyan";
+    if (s.indexOf("<6m") >= 0) return "Magenta";
+    if (s.indexOf("<7m") >= 0) return "White";
     return "";
   }
 
@@ -152,7 +152,8 @@
       for (var i = 0; i < lines.length; i++) {
         var n = lines[i];
         if (!A.isVisible(n)) continue;
-        if (hasTok(n, "HiddenElement") || hasTok(n, "Invisible") || hasTok(n, "Inactive")) continue;
+        if (hasTok(n, "HiddenElement") || hasTok(n, "Invisible")) continue;
+        var inactive = hasTok(n, "Inactive");
         var t = A.lineText(n);
         if (!t) continue;
         warnings.push({
@@ -160,7 +161,8 @@
           sev: A.severity(n),
           colour: A.colour(n),
           headline: hasTok(n, "Headline"),
-          selected: hasTok(n, "Selected")
+          selected: hasTok(n, "Selected"),
+          inactive: inactive
         });
       }
       // 2) Memos (left + right columns).

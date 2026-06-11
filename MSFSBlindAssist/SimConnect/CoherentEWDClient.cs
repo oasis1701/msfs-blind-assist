@@ -352,6 +352,15 @@ namespace MSFSBlindAssist.SimConnect
                 // sees, the same way the on-demand viewer does (the agent classifies it from the
                 // EclLine CSS class).
                 string spoken = WithColour(clean, w.colour);
+                // Inactive lines are preview steps of a not-yet-activated ABN procedure — shown
+                // in the display (dimmed with suffix) but never announced and never added to the
+                // dedup set, so when the procedure is later activated the same text announces
+                // normally (the "already spoken" guard would silently swallow it otherwise).
+                if (w.inactive)
+                {
+                    procBlock.Add(w.headline ? spoken + " (not yet active)" : "  " + spoken + " (not yet active)");
+                    continue;
+                }
                 // Full procedure block: a headline is a procedure TITLE, the rest are its
                 // action-item STEPS (indented) — surfaced in the Alt+E "Procedure" section.
                 procBlock.Add(w.headline ? spoken : "  " + spoken);
@@ -707,6 +716,11 @@ namespace MSFSBlindAssist.SimConnect
             public string? colour { get; set; }   // EWD colour name (Red/Amber/Cyan/White/Green)
             public bool headline { get; set; }
             public bool selected { get; set; }
+            /// <summary>FBW marks all preview lines of a not-yet-activated ABN procedure
+            /// Inactive. These are shown in the display (dimmed with a suffix) but are never
+            /// announced or added to the dedup set, so the same text announces normally once
+            /// the procedure is actually activated.</summary>
+            public bool inactive { get; set; }
         }
 
         // A memo / PFD line carrying its EWD colour name so the auto-announce reads it.

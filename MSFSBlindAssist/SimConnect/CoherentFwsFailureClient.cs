@@ -198,14 +198,16 @@ namespace MSFSBlindAssist.SimConnect
             // against higher-priority categories already consumed. E/WD categories announce
             // per item; STATUS categories only RESIDE (their codes feed a summary call-out,
             // matching the real A380 where STATUS is a silent reference page). Returns count.
-            int Cat(List<string>? codes, List<string> target, string header, string announcePrefix, bool withColour, bool alwaysHeader, bool perItemAnnounce)
+            int Cat(List<string>? codes, List<string> target, string header, string announcePrefix, bool withColour, bool alwaysHeader, bool perItemAnnounce, Func<string, string?>? special = null)
             {
                 var items = new List<string>();
                 foreach (var code in codes ?? new List<string>())
                 {
                     if (string.IsNullOrWhiteSpace(code) || !used.Add(code)) continue;
                     string msg = "", prio = "";
-                    if (long.TryParse(code, out long num))
+                    string? sp = special?.Invoke(code.TrimStart('0'));
+                    if (sp != null) { msg = sp; prio = sp.StartsWith("LAND ASAP", StringComparison.Ordinal) ? "Red" : "Amber"; }
+                    else if (long.TryParse(code, out long num))
                     {
                         msg = EWDMessageLookupA380.GetMessage(num);
                         prio = EWDMessageLookupA380.GetMessagePriority(num);
@@ -230,7 +232,8 @@ namespace MSFSBlindAssist.SimConnect
             Cat(r.nonSensed, ewd, "Procedures", "Procedure: ", withColour: true, alwaysHeader: false, perItemAnnounce: true);
             // STATUS-page content: resident detail, but only a SUMMARY is spoken (no per-line spam).
             int inopN = Cat(r.inop, status, "Inoperative systems", "", withColour: false, alwaysHeader: false, perItemAnnounce: false);
-            int limN = Cat(r.limits, status, "Limitations", "", withColour: false, alwaysHeader: false, perItemAnnounce: false);
+            int limN = Cat(r.limits, status, "Limitations", "", withColour: false, alwaysHeader: false, perItemAnnounce: false,
+                special: c => c == "1" ? "LAND ASAP" : c == "2" ? "LAND ANSA" : null);
             int defN = Cat(r.deferred, status, "Deferred procedures", "", withColour: false, alwaysHeader: false, perItemAnnounce: false);
 
             var curEwdCodes = new HashSet<string>(announceByCode.Keys, StringComparer.Ordinal);
