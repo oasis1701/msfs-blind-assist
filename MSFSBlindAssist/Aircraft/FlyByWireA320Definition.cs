@@ -1207,8 +1207,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ---- Wipers: FBW_Airbus_Wiper_Knob drives electrical circuit 77 (Captain)
         // / 80 (F/O): off/on = ELECTRICAL_CIRCUIT_TOGGLE, speed = circuit power
         // setting 75 (slow) / 100 (fast). Same pattern as the A380 wipers (141/143).
-        // The circuit-switch state is a bool, so the combo reads Off vs running;
-        // the set always drives the full off/slow/fast state.
+        // The circuit-switch state is a bool, so the read-back shows "Slow" whenever
+        // the wiper is running — even at fast (exact speed read-back would need
+        // CIRCUIT POWER SETTING:n). The three options stay so the SET path can
+        // drive the full off/slow/fast state.
         // (XMLVAR_A320_WiperSwitch_* does not exist in FBW — dead-var trap.)
         ["XMLVAR_A320_WiperSwitch_1"] = new SimConnect.SimVarDefinition
         {
