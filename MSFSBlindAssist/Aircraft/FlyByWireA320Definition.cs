@@ -2805,9 +2805,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Synthetic L:var keys — never read/written as L:vars; the set is intercepted
         // in HandleUIVariableSet, which fires THROTTLEn_AXIS_SET_EX1 with the detent's
         // axis value so the FBW throttle mapping snaps the lever to that detent.
-        // Idle (-0.44) verified live to snap to the A320 idle dead-zone; the rest mirror
-        // the A380 default-calibration values. The displayed value reflects the last
-        // command, not the live lever (the live angle is in d["Thrust Levers"]).
+        // Axis values are the FBW default-calibration band CENTERS (see the
+        // detent handler in HandleUIVariableSet). The displayed value reflects the
+        // last command, not the live lever (the live angle is in d["Thrust Levers"]).
         ["THROTTLE_ALL_DETENT"] = new SimConnect.SimVarDefinition
         {
             Name = "THROTTLE_ALL_DETENT", DisplayName = "All Thrust Levers",
