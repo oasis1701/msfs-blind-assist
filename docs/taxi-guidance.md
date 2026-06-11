@@ -400,7 +400,7 @@ All settings persist through `UserSettings`.
 - Parking / gate arrival countdowns (15/10/5 m **or** 50/20/10 ft; via `DistanceMilestones.ParkingArrival`)
 - Landing-exit approach callouts (500/300/150 m **or** 1500/900/500 ft; via `DistanceMilestones.ExitApproach`)
 - Runway-end countdown (500/150/30 m **or** 1500/500/100 ft; via `DistanceMilestones.RunwayEnd`)
-- On-demand status distances (`"In 400 metres turn right onto Kilo. 0.8 miles to destination."`) — totals over ~1 NM always shown in nautical miles regardless of unit setting
+- On-demand status distances (`"In 400 metres turn right onto Kilo. 1.5 kilometres to destination."`) — totals over ~6000 ft switch to the big unit matching the setting: kilometres in metres mode, nautical miles in feet mode
 - Touchdown callouts (`"Touchdown. High-speed exit K2 in 1 800 metres."`)
 - Landing exit and runway combo-box labels (`LandingExit.ToString()`, `Runway.ToString()` — short form, e.g. `"K2 — 550 m from threshold"` or `"K2 — 1 800 ft from threshold"`)
 - Ground-traffic alerts (`"Slow down, traffic ahead, 150 metres."` vs `"… 500 feet."`)

@@ -5320,14 +5320,21 @@ public class TaxiGuidanceManager : IDisposable
 
     /// <summary>
     /// Formats a distance in meters using the active unit (via DistanceFormatter).
-    /// Distances over ~1 NM fall back to nautical miles regardless of the unit setting
-    /// (for route summaries and status readouts where NM is universally understood).
+    /// Long distances (over ~6000 ft) switch to the big unit MATCHING the ground
+    /// distance setting: kilometres in metres mode, nautical miles in feet mode
+    /// (route summaries and status readouts — a metric user should never hear NM
+    /// for a taxi distance).
     /// </summary>
     private static string FormatDistance(double meters)
     {
         double feet = meters * METERS_TO_FEET;
         if (feet > 6000)
         {
+            if (DistanceFormatter.IsMetres)
+            {
+                double km = meters / 1000.0;
+                return $"{km:F1} kilometres";
+            }
             double nm = meters * METERS_TO_NM;
             return $"{nm:F1} nautical miles";
         }
