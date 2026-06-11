@@ -87,6 +87,22 @@ public class SimConnectManager
     // data-def path) — see the pass-2 checklist. Until then, a missing module
     // surfaces via the MobiFlight status text, not via silent write-path switching.
     public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
+
+    // End-to-end calc-path verification: MainForm's bridge probe calc-writes a nonce
+    // L:var (MSFSBA_BRIDGE_PROBE, registered by the FBW defs) and reads it back over
+    // the independent data-def channel. A match PROVES the WASM module executed our
+    // RPN — the only presence signal that works when the module's response side is
+    // silent. Currently observability (transport.log verdict) + the documented basis
+    // for a future no-module gate; the live gate stays IsMobiFlightConnected above.
+    public bool CalcPathVerified { get; private set; }
+
+    public void MarkCalcPathVerified()
+    {
+        if (CalcPathVerified) return;
+        CalcPathVerified = true;
+        LogTransport("[Probe] calc path VERIFIED end-to-end (nonce round-trip)");
+        FlushPendingCalcEvents();
+    }
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
@@ -4563,6 +4579,7 @@ public class SimConnectManager
             mobiFlightWasm.Disconnect();
             mobiFlightWasm.Dispose();
             mobiFlightWasm = null;
+            CalcPathVerified = false; // re-probe after the next bridge init
             lock (pendingCalcEvents) pendingCalcEvents.Clear();   // don't carry queued events across a teardown
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] MobiFlight WASM module disconnected");
         }

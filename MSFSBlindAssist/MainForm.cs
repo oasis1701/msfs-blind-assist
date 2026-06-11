@@ -115,6 +115,53 @@ public partial class MainForm : Form
     // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
     private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
 
+    // MobiFlight end-to-end bridge probe state (see BridgeProbeTimer_Tick).
+    private System.Windows.Forms.Timer? _bridgeProbeTimer;
+    private int _bridgeProbeNonce = (Environment.TickCount & 0x3FFF) + 1; // 1..16384, never 0
+    private int _bridgeProbeAttempts;
+    private bool _bridgeProbeAwaitingRead;
+    private bool _bridgeProbeWasDisconnected = true;
+
+    private void BridgeProbeTimer_Tick(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (simConnectManager == null || !simConnectManager.IsConnected)
+            {
+                _bridgeProbeWasDisconnected = true;
+                return;
+            }
+            if (_bridgeProbeWasDisconnected)
+            {
+                // Fresh connection: re-arm the probe (CalcPathVerified resets on teardown).
+                _bridgeProbeWasDisconnected = false;
+                _bridgeProbeAttempts = 0;
+                _bridgeProbeAwaitingRead = false;
+            }
+            if (simConnectManager.CalcPathVerified || _bridgeProbeAttempts >= 40) return;
+            // Only the FBW defs register the probe var; skip other aircraft.
+            if (currentAircraft is not (Aircraft.FlyByWireA320Definition or Aircraft.FlyByWireA380Definition)) return;
+
+            if (_bridgeProbeAwaitingRead)
+            {
+                double cached = simConnectManager.GetCachedVariableValue("MSFSBA_BRIDGE_PROBE") ?? 0;
+                if ((int)Math.Round(cached) == _bridgeProbeNonce)
+                {
+                    simConnectManager.MarkCalcPathVerified();
+                    return;
+                }
+                _bridgeProbeNonce = (_bridgeProbeNonce % 16384) + 1; // new nonce each retry
+            }
+            _bridgeProbeAttempts++;
+            simConnectManager.ExecuteCalculatorCode($"{_bridgeProbeNonce} (>L:MSFSBA_BRIDGE_PROBE)");
+            simConnectManager.RequestVariable("MSFSBA_BRIDGE_PROBE", forceUpdate: true);
+            _bridgeProbeAwaitingRead = true;
+            if (_bridgeProbeAttempts == 40)
+                SimConnect.SimConnectManager.LogTransport("[Probe] gave up after 40 attempts — calc path unverified (module absent or data-def read failing)");
+        }
+        catch { /* a probe fault must never disturb the app */ }
+    }
+
     // DIAGNOSTIC (debug/landing-rollout-instrumentation): one-shot flag for
     // logging the first TAXI_GUIDANCE_POSITION event we receive while taxi
     // guidance is in LandingRollout state. Reset on every transition out of
@@ -274,6 +321,14 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
+
+        // MobiFlight end-to-end bridge probe: calc-write a nonce L:var, read it back
+        // over the data-def channel; a match proves the WASM executed our RPN (the
+        // only valid presence signal — the response side can be silent on healthy
+        // installs). Result goes to transport.log; FBW defs register the probe var.
+        _bridgeProbeTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+        _bridgeProbeTimer.Tick += BridgeProbeTimer_Tick;
+        _bridgeProbeTimer.Start();
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and

@@ -133,6 +133,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             RenderAsReadOnlyStatus = true, // ground-power state, not a control
             ValueDescriptions = new Dictionary<double, string> { [0] = "Not available", [1] = "Available" }
         },
+        // End-to-end MobiFlight probe target: MainForm calc-writes a nonce here and
+        // reads it back via the data-def path — the only reliable "calc path alive"
+        // signal (response-based detection is invalid: a healthy install can execute
+        // every command yet never send a single response — live-proven 2026-06-11).
+        // Not in any panel; OnRequest; never announced.
+        ["MSFSBA_BRIDGE_PROBE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "MSFSBA_BRIDGE_PROBE", DisplayName = "Bridge Probe",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
         // ---- ELEC: generators. The FBW Rust system reads the STOCK simvars (copied
         // to aspects each tick — a320_systems_wasm lib.rs); the _PB_IS_ON L:vars are
         // dead mirrors. State = stock simvar, set = toggle event when desired !=

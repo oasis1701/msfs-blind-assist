@@ -1952,6 +1952,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.SimVar, Units = "millibars",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
         };
+        // End-to-end MobiFlight probe target: MainForm calc-writes a nonce here and
+        // reads it back via the data-def path — the only reliable "calc path alive"
+        // signal (response-based detection is invalid: a healthy install can execute
+        // every command yet never send a single response — live-proven 2026-06-11).
+        // Not in any panel; OnRequest; never announced.
+        vars["MSFSBA_BRIDGE_PROBE"] = new SimVarDefinition
+        {
+            Name = "MSFSBA_BRIDGE_PROBE", DisplayName = "Bridge Probe",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+        };
         // hPa/inHg unit per side: the real selector is XMLVAR_Baro_Selector_HPA_
         // {1,2} (registered as the "Baro Unit" combo in the EFIS-CP section).
         // A32NX_FCU_EFIS_*_BARO_IS_INHG is stuck at 0 on the A380X (verified live:
