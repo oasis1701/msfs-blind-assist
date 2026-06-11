@@ -1038,7 +1038,7 @@
         ownUnit: kind === "input" ? A.inputOwnUnit(n) : "",
         leadUnit: kind === "input" ? A.inputLeadUnit(n) : "",
         isChoice: isChoice,
-        disabled: n.classList.contains("disabled"),
+        disabled: n.classList.contains("disabled") || n.classList.contains("inactive"),
         expanded: isCombo ? A.comboExpanded(n) : null,
         menuGroup: menuGroup, menuOrder: menuOrder
       });
@@ -1413,18 +1413,26 @@
   // Verified live: navigateTo there changes the page from ANY current page,
   // including cross-system jumps (FMS -> ATCCOM), which the page-selector-id
   // click cannot do because the target system's header isn't mounted yet.
+  //
+  // Side ordering: when activeMcdu == 2 (First Officer), prefer mfdFoRef so
+  // URI navigation drives the FO's MFD, not the Captain's. The per-MFD refs
+  // always take precedence over fi.uiService (which is typically undefined);
+  // fi.uiService is kept only as a last-resort fallback.
   A.mfdUiService = function () {
     try {
       var mfd = document.querySelector("a380x-mfd");
       if (!mfd || !mfd.fsInstrument) return null;
       var fi = mfd.fsInstrument;
-      if (fi.uiService && fi.uiService.navigateTo) return fi.uiService;
-      var refs = ["mfdCaptRef", "mfdFoRef"];
+      var refs = A.activeMcdu === 2
+        ? ["mfdFoRef", "mfdCaptRef"]
+        : ["mfdCaptRef", "mfdFoRef"];
       for (var i = 0; i < refs.length; i++) {
         var r = fi[refs[i]];
         if (r && r.instance && r.instance.uiService && r.instance.uiService.navigateTo)
           return r.instance.uiService;
       }
+      // Last-resort: bare fi.uiService (rarely present, kept for future compat).
+      if (fi.uiService && fi.uiService.navigateTo) return fi.uiService;
     } catch (e) {}
     return null;
   };
@@ -1536,6 +1544,9 @@
     var v = String(text || "").toUpperCase();
     for (var i = 0; i < v.length; i++) {
       var ch = v.charAt(i);
+      // Comma is the European decimal separator; map it to a period so users
+      // on comma-decimal locales can type coordinates, altitudes, etc.
+      if (ch === ",") ch = ".";
       if (!/^[A-Z0-9/.+\- ]$/.test(ch)) continue;
       A.dispatchKey(span, "keypress", ch.charCodeAt(0));
     }
@@ -1665,6 +1676,16 @@
   A.sendToField = function (index, newValue) {
     var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
     if (!node) return "missing";
+    // Refuse to type into a field that is inactive or disabled — the MFD would
+    // silently swallow the keystrokes.  Check the stamped node and up to 3 DOM
+    // ancestors (the field wrapper may carry the class, not the leaf span).
+    var check = node;
+    for (var ai = 0; ai <= 3; ai++) {
+      if (!check) break;
+      if (check.classList && (check.classList.contains("inactive") || check.classList.contains("disabled")))
+        return "inactive";
+      check = check.parentElement;
+    }
     var info = null;
     for (var i = 0; i < A._mcduElements.length; i++) {
       if (A._mcduElements[i].idx === index) { info = A._mcduElements[i]; break; }
