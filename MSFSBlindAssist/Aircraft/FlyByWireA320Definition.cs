@@ -2320,10 +2320,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Hydraulic PTU active memo (shown on the ECAM).
         ["A32NX_HYD_PTU_ON_ECAM_MEMO"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_HYD_PTU_ON_ECAM_MEMO", DisplayName = "PTU transferring",
+            Name = "A32NX_HYD_PTU_ON_ECAM_MEMO", DisplayName = "PTU",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "PTU stopped", [1] = "PTU transferring" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "stopped", [1] = "transferring" }
         },
         // TCAS advisory state (distinct from A32NX_TCAS_MODE which is the system mode switch).
         ["A32NX_TCAS_STATE"] = new SimConnect.SimVarDefinition
