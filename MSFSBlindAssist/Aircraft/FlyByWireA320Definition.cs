@@ -382,14 +382,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Never
         },
-        ["LIGHT STROBE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LIGHT STROBE",
-            DisplayName = "Strobe Light State",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Never
-        },
-
         // Strobe Light Events
         ["STROBES_OFF"] = new SimConnect.SimVarDefinition
         {
@@ -976,46 +968,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
-        // ---- Audio Control Panel (parity with the A380 ACP). The A32NX models radio
-        // reception as per-channel VOLUME (0..100, live-verified settable: VHF1 held 42),
-        // surfaced here as 5-step combos. RMP-L = Captain, RMP-R = First Officer. ----
-        ["A32NX_RMP_L_VHF1_VOLUME"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RMP_L_VHF1_VOLUME", DisplayName = "VHF 1 Volume",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
-        },
-        ["A32NX_RMP_L_VHF2_VOLUME"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RMP_L_VHF2_VOLUME", DisplayName = "VHF 2 Volume",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
-        },
-        ["A32NX_RMP_L_VHF3_VOLUME"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RMP_L_VHF3_VOLUME", DisplayName = "VHF 3 Volume",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
-        },
-        ["A32NX_RMP_R_VHF1_VOLUME"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RMP_R_VHF1_VOLUME", DisplayName = "VHF 1 Volume",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
-        },
-        ["A32NX_RMP_R_VHF2_VOLUME"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RMP_R_VHF2_VOLUME", DisplayName = "VHF 2 Volume",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
-        },
-        ["A32NX_RMP_R_VHF3_VOLUME"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RMP_R_VHF3_VOLUME", DisplayName = "VHF 3 Volume",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
-        },
-
         // ---- Air-conditioning ZONE TEMPERATURE selectors (5th-audit gap: the A380 has
         // these, the A320 didn't). The cockpit knob is A32NX_OVHD_COND_{CKPT,FWD,AFT}_
         // SELECTOR_KNOB (0..300, live-verified settable: CKPT held 200), which maps to
@@ -1122,19 +1074,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             // HOLD-type test (emer gen runs WHILE active) — latching Off/On.
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        // Interior-lighting preset load/save — momentary L-var pulse 1->0.
-        ["A32NX_LIGHTING_PRESET_LOAD"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_LIGHTING_PRESET_LOAD", DisplayName = "Load Lighting Preset",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
-        },
-        ["A32NX_LIGHTING_PRESET_SAVE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_LIGHTING_PRESET_SAVE", DisplayName = "Save Lighting Preset",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         // Speed-brake FINE slider (synthetic — no real backing var). The TrackBar maps
         // 0-16383 directly; HandleUIVariableSet fires the stock SPOILERS_SET. Parity A380.
@@ -1788,53 +1727,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
         },
 
-        // Lighting Events
-        ["LANDING_LIGHTS_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LANDING_LIGHTS_ON",
-            DisplayName = "Landing Lights On",
-            Type = SimConnect.SimVarType.Event
-        },
-        ["LANDING_LIGHTS_OFF"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LANDING_LIGHTS_OFF",
-            DisplayName = "Landing Lights Off",
-            Type = SimConnect.SimVarType.Event
-        },
-        ["CIRCUIT_SWITCH_ON_17"] = new SimConnect.SimVarDefinition
-        {
-            Name = "CIRCUIT_SWITCH_ON",
-            DisplayName = "Circuit Switch 17 On",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 17
-        },
-        ["CIRCUIT_SWITCH_ON_18"] = new SimConnect.SimVarDefinition
-        {
-            Name = "CIRCUIT_SWITCH_ON",
-            DisplayName = "Circuit Switch 18 On",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 18
-        },
-        ["CIRCUIT_SWITCH_ON_19"] = new SimConnect.SimVarDefinition
-        {
-            Name = "CIRCUIT_SWITCH_ON",
-            DisplayName = "Circuit Switch 19 On",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 19
-        },
-        ["CIRCUIT_SWITCH_ON_20"] = new SimConnect.SimVarDefinition
-        {
-            Name = "CIRCUIT_SWITCH_ON",
-            DisplayName = "Circuit Switch 20 On",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 20
-        },
-        ["LIGHT_TAXI"] = new SimConnect.SimVarDefinition
-        {
-            Name = "LIGHT_TAXI",
-            DisplayName = "Taxi Light",
-            Type = SimConnect.SimVarType.Event
-        },
         ["LANDING_2_RETRACTED"] = new SimConnect.SimVarDefinition
         {
             Name = "LANDING_2_RETRACTED",
@@ -2862,22 +2754,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "bool"
         },
-        ["A32NX_FMGC_1_PRESEL_SPEED"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FMGC_1_PRESEL_SPEED",
-            DisplayName = "Preselected Speed",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "knots"
-        },
-        ["A32NX_FMGC_1_PRESEL_MACH"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FMGC_1_PRESEL_MACH",
-            DisplayName = "Preselected Mach",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "mach"
-        },
         ["A32NX_FMGC_FLIGHT_PHASE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMGC_FLIGHT_PHASE",
@@ -2911,14 +2787,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 { 1, "Maintenance Mode active" },
                 { 2, "Engineering display test in progress" }
             }
-        },
-        ["A32NX_FMGC_1_CRUISE_FLIGHT_LEVEL"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FMGC_1_CRUISE_FLIGHT_LEVEL",
-            DisplayName = "Cruise Flight Level",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "number"
         },
         ["A32NX_FM2_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
@@ -3379,18 +3247,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 [0] = "Not shown", [1] = "L/DEV Requested"
             }
         },
-        ["A32NX_FMA_CRUISE_ALT_MODE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FMA_CRUISE_ALT_MODE",
-            DisplayName = "Cruise Altitude Mode",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string>
-            {
-                [0] = "Not shown", [1] = "ALT CRZ"
-            }
-        },
         ["A32NX_FCU_AFS_DISPLAY_MACH_MODE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_AFS_DISPLAY_MACH_MODE",
@@ -3531,263 +3387,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true
         },
 
-        // ECAM STATUS PAGE VARIABLES (numeric codes for ECAM Status page - LEFT side)
-        // Display-only, not announced (used by Status Display window via hotkey)
-        ["A32NX_STATUS_LEFT_LINE_1"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_1",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_2"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_2",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_3"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_3",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_4"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_4",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_5"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_5",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_6"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_6",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_7"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_7",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_8"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_8",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_9"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_9",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_10"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_10",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_11"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_11",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_12"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_12",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_13"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_13",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_14"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_14",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_15"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_15",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_16"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_16",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_17"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_17",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_LEFT_LINE_18"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_LEFT_LINE_18",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-
-        // ECAM STATUS PAGE VARIABLES (numeric codes for ECAM Status page - RIGHT side)
-        ["A32NX_STATUS_RIGHT_LINE_1"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_1",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_2"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_2",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_3"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_3",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_4"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_4",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_5"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_5",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_6"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_6",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_7"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_7",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_8"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_8",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_9"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_9",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_10"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_10",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_11"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_11",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_12"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_12",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_13"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_13",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_14"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_14",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_15"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_15",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_16"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_16",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_17"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_17",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-        ["A32NX_STATUS_RIGHT_LINE_18"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_STATUS_RIGHT_LINE_18",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            IsAnnounced = false
-        },
-
         ["A32NX_AUTOPILOT_AUTOLAND_WARNING"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AUTOPILOT_AUTOLAND_WARNING",
@@ -3797,16 +3396,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,  // Critical alert
             ValueDescriptions = new Dictionary<double, string> { [0] = "Autoland warning off", [1] = "Auto land warning on" }
         },
-        ["A32NX_EFIS_1_ND_FM_MESSAGE_FLAGS"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_EFIS_1_ND_FM_MESSAGE_FLAGS",
-            DisplayName = "ND FM Message",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, // Enable announcements for ND FM messages
-            Units = "number"
-        },
-
         // NAVIGATION DISPLAY VARIABLES (for Navigation Display window - on-demand only)
         // Waypoint Information
         ["A32NX_EFIS_L_TO_WPT_IDENT_0"] = new SimConnect.SimVarDefinition
@@ -4387,14 +3976,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
-        ["A32NX_FAC_1_V_FE_NEXT"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FAC_1_V_FE_NEXT",
-            Type = SimConnect.SimVarType.LVar,
-            DisplayName = "V FE Speed",
-            Units = "knots",
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-        },
         ["A32NX_SPEEDS_VLS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_VLS",
@@ -4778,39 +4359,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
-        // ---- Cargo Air panel (parity with A380 Overhead > Cargo Air) ----
-        ["A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON", DisplayName = "Cargo Hot Air",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        ["A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", DisplayName = "Cargo Fwd Isolation Valve",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        ["A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON", DisplayName = "Aft Isolation Valve",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-
         // ---- Recorder and Misc panel (parity with A380 Overhead > Recorder and Misc) ----
-        ["A32NX_RCDR_GROUND_CONTROL_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RCDR_GROUND_CONTROL_ON", DisplayName = "Recorder Ground Control",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        ["A32NX_ELT_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_ELT_ON", DisplayName = "ELT",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Armed", [1] = "On" }
-        },
         // Avionics-compartment ventilation light (Auto/On). Latching toggle L:var
         // (TOGGLE_SIMVAR in the cockpit XML; tooltip "Set to AUTO" / "Turn ON" → 0=Auto,
         // 1=On). FBW-flagged Inop. but the switch state is real; settable via the calc-path
@@ -4820,30 +4369,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_AVIONICS_COMPLT_ON", DisplayName = "Avionics Compartment",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Auto", [1] = "On" }
-        },
-        // CVR test — momentary held button (HOLD_SIMVAR A32NX_RCDR_TEST, "Test CVR"). Pulse
-        // 1->0 via the button path (same pattern as the oxygen-timer-reset button above).
-        ["A32NX_RCDR_TEST"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RCDR_TEST", DisplayName = "Recorder Test",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            // HOLD-type CVR test (alarm plays WHILE active) — latching Off/On so the pilot
-            // controls the hold duration; a momentary pulse is too brief to hear the alarm.
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
-        // Rain-repellent dispense L/R — momentary held buttons (HOLD_SIMVAR
-        // A32NX_RAIN_REPELLENT_LEFT/RIGHT_ON). FBW-flagged Inop. but the state vars are real.
-        ["A32NX_RAIN_REPELLENT_LEFT_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RAIN_REPELLENT_LEFT_ON", DisplayName = "Rain Repellent Left",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
-        },
-        ["A32NX_RAIN_REPELLENT_RIGHT_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_RAIN_REPELLENT_RIGHT_ON", DisplayName = "Rain Repellent Right",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         // ---- Source-grounded overhead control additions (2026-06-04) — clickable A32NX
         // cockpit controls (A320_NEO_INTERIOR.xml) absent from MSFSBA; all write-stick
@@ -4887,13 +4412,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Purser", [1] = "Capt and Purser" }
         },
-        // Recorder & Misc: ELT test/reset, DFDR event, crew headset (parity with the A380).
-        ["A32NX_ELT_TEST_RESET"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_ELT_TEST_RESET", DisplayName = "ELT Test / Reset",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        },
+        // Recorder & Misc: DFDR event, crew headset (parity with the A380).
         ["A32NX_DFDR_EVENT_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_DFDR_EVENT_ON", DisplayName = "DFDR Event",
@@ -5317,10 +4836,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed", "Pressurization", "Ventilation", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" }
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
         // "Ground Services" (Doors + Ground Equipment) was removed — doors are read-only
         // auto-announced status now and ground services are done via the flyPad Ground
         // page (parity with the A380, which has no Doors panel).
@@ -5450,25 +4969,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE",
             "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON"
         },
-        ["Cargo Air"] = new List<string>
-        {
-            "A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON",
-            "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON",
-            "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON"
-        },
         ["Interior Lighting"] = new List<string>
         {
             "A32NX_OVHD_INTLT_ANN",
-            "A32NX_OVHD_INTLT_DOME",
-            "A32NX_LIGHTING_PRESET_LOAD",
-            "A32NX_LIGHTING_PRESET_SAVE"
+            "A32NX_OVHD_INTLT_DOME"
         },
         ["Recorder and Misc"] = new List<string>
         {
-            "A32NX_RCDR_GROUND_CONTROL_ON",
-            "A32NX_RCDR_TEST",
-            "A32NX_ELT_ON",
-            "A32NX_ELT_TEST_RESET",
             "A32NX_DFDR_EVENT_ON",
             "A32NX_CREW_HEAD_SET",
             "A32NX_AVIONICS_COMPLT_ON"
@@ -5490,9 +4997,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Wipers"] = new List<string>
         {
             "XMLVAR_A320_WiperSwitch_1",
-            "XMLVAR_A320_WiperSwitch_2",
-            "A32NX_RAIN_REPELLENT_LEFT_ON",
-            "A32NX_RAIN_REPELLENT_RIGHT_ON"
+            "XMLVAR_A320_WiperSwitch_2"
         },
         ["Signs"] = new List<string>
         {
@@ -5707,14 +5212,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "COM2_RADIO_SWAP",
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
-        },
-        ["Audio Control Panel Captain"] = new List<string>
-        {
-            "A32NX_RMP_L_VHF1_VOLUME", "A32NX_RMP_L_VHF2_VOLUME", "A32NX_RMP_L_VHF3_VOLUME"
-        },
-        ["Audio Control Panel First Officer"] = new List<string>
-        {
-            "A32NX_RMP_R_VHF1_VOLUME", "A32NX_RMP_R_VHF2_VOLUME", "A32NX_RMP_R_VHF3_VOLUME"
         },
         // PFD / ND are status-box-only panels (no interactive controls — the readout
         // lives in GetPanelDisplayVariables); FCU/EFIS controls live in their own panels.
@@ -6325,7 +5822,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Inlet flap", "A32NX_APU_FLAP_OPEN_PERCENTAGE", Pct));
             r.Add(("Bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
             r.Add(("Low fuel pressure", "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", YesNoAir));
-            r.Add(("APU N2", "A32NX_APU_N2", PctAir));
             r.Add(("Bleed pressure", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", Psi));
             r.Add(("Master switch", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", v => v > 0.5 ? "on" : "off"));
             r.Add(("APU available", "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5 ? "available" : "not available"));

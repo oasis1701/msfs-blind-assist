@@ -5220,44 +5220,6 @@ public class SimConnectManager
     }
 
     /// <summary>
-    /// A32NX-SPECIFIC: Requests ECAM STATUS page message codes for FlyByWire Airbus A320neo.
-    /// Retrieves 36 numeric L-variables (A32NX_STATUS_LEFT_LINE_1-18, A32NX_STATUS_RIGHT_LINE_1-18) for STATUS display.
-    /// Called by Forms/A32NX/StatusDisplayForm.cs only.
-    /// </summary>
-    public void RequestStatusMessages()
-    {
-        if (!IsConnected || simConnect == null)
-        {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot request STATUS messages - not connected");
-            return;
-        }
-
-        try
-        {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requesting STATUS message codes via SimConnect...");
-
-            // Request all 36 STATUS variables (18 LEFT + 18 RIGHT)
-            // LEFT side
-            for (int i = 1; i <= 18; i++)
-            {
-                RequestVariable($"A32NX_STATUS_LEFT_LINE_{i}");
-            }
-
-            // RIGHT side
-            for (int i = 1; i <= 18; i++)
-            {
-                RequestVariable($"A32NX_STATUS_RIGHT_LINE_{i}");
-            }
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] All 36 STATUS code requests sent via SimConnect");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting STATUS messages: {ex.Message}");
-        }
-    }
-
-    /// <summary>
     /// Convert MHz frequency to BCD16 Hz format for COM_STBY_RADIO_SET event
     /// Example: 122.800 MHz → 122800000 Hz → BCD16 encoding
     /// BCD16 Hz represents each digit as 4 bits: 0x122800000 but in practice
