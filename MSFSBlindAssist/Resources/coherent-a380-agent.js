@@ -40,7 +40,10 @@
     // whole controls (e.g. the PERF phase tabs, SURV switches) are unreachable.
     ".mfd-radio-button", ".mfd-top-tab-navigator-bar-element-outer",
     ".mfd-surv-button", ".mfd-surv-status-button", ".mfd-adsc-button",
-    ".mfd-context-menu-element"
+    ".mfd-context-menu-element",
+    // Duplicate-names dialog rows: each row is a clickable fix-picker entry rendered
+    // via addEventListener (not a React prop) on elements with id="mfd-fms-dupl-{i}".
+    ".mfd-fms-fpln-duplicate-table-row"
   ].join(",");
 
   A.LEAF_SELECTOR = [
@@ -152,6 +155,7 @@
     if (c.contains("mfd-dropdown-outer")) return "dropdown";
     if (c.contains("mfd-dropdown-menu-element") || c.contains("mfd-context-menu-element")) return "menu";
     if (c.contains("mfd-page-selector-outer")) return "tab";
+    if (c.contains("mfd-fms-fpln-duplicate-table-row")) return "button";
     return "other";
   };
 
@@ -992,6 +996,23 @@
     for (var sp = 0; sp < staleP.length; sp++) staleP[sp].removeAttribute("data-fbwa380-perf-owned");
 
     var page = root.querySelector(".mfd-navigator-container") || root;
+
+    // A visible modal dialog (MSG LIST / DUPLICATE NAMES) renders as a sibling of
+    // .mfd-navigator-container inside the same .mfd-main root.  Both dialogs use
+    // .mfd-fms-fpln-dialog-outer as their wrapper; visibility toggles via
+    // style.display ("block" = open, "none" = hidden).  When one is open, scrape it
+    // instead of the navigator page so the pilot hears — and can drive — the modal.
+    // The duplicate-names dialog is a flow-blocker: typing an ambiguous ident hangs
+    // silently waiting for a pick until the user selects one.
+    var dlgCands = root.querySelectorAll(".mfd-fms-fpln-dialog-outer");
+    for (var dc = 0; dc < dlgCands.length; dc++) {
+      try {
+        if (window.getComputedStyle(dlgCands[dc]).display !== "none") {
+          page = dlgCands[dc];
+          break;
+        }
+      } catch (e) {}
+    }
     var pageRect = page.getBoundingClientRect();
     var items = [];
     var idx = 1;
