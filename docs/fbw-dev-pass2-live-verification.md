@@ -13,12 +13,12 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 - [ ] A32NX runway turn-off via indexed `TAXI_LIGHTS_SET` (both lights + cockpit switch follows).
 - [ ] A32NX thrust detents land in the FBW bands (esp. Reverse Idle at -0.80) — also confirm against a custom EFB throttle calibration.
 - [ ] A32NX FPA set ×10 (enter 2.5 → FCU shows 2.5°); negative V/S via the panel path.
-- [ ] A380 FPA set ×10 (enter 2.5 → FCU shows 2.5° — was silently ignored at ×100); negative V/S.
-- [ ] A380 transfer pumps 70-81 toggle their circuits; anti-skid toggle.
+- [x] A380 FPA set ×10 — LIVE-VERIFIED 2026-06-11 via MCP: `25 (>K:A32NX.FCU_VS_SET)` in TRK/FPA mode → `A32NX_AUTOPILOT_FPA_SELECTED` = 2.5°.
+- [x] A380 transfer pumps + anti-skid — LIVE-VERIFIED 2026-06-11: circuit 70 toggled 1→0→1 via the pump RPN; `ANTISKID_BRAKES_TOGGLE` flipped `ANTISKID BRAKES ACTIVE` both ways (states restored). Same template covers circuits 71-81.
 - [ ] A32NX NAVAID selectors / FO filter pushes / filter light readbacks.
 - [ ] A32NX LDG ELEV knob write (-4000 Auto detent + a real elevation).
 - [ ] COM3 standby set/swap; brightness knobs move the cockpit pots.
-- [ ] Approach-capability announce on an ILS approach (LAND 2 / LAND 3 transitions, both jets).
+- [ ] Approach-capability announce on an ILS approach (LAND 2 / LAND 3 transitions, both jets). PARTIAL 2026-06-11: A380 cruise word reads SSM=NormalOp, zero bits → "none computed" decode path verified; the LAND transitions still need an approach.
 - [ ] A32NX fire-handle pull announce + agent-discharge interlock (pull handle via the panel, then discharge).
 - [ ] MCDU print: press an MCDU PRINT prompt (e.g. D-ATIS) → announced; MCDU2 fallback under AC ESS SHED failure.
 - [ ] OANS: re-arm exit E→K reports honestly; manual stop 400-4000 validation; runway-ahead clears when stopped.
@@ -30,7 +30,7 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 
 ## Deferred features/probes (build after verification or live iteration)
 
-- [ ] MobiFlight no-module detection via an END-TO-END probe: calc-write a nonce to `L:MSFSBA_BRIDGE_PROBE`, read it back via the data-def path; only that proves the calc channel. Response-based gates (IsRegistered / any-response) are BOTH invalid — live-verified 2026-06-11 on an install whose module executes every command but never sends a single response (no registration Finished, no MF.Pong). Until built, the gate is "module object initialized" (pre-existing behavior) and a missing module surfaces via the status text only.
+- [x] MobiFlight end-to-end probe — IMPLEMENTED 2026-06-11 (nonce round-trip via MainForm.BridgeProbeTimer_Tick → MSFSBA_BRIDGE_PROBE → MarkCalcPathVerified; verdict in transport.log). Gate intentionally stays IsConnected; the probe is observability + the basis for a future gate. Verify the "[Probe] calc path VERIFIED" line on the next launch.
 - [ ] Related pre-existing question on the same install: with the response channel dead, `IsRegistered` stays false → the per-client FBWBA channel (`SendFBWBACommand`, HVar press/release paths) never opens. Check whether the A32NX ECP HVar buttons work on this machine; if they do, find which path they actually take — if they don't, they were broken before this branch too.
 
 - [ ] Probe: `A32NX.FCU_METRIC_ALT_TOGGLE_PUSH` on the A32NX (newly registered in dev FBW) — expose if functional.
@@ -38,13 +38,13 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 - [ ] A380 stall warning: NO working aural var (FBW `FwsSoundManager.ts:116-122` maps the stall sound to `A32NX_AUDIO_ROP_MAX_BRAKING` — apparent upstream copy-paste bug). REPORT UPSTREAM to FlyByWire; re-add the monitor on whatever var the fix lands on.
 - [ ] A380 `A32NX_AUTOPILOT_AUTOLAND_WARNING`: no writer found in the A380X tree (suspected dead) — verify during an autoland; remove or re-key if confirmed.
 - [ ] FCU `A32NX_FCU_AFS_DISPLAY_*_DASHES` (A32NX): use to say "managed" instead of a stale value in the FCU readouts — needs live confirmation of dash semantics.
-- [ ] flyPad Performance page SelectInput dropdowns (takeoff/landing calculators) — live tour; extend the agent if unreachable (13 + 11 dropdowns at stake).
-- [ ] flyPad radio-altitude Automatic Call Outs page — live tour of the settings builder (directly relevant: callouts are the blind pilot's landing instrument).
-- [ ] flyPad EFB ATC page hover-revealed tune buttons — live tour.
-- [ ] SDv2 scrape fallback: confirm which Coherent view hosts C/B + VIDEO on the installed build (source splits them between A380X_SDv2 and legacy A380X_SD).
+- [ ] flyPad Performance SelectInput dropdowns — A32NX-ONLY (live-confirmed 2026-06-11: the A380 Performance page has only ToD + Temp Correction sub-tabs, both fully accessible). Tour when the A320 is loaded.
+- [x] flyPad Automatic Call Outs page — LIVE-VERIFIED 2026-06-11 (A380): all 19 per-altitude toggles read with name + state, Reset reachable. No code needed.
+- [x] flyPad ATC page — LIVE-VERIFIED 2026-06-11 (A380): tune buttons DO surface despite the hover gating; now labeled "CALLSIGN FREQ: Set Active/Standby" (agent fix + jsdom tests). Controller cards + frequencies read.
+- [x] SDv2 view split — RESOLVED 2026-06-11: the installed build has NO legacy A380X_SD view at all (pagelist shows only "SD - A380X_SDv2"), so the existing needle is the only possible target; nothing to change.
 - [ ] Dual-FWS-failure announce path (fwsCore destroyed → probe empty → fallback checklist scraped but silent) — design together with the EWD hidden-row visibility fix (regression-sensitive; see the audit notes about `_seen` mass-invalidation).
 - [ ] F-PLN scrape polish batch (two-altitude constraints, SPD+ALT coexistence, ditto carry-forward, FPA column, hold-row speed, destination footer, TMPY/EO title flags) — capture live fixtures first.
-- [ ] NEW FEATURE: native pushback control form (heading/speed L:var writes + spoken/tonal feedback from `PUSHBACK ANGLE`) — needs live tuning by design; pairs with the taxi-guidance audio stack.
+- PUSHBACK: permanently OUT OF SCOPE — Robin's team uses GSX for pushback (much better than the FBW implementation; decision 2026-06-11). Never re-add.
 - [ ] NEW FEATURE: CG envelope verdict helper (transcribe envelope limits from FBW source, speak "within limits").
 - [ ] A380 wheel chocks/cones tiles were REMOVED upstream (commented out in A380Services.tsx) — expect them to disappear from the flyPad after the next aircraft update; no MSFSBA action.
 - [ ] STATUS/INOP/LIMITATIONS: dev FBW now POPULATES `inopSys*`/`limitations*` (FwsInopSys.ts/FwsLimitations.ts) — the CoherentFwsFailureClient path should go live; verify during a failure scenario. Note the subjects were made `private` upstream (runtime-fine, rename risk on FBW updates).
