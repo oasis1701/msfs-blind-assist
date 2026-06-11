@@ -1221,35 +1221,40 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "PUSH_OVHD_CALLS_MECH",
             DisplayName = "Call MECH",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
         },
         ["PUSH_OVHD_CALLS_ALL"] = new SimConnect.SimVarDefinition
         {
             Name = "PUSH_OVHD_CALLS_ALL",
             DisplayName = "Call ALL",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
         },
         ["PUSH_OVHD_CALLS_FWD"] = new SimConnect.SimVarDefinition
         {
             Name = "PUSH_OVHD_CALLS_FWD",
             DisplayName = "Call FWD",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
         },
         ["PUSH_OVHD_CALLS_AFT"] = new SimConnect.SimVarDefinition
         {
             Name = "PUSH_OVHD_CALLS_AFT",
             DisplayName = "Call AFT",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
         },
         ["A32NX_CALLS_EMER_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_CALLS_EMER_ON",
             DisplayName = "Emergency Call",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
         // OVERHEAD FORWARD SECTION - GPWS Panel
