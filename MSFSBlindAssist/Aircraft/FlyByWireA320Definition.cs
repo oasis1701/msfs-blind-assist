@@ -302,7 +302,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "No Smoking Signs",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Auto" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" }
         },
         ["XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION"] = new SimConnect.SimVarDefinition
         {
@@ -310,7 +310,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Emergency Exit Lights",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Auto" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Arm", [2] = "Off" }
         },
 
         // APU Panel
@@ -1267,7 +1267,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "GPWS Flap Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
         },
         ["A32NX_GPWS_GS_OFF"] = new SimConnect.SimVarDefinition
         {
@@ -1275,7 +1275,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "GPWS Glideslope Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
         },
         ["A32NX_GPWS_SYS_OFF"] = new SimConnect.SimVarDefinition
         {
@@ -1283,7 +1283,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "GPWS System",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
         },
         ["A32NX_GPWS_TERR_OFF"] = new SimConnect.SimVarDefinition
         {
@@ -1291,7 +1291,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "GPWS Terrain",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
         },
 
         // INSTRUMENT SECTION - ISIS Panel
@@ -2193,7 +2193,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Weather Radar System",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "System 1", [1] = "Off", [2] = "System 2" }
         },
         ["XMLVAR_A320_WeatherRadar_Mode"] = new SimConnect.SimVarDefinition
         {
@@ -2273,7 +2273,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_SWITCH_TCAS_TRAFFIC_POSITION"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SWITCH_TCAS_TRAFFIC_POSITION",
-            DisplayName = "TCAS Mode",
+            DisplayName = "TCAS Traffic Display",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "THRT", [1] = "ALL", [2] = "ABV", [3] = "BLW" }
@@ -2281,7 +2281,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_SWITCH_TCAS_POSITION"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SWITCH_TCAS_POSITION",
-            DisplayName = "TCAS Traffic",
+            DisplayName = "TCAS Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "STBY", [1] = "TA", [2] = "TA/RA" }
@@ -4222,7 +4222,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string>
             {
-                [0] = "SEL", [1] = "VHF1", [2] = "VHF2", [3] = "VHF3"
+                [1] = "VHF1", [2] = "VHF2", [3] = "VHF3", [6] = "VOR", [7] = "ILS", [8] = "GLS"
             }
         },
         // Active + standby freqs are Continuous + IsAnnounced so frequency changes and
