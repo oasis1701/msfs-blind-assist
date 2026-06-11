@@ -198,8 +198,10 @@ namespace MSFSBlindAssist.SimConnect
             if (_agentInstalled)
             {
                 // The flyPad screen is usually powered off; turn it on so the form
-                // shows content instead of a blank tablet. Idempotent — sets
-                // L:A32NX_EFB_TURNED_ON = 1 (the same state a cockpit tap sets).
+                // shows content instead of a blank tablet. Idempotent. The real wake is
+                // a synthetic pointer/mouse click on the dormant render root (powerOn step 2);
+                // the L:A32NX_EFB_TURNED_ON write in powerOn step 1 is legacy/no-op in current
+                // FBW builds. FBW's SimpleInput commits on blur (onFocusOut), not on Enter.
                 try { await EvalAsync("window.__MSFSBA_FLYPAD && __MSFSBA_FLYPAD.powerOn && __MSFSBA_FLYPAD.powerOn()", ct); }
                 catch { /* best-effort; the form still works once the user wakes it */ }
             }

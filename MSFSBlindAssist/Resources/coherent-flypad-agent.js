@@ -486,13 +486,12 @@
 
   A.valueOf = function (kind, n) {
     if (kind === "checkitem") {
-      // Completed = a check icon (svg) inside the item's checkbox box. Match the box
-      // in ANY border state (mirror classify) — only the CURRENT row carries
-      // border-current, so the old ".border-4.border-current" query made every
-      // completed non-cursor item read unchecked, and "checking" that box really
-      // un-completed the item.
-      var box = n.querySelector(".border-4");
-      return (box && box.querySelector("svg")) ? "true" : "false";
+      // Completed = the row carries text-utility-green (true in BOTH manual and
+      // auto-fill modes). The old "any svg in the box" test misread every
+      // auto-sensed condition item as checked (they always contain a Link45deg svg
+      // regardless of completion state — ChecklistItemComponent.tsx:113-121).
+      var cls = " " + ((n.className && n.className.baseVal !== undefined) ? n.className.baseVal : (n.className || "")) + " ";
+      return cls.indexOf("text-utility-green") >= 0 ? "true" : "false";
     }
     if (kind === "slider") return clean(n.getAttribute("aria-valuenow") || n.value || "");
     if (kind === "checkbox" || kind === "toggle") {
@@ -541,12 +540,21 @@
     return "";
   };
 
-  // True when the control is disabled (native disabled or aria-disabled), so the
-  // renderer can mark it and a screen reader announces it as unavailable.
+  // True when the control is disabled: native disabled / aria-disabled, or FBW's
+  // Tailwind idioms — pointer-events-none / opacity-20 / grayscale on the node or
+  // a near ancestor (FBW disables via wrapper divs; synthetic click() would bypass
+  // pointer-events-none, so we must both REPORT and avoid actuating these).
   A.disabledFor = function (n) {
     try {
       if (n.disabled === true) return true;
       if (n.getAttribute && lower(n.getAttribute("aria-disabled") || "") === "true") return true;
+      var cur = n, hops = 0;
+      while (cur && cur.nodeType === 1 && hops < 4) {
+        var c = " " + ((cur.className && cur.className.baseVal !== undefined) ? cur.className.baseVal : (cur.className || "")) + " ";
+        if (c.indexOf(" pointer-events-none ") >= 0) return true;
+        if (hops === 0 && (c.indexOf(" opacity-20 ") >= 0 || c.indexOf(" grayscale ") >= 0)) return true;
+        cur = cur.parentElement; hops++;
+      }
     } catch (e) {}
     return false;
   };
@@ -2198,6 +2206,7 @@
   A.clickElement = function (index) {
     var node = A.findByIdx(index);
     if (!node) return "missing";
+    if (A.disabledFor(node)) return "disabled";
     A.clickNode(node);
     return "ok";
   };
@@ -2234,10 +2243,12 @@
     if (tag === "input" || tag === "textarea") {
       node.focus();
       A.setNativeValue(node, value);
-      // FBW's SimpleInput commits (clamp + write to the sim) on Enter / blur via
-      // getConstrainedValue — NOT on the React onChange. Dispatch both so a value
-      // set from our form actually reaches the aircraft (Passengers, Cargo, ZFW,
-      // weights, fuel target).
+      // FBW's SimpleInput commits (clamp + write to the sim) in its onFocusOut
+      // handler — the blur() below is the LOAD-BEARING commit step. The Enter
+      // keydown/keyup dispatches don't match FBW's keypress listener and have no
+      // observable effect on SimpleInput, but are kept as harmless belt-and-braces
+      // for any other input that does listen to keydown/keyup (Passengers, Cargo,
+      // ZFW, weights, fuel target).
       try { node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); } catch (e) {}
       try { node.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); } catch (e2) {}
       try { node.blur(); } catch (e3) {}
@@ -2262,13 +2273,17 @@
   A.ping = function () { return "MSFSBA_FLYPAD_OK"; };
 
   // Power the flyPad/EFB screen on. Two parts:
-  //   1. Set L:A32NX_EFB_TURNED_ON = 1 (the power state a cockpit tap sets).
+  //   1. Set L:A32NX_EFB_TURNED_ON = 1. NOTE: this write is legacy / no-op in
+  //      current FBW builds — there are no upstream references to this L:var in
+  //      the live flyPad source. Kept as belt-and-braces in case a future build
+  //      re-introduces it, but the real wake is step 2.
   //   2. The EFB gauge's render loop stays DORMANT until it receives an
   //      interaction (this is what "tapping the tablet" actually does — the
-  //      L-var alone doesn't wake it). If the screen has no content yet, we
-  //      dispatch a benign synthetic pointer/mouse interaction on the root
-  //      container to resume rendering. While dormant the container is empty,
-  //      so this can't activate any control; once content exists we skip it.
+  //      synthetic click on the shutoff overlay is the REAL wake path). If the
+  //      screen has no content yet, we dispatch a benign synthetic pointer/mouse
+  //      interaction on the root container to resume rendering. While dormant
+  //      the container is empty, so this can't activate any control; once
+  //      content exists we skip it.
   // Idempotent — safe to call on every (re)connect.
   A.powerOn = function () {
     try {
