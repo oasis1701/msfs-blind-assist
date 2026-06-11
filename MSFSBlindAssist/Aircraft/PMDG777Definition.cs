@@ -6176,11 +6176,14 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             return true;
         }
 
-        // Cockpit Door (DOOR_CockpitDoorOpen). Announce real background
-        // changes only — a change inside the combo's echo window stays
-        // silent (the screen reader already voiced the combo selection;
-        // see _cockpitDoorSetEcho). First poll is cached silently.
-        if (varName == "DOOR_CockpitDoorOpen")
+        // Cockpit Door. Announce real background changes only — a change
+        // inside the combo's echo window stays silent (the screen reader
+        // already voiced the combo selection; see _cockpitDoorSetEcho).
+        // First poll is cached silently. NOTE: ProcessSimVarUpdate receives
+        // the VARKEY ("DOOR_CockpitDoor") — OnPMDGVariableChanged translates
+        // the struct field name (DOOR_CockpitDoorOpen) to the key before the
+        // event enters the pipeline; matching the field name never fires.
+        if (varName == "DOOR_CockpitDoor")
         {
             int now = value >= 0.5 ? 1 : 0;
             bool comboEcho = (DateTime.UtcNow - _cockpitDoorSetEcho).TotalSeconds < 3.0;
