@@ -2248,6 +2248,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "IDENT",
             Type = SimConnect.SimVarType.Event
         },
+        // ATC datalink (DCDU) — CPDLC message-waiting announce + acknowledge (A380 parity).
+        ["A32NX_DCDU_ATC_MSG_WAITING"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_DCDU_ATC_MSG_WAITING", DisplayName = "ATC Message Waiting",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Message Waiting" }
+        },
+        ["A32NX_DCDU_ATC_MSG_ACK"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_DCDU_ATC_MSG_ACK", DisplayName = "ATC Message Acknowledge",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true, RenderAsButton = true, SuppressRestingButtonState = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" }
+        },
         ["A32NX_SWITCH_TCAS_TRAFFIC_POSITION"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SWITCH_TCAS_TRAFFIC_POSITION",
@@ -2292,6 +2307,33 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "normal", [1] = "fault" }
         },
+        // FMA triple-click: mode reversion cue (1 = reversion occurred, reverts to 0).
+        // OnlyAnnounceValueDescriptionMatches suppresses the 1→0 reset announcement —
+        // without it the generic path would speak "FMA mode reversion cue: 0".
+        ["A32NX_FMA_TRIPLE_CLICK"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMA_TRIPLE_CLICK", DisplayName = "FMA mode reversion cue",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, OnlyAnnounceValueDescriptionMatches = true,
+            ValueDescriptions = new Dictionary<double, string> { [1] = "Mode reversion, check FMA" }
+        },
+        // Hydraulic PTU active memo (shown on the ECAM).
+        ["A32NX_HYD_PTU_ON_ECAM_MEMO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_HYD_PTU_ON_ECAM_MEMO", DisplayName = "PTU transferring",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "PTU stopped", [1] = "PTU transferring" }
+        },
+        // TCAS advisory state (distinct from A32NX_TCAS_MODE which is the system mode switch).
+        ["A32NX_TCAS_STATE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_STATE", DisplayName = "TCAS advisory",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "clear of conflict", [1] = "traffic advisory", [2] = "resolution advisory" }
+        },
         // EGPWS (GPWS/TAWS) escape-maneuver callouts — enum verified against the FBW EGPWS source.
         ["A32NX_GPWS_AURAL_OUTPUT"] = new SimConnect.SimVarDefinition
         {
@@ -2324,6 +2366,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "autopilot disconnect" }
+        },
+        // FWC discrete word 124: baro-reference discrepancy between the two sides
+        // (bit 24 = STD discrepancy, bit 25 = baro discrepancy) — a blind pilot can't
+        // glance at both PFDs to compare. Decoded in ProcessSimVarUpdate.
+        ["A32NX_FWC_1_DISCRETE_WORD_124"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FWC_1_DISCRETE_WORD_124", DisplayName = "Baro Reference Discrepancy",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
         },
 
         ["A32NX_AUTOTHRUST_MODE"] = new SimConnect.SimVarDefinition
@@ -4210,6 +4261,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
         },
 
+        // SFCC actual surface positions (ARINC429 degrees) — confirms config compliance
+        // and surfaces jams/asymmetry a sighted pilot reads off the E/WD flap indicator.
+        ["A32NX_SFCC_1_FLAP_ACTUAL_POSITION_WORD"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SFCC_1_FLAP_ACTUAL_POSITION_WORD", DisplayName = "Flaps Actual Position",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "degrees", Arinc429Format = "0.0"
+        },
+        ["A32NX_SFCC_1_SLAT_ACTUAL_POSITION_WORD"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SFCC_1_SLAT_ACTUAL_POSITION_WORD", DisplayName = "Slats Actual Position",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "degrees", Arinc429Format = "0.0"
+        },
+
         // GPWS Master Warning
         ["A32NX_GPWS_WARNING_LIGHT_ON"] = new SimConnect.SimVarDefinition
         {
@@ -4936,6 +5002,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "KOHLSMAN SETTING HG:2",
             "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE"
         },
+        // Flight Controls: actual surface positions from SFCC (ARINC429 degrees).
+        // These are display-only (decoded via the generic IsArinc429 path) and show
+        // whether the surfaces have reached the commanded config — the sighted pilot
+        // reads this off the E/WD flap indicator.
+        ["Flight Controls"] = new List<string>
+        {
+            "A32NX_SFCC_1_FLAP_ACTUAL_POSITION_WORD",
+            "A32NX_SFCC_1_SLAT_ACTUAL_POSITION_WORD"
+        },
         ["Speed Brake"] = new List<string>
         {
             "A32NX_SPOILERS_ARMED",
@@ -4964,9 +5039,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         // Squawk read-back (decoded from the BCD16 word). The mode/system are settable
         // controls in the Transponder panel; this read-only box shows the active code.
+        // DCDU ATC message waiting is also shown here (A380 parity).
         ["Transponder"] = new List<string>
         {
-            "XPNDR_CODE"
+            "XPNDR_CODE",
+            "A32NX_DCDU_ATC_MSG_WAITING"
         },
         ["ECAM Control Panel"] = new List<string>
         {
@@ -5474,7 +5551,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "TRANSPONDER_CODE_SET",
             "XPNDR_IDENT_ON",
             "A32NX_SWITCH_TCAS_TRAFFIC_POSITION",
-            "A32NX_SWITCH_TCAS_POSITION"
+            "A32NX_SWITCH_TCAS_POSITION",
+            "A32NX_DCDU_ATC_MSG_ACK"
         },
         // RMP = the one radio panel (the former "Radios" panel was merged in). Tab
         // order is deliberate: the frequency-management controls come FIRST so tuning
@@ -5885,6 +5963,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
     // EFIS baro (altimeter) state — auto-announced on knob turn + read on demand (B).
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
+    private bool _baroStdDiscrep, _baroRefDiscrep; // FWC word 124 bits 24/25 (announced edges)
     private double _baroHpa = -1;          // last decoded captain baro, hectopascals
     private int _baroMode = -1;            // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD,1=hPa,2=inHg
     private int _lastAnnouncedBaroHpa = -1;
@@ -7028,6 +7107,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (_lastAutolandCap != null && _lastAutolandCap != cap && cap != "none")
                 announcer.Announce($"Approach capability {cap}");
             _lastAutolandCap = cap;
+            return true;
+        }
+
+        // FWC word 124: baro-reference discrepancy between the two sides. Rising edges only.
+        if (varName == "A32NX_FWC_1_DISCRETE_WORD_124")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            bool stdD = w.BitValueOr(24, false), refD = w.BitValueOr(25, false);
+            if (stdD && !_baroStdDiscrep) announcer.Announce("Baro standard mode discrepancy between sides");
+            if (refD && !_baroRefDiscrep) announcer.Announce("Baro reference discrepancy between sides");
+            _baroStdDiscrep = stdD; _baroRefDiscrep = refD;
             return true;
         }
 
