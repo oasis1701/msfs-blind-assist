@@ -525,11 +525,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // Fire Panel
+        // Handles are Continuous+IsAnnounced: the agent-discharge interlock in
+        // HandleUIVariableSet reads their CACHED state, which must stay live even
+        // when the handle was pulled via this panel's own combo (a calc write does
+        // not refresh the cache) or from the cockpit. Also announces handle pulls —
+        // a safety-relevant state change in its own right.
         ["A32NX_FIRE_BUTTON_ENG1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FIRE_BUTTON_ENG1",
             DisplayName = "Eng 1 Fire Handle",
             Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
         },
         ["A32NX_FIRE_BUTTON_ENG2"] = new SimConnect.SimVarDefinition
@@ -537,6 +544,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FIRE_BUTTON_ENG2",
             DisplayName = "Eng 2 Fire Handle",
             Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
         },
         ["A32NX_FIRE_BUTTON_APU"] = new SimConnect.SimVarDefinition
@@ -544,6 +553,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FIRE_BUTTON_APU",
             DisplayName = "APU Fire Handle",
             Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
         },
         ["A32NX_FIRE_TEST_ENG1"] = new SimConnect.SimVarDefinition
