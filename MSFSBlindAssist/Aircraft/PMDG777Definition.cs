@@ -114,6 +114,10 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
                 "Boris Audio Works"
             },
+            ["Cockpit"] = new List<string>
+            {
+                "Captain Seat", "First Officer Seat", "Windows and Shades", "Doors and Tables"
+            },
         };
     }
 
@@ -4626,6 +4630,317 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Vickers 1", [100] = "Vickers 2" }
             },
+
+            // =================================================================
+            // COCKPIT FURNITURE (Cockpit section — Captain/FO Seat, Windows
+            // and Shades, Doors and Tables). All live-verified 2026-06-11 on
+            // the 777-300ER. Two mechanism families:
+            //
+            // (a) PMDG SDK events with direct-position CDA params: armrests
+            //     (switch_100N_a anim L:vars are SDK-OWNED read-backs — PMDG
+            //     rewrites them from the real switch state every frame, same
+            //     family as the xBAW switches, so a raw SetLVar reverts; the
+            //     EVT_*_ARMREST_* event is the actuator and the L:var then
+            //     follows for display) and foot heaters (proper SDK struct
+            //     field AIR_FootHeaterSelector + EVT_FWD_*_FOOT_HEATER).
+            //
+            // (b) Cockpit-model anim L:vars that ARE the pilot input (from
+            //     77W_Cockpit_Behavior.xml): visors, worktables, shoulder
+            //     heaters, window handle/clipboard, cockpit/crew doors,
+            //     curtain, shades. Writes hold and the model/system follows
+            //     (door_cockpit write flips the SDK DOOR_CockpitDoorOpen
+            //     read-back; LEFT_SHOULDER_HEATER write moves the SDK
+            //     AIR_ShoulderHeaterKnob field). These take MainForm's
+            //     generic SetLVar fall-through — no event mapping needed.
+            //     The sliding WINDOW itself is the one exception: no SDK
+            //     event AND no plain write — see the WINDOW_CA/FO branch in
+            //     HandleUIVariableSet (stock exit 17/18 + companion L:vars).
+            // =================================================================
+            ["switch_1006_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1006_a",
+                DisplayName = "Captain Armrest Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            ["switch_1007_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1007_a",
+                DisplayName = "Captain Armrest Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            ["switch_1008_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1008_a",
+                DisplayName = "First Officer Armrest Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            ["switch_1009_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1009_a",
+                DisplayName = "First Officer Armrest Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            // PMDGVar combos must be Continuous: RequestVariable can't reach
+            // them (no data definition — they ride the SDK broadcast), so an
+            // OnRequest PMDGVar would never populate its panel combo.
+            ["AIR_FootHeater_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_FootHeaterSelector_0",
+                DisplayName = "Captain Foot Heater",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
+            },
+            ["AIR_FootHeater_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_FootHeaterSelector_1",
+                DisplayName = "First Officer Foot Heater",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
+            },
+            // Shoulder heaters are continuous 0-100 knobs; the named L:var IS
+            // the input (write 60 -> SDK AIR_ShoulderHeaterKnob reads 60,
+            // live-verified) — the old "continuous knobs cannot be controlled
+            // via SDK" rule does not apply to cockpit-model L:var knobs.
+            // Stepped combo because this branch has no slider control.
+            ["SHOULDER_HEATER_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LEFT_SHOULDER_HEATER",
+                DisplayName = "Captain Shoulder Heater",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [33] = "Low", [66] = "Medium", [100] = "High" }
+            },
+            ["SHOULDER_HEATER_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "RIGHT_SHOULDER_HEATER",
+                DisplayName = "First Officer Shoulder Heater",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [33] = "Low", [66] = "Medium", [100] = "High" }
+            },
+            ["VISOR_CA_FRONT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_front_stow_unstow",
+                DisplayName = "Captain Front Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["VISOR_CA_FRONT_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_front_drag",
+                DisplayName = "Captain Front Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            ["VISOR_CA_SIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_side_stow_unstow",
+                DisplayName = "Captain Side Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["VISOR_CA_SIDE_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_side_drag",
+                DisplayName = "Captain Side Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            ["VISOR_FO_FRONT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_front_stow_unstow",
+                DisplayName = "First Officer Front Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["VISOR_FO_FRONT_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_front_drag",
+                DisplayName = "First Officer Front Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            ["VISOR_FO_SIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_side_stow_unstow",
+                DisplayName = "First Officer Side Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["VISOR_FO_SIDE_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_side_drag",
+                DisplayName = "First Officer Side Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            // Windows: clipboard must be moved aside AND handle unlocked
+            // before the window itself can move (the cockpit interlock).
+            // The WINDOW_CA/FO combos auto-perform that sequence on Open.
+            ["WINDOW_CLIPBOARD_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowClipboardCA",
+                DisplayName = "Captain Window Clipboard",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Over window", [100] = "Moved aside" }
+            },
+            ["WINDOW_HANDLE_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowHandleCA",
+                DisplayName = "Captain Window Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Locked", [100] = "Unlocked" }
+            },
+            ["WINDOW_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "Window_OpenClose_CA",
+                DisplayName = "Captain Sliding Window",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["WINDOW_CLIPBOARD_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowClipboardFO",
+                DisplayName = "First Officer Window Clipboard",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Over window", [100] = "Moved aside" }
+            },
+            ["WINDOW_HANDLE_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowHandleFO",
+                DisplayName = "First Officer Window Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Locked", [100] = "Unlocked" }
+            },
+            ["WINDOW_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "Window_OpenClose_FO",
+                DisplayName = "First Officer Sliding Window",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["SHADE_LF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_LF",
+                DisplayName = "Window Shade Left Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["SHADE_LR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_LR",
+                DisplayName = "Window Shade Left Rear",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["SHADE_RF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_RF",
+                DisplayName = "Window Shade Right Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["SHADE_RR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_RR",
+                DisplayName = "Window Shade Right Rear",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["DOOR_COCKPIT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "door_cockpit",
+                DisplayName = "Cockpit Door",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [100] = "Open" }
+            },
+            ["DOOR_CREW_LEFT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "door_crew_area_left",
+                DisplayName = "Crew Rest Door Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [100] = "Open" }
+            },
+            ["DOOR_CREW_RIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "door_crew_area_right",
+                DisplayName = "Crew Rest Door Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [100] = "Open" }
+            },
+            ["CURTAIN_COCKPIT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "curtain_cockpit",
+                DisplayName = "Cockpit Curtain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [100] = "Drawn" }
+            },
+            ["WORKTABLE_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_ca",
+                DisplayName = "Captain Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["WORKTABLE_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_fo",
+                DisplayName = "First Officer Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["WORKTABLE_OBS_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_obs_l",
+                DisplayName = "Left Observer Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["WORKTABLE_OBS_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_obs_r",
+                DisplayName = "Right Observer Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
         };
     }
 
@@ -4936,6 +5251,33 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "switch_622_a", "switch_623_a", "switch_319_a"
             },
 
+            // Cockpit — furniture (seats/comfort, windows, doors, tables)
+            ["Captain Seat"] = new List<string>
+            {
+                "switch_1006_a", "switch_1007_a",
+                "AIR_FootHeater_CA", "SHOULDER_HEATER_CA",
+                "VISOR_CA_FRONT", "VISOR_CA_FRONT_SLIDE",
+                "VISOR_CA_SIDE", "VISOR_CA_SIDE_SLIDE"
+            },
+            ["First Officer Seat"] = new List<string>
+            {
+                "switch_1008_a", "switch_1009_a",
+                "AIR_FootHeater_FO", "SHOULDER_HEATER_FO",
+                "VISOR_FO_FRONT", "VISOR_FO_FRONT_SLIDE",
+                "VISOR_FO_SIDE", "VISOR_FO_SIDE_SLIDE"
+            },
+            ["Windows and Shades"] = new List<string>
+            {
+                "WINDOW_CLIPBOARD_CA", "WINDOW_HANDLE_CA", "WINDOW_CA",
+                "WINDOW_CLIPBOARD_FO", "WINDOW_HANDLE_FO", "WINDOW_FO",
+                "SHADE_LF", "SHADE_LR", "SHADE_RF", "SHADE_RR"
+            },
+            ["Doors and Tables"] = new List<string>
+            {
+                "DOOR_COCKPIT", "DOOR_CREW_LEFT", "DOOR_CREW_RIGHT", "CURTAIN_COCKPIT",
+                "WORKTABLE_CA", "WORKTABLE_FO", "WORKTABLE_OBS_L", "WORKTABLE_OBS_R"
+            },
+
         };
     }
 
@@ -4984,6 +5326,17 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private double _lastComStandbyFreq1;
     private double _lastComStandbyFreq2;
     private double _lastSquawkCode;
+
+    // Armrest varKey (anim L:var, doubles as the combo's state read-back) →
+    // SDK actuator event. Used by the 1c branch in HandleUIVariableSet.
+    private static readonly IReadOnlyDictionary<string, string> _armrestEvents =
+        new Dictionary<string, string>
+        {
+            ["switch_1006_a"] = "EVT_CA_ARMREST_LEFT_SWITCH",
+            ["switch_1007_a"] = "EVT_CA_ARMREST_RIGHT_SWITCH",
+            ["switch_1008_a"] = "EVT_FO_ARMREST_LEFT_SWITCH",
+            ["switch_1009_a"] = "EVT_FO_ARMREST_RIGHT_SWITCH",
+        };
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
@@ -5149,6 +5502,13 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // --- Signs ---
             ["SIGNS_NoSmoking"]         = "EVT_OH_NO_SMOKING_LIGHT_SWITCH",
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
+
+            // --- Cockpit furniture (foot heaters: 3-position selectors,
+            //     direct-position CDA verified live; armrests are handled
+            //     by the dedicated branch in HandleUIVariableSet because
+            //     their varKey is the anim L:var, not the SDK field) ---
+            ["AIR_FootHeater_CA"]       = "EVT_FWD_LEFT_FOOT_HEATER",
+            ["AIR_FootHeater_FO"]       = "EVT_FWD_RIGHT_FOOT_HEATER",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
             ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
@@ -5534,6 +5894,51 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             };
             if (code != 0)
                 simConnect.SendEvent("ROTOR_BRAKE", code);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1c. Armrests — the switch_100N_a anim L:vars are PMDG-SDK-OWNED
+        //     read-backs (rewritten from the real armrest state every frame,
+        //     same family as the xBAW switches above), so a raw SetLVar
+        //     reverts. The EVT_*_ARMREST_* SDK event with a direct-position
+        //     CDA param (1 = up, 0 = down) is the actuator; the L:var then
+        //     follows (0/100) for the combo read-back. Live-verified.
+        // ------------------------------------------------------------------
+        if (_armrestEvents.TryGetValue(varKey, out string? armrestEvent))
+        {
+            if (EventIds.TryGetValue(armrestEvent, out int armrestId))
+            {
+                simConnect.SendPMDGEvent(armrestEvent, (uint)armrestId, value >= 50 ? 1 : 0);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1d. Sliding cockpit windows — there is NO PMDG SDK event for the
+        //     window itself (EVT_DOOR_WINDOW_* is a different part): the
+        //     cockpit click runs RPN that toggles L:Window_OpenClose_* and
+        //     fires the stock exit event (exit 17 = captain, 18 = first
+        //     officer), gated on the handle being unlocked AND the clipboard
+        //     moved aside. Opening auto-performs that prerequisite sequence
+        //     (what a sighted pilot does with three clicks); closing only
+        //     closes the window — the handle stays unlocked and can be
+        //     re-locked with its own combo once the window has finished
+        //     travelling (the model blocks the handle while the window
+        //     moves). Calc strings are verbatim from the live-verified
+        //     sequence (77W_Cockpit_Behavior.xml Window_OpenClose_* callback).
+        // ------------------------------------------------------------------
+        if (varKey == "WINDOW_CA" || varKey == "WINDOW_FO")
+        {
+            string side = varKey == "WINDOW_CA" ? "CA" : "FO";
+            int exitIndex = varKey == "WINDOW_CA" ? 17 : 18;
+            string code = value >= 0.5
+                ? $"100 (>L:WindowHandle{side}) 100 (>L:WindowClipboard{side}) " +
+                  $"1 (>L:Window_OpenClose_{side}, Bool) 1 {exitIndex} (>K:TOGGLE_AIRCRAFT_EXIT_FAST) " +
+                  $"0 (>L:WindowClose{side}, Bool) 1 (>L:WindowOpen{side}, Bool)"
+                : $"0 (>L:Window_OpenClose_{side}, Bool) 0 {exitIndex} (>K:TOGGLE_AIRCRAFT_EXIT_FAST) " +
+                  $"1 (>L:WindowClose{side}, Bool) 0 (>L:WindowOpen{side}, Bool)";
+            simConnect.ExecuteCalculatorCode(code);
             return true;
         }
 
@@ -7515,5 +7920,13 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // CDU Right and Center brightness (missing from initial registration)
             ["EVT_CDU_R_BRITENESS"]                = 70105,
             ["EVT_CDU_C_BRITENESS"]                = 70357,
+
+            // Cockpit furniture (THIRD_PARTY_EVENT_ID_MIN 69632 + SDK offset)
+            ["EVT_CA_ARMREST_LEFT_SWITCH"]         = 70638,
+            ["EVT_CA_ARMREST_RIGHT_SWITCH"]        = 70639,
+            ["EVT_FO_ARMREST_LEFT_SWITCH"]         = 70640,
+            ["EVT_FO_ARMREST_RIGHT_SWITCH"]        = 70641,
+            ["EVT_FWD_LEFT_FOOT_HEATER"]           = 69951,
+            ["EVT_FWD_RIGHT_FOOT_HEATER"]          = 69920,
         };
 }
