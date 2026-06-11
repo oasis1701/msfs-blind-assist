@@ -5324,6 +5324,16 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // ValueDescriptions would duplicate the "Vickers 2" combo entry).
     private int _prevHydVickers2 = -1;
 
+    // Cockpit Door echo suppression. The "Doors and Tables" combo writes
+    // L:door_cockpit, which flips the SEPARATE monitored SDK bool
+    // DOOR_CockpitDoorOpen — a different varKey, so MainForm's own
+    // set-echo bookkeeping can't match them up and the monitor spoke
+    // "Cockpit Door: Open" on top of the screen reader's combo echo.
+    // The combo set arms a short window; changes inside it stay silent,
+    // background changes (cockpit click, ground crew) still announce.
+    private int _prevCockpitDoorOpen = -1;
+    private DateTime _cockpitDoorSetEcho = DateTime.MinValue;
+
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
     private double _lastComActiveFreq1;
@@ -5933,6 +5943,16 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         //     moves). Calc strings are verbatim from the live-verified
         //     sequence (77W_Cockpit_Behavior.xml Window_OpenClose_* callback).
         // ------------------------------------------------------------------
+        // Cockpit door — same write the generic LVar fall-through would do,
+        // but through this branch so the set can arm the echo window that
+        // keeps the DOOR_CockpitDoorOpen monitor quiet (see the field docs).
+        if (varKey == "DOOR_COCKPIT")
+        {
+            _cockpitDoorSetEcho = DateTime.UtcNow;
+            simConnect.SetLVar("door_cockpit", value);
+            return true;
+        }
+
         if (varKey == "WINDOW_CA" || varKey == "WINDOW_FO")
         {
             string side = varKey == "WINDOW_CA" ? "CA" : "FO";
@@ -6153,6 +6173,20 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varName == "switch_319_a")
         {
             _prevHydVickers2 = value <= 0 ? 0 : 1;
+            return true;
+        }
+
+        // Cockpit Door (DOOR_CockpitDoorOpen). Announce real background
+        // changes only — a change inside the combo's echo window stays
+        // silent (the screen reader already voiced the combo selection;
+        // see _cockpitDoorSetEcho). First poll is cached silently.
+        if (varName == "DOOR_CockpitDoorOpen")
+        {
+            int now = value >= 0.5 ? 1 : 0;
+            bool comboEcho = (DateTime.UtcNow - _cockpitDoorSetEcho).TotalSeconds < 3.0;
+            if (_prevCockpitDoorOpen >= 0 && now != _prevCockpitDoorOpen && !comboEcho)
+                announcer.Announce(now == 1 ? "Cockpit Door: Open" : "Cockpit Door: Closed");
+            _prevCockpitDoorOpen = now;
             return true;
         }
 
