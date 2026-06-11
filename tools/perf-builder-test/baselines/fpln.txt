@@ -1,15 +1,16 @@
 # fpln
 text | idx 0 | ACTIVE/F-PLN
 dropdown | idx 1 | SPD ALT
-fplnwpt | idx 7 | (T/C), Mach .84, flight level 380, ETA 18:01
-fplnwpt | idx 8 | RYLIE, via J102, 29 NM, track 261°, Mach .84, flight level 380, ETA 18:04
-fplnwpt | idx 9 | LAA, via J102, 41 NM, track 259°, Mach .84, flight level 380, ETA 18:09
-fplnwpt | idx 10 | ALS, via J102, 157 NM, track 252°, Mach .84, flight level 380, ETA 18:29
-fplnwpt | idx 11 | RSK, via J44, 115 NM, track 252°, Mach .84, flight level 380, ETA 18:43
-fplnwpt | idx 12 | COCAN, via J64, 112 NM, track 257°, Mach .84, flight level 380, ETA 18:57
-fplnwpt | idx 13 | RHYSS, via J64, 26 NM, track 256°, Mach .84, flight level 380, ETA 19:00
-fplnwpt | idx 14 | TBC, via J64, 20 NM, track 255°, Mach .84, flight level 380, ETA 19:03
-fplnwpt | idx 15 | JASSE, 27 NM, track 264°, Mach .84, flight level 380, ETA 19:06
+text | idx 0 |                        DIST FPA  SPD   ALT     TIME
+fplnwpt | idx 7 | (T/C)                            .84   FL380   18:01
+fplnwpt | idx 8 | RYLIE     J102    261° 29        "     "       18:04
+fplnwpt | idx 9 | LAA       J102    259° 41        "     "       18:09
+fplnwpt | idx 10 | ALS       J102    252° 157       "     "       18:29
+fplnwpt | idx 11 | RSK       J44     252° 115       "     "       18:43
+fplnwpt | idx 12 | COCAN     J64     257° 112       "     "       18:57
+fplnwpt | idx 13 | RHYSS     J64     256° 26        "     "       19:00
+fplnwpt | idx 14 | TBC       J64     255° 20        "     "       19:03
+fplnwpt | idx 15 | JASSE             264° 27        "     "       19:06
 text | idx 0 | Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29.4 KLB
 button | idx 3 | DEST
 button | idx 2 | KLAX24R

@@ -1,10 +1,11 @@
 # fpln_polish
 text | idx 0 | ACTIVE/F-PLN (engine out) (temporary)
-fplnwpt | idx 3 | WAYPT1, via J102, 29 NM, track 261°, FPA 3.0, 250 knots, 5000 feet, ETA 18:04
-fplnwpt | idx 4 | WAYPT2, via J102, 41 NM, track 259°, 250 knots, 5000 feet, ETA 18:09
-fplnwpt | idx 5 | WAYPT3, 157 NM, track 252°, at 250 knots, at or above 5000 feet
-fplnwpt | idx 6 | WAYPT4, 10 NM, track 250°, altitude window
-fplnwpt | idx 7 | HOLD L, speed 210 knots
+text | idx 0 |                        DIST FPA  SPD   ALT     TIME
+fplnwpt | idx 3 | WAYPT1    J102    261° 29   3.0  250   5000    18:04
+fplnwpt | idx 4 | WAYPT2    J102    259° 41        "     "       18:09
+fplnwpt | idx 5 | WAYPT3            252° 157       250   +5000
+fplnwpt | idx 6 | WAYPT4            250° 10              WINDOW
+fplnwpt | idx 7 | HOLD L                                         SPD 210
 text | idx 0 | Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29.4 KLB
 button | idx 2 | DEST
 button | idx 1 | KLAX24R

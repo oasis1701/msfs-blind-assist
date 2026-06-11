@@ -697,28 +697,24 @@
     return startIdx;
   };
 
-  // Decode an F-PLN altitude constraint token into the SPOKEN form (the phrasing is
-  // the spec — documented in CLAUDE.md and live-verified with screen-reader users):
-  // "+N" = "at or above N feet", "-N" = "at or below N feet", plain "N" = "at N feet"
-  // (an "FLnnn" token reads "flight level nnn"). The at-or-above/below wording is
-  // what distinguishes a constraint from the FMS-predicted altitude (which reads as
-  // "N feet" / "flight level N"). (Speed constraints live in the speed column,
-  // handled separately, not here.)
-  A.fplnConstraint = function (c) {
-    var pre = "at ", v = c;
-    if (v.charAt(0) === "+") { pre = "at or above "; v = v.substring(1); }
-    else if (v.charAt(0) === "-") { pre = "at or below "; v = v.substring(1); }
-    return /^FL\d/.test(v) ? pre + "flight level " + v.substring(2) : pre + v + " feet";
-  };
-
-  // Build ONE clean line per F-PLN waypoint. The MFD draws the flight plan as a
-  // dense grid: each `.mfd-fms-fpln-line` groups a waypoint with its INBOUND leg
-  // (airway/procedure name, track, distance) and any altitude constraint, but
-  // those cells sit at different x/y, so a plain row-by-row read scattered them
-  // into many lines full of empty "---"/"--:--" dashes. Here we read per waypoint
-  // container and fold it into "IDENT, via AIRWAY, N NM, track T°, <constraint>,
-  // ETA hh:mm", dropping empty/dash fields and the repeated airway name. Universal
-  // to any A380 flight plan (class-driven, nothing hard-coded).
+  // Build ONE FIXED-GRID line per F-PLN waypoint (Braille-display reading — THE
+  // SPEC, user decision 2026-06). The MFD draws the flight plan as a dense grid:
+  // each `.mfd-fms-fpln-line` groups a waypoint with its INBOUND leg
+  // (airway/procedure name, track, distance) and any constraints, but those cells
+  // sit at different x/y, so a plain row-by-row read scattered them into many
+  // lines full of empty "---"/"--:--" dashes. Blind users read the window on
+  // Braille displays DOWN COLUMNS across lines, so spoken connector words ("via",
+  // "track", "Mach", "flight level", "ETA") are unwanted verbosity — instead each
+  // waypoint becomes ONE fixed-width padded string mirroring the real display's
+  // column order, with LITERAL screen values (".84", "FL380", "+5000", the '"'
+  // ditto mark when a prediction is unchanged from the line above — shown, NOT
+  // resolved, exactly like the real display):
+  //   ident(10) airway(8) track(5) dist(5) fpa(5) spd(6) alt(8) time(6)
+  // A padded HEADER line ("DIST FPA  SPD   ALT     TIME" aligned to the columns)
+  // is emitted before the first waypoint so a Braille user can calibrate the
+  // columns. The destination footer keeps its spoken labels (a summary, not a
+  // grid row). Universal to any A380 flight plan (class-driven, nothing
+  // hard-coded).
   A.buildFplnLines = function (page, pageRect, items, startIdx) {
     var idx = startIdx;
     var lines = page.querySelectorAll(".mfd-fms-fpln-line");
@@ -733,20 +729,37 @@
     var efobWindMode = false;
     var hdrBtn = page.querySelector(".mfd-fms-fpln-button-speed-alt");
     if (hdrBtn) efobWindMode = clean(hdrBtn.textContent).toUpperCase().indexOf("EFOB") >= 0;
-    // Wind direction/magnitude each render as a ditto-mark (") when unchanged from
-    // the line above (formatWind). A blind pilot reads line-by-line and can't glance
-    // up, so resolve dittos by carrying the previous waypoint's value forward.
-    // SPD/ALT predictions do the same (MfdFmsFpln formatSpeed/formatAltitude render
-    // a HoneywellMCDU '"' span when the prediction is unchanged from the previous
-    // waypoint) — tracked in prevSpd/prevAlt and resolved identically.
-    var prevWindDir = "", prevWindMag = "", prevSpd = "", prevAlt = "";
-    // Spoken value rendering (the phrasing is the SPEC — CLAUDE.md, live-verified
-    // with the blind user): "240" -> "240 knots", ".82"/"M.82" -> "Mach .82";
-    // "FL380" -> "flight level 380", "5000" -> "5000 feet". Shared by the
-    // predictions, the constraint-only cells (formatSpeed renders ".NN" for a Mach
-    // constraint) and the hold-speed row.
-    function fmtSpd(s) { return /^M?\./.test(s) ? "Mach " + s.replace(/^M/, "") : s + " knots"; }
-    function fmtAlt(s) { return /^FL\d/.test(s) ? "flight level " + s.substring(2) : s + " feet"; }
+    // Fixed-grid cell padding (Braille column reading — THE SPEC): pad each cell
+    // with trailing spaces to its column width; a value that fills/exceeds its
+    // width overflows with ONE trailing space (never truncate data).
+    function padCell(s, w) {
+      s = s || "";
+      if (s.length >= w) return s + " ";
+      var out = s;
+      while (out.length < w) out += " ";
+      return out;
+    }
+    // One padded HEADER line before the first waypoint (blank ident/airway/track
+    // cells, then the value-column titles aligned to their columns) — this is what
+    // lets a Braille user calibrate the columns. In the EFOB/T.WIND view the two
+    // right-hand value columns are titled EFOB / WIND (mirroring the real header).
+    var headerDone = false;
+    function emitHeader(topVal, rightVal) {
+      var h = padCell("", 10) + padCell("", 8) + padCell("", 5) +
+              padCell("DIST", 5) + padCell("FPA", 5) +
+              padCell(efobWindMode ? "EFOB" : "SPD", 6) +
+              padCell(efobWindMode ? "WIND" : "ALT", 8) + "TIME";
+      items.push({
+        top: topVal, left: 0, right: rightVal, bot: topVal,
+        idx: 0, kind: "text", text: h.replace(/\s+$/, ""), value: "", disabled: false, fpln: true
+      });
+      headerDone = true;
+    }
+    // NOTE on dittos: wind direction/magnitude and the SPD/ALT predictions each
+    // render a literal '"' ditto mark when unchanged from the line above
+    // (formatWind / formatSpeed ~1887 / formatAltitude ~1808). The real display's
+    // convention IS the spec for Braille users reading down a column — show the
+    // mark, do NOT resolve it to the value.
     for (var i = 0; i < lines.length; i++) {
       var L = lines[i];
       if (!A.isVisible(L)) continue;
@@ -870,22 +883,14 @@
           else if (!alt && relX >= 405 && relX < 520 && (pt === '"' || /^(FL\d{2,3}|\d{3,5})$/.test(pt))) alt = pt;
         }
       }
-      if (efobWindMode) {
-        if (windDir === '"') windDir = prevWindDir; else if (windDir) prevWindDir = windDir;
-        if (windMag === '"') windMag = prevWindMag; else if (windMag) prevWindMag = windMag;
-      } else {
-        if (spd === '"') spd = prevSpd; else if (spd) prevSpd = spd;
-        if (alt === '"') alt = prevAlt; else if (alt) prevAlt = alt;
-      }
-
       // Constraint markers: the "*" the MFD draws immediately to the LEFT of a SPD or
       // ALT prediction when that value has an entered constraint (SPDLIM, a STAR
       // altitude window, etc.). Two FBW states (MfdFmsFpln.tsx renderAltitude/renderSpeed):
       //   .mfd-fms-fpln-leg-constraint-respected  = magenta "*", prediction MEETS it
       //   .mfd-fms-fpln-leg-constraint-missed     = amber  "*", prediction will MISS it
-      // A blind pilot can't hear the colour, so we keep the "*" (prepended, the on-screen
-      // left-of-value position) for the met case and ADD the word "missed" for the amber
-      // case. Column band (relX) says whether the marker belongs to SPD or ALT.
+      // The grid keeps the "*" exactly as displayed (prepended, the on-screen
+      // left-of-value position). Column band (relX) says whether the marker
+      // belongs to SPD or ALT.
       var spdCon = "", altCon = "";   // "" | "met" | "missed"
       var marks = efobWindMode ? [] : L.querySelectorAll('[class*="fpln-leg-constraint-respected"], [class*="fpln-leg-constraint-missed"]');
       for (var st = 0; st < marks.length; st++) {
@@ -897,57 +902,39 @@
         else if (stx >= 405 && stx < 520) altCon = mstate;
       }
 
-      var parts = [ident];
-      // SPOKEN phrasing (THE SPEC — documented in CLAUDE.md and live-verified with
-      // the blind user): "IDENT, via AIRWAY, N NM, track T°, <speed>, <constraint>,
-      // <altitude>, ETA hh:mm". The connector words ("via", "track", "ETA", "Mach",
-      // "flight level", " NM"/" knots"/" feet") are what make the line parse by EAR
-      // — bare "J102, 261°, 29NM" is token salad through a screen reader. Keep the
-      // procedure/airway name on EVERY leg (NOT deduped): for a blind pilot it is
-      // situational awareness about which points belong to the SID / STAR / airway.
-      // The "*" constraint marker is kept (a real on-screen cue, not noise); a
-      // missed constraint also reads "missed". A leg reads "FOLET, via SERFR4,
-      // 8 NM, track 343°, *240 knots, *8000 feet, ETA 00:15" (met) or
-      // "… *240 knots missed …" (will not make the restriction).
-      if (anno) parts.push("via " + anno);
-      if (dist) parts.push(dist + " NM");
-      if (track) parts.push("track " + track);    // already carries the ° glyph
-      if (fpa) parts.push("FPA " + fpa);          // descent flight-path angle column
-      // Hold leg: the time column holds the hold SPEED (labelled "SPD" on screen),
-      // not an ETA — read it as a speed so it can't be mistaken for a time
-      // ("HOLD L, speed 210 knots"). SPD/ALT cells are emptied by FBW here.
-      if (isHoldRow && holdSpd) parts.push("speed " + fmtSpd(holdSpd));
+      // FIXED-GRID cell assembly (THE SPEC — Braille column reading, literal
+      // screen values). Column order mirrors the real display (annotation row:
+      // airway, track, dist, fpa; main row: spd, alt, time):
+      //   ident(10) airway(8) track(5) dist(5) fpa(5) spd(6) alt(8) time(6)
+      // SPD/ALT carry the prediction (".84"/"FL380"), the literal '"' ditto when
+      // unchanged from the line above, or — when no prediction exists — the
+      // constraint LITERAL as displayed ("+250", "-FL100", "WINDOW"). A "*"
+      // constraint marker stays prepended exactly as displayed. Hold rows put the
+      // hold speed into the time column under its on-screen "SPD" annotation
+      // ("SPD 210"). EFOB/T.WIND view: same grid, spd column = EFOB ("36.5"),
+      // alt column = wind ("TAIL/7", dittos literal), no labels.
+      var spdCell = "", altCell = "", timeCell = "";
       if (efobWindMode) {
-        // EFOB/T.WIND view: read the fuel + wind a sighted pilot sees (ETA + EFOB +
-        // wind — the live-verified order on the OMDB approach window). EFOB is in
-        // tonnes ("EFOB 36.8"); wind is direction (ddd° / TAIL / HEAD) over magnitude
-        // in knots, dittos resolved above. Strip the FBW zero-padding on magnitude
-        // (007 -> 7) so the reader doesn't say "zero zero seven".
-        if (eta) parts.push("ETA " + eta);
-        if (efob) parts.push("EFOB " + efob);
-        if (windDir || windMag) {
-          var wmag = windMag.replace(/^0+(?=\d)/, "");
-          parts.push("wind " + (windDir && wmag ? windDir + "/" + wmag : windDir || wmag));
-        }
+        spdCell = efob;
+        // Strip the FBW zero-padding on a numeric wind magnitude (007 -> 7);
+        // a '"' ditto passes through literally.
+        var wmag = windMag.replace(/^0+(?=\d)/, "");
+        if (windDir || wmag) altCell = (windDir && wmag) ? windDir + "/" + wmag : (windDir || wmag);
+        timeCell = eta;
       } else {
-        if (spd) {
-          var spdBase = fmtSpd(spd);
-          parts.push(spdCon === "missed" ? "*" + spdBase + " missed" : spdCon === "met" ? "*" + spdBase : spdBase);
-        } else if (conSpd) {
-          // speed CONSTRAINT shown because no prediction exists yet (mutually
-          // exclusive with spd in formatSpeed) — "at 250 knots" / "at Mach .82"
-          parts.push("at " + fmtSpd(conSpd));
-        }
-        // altitude constraint; the literal "WINDOW" is a two-altitude window whose
-        // values FBW does not render into the F-PLN (only the word) — read it as
-        // "altitude window" instead of dropping it.
-        if (conAlt) parts.push(conAlt.toUpperCase() === "WINDOW" ? "altitude window" : A.fplnConstraint(conAlt));
-        if (alt) {
-          var altBase = fmtAlt(alt);
-          parts.push(altCon === "missed" ? "*" + altBase + " missed" : altCon === "met" ? "*" + altBase : altBase);
-        }
-        if (eta) parts.push("ETA " + eta);
+        if (spd) spdCell = (spdCon ? "*" : "") + spd;
+        else if (conSpd) spdCell = conSpd;
+        if (alt) altCell = (altCon ? "*" : "") + alt;
+        else if (conAlt) altCell = conAlt;
+        timeCell = isHoldRow ? (holdSpd ? "SPD " + holdSpd : "") : eta;
       }
+      var gridLine = padCell(ident, 10) + padCell(anno, 8) + padCell(track, 5) +
+                     padCell(dist, 5) + padCell(fpa, 5) + padCell(spdCell, 6) +
+                     padCell(altCell, 8) + padCell(timeCell, 6);
+      gridLine = gridLine.replace(/\s+$/, "");
+      // The column-header line goes immediately above the FIRST waypoint (one
+      // row bucket up, so the geometric sort keeps it there).
+      if (!headerDone) emitHeader(lr.top - pageRect.top - (A.ROW_Y_TOLERANCE_PX + 1), lr.right - pageRect.left);
 
       // Make the waypoint actionable: its ident cell carries the lateral-revision
       // click handler, so Enter opens the revisions menu (FROM P.POS DIR TO,
@@ -964,7 +951,7 @@
       items.push({
         top: r.top - pageRect.top, left: 0,
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
-        idx: wIdx, kind: wKind, text: parts.join(", "), value: "", disabled: false, fpln: true
+        idx: wIdx, kind: wKind, text: gridLine, value: "", disabled: false, fpln: true
       });
 
       // HOLD immediate-exit / resume-hold button. On an active or decel-sequenced
