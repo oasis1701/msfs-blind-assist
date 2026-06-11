@@ -30,6 +30,9 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 
 ## Deferred features/probes (build after verification or live iteration)
 
+- [ ] MobiFlight no-module detection via an END-TO-END probe: calc-write a nonce to `L:MSFSBA_BRIDGE_PROBE`, read it back via the data-def path; only that proves the calc channel. Response-based gates (IsRegistered / any-response) are BOTH invalid — live-verified 2026-06-11 on an install whose module executes every command but never sends a single response (no registration Finished, no MF.Pong). Until built, the gate is "module object initialized" (pre-existing behavior) and a missing module surfaces via the status text only.
+- [ ] Related pre-existing question on the same install: with the response channel dead, `IsRegistered` stays false → the per-client FBWBA channel (`SendFBWBACommand`, HVar press/release paths) never opens. Check whether the A32NX ECP HVar buttons work on this machine; if they do, find which path they actually take — if they don't, they were broken before this branch too.
+
 - [ ] Probe: `A32NX.FCU_METRIC_ALT_TOGGLE_PUSH` on the A32NX (newly registered in dev FBW) — expose if functional.
 - [ ] Probe: gravity gear extension (`A32NX_GRAVITYGEAR_TURNED`=1 + `_ROTATIONS`=3 stickiness) — add controls if it actuates (the A380 already has gravity-gear controls; the A320 has none).
 - [ ] A380 stall warning: NO working aural var (FBW `FwsSoundManager.ts:116-122` maps the stall sound to `A32NX_AUDIO_ROP_MAX_BRAKING` — apparent upstream copy-paste bug). REPORT UPSTREAM to FlyByWire; re-add the monitor on whatever var the fix lands on.

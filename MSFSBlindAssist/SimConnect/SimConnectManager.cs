@@ -71,17 +71,22 @@ public class SimConnectManager
 
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
-    // Gate on EVIDENCE the WASM module is present (any response received), not on
-    // the optimistic IsConnected (set unconditionally at the end of Initialize even
-    // when the module is absent) and NOT on IsRegistered either: the calc path uses
-    // the DEFAULT MobiFlight.Command channel, which works without the FBWBA
-    // registration — the documented "Timeout - Using Fallback" state must keep calc
-    // writes flowing (an IsRegistered gate silently queued every H:/dotted event —
-    // the A380 "STD combo bounces back" regression, live-debugged 2026-06-11).
-    // Without the module no response ever arrives → SetLVar falls through to the
-    // data-def write and H:/dotted events queue, as designed. The pendingCalcEvents
-    // queue flushes on the first-response ConnectionStatusChanged.
-    public bool IsMobiFlightConnected => mobiFlightWasm?.HasModuleResponded == true;
+    // ⚠️ Gate ONLY on Initialize having completed (IsConnected). Two "smarter"
+    // gates were tried 2026-06-11 and BOTH broke working installs (the A380 "STD
+    // combo bounces back" regression, root-caused via transport.log):
+    //   - IsRegistered: the FBWBA client registration can time out (documented
+    //     "Timeout - Using Fallback" state) while the DEFAULT MobiFlight.Command
+    //     channel works fine — the calc path needs no registration.
+    //   - HasModuleResponded (any inbound response): on a real install the module's
+    //     RESPONSE side was completely silent (no registration Finished, no MF.Pong)
+    //     while the one-way COMMAND side executed everything — response-based
+    //     evidence can never open the gate there.
+    // So: module object initialized → fire the calc path. The no-WASM-install case
+    // (writes into a dead CDA) is NOT detectable from responses; a proper presence
+    // probe must be END-TO-END (calc-write a nonce L:var, read it back via the
+    // data-def path) — see the pass-2 checklist. Until then, a missing module
+    // surfaces via the MobiFlight status text, not via silent write-path switching.
+    public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
