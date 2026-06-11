@@ -4934,7 +4934,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         // Dome light: stock 3-state switch — state = LIGHT POTENTIOMETER:7 (0 off /
         // 20 dim / 100 bright), set = CABIN_LIGHTS_SET + LIGHT_POTENTIOMETER_7_SET
-        // (A320_NEO_INTERIOR.xml:2153). A32NX_OVHD_INTLT_DOME is an A380-only var.
+        // (A320_NEO_INTERIOR.xml:2153). The A32NX_OVHD_INTLT_DOME L:var exists only on
+        // the A380 — the KEY is kept for panel-list stability; the backing var is stock.
         ["A32NX_OVHD_INTLT_DOME"] = new SimConnect.SimVarDefinition
         {
             Name = "LIGHT POTENTIOMETER:7", DisplayName = "Dome Light",
