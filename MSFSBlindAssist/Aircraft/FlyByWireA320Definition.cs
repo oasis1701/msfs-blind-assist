@@ -1204,18 +1204,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Test" }
         },
 
-        // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
-        // selectors. Live-verified settable via the calculator path (held a 0->2 write).
+        // ---- Wipers: FBW_Airbus_Wiper_Knob drives electrical circuit 77 (Captain)
+        // / 80 (F/O): off/on = ELECTRICAL_CIRCUIT_TOGGLE, speed = circuit power
+        // setting 75 (slow) / 100 (fast). Same pattern as the A380 wipers (141/143).
+        // The circuit-switch state is a bool, so the combo reads Off vs running;
+        // the set always drives the full off/slow/fast state.
+        // (XMLVAR_A320_WiperSwitch_* does not exist in FBW — dead-var trap.)
         ["XMLVAR_A320_WiperSwitch_1"] = new SimConnect.SimVarDefinition
         {
-            Name = "XMLVAR_A320_WiperSwitch_1", DisplayName = "Wiper Captain",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Name = "CIRCUIT SWITCH ON:77", DisplayName = "Wiper Captain",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" }
         },
         ["XMLVAR_A320_WiperSwitch_2"] = new SimConnect.SimVarDefinition
         {
-            Name = "XMLVAR_A320_WiperSwitch_2", DisplayName = "Wiper First Officer",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Name = "CIRCUIT SWITCH ON:80", DisplayName = "Wiper First Officer",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" }
         },
 
@@ -7592,6 +7598,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 else
                     simConnect.SendEvent(varKey.Contains("_GEN_2_") ? "TOGGLE_ALTERNATOR2" : "TOGGLE_ALTERNATOR1");
             }
+            return true;
+        }
+
+        // Wipers: circuit 77 (Captain) / 80 (F/O). Off = circuit off; Slow/Fast =
+        // circuit on + power setting 75/100 (the FBW_Airbus_Wiper_Knob sequence).
+        if (varKey == "XMLVAR_A320_WiperSwitch_1" || varKey == "XMLVAR_A320_WiperSwitch_2")
+        {
+            int circuit = varKey.EndsWith("_2") ? 80 : 77;
+            int pos = (int)Math.Round(value);
+            bool wantOn = pos > 0;
+            bool isOn = (simConnect.GetCachedVariableValue(varKey) ?? 0) > 0.5;
+            if (wantOn != isOn)
+                simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+            if (wantOn)
+                simConnect.ExecuteCalculatorCode($"{(pos >= 2 ? 100 : 75)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
             return true;
         }
 
