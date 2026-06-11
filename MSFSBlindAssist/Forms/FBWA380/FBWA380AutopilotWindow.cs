@@ -73,8 +73,10 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         SetState(loc, "LOC", "A32NX_FCU_LOC_MODE_ACTIVE");
         SetState(appr, "APPR", "A32NX_FCU_APPR_MODE_ACTIVE");
         SetState(exped, "EXPED", "A32NX_FMA_EXPEDITE_MODE");
-        bool fdL = (simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_L_FD_ACTIVE") ?? 0) > 0.5;
-        bool fdR = (simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_R_FD_ACTIVE") ?? 0) > 0.5;
+        // The def's FD combos read the stock simvar (the old FCU_EFIS_*_FD_ACTIVE
+        // L:vars don't exist on the A380X) — use the same cache keys.
+        bool fdL = (simConnect.GetCachedVariableValue("FD_1_CTL") ?? 0) > 0.5;
+        bool fdR = (simConnect.GetCachedVariableValue("FD_2_CTL") ?? 0) > 0.5;
         fdLabel.Text = $"Flight Director: Captain {(fdL ? "on" : "off")}, First Officer {(fdR ? "on" : "off")}";
     }
 

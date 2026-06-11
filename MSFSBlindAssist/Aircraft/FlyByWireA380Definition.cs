@@ -707,8 +707,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
 
         // ---- RECORDER / MISC OVERHEAD ----
-        OnOff("A32NX_RCDR_GROUND_CONTROL_ON", "Recorder Ground Control");
-        OnOff("A32NX_ELT_ON", "ELT");
         OnOff("A32NX_AVIONICS_COMPLT_ON", "Avionics Compartment Light");
         OnOff("A380X_OVHD_STORM_LT", "Storm Light");
         OnOff("A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE", "Cockpit Door Video");
@@ -1332,9 +1330,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             [5] = "TOO LOW FLAPS", [6] = "SINK RATE", [7] = "DON'T SINK", [8] = "GLIDESLOPE",
             [9] = "GLIDESLOPE", [10] = "TERRAIN AHEAD", [11] = "OBSTACLE AHEAD"
         });
-        // Stall warning aural ("STALL STALL").
-        ReadEnum("A32NX_AUDIO_STALL_WARNING", "Stall warning",
-            new Dictionary<double, string> { [0] = "off", [1] = "STALL" });
         // Autopilot-disconnect cavalry charge (the AP-disconnect aural).
         ReadEnum("A32NX_FWC_CAVALRY_CHARGE", "Autopilot disconnect",
             new Dictionary<double, string> { [0] = "off", [1] = "autopilot disconnect" });
@@ -2144,12 +2139,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OffAuto("A32NX_OVHD_HYD_PTU_PB_IS_AUTO", "PTU");
         ReadEnum("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT", "PTU Fault", fault);
 
-        // Ventilation avionics blower/extract.
-        OnOff("A32NX_VENTILATION_BLOWER_TOGGLE", "Avionics Blower");
-        OnOff("A32NX_VENTILATION_EXTRACT_TOGGLE", "Avionics Extract");
-        ReadEnum("A32NX_VENTILATION_BLOWER_FAULT", "Blower Fault", fault);
-        ReadEnum("A32NX_VENTILATION_EXTRACT_FAULT", "Extract Fault", fault);
-
         // Anti-ice status.
         ReadEnum("A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "Wing Anti-Ice Flowing", onOff);
         ReadEnum("A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT", "Wing Anti-Ice Fault", fault);
@@ -2158,21 +2147,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_OXYGEN_TMR_RESET_FAULT", "Oxygen Timer Reset Fault", fault);
 
         // Calls / EVAC / cabin / cargo smoke.
-        ReadEnum("A32NX_SLIDES_ARMED", "Door Slides", armedVd);
         ReadEnum("A32NX_EVAC_COMMAND_FAULT", "Evacuation Command Fault", fault);
         ReadEnum("A32NX_CARGOSMOKE_FWD_DISCHARGED", "Cargo Fwd Smoke Agent", dischargedVd);
         ReadEnum("A32NX_CARGOSMOKE_AFT_DISCHARGED", "Cargo Aft Smoke Agent", dischargedVd);
 
         // Recorder / misc overhead.
-        // These are all HOLD buttons in the FBW model (<HOLD_SIMVAR>): the action
-        // runs only WHILE held at 1 (CVR test tone, ELT test, FDR event mark, rain-
-        // repellent squirt), so render as On/Off — set On to run/hold, Off to stop —
-        // rather than a too-brief momentary pulse.
-        OnOff("A32NX_RCDR_TEST", "Recorder Test");
-        OnOff("A32NX_ELT_TEST_RESET", "ELT Test / Reset");
+        // DFDR event mark: HOLD button — set On to mark, Off to release.
         OnOff("A32NX_DFDR_EVENT_ON", "DFDR Event");
-        OnOff("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent Left");
-        OnOff("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent Right");
         OnOff("A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "NSS Data to Avionics");
         OnOff("A32NX_NSS_MASTER_OFF", "NSS Master Off");
 
@@ -2799,7 +2780,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Recorder and Misc"] = new List<string>
         {
-            "A32NX_RCDR_GROUND_CONTROL_ON", "A32NX_ELT_ON", "A32NX_AVIONICS_COMPLT_ON",
+            "A32NX_AVIONICS_COMPLT_ON",
             "A380X_OVHD_STORM_LT",   // cockpit door video moved to the unified p["Cockpit"]
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
             // ENGMANSTARTALTN moved to the "Engine FADEC and Manual Start" overhead panel.
@@ -2995,12 +2976,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "XFEED_1_STATE", "XFEED_2_STATE", "XFEED_3_STATE", "XFEED_4_STATE"
         });
         p["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_IS_AUTO");
-        p["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE" });
         // (Brake Fan control removed — not modelled on the A380 dev build; see the Brakes section.)
         p["Recorder and Misc"].AddRange(new[]
         {
-            "A32NX_RCDR_TEST", "A32NX_ELT_TEST_RESET", "A32NX_DFDR_EVENT_ON",
-            "A32NX_RAIN_REPELLENT_LEFT_ON", "A32NX_RAIN_REPELLENT_RIGHT_ON",
+            "A32NX_DFDR_EVENT_ON",
             "A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "A32NX_NSS_MASTER_OFF"
         });
         p["GPWS"] = new List<string>
@@ -3233,7 +3212,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Pressurization"].AddRange(new[] { "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB" });
         d["Fuel"].AddRange(new[] { "A380X_OVHD_FUEL_JETTISON_IS_OPEN", "A32NX_TOTAL_FUEL_VOLUME" });
         d["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT");
-        d["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_FAULT", "A32NX_VENTILATION_EXTRACT_FAULT" });
         d["Anti Ice"].AddRange(new[] { "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT" });
         d["Anti Ice"].AddRange(new[] { "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" });
         d["Fire"].AddRange(new[] { "A32NX_CARGOSMOKE_FWD_DISCHARGED", "A32NX_CARGOSMOKE_AFT_DISCHARGED" });
@@ -3309,7 +3287,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_PUSH_TRUE_REF"
         };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
-        d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
+        d["Calls"] = new List<string> { "A32NX_EVAC_COMMAND_FAULT" };
         // The ECP "Status display" box shows the SELECTED SD page's live CONTENT,
         // scraped on each page switch (see RefreshSdPageDisplayAsync + the
         // TryGetDisplayOverride case for this var). The page name + rows render there;
@@ -5775,7 +5753,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // modelled); surfaced to match the real SD. Constant.
                 r.Add(("Crew oxygen pressure", "PUSH_OVHD_OXYGEN_CREW", _ => "1829 psi"));
                 r.Add(("Cabin oxygen pressure", "PUSH_OVHD_OXYGEN_CREW", _ => "1854 psi"));
-                r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
                 break;
             case 6: // ELEC AC
                 for (int n = 1; n <= 4; n++)
