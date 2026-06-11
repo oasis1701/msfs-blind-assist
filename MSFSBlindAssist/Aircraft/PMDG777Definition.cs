@@ -4730,13 +4730,18 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [33] = "Low", [66] = "Medium", [100] = "High" }
             },
+            // Visor stow/unstow is a VISIBILITY mesh-swap with EXACT compares
+            // in the model (`0 ==` shows the stowed mesh, `1 ==` the deployed
+            // one) — any other value (e.g. 100) matches neither and the visor
+            // VANISHES. These four combos are strictly 0/1; the slide combos
+            // below are normal 0-100 anim positions.
             ["VISOR_CA_FRONT"] = new SimConnect.SimVarDefinition
             {
                 Name = "visor_L_front_stow_unstow",
                 DisplayName = "Captain Front Visor",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
             },
             ["VISOR_CA_FRONT_SLIDE"] = new SimConnect.SimVarDefinition
             {
@@ -4752,7 +4757,7 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 DisplayName = "Captain Side Visor",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
             },
             ["VISOR_CA_SIDE_SLIDE"] = new SimConnect.SimVarDefinition
             {
@@ -4768,7 +4773,7 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 DisplayName = "First Officer Front Visor",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
             },
             ["VISOR_FO_FRONT_SLIDE"] = new SimConnect.SimVarDefinition
             {
@@ -4784,7 +4789,7 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 DisplayName = "First Officer Side Visor",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
             },
             ["VISOR_FO_SIDE_SLIDE"] = new SimConnect.SimVarDefinition
             {
@@ -6135,18 +6140,19 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             return true;
         }
 
-        // Hydraulic pump model (switch_319_a / HYD_OPTION). 0 = Vickers 1,
-        // any positive (mid-detent 50 or 100) = Vickers 2. Announce on real
-        // change; first poll cached silently. Return true so the generic
-        // exact-key path can't speak a raw "50.0" at the mid-detent.
+        // Hydraulic pump model (switch_319_a / HYD_OPTION). The xBAW soundset
+        // repurposes the CAPTAIN FOOT HEATER knob (SDK switch 319) as its
+        // hydraulic-pump-model gate, so this L:var changes on EVERY captain
+        // foot heater move. The auto-announce is intentionally SILENT: the
+        // foot heater's own announce (AIR_FootHeaterSelector_0 — "Captain
+        // Foot Heater: Low/High") already covers each knob change with the
+        // right wording, and hearing "Hydraulic Pump Model: Vickers 2" while
+        // warming your feet is nonsense. The Boris panel combo still shows
+        // the Vickers state on demand. Return true so the generic exact-key
+        // path can't speak a raw "50.0" at the mid-detent either.
         if (varName == "switch_319_a")
         {
-            int now = value <= 0 ? 0 : 1; // 1 = Vickers 2
-            if (_prevHydVickers2 >= 0 && now != _prevHydVickers2)
-                announcer.Announce(now == 1
-                    ? "Hydraulic Pump Model: Vickers 2"
-                    : "Hydraulic Pump Model: Vickers 1");
-            _prevHydVickers2 = now;
+            _prevHydVickers2 = value <= 0 ? 0 : 1;
             return true;
         }
 
