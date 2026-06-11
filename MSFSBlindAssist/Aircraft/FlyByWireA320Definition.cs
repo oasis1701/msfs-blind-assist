@@ -4415,9 +4415,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // GPWS Master Warning
-        ["A32NX_GPWS_Warning_Active"] = new SimConnect.SimVarDefinition
+        ["A32NX_GPWS_WARNING_LIGHT_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_GPWS_Warning_Active",
+            Name = "A32NX_GPWS_WARNING_LIGHT_ON",
             DisplayName = "Master GPWS Warning Light",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -4429,11 +4429,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
         },
 
-        // GPWS Glide Slope Mode 5 Warning
-        ["A32NX_GPWS_GS_Warning_Active"] = new SimConnect.SimVarDefinition
+        // GPWS amber alert light (incl. glideslope mode 5)
+        ["A32NX_GPWS_ALERT_LIGHT_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_GPWS_GS_Warning_Active",
-            DisplayName = "Glide Slope Mode 5 warning light",
+            Name = "A32NX_GPWS_ALERT_LIGHT_ON",
+            DisplayName = "GPWS Alert Light",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,  // Critical alert
