@@ -4503,7 +4503,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_ENGINE_OIL_QTY:1"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_ENGINE_TANK_OIL:1",
+            Name = "A32NX_ENGINE_OIL_QTY:1",
             DisplayName = "Oil Quantity",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
@@ -4545,7 +4545,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_ENGINE_OIL_QTY:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_ENGINE_TANK_OIL:2",
+            Name = "A32NX_ENGINE_OIL_QTY:2",
             DisplayName = "Oil Quantity",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
