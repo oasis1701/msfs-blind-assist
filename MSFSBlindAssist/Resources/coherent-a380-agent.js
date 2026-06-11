@@ -733,7 +733,13 @@
     // Wind direction/magnitude each render as a ditto-mark (") when unchanged from
     // the line above (formatWind). A blind pilot reads line-by-line and can't glance
     // up, so resolve dittos by carrying the previous waypoint's value forward.
-    var prevWindDir = "", prevWindMag = "";
+    // SPD/ALT predictions do the same (MfdFmsFpln formatSpeed/formatAltitude render
+    // a HoneywellMCDU '"' span when the prediction is unchanged from the previous
+    // waypoint) — tracked in prevSpd/prevAlt and resolved identically.
+    var prevWindDir = "", prevWindMag = "", prevSpd = "", prevAlt = "";
+    // "240" -> "240kts", ".82"/"M.82" -> "M.82" — shared by the prediction and the
+    // constraint-only speed cell (formatSpeed renders ".NN" for a Mach constraint).
+    function fmtSpd(s) { return /^M?\./.test(s) ? "M" + s.replace(/^M/, "") : s + "kts"; }
     for (var i = 0; i < lines.length; i++) {
       var L = lines[i];
       if (!A.isVisible(L)) continue;
@@ -771,24 +777,58 @@
       ident = ident.replace(/@/g, "").replace(/\s+/g, " ").replace(/^ | $/g, "");
       if (!ident) continue;                       // a spacer / non-waypoint row
       var anno = cellText(L, ".mfd-fms-fpln-line-annotation");
-      // leg upper row carries the track ("217°") and the distance (bare integer)
-      var track = "", dist = "";
+      // leg upper row carries the track ("217°"), the distance (bare integer) and —
+      // during the descent — the flight-path angle ("3.0" / "-3.0", fpaRef innerText
+      // = data.fpa.toFixed(1), MfdFmsFpln.tsx ~1658). Track has the ° glyph and the
+      // distance is a pure integer, so the signed one-decimal pattern is the FPA.
+      var track = "", dist = "", fpa = "";
       var ups = L.querySelectorAll(".mfd-fms-fpln-leg-upper-row");
       for (var u = 0; u < ups.length; u++) {
         var ut = clean(ups[u].textContent);
         if (ut.indexOf("°") >= 0) track = ut;
         else if (/^\d+$/.test(ut)) dist = ut;
+        else if (/^-?\d+\.\d$/.test(ut)) fpa = ut;
       }
-      // altitude constraint cell ("+500" / "-5000" / "5000" / "FL100"); ignore dash
-      // placeholders AND the bare "*" managed-constraint marker (which produced the
-      // junk "at * feet"). Require a digit so only real numeric constraints decode.
-      var con = "";
-      var cons = L.querySelectorAll('[class*="fpln-leg-constraint"]');
-      for (var c = 0; c < cons.length; c++) { var ct = clean(cons[c].textContent); if (!isDash(ct) && /\d/.test(ct)) con = ct; }
       var lr = L.getBoundingClientRect();
+      // Constraint cells without a prediction (formatSpeed/formatAltitude render the
+      // raw constraint into the SPD or ALT column when no prediction exists). The
+      // old single-variable parse kept only the LAST match, so a SPEED constraint
+      // was silently lost whenever an ALTITUDE constraint coexisted (and a lone
+      // speed constraint mis-read as an altitude). Split by COLUMN BAND instead —
+      // same relX bands the prediction parser below uses. Ignore dash placeholders
+      // and the bare "*" met/missed markers (no digit); the altitude column can also
+      // hold the literal "WINDOW" (a two-altitude window constraint renders as
+      // displayedStr = altitudeConstraint.altitude2 ? 'WINDOW' : …, MfdFmsFpln.tsx
+      // ~1861 — the two altitudes themselves are NOT in the DOM).
+      var conSpd = "", conAlt = "";
+      var cons = L.querySelectorAll('[class*="fpln-leg-constraint"]');
+      for (var c = 0; c < cons.length; c++) {
+        var ct = clean(cons[c].textContent);
+        if (isDash(ct)) continue;
+        var isWin = ct.toUpperCase() === "WINDOW";
+        if (!/\d/.test(ct) && !isWin) continue;
+        var cx = cons[c].getBoundingClientRect().left - lr.left;
+        if (cx >= 300 && cx < 405) { if (!conSpd) conSpd = ct; }
+        else if (cx >= 405 && cx < 520) { if (!conAlt) conAlt = ct; }
+      }
       // ETA in the lower row's leftmost cell — only meaningful once airborne
       var eta = cellText(L, ".mfd-fms-fpln-leg-lower-row");
       if (isDash(eta)) eta = "";
+
+      // HOLD rows (MfdFmsFpln.tsx ~1693): a hold leg re-uses the waypoint-line shell
+      // with ident "HOLD L"/"HOLD R", empties the SPD/ALT cells, and puts the hold
+      // SPEED into the TIME column with a small "SPD" annotation above it
+      // (timeAnnotation.set('SPD'); timeText.set(data.holdSpeed)). Without this the
+      // hold speed mis-read as an ETA ("HOLD L, 210"). Detect via the SPD annotation
+      // in the time block (the block that also holds the leg-lower-row time cell).
+      var isHoldRow = false, holdSpd = "";
+      var hAnnos = L.querySelectorAll(".mfd-fms-fpln-line-annotation");
+      for (var ha = 0; ha < hAnnos.length; ha++) {
+        if (clean(hAnnos[ha].textContent).toUpperCase() !== "SPD") continue;
+        var hPar = hAnnos[ha].parentElement;
+        if (hPar && hPar.querySelector(".mfd-fms-fpln-leg-lower-row")) { isHoldRow = true; break; }
+      }
+      if (isHoldRow) { holdSpd = eta; eta = ""; }
 
       // SPEED + ALTITUDE predictions: classless cells in the lower row, right of
       // the ETA. Blank (dashes) before takeoff, so nothing is added on the ground;
@@ -816,13 +856,19 @@
             else { if (!windMag) windMag = pt; }              // magnitude slot (right)
           }
         } else {
-          if (!spd && relX >= 300 && relX < 405 && /^(M?\.\d{2}|\d{2,3})$/.test(pt)) spd = pt;
-          else if (!alt && relX >= 405 && relX < 520 && /^(FL\d{2,3}|\d{3,5})$/.test(pt)) alt = pt;
+          // A '"' is the SPD/ALT ditto mark (prediction unchanged from the line
+          // above — formatSpeed ~1887 / formatAltitude ~1808); resolved below like
+          // the wind dittos.
+          if (!spd && relX >= 300 && relX < 405 && (pt === '"' || /^(M?\.\d{2}|\d{2,3})$/.test(pt))) spd = pt;
+          else if (!alt && relX >= 405 && relX < 520 && (pt === '"' || /^(FL\d{2,3}|\d{3,5})$/.test(pt))) alt = pt;
         }
       }
       if (efobWindMode) {
         if (windDir === '"') windDir = prevWindDir; else if (windDir) prevWindDir = windDir;
         if (windMag === '"') windMag = prevWindMag; else if (windMag) prevWindMag = windMag;
+      } else {
+        if (spd === '"') spd = prevSpd; else if (spd) prevSpd = spd;
+        if (alt === '"') alt = prevAlt; else if (alt) prevAlt = alt;
       }
 
       // Constraint markers: the "*" the MFD draws immediately to the LEFT of a SPD or
@@ -855,7 +901,12 @@
       if (anno) parts.push(anno);
       if (track) parts.push(track);               // already carries the ° glyph
       if (dist) parts.push(dist + "NM");
+      if (fpa) parts.push("FPA " + fpa);          // descent flight-path angle column
       if (eta) parts.push(eta);
+      // Hold leg: the time column holds the hold SPEED (labelled "SPD" on screen),
+      // not an ETA — read it with the same on-screen label so it can't be mistaken
+      // for a time ("HOLD L, SPD 210kts"). SPD/ALT cells are emptied by FBW here.
+      if (isHoldRow && holdSpd) parts.push("SPD " + fmtSpd(holdSpd));
       if (efobWindMode) {
         // EFOB/T.WIND view: read the fuel + wind a sighted pilot sees. EFOB is in
         // tonnes ("EFOB 36.8"); wind is direction (ddd° / TAIL / HEAD) over magnitude
@@ -868,10 +919,17 @@
         }
       } else {
         if (spd) {
-          var spdBase = /^M?\./.test(spd) ? "M" + spd.replace(/^M/, "") : spd + "kts";
+          var spdBase = fmtSpd(spd);
           parts.push(spdCon === "missed" ? "*" + spdBase + " missed" : spdCon === "met" ? "*" + spdBase : spdBase);
+        } else if (conSpd) {
+          // speed CONSTRAINT shown because no prediction exists yet (mutually
+          // exclusive with spd in formatSpeed) — e.g. "250kts" / "M.82"
+          parts.push(fmtSpd(conSpd));
         }
-        if (con) parts.push(A.fplnConstraint(con));
+        // altitude constraint; the literal "WINDOW" is a two-altitude window whose
+        // values FBW does not render into the F-PLN (only the word) — read it as
+        // "altitude window" instead of dropping it.
+        if (conAlt) parts.push(conAlt.toUpperCase() === "WINDOW" ? "altitude window" : A.fplnConstraint(conAlt));
         if (alt) parts.push(altCon === "missed" ? "*" + alt + " missed" : altCon === "met" ? "*" + alt : alt);
       }
 
@@ -917,6 +975,58 @@
           idx++;
           break;
         }
+      }
+    }
+
+    // DESTINATION footer (MfdFmsFpln.tsx ~1087-1148): the .mfd-fms-fpln-line-destination
+    // row pins the DEST ident button + ETA (destTimeLabel, "HH:MM") + EFOB
+    // (mfd-label-value-container with the weight unit T/KLB) + distance-to-dest
+    // (mfd-label-value-container with "NM") to the bottom of the page. Its class
+    // contains "mfd-fms-fpln", so the generic static pass skips it (insideFpln) and
+    // the row was never spoken. Fold it into ONE line: "Destination KLAX24R,
+    // ETA 19:57, 877 NM, EFOB 29.4 KLB". The ident/DEST buttons are stamped by the
+    // interactive pass as before (still clickable); this only adds the read-out.
+    var destRow = page.querySelector(".mfd-fms-fpln-line-destination");
+    if (destRow && A.isVisible(destRow)) {
+      var dIdent = "";
+      var dBtns = destRow.querySelectorAll(".mfd-button");
+      for (var db = 0; db < dBtns.length; db++) {
+        if (!A.isVisible(dBtns[db])) continue;
+        var dbt = clean(dBtns[db].textContent);
+        // the ident button reads e.g. "KLAX24R"; skip the scroll-row "DEST" button
+        // and the dashed not-loaded placeholder
+        if (dbt && !isDash(dbt) && dbt.toUpperCase() !== "DEST") { dIdent = dbt; break; }
+      }
+      var dTime = "";
+      var dLabs = destRow.querySelectorAll(".mfd-label");
+      for (var dl = 0; dl < dLabs.length; dl++) {
+        if (!A.isVisible(dLabs[dl])) continue;
+        var dlt = clean(dLabs[dl].textContent);
+        if (/^\d{1,2}:\d{2}$/.test(dlt)) { dTime = dlt; break; }
+      }
+      var dEfob = "", dDist = "";
+      var dLvcs = destRow.querySelectorAll(".mfd-label-value-container");
+      for (var dv = 0; dv < dLvcs.length; dv++) {
+        var dValEl = dLvcs[dv].querySelector(".mfd-label");
+        var dUnitEl = dLvcs[dv].querySelector(".mfd-unit-trailing");
+        var dVal = dValEl ? clean(dValEl.textContent) : "";
+        if (isDash(dVal)) continue;
+        var dUnit = (dUnitEl && A.isVisible(dUnitEl)) ? clean(dUnitEl.textContent) : "";
+        if (dUnit.toUpperCase() === "NM") { if (!dDist) dDist = dVal + " NM"; }
+        else if (!dEfob) dEfob = dVal + (dUnit ? " " + dUnit : "");
+      }
+      // Emit only when something real is shown (everything is dashes pre-load).
+      if (dIdent || dTime || dEfob || dDist) {
+        var dParts = ["Destination" + (dIdent ? " " + dIdent : "")];
+        if (dTime) dParts.push("ETA " + dTime);
+        if (dDist) dParts.push(dDist);
+        if (dEfob) dParts.push("EFOB " + dEfob);
+        var drr = destRow.getBoundingClientRect();
+        items.push({
+          top: drr.top - pageRect.top, left: 0,
+          right: drr.right - pageRect.left, bot: drr.bottom - pageRect.top,
+          idx: 0, kind: "text", text: dParts.join(", "), value: "", disabled: false, fpln: true
+        });
       }
     }
     return idx;
@@ -1018,6 +1128,27 @@
     var idx = 1;
     var menuConts = [];   // open menu containers seen this pass (index = group id)
 
+    // TMPY / EO / PENALTY title flags (ActivePageTitleBar.tsx:66-78): the title bar
+    // renders three visibility-toggled marker spans next to the page title
+    // (.mfd-title-bar-text.label.{penalty|eo|tmpy}). activePageLabel intentionally
+    // skips them (TITLE_FLAGS), and as bare leaves they'd read as cryptic "TMPY"
+    // fragments — so decode the VISIBLE ones and append them to the title line
+    // ("ACTIVE/F-PLN (engine out) (temporary)", screen order PENALTY-EO-TMPY). The
+    // flag spans themselves are owned so the static pass below never reads them raw.
+    var titleFlags = "";
+    var titleBar = page.querySelector(".mfd-title-bar-container");
+    if (titleBar) {
+      var flagDefs = [["penalty", "(penalty)"], ["eo", "(engine out)"], ["tmpy", "(temporary)"]];
+      var flagWords = [];
+      for (var tf = 0; tf < flagDefs.length; tf++) {
+        var flagEl = titleBar.querySelector(".mfd-title-bar-text.label." + flagDefs[tf][0]);
+        if (!flagEl) continue;
+        if (A.isVisible(flagEl)) flagWords.push(flagDefs[tf][1]);
+        try { flagEl.setAttribute("data-fbwa380-perf-owned", "1"); } catch (e) {}
+      }
+      titleFlags = flagWords.join(" ");
+    }
+
     // 1) interactive controls (innermost only — a wrapper that contains
     //    another control is skipped so two controls never merge onto a line).
     var nodes = page.querySelectorAll(A.INTERACTIVE_SELECTOR);
@@ -1107,6 +1238,10 @@
       // a Mach number). Class+pattern based — universal to ANY leg, nothing
       // hard-coded. Track carries "°", FPA carries a sign/decimal, so neither match.
       if (cls.indexOf("mfd-fms-fpln-leg-upper-row") >= 0 && /^\d+$/.test(own)) own = own + " NM";
+      // Page-title leaf: append the decoded TMPY/EO/PENALTY flags (see the title-bar
+      // pre-pass above; the raw flag spans are owned and skipped, only the title span
+      // carries .mfd-title-bar-text here).
+      if (titleFlags && cls.indexOf("mfd-title-bar-text") >= 0) own = own + " " + titleFlags;
       items.push({
         top: tr.top - pageRect.top, left: tr.left - pageRect.left,
         right: tr.right - pageRect.left, bot: tr.bottom - pageRect.top,

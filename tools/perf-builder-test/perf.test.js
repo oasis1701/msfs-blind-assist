@@ -177,6 +177,48 @@ test('DEPARTURE: selector dropdowns show their selected value, stay selectable',
   assertSelectable('departure');
 });
 
+// F-PLN polish, live fixture: the destination footer (.mfd-fms-fpln-line-destination,
+// MfdFmsFpln.tsx ~1087-1148) folds into one spoken line, and the SPD/ALT ditto marks
+// (the HoneywellMCDU '"' rendered when a prediction is unchanged from the line above,
+// formatSpeed ~1887 / formatAltitude ~1808) are resolved by carrying the previous
+// waypoint's value forward — every cruise leg after (T/C) repeats M.84 / FL380.
+test('F-PLN: destination footer spoken, SPD/ALT dittos carried forward', () => {
+  const list = els('fpln');
+  const j = list.map((e) => e.text).join('\n');
+  assert.match(j, /(^|\n)Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29\.4 KLB(\n|$)/, 'destination footer line missing');
+  assert.match(j, /RYLIE, J102, 261°, 29NM, 18:04, M\.84, FL380/, 'SPD/ALT dittos not carried forward');
+  assert.match(j, /JASSE, 264°, 27NM, 19:06, M\.84, FL380/, 'ditto carry broke down-plan');
+  // the destination ident / DEST buttons stay clickable
+  assert.ok(list.some((e) => e.kind === 'button' && e.text === 'KLAX24R' && e.idx > 0), 'dest ident button lost');
+  assertSelectable('fpln');
+});
+
+// F-PLN polish, source-derived fixture (fpln_polish.html — built from the
+// MfdFmsFpln.tsx / ActivePageTitleBar.tsx render structure, not live-captured):
+//  - coexisting SPD + ALT constraints both read, each in its own column band
+//    (the old single-variable parse kept only the last);
+//  - a two-altitude WINDOW constraint (FBW renders only the literal "WINDOW",
+//    ~1861) reads as "altitude window" instead of being dropped;
+//  - the descent FPA upper-row column ("3.0", ~1658) is appended as "FPA 3.0";
+//  - hold rows (~1693) read the time-column hold speed as "SPD 210kts", not as
+//    a bogus ETA;
+//  - visible TMPY/EO title flags (ActivePageTitleBar.tsx:66-78) append to the
+//    title line; hidden PENALTY stays silent and no raw flag leaks as own line.
+test('F-PLN polish: constraints, WINDOW, FPA, hold rows, title flags', () => {
+  const list = els('fpln_polish');
+  const j = list.map((e) => e.text).join('\n');
+  assert.match(j, /(^|\n)ACTIVE\/F-PLN \(engine out\) \(temporary\)(\n|$)/, 'title flags not appended to the title line');
+  assert.doesNotMatch(j, /\(penalty\)/, 'hidden PENALTY flag leaked');
+  assert.doesNotMatch(j, /(^|\n)(TMPY|EO)(\n|$)/, 'raw flag span leaked as its own line');
+  assert.match(j, /(^|\n)WAYPT1, J102, 261°, 29NM, FPA 3\.0, 18:04, 250kts, 5000(\n|$)/, 'FPA column not read');
+  assert.match(j, /(^|\n)WAYPT2, J102, 259°, 41NM, 18:09, 250kts, 5000(\n|$)/, 'SPD/ALT dittos not resolved');
+  assert.match(j, /(^|\n)WAYPT3, 252°, 157NM, 250kts, above 5000(\n|$)/, 'coexisting SPD+ALT constraints not both read');
+  assert.match(j, /(^|\n)WAYPT4, 250°, 10NM, altitude window(\n|$)/, 'WINDOW constraint dropped');
+  assert.match(j, /(^|\n)HOLD L, SPD 210kts(\n|$)/, 'hold speed not labelled (misread as ETA)');
+  assert.match(j, /(^|\n)Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29\.4 KLB(\n|$)/, 'destination footer missing');
+  assertSelectable('fpln_polish');
+});
+
 // NAVAIDS → SELECTED FOR FMS NAV: a trailing unit that the Y-row bucketing split onto
 // its own line (the glideslope "°" 2px past a rounding boundary from "-3.0") is folded
 // back onto its value, so it reads "SLOPE: -3.0 °", not "SLOPE: -3.0" + a stray "°".

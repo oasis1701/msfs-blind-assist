@@ -1,0 +1,10 @@
+# fpln_polish
+text | idx 0 | ACTIVE/F-PLN (engine out) (temporary)
+fplnwpt | idx 3 | WAYPT1, J102, 261°, 29NM, FPA 3.0, 18:04, 250kts, 5000
+fplnwpt | idx 4 | WAYPT2, J102, 259°, 41NM, 18:09, 250kts, 5000
+fplnwpt | idx 5 | WAYPT3, 252°, 157NM, 250kts, above 5000
+fplnwpt | idx 6 | WAYPT4, 250°, 10NM, altitude window
+fplnwpt | idx 7 | HOLD L, SPD 210kts
+text | idx 0 | Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29.4 KLB
+button | idx 2 | DEST
+button | idx 1 | KLAX24R
