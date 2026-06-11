@@ -1510,6 +1510,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Toggle Airports",
             Type = SimConnect.SimVarType.Event
         },
+        // First Officer EFIS filter push buttons (mirror of L-side)
+        ["A32NX.FCU_EFIS_R_CSTR_PUSH"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX.FCU_EFIS_R_CSTR_PUSH",
+            DisplayName = "Toggle Constraints",
+            Type = SimConnect.SimVarType.Event
+        },
+        ["A32NX.FCU_EFIS_R_WPT_PUSH"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX.FCU_EFIS_R_WPT_PUSH",
+            DisplayName = "Toggle Waypoints",
+            Type = SimConnect.SimVarType.Event
+        },
+        ["A32NX.FCU_EFIS_R_VORD_PUSH"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX.FCU_EFIS_R_VORD_PUSH",
+            DisplayName = "Toggle VOR/DME",
+            Type = SimConnect.SimVarType.Event
+        },
+        ["A32NX.FCU_EFIS_R_NDB_PUSH"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX.FCU_EFIS_R_NDB_PUSH",
+            DisplayName = "Toggle NDB",
+            Type = SimConnect.SimVarType.Event
+        },
+        ["A32NX.FCU_EFIS_R_ARPT_PUSH"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX.FCU_EFIS_R_ARPT_PUSH",
+            DisplayName = "Toggle Airports",
+            Type = SimConnect.SimVarType.Event
+        },
 
         // INSTRUMENT SECTION - Autobrake and Gear Panel
         // NOTE: Autobrakes may only be settable under specific flight conditions
@@ -3590,6 +3621,106 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
+        // EFIS NAVAID selectors (ADF/OFF/VOR x2 per side): the FCU_EFIS_* variants are
+        // the live knob inputs (read every frame by the FCU model) — the bare
+        // A32NX_EFIS_* NAVAID vars are computed outputs and stay read-only.
+        ["A32NX_FCU_EFIS_L_NAVAID_1_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_NAVAID_1_MODE", DisplayName = "Navaid 1 Selector",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "ADF", [2] = "VOR" }
+        },
+        ["A32NX_FCU_EFIS_L_NAVAID_2_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_NAVAID_2_MODE", DisplayName = "Navaid 2 Selector",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "ADF", [2] = "VOR" }
+        },
+        ["A32NX_FCU_EFIS_R_NAVAID_1_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_NAVAID_1_MODE", DisplayName = "Navaid 1 Selector",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "ADF", [2] = "VOR" }
+        },
+        ["A32NX_FCU_EFIS_R_NAVAID_2_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_NAVAID_2_MODE", DisplayName = "Navaid 2 Selector",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "ADF", [2] = "VOR" }
+        },
+
+        // EFIS filter-light readbacks (read-only state for each side/filter)
+        ["A32NX_FCU_EFIS_L_CSTR_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_CSTR_LIGHT_ON", DisplayName = "CSTR Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_L_WPT_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_WPT_LIGHT_ON", DisplayName = "WPT Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_L_VORD_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_VORD_LIGHT_ON", DisplayName = "VORD Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_L_NDB_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_NDB_LIGHT_ON", DisplayName = "NDB Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_L_ARPT_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_L_ARPT_LIGHT_ON", DisplayName = "ARPT Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_R_CSTR_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_CSTR_LIGHT_ON", DisplayName = "CSTR Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_R_WPT_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_WPT_LIGHT_ON", DisplayName = "WPT Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_R_VORD_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_VORD_LIGHT_ON", DisplayName = "VORD Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_R_NDB_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_NDB_LIGHT_ON", DisplayName = "NDB Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FCU_EFIS_R_ARPT_LIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_ARPT_LIGHT_ON", DisplayName = "ARPT Filter",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+
         // Navigation Performance
         ["A32NX_FMGC_L_RNP"] = new SimConnect.SimVarDefinition
         {
@@ -5131,23 +5262,47 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_FCU_EFIS_L_EFIS_MODE",
             "A32NX_FCU_EFIS_L_EFIS_RANGE",
+            "A32NX_FCU_EFIS_L_NAVAID_1_MODE",
+            "A32NX_FCU_EFIS_L_NAVAID_2_MODE",
             "A32NX_EFIS_L_LS_BUTTON_IS_ON",
             "A32NX.FCU_EFIS_L_FD_PUSH",
             "A32NX_FCU_EFIS_L_BARO_IS_INHG",
             "A32NX.FCU_EFIS_L_BARO_SET",
             "A32NX.FCU_EFIS_L_BARO_PUSH",
-            "A32NX.FCU_EFIS_L_BARO_PULL"
+            "A32NX.FCU_EFIS_L_BARO_PULL",
+            "A32NX.FCU_EFIS_L_CSTR_PUSH",
+            "A32NX.FCU_EFIS_L_WPT_PUSH",
+            "A32NX.FCU_EFIS_L_VORD_PUSH",
+            "A32NX.FCU_EFIS_L_NDB_PUSH",
+            "A32NX.FCU_EFIS_L_ARPT_PUSH",
+            "A32NX_FCU_EFIS_L_CSTR_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_WPT_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_VORD_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_NDB_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_ARPT_LIGHT_ON"
         },
         ["EFIS First Officer"] = new List<string>
         {
             "A32NX_FCU_EFIS_R_EFIS_MODE",
             "A32NX_FCU_EFIS_R_EFIS_RANGE",
+            "A32NX_FCU_EFIS_R_NAVAID_1_MODE",
+            "A32NX_FCU_EFIS_R_NAVAID_2_MODE",
             "A32NX_EFIS_R_LS_BUTTON_IS_ON",
             "A32NX.FCU_EFIS_R_FD_PUSH",
             "A32NX_FCU_EFIS_R_BARO_IS_INHG",
             "A32NX.FCU_EFIS_R_BARO_SET",
             "A32NX.FCU_EFIS_R_BARO_PUSH",
-            "A32NX.FCU_EFIS_R_BARO_PULL"
+            "A32NX.FCU_EFIS_R_BARO_PULL",
+            "A32NX.FCU_EFIS_R_CSTR_PUSH",
+            "A32NX.FCU_EFIS_R_WPT_PUSH",
+            "A32NX.FCU_EFIS_R_VORD_PUSH",
+            "A32NX.FCU_EFIS_R_NDB_PUSH",
+            "A32NX.FCU_EFIS_R_ARPT_PUSH",
+            "A32NX_FCU_EFIS_R_CSTR_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_WPT_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_VORD_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_NDB_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_ARPT_LIGHT_ON"
         },
         ["Warnings"] = new List<string>
         {
