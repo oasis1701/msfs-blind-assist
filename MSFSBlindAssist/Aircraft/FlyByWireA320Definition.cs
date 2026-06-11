@@ -7587,37 +7587,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true; // Handled
         }
 
-        // Special handling for VS/FPA set - validate based on current mode
+        // VS/FPA set — delegate to SetFCUVSValue: the calc-code K: path (negatives
+        // can't go through SendEvent's uint cast) with the correct FPA ×10 scaling.
         if (varKey == "A32NX.FCU_VS_SET")
         {
-            // Get variables dictionary to check TRK/FPA mode
-            var variables = GetVariables();
-            bool isFpaMode = false;
-
-            // Try to get current FPA mode state from variables (would need to be in currentSimVarValues in MainForm)
-            // For now, validate both ranges
-            // NOTE: MainForm will need to pass currentSimVarValues or we need a different approach
-
-            // Check if value is valid for either mode
-            bool isValidVS = value >= -6000 && value <= 6000;  // VS mode range
-            bool isValidFPA = value >= -9.9 && value <= 9.9;     // FPA mode range
-
-            if (isValidVS || isValidFPA)
-            {
-                // Determine which mode based on value range
-                isFpaMode = Math.Abs(value) <= 9.9;
-                string modeText = isFpaMode ? "FPA" : "VS";
-
-                uint valueToSend = isFpaMode ? (uint)(value * 10) : (uint)value;
-                simConnect.SendEvent(varKey, valueToSend);
-                announcer.Announce($"Vertical speed set to {value:F1} {modeText}");
-                return true; // Handled
-            }
-            else
+            bool isValidVS = value >= -6000 && value <= 6000 && Math.Abs(value) >= 100;
+            bool isValidFPA = value >= -9.9 && value <= 9.9;
+            if (!isValidVS && !isValidFPA && value != 0)
             {
                 announcer.AnnounceImmediate("Invalid value. VS: -6000 to 6000, FPA: -9.9 to 9.9");
-                return true; // Handled (rejected)
+                return true;
             }
+            SetFCUVSValue(value, simConnect, announcer);
+            return true;
         }
 
         // Special handling for Left baro setting - requires unit conversion
@@ -7910,7 +7892,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public bool SetFCUVSValue(double value, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
-        int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
+        // FPA is sent ×10 per the FBW protocol (FcuComputer consumes vs_fpa/10 in
+        // TRK/FPA mode; a320-events.md: "FPA * 10, i.e. 15 for 1.5 degrees").
+        // Edge case: FPA exactly -0.1° encodes to -1, the FCU's "no input" sentinel,
+        // and is silently ignored by the aircraft — unfixable protocol quirk.
+        int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
