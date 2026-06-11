@@ -4045,6 +4045,39 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true
         },
+        // COM3 / VHF3 — mirrors the COM2 pattern above. Stock events COM3_STBY_RADIO_SET_HZ /
+        // COM3_RADIO_SWAP; HandleUIVariableSet already branches on idx "3" (varKey.EndsWith(":3")).
+        ["COM_ACTIVE_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM ACTIVE FREQUENCY:3", DisplayName = "COM 3 Set Active Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["COM_STANDBY_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM STANDBY FREQUENCY:3", DisplayName = "COM 3 Set Standby Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["COM3_RADIO_SWAP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM3_RADIO_SWAP", DisplayName = "COM 3 XFER Frequency",
+            Type = SimConnect.SimVarType.Event
+        },
+        ["COM_ACTIVE_FREQUENCY:3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM ACTIVE FREQUENCY:3", DisplayName = "COM 3 Active Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        },
+        ["COM_STANDBY_FREQUENCY:3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM STANDBY FREQUENCY:3", DisplayName = "COM 3 Standby Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        },
         // Transmit selectors are Continuous + IsAnnounced: ProcessSimVarUpdate speaks
         // "Transmitting on VHF n" when the mic moves to a radio (rising edge only).
         ["COM_TRANSMIT:1"] = new SimConnect.SimVarDefinition
@@ -4654,6 +4687,47 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
+        // ---- Panel brightness knobs — stock potentiometers (A320_NEO_INTERIOR.xml). ----
+        // Pedestal flood = 76, main panel flood = 85, glareshield flood Capt = 10 / FO = 11,
+        // glareshield integral = 83, overhead integral = 86. Written via the indexed
+        // LIGHT_POTENTIOMETER_SET event (2-arg calc path). Range 0-100 percent.
+        ["BRIGHT_PEDESTAL_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT POTENTIOMETER:76", DisplayName = "Pedestal Flood Brightness (0-100)",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["BRIGHT_MAINPANEL_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT POTENTIOMETER:85", DisplayName = "Main Panel Flood Brightness (0-100)",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["BRIGHT_GLARESHIELD_CAPT_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT POTENTIOMETER:10", DisplayName = "Glareshield Flood Captain Brightness (0-100)",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["BRIGHT_GLARESHIELD_FO_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT POTENTIOMETER:11", DisplayName = "Glareshield Flood First Officer Brightness (0-100)",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["BRIGHT_GLARESHIELD_INTEG_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT POTENTIOMETER:83", DisplayName = "Glareshield Integral Brightness (0-100)",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["BRIGHT_OVERHEAD_INTEG_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT POTENTIOMETER:86", DisplayName = "Overhead Integral Brightness (0-100)",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+
         // ---- DOORS — read-only auto-announced status (parity with A380, NO combos). ----
         // The user opens/closes doors via the flyPad Ground page; MSFSBA only ANNOUNCES
         // each open/closed transition (ProcessSimVarUpdate) and renders the state in the
@@ -4882,6 +4956,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "COM_STANDBY_FREQUENCY:1",
             "COM_ACTIVE_FREQUENCY:2",
             "COM_STANDBY_FREQUENCY:2",
+            "COM_ACTIVE_FREQUENCY:3",
+            "COM_STANDBY_FREQUENCY:3",
             "COM_TRANSMIT:1",
             "COM_TRANSMIT:2",
             "COM_TRANSMIT:3"
@@ -5143,7 +5219,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_INTLT_ANN",
             "A32NX_OVHD_INTLT_DOME",
-            "A32NX_STBY_COMPASS_LIGHT_TOGGLE"
+            "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
+            "BRIGHT_PEDESTAL_SET",
+            "BRIGHT_MAINPANEL_SET",
+            "BRIGHT_GLARESHIELD_CAPT_SET",
+            "BRIGHT_GLARESHIELD_FO_SET",
+            "BRIGHT_GLARESHIELD_INTEG_SET",
+            "BRIGHT_OVERHEAD_INTEG_SET"
         },
         ["Recorder and Misc"] = new List<string>
         {
@@ -5406,6 +5488,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "COM_STANDBY_FREQUENCY_SET:2",
             "COM_ACTIVE_FREQUENCY_SET:2",
             "COM2_RADIO_SWAP",
+            "COM_STANDBY_FREQUENCY_SET:3",
+            "COM_ACTIVE_FREQUENCY_SET:3",
+            "COM3_RADIO_SWAP",
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
         },
@@ -7538,6 +7623,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:NAV_LIGHTS_SET) " +
                     "0 0 (>K:2:LOGO_LIGHTS_SET) 0 (>L:A32NX_LIGHTS_NAV_LOGO)");
             }
+            return true;
+        }
+
+        // Brightness knobs: percent 0-100 via the indexed potentiometer set event.
+        // Potentiometer IDs from A320_NEO_INTERIOR.xml: pedestal flood = 76,
+        // main panel flood = 85, glareshield flood Capt = 10 / FO = 11,
+        // glareshield integral = 83, overhead integral = 86.
+        if (varKey.StartsWith("BRIGHT_", StringComparison.Ordinal) && varKey.EndsWith("_SET", StringComparison.Ordinal))
+        {
+            int pot = varKey switch
+            {
+                "BRIGHT_PEDESTAL_SET" => 76,
+                "BRIGHT_MAINPANEL_SET" => 85,
+                "BRIGHT_GLARESHIELD_CAPT_SET" => 10,
+                "BRIGHT_GLARESHIELD_FO_SET" => 11,
+                "BRIGHT_GLARESHIELD_INTEG_SET" => 83,
+                "BRIGHT_OVERHEAD_INTEG_SET" => 86,
+                _ => -1
+            };
+            if (pot < 0) return false;
+            int pct = Math.Clamp((int)Math.Round(value), 0, 100);
+            simConnect.ExecuteCalculatorCode($"{pct} {pot} (>K:2:LIGHT_POTENTIOMETER_SET)");
+            announcer.Announce($"{varDef.DisplayName.Split('(')[0].Trim()} {pct} percent");
             return true;
         }
 
