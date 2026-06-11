@@ -973,6 +973,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // raw value is also captured in ProcessSimVarUpdate to gate those call-outs.
         Mon("A32NX_BTV_STATE", "Brake To Vacate",
             new Dictionary<double, string> { [0] = "Disabled", [1] = "Armed", [2] = "Rotation Optimised", [3] = "Decel", [4] = "End of Braking" });
+        Mon("A32NX_AUTOBRAKES_ACTIVE", "Autobrake",
+            new Dictionary<double, string> { [0] = "not braking", [1] = "braking" });
+        Mon("A32NX_ROW_ROP_LOST", "Runway Overrun Protection",
+            new Dictionary<double, string> { [0] = "available", [1] = "lost" });
+        Mon("A32NX_BTV_APPR_DIFFERENT_RUNWAY", "BTV Runway Check",
+            new Dictionary<double, string> { [0] = "matches approach", [1] = "DIFFERENT RUNWAY - BTV armed for another runway" });
+        Mon("A32NX_TCAS_STATE", "TCAS advisory", new Dictionary<double, string>
+            { [0] = "clear of conflict", [1] = "traffic advisory", [2] = "resolution advisory" });
         for (int n = 1; n <= 16; n++) Read($"A32NX_BRAKE_TEMPERATURE_{n}", $"Brake {n} Temperature", "celsius");
 
         // ---- Source switching / ISIS ----
@@ -1160,7 +1168,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["PFD_AUTOLAND"] = new SimVarDefinition
         {
             Name = "A32NX_FCDC_1_FG_DISCRETE_WORD_4", DisplayName = "Autoland capability",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true
         };
         // Nav radios — VOR 1/2 frequency + DME and ADF 1/2 frequency (stock simvars; the IDENTS
         // are read by the Output+N "nav radio" hotkey via the NAV IDENT string struct). On the ND.
@@ -1808,11 +1817,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             [31] = "LOC track", [32] = "LAND", [33] = "FLARE", [34] = "ROLL OUT",
             [40] = "RWY", [41] = "RWY track", [50] = "GA track"
         });
-        Mon("A32NX_APPROACH_CAPABILITY", "Approach Capability", new Dictionary<double, string>
-        {
-            [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual"
-        });
-
         // PFD messages + armed modes + approach settings (for the PFD window;
         // ported from the A320, shared A32NX_ names). The 3 PFD messages are
         // announced live (meaningful callouts); the rest are window-only readouts.
@@ -3201,7 +3205,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             // AP1/AP2/ATHR/LOC/APPR/EXPED/TRK-FPA are now stateful combos in the
             // FCU control panel, so they're not duplicated here as readouts.
-            "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE", "A32NX_APPROACH_CAPABILITY",
+            "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE",
             "FD_ACTIVE"
         };
         // The EIS baro value is an ARINC429 word — NOT shown as a raw display field
@@ -3260,7 +3264,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_LATERAL_ARMED",
-            "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_STATUS", "A32NX_APPROACH_CAPABILITY",
+            "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_STATUS",
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
@@ -3443,6 +3447,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // BTV (Brake-To-Vacate) rollout call-outs: current BTV state (gate) and which
     // distance thresholds have already been spoken this landing (reset between).
     private int _btvState = 0;
+    private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private readonly int[] _gpuAvail = { -1, -1, -1, -1 };   // last external-power-available state per GPU (-1 = unseen)
     private readonly HashSet<int> _btvExitSpoken = new();
     private readonly HashSet<int> _btvRwyEndSpoken = new();
@@ -3798,6 +3803,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     }
                 }
             }
+            return true;
+        }
+
+        // Autoland capability (FCDC FG discrete word 4, bits 23/24/25). Announce
+        // decoded transitions only; suppress the raw ARINC word from the generic path.
+        if (varName == "PFD_AUTOLAND")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            string cap = (!w.IsNormalOperation && !w.IsFunctionalTest) ? "none"
+                : w.BitValueOr(25, false) ? "LAND 3 dual"
+                : w.BitValueOr(24, false) ? "LAND 3 single"
+                : w.BitValueOr(23, false) ? "LAND 2" : "none";
+            if (_lastAutolandCap != null && _lastAutolandCap != cap && cap != "none")
+                announcer.Announce($"Approach capability {cap}");
+            _lastAutolandCap = cap;
             return true;
         }
 
@@ -4955,9 +4975,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             var w = new SimConnect.Arinc429Word(value);
             if (!w.IsNormalOperation && !w.IsFunctionalTest) displayText = "none";
-            else if (w.BitValueOr(23, false)) displayText = "LAND2";
-            else if (w.BitValueOr(24, false)) displayText = "LAND3 single";
             else if (w.BitValueOr(25, false)) displayText = "LAND3 dual";
+            else if (w.BitValueOr(24, false)) displayText = "LAND3 single";
+            else if (w.BitValueOr(23, false)) displayText = "LAND2";
             else displayText = "none";
             return true;
         }
@@ -5280,8 +5300,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         [16] = "Upper E/WD"
     };
     private Dictionary<double, string>? _readoutMap;
-    private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
-    { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
 
     // Weight-unit state. `_metricWeight` is MSFSBA's EFFECTIVE read-out unit (what
     // the GW/fuel read-outs use); `_aircraftMetric` tracks the aircraft's own
@@ -6121,7 +6139,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 hotkeyManager.ExitInputHotkeyMode();
                 new Forms.FBWA380.FBWA380BaroWindow(this, simConnect, announcer).ShowForm();
                 return true;
-            case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
+            case HotkeyAction.ReadApproachCapability:
+            {
+                // A32NX_APPROACH_CAPABILITY doesn't exist in FBW — decode the FCDC FG
+                // word 4 (same source as the PFD_AUTOLAND display + the PFD FMA).
+                var w4 = simConnect.GetCachedVariableValue("PFD_AUTOLAND");
+                string cap = "not available";
+                if (w4.HasValue)
+                {
+                    var w = new SimConnect.Arinc429Word(w4.Value);
+                    cap = (!w.IsNormalOperation && !w.IsFunctionalTest) ? "none computed"
+                        : w.BitValueOr(25, false) ? "LAND 3 dual"
+                        : w.BitValueOr(24, false) ? "LAND 3 single"
+                        : w.BitValueOr(23, false) ? "LAND 2" : "none computed";
+                }
+                announcer.AnnounceImmediate($"Approach capability {cap}");
+                return true;
+            }
             // Dedicated display WINDOWS were removed for the FBW aircraft: the SD reads
             // via the ECAM Control Panel page combo + status box, the E/WD has its own
             // status box (Displays > E/WD panel), and PFD/ND/ISIS flight values stay on
