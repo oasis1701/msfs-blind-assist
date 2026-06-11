@@ -1216,6 +1216,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // OVERHEAD FORWARD SECTION - Calls Panel
+        // The PUSH calls are HOLD vars FBW reads per-frame (MECH gates a Continuous
+        // Wwise horn loop) — IsMomentary makes MainForm pulse 1 then 0 after 150 ms;
+        // a write that stays 1 means an endless mech horn / stuck cabin call.
         ["PUSH_OVHD_CALLS_MECH"] = new SimConnect.SimVarDefinition
         {
             Name = "PUSH_OVHD_CALLS_MECH",
