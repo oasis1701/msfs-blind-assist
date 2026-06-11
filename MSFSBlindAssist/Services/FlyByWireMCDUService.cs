@@ -12,12 +12,12 @@ namespace MSFSBlindAssist.Services;
 /// IMPORTANT — the protocol cannot separate Captain and First Officer MCDUs.
 /// FBW's A320_Neo_CDU_MainDisplay.sendUpdate() builds ONE screenState from its own
 /// display and assigns that same object to BOTH the "left" and "right" keys of every
-/// update message (only annunciators/brightness differ). The two MCDU instruments each
-/// broadcast their own screen into both keys with no sender tag, interleaved. So
-/// content.left == content.right in every message and a "side selector" cannot pick one
-/// MCDU. We therefore mirror FBW's own web remote MCDU exactly: only ever control the
-/// Captain MCDU (event:left) and read the single shared screen (content.left).
-/// Verified live: left == right in 100% of observed messages.
+/// update message (only annunciators/brightness differ). This FBW version runs a single
+/// MCDU instrument writing both keys (no sender tag); the no-side-separation conclusion
+/// is unchanged. So content.left == content.right in every message and a "side selector"
+/// cannot pick one MCDU. We therefore mirror FBW's own web remote MCDU exactly: only
+/// ever control the Captain MCDU (event:left) and read the single shared screen
+/// (content.left). Verified live: left == right in 100% of observed messages.
 /// </summary>
 public class FlyByWireMCDUService : IDisposable
 {
@@ -37,6 +37,7 @@ public class FlyByWireMCDUService : IDisposable
 
     public event Action<MCDUDisplayData>? DisplayUpdated;
     public event Action<bool>? ConnectionStatusChanged;
+    public event Action<List<string>>? PrintReceived;
 
     public bool IsConnected => _isConnected;
 
@@ -131,22 +132,79 @@ public class FlyByWireMCDUService : IDisposable
 
     private void HandleMessage(string msg)
     {
-        // The gateway relays every message (including our own sends); only "update:" matters.
+        // The gateway relays every message (including our own sends).
         int idx = msg.IndexOf(':');
         string type = idx == -1 ? msg : msg.Substring(0, idx);
+
+        // Handle print: messages (ATIS/OFP print output) before the update filter.
+        // FBW sends print:{lines:[...]} where lines are plain strings (markup already
+        // stripped) that may contain embedded '\n' for multi-line entries.
+        if (type == "print")
+        {
+            try
+            {
+                var payload = JObject.Parse(msg.Substring(idx + 1));
+                var rawLines = payload["lines"] as JArray;
+                if (rawLines != null)
+                {
+                    var lines = new List<string>();
+                    foreach (var tok in rawLines)
+                    {
+                        // Each entry may embed '\n' (FBW strips {tag} markup before sending).
+                        foreach (var part in tok.ToString().Split('\n'))
+                        {
+                            string trimmed = part.Trim();
+                            if (!string.IsNullOrEmpty(trimmed)) { lines.Add(trimmed); }
+                        }
+                    }
+                    if (lines.Count > 0)
+                    {
+                        PostToUI(() => PrintReceived?.Invoke(lines));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Print parse error: {ex.Message}");
+            }
+            return;
+        }
+
         if (type != "update") { return; }
 
         try
         {
             var content = JObject.Parse(msg.Substring(idx + 1));
+            // MCDU1 unpowered (AC ESS SHED) renders empty lines while MCDU2 may have
+            // content — fall back to "right" when "left" carries no text at all.
             if (content[CaptainSide] is not JObject side) { return; }
             var data = FbwMcduFormat.BuildDisplayData(side);
+            if (IsBlankScreen(data) && content["right"] is JObject rightSide)
+            {
+                var rightData = FbwMcduFormat.BuildDisplayData(rightSide);
+                if (!IsBlankScreen(rightData)) { data = rightData; }
+            }
             PostToUI(() => DisplayUpdated?.Invoke(data));
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Parse error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Returns true when the display carries no readable text — title, scratchpad, and all
+    /// 14 raw line slots are empty or whitespace. Used to detect an unpowered MCDU side.
+    /// </summary>
+    private static bool IsBlankScreen(MCDUDisplayData d)
+    {
+        if (!string.IsNullOrWhiteSpace(d.Title)) { return false; }
+        if (!string.IsNullOrWhiteSpace(d.Scratchpad)) { return false; }
+        foreach (var line in d.RawLines)
+        {
+            if (!string.IsNullOrWhiteSpace(line)) { return false; }
+        }
+        return true;
     }
 
     /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU.</summary>

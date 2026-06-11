@@ -165,6 +165,7 @@ public class FlyByWireMCDUForm : Form
     {
         _service.DisplayUpdated += OnDisplayUpdated;
         _service.ConnectionStatusChanged += OnConnectionStatusChanged;
+        _service.PrintReceived += OnPrintReceived;
 
         scratchpadInput.KeyDown += ScratchpadInput_KeyDown;
         mcduDisplay.KeyDown += McduDisplay_KeyDown;
@@ -380,6 +381,13 @@ public class FlyByWireMCDUForm : Form
         }
     }
 
+    private void OnPrintReceived(List<string> lines)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        // Background state change (the MCDU printed a page) → announce its content.
+        _announcer.Announce("Printer: " + string.Join(", ", lines));
+    }
+
     private void OnConnectionStatusChanged(bool isConnected)
     {
         if (IsDisposed || !IsHandleCreated) return;
@@ -405,6 +413,7 @@ public class FlyByWireMCDUForm : Form
         {
             _service.DisplayUpdated -= OnDisplayUpdated;
             _service.ConnectionStatusChanged -= OnConnectionStatusChanged;
+            _service.PrintReceived -= OnPrintReceived;
             _scratchpadDebounceTimer?.Dispose();
         }
         base.Dispose(disposing);
