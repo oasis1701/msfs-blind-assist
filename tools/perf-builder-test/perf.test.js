@@ -179,7 +179,7 @@ test('DEPARTURE: selector dropdowns show their selected value, stay selectable',
 
 // F-PLN fixed-grid, live fixture (THE SPEC — Braille column reading, user decision
 // 2026-06): each waypoint is ONE fixed-width padded line of LITERAL screen values
-// (ident 8 / airway 6 / track 4 bare / dist 5 / spd 5 / alt 7 / time 5 — totals 40
+// (ident 8 / airway 6 / track 5 with ° / dist 4, NM header / spd 5 / alt 7 / time 5 — totals 40
 // so a line fits ONE 40-cell Braille display line; descent FPA is an end-of-line
 // suffix), a padded HEADER line calibrates the columns, and the '"' ditto marks
 // (HoneywellMCDU, formatSpeed ~1887 / formatAltitude ~1808 — prediction unchanged
@@ -193,7 +193,7 @@ test('F-PLN: fixed-grid waypoint lines, header, literal dittos, labeled footer',
   const wpts = list.filter((e) => e.kind === 'fplnwpt');
   // the padded header line exists with the column titles, aligned to the grid
   assert.ok(
-    list.some((e) => e.kind === 'text' && e.text === ' '.repeat(14) + 'TRK DIST SPD  ALT    TIME'),
+    list.some((e) => e.kind === 'text' && e.text === ' '.repeat(14) + 'TRK  NM  SPD  ALT    TIME'),
     'column-header line missing or misaligned');
   // every waypoint line fits one 40-cell Braille display line (FPA suffix excepted)
   for (const e of wpts) {
@@ -205,7 +205,7 @@ test('F-PLN: fixed-grid waypoint lines, header, literal dittos, labeled footer',
   // …and the unchanged cruise legs show the literal ditto marks, padded in place
   assert.strictEqual(
     wpts.filter((e) => /^RYLIE/.test(e.text)).map((e) => e.text)[0],
-    'RYLIE   J102  261 29   "    "      18:04',
+    'RYLIE   J102  261° 29  "    "      18:04',
     'RYLIE grid line wrong (dittos must stay literal, columns padded)');
   assert.ok(wpts.filter((e) => /"\s+"/.test(e.text)).length >= 8,
     'ditto marks missing on the unchanged cruise legs');
@@ -243,12 +243,12 @@ test('F-PLN polish: grid columns — constraints, WINDOW, FPA, hold SPD, title f
     const e = list.find((x) => x.kind === 'fplnwpt' && x.text.indexOf(id) === 0);
     return e ? e.text : '(line missing)';
   };
-  assert.strictEqual(wpt('WAYPT1'), 'WAYPT1  J102  261 29   250  5000   18:04 FPA 3.0', 'prediction columns / FPA suffix wrong');
-  assert.strictEqual(wpt('WAYPT2'), 'WAYPT2  J102  259 41   "    "      18:09', 'dittos not literal in the grid');
-  assert.strictEqual(wpt('WAYPT3'), 'WAYPT3        252 157  250  +5000', 'coexisting SPD+ALT constraints not literal in their columns');
-  assert.strictEqual(wpt('WAYPT4'), 'WAYPT4        250 10        WINDOW', 'WINDOW constraint not literal in the alt column');
+  assert.strictEqual(wpt('WAYPT1'), 'WAYPT1  J102  261° 29  250  5000   18:04 FPA 3.0', 'prediction columns / FPA suffix wrong');
+  assert.strictEqual(wpt('WAYPT2'), 'WAYPT2  J102  259° 41  "    "      18:09', 'dittos not literal in the grid');
+  assert.strictEqual(wpt('WAYPT3'), 'WAYPT3        252° 157 250  +5000', 'coexisting SPD+ALT constraints not literal in their columns');
+  assert.strictEqual(wpt('WAYPT4'), 'WAYPT4        250° 10       WINDOW', 'WINDOW constraint not literal in the alt column');
   assert.strictEqual(wpt('HOLD L'), 'HOLD L                             SPD 210', 'hold speed not "SPD 210" in the time column');
-  assert.ok(list.some((e) => e.kind === 'text' && e.text === ' '.repeat(14) + 'TRK DIST SPD  ALT    TIME'),
+  assert.ok(list.some((e) => e.kind === 'text' && e.text === ' '.repeat(14) + 'TRK  NM  SPD  ALT    TIME'),
     'column-header line missing or misaligned');
   assert.match(j, /(^|\n)Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29\.4 KLB(\n|$)/, 'destination footer missing');
   assertSelectable('fpln_polish');

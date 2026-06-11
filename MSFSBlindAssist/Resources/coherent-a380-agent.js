@@ -709,9 +709,9 @@
   // column order, with LITERAL screen values (".84", "FL380", "+5000", the '"'
   // ditto mark when a prediction is unchanged from the line above — shown, NOT
   // resolved, exactly like the real display):
-  //   ident(8) airway(6) track(4, bare) dist(5) spd(5) alt(7) time(5) [+" FPA x.x"]
+  //   ident(8) airway(6) track(5, °) dist(4) spd(5) alt(7) time(5) [+" FPA x.x"]
   // — totals 40 so a line fits one 40-cell Braille display line.
-  // A padded HEADER line ("TRK DIST SPD  ALT    TIME" aligned to the columns)
+  // A padded HEADER line ("TRK  NM  SPD  ALT    TIME" aligned to the columns)
   // is emitted before the first waypoint so a Braille user can calibrate the
   // columns. The destination footer keeps its spoken labels (a summary, not a
   // grid row). Universal to any A380 flight plan (class-driven, nothing
@@ -745,14 +745,16 @@
     // lets a Braille user calibrate the columns. In the EFOB/T.WIND view the two
     // right-hand value columns are titled EFOB / WIND (mirroring the real header).
     // Widths total exactly 40 so a full line fits ONE 40-cell Braille display
-    // line (user requirement): ident 8, airway 6, track 4 (bare degrees — the
-    // TRK header names it; the ° glyph is multi-cell in Braille), dist 5, spd 5,
-    // alt 7, time 5. The rare descent-only FPA is an end-of-line suffix, not a
-    // permanently blank column.
+    // line (user requirement): ident 8, airway 6, track 5 (with the ° glyph —
+    // ONE cell in 8-dot computer braille, the user's reading mode), dist 4
+    // (covers ≤999 NM; a rare 1000+ NM leg overflows that line by one), spd 5,
+    // alt 7, time 5. The dist header is "NM" (the real display also keeps the
+    // unit in the header) — "DIST" wouldn't fit the 4-wide column. The rare
+    // descent-only FPA is an end-of-line suffix, not a permanently blank column.
     var headerDone = false;
     function emitHeader(topVal, rightVal) {
-      var h = padCell("", 8) + padCell("", 6) + padCell("TRK", 4) +
-              padCell("DIST", 5) +
+      var h = padCell("", 8) + padCell("", 6) + padCell("TRK", 5) +
+              padCell("NM", 4) +
               padCell(efobWindMode ? "EFOB" : "SPD", 5) +
               padCell(efobWindMode ? "WIND" : "ALT", 7) + "TIME";
       items.push({
@@ -911,7 +913,7 @@
       // FIXED-GRID cell assembly (THE SPEC — Braille column reading, literal
       // screen values). Column order mirrors the real display (annotation row:
       // airway, track, dist; main row: spd, alt, time; descent FPA as a suffix):
-      //   ident(8) airway(6) track(4) dist(5) spd(5) alt(7) time(5) — 40 cells
+      //   ident(8) airway(6) track(5) dist(4) spd(5) alt(7) time(5) — 40 cells
       // SPD/ALT carry the prediction (".84"/"FL380"), the literal '"' ditto when
       // unchanged from the line above, or — when no prediction exists — the
       // constraint LITERAL as displayed ("+250", "-FL100", "WINDOW"). A "*"
@@ -935,8 +937,8 @@
         timeCell = isHoldRow ? (holdSpd ? "SPD " + holdSpd : "") : eta;
       }
       var gridLine = padCell(ident, 8) + padCell(anno, 6) +
-                     padCell(track.replace(/°/g, ""), 4) +
-                     padCell(dist, 5) + padCell(spdCell, 5) +
+                     padCell(track, 5) +
+                     padCell(dist, 4) + padCell(spdCell, 5) +
                      padCell(altCell, 7) + padCell(timeCell, 5);
       gridLine = gridLine.replace(/\s+$/, "");
       // Descent-only FPA as a suffix (a dedicated column would sit blank on
