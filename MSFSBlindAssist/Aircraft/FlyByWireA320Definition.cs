@@ -125,6 +125,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        ["EXT_PWR_AVAILABLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "EXTERNAL POWER AVAILABLE:1", DisplayName = "External Power Available",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Not available", [1] = "Available" }
+        },
         // ---- ELEC: generators. The FBW Rust system reads the STOCK simvars (copied
         // to aspects each tick — a320_systems_wasm lib.rs); the _PB_IS_ON L:vars are
         // dead mirrors. State = stock simvar, set = toggle event when desired !=
@@ -966,6 +973,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // PROBE & WINDOW HEAT PB: A32NX_MAN_PITOT_HEAT (A32NX_Interior_Misc.xml:263).
+        // Auto logic forces heat on with engines running, so an Off set can revert —
+        // correct aircraft behaviour (same as the A380 probe heat).
+        ["A32NX_MAN_PITOT_HEAT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MAN_PITOT_HEAT", DisplayName = "Probe and Window Heat",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Auto", [1] = "On" }
         },
 
         // ---- Air-conditioning ZONE TEMPERATURE selectors (5th-audit gap: the A380 has
@@ -4263,6 +4279,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" }
         },
+        ["A32NX_ECAM_ND_XFR_SWITCHING_KNOB"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ECAM_ND_XFR_SWITCHING_KNOB", DisplayName = "ECAM ND XFR",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Captain", [1] = "Normal", [2] = "First Officer" }
+        },
 
         // ---- Pressurization panel (parity with A380 Overhead > Pressurization) ----
         ["A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
@@ -4287,6 +4309,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON", DisplayName = "Ditching",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // LDG ELEV knob: Rust ValueKnob input read every frame (air_conditioning.rs:987).
+        // -4000 = AUTO detent, else landing elevation in feet.
+        ["PRESS_LDG_ELEV_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PRESS_LDG_ELEV_KNOB", DisplayName = "Landing Elevation (feet, -4000 = Auto)",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number"
         },
 
         // ---- Ventilation panel (parity with A380 Overhead > Ventilation) ----
@@ -4484,6 +4514,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.SimVar, Units = "percent",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [20] = "Dim", [100] = "Bright" }
+        },
+        ["A32NX_STBY_COMPASS_LIGHT_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_STBY_COMPASS_LIGHT_TOGGLE", DisplayName = "Standby Compass Light",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
         // ---- DOORS — read-only auto-announced status (parity with A380, NO combos). ----
@@ -4855,6 +4891,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
             "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
             "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
+            "EXT_PWR_AVAILABLE",
             "A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON",
             "A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON",
             "A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON",
@@ -4962,7 +4999,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Pressurization"] = new List<string>
         {
-            "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", "A32NX_OVHD_PRESS_MAN_VS_CTL_SWITCH", "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"
+            "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", "A32NX_OVHD_PRESS_MAN_VS_CTL_SWITCH", "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON",
+            "PRESS_LDG_ELEV_SET"
         },
         ["Ventilation"] = new List<string>
         {
@@ -4972,7 +5010,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Interior Lighting"] = new List<string>
         {
             "A32NX_OVHD_INTLT_ANN",
-            "A32NX_OVHD_INTLT_DOME"
+            "A32NX_OVHD_INTLT_DOME",
+            "A32NX_STBY_COMPASS_LIGHT_TOGGLE"
         },
         ["Recorder and Misc"] = new List<string>
         {
@@ -4992,7 +5031,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
             "ENG_ANTI_ICE:1",
-            "ENG_ANTI_ICE:2"
+            "ENG_ANTI_ICE:2",
+            "A32NX_MAN_PITOT_HEAT"
         },
         ["Wipers"] = new List<string>
         {
@@ -5224,7 +5264,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Source Switching"] = new List<string>
         {
             "A32NX_ATT_HDG_SWITCHING_KNOB", "A32NX_AIR_DATA_SWITCHING_KNOB",
-            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF"
+            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF",
+            "A32NX_ECAM_ND_XFR_SWITCHING_KNOB"
         },
         ["Flight Controls"] = new List<string>
         {
@@ -7341,6 +7382,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:NAV_LIGHTS_SET) " +
                     "0 0 (>K:2:LOGO_LIGHTS_SET) 0 (>L:A32NX_LIGHTS_NAV_LOGO)");
             }
+            return true;
+        }
+
+        // LDG ELEV: numeric feet, or -4000 for the AUTO detent. Range-check per the knob.
+        if (varKey == "PRESS_LDG_ELEV_SET")
+        {
+            if (value != -4000 && (value < -2000 || value > 15000))
+            {
+                announcer.AnnounceImmediate("Landing elevation must be -2000 to 15000 feet, or -4000 for Auto.");
+                return true;
+            }
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_OVHD_PRESS_LDG_ELEV_KNOB)");
+            announcer.Announce(value == -4000 ? "Landing elevation Auto" : $"Landing elevation {value:0} feet");
             return true;
         }
 
