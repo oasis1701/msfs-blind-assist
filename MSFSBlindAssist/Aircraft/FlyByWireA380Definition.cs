@@ -2103,16 +2103,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A380X_OVHD_FUEL_JETTISON_IS_OPEN", "Jettison Valve", openVd);
         Read("A32NX_TOTAL_FUEL_VOLUME", "Total Fuel Volume", "gallons");
 
-        // FEED-TANK FUEL PUMPS (4 tanks × MAIN + STBY = 8). On the FBW A380 the
+        // FEED-TANK + TRANSFER FUEL PUMPS (8 feed + 12 transfer = 20). On the FBW A380 the
         // cockpit pump pushbuttons are modelled as ELECTRICAL CIRCUITS (state =
         // `A:CIRCUIT CONNECTION ON:<id>`, toggled by `<id> 1
         // (>K:2:ELECTRICAL_BUS_TO_CIRCUIT_CONNECTION_TOGGLE)`) — NOT the stock
         // FUELSYSTEM pumps. Each is an Off/On combo: live state from the circuit
         // simvar; the set toggles the circuit (only when desired != current) via
-        // HandleUIVariableSet + _fuelPumpCircuits. The circuit IDs are from the
-        // cockpit model (PUSH_OVHD_FUEL_FEEDTK*_MAIN/STBY). #107 transcript: "turn
-        // the fuel pumps on in sequence, main then standby." Calculator-path toggle
-        // verified live (circuit 2 flips 0↔1).
+        // HandleUIVariableSet + _fuelPumpCircuits. Feed-tank circuits are 2-3, 64-69
+        // from the cockpit model (PUSH_OVHD_FUEL_FEEDTK*_MAIN/STBY); transfer-pump
+        // circuits are 70-81 from the same model. #107 transcript: "turn the fuel pumps
+        // on in sequence, main then standby." Calculator-path toggle verified live
+        // (circuit 2 flips 0↔1).
         foreach (var (key, circuit, label) in new[]
         {
             ("FUELPUMP_FEEDTK1_MAIN", 2, "Feed Tank 1 Main Pump"),
@@ -2123,6 +2124,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ("FUELPUMP_FEEDTK3_STBY", 67, "Feed Tank 3 Standby Pump"),
             ("FUELPUMP_FEEDTK4_MAIN", 68, "Feed Tank 4 Main Pump"),
             ("FUELPUMP_FEEDTK4_STBY", 69, "Feed Tank 4 Standby Pump"),
+            ("FUELPUMP_OUTR_L", 70, "Left Outer Tank Pump"),
+            ("FUELPUMP_MID_L_FWD", 71, "Left Mid Tank Forward Pump"),
+            ("FUELPUMP_MID_L_AFT", 72, "Left Mid Tank Aft Pump"),
+            ("FUELPUMP_INR_L_FWD", 73, "Left Inner Tank Forward Pump"),
+            ("FUELPUMP_INR_L_AFT", 74, "Left Inner Tank Aft Pump"),
+            ("FUELPUMP_OUTR_R", 75, "Right Outer Tank Pump"),
+            ("FUELPUMP_MID_R_FWD", 76, "Right Mid Tank Forward Pump"),
+            ("FUELPUMP_MID_R_AFT", 77, "Right Mid Tank Aft Pump"),
+            ("FUELPUMP_INR_R_FWD", 78, "Right Inner Tank Forward Pump"),
+            ("FUELPUMP_INR_R_AFT", 79, "Right Inner Tank Aft Pump"),
+            ("FUELPUMP_TRIM_L", 80, "Trim Tank Left Pump"),
+            ("FUELPUMP_TRIM_R", 81, "Trim Tank Right Pump"),
         })
         {
             _fuelPumpCircuits[key] = circuit;
@@ -2639,7 +2652,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "FUELPUMP_FEEDTK1_MAIN", "FUELPUMP_FEEDTK1_STBY",
             "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
             "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY",
-            "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY"
+            "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+            "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT",
+            "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
+            "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
+            "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
+            "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R"
         };
         p["Hydraulics"] = new List<string>
         {
