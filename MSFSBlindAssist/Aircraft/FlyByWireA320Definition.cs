@@ -125,25 +125,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        // ---- ELEC parity with the A380: generators, bus tie, AC ESS feed, IDG disc,
-        // commercial. All verified to exist live. (GEN PBs may be FBW computed mirrors;
-        // kept settable + readable either way — the readout/announce always works.)
+        // ---- ELEC: generators. The FBW Rust system reads the STOCK simvars (copied
+        // to aspects each tick — a320_systems_wasm lib.rs); the _PB_IS_ON L:vars are
+        // dead mirrors. State = stock simvar, set = toggle event when desired !=
+        // current (HandleUIVariableSet branch).
         ["A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON", DisplayName = "Generator 1",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Name = "GENERAL ENG MASTER ALTERNATOR:1", DisplayName = "Generator 1",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON", DisplayName = "Generator 2",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Name = "GENERAL ENG MASTER ALTERNATOR:2", DisplayName = "Generator 2",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON", DisplayName = "APU Generator",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Name = "APU GENERATOR SWITCH", DisplayName = "APU Generator",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["A32NX_OVHD_ELEC_BUS_TIE_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
@@ -7571,6 +7575,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             string eng = varKey.EndsWith(":2") ? "2" : "1";
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>K:ANTI_ICE_SET_ENG{eng})");
+            return true;
+        }
+
+        // Generators: toggle the stock event only when desired != current (no SET
+        // event exists). The Rust elec system reads the stock simvars, not L:vars.
+        if (varKey == "A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON" || varKey == "A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON"
+            || varKey == "A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON")
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn)
+            {
+                if (varKey == "A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON")
+                    simConnect.SendEvent("APU_GENERATOR_SWITCH_TOGGLE");
+                else
+                    simConnect.SendEvent(varKey.Contains("_GEN_2_") ? "TOGGLE_ALTERNATOR2" : "TOGGLE_ALTERNATOR1");
+            }
             return true;
         }
 
