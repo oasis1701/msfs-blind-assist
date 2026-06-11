@@ -2907,9 +2907,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Reset"] = _resetPanelVars.Select(t => t.key).ToList();
         p["Autobrake"] = new List<string>
         {
-            // ANTISKID_BRAKES_ACTIVE is a read-only sim state — it lives in the
-            // Autobrake read-out (d[...]), NOT here, so it never renders as a
-            // pointlessly-settable combo.
+            // ANTISKID_BRAKES_ACTIVE is settable (K:ANTISKID_BRAKES_TOGGLE) and
+            // lives in p["Flaps and Brakes"]; the Autobrake read-out (d[...])
+            // keeps a status copy.
             "A32NX_AUTOBRAKES_SELECTED_MODE", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED"
         };
         p["Source Switching"] = new List<string>
@@ -2938,7 +2938,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "THROTTLE_ALL_DETENT", "THROTTLE_1_DETENT", "THROTTLE_2_DETENT",
             "THROTTLE_3_DETENT", "THROTTLE_4_DETENT"
         };
-        p["Flaps and Brakes"] = new List<string> { "A32NX_FLAPS_HANDLE_INDEX", "A32NX_PARK_BRAKE_LEVER_POS" };
+        p["Flaps and Brakes"] = new List<string> { "A32NX_FLAPS_HANDLE_INDEX", "A32NX_PARK_BRAKE_LEVER_POS", "ANTISKID_BRAKES_ACTIVE" };
         p["Speed Brake"] = new List<string> { "A380X_MSFSBA_SPEEDBRAKE", "A380X_MSFSBA_SPEEDBRAKE_SLIDER", "A380X_MSFSBA_SPOILERS_ARM" };
         p["ECAM Control Panel"] = new List<string>
         {
@@ -3234,7 +3234,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Anti Ice"].AddRange(new[] { "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" });
         d["Fire"].AddRange(new[] { "A32NX_CARGOSMOKE_FWD_DISCHARGED", "A32NX_CARGOSMOKE_AFT_DISCHARGED" });
         d["Status"].AddRange(new[] { "A380X_FMS_DEST_EFOB_BELOW_MIN", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE" });
-        // ANTISKID is a read-only sim state (moved out of the Autobrake controls).
+        // ANTISKID status copy (the settable control is in Flaps and Brakes).
         d["Autobrake"].Add("ANTISKID_BRAKES_ACTIVE");
         d["Autobrake"].Add("A32NX_AUTOBRAKES_DECEL_LIGHT");   // DECEL light (auto-announced)
         // (Ground Equipment + Doors read-out panels REMOVED — ground handling is flyPad-only.
@@ -4427,6 +4427,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             bool desiredOn = value > 0.5;
             bool currentOn = (simConnect.GetCachedVariableValue("SEATBELT_SIGN") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
             if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+            return true;
+        }
+        // Anti-skid: TOGGLE-only event (the cockpit switch fires K:ANTISKID_BRAKES_TOGGLE,
+        // state = A:ANTISKID BRAKES ACTIVE); fire only when desired != current.
+        if (varKey == "ANTISKID_BRAKES_ACTIVE")
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue("ANTISKID_BRAKES_ACTIVE") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn) simConnect.SendEvent("ANTISKID_BRAKES_TOGGLE");
             return true;
         }
         // --- Combos whose STATE is a SimVar but whose CONTROL is a K-event
