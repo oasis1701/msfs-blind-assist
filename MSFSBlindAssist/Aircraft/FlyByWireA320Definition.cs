@@ -4627,9 +4627,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["A32NX_OVHD_COND_RAM_AIR_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        // Ram Air: the A32NX control var is A32NX_AIRCOND_RAMAIR_TOGGLE (read by PseudoFWC); the A380-style _PB_IS_ON name does not exist on this aircraft.
+        ["A32NX_AIRCOND_RAMAIR_TOGGLE"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", DisplayName = "Ram Air",
+            Name = "A32NX_AIRCOND_RAMAIR_TOGGLE", DisplayName = "Ram Air",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
@@ -5416,7 +5417,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position",
             "A32NX_OVHD_COND_PACK_1_PB_IS_ON",
             "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
-            "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON"
+            "A32NX_AIRCOND_RAMAIR_TOGGLE"
         },
         ["Pressurization"] = new List<string>
         {
