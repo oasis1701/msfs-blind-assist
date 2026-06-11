@@ -27,6 +27,10 @@ public sealed class AccessGSXForm : Form
     private TextBox _statusTextBox = null!;
     private TextBox _menuTextBox = null!;
     private TextBox _tooltipTextBox = null!;
+    private ComboBox _activeServicesCombo = null!;
+    private Label _activeServicesLabel = null!;
+    private bool _suppressActiveServicesSelectionEvent;
+    private GsxSettingsForm? _settingsForm;
 
     public AccessGSXForm(GsxService gsxService, ScreenReaderAnnouncer announcer)
     {
@@ -40,6 +44,7 @@ public sealed class AccessGSXForm : Form
         UpdateStatus();
         RepopulateMenu();
         UpdateTooltip();
+        OnActiveServicesChangedUi();
     }
 
     private void BuildUi()
@@ -116,6 +121,30 @@ public sealed class AccessGSXForm : Form
             AccessibleName = "GSX tooltip"
         };
 
+        // Active-services selector — hidden when GSX has zero or one active
+        // operation (avoids cluttering tab order for the common case), shown
+        // when two or more are running concurrently so the user can pick
+        // which one drives the tooltip + auto-announce.
+        _activeServicesLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 22,
+            Padding = new Padding(8, 4, 8, 0),
+            Text = "Active &services:",
+            AccessibleName = "Active services label",
+            Visible = false
+        };
+
+        _activeServicesCombo = new ComboBox
+        {
+            Dock = DockStyle.Top,
+            Height = 26,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Active services",
+            Visible = false
+        };
+        _activeServicesCombo.SelectedIndexChanged += OnActiveServicesComboChanged;
+
         // Layout: status (top), menu list (center, fills), tooltip (bottom panel).
         // Use a TableLayoutPanel for predictable 60/40 split between menu and tooltip.
         var rootLayout = new TableLayoutPanel
@@ -133,8 +162,14 @@ public sealed class AccessGSXForm : Form
         menuPanel.Controls.Add(menuLabel);
 
         var tooltipPanel = new Panel { Dock = DockStyle.Fill };
+        // Stack order (later additions sit higher when docked Top): textbox
+        // fills, then tooltip label, then services combo + label above.
+        // The two services controls start hidden — they take zero space
+        // until ActiveServicesChanged makes them visible.
         tooltipPanel.Controls.Add(_tooltipTextBox);
         tooltipPanel.Controls.Add(tooltipLabel);
+        tooltipPanel.Controls.Add(_activeServicesCombo);
+        tooltipPanel.Controls.Add(_activeServicesLabel);
 
         rootLayout.Controls.Add(menuPanel, 0, 0);
         rootLayout.Controls.Add(tooltipPanel, 0, 1);
@@ -157,6 +192,9 @@ public sealed class AccessGSXForm : Form
         _gsxService.MenuHidden += OnMenuHidden;
         _gsxService.MenuTimedOut += OnMenuTimedOut;
         _gsxService.TooltipChanged += OnTooltipChanged;
+        _gsxService.AnnouncementReady += OnAnnouncementReady;
+        _gsxService.ActiveServicesChanged += OnActiveServicesChanged;
+        _gsxService.SettingsChanged += OnSettingsChanged;
 
         // Hide-not-close — same pattern as HS787FMCForm. Keeps the service
         // subscriptions live so background tooltip announcements still work
@@ -189,6 +227,44 @@ public sealed class AccessGSXForm : Form
     // ─────────────────────────────────────────────────────────────────────
     // Keyboard.
     // ─────────────────────────────────────────────────────────────────────
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        Keys keyCode = keyData & Keys.KeyCode;
+        bool control = (keyData & Keys.Control) == Keys.Control;
+        bool alt = (keyData & Keys.Alt) == Keys.Alt;
+        bool shift = (keyData & Keys.Shift) == Keys.Shift;
+
+        if (keyCode == Keys.C && !control && !alt && !shift && _gsxService.MenuOptions.Count > 0)
+        {
+            _gsxService.OpenSettings();
+            // OpenSettings publishes synchronously on the UI thread, so the
+            // form exists by now. The refresh-in-place path deliberately
+            // never steals focus on background republishes — refocus only
+            // here, on the explicit user keypress.
+            if (_settingsForm is { IsDisposed: false })
+                _settingsForm.ShowForm();
+            return true;
+        }
+
+        if (keyCode == Keys.F5)
+        {
+            _gsxService.OpenMenu();
+            return true;
+        }
+
+        if (keyCode == Keys.Escape)
+        {
+            // An open active-services dropdown owns Escape (closes the
+            // dropdown); only hide the window when nothing is dropped down.
+            if (_activeServicesCombo.DroppedDown)
+                return base.ProcessCmdKey(ref msg, keyData);
+            Hide();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private void AccessGSXForm_KeyDown(object? sender, KeyEventArgs e)
     {
         // F5: ask GSX to open / reopen its menu.
@@ -213,7 +289,9 @@ public sealed class AccessGSXForm : Form
         // when there's a menu open — otherwise the keystrokes are no-ops so
         // the user doesn't accidentally choose a stale option.
         if (_gsxService.MenuOptions.Count == 0)
+        {
             return;
+        }
 
         int choice = -1;
         if (e.KeyCode >= Keys.D0 && e.KeyCode <= Keys.D9)
@@ -326,18 +404,149 @@ public sealed class AccessGSXForm : Form
 
     private void OnTooltipChangedUi()
     {
+        // Live-text only — keeps the tooltip textbox in sync with whatever
+        // GSX is currently publishing (ETA, kg loaded, pax count, etc).
+        // The auto-announce path runs from OnAnnouncementReady so it only
+        // fires on a real delta rather than every text twitch.
         UpdateTooltip();
-        // Form is visible (the background-announce path in GsxService only
-        // fires when AnnounceWhenFormHidden is true). Speak the tooltip so
-        // the user hears it without having to focus the tooltip TextBox.
-        if (Visible)
+    }
+
+    private void OnActiveServicesChanged(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(new Action(OnActiveServicesChangedUi)); return; }
+        OnActiveServicesChangedUi();
+    }
+
+    private void OnActiveServicesChangedUi()
+    {
+        var names = _gsxService.ActiveServiceNames;
+        // Re-populating the items list fires SelectedIndexChanged; suppress
+        // it so we don't echo a synthetic selection back into GsxService.
+        _suppressActiveServicesSelectionEvent = true;
+        try
         {
-            try { _announcer.Announce(_gsxService.LastTooltip); }
-            catch (Exception ex)
+            _activeServicesCombo.Items.Clear();
+            foreach (var name in names)
+                _activeServicesCombo.Items.Add(name);
+
+            int targetIndex = -1;
+            string? selected = _gsxService.SelectedActiveService
+                ?? _gsxService.DefaultActiveServiceName;
+            if (!string.IsNullOrWhiteSpace(selected))
             {
-                System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] tooltip announce failed: {ex.Message}");
+                for (int i = 0; i < _activeServicesCombo.Items.Count; i++)
+                {
+                    if (string.Equals(
+                            _activeServicesCombo.Items[i]?.ToString(),
+                            selected,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetIndex = i;
+                        break;
+                    }
+                }
             }
+
+            // Default to row 0 when no explicit selection exists, so the
+            // user doesn't have to press Down once before the dropdown
+            // has anything highlighted. Done with the suppress flag still
+            // on, so GsxService.SelectedActiveService stays null — the
+            // service-row picker keeps using GSX-order (which happens to
+            // pick the same row 0), so the combo and announcer stay in
+            // visual sync without forcing an explicit re-announce.
+            if (targetIndex < 0 && _activeServicesCombo.Items.Count > 0)
+                targetIndex = 0;
+
+            if (targetIndex >= 0)
+                _activeServicesCombo.SelectedIndex = targetIndex;
         }
+        finally
+        {
+            _suppressActiveServicesSelectionEvent = false;
+        }
+
+        bool show = names.Count >= 2;
+        _activeServicesCombo.Visible = show;
+        _activeServicesLabel.Visible = show;
+    }
+
+    private void OnActiveServicesComboChanged(object? sender, EventArgs e)
+    {
+        if (_suppressActiveServicesSelectionEvent) return;
+        string? selected = _activeServicesCombo.SelectedItem?.ToString();
+        _gsxService.SelectedActiveService = selected;
+    }
+
+    private void OnAnnouncementReady(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(new Action(OnAnnouncementReadyUi)); return; }
+        OnAnnouncementReadyUi();
+    }
+
+    private void OnAnnouncementReadyUi()
+    {
+        // Form visible → speak the delta. Form hidden → GsxService speaks
+        // it itself via the AnnounceWhenFormHidden path, so we stay silent.
+        if (!Visible) return;
+
+        string announcement = _gsxService.LastAnnouncementText;
+        if (string.IsNullOrWhiteSpace(announcement))
+            return;
+
+        try { _announcer.Announce(announcement); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] tooltip announce failed: {ex.Message}");
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(new Action(OnSettingsChangedUi)); return; }
+        OnSettingsChangedUi();
+    }
+
+    private void OnSettingsChangedUi()
+    {
+        if (_settingsForm is { IsDisposed: false })
+        {
+            // The service re-publishes ~1 s after opening (GSX writes the
+            // real settings.html asynchronously; the first parse only sees
+            // the Python stub). Refresh the open window in place —
+            // recreating it would yank screen-reader focus, re-announce the
+            // window, and fire the old form's FormClosed/HideMenu side
+            // effects.
+            // hadItems is false on the first publish because the settings.html
+            // stub parses to zero items.
+            bool hadItems = _settingsForm.HasItems;
+            bool rebuilt = _settingsForm.RefreshItems(_gsxService.SettingsItems);
+            if (rebuilt && !hadItems && _settingsForm.HasItems)
+            {
+                // Background state change (not user-triggered): the stub
+                // placeholder was silently replaced by the real settings.
+                try { _announcer.Announce("GSX settings loaded."); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] settings announce failed: {ex.Message}");
+                }
+            }
+            return;
+        }
+
+        _settingsForm = new GsxSettingsForm(_gsxService, _announcer, _gsxService.SettingsItems);
+        _settingsForm.FormClosed += (_, _) =>
+        {
+            _settingsForm = null;
+            _gsxService.HideMenu();
+            OnMenuHiddenUi();
+        };
+        _settingsForm.ShowForm();
+        // No "opened" announcement: the screen reader announces the newly
+        // focused window itself (project rule: never announce direct user
+        // interactions).
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -387,6 +596,11 @@ public sealed class AccessGSXForm : Form
             _gsxService.MenuHidden -= OnMenuHidden;
             _gsxService.MenuTimedOut -= OnMenuTimedOut;
             _gsxService.TooltipChanged -= OnTooltipChanged;
+            _gsxService.AnnouncementReady -= OnAnnouncementReady;
+            _gsxService.ActiveServicesChanged -= OnActiveServicesChanged;
+            _gsxService.SettingsChanged -= OnSettingsChanged;
+            if (_settingsForm is { IsDisposed: false })
+                _settingsForm.Close();
             // Restore background-announce policy to the user setting when
             // the form goes away entirely (e.g. app shutdown). The service
             // may outlive the form — without this it would stay in

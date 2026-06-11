@@ -24,6 +24,10 @@ public class SimConnectManager
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
+    // Fired when a RequestAiTrafficData sweep delivers its final entry
+    // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
+    // traffic snapshot instead of racing the per-aircraft responses.
+    public event EventHandler? AiTrafficSweepCompleted;
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
@@ -352,6 +356,7 @@ public class SimConnectManager
         public double MagneticVariation;
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
+        public double SimOnGround;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -630,6 +635,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "VERTICAL SPEED", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SIM ON GROUND", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
         // Register AI traffic data (used by RequestDataOnSimObjectType → OnRecvSimobjectDataBytype)
@@ -2728,6 +2735,7 @@ public class SimConnectManager
         {
             // Always store the last known position and fire the event
             lastKnownPosition = data;
+            LastKnownOnGround = data.SimOnGround >= 0.5;
             AircraftPositionReceived?.Invoke(this, data);
         }
         catch (Exception ex)
@@ -3180,37 +3188,57 @@ public class SimConnectManager
         if ((int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
         try
         {
-            var raw = (AiTrafficData)data.dwData[0];
-
-            // Filter out own aircraft (object ID 0 = SIMCONNECT_OBJECT_ID_USER)
-            if (data.dwObjectID == 0) return;
-
-            // Also filter by callsign match to own aircraft as a second guard
-            if (!string.IsNullOrEmpty(currentAircraftAtcId) &&
-                string.Equals(raw.AtcId, currentAircraftAtcId, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            var eventArgs = new AiTrafficDataEventArgs
-            {
-                ObjectId         = data.dwObjectID,
-                Latitude         = raw.Latitude,
-                Longitude        = raw.Longitude,
-                AltitudeFt       = raw.AltitudeFt,
-                HeadingMagnetic  = raw.HeadingMagnetic,
-                GroundSpeedKnots = raw.GroundSpeedKnots,
-                OnGround         = raw.SimOnGround >= 0.5,
-                Callsign         = raw.AtcId?.Trim() ?? "",
-                AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel),
-                FromAirport      = raw.FromAirport?.Trim() ?? "",
-                ToAirport        = raw.ToAirport?.Trim() ?? "",
-                Airline          = raw.AtcAirline?.Trim() ?? "",
-            };
-            AiTrafficReceived?.Invoke(this, eventArgs);
+            ProcessAiTrafficEntry(data);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AI traffic parse error: {ex.Message}");
         }
+
+        // A RequestDataOnSimObjectType sweep is a finite series: dwentrynumber
+        // is 1-based and dwoutof is the total. The last entry marks the sweep
+        // complete. Fired OUTSIDE ProcessAiTrafficEntry because the final entry
+        // may be one the per-entry filters drop (e.g. the user's own aircraft,
+        // which the AIRCRAFT object type always includes — which also means a
+        // sweep always has at least one entry, so the marker always arrives).
+        if (data.dwentrynumber >= data.dwoutof)
+        {
+            try { AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AiTrafficSweepCompleted handler error: {ex.Message}");
+            }
+        }
+    }
+
+    private void ProcessAiTrafficEntry(SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
+    {
+        var raw = (AiTrafficData)data.dwData[0];
+
+        // Filter out own aircraft (object ID 0 = SIMCONNECT_OBJECT_ID_USER)
+        if (data.dwObjectID == 0) return;
+
+        // Also filter by callsign match to own aircraft as a second guard
+        if (!string.IsNullOrEmpty(currentAircraftAtcId) &&
+            string.Equals(raw.AtcId, currentAircraftAtcId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var eventArgs = new AiTrafficDataEventArgs
+        {
+            ObjectId         = data.dwObjectID,
+            Latitude         = raw.Latitude,
+            Longitude        = raw.Longitude,
+            AltitudeFt       = raw.AltitudeFt,
+            HeadingMagnetic  = raw.HeadingMagnetic,
+            GroundSpeedKnots = raw.GroundSpeedKnots,
+            OnGround         = raw.SimOnGround >= 0.5,
+            Callsign         = raw.AtcId?.Trim() ?? "",
+            AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel),
+            FromAirport      = raw.FromAirport?.Trim() ?? "",
+            ToAirport        = raw.ToAirport?.Trim() ?? "",
+            Airline          = raw.AtcAirline?.Trim() ?? "",
+        };
+        AiTrafficReceived?.Invoke(this, eventArgs);
     }
 
     /// <summary>
