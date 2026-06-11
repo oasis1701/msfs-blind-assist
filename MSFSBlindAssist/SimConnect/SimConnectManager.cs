@@ -3497,6 +3497,39 @@ public class SimConnectManager
     }
 
     /// <summary>
+    /// Re-bind a variable's SimConnect data definition in place (same def id, so
+    /// requests and response dispatch are unchanged). Needed for L:vars that did
+    /// not EXIST at registration time: a data definition bound to a nonexistent
+    /// L:var never delivers values, even after the var is later created (observed
+    /// live 2026-06-12 — the bridge probe's nonce writes held in the sim while
+    /// MSFSBA's reads of the same var returned nothing). Call after the var has
+    /// been created (e.g. by a calc-path write).
+    /// </summary>
+    public void RebindVariableDataDefinition(string varKey)
+    {
+        if (simConnect == null || CurrentAircraft == null) return;
+        if (!variableDataDefinitions.TryGetValue(varKey, out int dataDefId)) return;
+        var vars = CurrentAircraft.GetVariables();
+        if (!vars.TryGetValue(varKey, out var varDef)) return;
+        try
+        {
+            simConnect.ClearDataDefinition((DATA_DEFINITIONS)dataDefId);
+            if (varDef.Type == SimVarType.LVar)
+                simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
+                    $"L:{varDef.Name}", "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            else
+                simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
+                    varDef.Name, varDef.Units ?? "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            simConnect.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)dataDefId);
+            LogTransport($"[Probe] data definition re-bound for {varKey} (def {dataDefId})");
+        }
+        catch (Exception ex)
+        {
+            LogTransport($"[Probe] rebind FAILED for {varKey}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Get cached value for a variable if available
     /// </summary>
     public double? GetCachedVariableValue(string varKey)

@@ -121,6 +121,7 @@ public partial class MainForm : Form
     private int _bridgeProbeAttempts;
     private bool _bridgeProbeAwaitingRead;
     private bool _bridgeProbeWasDisconnected = true;
+    private bool _bridgeProbeRebound;
 
     private void BridgeProbeTimer_Tick(object? sender, EventArgs e)
     {
@@ -143,6 +144,7 @@ public partial class MainForm : Form
                 _bridgeProbeWasDisconnected = false;
                 _bridgeProbeAttempts = 0;
                 _bridgeProbeAwaitingRead = false;
+                _bridgeProbeRebound = false;
             }
             if (simConnectManager.CalcPathVerified || _bridgeProbeAttempts >= 40) return;
             // Only the FBW defs register the probe var; skip other aircraft.
@@ -155,6 +157,16 @@ public partial class MainForm : Form
                 {
                     simConnectManager.MarkCalcPathVerified();
                     return;
+                }
+                // First mismatch: the probe L:var did not exist when the data
+                // definitions were registered at connect, and a def bound to a
+                // nonexistent L:var never delivers — re-bind it now that the
+                // first write has created the var (live finding 2026-06-12:
+                // writes held at the sim while our reads stayed empty).
+                if (!_bridgeProbeRebound)
+                {
+                    _bridgeProbeRebound = true;
+                    simConnectManager.RebindVariableDataDefinition("MSFSBA_BRIDGE_PROBE");
                 }
                 _bridgeProbeNonce = (_bridgeProbeNonce % 16384) + 1; // new nonce each retry
             }
