@@ -869,12 +869,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["FUELSYSTEM_VALVE_TOGGLE:3"] = new SimConnect.SimVarDefinition
+        // Fuel crossfeed: state = the stock valve switch; set fires
+        // FUELSYSTEM_VALVE_OPEN/_CLOSE (id 3 = CrossFeedValve) — the TOGGLE event
+        // could stick mid-transition (same fix as the A380 crossfeeds).
+        ["FUEL_XFEED"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM_VALVE_TOGGLE",
-            DisplayName = "Fuel Crossfeed",
-            Type = SimConnect.SimVarType.Event,
-            EventParam = 3  // Crossfeed valve = 3
+            Name = "FUELSYSTEM VALVE SWITCH:3", DisplayName = "Fuel Crossfeed",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         },
 
         // Air Con Panel
@@ -5396,7 +5399,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "FUEL_PUMP_R2",
             "FUEL_PUMP_C1",
             "FUEL_PUMP_C2",
-            "FUELSYSTEM_VALVE_TOGGLE:3"   // Crossfeed — momentary button (a valve, not a pump)
+            "FUEL_XFEED"   // Crossfeed — stateful OPEN/CLOSE combo (valve id 3)
         },
         // Functional split that matches the FBW ECAM System Display pages — the
         // source's OWN grouping (fbw-a32nx SD/Pages/Cond + SD/Pages/Bleed): the COND
@@ -7588,6 +7591,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", vId);
             return true;
         }
+        if (varKey == "FUEL_XFEED")
+        {
+            simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", 3);
+            return true;
+        }
 
         // Engine 1/2 anti-ice: the cockpit pushbutton drives the stock K-event
         // ANTI_ICE_SET_ENGn (the XMLVAR _PRESSED flag is animation-only). State is read
@@ -7597,6 +7605,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             string eng = varKey.EndsWith(":2") ? "2" : "1";
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>K:ANTI_ICE_SET_ENG{eng})");
+            return true;
+        }
+
+        // Fire-agent discharge: the cockpit button only fires when the matching fire
+        // handle is PULLED, and a discharged squib can never be un-discharged. Mirror
+        // both interlocks (A32NX_Interior_Fire.xml FBW_Airbus_FIRE_AGENT).
+        if (varKey.StartsWith("A32NX_FIRE_", StringComparison.Ordinal) && varKey.EndsWith("_Discharge", StringComparison.Ordinal))
+        {
+            if (value < 0.5) { announcer.AnnounceImmediate("Agent bottles cannot be reset."); return true; }
+            string handleVar = varKey.Contains("_APU_") ? "A32NX_FIRE_BUTTON_APU"
+                : varKey.Contains("_ENG2_") ? "A32NX_FIRE_BUTTON_ENG2" : "A32NX_FIRE_BUTTON_ENG1";
+            bool handlePulled = (simConnect.GetCachedVariableValue(handleVar) ?? 0) > 0.5;
+            if (!handlePulled)
+            {
+                announcer.AnnounceImmediate("Pull the fire handle first.");
+                return true;
+            }
+            simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
             return true;
         }
 
