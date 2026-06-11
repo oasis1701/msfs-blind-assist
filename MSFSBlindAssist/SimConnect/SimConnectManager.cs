@@ -2479,7 +2479,7 @@ public class SimConnectManager
         {
             return FormatFMAVerticalArmed((int)value);
         }
-        else if (varKey == "A32NX_EFIS_1_ND_FM_MESSAGE_FLAGS" || varKey == "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS")
+        else if (varKey == "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS")
         {
             return FormatNDFMMessage((int)value);
         }
