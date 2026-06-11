@@ -45,7 +45,9 @@
     var pw = gc.currentPseudoWaypoints || [];
     for (var p = 0; p < pw.length; p++) {
       if (!pw[p]) continue;
-      var id = ((pw[p].ident || pw[p].mcduIdent || "") + "").toUpperCase();
+      // mcduIdent FIRST: a cruise StepDescent has ident '(T/D)' but mcduIdent '(S/D)'
+      // and sits upstream of the real T/D — checking ident first latched onto the step.
+      var id = ((pw[p].mcduIdent || pw[p].ident || "") + "").toUpperCase();
       var isTD = id.indexOf("T/D") >= 0, isTC = id.indexOf("T/C") >= 0;
       if (!isTD && !isTC) continue;   // ignore (DECEL) etc.
       var fpi = pw[p].flightPlanInfo;
