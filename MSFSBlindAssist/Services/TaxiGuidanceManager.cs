@@ -294,8 +294,22 @@ public class TaxiGuidanceManager : IDisposable
     private const double RECALC_LENGTH_BLOWUP_PAD_M = 500.0;
     private const double RECALC_BACKWARDS_DELTA_DEG = 120.0;
 
+    // Initial-load constrained-route advisory. The recalc path has a sanity
+    // gate (RECALC_LENGTH_BLOWUP_*) but the INITIAL LoadRoute had none — a
+    // mis-picked taxiway ("via FE" at KIAH when the gate was 600 m away)
+    // produced a 6,094 m tour with out-and-back loops and zero warning.
+    // Same thresholds as the recalc gate; advisory only (the clearance might
+    // be genuine — ATC can route around closures), so the route still loads
+    // and the pilot decides.
+    private const double CONSTRAINED_WARN_RATIO = 2.0;
+    private const double CONSTRAINED_WARN_PAD_M = 500.0;
+    private const double CONSTRAINED_WARN_FIRST_TW_M = 300.0;
+
     // Position tracking
     private double _lastLat, _lastLon, _lastHeading;
+    private double _yawRateDegSec;            // low-passed, right-positive
+    private DateTime _lastYawSampleTime = DateTime.MinValue;
+    private double _lastYawHeading;
     private double _lastGroundSpeedKts;
     private bool _positionInitialized = false;
 
@@ -1013,6 +1027,8 @@ public class TaxiGuidanceManager : IDisposable
             if (route == null || route.Segments.Count == 0)
                 return "Could not calculate a route to the destination.";
 
+            string? constrainedLengthWarning = null;
+
             route.DestinationName = destinationName;
             if (taxiwaySequence != null)
                 route.TaxiwaySequence = taxiwaySequence;
@@ -1056,6 +1072,37 @@ public class TaxiGuidanceManager : IDisposable
             // VATSIM. This pause-and-resume flow uses the same Continue hotkey
             // pattern as ATC-instructed hold-shorts.
             InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
+
+            // Constrained-route sanity advisory: compare against the
+            // unconstrained shortest path from the aircraft's natural start
+            // node. Fires only for user-sequenced routes that built fully
+            // (a fallback route is already announced via its fallback reason).
+            // Computed AFTER TruncateToHoldShort so the spoken warning quotes
+            // the same total the route summary speaks (the direct comparison
+            // is untruncated either way — 500 m pad dwarfs the ~60 m
+            // hold-short trim).
+            if (taxiwaySequence is { Count: > 0 } &&
+                string.IsNullOrEmpty(route.ConstrainedFallbackReason))
+            {
+                var directStart = _graph.FindNearestNodeInDirection(
+                    aircraftLat, aircraftLon, aircraftHeading,
+                    requiredComponentId: destComponentId) ?? startNode;
+                var direct = router.FindShortestPath(directStart.NodeId, destinationNodeId);
+                if (direct != null && direct.Segments.Count > 0 &&
+                    route.TotalDistanceMeters >
+                        direct.TotalDistanceMeters * CONSTRAINED_WARN_RATIO + CONSTRAINED_WARN_PAD_M)
+                {
+                    double firstTwDist = TaxiGraph.FastDistanceMeters(
+                        aircraftLat, aircraftLon, startNode.Latitude, startNode.Longitude);
+                    string firstTwNote = firstTwDist > CONSTRAINED_WARN_FIRST_TW_M
+                        ? $" Taxiway {taxiwaySequence[0]} is {FormatDistance(firstTwDist)} from your position."
+                        : "";
+                    constrainedLengthWarning =
+                        $"Warning: route via {string.Join(", ", taxiwaySequence)} is " +
+                        $"{FormatDistance(route.TotalDistanceMeters)}; direct route is " +
+                        $"{FormatDistance(direct.TotalDistanceMeters)}.{firstTwNote} Check taxiway selection.";
+                }
+            }
 
             _route = route;
             _currentSegmentIndex = 0;
@@ -1118,6 +1165,8 @@ public class TaxiGuidanceManager : IDisposable
                 string summary = BuildRouteSummary(route, isRunwayDestination);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
+                if (!string.IsNullOrEmpty(constrainedLengthWarning))
+                    summary = summary + " " + constrainedLengthWarning;
                 LastRouteSummary = summary;
                 if (announceSummary)
                     _announcer.Announce(summary);
@@ -2451,11 +2500,20 @@ public class TaxiGuidanceManager : IDisposable
         // no valid path exists, setting ConstrainedFallbackReason.
         TaxiRoute? newRoute;
         if (remainingSequence != null && remainingSequence.Count > 0)
+        {
             newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence);
-        else if (_originalTaxiwaySequence != null && _originalTaxiwaySequence.Count > 0)
-            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, _originalTaxiwaySequence);
+        }
         else
+        {
+            // The aircraft is near NO taxiway of the cleared sequence — it is
+            // either past the whole clearance or far off it. Re-applying the
+            // FULL original sequence from here routes the pilot BACKWARDS
+            // through the entire clearance (KIAH 2026-06-10 15:24: a via-FE
+            // recalc built a 126-node loop back to a taxiway 1.5 km behind;
+            // only the post-recalc sanity gate stopped it). Shortest path to
+            // the destination is the honest recovery.
             newRoute = router.FindShortestPath(nearestNode.NodeId, _destinationNodeId);
+        }
 
         if (newRoute == null || newRoute.Segments.Count == 0)
         {
@@ -2540,6 +2598,7 @@ public class TaxiGuidanceManager : IDisposable
         _route = newRoute;
         _currentSegmentIndex = 0;
         _approachAnnounced = false;
+        _curveAnnouncedSign = 0;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
@@ -2610,7 +2669,6 @@ public class TaxiGuidanceManager : IDisposable
         _currentSegmentIndex++;
         _lastSegmentAdvanceTime = DateTime.Now;
         _approachAnnounced = false;
-        _curveAnnouncedSign = 0;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
 
