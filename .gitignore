@@ -147,3 +147,6 @@ tools/flypad-shell-test/node_modules/
 tools/flypad-settings-test/node_modules/
 tools/_probe/engmon/
 tools/_probe/engmon_ctrle/
+
+# Global: stray npm trees anywhere (a root-level jsdom tree once slipped into a commit)
+node_modules/
