@@ -195,6 +195,14 @@
     if (c.indexOf("space-x-4") >= 0 && c.indexOf("flex-row") >= 0) {
       try { if (n.querySelector(".border-4")) return "checkitem"; } catch (e) {}
     }
+    // flyPad SelectInput dropdown (UtilComponents/Form/SelectInput — the
+    // Performance takeoff/landing calculators' 13+11 dropdowns): the clickable
+    // ROOT is a border-theme-accent div with cursor-pointer (or
+    // cursor-not-allowed when disabled) whose VALUE text sits in an inner
+    // child next to a ChevronDown svg — so its directText is EMPTY and the
+    // generic rules below all miss it (the dropdowns were unreachable).
+    // Class-shape detection (no React internals → also works in jsdom tests).
+    if (A.isSelectInputRoot(n)) return "button";
     // flyPad action buttons are frequently styled <div>s with NO button/btn
     // token and no role — e.g. the modal "Cancel"/"Confirm" buttons and the
     // segmented setting controls ("Instant / Fast / Real"). They are
@@ -376,6 +384,31 @@
   // ("Go to Page"). Derive something meaningful from aria/title, then the
   // element's own text, then the router href, then the section heading.
   A.labelFor = function (n) {
+    // SelectInput dropdown: compose "FieldLabel: Value" — the value sits in the
+    // inner cell, the field name in the enclosing Label row's <p> (TakeoffWidget
+    // `<Label text=...><SelectInput/></Label>` = a justify-between row whose
+    // first child is the <p>). Label-less SelectInputs (e.g. the OFP/METAR
+    // source picker) read their bare value.
+    if (A.isSelectInputRoot(n)) {
+      var vcell = A.selectInputValueCell(n);
+      var val = vcell ? A.directText(vcell) : "";
+      var row = n, rh = 0;
+      while (row && rh < 4) {
+        // NOTE: labelFor declares a local `var lower` (a string) further down,
+        // which hoists over the module-level lower() helper for this whole
+        // function scope — lowercase inline here.
+        var rc = " " + (A.cls(row) || "").toLowerCase() + " ";
+        if (rc.indexOf(" justify-between ") >= 0) {
+          var p = row.querySelector && row.querySelector("p");
+          var fname = p ? clean(p.textContent) : "";
+          if (fname) return fname + ": " + (val || "(empty)");
+          break;
+        }
+        row = row.parentElement; rh++;
+      }
+      return val || "(empty)";
+    }
+
     var base = clean((n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("title"))) || "");
     if (!base) base = A.directText(n);
     if (!base) {
@@ -563,6 +596,33 @@
     return "";
   };
 
+  // SelectInput root detector (class-shape only — works live AND in jsdom):
+  // SelectInput.tsx renders `relative cursor-pointer rounded-md border-2
+  // border-theme-accent` (disabled: cursor-not-allowed opacity-50) with the
+  // value in an inner `relative flex px-3` child beside a ChevronDown svg.
+  A.isSelectInputRoot = function (n) {
+    try {
+      var c = " " + lower(A.cls(n)) + " ";
+      if (c.indexOf(" border-theme-accent ") < 0) return false;
+      if (c.indexOf(" cursor-pointer ") < 0 && c.indexOf(" cursor-not-allowed ") < 0) return false;
+      if (!n.querySelector || !n.querySelector("svg")) return false;
+      return !!A.selectInputValueCell(n);
+    } catch (e) { return false; }
+  };
+
+  // The inner value cell of a SelectInput root (the `relative flex px-3` div
+  // whose direct text is the current selection).
+  A.selectInputValueCell = function (n) {
+    try {
+      for (var i = 0; i < n.children.length; i++) {
+        var ch = n.children[i];
+        var cc = " " + lower(A.cls(ch)) + " ";
+        if (cc.indexOf(" flex ") >= 0 && cc.indexOf(" absolute ") < 0 && A.directText(ch)) return ch;
+      }
+    } catch (e) {}
+    return null;
+  };
+
   // True when the control is disabled: native disabled / aria-disabled, or FBW's
   // Tailwind idioms — pointer-events-none / opacity-20 / grayscale on the node or
   // a near ancestor (FBW disables via wrapper divs; synthetic click() would bypass
@@ -575,7 +635,11 @@
       while (cur && cur.nodeType === 1 && hops < 4) {
         var c = " " + ((cur.className && cur.className.baseVal !== undefined) ? cur.className.baseVal : (cur.className || "")) + " ";
         if (c.indexOf(" pointer-events-none ") >= 0) return true;
-        if (hops === 0 && (c.indexOf(" opacity-20 ") >= 0 || c.indexOf(" grayscale ") >= 0)) return true;
+        // cursor-not-allowed: the SelectInput component's disabled idiom
+        // (SelectInput.tsx swaps cursor-pointer for it; opacity-50 alone is
+        // ambiguous — enabled-but-faded buttons use it too).
+        if (hops === 0 && (c.indexOf(" opacity-20 ") >= 0 || c.indexOf(" grayscale ") >= 0 ||
+                           c.indexOf(" cursor-not-allowed ") >= 0)) return true;
         cur = cur.parentElement; hops++;
       }
     } catch (e) {}
