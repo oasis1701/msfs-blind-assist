@@ -7592,10 +7592,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX.FCU_VS_SET")
         {
             bool isValidVS = value >= -6000 && value <= 6000 && Math.Abs(value) >= 100;
-            bool isValidFPA = value >= -9.9 && value <= 9.9;
-            if (!isValidVS && !isValidFPA && value != 0)
+            bool isValidFPA = value >= -9.9 && value <= 9.9; // includes 0
+            if (!isValidVS && !isValidFPA)
             {
-                announcer.AnnounceImmediate("Invalid value. VS: -6000 to 6000, FPA: -9.9 to 9.9");
+                announcer.AnnounceImmediate("Invalid value. VS: plus or minus 100 to 6000, FPA: plus or minus 9.9 or less");
                 return true;
             }
             SetFCUVSValue(value, simConnect, announcer);

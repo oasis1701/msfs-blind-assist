@@ -6551,7 +6551,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public bool SetFCUVSValue(double value, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
-        int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
+        // FPA is sent ×10 per the FBW protocol (the A380 FCU's VerticalSpeedManager
+        // reads A320_Neo_FCU_VS_SET_DATA and does Math.round(value)/10 in FPA mode,
+        // gated on |value| < 100 — an ×100 encoding was silently IGNORED, not clamped).
+        int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
