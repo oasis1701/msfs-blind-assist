@@ -4029,8 +4029,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "A32NX_FCU_LEFT_EIS_BARO_HPA" || varName == "A32NX_FCU_RIGHT_EIS_BARO_HPA")
         {
             bool capt = varName.Contains("LEFT");
-            if (!BaroHpa(new Arinc429Word(value).ValueOr(0), out int hpa)) return true; // STD / no data
-            if (hpa != (capt ? _lastBaroL : _lastBaroR))
+            if (!BaroHpa(new Arinc429Word(value).ValueOr(0), out double hpa)) return true; // STD / no data
+            if (Math.Abs(hpa - (capt ? _lastBaroL : _lastBaroR)) > 0.05) // half the word's 0.1 step
             {
                 // SEED SILENTLY on the first read (last == -1) so MSFSBA doesn't call out
                 // "Captain/First officer altimeter ..." on startup; only a genuine later
@@ -4055,7 +4055,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (capt) _baroStdL = std; else _baroStdR = std;
             if (prev.HasValue && prev.Value != std) // skip the baseline read
             {
-                int last = capt ? _lastBaroL : _lastBaroR;
+                double last = capt ? _lastBaroL : _lastBaroR;
                 // Guard like the unit-change branch below: _lastBaroL/R start at -1 and
                 // are seeded only by a valid HPA word — STD->QNH before any valid sample
                 // would otherwise speak "QNH -1 hectopascals".
@@ -4080,7 +4080,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (capt) _baroInHgL = inHg; else _baroInHgR = inHg;
             if (prev.HasValue && prev.Value != inHg) // skip the baseline read
             {
-                int last = capt ? _lastBaroL : _lastBaroR;
+                double last = capt ? _lastBaroL : _lastBaroR;
                 if (last > 0 && (capt ? _baroStdL : _baroStdR) != true)
                     announcer.Announce(BaroPhrase(capt, last, false));
                 else
@@ -4883,7 +4883,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // isn't available/sane, so the gross-weight readout never breaks or says "CG 0".
     private string CgMacPhrase() => (_gwCgMac > 5 && _gwCgMac < 60) ? $", center of gravity {_gwCgMac:0.0} percent MAC" : "";
     private int _lastSpoilerBand = -1;   // speed-brake handle band (10% steps) last announced
-    private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
+    private double _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (hPa, 0.1 resolution)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
     private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
@@ -4900,23 +4900,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ("A32NX_RESET_PANEL_NSS_FLT_OPS", "Reset NSS Flight Ops"), ("A32NX_RESET_PANEL_ARPT_NAV", "Reset Airport Nav"),
     };
 
-    // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
+    // Decode/normalise an EFIS baro setting to hPa at the word's own 0.1-hPa
+    // resolution; false for STD/no-data. Do NOT quantize to whole hPa — 1 hPa is
+    // ~0.03 inHg, so rounding here shifted the inches read-out by ±0.01 (a 29.79
+    // set read back as "29.80"; the aircraft held 29.79 exactly — verified live).
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
     // works if the EFIS is switched to inches and the value comes through scaled.
-    private static bool BaroHpa(double raw, out int hpa)
+    private static bool BaroHpa(double raw, out double hpa)
     {
-        if (raw >= 800 && raw <= 1100) { hpa = (int)Math.Round(raw); return true; }
-        if (raw >= 22 && raw <= 33) { hpa = (int)Math.Round(raw * 33.8639); return true; }
+        if (raw >= 800 && raw <= 1100) { hpa = raw; return true; }
+        if (raw >= 22 && raw <= 33) { hpa = raw * 33.8639; return true; }
         hpa = 0; return false;
     }
-    // Speak the baro setting in the side's selected unit (hPa or inHg).
-    private string BaroPhrase(bool capt, int hpa, bool qnh)
+    // Speak the baro setting in the side's selected unit (hPa or inHg). hPa speaks
+    // whole numbers (the FCU's hPa display is whole-hPa); inches converts from the
+    // unquantized hPa so the 0.01-inch value survives.
+    private string BaroPhrase(bool capt, double hpa, bool qnh)
     {
         string who = capt ? "Captain" : "First officer";
         string pre = qnh ? "Q N H " : "";
         return (capt ? _baroInHgL : _baroInHgR) == true
             ? $"{who} altimeter {pre}{hpa / 33.8639:0.00} inches"
-            : $"{who} altimeter {pre}{hpa} hectopascals";
+            : $"{who} altimeter {pre}{hpa:0} hectopascals";
     }
 
     // Panel-display decode for the ARINC429 EFIS baro + minimums words, so the
@@ -5168,14 +5173,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // STD flag wins; otherwise decode the word (range-aware) and show
                 // in the side's selected unit.
                 if ((capt ? _baroStdL : _baroStdR) == true ||
-                    !BaroHpa(new Arinc429Word(value).ValueOr(0), out int hpa))
+                    !BaroHpa(new Arinc429Word(value).ValueOr(0), out double hpa))
                 {
                     displayText = "Standard";
                     return true;
                 }
                 displayText = (capt ? _baroInHgL : _baroInHgR) == true
                     ? $"{hpa / 33.8639:0.00} inHg"
-                    : $"{hpa} hPa";
+                    : $"{hpa:0} hPa";
                 return true;
             }
             case "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE":
@@ -6237,10 +6242,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 double? isStdNow = simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD");
                 bool stdNow = isStdNow.HasValue ? isStdNow.Value > 0.5 : (_baroStdL == true);
                 if (stdNow) { announcer.AnnounceImmediate("Altimeter standard"); return true; }
-                int hpaNow = _lastBaroL;
+                double hpaNow = _lastBaroL;
                 double? baroWord = simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_HPA");
-                if (baroWord.HasValue && BaroHpa(new Arinc429Word(baroWord.Value).ValueOr(0), out int hpaDec) && hpaDec > 0) hpaNow = hpaDec;
-                if (hpaNow > 0) { announcer.AnnounceImmediate($"Altimeter: {hpaNow}, {hpaNow / 33.8639:0.00}"); return true; }
+                if (baroWord.HasValue && BaroHpa(new Arinc429Word(baroWord.Value).ValueOr(0), out double hpaDec) && hpaDec > 0) hpaNow = hpaDec;
+                if (hpaNow > 0) { announcer.AnnounceImmediate($"Altimeter: {hpaNow:0}, {hpaNow / 33.8639:0.00}"); return true; }
                 // Fallback (EIS baro not seeded yet): stock KOHLSMAN.
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
