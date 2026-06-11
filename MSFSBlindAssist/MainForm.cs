@@ -126,14 +126,20 @@ public partial class MainForm : Form
     {
         try
         {
-            if (simConnectManager == null || !simConnectManager.IsConnected)
+            // Gate on FULL detection, not just the socket: a probe started while the
+            // sim is still in the menu burns its attempts against an empty world
+            // (calc writes no-op without an aircraft) and falsely logs "gave up" —
+            // observed live 2026-06-12 (all 40 attempts spent before the A320 loaded).
+            // Treating not-fully-connected like disconnected also re-arms the probe
+            // on every aircraft detection / swap.
+            if (simConnectManager == null || !simConnectManager.IsConnected || !simConnectManager.IsFullyConnected)
             {
                 _bridgeProbeWasDisconnected = true;
                 return;
             }
             if (_bridgeProbeWasDisconnected)
             {
-                // Fresh connection: re-arm the probe (CalcPathVerified resets on teardown).
+                // Fresh connection/aircraft: re-arm the probe (CalcPathVerified resets on teardown).
                 _bridgeProbeWasDisconnected = false;
                 _bridgeProbeAttempts = 0;
                 _bridgeProbeAwaitingRead = false;
