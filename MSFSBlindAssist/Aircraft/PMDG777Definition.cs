@@ -75,6 +75,13 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         TonePitchRangeDeg         = 10.0
     };
 
+    // MEASURED 2026-06-11 (KSFO, B77W, 6 turns): the 1.0 s prior over-led —
+    // 5 of 6 rollouts stopped 5.5–10.5° SHORT (median correction −0.97 s).
+    // Same pattern as the 737: the pilot self-anticipates Boeing rollouts, so
+    // tone lead stacks on their habit. Set near the measured optimum with a
+    // small margin; re-measure once the pilot trusts the cue.
+    public override double TaxiTurnLeadSeconds => 0.3;
+
     // =========================================================================
     // Panel Structure
     // =========================================================================

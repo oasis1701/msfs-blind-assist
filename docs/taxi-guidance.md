@@ -176,6 +176,27 @@ toneHeadingError = NormalizeAngle(desiredHeading − aircraftHeadingTrue)
 
 **Pulse → continuous transition: always refresh volume.** `TaxiSteeringTone.SetTone` calls `_toneGenerator.UpdateVolume(EffectiveVolume())` every sounding frame, regardless of `_pulseActive`. The previous "only refresh in pulse mode" optimization left the tone stuck at zero volume during a pulse-off transition: the pilot is stopped-misaligned (pulse fires, volume alternates 0 / configured at 3 Hz), then starts moving (`SetPulse(false)` is called); on the next frame `_pulseActive` is false, the optimization skipped UpdateVolume, and if the previous pulse cycle had set the volume to 0 (silent half) the tone stayed silent in continuous mode until something else triggered a state change (oversteer / going silent / Pause). One UpdateVolume call per ~30 Hz frame is cheap; correctness beats the micro-op.
 
+### Turn rollout anticipation (rate-lead tone, per-aircraft)
+
+The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**, not the raw smoothed error: `projected = error − yawRate × TurnLeadSeconds` (clamped ±30°, only while |yawRate| ≥ 1°/s — see `GuidanceGeometry.ProjectHeadingError`). The tone therefore **centres BEFORE the nose reaches the target bearing**, absorbing pilot reaction time + airframe yaw inertia: tone centred mid-turn = "this rate of turn lands exactly on the new heading — hold it"; tone panning opposite = "unwind now". Without this, the tone centred at error = 0 and the aircraft yawed 15–25° past during the pilot's reaction — the chronic Airbus turn-overshoot reported 2026-06-10. Lineup, docking, and rollout tone paths are NOT projected — they keep their own precision profiles.
+
+**`TurnLeadSeconds` is per-aircraft** (`IAircraftDefinition.TaxiTurnLeadSeconds`, wired by MainForm at startup + aircraft switch; base default 1.2 s; 0 disables). Measured values (rollout-residual analysis over the pilot's own telemetry — residual error when yaw settles after each ≥30° turn episode):
+
+| Aircraft | Lead | Provenance |
+|---|---|---|
+| FBW A32NX (A20N) | 1.6 s | Open-loop MEASURED 2026-06-10 (13 turns, median needed 0.95 s → 1.3); closed-loop revalidation 2026-06-11 rolled ~15° LONG — with the cue available the pilot waits for tone-centre instead of self-anticipating, exposing the full reaction+inertia chain → stepped to 1.6; converging |
+| Fenix A320/A321 | 1.3 s | Proxy from the FBW measurement; round-2 mid-route turn ON (+2.5°). High Fenix yaw rates (14–15°/s) make low-speed quick turns centre early — a rate-tapered lead is a possible future refinement |
+| PMDG 737 | 0.4 s | MEASURED + VALIDATED 2026-06-11 (0.8 prior over-led by 8.7°; at 0.4: 3/3 rollouts ON, median +1.6° — the pilot self-anticipates Boeing rollouts) |
+| PMDG 777 | 0.3 s | MEASURED + VALIDATED 2026-06-11 (1.0 prior over-led; at 0.3 across two sessions: n=14, 9 ON, medians +1.2°/+3.6° incl. a 7 km 188-segment KATL taxi) |
+| HS 787 | 1.2 s | base default, unmeasured |
+| FBW A380 | **1.8 s — ADD AT MERGE** | The definition lives on the FlyByWire branch. MEASURED 2026-06-11 flying the A380 on the A320's 1.3 s: five rollouts went 10–42° LONG at 15–19 kt (the reported "correct left right, left right" oscillation); pilot only coped by slowing below 13 kt. One-line override when the definition lands. |
+
+**"Straighten." cue is yaw-episode based, NOT junction-angle based.** A sustained-yaw episode opens at |yawRate| ≥ 4°/s, accumulates signed heading change, closes below 1.5°/s (direction flip restarts it). The cue fires once per episode when the episode has turned ≥ 35°, the route ahead within 60 m bends < 15° (a steady mid-curve arc holds projected error near zero BY DESIGN — the straightness gate is what prevents false fires inside long curves), and the projected error crosses centre against the yaw direction. **Do not re-introduce a `TurnAngleDegrees ≥ SHARP_TURN_ANGLE_DEG` gate:** real navdata splits 90° turns into 5–15° micro-bends — a measured KSFO route had 107 junctions and only ONE ≥ 60°, which made the original junction-gated cue dead code.
+
+**Curve announcements ("Curving left/right.")** fire once per direction when the cumulative bend over the next `CURVE_SCAN_WINDOW_M = 100 m` reaches ≥ 30° with no single junction ≥ 20° (discrete junctions keep the existing turn callouts). Sign-keyed latch with 15° re-arm hysteresis. **Opposite-yaw deferral:** the cue is suppressed while the aircraft is still yawing ≥ 3°/s AGAINST the announced direction — near a curve's exit the scan window already reaches into the next, opposite curve, and announcing it mid-turn reads as a contradiction (pilot report 2026-06-11). It fires the moment the current turn settles.
+
+**Deferred: user-tunable lead setting (design agreed 2026-06-11, intentionally not implemented).** When pilots want to tune beyond the per-aircraft defaults: `Dictionary<string, double> TaxiTurnLeadOverrides` on `UserSettings` keyed by aircraft code (JSON-serializes in the existing settings file, no migration); one combo in Taxi Guidance Options — "Turn anticipation (this aircraft): Aircraft default (recommended) / Off / 0.2 s … 3.0 s in 0.2 steps" — reading/writing the current aircraft's entry; effective lead = `override ?? aircraft.TaxiTurnLeadSeconds`, recomputed on dialog save + aircraft switch (the two existing MainForm wiring sites). Range rationale: measured fleet spans ~0.0–2.3 s; 3.0 gives headroom; 0 = off. Per-aircraft (not global) because the measured differences BETWEEN aircraft are the point; a global override would poison the rest of the fleet the moment one aircraft is tuned.
+
 ## Announcements
 
 | Trigger | Distance / Condition | Announcement |
@@ -1110,7 +1131,9 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `ARRIVAL_RADIUS_M` | 30.0 | Runway arrival radius |
 | `GATE_ARRIVAL_RADIUS_FEET` | 20.0 | Gate arrival radius |
 | `RECALCULATION_COOLDOWN_SEC` | 15.0 | Minimum gap between auto-reroutes |
-| `GUIDANCE_LOOK_AHEAD_M` | 50.0 | Minimum distance to the heading target — keeps short segments from wobbling the tone |
+| `GUIDANCE_LOOK_AHEAD_SEC` | 6.0 | Speed-scaled look-ahead horizon for the heading target (continuous walk via `GuidanceGeometry.WalkTarget`) |
+| `GUIDANCE_LOOK_AHEAD_MIN_M` | 50.0 | Look-ahead floor — keeps short segments from wobbling the tone at low speed |
+| `GUIDANCE_LOOK_AHEAD_MAX_M` | 120.0 | Look-ahead ceiling — caps the projected heading target at high taxi speed |
 | `HEADING_ERROR_FILTER_ALPHA` | 0.25 | Low-pass filter on heading error fed to the tone |
 | `CROSSING_DEDUP_WINDOW_SEC` | 45.0 | Per-taxiway-name crossing announcement dedup |
 | `MAX_TAXI_SPEED_STRAIGHT_KTS` | 30.0 | Speed-warning threshold on straight segments |

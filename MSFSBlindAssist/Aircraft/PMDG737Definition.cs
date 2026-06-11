@@ -177,6 +177,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    // MEASURED 2026-06-11 (KATL, B738, 2 turns): the 0.8 s prior over-led —
+    // both rollouts stopped consistently 8.7° SHORT of the new heading (the
+    // pilot already anticipates 737 rollouts themselves, so tone lead stacks
+    // on top of their habit). Halved as a conservative step; raw residuals
+    // suggested ~0. Re-measure once the pilot has flown with the cue a while —
+    // their own anticipation may relax as they learn to trust it.
+    public override double TaxiTurnLeadSeconds => 0.4;
+
     // =========================================================================
     // Panel Structure
     // =========================================================================

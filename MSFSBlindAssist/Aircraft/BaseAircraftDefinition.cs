@@ -607,6 +607,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 
+    public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
+
     /// <summary>
     /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.
     /// Shared by all aircraft definitions that support Gemini display capture.

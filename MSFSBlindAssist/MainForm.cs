@@ -320,6 +320,10 @@ public partial class MainForm : Form
             takeoffAssistManager.IsActive
             || taxiGuidanceManager.State == TaxiGuidanceState.Inactive;
 
+        // Per-aircraft rollout-anticipation lead for the taxi steering tone
+        // (see IAircraftDefinition.TaxiTurnLeadSeconds).
+        taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
+
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
 
@@ -3925,6 +3929,8 @@ public partial class MainForm : Form
     {
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
 
         // Refresh aircraft-conditional menu items (FMC Settings is PMDG-only).
         UpdateAircraftSpecificMenuItems();

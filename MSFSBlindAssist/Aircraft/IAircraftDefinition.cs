@@ -290,4 +290,14 @@ public interface IAircraftDefinition
     /// or smaller airframes (e.g., 777, 747) to bias the nominal commanded pitch and rate limits.
     /// </summary>
     VisualGuidanceProfile GetVisualGuidanceProfile();
+
+    /// <summary>
+    /// Taxi-turn rollout-anticipation lead, seconds. The steering tone's
+    /// heading error is projected this far ahead by the yaw rate so the tone
+    /// centres BEFORE the nose reaches the new heading (pilot reaction time +
+    /// airframe yaw inertia). Per-aircraft because sim steering response
+    /// differs sharply: FBW Airbuses overshoot chronically; PMDG Boeings
+    /// barely at all. 0 disables the projection.
+    /// </summary>
+    double TaxiTurnLeadSeconds { get; }
 }

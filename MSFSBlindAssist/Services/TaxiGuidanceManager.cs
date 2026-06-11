@@ -102,6 +102,35 @@ public class TaxiGuidanceManager : IDisposable
     private string _icao = "";
     private List<string>? _originalTaxiwaySequence;
 
+    // Route polyline cache for GuidanceGeometry (node k = segment k's FromNode,
+    // last entry = final ToNode). Rebuilt lazily whenever _route changes —
+    // keyed by reference so every assignment site (LoadRoute, recalc,
+    // retarget) is covered without per-site invalidation duties.
+    private TaxiRoute? _routePointsSource;
+    private double[] _routeLats = Array.Empty<double>();
+    private double[] _routeLons = Array.Empty<double>();
+
+    private (double[] lats, double[] lons) RoutePoints()
+    {
+        var route = _route!;
+        if (!ReferenceEquals(_routePointsSource, route))
+        {
+            int n = route.Segments.Count;
+            var lats = new double[n + 1];
+            var lons = new double[n + 1];
+            for (int i = 0; i < n; i++)
+            {
+                lats[i] = route.Segments[i].FromNode.Latitude;
+                lons[i] = route.Segments[i].FromNode.Longitude;
+            }
+            lats[n] = route.Segments[n - 1].ToNode.Latitude;
+            lons[n] = route.Segments[n - 1].ToNode.Longitude;
+            _routeLats = lats; _routeLons = lons;
+            _routePointsSource = route;
+        }
+        return (_routeLats, _routeLons);
+    }
+
     // Current tracking state
     private int _currentSegmentIndex = 0;
     // True when the active route came from the Landing Exit Planner (it
@@ -111,7 +140,23 @@ public class TaxiGuidanceManager : IDisposable
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
+    private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
     private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
+    // Yaw-episode tracker driving the "Straighten." rollout cue. The original
+    // design armed off the route's per-junction TurnAngleDegrees — DEAD ON REAL
+    // NAVDATA: a measured KSFO route had 107 junctions and only ONE ≥ 60° (real
+    // 90° turns are chains of 5–15° micro-bends), so the cue never fired
+    // (pilot report 2026-06-11). Episodes are route-classification-independent:
+    // an episode opens when sustained |yaw| ≥ STRAIGHTEN_EPISODE_MIN_RATE,
+    // accumulates signed heading change, and closes when yaw settles. The cue
+    // fires once per episode when (a) the episode has turned ≥
+    // STRAIGHTEN_MIN_TURN_DEG, (b) the route ahead is straight-ish (so a
+    // mid-curve steady arc — where the projected error legitimately hovers
+    // near zero — can't false-fire), and (c) the projected error crosses
+    // through centre against the yaw direction.
+    private int _yawEpisodeSign;            // 0 = no episode in progress
+    private double _yawEpisodeTurnDeg;      // signed accumulated heading change
+    private bool _straightenFiredThisEpisode;
     private bool _crossingAnnounced = false;       // "Crossing taxiway X" at ~150ft
     private int _lastCrossingNodeId = -1;          // suppress re-announce for same node
     // Time-windowed dedup per taxiway NAME — many airports split what looks like a single
@@ -134,6 +179,17 @@ public class TaxiGuidanceManager : IDisposable
     private const double TURN_IMMINENT_MAX_M = 75.0;             // ceiling: ~245ft (fast jet taxi)
     private const double TURN_IMMINENT_SEC_LEAD = 4.0;           // desired lead time at current ground speed
     private const double CROSSING_ANNOUNCE_DISTANCE_M = 50.0;    // ~150ft "crossing taxiway X"
+    // Cumulative-curve verbal cue. Navdata models gentle curves as chains of
+    // 5–15 m segments bending 5–15° each — every step is below the 20°
+    // discrete-turn threshold, so no turn callout ever fired for a 30–90°
+    // cumulative curve (KATL 2026-06-10: a 48° curve produced a silent −72°
+    // tone error at 20 kt). Announce once per curve direction when the next
+    // CURVE_SCAN_WINDOW_M of route bends ≥ CURVE_ANNOUNCE_MIN_DEG without any
+    // single discrete step (discrete turns keep their own callouts).
+    private const double CURVE_SCAN_WINDOW_M = 100.0;
+    private const double CURVE_ANNOUNCE_MIN_DEG = 30.0;
+    private const double CURVE_RESET_DEG = 15.0;   // hysteresis: re-arm when the window straightens
+    private const double CURVE_ANNOUNCE_MAX_OPPOSITE_YAW_DEG_SEC = 3.0;  // defer cue while yawing against it
     // Runway-destination arrival radius (12 m ≈ 40 ft). Tight enough that the
     // 300/150/50 ft countdown fires in full BEFORE HandleArrival takes over
     // (previously 30 m preempted the 50 ft "Stop." callout). The pilot therefore
@@ -142,7 +198,35 @@ public class TaxiGuidanceManager : IDisposable
     // hold-short node — enough braking room even at brisk taxi speed.
     private const double ARRIVAL_RADIUS_M = 12.0;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
-    private const double GUIDANCE_LOOK_AHEAD_M = 50.0;           // Min distance for heading target
+    // Steering-tone look-ahead: target = the point this many metres ahead
+    // along the route polyline (continuous walk — see GuidanceGeometry).
+    // Speed-scaled so the tone leads turns earlier at speed: 6 s of travel,
+    // clamped. At 10 kt → 50 m (floor); 20 kt → 62 m; 30 kt+ → 93–120 m.
+    // The 50 m floor matches the old fixed GUIDANCE_LOOK_AHEAD_M so slow-taxi
+    // cross-track sensitivity is unchanged.
+    private const double GUIDANCE_LOOK_AHEAD_SEC = 6.0;
+    private const double GUIDANCE_LOOK_AHEAD_MIN_M = 50.0;
+    private const double GUIDANCE_LOOK_AHEAD_MAX_M = 120.0;
+    // Rollout anticipation: project the tone's heading error forward by the
+    // yaw rate over TurnLeadSeconds so the tone centres BEFORE the nose
+    // arrives — the pilot starts unwinding on time instead of overshooting
+    // the turn (reaction time + airframe yaw inertia). Lead is PER-AIRCRAFT
+    // (IAircraftDefinition.TaxiTurnLeadSeconds, wired by MainForm on aircraft
+    // load/switch): FBW Airbuses need ~1.3–1.6 s (1.3 measured from 13 turn
+    // rollouts in the 2026-06-10 A20N telemetry), PMDG Boeings ~0.8–1.0 s.
+    // 0 disables the projection entirely. Contribution clamped; rate
+    // low-passed; only applied while actually yawing.
+    // Cross-thread note: written by the UI thread on aircraft load/switch, read per-frame on the SimConnect thread WITHOUT _stateLock — benign (single aligned double, no coupled invariant). Do not couple a second field to it without taking the lock.
+    public double TurnLeadSeconds { get; set; } = 1.2;
+    private const double TURN_LEAD_MAX_DEG = 30.0;
+    private const double TURN_LEAD_MIN_RATE_DEG_SEC = 1.0;
+    private const double YAW_RATE_FILTER_ALPHA = 0.3;
+    // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
+    private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
+    private const double STRAIGHTEN_EPISODE_END_RATE_DEG_SEC = 1.5;  // close episode (hysteresis)
+    private const double STRAIGHTEN_MIN_TURN_DEG = 35.0;             // episode must have turned this much
+    private const double STRAIGHTEN_AHEAD_WINDOW_M = 60.0;           // route-ahead straightness scan
+    private const double STRAIGHTEN_AHEAD_STRAIGHT_DEG = 15.0;       // ...must bend less than this
     // If the aircraft is within this distance of the destination, suppress off-route
     // recalculation entirely. Navdata gaps between the last taxiway and the runway/gate
     // node (e.g., J1 terminus → K1 junction at VHHH is 67 m from 07R), combined with
@@ -979,6 +1063,7 @@ public class TaxiGuidanceManager : IDisposable
             // re-set it true when this is a Landing Exit Planner route.
             _isLandingExitRoute = false;
             _approachAnnounced = false;
+            _curveAnnouncedSign = 0;
             _turnImminentAnnounced = false;
             _crossingAnnounced = false;
             _lastCrossingNodeId = -1;
@@ -1374,6 +1459,52 @@ public class TaxiGuidanceManager : IDisposable
         _lastHeading = headingTrue;
         _positionInitialized = true;
 
+        // Yaw-rate tracking for rollout anticipation (wrap-safe, low-passed).
+        var nowYaw = DateTime.UtcNow;
+        if (_lastYawSampleTime != DateTime.MinValue)
+        {
+            double dt = (nowYaw - _lastYawSampleTime).TotalSeconds;
+            if (dt > 0.01 && dt < 1.0)
+            {
+                double dHdg = NormalizeAngle(headingTrue - _lastYawHeading);
+                double rate = dHdg / dt;
+                _yawRateDegSec = _yawRateDegSec * (1 - YAW_RATE_FILTER_ALPHA)
+                               + rate * YAW_RATE_FILTER_ALPHA;
+
+                // Yaw-episode tracking for the "Straighten." cue. An episode is a
+                // sustained turn in one direction; a direction flip restarts it.
+                if (Math.Abs(_yawRateDegSec) >= STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC)
+                {
+                    int s = Math.Sign(_yawRateDegSec);
+                    if (_yawEpisodeSign != s)
+                    {
+                        _yawEpisodeSign = s;
+                        _yawEpisodeTurnDeg = 0.0;
+                        _straightenFiredThisEpisode = false;
+                    }
+                    _yawEpisodeTurnDeg += dHdg;
+                }
+                else if (Math.Abs(_yawRateDegSec) < STRAIGHTEN_EPISODE_END_RATE_DEG_SEC)
+                {
+                    _yawEpisodeSign = 0;
+                    _yawEpisodeTurnDeg = 0.0;
+                }
+                else if (_yawEpisodeSign != 0)
+                {
+                    // between the two thresholds: episode continues accumulating
+                    _yawEpisodeTurnDeg += dHdg;
+                }
+            }
+            else if (dt >= 1.0)
+            {
+                _yawRateDegSec = 0;   // stale gap (paused sim / reconnect) — reset
+                _yawEpisodeSign = 0;
+                _yawEpisodeTurnDeg = 0.0;
+            }
+        }
+        _lastYawSampleTime = nowYaw;
+        _lastYawHeading = headingTrue;
+
         // Handle lineup phase separately
         if (_state == TaxiGuidanceState.LiningUp)
         {
@@ -1615,8 +1746,48 @@ public class TaxiGuidanceManager : IDisposable
         // and runway-aligned phases.
         if (!_steeringToneSuppressed)
         {
+            // Rollout anticipation: only while genuinely yawing, so straight-line
+            // sensor noise can't perturb the tone. Runway/gate lineup and docking
+            // keep their own precision profiles — this applies to Taxiing only.
+            // TurnLeadSeconds is per-aircraft (0 = disabled).
+            double toneError = TurnLeadSeconds > 0.0
+                               && Math.Abs(_yawRateDegSec) >= TURN_LEAD_MIN_RATE_DEG_SEC
+                ? GuidanceGeometry.ProjectHeadingError(
+                      _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG)
+                : _smoothedHeadingError;
             _steeringTone.Resume();
-            _steeringTone.UpdateHeadingError(_smoothedHeadingError, currentSeg.PathWidth);
+            _steeringTone.UpdateHeadingError(toneError, currentSeg.PathWidth);
+        }
+
+        // Turn rollout cue ("Straighten.") — yaw-episode based, independent of
+        // route junction classification (see the _yawEpisodeSign field comment:
+        // real navdata splits 90° turns into micro-bends, so per-junction angle
+        // gates never fire). Fires once per sustained-yaw episode when the
+        // aircraft has genuinely turned (≥ STRAIGHTEN_MIN_TURN_DEG), the route
+        // ahead is straight (a steady mid-curve arc holds projected error near
+        // zero by DESIGN — without the straightness gate this would false-fire
+        // inside every long curve), and the projected error crosses through
+        // centre against the yaw direction: unwind NOW or overshoot.
+        if (TurnLeadSeconds > 0.0 && _yawEpisodeSign != 0 && !_straightenFiredThisEpisode
+            && Math.Abs(_yawRateDegSec) >= STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC
+            && Math.Abs(_yawEpisodeTurnDeg) >= STRAIGHTEN_MIN_TURN_DEG)
+        {
+            var (slats, slons) = RoutePoints();
+            double cumAhead = GuidanceGeometry.CumulativeTurnDeg(
+                slats, slons, _currentSegmentIndex, _lastLat, _lastLon,
+                STRAIGHTEN_AHEAD_WINDOW_M, out _);
+            if (Math.Abs(cumAhead) < STRAIGHTEN_AHEAD_STRAIGHT_DEG)
+            {
+                double projected = GuidanceGeometry.ProjectHeadingError(
+                    _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG);
+                // Crossed centre: projected error now on the OPPOSITE side of the
+                // yaw direction (turning right but projected error says left).
+                if (projected * _yawEpisodeSign <= 0)
+                {
+                    AnnounceInstruction("Straighten.");
+                    _straightenFiredThisEpisode = true;
+                }
+            }
         }
 
         // Diagnostic trace — captures raw and smoothed inputs to the steering
@@ -1798,79 +1969,25 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Gets a guidance target point at least GUIDANCE_LOOK_AHEAD_M meters ahead on the route.
-    /// This smooths steering through short navdata segments that would otherwise cause jitter.
-    ///
-    /// CRITICAL: Never look past a turn. If the next segment is a turn (>25°), the look-ahead
-    /// is clamped to the current segment's ToNode — otherwise the tone would push the blind
-    /// pilot to cut the corner diagonally through grass.
+    /// Gets the steering-tone target: the point a speed-scaled look-ahead
+    /// distance ahead along the route polyline, via the continuous arc-length
+    /// walk in <see cref="GuidanceGeometry.WalkTarget"/>. Continuous in both
+    /// aircraft position and segment advancement — replaces the old binary
+    /// turn/no-turn target picker whose one-frame 100+ m target jumps caused
+    /// violent steering-tone pan flips at junctions.
     /// </summary>
     private (double lat, double lon) GetGuidanceTarget(double aircraftLat, double aircraftLon)
     {
-        if (_route == null || _currentSegmentIndex >= _route.Segments.Count)
+        if (_route == null || _route.Segments.Count == 0 ||
+            _currentSegmentIndex >= _route.Segments.Count)
             return (aircraftLat, aircraftLon);
 
-        var currentSeg = _route.Segments[_currentSegmentIndex];
-
-        // Check whether the next segment is a turn (bearing change > 25°).
-        TaxiRouteSegment? nextTurnSeg = null;
-        if (_currentSegmentIndex + 1 < _route.Segments.Count)
-        {
-            var ns = _route.Segments[_currentSegmentIndex + 1];
-            bool isTurn = ns.TurnDirection != "straight" ||
-                          Math.Abs(NormalizeAngle(ns.BearingDegrees - currentSeg.BearingDegrees)) > 25.0;
-            if (isTurn) nextTurnSeg = ns;
-        }
-
-        // Distance from aircraft to the current segment's end node (the junction).
-        double accumulatedDist = TaxiGraph.FastDistanceMeters(
-            aircraftLat, aircraftLon,
-            currentSeg.ToNode.Latitude,
-            currentSeg.ToNode.Longitude);
-
-        // Approaching a turn junction: if we're still outside the look-ahead window,
-        // aim at the junction (keep pointing straight ahead). Once we're inside the
-        // window, wrap the remaining distance past the junction along the next segment
-        // so the tone begins panning toward the turn direction before we arrive.
-        if (nextTurnSeg != null)
-        {
-            if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
-                return (currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude);
-            double remaining = GUIDANCE_LOOK_AHEAD_M - accumulatedDist;
-            return GeoProjectPoint(currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude,
-                                   nextTurnSeg.BearingDegrees, remaining);
-        }
-
-        // If the immediate ToNode is already far enough, use it
-        if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
-        {
-            return (currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude);
-        }
-
-        // Otherwise, keep looking further along the route (stop at first turn)
-        for (int i = _currentSegmentIndex + 1; i < _route.Segments.Count; i++)
-        {
-            var seg = _route.Segments[i];
-
-            // Stop if this segment is a turn — use previous segment's ToNode as target
-            bool thisIsTurn = seg.TurnDirection != "straight" ||
-                              (i > 0 && Math.Abs(NormalizeAngle(
-                                  seg.BearingDegrees - _route.Segments[i - 1].BearingDegrees)) > 25.0);
-            if (thisIsTurn)
-            {
-                return (_route.Segments[i - 1].ToNode.Latitude, _route.Segments[i - 1].ToNode.Longitude);
-            }
-
-            accumulatedDist += seg.DistanceMeters;
-            if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
-            {
-                return (seg.ToNode.Latitude, seg.ToNode.Longitude);
-            }
-        }
-
-        // If the entire remaining route is <50m, aim for the final destination
-        var lastSeg = _route.Segments[^1];
-        return (lastSeg.ToNode.Latitude, lastSeg.ToNode.Longitude);
+        var (lats, lons) = RoutePoints();
+        double lookAhead = Math.Clamp(
+            _lastGroundSpeedKts * 0.5144 * GUIDANCE_LOOK_AHEAD_SEC,
+            GUIDANCE_LOOK_AHEAD_MIN_M, GUIDANCE_LOOK_AHEAD_MAX_M);
+        return GuidanceGeometry.WalkTarget(
+            lats, lons, _currentSegmentIndex, aircraftLat, aircraftLon, lookAhead);
     }
 
     /// <summary>
@@ -2493,6 +2610,7 @@ public class TaxiGuidanceManager : IDisposable
         _currentSegmentIndex++;
         _lastSegmentAdvanceTime = DateTime.Now;
         _approachAnnounced = false;
+        _curveAnnouncedSign = 0;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
 
@@ -2536,6 +2654,10 @@ public class TaxiGuidanceManager : IDisposable
         // ft cadence. Removed.
         if (currentSeg.IsHoldShortPoint)
             return;
+
+        // Cumulative-curve cue — fires for gentle multi-segment curves that the
+        // discrete-turn logic below cannot see (every individual junction < 20°).
+        TryAnnounceCurve();
 
         string nextTaxiway = nextSeg.TaxiwayName;
         bool taxiwayChanging = !string.IsNullOrEmpty(nextTaxiway) &&
@@ -2621,6 +2743,43 @@ public class TaxiGuidanceManager : IDisposable
             AnnounceInstruction($"{sharpStr}{turnStr} now{taxiStr}.");
             _turnImminentAnnounced = true;
         }
+    }
+
+    private void TryAnnounceCurve()
+    {
+        if (_route == null || _route.Segments.Count == 0 ||
+            _currentSegmentIndex >= _route.Segments.Count) return;
+
+        var (lats, lons) = RoutePoints();
+        double cum = GuidanceGeometry.CumulativeTurnDeg(
+            lats, lons, _currentSegmentIndex, _lastLat, _lastLon,
+            CURVE_SCAN_WINDOW_M, out bool hasDiscreteStep);
+
+        // A discrete junction inside the window is owned by the approach/now
+        // callouts — saying "curving" as well would double-speak the same bend.
+        if (hasDiscreteStep) return;
+
+        int sign = cum <= -CURVE_ANNOUNCE_MIN_DEG ? -1
+                 : cum >= CURVE_ANNOUNCE_MIN_DEG ? 1 : 0;
+
+        if (sign == 0)
+        {
+            if (Math.Abs(cum) < CURVE_RESET_DEG) _curveAnnouncedSign = 0;  // re-arm
+            return;
+        }
+        if (sign == _curveAnnouncedSign) return;   // this curve already announced
+
+        // Don't announce a NEW direction while the aircraft is still yawing the
+        // OTHER way: near a curve's exit the scan window already reaches into the
+        // next, opposite curve, and announcing it mid-turn reads as a contradiction
+        // ("Curving right." while the pilot is still steering left — pilot report
+        // 2026-06-11). Defer; the cue fires the moment the current turn settles.
+        if (_yawRateDegSec * sign < 0 &&
+            Math.Abs(_yawRateDegSec) >= CURVE_ANNOUNCE_MAX_OPPOSITE_YAW_DEG_SEC)
+            return;
+
+        _curveAnnouncedSign = sign;
+        AnnounceInstruction(sign < 0 ? "Curving left." : "Curving right.");
     }
 
     /// <summary>
@@ -3575,8 +3734,9 @@ public class TaxiGuidanceManager : IDisposable
         //
         // (c) Extension node adjacent to the junction in the exit direction — for single-
         //     junction exits at any angle (15°, 45°, 90° etc.). Gives the route a second
-        //     segment so GetGuidanceTarget wraps the look-ahead past the junction and pans
-        //     the tone toward the exit direction before the aircraft arrives.
+        //     segment so the look-ahead walk (GuidanceGeometry.WalkTarget) continues past
+        //     the junction and pans the tone toward the exit direction before the
+        //     aircraft arrives.
         //
         // (d) NodeId — last resort if graph has no adjacent exit node (dead-end junction).
         int destNodeId;
@@ -3710,8 +3870,8 @@ public class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// Finds the first graph node adjacent to <paramref name="junctionNodeId"/> in
     /// approximately the exit direction. Used to extend landing-exit routes by one
-    /// segment past the junction so <see cref="GetGuidanceTarget"/> can wrap the
-    /// look-ahead around the corner and start panning the tone before the junction.
+    /// segment past the junction so the look-ahead walk (GuidanceGeometry.WalkTarget)
+    /// can continue around the corner and start panning the tone before the junction.
     /// Returns -1 if no suitable node is found.
     /// </summary>
     private int FindExitExtensionNode(int junctionNodeId, double exitBearingTrue)
@@ -4794,6 +4954,7 @@ public class TaxiGuidanceManager : IDisposable
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).
         _approachAnnounced = false;
+        _curveAnnouncedSign = 0;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
@@ -5296,20 +5457,6 @@ public class TaxiGuidanceManager : IDisposable
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
-    }
-
-    /// <summary>
-    /// Projects a point `distM` metres from (lat, lon) along `bearingDeg` (true,
-    /// clockwise from north). Equirectangular — accurate at taxi/runway scales.
-    /// </summary>
-    private static (double lat, double lon) GeoProjectPoint(
-        double lat, double lon, double bearingDeg, double distM)
-    {
-        const double MPD = 111132.0;
-        double rad = bearingDeg * Math.PI / 180.0;
-        double cosLat = Math.Cos(lat * Math.PI / 180.0);
-        return (lat + distM * Math.Cos(rad) / MPD,
-                lon + distM * Math.Sin(rad) / (MPD * cosLat));
     }
 
     /// <summary>

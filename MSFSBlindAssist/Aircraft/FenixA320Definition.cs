@@ -35,6 +35,9 @@ public class FenixA320Definition : BaseAircraftDefinition
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
+    // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
+    public override double TaxiTurnLeadSeconds => 1.3;
+
     // Private fields for FCU readout tracking
     private double? pendingHeadingValue = null;
     private double? pendingHeadingStatus = null;
