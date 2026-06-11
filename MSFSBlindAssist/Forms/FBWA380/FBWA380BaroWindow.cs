@@ -4,107 +4,147 @@ using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
-// A380 Baro window: enter QNH once (applies to BOTH altimeters via KOHLSMAN_SET);
-// STD/QNH toggle and hPa/inHg toggle both sync both sides. Reuses the def's proven
-// set routes (CAPT_QNH_SET / *_EIS_BARO_IS_STD / XMLVAR_Baro_Selector) via
-// aircraft.ApplyUIVariable.
+// A380 Baro window (Ctrl+B) — Fenix-style: Mode combo (QNH/STD, STD applies
+// immediately and disables entry), Unit combo (hPa/inHg), value box, Enter = Set.
+// Writes:
+//   QNH value : aircraft.ApplyUIVariable("CAPT_QNH_SET", v, ...) — validates,
+//               converts to mb*16, fires K:KOHLSMAN_SET (moves BOTH altimeters).
+//   STD/QNH   : aircraft.ApplyUIVariable("A32NX_FCU_LEFT/RIGHT_EIS_BARO_IS_STD",...)
+//               → HandleUIVariableSet fires H:A380X_EFIS_CP_BARO_{PULL|PUSH}_{1|2}
+//               (PULL=STD, PUSH=QNH; MsfsBaroManager.ts). State is read back from
+//               KOHLSMAN SETTING STD:1 via the re-keyed def (IS_STD L:vars removed
+//               in dev FBW).
+//   Unit      : aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", ...)
+//               + "_2" (dev FBW honors only _1 — upstream FIXME; set both).
 public class FBWA380BaroWindow : FBWA380FCUWindowBase
 {
-    private readonly TextBox qnhTextBox;
-    private readonly Label unitLabel;
-    private readonly Button stdButton, qnhButton, unitButton;
+    private readonly ComboBox modeCombo;
+    private readonly ComboBox unitCombo;
+    private readonly TextBox valueTextBox;
+    private readonly Button setButton;
+    private bool suppressUiEvents;
     private System.Windows.Forms.Timer? _modeTimer;
-    private bool inHg; // entry unit; seeded from the captain side on open.
 
     public FBWA380BaroWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
     {
         Text = "Set A380 Altimeter (both sides)";
-        Size = new Size(440, 250);
+        Size = new Size(420, 220);
 
-        inHg = (simConnect.GetCachedVariableValue("XMLVAR_Baro_Selector_HPA_1") ?? 1) < 0.5;
+        var modeLabel = new Label { Text = "Mode:", Location = new Point(20, 25), Size = new Size(50, 20) };
+        modeCombo = new ComboBox
+        {
+            Location = new Point(75, 22), Size = new Size(80, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList, TabIndex = 0,
+            AccessibleName = "Baro Mode", AccessibleDescription = "Select QNH or STD mode, applies to both sides"
+        };
+        modeCombo.Items.AddRange(new object[] { "QNH", "STD" });
 
-        unitLabel = new Label { Location = new Point(20, 25), Size = new Size(170, 20), AccessibleName = "QNH Label" };
-        qnhTextBox = new TextBox { Location = new Point(195, 22), Size = new Size(90, 25), TabIndex = 0, AccessibleName = "QNH value" };
-        qnhTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
-        var setButton = new Button { Text = "Set", Location = new Point(295, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set QNH both sides" };
+        var unitLabel = new Label { Text = "Unit:", Location = new Point(170, 25), Size = new Size(40, 20) };
+        unitCombo = new ComboBox
+        {
+            Location = new Point(215, 22), Size = new Size(160, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList, TabIndex = 1,
+            AccessibleName = "Unit", AccessibleDescription = "Hectopascals or inches of mercury, both sides"
+        };
+        unitCombo.Items.AddRange(new object[] { "QNH (hPa)", "Inches (inHg)" });
+
+        var valueLabel = new Label { Text = "Value:", Location = new Point(20, 70), Size = new Size(50, 20) };
+        valueTextBox = new TextBox
+        {
+            Location = new Point(75, 67), Size = new Size(100, 25), TabIndex = 2,
+            AccessibleName = "Altimeter value", AccessibleDescription = "Enter altimeter value, Enter to set"
+        };
+        valueTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
+        setButton = new Button { Text = "Set", Location = new Point(190, 65), Size = new Size(90, 30), TabIndex = 3, AccessibleName = "Set Altimeter" };
         setButton.Click += (s, e) => HandleSet();
-        stdButton = new Button { Text = "STD (both)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Standard pressure both sides" };
-        stdButton.Click += (s, e) => SetStd(true);
-        qnhButton = new Button { Text = "QNH (both)", Location = new Point(205, 65), Size = new Size(175, 35), TabIndex = 3, AccessibleName = "QNH mode both sides" };
-        qnhButton.Click += (s, e) => SetStd(false);
-        unitButton = new Button { Text = "hPa / inHg toggle (both)", Location = new Point(20, 110), Size = new Size(360, 35), TabIndex = 4, AccessibleName = "Pressure unit toggle both sides" };
-        unitButton.Click += (s, e) => ToggleUnit();
-        var closeButton = new Button { Text = "Close", Location = new Point(150, 160), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        var closeButton = new Button { Text = "Close", Location = new Point(130, 130), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { unitLabel, qnhTextBox, setButton, stdButton, qnhButton, unitButton, closeButton });
+        Controls.AddRange(new Control[] { modeLabel, modeCombo, unitLabel, unitCombo, valueLabel, valueTextBox, setButton, closeButton });
         AcceptButton = setButton;
         CancelButton = closeButton;
-        RefreshUnitLabel();
 
-        // Keep the STD/QNH and unit buttons showing the live state (they can change
-        // from the cockpit FCU baro knobs too, not just these buttons).
+        SeedFromSim();
+        modeCombo.SelectedIndexChanged += ModeChanged;
+        unitCombo.SelectedIndexChanged += UnitChanged;
+
+        // Track cockpit-side changes (FCU knob) while the window is open.
         _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
-        _modeTimer.Tick += (s, e) => RefreshModeLabels();
+        _modeTimer.Tick += (s, e) => SeedFromSim();
         _modeTimer.Start();
-        RefreshModeLabels();
     }
 
-    private void RefreshUnitLabel()
+    private void SeedFromSim()
     {
-        unitLabel.Text = inHg ? "QNH (26.6-32.5 inHg):" : "QNH (900-1100 hPa):";
-        unitButton.Text = inHg ? "Unit — now inHg (press for hPa)" : "Unit — now hPa (press for inHg)";
-        unitButton.AccessibleName = inHg ? "Pressure unit toggle, currently inches of mercury" : "Pressure unit toggle, currently hectopascals";
+        suppressUiEvents = true;
+        try
+        {
+            // STD state: read from KOHLSMAN SETTING STD:1 via the re-keyed IS_STD def.
+            bool std = (simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD") ?? 0) > 0.5;
+            modeCombo.SelectedIndex = std ? 1 : 0;
+            // Unit: XMLVAR_Baro_Selector_HPA_1 (1=hPa, 0=inHg). Keep last unit in STD mode.
+            bool inHg = (simConnect.GetCachedVariableValue("XMLVAR_Baro_Selector_HPA_1") ?? 1) < 0.5;
+            if (!std)
+                unitCombo.SelectedIndex = inHg ? 1 : 0;
+            else if (unitCombo.SelectedIndex < 0)
+                unitCombo.SelectedIndex = 0;
+            UpdateControlState();
+        }
+        finally { suppressUiEvents = false; }
     }
 
-    private void RefreshModeLabels()
+    private void UpdateControlState()
     {
-        // Mirror the live captain-side unit (the cockpit knob can change it) and the STD state.
-        inHg = (simConnect.GetCachedVariableValue("XMLVAR_Baro_Selector_HPA_1") ?? 1) < 0.5;
-        RefreshUnitLabel();
-        bool std = (simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD") ?? 0) > 0.5;
-        stdButton.Text = std ? "STD (both) — ACTIVE" : "STD (both)";
-        stdButton.AccessibleName = std ? "Standard pressure both sides, active" : "Standard pressure both sides";
-        qnhButton.Text = std ? "QNH (both)" : "QNH (both) — ACTIVE";
-        qnhButton.AccessibleName = std ? "QNH mode both sides" : "QNH mode both sides, active";
+        bool std = modeCombo.SelectedIndex == 1;
+        unitCombo.Enabled = !std;
+        valueTextBox.Enabled = !std;
+        setButton.Enabled = !std;
     }
 
-    protected override void OnFormClosing(FormClosingEventArgs e) { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
-
-    // Fenix-style silent open (see FBWA380SpeedWindow): the forced baro reads
-    // auto-announced the stale-then-fresh value on open. The EFIS baro still
-    // auto-announces on a real knob change, and Set confirms the entered QNH.
-    protected override void SpeakInitialReadout() { qnhTextBox.Focus(); }
-
-    private void HandleSet()
+    private void ModeChanged(object? sender, EventArgs e)
     {
-        string input = qnhTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); qnhTextBox.SelectAll(); return; }
-        // CAPT_QNH_SET interprets the value in the captain side's current unit and
-        // fires KOHLSMAN_SET, which moves BOTH altimeters together; it also range-
-        // validates and announces. The window's entry unit (`inHg`) is always kept
-        // in sync with the captain XMLVAR (seeded on open, updated by ToggleUnit),
-        // so the interpretation matches what the user typed.
-        aircraft.ApplyUIVariable("CAPT_QNH_SET", v, simConnect, announcer);
-        qnhTextBox.SelectAll();
-    }
-
-    private void SetStd(bool std)
-    {
-        // Sync both EIS sides (no re-announce of the button itself).
+        if (suppressUiEvents) return;
+        bool std = modeCombo.SelectedIndex == 1;
+        // Route through the def's HandleUIVariableSet which fires the H-events.
         aircraft.ApplyUIVariable("A32NX_FCU_LEFT_EIS_BARO_IS_STD", std ? 1 : 0, simConnect, announcer);
         aircraft.ApplyUIVariable("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", std ? 1 : 0, simConnect, announcer);
         announcer.AnnounceImmediate(std ? "Standard, both sides" : "QNH, both sides");
+        UpdateControlState();
     }
 
-    private void ToggleUnit()
+    private void UnitChanged(object? sender, EventArgs e)
     {
-        inHg = !inHg;
-        int hpaUnit = inHg ? 0 : 1;
-        aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", hpaUnit, simConnect, announcer);
-        aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_2", hpaUnit, simConnect, announcer);
-        RefreshUnitLabel();
+        if (suppressUiEvents) return;
+        bool inHg = unitCombo.SelectedIndex == 1;
+        // XMLVAR_Baro_Selector_HPA_1/2: 1=hPa, 0=inHg. Dev FBW honors _1; set _2 anyway.
+        aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", inHg ? 0 : 1, simConnect, announcer);
+        aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_2", inHg ? 0 : 1, simConnect, announcer);
         announcer.AnnounceImmediate(inHg ? "Inches of mercury, both sides" : "Hectopascals, both sides");
+    }
+
+    protected override void SpeakInitialReadout() { valueTextBox.Focus(); }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
+
+    private void HandleSet()
+    {
+        if (!setButton.Enabled) return;
+        string input = valueTextBox.Text.Trim();
+        if (!double.TryParse(input, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
+        { announcer.AnnounceImmediate("Invalid number format"); valueTextBox.SelectAll(); return; }
+        bool inHg = unitCombo.SelectedIndex == 1;
+        double hpa = inHg ? v * 33.8639 : v;
+        if (inHg ? (v < 26.6 || v > 32.5) : (hpa < 900 || hpa > 1100))
+        {
+            announcer.AnnounceImmediate(inHg ? "QNH must be between 26.6 and 32.5 inches." : "QNH must be between 900 and 1100 hectopascals.");
+            valueTextBox.SelectAll();
+            return;
+        }
+        // CAPT_QNH_SET validates (in the def's own unit-aware branch), converts to mb*16,
+        // fires K:KOHLSMAN_SET for both altimeters, and announces — do NOT double-announce.
+        aircraft.ApplyUIVariable("CAPT_QNH_SET", v, simConnect, announcer);
+        valueTextBox.SelectAll();
     }
 }
