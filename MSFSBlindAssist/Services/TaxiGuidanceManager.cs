@@ -1165,8 +1165,14 @@ public class TaxiGuidanceManager : IDisposable
                 string summary = BuildRouteSummary(route, isRunwayDestination);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
+                // The length advisory goes FIRST, not last. The summary is plain
+                // queued speech, and the first AnnounceImmediate tactical callout
+                // after the pilot starts rolling INTERRUPTS it — a warning at the
+                // tail of a long summary never gets heard. KATL 2026-06-11 "via V":
+                // a 7,073 m tour (direct 1.1 km) taxied for 7 minutes with the
+                // warning almost certainly cut off before it played.
                 if (!string.IsNullOrEmpty(constrainedLengthWarning))
-                    summary = summary + " " + constrainedLengthWarning;
+                    summary = constrainedLengthWarning + " " + summary;
                 LastRouteSummary = summary;
                 if (announceSummary)
                     _announcer.Announce(summary);
