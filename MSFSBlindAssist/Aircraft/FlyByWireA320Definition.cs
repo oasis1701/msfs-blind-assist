@@ -130,6 +130,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "EXTERNAL POWER AVAILABLE:1", DisplayName = "External Power Available",
             Type = SimConnect.SimVarType.SimVar, Units = "bool",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            RenderAsReadOnlyStatus = true, // ground-power state, not a control
             ValueDescriptions = new Dictionary<double, string> { [0] = "Not available", [1] = "Available" }
         },
         // ---- ELEC: generators. The FBW Rust system reads the STOCK simvars (copied
