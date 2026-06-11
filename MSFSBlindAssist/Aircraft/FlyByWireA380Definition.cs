@@ -1913,11 +1913,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // setting is non-visual; spoken on change, deduped to whole hPa).
         MonNum("A32NX_FCU_LEFT_EIS_BARO_HPA", "Captain Altimeter", "hectopascals");
         MonNum("A32NX_FCU_RIGHT_EIS_BARO_HPA", "First Officer Altimeter", "hectopascals");
-        // STD(pull)/QNH(push) per side. Dev FBW removed the *_EIS_BARO_IS_STD L:vars;
-        // STD is now driven by the H:A380X_EFIS_CP_BARO_PULL/PUSH_{1,2} events
-        // (MsfsBaroManager.ts) and read back from the stock KOHLSMAN SETTING STD:n
-        // simvar (valid on both FCU generations). Keys keep the old names so the
-        // panel lists, window, hotkey readout and announce branch stay stable.
+        // STD(PUSH)/QNH(PULL) per side — note the A380's knob events are the OPPOSITE
+        // of the A32NX's (live-verified 2026-06-11 in the installed fcu.js: onPush →
+        // Std, onPull → leave Std). Dev FBW removed the *_EIS_BARO_IS_STD L:vars as
+        // inputs; the FCU writes the stock KOHLSMAN SETTING STD:n simvar on every
+        // mode TRANSITION (MsfsBaroManager.setupSyncToMsfs), which is the readback
+        // here. That write is transition-only, so a session that starts with STD
+        // already engaged can read stale 0 — the MB watchdog below back-fills it.
+        // Keys keep the old names so the panel lists, window, hotkey readout and
+        // announce branch stay stable.
         var baroStd = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" };
         vars["A32NX_FCU_LEFT_EIS_BARO_IS_STD"] = new SimVarDefinition
         {
@@ -1932,6 +1936,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.SimVar, Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = baroStd
+        };
+        // Stock-altimeter MB mirrors — drive the STD-flag watchdog (the FCU forces
+        // the stock altimeter to exactly 1013.25 hPa while STD; in QNH it applies
+        // the preselect). Announce-suppressed in ProcessSimVarUpdate.
+        vars["BARO_MB_WATCH_L"] = new SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING MB:1", DisplayName = "Baro MB Captain",
+            Type = SimVarType.SimVar, Units = "millibars",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+        vars["BARO_MB_WATCH_R"] = new SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING MB:2", DisplayName = "Baro MB First Officer",
+            Type = SimVarType.SimVar, Units = "millibars",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
         };
         // hPa/inHg unit per side: the real selector is XMLVAR_Baro_Selector_HPA_
         // {1,2} (registered as the "Baro Unit" combo in the EFIS-CP section).
@@ -4023,7 +4042,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             return true;
         }
-        // EFIS baro push (STD) / pull (QNH) — announce the mode change.
+        // Stock-altimeter MB mirrors: consumed by MainForm's A380 STD-flag watchdog
+        // (the def's ProcessSimVarUpdate has no SimConnect manager to write with —
+        // same split as the engine-mode-selector watchdog). Never announce the raw value.
+        if (varName is "BARO_MB_WATCH_L" or "BARO_MB_WATCH_R") return true;
+        // EFIS baro STD (PUSH) / QNH (PULL) — announce the mode change.
         if (varName == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varName == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
         {
             bool capt = varName.Contains("LEFT");
@@ -4614,16 +4637,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
             return true;
         }
-        // EFIS baro STD(pull)/QNH(push): dev FBW removed the IS_STD L:vars — fire the
-        // cockpit knob H-events (PULL=STD, PUSH=QNH; index 1=Capt, 2=F/O), only when
-        // the desired state differs from the live KOHLSMAN SETTING STD readback.
+        // EFIS baro STD/QNH — LIVE-VERIFIED 2026-06-11 against the installed dev
+        // build's fcu.js (MsfsBaroManager): H:A380X_EFIS_CP_BARO_PUSH_{n} = STD
+        // (onPush sets Std) and PULL_{n} = QNH (onPull leaves Std) — the OPPOSITE of
+        // the A32NX's A32NX.FCU_EFIS_*_BARO_PULL=STD knob events; do NOT "harmonise"
+        // the two jets. Fired UNCONDITIONALLY: both are idempotent directional mode
+        // sets on this build, so no toggle-if-differs guard (a stale readback would
+        // wedge it — the original "combo bounces back to QNH" bug). Index 1=Capt, 2=F/O.
         if (varKey == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varKey == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
         {
             int side = varKey.Contains("LEFT") ? 1 : 2;
-            bool desiredStd = value > 0.5;
-            bool currentStd = (simConnect.GetCachedVariableValue(varKey) ?? (desiredStd ? 0.0 : 1.0)) > 0.5;
-            if (desiredStd != currentStd)
-                simConnect.SendEvent($"H:A380X_EFIS_CP_BARO_{(desiredStd ? "PULL" : "PUSH")}_{side}", 0);
+            simConnect.SendEvent($"H:A380X_EFIS_CP_BARO_{(value > 0.5 ? "PUSH" : "PULL")}_{side}", 0);
             return true;
         }
         // Set QNH: the entered value is in the side's current unit (hPa or inHg).

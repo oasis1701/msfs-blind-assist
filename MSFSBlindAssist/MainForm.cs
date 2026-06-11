@@ -112,6 +112,9 @@ public partial class MainForm : Form
     private bool _lastOnGround = true;
     private LandingExitForm? landingExitForm;
 
+    // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
+    private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
+
     // DIAGNOSTIC (debug/landing-rollout-instrumentation): one-shot flag for
     // logging the first TAXI_GUIDANCE_POSITION event we receive while taxi
     // guidance is in LandingRollout state. Reset on every transition out of
@@ -628,6 +631,42 @@ public partial class MainForm : Form
                 simConnectManager?.ExecuteCalculatorCode($"{igPos} (>K:TURBINE_IGNITION_SWITCH_SET4)");
             }
             // Fall through so ENGINE_MODE_SELECTOR still auto-announces its position.
+        }
+
+        // FBW A380 STD-flag watchdog: in STD the FCU forces the stock altimeter to
+        // exactly 1013.25 hPa, but its KOHLSMAN SETTING STD write is TRANSITION-only —
+        // a session that starts with STD already engaged reads a stale 0 (observed
+        // live 2026-06-11), which mis-read the Altimeter STD combo/hotkey. When the
+        // MB mirror sits at the STD constant for >2 s with the flag still 0, back-fill
+        // the flag (everything keys on it). ONE direction only (0→1): the FCU's
+        // exit-write is same-tick reliable, and correcting 1→0 could fight a
+        // mid-transition frame. The def suppresses these vars' announcements.
+        if (currentAircraft?.AircraftCode == "FBW_A380" &&
+            (e.VarName == "BARO_MB_WATCH_L" || e.VarName == "BARO_MB_WATCH_R"))
+        {
+            bool baroCapt = e.VarName == "BARO_MB_WATCH_L";
+            bool atStdConstant = Math.Abs(e.Value - 1013.25) < 0.02;
+            double? stdFlag = simConnectManager?.GetCachedVariableValue(
+                baroCapt ? "A32NX_FCU_LEFT_EIS_BARO_IS_STD" : "A32NX_FCU_RIGHT_EIS_BARO_IS_STD");
+            if (atStdConstant && (stdFlag ?? 0) < 0.5)
+            {
+                var nowUtc = DateTime.UtcNow;
+                var since = baroCapt ? _a380BaroStdMismatchL : _a380BaroStdMismatchR;
+                if (since == DateTime.MinValue)
+                {
+                    if (baroCapt) _a380BaroStdMismatchL = nowUtc; else _a380BaroStdMismatchR = nowUtc;
+                }
+                else if ((nowUtc - since).TotalSeconds > 2)
+                {
+                    simConnectManager?.ExecuteCalculatorCode($"1 (>A:KOHLSMAN SETTING STD:{(baroCapt ? 1 : 2)}, Bool)");
+                    if (baroCapt) _a380BaroStdMismatchL = DateTime.MinValue; else _a380BaroStdMismatchR = DateTime.MinValue;
+                }
+            }
+            else
+            {
+                if (baroCapt) _a380BaroStdMismatchL = DateTime.MinValue; else _a380BaroStdMismatchR = DateTime.MinValue;
+            }
+            // Fall through; the def's ProcessSimVarUpdate returns true for these keys.
         }
 
         // Step 2: Handle special one-off announcements (terminal cases only)

@@ -5,7 +5,7 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 
 ## Verify the Pass-1 changes that could not be bench-tested
 
-- [ ] A380 STD/QNH via `H:A380X_EFIS_CP_BARO_PULL/PUSH_{1,2}` actually toggles (readback `KOHLSMAN SETTING STD:1/:2`). If the H-events no-op, try the stock `BAROMETRIC_STD_PRESSURE` K-event (also intercepted per MsfsBaroManager).
+- [x] A380 STD/QNH — LIVE-VERIFIED 2026-06-11 via MCP: semantics are PUSH=STD / PULL=QNH (OPPOSITE of the snapshot-source reading and of the A32NX); `KOHLSMAN SETTING STD:n` is written on transitions only (stale-at-session-join case covered by the MainForm MB watchdog). Re-confirm once via the app combo after the fix build.
 - [ ] A32NX unit toggle via `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` calc write changes the FCU display unit.
 - [ ] A32NX LS via `A32NX.FCU_EFIS_L/R_LS_PUSH` + `*_LS_LIGHT_ON` readback.
 - [ ] A32NX GEN/APU GEN toggle events + stock-simvar state combos.
