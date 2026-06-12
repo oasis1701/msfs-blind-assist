@@ -6,29 +6,37 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 /// <summary>
 /// Accessible DCDU (CPDLC display) for the FlyByWire A32NX — opened with
 /// Ctrl+Shift+D (input mode). Live CPDLC uplinks display on the DCDU and can
-/// ONLY be answered there (WILCO / UNABLE / STANDBY / CLOSE / RECALL), so this
-/// window is the missing half of the CPDLC story (the MCDU's ATC MSG RECORD
-/// page only reads history). Relevant with a datalink connection (Hoppie /
-/// SayIntentions / BeyondATC as the FBW ACARS provider).
+/// ONLY be answered there (WILCO / UNABLE / STANDBY / CLOSE / RECALL); the
+/// MCDU's ATC MSG RECORD page only reads history. Relevant with a datalink
+/// connection (Hoppie / SayIntentions / BeyondATC as the FBW ACARS provider).
+///
+/// Display + keys MIRROR THE MCDU WINDOW MODEL (FlyByWireMCDUForm): the screen
+/// renders as positioned lines via <see cref="Services.FbwMcduFormat.PositionLine"/>
+/// — a soft-key label sits at its real place in its row (left key at the line
+/// start, right key right-aligned), with the unit's own star convention
+/// marking the adjacent key (e.g. "RECALL*" bottom-right = right key 2;
+/// "*STBY" at a line start = the left key on that row). No separate key-map
+/// listing is rendered. Soft keys use the SAME chords as the MCDU LSKs,
+/// honouring the shared MCDUUseAlternateLSKKeys setting:
+///   standard:  Ctrl+1 / Ctrl+2 = left keys, Alt+1 / Alt+2 = right keys
+///   alternate: F1 / F2 = left keys, F7 / F8 = right keys
+/// Row 1 is the upper soft-key row, row 2 the lower (where RECALL lives).
+/// PageUp / PageDown step between messages; Ctrl+PageUp / Ctrl+PageDown
+/// scroll within a long message; F5 refreshes.
 ///
 /// Transport: ONE-SHOT <see cref="SimConnect.CoherentEvalClient"/> evals of
 /// Resources/coherent-a32nx-dcdu.js against the "DCDU" Coherent view — NO
 /// persistent Coherent socket on the A32NX by policy (the A320 EWD scrape was
 /// removed over socket crash risk; one-shots are the flightInfo-proven path).
-/// Refresh: on open, every 2 s while open, on F5, and ~1.5 s after a soft key
-/// (the DCDU Button component delays its action 1 s for its visual confirm).
-///
-/// Soft keys fire the REAL DCDU H-events via the calc path (each Button
-/// listens for both the left and right unit, so the MPL_ set suffices):
-///   Ctrl+1 / Ctrl+2  = left buttons  (H:A32NX_DCDU_BTN_MPL_L1 / _L2)
-///   Alt+1  / Alt+2   = right buttons (H:A32NX_DCDU_BTN_MPL_R1 / _R2)
-///   PageUp / PageDown = older / newer message (MS0PLUS / MS0MINUS)
-///   Ctrl+PageUp / Ctrl+PageDown = scroll within a long message (POEPLUS / POEMINUS)
-/// The current soft-key labels are appended to the display text ("Left 1: …")
-/// so the reader always knows what each chord will press.
+/// Refresh: on open, every 2 s while open (change-only, caret-preserving), and
+/// ~1.5 s after a soft key (the DCDU Button delays its action 1 s for its
+/// visual confirm). Soft keys fire the REAL DCDU H-events via the calc path
+/// ((>H:A32NX_DCDU_BTN_MPL_*) — each Button listens for both units).
 /// </summary>
 public class FlyByWireDcduForm : Form
 {
+    private const int LineWidth = 30;
+
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnect.SimConnectManager _simConnect;
     private readonly TextBox _display;
@@ -121,8 +129,23 @@ public class FlyByWireDcduForm : Form
                     return;
                 }
                 if (root.TryGetProperty("rows", out var rows))
+                {
                     foreach (var r in rows.EnumerateArray())
-                        lines.Add(r.GetString() ?? "");
+                    {
+                        string kind = r.TryGetProperty("t", out var t) ? t.GetString() ?? "" : "";
+                        if (kind == "keys")
+                        {
+                            string l = r.TryGetProperty("l", out var le) ? le.GetString() ?? "" : "";
+                            string c = r.TryGetProperty("c", out var ce) ? ce.GetString() ?? "" : "";
+                            string rr = r.TryGetProperty("r", out var re) ? re.GetString() ?? "" : "";
+                            lines.Add(Services.FbwMcduFormat.PositionLine(l, c, rr, LineWidth));
+                        }
+                        else
+                        {
+                            lines.Add(r.TryGetProperty("txt", out var tx) ? tx.GetString() ?? "" : "");
+                        }
+                    }
+                }
                 if (root.TryGetProperty("btns", out var btns))
                 {
                     _btnL1 = btns.TryGetProperty("L1", out var l1) ? l1.GetString() ?? "" : "";
@@ -137,11 +160,6 @@ public class FlyByWireDcduForm : Form
             }
 
             if (lines.Count == 0) lines.Add("(no CPDLC message displayed)");
-            lines.Add("");
-            if (_btnL1.Length > 0) lines.Add($"Left 1 (Ctrl+1): {_btnL1}");
-            if (_btnL2.Length > 0) lines.Add($"Left 2 (Ctrl+2): {_btnL2}");
-            if (_btnR1.Length > 0) lines.Add($"Right 1 (Alt+1): {_btnR1}");
-            if (_btnR2.Length > 0) lines.Add($"Right 2 (Alt+2): {_btnR2}");
             SetText(string.Join(Environment.NewLine, lines));
         }
         finally
@@ -162,18 +180,39 @@ public class FlyByWireDcduForm : Form
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
     {
-        // Soft keys: Ctrl+1/2 = left, Alt+1/2 = right (mirrors the MCDU LSK scheme).
-        if (e.Control && !e.Alt && e.KeyCode is Keys.D1 or Keys.D2)
+        // Soft keys — same scheme as the MCDU LSKs, honouring the shared
+        // alternate-keys setting (FlyByWireMCDUForm precedent): standard =
+        // Ctrl+1/2 left + Alt+1/2 right; alternate = F1/F2 left + F7/F8 right.
+        bool useAltKeys = Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
+        if (useAltKeys)
         {
-            FireButton(e.KeyCode == Keys.D1 ? "L1" : "L2", e.KeyCode == Keys.D1 ? _btnL1 : _btnL2);
-            e.Handled = true; e.SuppressKeyPress = true;
-            return;
+            if (!e.Control && !e.Alt && e.KeyCode is Keys.F1 or Keys.F2)
+            {
+                FireButton(e.KeyCode == Keys.F1 ? "L1" : "L2", e.KeyCode == Keys.F1 ? _btnL1 : _btnL2);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
+            if (!e.Control && !e.Alt && e.KeyCode is Keys.F7 or Keys.F8)
+            {
+                FireButton(e.KeyCode == Keys.F7 ? "R1" : "R2", e.KeyCode == Keys.F7 ? _btnR1 : _btnR2);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
         }
-        if (e.Alt && !e.Control && e.KeyCode is Keys.D1 or Keys.D2)
+        else
         {
-            FireButton(e.KeyCode == Keys.D1 ? "R1" : "R2", e.KeyCode == Keys.D1 ? _btnR1 : _btnR2);
-            e.Handled = true; e.SuppressKeyPress = true;
-            return;
+            if (e.Control && !e.Alt && e.KeyCode is Keys.D1 or Keys.D2)
+            {
+                FireButton(e.KeyCode == Keys.D1 ? "L1" : "L2", e.KeyCode == Keys.D1 ? _btnL1 : _btnL2);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
+            if (e.Alt && !e.Control && e.KeyCode is Keys.D1 or Keys.D2)
+            {
+                FireButton(e.KeyCode == Keys.D1 ? "R1" : "R2", e.KeyCode == Keys.D1 ? _btnR1 : _btnR2);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
         }
         // Message navigation: PageUp/Down steps between messages; with Ctrl it
         // scrolls within a long message (page-of-elements).
@@ -210,8 +249,8 @@ public class FlyByWireDcduForm : Form
         }
         _simConnect.ExecuteCalculatorCode($"(>H:A32NX_DCDU_BTN_MPL_{slot})");
         // The DCDU confirms a press visually for 1 s before acting — speak the
-        // label now (error/confirmation feedback, not a UI echo) and re-scrape
-        // after the action lands.
+        // label now (action confirmation, not a UI echo) and re-scrape after
+        // the action lands.
         _announcer.AnnounceImmediate(label.Replace("*", "").Trim());
         _postActionTimer.Stop();
         _postActionTimer.Start();

@@ -221,9 +221,16 @@ Windows:
   Shift+M    Open MCDU window
   Shift+T    Open flyPad EFB window
   Ctrl+Shift+D  Open DCDU window (CPDLC — read uplinks and answer WILCO /
-             STANDBY / UNABLE. In the window: Ctrl+1/Ctrl+2 = left soft keys,
-             Alt+1/Alt+2 = right soft keys, PageUp/PageDown = older/newer
-             message, Ctrl+PageUp/PageDown = scroll a long message, F5 refresh.
+             STANDBY / UNABLE. The display reads like the MCDU window: a soft
+             key's label sits at its place in the line, with the star marking
+             the adjacent key — "*STBY" at a line start is a LEFT key,
+             "WILCO*" or "RECALL*" at a line end is a RIGHT key. The soft keys
+             use the same chords as the MCDU line-select keys, including the
+             alternate-keys setting: Ctrl+1/Ctrl+2 = left keys, Alt+1/Alt+2 =
+             right keys (or F1/F2 and F7/F8 in alternate mode); row 1 is the
+             upper soft-key row, row 2 the lower (where RECALL lives).
+             PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
+             scroll within a long message, F5 = refresh, Escape = close.
              Needs a datalink connection: set the ACARS provider (Hoppie /
              SayIntentions / BeyondATC) in the flyPad Settings, then log on
              to ATC from the MCDU ATSU pages.)

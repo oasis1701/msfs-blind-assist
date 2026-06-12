@@ -3,20 +3,21 @@
 // persistent socket on the A32NX by policy — each refresh is a fresh eval).
 // ES5 only (Coherent GT = Chromium 49).
 //
-// The DCDU renders SVG <text> elements: message/status content plus the four
-// soft keys (class "button button-left/right", e.g. "WILCO*" / "*STBY").
-// Button slot mapping is by POSITION, not order: Button.tsx places slot-1 text
-// at y=2240 and slot-2 at y=2720 in the ~2880-unit view, so the slot is read
-// from the key's Y normalized against the dcdu svg's bounding rect (threshold
-// 0.86). Order-based mapping is WRONG when only one key renders on a side —
-// e.g. the empty-state RECALL is alone on the right but lives on slot R2
-// (RecallButtons.tsx index="R2"), and firing R1 for it presses nothing.
-// Rows are rebuilt by Y-clustering with a tolerance derived from the text's
-// own height so the scrape is resolution-independent.
+// Output mirrors the MCDU-window model: rows in screen order, with the soft
+// keys folded INTO their row ({t:'keys', l, c, r} — left label, row content,
+// right label; the form renders them positionally like FbwMcduFormat lines,
+// so "RECALL*" right-aligns exactly as on the unit and the star marks the
+// adjacent key). Content-only rows come back verbatim ({t:'plain', txt}).
+//
+// Soft-key SLOT mapping is by POSITION, not order: Button.tsx places slot-1
+// text at y=2240 and slot-2 at y=2720 in the ~2880-unit view, so the slot is
+// the key's Y normalized against the dcdu svg rect (threshold 0.86). Order-
+// based mapping is WRONG when only one key renders on a side — the
+// empty-state RECALL is alone on the right but lives on R2.
 (function () {
   try {
     var btns = { L1: '', L2: '', R1: '', R2: '' };
-    var items = [];
+    var entries = [];
     var svg = document.querySelector('svg.dcdu');
     var sr = svg ? svg.getBoundingClientRect() : null;
     var texts = document.querySelectorAll('text');
@@ -31,25 +32,35 @@
         var rel = sr && sr.height > 0 ? (r.top - sr.top) / sr.height : 1;
         var slot = rel > 0.86 ? '2' : '1';
         var key = side + slot;
-        // Collision safety: if the computed slot is taken, use the other one.
         if (btns[key]) key = side + (slot === '1' ? '2' : '1');
         btns[key] = txt;
+        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt, btn: side });
       } else {
-        items.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt });
+        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt, btn: '' });
       }
     }
-    items.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+    entries.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+    // Y-cluster into rows (tolerance from the text's own height so the scrape
+    // is resolution-independent), folding any soft key into its row.
     var rows = [];
-    var line = '';
+    var cur = null;
     var lastY = -1e9;
-    for (var j = 0; j < items.length; j++) {
-      var it = items[j];
-      var tol = it.h > 0 ? it.h * 0.7 : 40;
-      if (line && (it.y - lastY) > tol) { rows.push(line); line = ''; }
-      lastY = it.y;
-      line += (line ? ' ' : '') + it.txt;
+    function flush() {
+      if (!cur) return;
+      if (cur.l || cur.r) rows.push({ t: 'keys', l: cur.l, c: cur.c.join(' '), r: cur.r });
+      else if (cur.c.length) rows.push({ t: 'plain', txt: cur.c.join(' ') });
+      cur = null;
     }
-    if (line) rows.push(line);
+    for (var j = 0; j < entries.length; j++) {
+      var it = entries[j];
+      var tol = it.h > 0 ? it.h * 0.7 : 40;
+      if (!cur || (it.y - lastY) > tol) { flush(); cur = { l: '', c: [], r: '' }; }
+      lastY = it.y;
+      if (it.btn === 'L') cur.l = it.txt;
+      else if (it.btn === 'R') cur.r = it.txt;
+      else cur.c.push(it.txt);
+    }
+    flush();
     return JSON.stringify({ ok: true, rows: rows, btns: btns });
   } catch (e) {
     return JSON.stringify({ ok: false, err: '' + e.message });
