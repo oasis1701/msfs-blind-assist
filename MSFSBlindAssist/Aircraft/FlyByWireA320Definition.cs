@@ -2352,7 +2352,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // conflict since upstream #10662); the detail vars are plain L:vars.
         // All cached SILENTLY in ProcessSimVarUpdate and spoken as one composed
         // guidance sentence ("TCAS: Climb. Fly vertical speed plus 1500 to plus
-        // 2000 feet per minute.") — see ComposeTcasRaGuidance. The colon-indexed
+        // 2000 feet per minute.") — see Services.TcasRaGuidance. The colon-indexed
         // names ride the continuous batch, the proven transport for indexed
         // L:vars (A32NX_AUTOTHRUST_TLA:n precedent).
         // Silent caches — their speech rides the A32NX_TCAS_STATE monitor entry,
@@ -7180,15 +7180,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
-    // TCAS resolution-advisory guidance. Mirrors FlyByWireA380Definition: the
-    // detail vars cache silently and the composed "what to fly" sentence speaks
-    // once per advisory plus any strengthening/reversal — never per frame.
-    private int _tcasAdvisoryState;                       // A32NX_TCAS_STATE: 0 none, 1 TA, 2 RA
-    private bool _tcasRaCorrective;
-    private int _tcasRaUpAdvisory, _tcasRaDownAdvisory;   // UpDownAdvisoryStatus 0-5
-    private double _tcasRaRate;                           // rate to maintain, fpm
-    private double _tcasGreenMin, _tcasGreenMax, _tcasRedMin, _tcasRedMax;
-    private string _lastTcasRaGuidance = "";
+    // Shared TCAS RA state + composer (Services/TcasRaGuidance.cs); the timer and
+    // announcer stay per-def so disposal rides StopAllMotion.
+    private readonly Services.TcasRaGuidance _tcasRa = new();
     private System.Windows.Forms.Timer? _tcasRaComposeTimer;
     private Accessibility.ScreenReaderAnnouncer? _tcasRaAnnouncer;
 
@@ -7213,54 +7207,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     private void MaybeAnnounceTcasRaGuidance(Accessibility.ScreenReaderAnnouncer announcer)
     {
-        if (_tcasAdvisoryState != 2) return;
-        string text = ComposeTcasRaGuidance();
-        if (text.Length == 0 || text == _lastTcasRaGuidance) return;
-        _lastTcasRaGuidance = text;
+        string? text = _tcasRa.ComposeIfChanged();
+        if (text == null) return;
         // Mute rides the TCAS_STATE monitor entry — one Ctrl+M checkbox governs
         // both the state announce and the composed guidance.
         if (!Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains("A32NX_TCAS_STATE"))
             announcer.AnnounceImmediate(text);
     }
-
-    /// <summary>
-    /// Builds the spoken RA guidance from the cached detail vars. Corrective RA →
-    /// the green fly-to band; preventive RA → the do-not limits and/or the rate to
-    /// maintain. Empty when nothing meaningful is cached yet (the next var update
-    /// recomposes). Enum semantics from FBW TcasConstants.ts (UpDownAdvisoryStatus).
-    /// </summary>
-    private string ComposeTcasRaGuidance()
-    {
-        bool greenBand = Math.Abs(_tcasGreenMin) >= 1 || Math.Abs(_tcasGreenMax) >= 1;
-        if (_tcasRaCorrective && greenBand)
-        {
-            string action = _tcasGreenMin >= -1 ? "Climb"
-                          : _tcasGreenMax <= 1 ? "Descend"
-                          : "Adjust vertical speed";
-            return $"TCAS: {action}. Fly vertical speed {FmtSignedFpm(_tcasGreenMin)} to {FmtSignedFpm(_tcasGreenMax)} feet per minute.";
-        }
-        var parts = new List<string>();
-        string? up = TcasAdvisoryPhrase(_tcasRaUpAdvisory, "climb");
-        string? down = TcasAdvisoryPhrase(_tcasRaDownAdvisory, "descend");
-        if (up != null) parts.Add(up);
-        if (down != null) parts.Add(down);
-        if (Math.Abs(_tcasRaRate) >= 1)
-            parts.Add($"Maintain {FmtSignedFpm(_tcasRaRate)} feet per minute");
-        return parts.Count == 0 ? "" : "TCAS: " + string.Join(". ", parts) + ".";
-    }
-
-    private static string? TcasAdvisoryPhrase(int status, string verb) => status switch
-    {
-        1 => verb == "climb" ? "Climb" : "Descend",
-        2 => $"Do not {verb}",
-        3 => $"Do not {verb} more than 500 feet per minute",
-        4 => $"Do not {verb} more than 1000 feet per minute",
-        5 => $"Do not {verb} more than 2000 feet per minute",
-        _ => null
-    };
-
-    private static string FmtSignedFpm(double v) =>
-        Math.Abs(v) < 1 ? "0" : $"{(v > 0 ? "plus" : "minus")} {Math.Abs(v):0}";
 
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
@@ -7271,31 +7224,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // generic ValueDescriptions announce ("TCAS advisory: resolution advisory")
         // still fires (queued; a detail-driven AnnounceImmediate may land first).
         // Mirrors the A380 implementation.
-        switch (varName)
+        if (_tcasRa.TryHandleDetailVar(varName, value))
         {
-            case "A32NX_TCAS_RA_CORRECTIVE":
-                _tcasRaCorrective = value >= 0.5; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_RA_UP_ADVISORY_STATUS":
-                _tcasRaUpAdvisory = (int)value; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS":
-                _tcasRaDownAdvisory = (int)value; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_RA_RATE_TO_MAINTAIN":
-                _tcasRaRate = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_VSPEED_GREEN:1":
-                _tcasGreenMin = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_VSPEED_GREEN:2":
-                _tcasGreenMax = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_VSPEED_RED:1":
-                _tcasRedMin = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
-            case "A32NX_TCAS_VSPEED_RED:2":
-                _tcasRedMax = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            MaybeAnnounceTcasRaGuidance(announcer);
+            return true;
         }
         if (varName == "A32NX_TCAS_STATE")
         {
-            _tcasAdvisoryState = (int)value;
-            if (_tcasAdvisoryState != 2)
+            _tcasRa.AdvisoryState = (int)value;
+            if (_tcasRa.AdvisoryState != 2)
             {
-                _lastTcasRaGuidance = "";
+                _tcasRa.ResetSpoken();
                 _tcasRaComposeTimer?.Stop();
             }
             else
@@ -7309,7 +7248,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 // frame and announce fresh from their own handlers; if nothing
                 // changed, the cached guidance is identical to the previous
                 // RA's and therefore still correct — the timer speaks it.
-                _lastTcasRaGuidance = "";
+                _tcasRa.ResetSpoken();
                 _tcasRaAnnouncer = announcer;
                 if (_tcasRaComposeTimer == null)
                 {
