@@ -178,12 +178,17 @@ public partial class MainForm : Form
                 }
                 _bridgeProbeNonce = (_bridgeProbeNonce % 16384) + 1; // new nonce each retry
             }
+            if (_bridgeProbeAttempts >= 40)
+            {
+                // All 40 writes have been issued and attempt 40's read-back (above) just
+                // failed — give up: module absent or data-def read failing.
+                simConnectManager.MarkCalcPathProbeConcluded();
+                return;
+            }
             _bridgeProbeAttempts++;
             simConnectManager.ExecuteCalculatorCode($"{_bridgeProbeNonce} (>L:MSFSBA_BRIDGE_PROBE)");
             simConnectManager.RequestVariable("MSFSBA_BRIDGE_PROBE", forceUpdate: true);
             _bridgeProbeAwaitingRead = true;
-            if (_bridgeProbeAttempts == 40)
-                simConnectManager.MarkCalcPathProbeConcluded(); // give up: module absent or data-def read failing
         }
         catch { /* a probe fault must never disturb the app */ }
     }

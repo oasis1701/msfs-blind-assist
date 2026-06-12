@@ -84,8 +84,10 @@ public class SimConnectManager
     // So: module object initialized → fire the calc path. The no-WASM-install case
     // (writes into a dead CDA) is NOT detectable from responses; a proper presence
     // probe must be END-TO-END (calc-write a nonce L:var, read it back via the
-    // data-def path) — see the pass-2 checklist. Until then, a missing module
-    // surfaces via the MobiFlight status text, not via silent write-path switching.
+    // data-def path). That end-to-end probe now EXISTS (MSFSBA_BRIDGE_PROBE →
+    // CalcPathVerified, see below) and is the live gate for SetLVar/dotted-event
+    // routing; IsMobiFlightConnected's gate role is now limited to the H: event
+    // channel (which has no alternative transport).
     public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
 
     // End-to-end calc-path verification: MainForm's bridge probe calc-writes a nonce
@@ -131,6 +133,12 @@ public class SimConnectManager
     {
         CalcPathVerified = false;
         CalcPathProbeConcluded = false;
+        // An aircraft swap re-arms the probe WITHOUT a MobiFlight teardown — drop any
+        // events queued during the previous aircraft's probe window so they can't
+        // replay at the new aircraft when the new verdict flushes. (Post-swap events
+        // can't be in here: until this reset runs, the stale latched verdict routes
+        // them immediately instead of queueing.)
+        lock (pendingCalcEvents) pendingCalcEvents.Clear();
     }
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
@@ -4214,7 +4222,9 @@ public class SimConnectManager
     }
 
     // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
-    // dotted custom events take the data param. Caller guarantees the bridge is connected.
+    // dotted custom events take the data param. Callers route here once the verdict/connection
+    // gates have been applied (the H: flush may fire during the brief connect window —
+    // ExecuteCalculatorCode drops safely if the module object is gone).
     private void FireCalcEvent(string eventName, uint data)
     {
         if (eventName.StartsWith("H:", StringComparison.Ordinal))
