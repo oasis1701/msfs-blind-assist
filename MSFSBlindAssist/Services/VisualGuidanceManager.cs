@@ -176,8 +176,8 @@ public class VisualGuidanceManager : IDisposable
     private double flareTriggerWheelHeightFt = 30.0;
     // Target pitch commanded during the Flare phase. A320 default 6° per FCTM, 777 lower
     // (~4.5° per Boeing FCTM, "2–3° pitch increase from approach attitude" — 777 approach
-    // pitch is ~+1.5°). FLARE_TARGET_PITCH_DEG below is now a legacy default; the profile
-    // field is authoritative.
+    // pitch is ~+1.5°). The 6.0 here is only the pre-profile default; the aircraft's
+    // VisualGuidanceProfile.FlareTargetPitchDeg overwrites it and is authoritative.
     private double flareTargetPitchDeg = 6.0;
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
 
@@ -692,7 +692,7 @@ public class VisualGuidanceManager : IDisposable
         }
 
         // Check for flare. Trigger height is per-aircraft (777 = 40 to match autopilot
-        // autoland; A320 = 30 from FCTM). FLARE_ALTITUDE_FT is now legacy / a sanity fallback.
+        // autoland; A320 = 30 from FCTM) via VisualGuidanceProfile.FlareTriggerWheelHeightFt.
         if (wheelHeightAGL <= flareTriggerWheelHeightFt)
         {
             currentPhase = GuidancePhase.Flare;
