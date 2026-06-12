@@ -19,6 +19,11 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
     private readonly Button setButton;
     private bool suppressUiEvents;
     private System.Windows.Forms.Timer? _modeTimer;
+    // Set on every user-driven combo change. SeedFromSim skips re-seeding within
+    // 1.5 s of a user change: the sim-side state lags the event write by several
+    // frames, and the 500 ms tracking timer would otherwise snap the combo back to
+    // the stale value (audibly, via the screen reader) and then forward again.
+    private DateTime _lastUserChangeUtc = DateTime.MinValue;
 
     public FBWA320BaroWindow(FlyByWireA320Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
@@ -72,6 +77,9 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
 
     private void SeedFromSim()
     {
+        // Don't fight a fresh user selection — the sim takes a few frames to
+        // reflect the event; re-seeding inside that window flip-flops the combo.
+        if ((DateTime.UtcNow - _lastUserChangeUtc).TotalSeconds < 1.5) return;
         suppressUiEvents = true;
         try
         {
@@ -97,23 +105,25 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
     private void ModeChanged(object? sender, EventArgs e)
     {
         if (suppressUiEvents) return;
+        _lastUserChangeUtc = DateTime.UtcNow;
         bool std = modeCombo.SelectedIndex == 1;
         // PULL = STD, PUSH = QNH — the cockpit knob events, both sides.
         string action = std ? "PULL" : "PUSH";
         simConnect.SendEvent($"A32NX.FCU_EFIS_L_BARO_{action}", 0);
         simConnect.SendEvent($"A32NX.FCU_EFIS_R_BARO_{action}", 0);
-        announcer.AnnounceImmediate(std ? "Standard, both sides" : "QNH, both sides");
+        // No announcement: the screen reader already announces the combo change.
         UpdateControlState();
     }
 
     private void UnitChanged(object? sender, EventArgs e)
     {
         if (suppressUiEvents) return;
+        _lastUserChangeUtc = DateTime.UtcNow;
         bool inHg = unitCombo.SelectedIndex == 1;
         // Dev-FCU live unit input (read every frame by the FCU model).
         simConnect.ExecuteCalculatorCode($"{(inHg ? 1 : 0)} (>L:A32NX_FCU_EFIS_L_BARO_IS_INHG)");
         simConnect.ExecuteCalculatorCode($"{(inHg ? 1 : 0)} (>L:A32NX_FCU_EFIS_R_BARO_IS_INHG)");
-        announcer.AnnounceImmediate(inHg ? "Inches of mercury, both sides" : "Hectopascals, both sides");
+        // No announcement: the screen reader already announces the combo change.
     }
 
     protected override void SpeakInitialReadout() { valueTextBox.Focus(); }

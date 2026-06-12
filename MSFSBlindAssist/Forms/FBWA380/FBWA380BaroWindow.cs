@@ -24,6 +24,11 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
     private readonly Button setButton;
     private bool suppressUiEvents;
     private System.Windows.Forms.Timer? _modeTimer;
+    // Set on every user-driven combo change. SeedFromSim skips re-seeding within
+    // 1.5 s of a user change: the sim-side state lags the H-event write by several
+    // frames, and the 500 ms tracking timer would otherwise snap the combo back to
+    // the stale value (audibly, via the screen reader) and then forward again.
+    private DateTime _lastUserChangeUtc = DateTime.MinValue;
 
     public FBWA380BaroWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
@@ -77,6 +82,9 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
 
     private void SeedFromSim()
     {
+        // Don't fight a fresh user selection — the sim takes a few frames to
+        // reflect the H-event; re-seeding inside that window flip-flops the combo.
+        if ((DateTime.UtcNow - _lastUserChangeUtc).TotalSeconds < 1.5) return;
         suppressUiEvents = true;
         try
         {
@@ -105,22 +113,24 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
     private void ModeChanged(object? sender, EventArgs e)
     {
         if (suppressUiEvents) return;
+        _lastUserChangeUtc = DateTime.UtcNow;
         bool std = modeCombo.SelectedIndex == 1;
         // Route through the def's HandleUIVariableSet which fires the H-events.
         aircraft.ApplyUIVariable("A32NX_FCU_LEFT_EIS_BARO_IS_STD", std ? 1 : 0, simConnect, announcer);
         aircraft.ApplyUIVariable("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", std ? 1 : 0, simConnect, announcer);
-        announcer.AnnounceImmediate(std ? "Standard, both sides" : "QNH, both sides");
+        // No announcement: the screen reader already announces the combo change.
         UpdateControlState();
     }
 
     private void UnitChanged(object? sender, EventArgs e)
     {
         if (suppressUiEvents) return;
+        _lastUserChangeUtc = DateTime.UtcNow;
         bool inHg = unitCombo.SelectedIndex == 1;
         // XMLVAR_Baro_Selector_HPA_1/2: 1=hPa, 0=inHg. Dev FBW honors _1; set _2 anyway.
         aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", inHg ? 0 : 1, simConnect, announcer);
         aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_2", inHg ? 0 : 1, simConnect, announcer);
-        announcer.AnnounceImmediate(inHg ? "Inches of mercury, both sides" : "Hectopascals, both sides");
+        // No announcement: the screen reader already announces the combo change.
     }
 
     protected override void SpeakInitialReadout() { valueTextBox.Focus(); }
