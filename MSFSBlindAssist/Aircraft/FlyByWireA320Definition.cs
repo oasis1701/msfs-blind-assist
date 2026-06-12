@@ -7466,35 +7466,34 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
 
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's axis
-        // value (-1..1 scaled to +-16384). The detent axis is computed LIVE inside
-        // the RPN from the FBW throttle-mapping L:vars (band center = (LOW+HIGH)/2):
-        // a custom EFB throttle calibration MOVES the bands, so hardcoded default
-        // centers miss the detents entirely (live KORD 2026-06-12: the user's CLB
-        // band was [0.385, 0.485] vs default center 0.0 — the lever landed at TLA
-        // 15.5° between detents; the dynamic RPN hit TLA 25.0 exactly). The
-        // hardcoded default is only the in-RPN fallback when the mapping vars are
-        // absent (LOW+HIGH==0 AND LOW==0 — never true for a populated band; the
-        // default CLB band [-0.05,0.05] sums to 0 but falls back to the SAME 0.0).
+        // value (-1..1 scaled to +-16384). FBW default-style calibration (Reverse -1.0 /
+        // Rev Idle -0.80 / Idle -0.50 / Climb 0.0 / Flex-MCT 0.50 / TOGA 1.0); the
+        // throttle mapping snaps the lever to the detent. Values are the FBW default-
+        // calibration band centers; custom EFB calibrations may differ — see pass-2 checklist. Two engines on the A320.
+        // NOTE (2026-06-12): a live-mapping in-RPN variant (band center computed from
+        // A32NX_THROTTLE_MAPPING_*_LOW/HIGH:n) was tried and REVERTED at the user's
+        // request — it broke the detent announcements in their setup. See commit
+        // 34a97a2a / the revert commit for the variant if ever revisited.
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
             int didx = (int)Math.Round(value);
-            string[] mapNames = { "REVERSE", "REVERSE_IDLE", "IDLE", "CLIMB", "FLEXMCT", "TOGA" };
-            double[] defaultAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
+            // Band CENTERS of the FBW default calibration (ThrottleAxisMapping.h):
+            // REV [-1,-0.95] / REV-IDLE [-0.85,-0.75] / IDLE [-0.55,-0.45] /
+            // CLB [-0.05,0.05] / FLX [0.45,0.55] / TOGA [0.95,1]. The old -0.70 fell
+            // in the gap between REV-IDLE and IDLE and never reached the detent.
+            double[] detentAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
             string[] dnames = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
-            if (didx < 0 || didx >= mapNames.Length) return true;
-            string fb = defaultAxis[didx].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-            void FireDetent(int n) => simConnect.ExecuteCalculatorCode(
-                $"(L:A32NX_THROTTLE_MAPPING_{mapNames[didx]}_LOW:{n}) s0 (L:A32NX_THROTTLE_MAPPING_{mapNames[didx]}_HIGH:{n}) s1 " +
-                $"l0 l1 + 0 == l0 0 == and if{{ {fb} }} els{{ l0 l1 + 2 / }} 16384 * near (>K:THROTTLE{n}_AXIS_SET_EX1)");
+            if (didx < 0 || didx >= detentAxis.Length) return true;
+            uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[didx] * 16384));
             if (varKey == "THROTTLE_ALL_DETENT")
             {
-                for (int n = 1; n <= 2; n++) FireDetent(n);
+                for (int n = 1; n <= 2; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
                 announcer.Announce($"All thrust levers {dnames[didx]}");
             }
             else
             {
                 int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
-                FireDetent(eng);
+                simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
                 announcer.Announce($"Thrust lever {eng} {dnames[didx]}");
             }
             return true;

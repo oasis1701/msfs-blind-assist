@@ -4581,32 +4581,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;   // combo announces its own Off/On
         }
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's
-        // axis value (-1..1 scaled to +-16384). The detent axis is computed LIVE
-        // inside the RPN from the FBW throttle-mapping L:vars (band center =
-        // (LOW+HIGH)/2): a custom EFB throttle calibration moves the bands, so
-        // hardcoded centers miss the detents (proven live on the A32NX, KORD
-        // 2026-06-12 — same mapping-var family on both jets). The hardcoded value
-        // is only the in-RPN fallback when the mapping vars are absent.
+        // axis value (-1..1 scaled to +-16384). Values are the FBW default-style
+        // detent calibration (Reverse -1.0 / Rev Idle -0.70 / Idle -0.44 /
+        // Climb -0.10 / Flex-MCT 0.53 / TOGA 1.0); the throttle mapping snaps the
+        // lever to the detent. Assumes default throttle calibration.
+        // NOTE (2026-06-12): a live-mapping in-RPN variant was tried and REVERTED
+        // at the user's request — it broke detent announcements in their setup
+        // (see the A32NX handler note / commit 34a97a2a for the variant).
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
             int idx = (int)Math.Round(value);
-            string[] mapNames = { "REVERSE", "REVERSE_IDLE", "IDLE", "CLIMB", "FLEXMCT", "TOGA" };
-            double[] defaultAxis = { -1.0, -0.70, -0.44, -0.10, 0.53, 1.0 };
+            double[] detentAxis = { -1.0, -0.70, -0.44, -0.10, 0.53, 1.0 };
             string[] names = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
-            if (idx < 0 || idx >= mapNames.Length) return true;
-            string fb = defaultAxis[idx].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-            void FireDetent(int n) => simConnect.ExecuteCalculatorCode(
-                $"(L:A32NX_THROTTLE_MAPPING_{mapNames[idx]}_LOW:{n}) s0 (L:A32NX_THROTTLE_MAPPING_{mapNames[idx]}_HIGH:{n}) s1 " +
-                $"l0 l1 + 0 == l0 0 == and if{{ {fb} }} els{{ l0 l1 + 2 / }} 16384 * near (>K:THROTTLE{n}_AXIS_SET_EX1)");
+            if (idx < 0 || idx >= detentAxis.Length) return true;
+            uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[idx] * 16384));
             if (varKey == "THROTTLE_ALL_DETENT")
             {
-                for (int n = 1; n <= 4; n++) FireDetent(n);
+                for (int n = 1; n <= 4; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
                 announcer.Announce($"All thrust levers {names[idx]}");
             }
             else
             {
                 int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
-                FireDetent(eng);
+                simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
                 announcer.Announce($"Thrust lever {eng} {names[idx]}");
             }
             return true;
