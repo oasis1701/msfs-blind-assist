@@ -1326,7 +1326,7 @@ public class HotkeyManager : IDisposable
         ShowFenixMCDU,
         ShowPMDGEFB,
         ShowRMP,
-    ShowDCDU,
+        ShowDCDU,
         ShowOANS,
         ReadNearestCity,
         ReadDistanceToTOD,

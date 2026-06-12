@@ -10,13 +10,20 @@
 // adjacent key). Content-only rows come back verbatim ({t:'plain', txt}).
 //
 // Soft-key SLOT mapping is by POSITION, not order: Button.tsx places slot-1
-// text at y=2240 and slot-2 at y=2720 in the ~2880-unit view, so the slot is
-// the key's Y normalized against the dcdu svg rect (threshold 0.86). Order-
-// based mapping is WRONG when only one key renders on a side — the
-// empty-state RECALL is alone on the right but lives on R2.
+// text at y=2240 and slot-2 at y=2720 in the 2912-unit view (style.scss), so
+// the slot is the key's Y normalized against the dcdu svg rect (threshold
+// 0.86). Order-based mapping is WRONG when only one key renders on a side —
+// the empty-state RECALL is alone on the right but lives on R2.
+//
+// The asterisk on a label marks the key ACTIVE (Button.tsx adds it exactly
+// when active=true, and an inactive Button ignores its H-event) — e.g. the
+// answer keys stay inactive until the pilot has paged to the end of a long
+// uplink. The flag is carried per key in "act" so the form can tell the
+// pilot WHY a press did nothing instead of falsely confirming it.
 (function () {
   try {
     var btns = { L1: '', L2: '', R1: '', R2: '' };
+    var act = { L1: false, L2: false, R1: false, R2: false };
     var entries = [];
     var svg = document.querySelector('svg.dcdu');
     var sr = svg ? svg.getBoundingClientRect() : null;
@@ -43,16 +50,20 @@
         var txt = wholeText(t);
         if (!txt) continue;
         var side = cls.indexOf('button-left') !== -1 ? 'L' : 'R';
-        var rel = sr && sr.height > 0 ? (r.top - sr.top) / sr.height : 1;
+        // sr can only be null if the markup changes (buttons render inside
+        // svg.dcdu) — default L to slot 1 (L2 is rare) and R to slot 2 (the
+        // common lone keys RECALL/CLOSE/SEND all live there).
+        var rel = sr && sr.height > 0 ? (r.top - sr.top) / sr.height : (side === 'L' ? 0 : 1);
         var slot = rel > 0.86 ? '2' : '1';
         var key = side + slot;
         if (btns[key]) { slot = slot === '1' ? '2' : '1'; key = side + slot; }
-        // Strip the asterisk — it is the unit's own "key armed" marker (real
-        // Airbus DCDU convention); the accessible rendering replaces it with
-        // the MCDU arrow convention ("<" = left key, ">" = right key) plus the
-        // key number at the line start, so the marker would be noise.
+        // The asterisk is the unit's ACTIVE marker (see header). Strip it from
+        // the visible label — the accessible rendering uses the MCDU arrow
+        // convention ("<" = left key, ">" = right key) plus the key number at
+        // the line start — but keep it as the per-key active flag.
         var label = txt.replace(/\*/g, '').trim();
         btns[key] = label;
+        act[key] = txt.indexOf('*') !== -1;
         entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: label, btn: side, slot: slot });
       } else {
         var spans2 = t.querySelectorAll('tspan');
@@ -85,7 +96,10 @@
       if (cur.lTxt || cur.rTxt) {
         var digit = cur.lTxt ? cur.lSlot : cur.rSlot;
         var l = cur.lTxt ? digit + ' <' + cur.lTxt : digit;
-        var r = cur.rTxt ? cur.rTxt + '>' : '';
+        // FBW only ever co-rows same-slot pairs (L1+R1, e.g. UNABLE+STBY), but
+        // if a future layout pairs differing slots the right key's number must
+        // not be lost — prepend it when it differs from the line's lead digit.
+        var r = cur.rTxt ? ((cur.lTxt && cur.rSlot !== cur.lSlot ? cur.rSlot + ' ' : '') + cur.rTxt + '>') : '';
         rows.push({ t: 'keys', l: l, c: cur.c.join(' '), r: r });
       } else if (cur.c.length) {
         rows.push({ t: 'plain', txt: cur.c.join(' ') });
@@ -102,7 +116,7 @@
       else cur.c.push(it.txt);
     }
     flush();
-    return JSON.stringify({ ok: true, rows: rows, btns: btns });
+    return JSON.stringify({ ok: true, rows: rows, btns: btns, act: act });
   } catch (e) {
     return JSON.stringify({ ok: false, err: '' + e.message });
   }

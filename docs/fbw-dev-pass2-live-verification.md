@@ -28,6 +28,16 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 - [ ] A32NX GPWS test-flash — still pending a powered ground session (skipped at the dark KORD gate; the light monitors are ordinary Mon vars, same code path as every verified monitor).
 - [x] A32NX TCAS advisory state announce — TA verified live 2026-06-12 ("TCAS advisory: traffic advisory" on ground traffic; the RA guidance sentence still needs an airborne RA — RAs are inhibited on the ground by design). DCDU CPDLC verified end-to-end 2026-06-12 with a real SayIntentions session (VCCF logon → uplink rendered → WILCO armed → SEND transmitted; the SEND press needed sequence-uniquified calc strings — see the CLAUDE.md DCDU section).
 
+## 2026-06-12 A32NX bug pass (2 parallel source-cross-referenced reviews; all fixes compiled + key one live-verified)
+
+- [x] **FUEL MODE SEL junction off-by-one FIXED + live round-trip verified**: junction options are 1-BASED (cockpit XML `1 l0 +`; Option 1 = auto, Option 2 = manual). Manual → junctions 4+5 read 2/2, Auto → 1/1, L:var tracks, baseline restored. The original `{t}` write selected AUTO routing for "Manual".
+- [x] **A32NX TO pitch trim sign FIXED** (FMS writes `-ths`: NEGATIVE = nose up — opposite of the A380). Verify wording on the next PERF entry: UP1.5 must read "1.5 degrees up".
+- [x] **TCAS RA-onset stale-cache guard** (deferred ~800 ms compose on entering state 2, both jets — FBW resets corrective/bands only in STBY, not clear-of-conflict). Behavior check rides the same "first real RA" item above.
+- [x] **DCDU page directions FIXED** (PageDown = newer message, Ctrl+PageDown = next page of a long uplink — both were inverted; the within-message direction gates the answer keys via reachedEndOfMessage). Verify on the first MULTI-PAGE uplink: page to the end, keys activate.
+- [x] **DCDU per-key active flags** (scrape carries the `*` active marker; inactive key presses say "not available yet" instead of falsely confirming) + first-render failure visibility + zombie-poll-timer guard + stale-key clearing on ok:false.
+- [x] **Blue pump override**: delayed forceUpdate read-back after the pulse keeps the OnRequest latch cache honest.
+- [x] **A32NX minimums on demand**: FM1 MDA + DH added to the PFD display set (dead FM2 MDA registration removed).
+
 ## Deferred features/probes (build after verification or live iteration)
 
 - [x] MobiFlight end-to-end probe — IMPLEMENTED 2026-06-11 (nonce round-trip via MainForm.BridgeProbeTimer_Tick → MSFSBA_BRIDGE_PROBE → MarkCalcPathVerified; verdict in transport.log). Gate intentionally stays IsConnected; the probe is observability + the basis for a future gate. Verify the "[Probe] calc path VERIFIED" line on the next launch.

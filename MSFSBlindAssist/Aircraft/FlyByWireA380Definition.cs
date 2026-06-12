@@ -3503,6 +3503,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private double _tcasRaRate;                           // rate to maintain, fpm
     private double _tcasGreenMin, _tcasGreenMax, _tcasRedMin, _tcasRedMax;
     private string _lastTcasRaGuidance = "";
+    private System.Windows.Forms.Timer? _tcasRaComposeTimer;
+    private ScreenReaderAnnouncer? _tcasRaAnnouncer;
 
     private void MaybeAnnounceTcasRaGuidance(ScreenReaderAnnouncer announcer)
     {
@@ -3554,7 +3556,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     };
 
     private static string FmtSignedFpm(double v) =>
-        $"{(v >= 0 ? "plus" : "minus")} {Math.Abs(v):0}";
+        Math.Abs(v) < 1 ? "0" : $"{(v > 0 ? "plus" : "minus")} {Math.Abs(v):0}";
 
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
     // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
@@ -3949,14 +3951,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;
         }
 
-        // Runway Overrun Warning / Protection (ROW/ROP) + OANS RWY AHEAD — decode
-        // the ARINC429 discrete word and announce each safety call-out on its rising
-        // edge (0->1). On the ground pre-flight every bit is 0, so this is silent at
         // ---- TCAS resolution-advisory guidance (cache + composed announce) ----
         // The detail vars cache silently; during an RA each update recomposes the
         // spoken guidance and announces only when the sentence changes. The state
         // var itself returns FALSE so the generic Mon announce ("TCAS advisory:
-        // resolution advisory") still fires first — the guidance follows it.
+        // resolution advisory") still fires (queued; a detail-driven
+        // AnnounceImmediate may land first).
         switch (varName)
         {
             case "A32NX_TCAS_RA_CORRECTIVE":
@@ -3979,11 +3979,41 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "A32NX_TCAS_STATE")
         {
             _tcasAdvisoryState = (int)value;
-            if (_tcasAdvisoryState != 2) _lastTcasRaGuidance = "";
-            else MaybeAnnounceTcasRaGuidance(announcer);
+            if (_tcasAdvisoryState != 2)
+            {
+                _lastTcasRaGuidance = "";
+                _tcasRaComposeTimer?.Stop();
+            }
+            else
+            {
+                // Do NOT compose synchronously here: FBW resets corrective + the
+                // V/S bands only in TCAS STBY (NOT on clear-of-conflict), so the
+                // cache can still hold the PREVIOUS RA's values and a new
+                // opposite-sense RA would briefly speak "Climb" for a Descend.
+                // Defer ~800 ms: detail vars that CHANGED for this RA announce
+                // fresh from their own handlers; if nothing changed, the cached
+                // guidance is identical to the previous RA's and still correct —
+                // the timer speaks it.
+                _lastTcasRaGuidance = "";
+                _tcasRaAnnouncer = announcer;
+                if (_tcasRaComposeTimer == null)
+                {
+                    _tcasRaComposeTimer = new System.Windows.Forms.Timer { Interval = 800 };
+                    _tcasRaComposeTimer.Tick += (_, _) =>
+                    {
+                        _tcasRaComposeTimer!.Stop();
+                        if (_tcasRaAnnouncer != null) MaybeAnnounceTcasRaGuidance(_tcasRaAnnouncer);
+                    };
+                }
+                _tcasRaComposeTimer.Stop();
+                _tcasRaComposeTimer.Start();
+            }
             return false; // generic Mon announce still speaks the state itself
         }
 
+        // Runway Overrun Warning / Protection (ROW/ROP) + OANS RWY AHEAD — decode
+        // the ARINC429 discrete word and announce each safety call-out on its rising
+        // edge (0->1). On the ground pre-flight every bit is 0, so this is silent at
         // baseline and only speaks the real landing/taxi warnings ("Runway too
         // short", "Max braking", "Runway ahead"). Honours the Ctrl+M mute.
         if (varName is "A32NX_ROW_ROP_WORD_1" or "A32NX_OANS_WORD_1")

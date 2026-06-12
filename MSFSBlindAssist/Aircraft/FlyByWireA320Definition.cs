@@ -2954,16 +2954,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 { 2, "Engineering display test in progress" }
             }
         },
-        // ARINC FM word — see the FM1 entry; flagged so the announce decodes.
-        ["A32NX_FM2_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FM2_MINIMUM_DESCENT_ALTITUDE",
-            DisplayName = "Minimum Descent Height (Radio)",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "feet",
-            IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
-        },
+        // (FM2_MINIMUM_DESCENT_ALTITUDE was a dead registration — never paneled or
+        // requested; FM1 carries the entered minimums for the readout. Removed.)
         ["A32NX_FCU_EFIS_L_FD_LIGHT_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_EFIS_L_FD_LIGHT_ON",
@@ -3386,8 +3378,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "feet",
             IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
         },
-        // Predicted takeoff pitch trim (FMS-computed THS target; ARINC degrees,
-        // positive = nose up). A380 parity — decoded in TryGetDisplayOverride.
+        // Predicted takeoff pitch trim (FMS-computed THS target; ARINC degrees).
+        // SIGN IS INVERTED vs the A380: the A32NX FMS writes -ths
+        // (A32NX_FMCMainDisplay.ts:4133 setBnrValue(ths ? -ths : 0)), so
+        // NEGATIVE = nose up. Decoded in TryGetDisplayOverride.
         ["A32NX_FM1_TO_PITCH_TRIM"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FM1_TO_PITCH_TRIM",
@@ -5257,6 +5251,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_FM1_TRANS_ALT",
             "A32NX_ADIRS_ADR_1_STATIC_AIR_TEMPERATURE",
             "A32NX_ADIRS_ADR_1_TOTAL_AIR_TEMPERATURE",
+            // Approach minimums (ARINC FM words; auto-decoded "N feet"/"Not set")
+            // — on-demand readout to complement the on-change announce.
+            "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
+            "A32NX_FM1_DECISION_HEIGHT",
             "PFD_AUTOLAND"
         },
         // ND accessible snapshot — the navigation picture: mode/range, the TO
@@ -6839,8 +6837,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             displayText = $"{value / 1000.0:F3}";
             return true;
         }
-        // Predicted takeoff pitch trim (ARINC429 degrees, positive = nose UP;
-        // "Not computed" until the FMS has perf data). Mirrors the A380 decode.
+        // Predicted takeoff pitch trim ("Not computed" until the FMS has perf
+        // data). SIGN INVERTED vs the A380: the A32NX FMS writes -ths into the
+        // word (A32NX_FMCMainDisplay.ts:4133), so NEGATIVE = nose UP — a pilot
+        // entering UP2.5 on the PERF page must hear "2.5 degrees up".
         if (varKey == "A32NX_FM1_TO_PITCH_TRIM")
         {
             var w = new SimConnect.Arinc429Word(value);
@@ -6848,7 +6848,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             double deg = w.Value;
             displayText = Math.Abs(deg) < 0.05
                 ? "Neutral"
-                : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                : $"{Math.Abs(deg):0.0} degrees {(deg < 0 ? "up" : "down")}";
             return true;
         }
 
@@ -7098,6 +7098,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private double _tcasRaRate;                           // rate to maintain, fpm
     private double _tcasGreenMin, _tcasGreenMax, _tcasRedMin, _tcasRedMax;
     private string _lastTcasRaGuidance = "";
+    private System.Windows.Forms.Timer? _tcasRaComposeTimer;
+    private Accessibility.ScreenReaderAnnouncer? _tcasRaAnnouncer;
 
     private void MaybeAnnounceTcasRaGuidance(Accessibility.ScreenReaderAnnouncer announcer)
     {
@@ -7148,7 +7150,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     };
 
     private static string FmtSignedFpm(double v) =>
-        $"{(v >= 0 ? "plus" : "minus")} {Math.Abs(v):0}";
+        Math.Abs(v) < 1 ? "0" : $"{(v > 0 ? "plus" : "minus")} {Math.Abs(v):0}";
 
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
@@ -7157,7 +7159,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // update recomposes the spoken "what to fly" guidance and announces only
         // when the sentence changes. The state var itself returns FALSE so the
         // generic ValueDescriptions announce ("TCAS advisory: resolution advisory")
-        // still fires — the guidance follows it. Mirrors the A380 implementation.
+        // still fires (queued; a detail-driven AnnounceImmediate may land first).
+        // Mirrors the A380 implementation.
         switch (varName)
         {
             case "A32NX_TCAS_RA_CORRECTIVE":
@@ -7180,8 +7183,36 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varName == "A32NX_TCAS_STATE")
         {
             _tcasAdvisoryState = (int)value;
-            if (_tcasAdvisoryState != 2) _lastTcasRaGuidance = "";
-            else MaybeAnnounceTcasRaGuidance(announcer);
+            if (_tcasAdvisoryState != 2)
+            {
+                _lastTcasRaGuidance = "";
+                _tcasRaComposeTimer?.Stop();
+            }
+            else
+            {
+                // Do NOT compose synchronously here: FBW resets corrective +
+                // the V/S bands only in TCAS STBY (NOT on clear-of-conflict —
+                // TcasComputer.ts:1381), so the cache can still hold the
+                // PREVIOUS RA's values and a new opposite-sense RA would
+                // briefly speak "Climb" for a Descend. Instead defer ~800 ms:
+                // detail vars that CHANGED for this RA arrive within the batch
+                // frame and announce fresh from their own handlers; if nothing
+                // changed, the cached guidance is identical to the previous
+                // RA's and therefore still correct — the timer speaks it.
+                _lastTcasRaGuidance = "";
+                _tcasRaAnnouncer = announcer;
+                if (_tcasRaComposeTimer == null)
+                {
+                    _tcasRaComposeTimer = new System.Windows.Forms.Timer { Interval = 800 };
+                    _tcasRaComposeTimer.Tick += (_, _) =>
+                    {
+                        _tcasRaComposeTimer!.Stop();
+                        if (_tcasRaAnnouncer != null) MaybeAnnounceTcasRaGuidance(_tcasRaAnnouncer);
+                    };
+                }
+                _tcasRaComposeTimer.Stop();
+                _tcasRaComposeTimer.Start();
+            }
             return false; // generic ValueDescriptions announce still speaks the state
         }
 
@@ -7655,14 +7686,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // old "no A" PUSH_AUTOPILOT_MASTERWARN_L was DEAD, so this aural-cancel never worked).
         // Calc-path write. The combo announces its own On/Off, so no extra speech here.
         // FUEL MODE SEL — the cockpit click toggles the L:var AND routes the
-        // center-tank transfer junctions 4+5 with the same value (cockpit XML
-        // LEFT_SINGLE_CODE, replicated verbatim for an absolute set). Live-
-        // verified: junction 4 follows; restores cleanly on Auto.
+        // center-tank transfer junctions 4+5. Junction OPTIONS ARE 1-BASED:
+        // the cockpit XML LEFT_SINGLE_CODE sends "1 l0 +" (= 1 + toggled), and
+        // flight_model.cfg Junction.4/5 define Option 1 = auto transfer-valve
+        // routing, Option 2 = manual direct-to-inner. So the junction value is
+        // t+1, NOT t — sending t selected the AUTO routing for "Manual" and an
+        // invalid option 0 for "Auto" while the L:var and light said otherwise.
         if (varKey == "A32NX_OVHD_FUEL_MODESEL_MANUAL")
         {
             int t = value > 0.5 ? 1 : 0;
             simConnect.ExecuteCalculatorCode(
-                $"{t} (>L:A32NX_OVHD_FUEL_MODESEL_MANUAL) {t} 4 (>K:2:FUELSYSTEM_JUNCTION_SET) {t} 5 (>K:2:FUELSYSTEM_JUNCTION_SET)");
+                $"{t} (>L:A32NX_OVHD_FUEL_MODESEL_MANUAL) {t + 1} 4 (>K:2:FUELSYSTEM_JUNCTION_SET) {t + 1} 5 (>K:2:FUELSYSTEM_JUNCTION_SET)");
             return true;
         }
 
@@ -7693,6 +7727,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 simConnect.ExecuteCalculatorCode("1 (>L:A32NX_OVHD_HYD_EPUMPY_OVRD_IS_PRESSED)");
                 simConnect.ExecuteCalculatorCode("0 (>L:A32NX_OVHD_HYD_EPUMPY_OVRD_IS_PRESSED)");
             }
+            // Re-read the latch so the cache (and combo) track the result — the
+            // var is OnRequest, and a stale cache here inverts the desired-vs-
+            // current guard on the NEXT set (a cockpit click or our own toggle
+            // would otherwise go unseen until the next panel open). Delayed:
+            // the Rust controller latches a frame AFTER the pulse, so an
+            // immediate read would cache the pre-toggle value.
+            _ = System.Threading.Tasks.Task.Delay(400).ContinueWith(
+                _ => { if (simConnect.IsConnected) simConnect.RequestVariable(varKey, forceUpdate: true); });
             return true;
         }
 

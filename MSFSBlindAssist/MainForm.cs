@@ -2059,7 +2059,7 @@ public partial class MainForm : Form
                 }
                 break;
             case HotkeyAction.ShowDCDU:
-                if (currentAircraft.AircraftCode == "A320")
+                if (currentAircraft?.AircraftCode == "A320")
                 {
                     ShowA32NXDcduDialog();
                 }

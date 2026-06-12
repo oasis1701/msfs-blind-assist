@@ -28,10 +28,12 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 /// Resources/coherent-a32nx-dcdu.js against the "DCDU" Coherent view — NO
 /// persistent Coherent socket on the A32NX by policy (the A320 EWD scrape was
 /// removed over socket crash risk; one-shots are the flightInfo-proven path).
-/// Refresh: on open, every 2 s while open (change-only, caret-preserving), and
-/// ~1.5 s after a soft key (the DCDU Button delays its action 1 s for its
+/// Refresh: on open, every 1 s while open (change-only, caret-preserving), and
+/// ~1.2 s after a soft key (the DCDU Button delays its action 1 s for its
 /// visual confirm). Soft keys fire the REAL DCDU H-events via the calc path
-/// ((>H:A32NX_DCDU_BTN_MPL_*) — each Button listens for both units).
+/// ((>H:A32NX_DCDU_BTN_MPL_*) — each Button listens for both units), each
+/// string sequence-uniquified so MobiFlight's consecutive-identical-string
+/// coalescing can't drop a repeated key (the WILCO→SEND flow).
 /// </summary>
 public class FlyByWireDcduForm : Form
 {
@@ -46,6 +48,7 @@ public class FlyByWireDcduForm : Form
     private string? _scrapeJs;
     private bool _refreshing;
     private string _btnL1 = "", _btnL2 = "", _btnR1 = "", _btnR2 = "";
+    private bool _actL1, _actL2, _actR1, _actR2;
     private int _calcSeq;
 
     public FlyByWireDcduForm(ScreenReaderAnnouncer announcer, SimConnect.SimConnectManager simConnect)
@@ -75,15 +78,19 @@ public class FlyByWireDcduForm : Form
         // press-confirm), so the perceived lag after a key is confirm + scrape;
         // the tight poll keeps that near the floor without a persistent socket.
         _pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _pollTimer.Tick += async (_, _) => await RefreshDisplayAsync();
+        _pollTimer.Tick += async (_, _) => { if (!IsDisposed) await RefreshDisplayAsync(); };
         _postActionTimer = new System.Windows.Forms.Timer { Interval = 1200 };
-        _postActionTimer.Tick += async (_, _) => { _postActionTimer.Stop(); await RefreshDisplayAsync(); };
+        _postActionTimer.Tick += async (_, _) => { _postActionTimer.Stop(); if (!IsDisposed) await RefreshDisplayAsync(); };
 
         Shown += async (_, _) =>
         {
             _display.Focus();
             await RefreshDisplayAsync();
-            _pollTimer.Start();
+            // The first eval can take seconds (view resolution + WS connect);
+            // restarting a disposed WinForms timer silently re-creates its
+            // native timer, leaving a zombie 1 Hz eval loop if the form was
+            // closed during that first await.
+            if (!IsDisposed) _pollTimer.Start();
         };
         FormClosed += (_, _) => { _pollTimer.Stop(); _postActionTimer.Stop(); };
         KeyDown += OnFormKeyDown;
@@ -99,7 +106,7 @@ public class FlyByWireDcduForm : Form
             }
             catch
             {
-                _scrapeJs = "";
+                return ""; // transient read failure — leave null so the next poll retries
             }
         }
         return _scrapeJs;
@@ -118,7 +125,11 @@ public class FlyByWireDcduForm : Form
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DCDU] eval failed: {ex.Message}");
-                return; // keep the last good render; the next poll retries
+                // Keep the last good render; the next poll retries. But on the
+                // FIRST render there is nothing to keep — a silent blank window
+                // with no explanation is the worst outcome for a blind user.
+                if (_lastText.Length == 0) SetText("DCDU unavailable. Retrying...");
+                return;
             }
             if (IsDisposed) return;
 
@@ -129,6 +140,11 @@ public class FlyByWireDcduForm : Form
                 var root = doc.RootElement;
                 if (!root.TryGetProperty("ok", out var ok) || !ok.GetBoolean())
                 {
+                    // The DCDU is genuinely gone — clear the cached soft keys so
+                    // a chord can't fire against a stale layout and falsely
+                    // confirm an action the unit never saw.
+                    _btnL1 = _btnL2 = _btnR1 = _btnR2 = "";
+                    _actL1 = _actL2 = _actR1 = _actR2 = false;
                     SetText("DCDU unavailable.");
                     return;
                 }
@@ -163,9 +179,17 @@ public class FlyByWireDcduForm : Form
                     if (_btnR2 == "SEND" && prevR2 != "SEND")
                         _announcer.Announce("Press right 2 again to send.");
                 }
+                if (root.TryGetProperty("act", out var acts))
+                {
+                    _actL1 = acts.TryGetProperty("L1", out var a1) && a1.GetBoolean();
+                    _actL2 = acts.TryGetProperty("L2", out var a2) && a2.GetBoolean();
+                    _actR1 = acts.TryGetProperty("R1", out var a3) && a3.GetBoolean();
+                    _actR2 = acts.TryGetProperty("R2", out var a4) && a4.GetBoolean();
+                }
             }
             catch
             {
+                if (_lastText.Length == 0) SetText("DCDU unavailable. Retrying...");
                 return; // malformed payload — keep the last render
             }
 
@@ -198,13 +222,15 @@ public class FlyByWireDcduForm : Form
         {
             if (!e.Control && !e.Alt && e.KeyCode is Keys.F1 or Keys.F2)
             {
-                FireButton(e.KeyCode == Keys.F1 ? "L1" : "L2", e.KeyCode == Keys.F1 ? _btnL1 : _btnL2);
+                bool first = e.KeyCode == Keys.F1;
+                FireButton(first ? "L1" : "L2", first ? _btnL1 : _btnL2, first ? _actL1 : _actL2);
                 e.Handled = true; e.SuppressKeyPress = true;
                 return;
             }
             if (!e.Control && !e.Alt && e.KeyCode is Keys.F7 or Keys.F8)
             {
-                FireButton(e.KeyCode == Keys.F7 ? "R1" : "R2", e.KeyCode == Keys.F7 ? _btnR1 : _btnR2);
+                bool first = e.KeyCode == Keys.F7;
+                FireButton(first ? "R1" : "R2", first ? _btnR1 : _btnR2, first ? _actR1 : _actR2);
                 e.Handled = true; e.SuppressKeyPress = true;
                 return;
             }
@@ -213,24 +239,31 @@ public class FlyByWireDcduForm : Form
         {
             if (e.Control && !e.Alt && e.KeyCode is Keys.D1 or Keys.D2)
             {
-                FireButton(e.KeyCode == Keys.D1 ? "L1" : "L2", e.KeyCode == Keys.D1 ? _btnL1 : _btnL2);
+                bool first = e.KeyCode == Keys.D1;
+                FireButton(first ? "L1" : "L2", first ? _btnL1 : _btnL2, first ? _actL1 : _actL2);
                 e.Handled = true; e.SuppressKeyPress = true;
                 return;
             }
             if (e.Alt && !e.Control && e.KeyCode is Keys.D1 or Keys.D2)
             {
-                FireButton(e.KeyCode == Keys.D1 ? "R1" : "R2", e.KeyCode == Keys.D1 ? _btnR1 : _btnR2);
+                bool first = e.KeyCode == Keys.D1;
+                FireButton(first ? "R1" : "R2", first ? _btnR1 : _btnR2, first ? _actR1 : _actR2);
                 e.Handled = true; e.SuppressKeyPress = true;
                 return;
             }
         }
         // Message navigation: PageUp/Down steps between messages; with Ctrl it
-        // scrolls within a long message (page-of-elements).
+        // scrolls within a long message (page-of-elements). Direction: DOWN is
+        // FORWARD everywhere — messages sort oldest-first (index.tsx), so
+        // MS0PLUS = newer message; POEPLUS = next page of a long message
+        // (MessageVisualization.tsx: POEMINUS = pageIndex-1). The within-message
+        // direction matters beyond reading order: the answer keys stay INACTIVE
+        // until the pilot has paged to the END of a multi-page uplink.
         if (e.KeyCode is Keys.PageUp or Keys.PageDown)
         {
             string key = e.Control
-                ? (e.KeyCode == Keys.PageUp ? "POEPLUS" : "POEMINUS")
-                : (e.KeyCode == Keys.PageUp ? "MS0PLUS" : "MS0MINUS");
+                ? (e.KeyCode == Keys.PageUp ? "POEMINUS" : "POEPLUS")
+                : (e.KeyCode == Keys.PageUp ? "MS0MINUS" : "MS0PLUS");
             FireDcduEvent($"BTN_MPL_{key}");
             _postActionTimer.Stop();
             _postActionTimer.Start();
@@ -250,11 +283,25 @@ public class FlyByWireDcduForm : Form
         }
     }
 
-    private void FireButton(string slot, string label)
+    private void FireButton(string slot, string label, bool active)
     {
         if (label.Length == 0)
         {
             _announcer.AnnounceImmediate("No action on that key.");
+            return;
+        }
+        // An inactive Button ignores its H-event entirely (Button.tsx guards on
+        // active) — most commonly because a long uplink hasn't been read to the
+        // end yet, or a response is still transmitting. Saying the label here
+        // would falsely confirm an action the unit refused.
+        if (!active)
+        {
+            _announcer.AnnounceImmediate($"{label} not available yet. Read to the end of the message first.");
+            return;
+        }
+        if (!_simConnect.IsMobiFlightConnected)
+        {
+            _announcer.AnnounceImmediate("Sim connection not ready. Key not sent.");
             return;
         }
         FireDcduEvent($"BTN_MPL_{slot}");

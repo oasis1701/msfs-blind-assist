@@ -234,7 +234,11 @@ Windows:
              — the second Alt+2 actually transmits. After sending, right 2
              becomes CLOSE to dismiss the message.
              PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
-             scroll within a long message, F5 = refresh, Escape = close.
+             scroll within a long message (Ctrl+PageDown = next page). NOTE:
+             on a long multi-page uplink the answer keys stay inactive until
+             you have paged to the END of the message — the window says
+             "not available yet" if you try early. F5 = refresh, Escape =
+             close.
              Needs a datalink connection: set the ACARS provider (Hoppie /
              SayIntentions / BeyondATC) in the flyPad Settings, then log on
              to ATC from the MCDU ATSU pages — the NOTIFY key needs the ATC

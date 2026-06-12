@@ -43,6 +43,8 @@ Full accessibility support for the free FlyByWire A32NX.
 - All FCU controls accessible, with dedicated value-entry windows (speed, heading, altitude, V/S, autopilot, altimeter) and knob push/pull.
 - Fuel, payload, weight and balance details fully supported.
 - MCDU accessible directly through FBW's SimBridge for full FMS programming.
+- Accessible **DCDU (CPDLC datalink) window**, opened with Ctrl+Shift+D: read ATC uplinks and answer them — WILCO, STANDBY, UNABLE, and the real two-step send — with any FBW ACARS provider (Hoppie, SayIntentions, BeyondATC).
+- Spoken **TCAS guidance**: traffic and resolution advisories announce as they happen, including the "what to fly" vertical-speed instruction during a resolution advisory.
 - Accessible flyPad EFB (Electronic Flight Bag), opened with Shift+T: the live flyPad tablet is rendered as a browsable document you read and operate with your screen reader — Dashboard, Ground Services, Payload, Fuel, Settings, Navigraph, Checklists and more. (This supersedes the old mouse-coordinate workaround — the EFB is now fully accessible.)
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, hand-fly and visual landing guidance, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 
@@ -114,7 +116,7 @@ Full accessibility support for the FlyByWire A380X — the free, high-fidelity A
 - A dedicated **Radio Management Panel (RMP) window** that reads the live RMP screen as a list (VHF/HF/TEL active and standby, transmit/selected, messages) with a Captain/First Officer selector — type a frequency and it tunes the radio the realistic way, announcing the result as it auto-completes.
 - The live **Electronic Checklist (ECL)** — the real cockpit checklists and any active abnormal ECAM procedure — fully interactive, with sensed items ticking themselves as you perform them.
 - Accessible panels across the overhead, glareshield, pedestal and displays for every system; the **16 System Display (SD) pages** and the **E/WD** read aloud, including the full Flight Warning System stream — failure titles, action lines, memos, and the STS / ADV / FAILURE-PENDING status reminders.
-- Automatic announcements: Master Warning/Caution, the full **FMA**, autopilot, approach capability, ROW/ROP runway-overrun protection, and **OANS + Brake-To-Vacate (BTV)** with dry/wet stopping distance and rollout call-outs.
+- Automatic announcements: Master Warning/Caution, the full **FMA**, autopilot, approach capability, **spoken TCAS guidance** (traffic/resolution advisories with the "what to fly" vertical-speed instruction), ROW/ROP runway-overrun protection, and **OANS + Brake-To-Vacate (BTV)** with dry/wet stopping distance and rollout call-outs.
 - Honours the A380's own units in MSFSBA's read-outs: **metric altitude** (FCU MTRS — every altitude reads, and the FCU altitude input is entered, in metres) and **kg/lb weight**; the clock chronometer and elapsed-time counter; pitch/rudder trim; fuel pumps; and the audio control panel.
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 - A complete screen-reader-first manual ships in `docs/a380-manual.html`.
