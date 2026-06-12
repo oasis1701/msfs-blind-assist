@@ -28,7 +28,7 @@
 
 <h1 id="top">MSFS Blind Assist — FlyByWire A380X Complete Manual</h1>
 
-<p class="small">A complete, screen-reader-first manual for flying the FlyByWire A380X in Microsoft Flight Simulator with MSFS Blind Assist (MSFSBA). It covers every feature MSFSBA exposes on the A380 — what it does and exactly how to use it, step by step — plus how the A380's avionics differ from a classic Airbus MCDU. Keyboard shortcuts are listed beside each feature and collected in one reference at the end. Built for total reliance on the screen reader: nothing here assumes you can see the screen.</p>
+<p class="small">A complete, screen-reader-first manual for flying the FlyByWire A380X in Microsoft Flight Simulator with MSFS Blind Assist (MSFSBA). It covers every feature MSFSBA exposes on the A380 — what it does and exactly how to use it, step by step — plus how the A380's avionics differ from a classic Airbus MCDU. Keyboard shortcuts are listed beside each feature and collected in one reference at the end. Built for total reliance on the screen reader: nothing here assumes you can see the screen. <em>Last updated 12 June 2026.</em></p>
 
 <div class="note"><strong>How to read this manual.</strong> Use your screen reader's heading navigation (H, or 1–4 for heading levels) to jump between sections, and the links list to jump to the table of contents below. Every section is self-contained. Keyboard shortcuts appear like this: <kbd>Ctrl</kbd>+<kbd>M</kbd>.</div>
 
@@ -115,8 +115,10 @@
 <tr><td>Airport Map &amp; BTV (OANS)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport map data and Brake-To-Vacate exit selection (<a href="#part11">Part 11</a>).</td></tr>
 <tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings (<a href="#part8">Part 8</a>).</td></tr>
 <tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> is the static text checklist (<a href="#part7">Part 7</a>).</td></tr>
+<tr><td>Radio Management Panel (RMP)</td><td>(INPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Tune the VHF radios and set the squawk (<a href="#part10">Part 10</a>).</td></tr>
 <tr><td>Monitor Manager</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
 </table>
+<p class="small">Note that <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> does different things in different modes: in INPUT mode it opens the RMP window; in OUTPUT mode it reads the last landing rate.</p>
 <p>In a pop-out window (E/WD, MCDU, flyPad, OANS, RMP, ECL), <kbd>F5</kbd> refreshes the reading and <kbd>Escape</kbd> closes it. The PFD, ND, ISIS and System Display pages do <strong>not</strong> have their own windows — they are read from the panel tree (see <a href="#part8">Part 8</a>); only the E/WD keeps a pop-out window.</p>
 
 <h3>The panel tree</h3>
@@ -152,6 +154,7 @@
 <tr><td>Delete</td><td>Clear the selected field on the MFD.</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Up</kbd> or <kbd>PageUp</kbd></td><td>Previous page (announces "Previous page").</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Down</kbd> or <kbd>PageDown</kbd></td><td>Next page (announces "Next page"). Within a long page like F-PLN, this also scrolls the waypoint window.</td></tr>
+<tr><td><kbd>Alt</kbd>+<kbd>S</kbd></td><td>Jump to the scratchpad input box.</td></tr>
 <tr><td><kbd>F5</kbd></td><td>Refresh the reading.</td></tr>
 </table>
 <p><strong>To clear a field:</strong> select its line, then press <kbd>Delete</kbd> (always clears the focused field) — or <kbd>Backspace</kbd>, which follows the Airbus CLR order (your typed scratchpad first, then a displayed message, then the field). To <em>change</em> a field instead, type the new value into the scratchpad and press <kbd>Enter</kbd> on the field's line. A <em>mandatory</em> field may refuse to go empty and revert — that is the aircraft's own validation, not a fault.</p>
@@ -160,7 +163,7 @@
 <h3 id="pagenav">Moving between pages — three ways</h3>
 <ol>
   <li><strong>The "go to MFD page" combo</strong> at the top reaches every page (ACTIVE F-PLN / PERF / FUEL &amp; LOAD / WIND / INIT; POSITION MONITOR / REPORT / NAVAIDS / IRS / GNSS / TIME; SEC INDEX SEC 1–3; DATA STATUS / WAYPOINT / NAVAID / ROUTE / AIRPORT / PRINTER; ATC COM; SURV). Arrow to a page and it navigates once your selection settles (so passing over pages on the way doesn't load each one).</li>
-  <li><strong>Quick page buttons</strong> (Alt+letter): <kbd>Alt</kbd>+<kbd>I</kbd> INIT, <kbd>Alt</kbd>+<kbd>F</kbd> F-PLN, <kbd>Alt</kbd>+<kbd>E</kbd> PERF, <kbd>Alt</kbd>+<kbd>L</kbd> FUEL &amp; LOAD, <kbd>Alt</kbd>+<kbd>R</kbd> RAD NAV, <kbd>Alt</kbd>+<kbd>S</kbd> SEC FPL, <kbd>Alt</kbd>+<kbd>D</kbd> DIR, <kbd>Alt</kbd>+<kbd>A</kbd> ATC COM, <kbd>Alt</kbd>+<kbd>V</kbd> SURV, <kbd>Alt</kbd>+<kbd>H</kbd> Refresh. (Page stepping is on Ctrl+Up/Down and PageUp/PageDown — there are no separate UP/DOWN buttons.)</li>
+  <li><strong>Quick page buttons</strong> (Alt+letter): <kbd>Alt</kbd>+<kbd>I</kbd> INIT, <kbd>Alt</kbd>+<kbd>F</kbd> F-PLN, <kbd>Alt</kbd>+<kbd>E</kbd> PERF, <kbd>Alt</kbd>+<kbd>L</kbd> FUEL &amp; LOAD, <kbd>Alt</kbd>+<kbd>R</kbd> RAD NAV, <kbd>Alt</kbd>+<kbd>P</kbd> SEC FPL, <kbd>Alt</kbd>+<kbd>D</kbd> DIR, <kbd>Alt</kbd>+<kbd>A</kbd> ATC COM, <kbd>Alt</kbd>+<kbd>V</kbd> SURV, <kbd>Alt</kbd>+<kbd>H</kbd> Refresh. (Page stepping is on Ctrl+Up/Down and PageUp/PageDown — there are no separate UP/DOWN buttons.)</li>
   <li>The MFD's own in-page tabs, which appear in the line list.</li>
 </ol>
 <p>Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS has the data they need — that is real aircraft behaviour; they read "disabled" until then.</p>
@@ -169,7 +172,7 @@
 <p>Beyond the FMS pages, the MFD's other domains are reachable as pages too:</p>
 <ul>
   <li><strong>ATC COM</strong> (<kbd>Alt</kbd>+<kbd>A</kbd>) is the datalink: the CONNECT page (logon/active centre), the REQUEST and REPORT pages, the message record (the CPDLC message log — when MSFSBA announces "ATC Message Waiting", open MSG RECORD to read the controller's clearance line by line), the <strong>D-ATIS</strong> list, and the emergency page. They read as line lists like the FMS pages; you arrow and press <kbd>Enter</kbd> on the buttons/fields the same way. This is how you read CPDLC uplinks and request/receive a digital ATIS without seeing the screen. <span class="small">Note: CONNECT, MSG RECORD and D-ATIS work; REQUEST, REPORT and EMERGENCY are still work-in-progress in the FlyByWire dev build and currently show "ERROR 404 NOT FOUND" — MSFSBA already navigates to them, so they will read normally once FBW implements them.</span></li>
-  <li><strong>SEC flight plan</strong> (<kbd>Alt</kbd>+<kbd>S</kbd>) opens the SECONDARY flight plans (SEC 1–3) — the standby routes the A380 keeps for a runway change or alternate. They read exactly like the active F-PLN, so you can build and review a secondary plan and then activate it.</li>
+  <li><strong>SEC flight plan</strong> (<kbd>Alt</kbd>+<kbd>P</kbd>) opens the SECONDARY flight plans (SEC 1–3) — the standby routes the A380 keeps for a runway change or alternate. They read exactly like the active F-PLN, so you can build and review a secondary plan and then activate it.</li>
 </ul>
 
 <h3 id="fplnreading">Reading the flight plan (F-PLN)</h3>
@@ -232,7 +235,7 @@
 </div>
 
 <h3 id="perf">5c. Performance and weights</h3>
-<p>Open <strong>FUEL &amp; LOAD</strong> (via INIT or the page combo) to set or confirm ZFW, ZFWCG, BLOCK fuel, TAXI, PAX and reserves — these usually come from the flyPad Dispatch page. Open <strong>PERF</strong> (<kbd>Alt</kbd>+<kbd>P</kbd>) for the takeoff, climb, cruise, descent and approach sub-tabs (V-speeds, FLEX temp, THS, transition altitude). FlyByWire's own takeoff-performance calculator (on the flyPad) is the easy way to get the takeoff numbers.</p>
+<p>Open <strong>FUEL &amp; LOAD</strong> (via INIT or the page combo) to set or confirm ZFW, ZFWCG, BLOCK fuel, TAXI, PAX and reserves — these usually come from the flyPad Dispatch page. Open <strong>PERF</strong> (<kbd>Alt</kbd>+<kbd>E</kbd>) for the takeoff, climb, cruise, descent and approach sub-tabs (V-speeds, FLEX temp, THS, transition altitude). FlyByWire's own takeoff-performance calculator (on the flyPad) is the easy way to get the takeoff numbers.</p>
 <p><strong>Minimums</strong> (baro MDA and radio DH) are entered on the PERF <strong>APPR</strong> tab — there is no separate panel for them, by design. MSFSBA reads them back and announces them when they change ("Baro minimum 200 feet", "Decision height 200 feet").</p>
 
 <h3 id="arrival">5d. Set the arrival (runway, approach, STAR)</h3>
@@ -259,7 +262,7 @@
 <tr><th>App</th><th>What it does</th></tr>
 <tr><td>Dashboard ("Your Flight")</td><td>The landing page. MSFSBA reads it in column order: first the left "Your Flight" widget, then the right "Important Information" (Weather, Pinned Charts, Maintenance, Checklists).</td></tr>
 <tr><td>Dispatch</td><td>Loading &amp; fuel (set ZFW/payload/fuel — these sync to the aircraft and into the MFD FUEL &amp; LOAD page) and overall flight prep.</td></tr>
-<tr><td>Ground</td><td>Ground services without in-sim ATC: jetway/stairs, fuel truck, pushback, catering, GPU, baggage/cargo, doors. The door tiles are grouped together and each announces its state — for example "Main Door 1 Left, closed" / "Cargo Door, open" — with the door's name, both on the ground and in flight.</td></tr>
+<tr><td>Ground</td><td>Ground services without in-sim ATC: jetway/stairs, fuel truck, catering, GPU, baggage/cargo, doors. The door tiles are grouped together and each announces its state — for example "Main Door 1 Left, closed" / "Cargo Door, open" — with the door's name, both on the ground and in flight. <strong>Pushback:</strong> the flyPad's own pushback page is deliberately not implemented in MSFSBA — use <strong>GSX</strong> instead (INPUT <kbd>Alt</kbd>+<kbd>G</kbd> opens the accessible GSX menu; OUTPUT <kbd>Ctrl</kbd>+<kbd>G</kbd> reads the latest GSX tooltip).</td></tr>
 <tr><td>Performance</td><td>Automated calculations such as takeoff performance (V-speeds, FLEX).</td></tr>
 <tr><td>Navigation &amp; Charts</td><td>Navigraph charts and a moving map.</td></tr>
 <tr><td>ATC (Online)</td><td>Live online ATC frequencies (e.g. VATSIM/IVAO awareness).</td></tr>
@@ -326,11 +329,17 @@
   <li><strong>Flight phase</strong>: Preflight, Takeoff, Climb, Cruise, Descent, Approach, Go Around, Done. And the FCU managed/selected indicators when you push or pull a knob.</li>
 </ul>
 
+<h3>Traffic: TCAS speaks its advisories — and what to fly</h3>
+<p>MSFSBA announces TCAS state changes: <strong>"traffic advisory"</strong> (TA), <strong>"resolution advisory"</strong> (RA) and <strong>"clear of conflict"</strong>. During a resolution advisory it also speaks the <strong>guidance</strong> — the manoeuvre and the vertical-speed band to fly — as one sentence, for example: <em>"TCAS: Climb. Fly vertical speed plus 1500 to plus 2000 feet per minute."</em> The sentence re-announces if the RA strengthens or reverses, and a preventive RA reads its do-not limits instead. Resolution advisories are <strong>inhibited on the ground</strong> and at very low altitude by design — hearing only traffic advisories while taxiing is correct, not a fault. Mute via the Monitor Manager's TCAS entry. (Separately, <kbd>R</kbd> in OUTPUT mode reads the tracked traffic on demand and <kbd>Ctrl</kbd>+<kbd>R</kbd> opens the TCAS traffic window.)</p>
+
+<h3>Runway-overrun protection (ROW/ROP)</h3>
+<p>The A380's runway-overrun warning/protection call-outs are spoken as the aircraft raises them: <strong>"Runway too short"</strong> and <strong>"If wet, runway too short"</strong> on approach (the landing distance does not fit), <strong>"Maximum braking"</strong> during the rollout when ROP commands full autobrake, <strong>"Max braking"</strong> when ROP wants maximum <em>manual</em> braking, and <strong>"Runway ahead"</strong> when taxiing toward a runway.</p>
+
 <h3>Numeric callouts</h3>
-<p>Altimeter setting on the knob and on STD↔QNH / hPa↔inHg changes; the approach minimums; thrust-lever detents ("All thrust levers Idle"); flaps and gear; and the A380's runway-overrun protection (ROW/ROP): "Runway too short", "If wet, runway too short", "Max braking", and "Runway ahead" when taxiing toward a runway.</p>
+<p>Altimeter setting on the knob and on STD↔QNH / hPa↔inHg changes; the approach minimums; thrust-lever detents ("All thrust levers Idle"); flaps and gear. Periodic <strong>ground-speed callouts</strong> while on the ground (taxi, takeoff roll and landing rollout) — the interval (off / 5 / 10 knots) is set in the Taxi Guidance options.</p>
 
 <h3>Units: metric altitude and weight</h3>
-<p>The A380 has two unit toggles that MSFSBA honours in <em>its own</em> readouts, so what you hear matches the cockpit. When the FCU <strong>metric-altitude</strong> button (MTRS) is on, <strong>every</strong> altitude MSFSBA speaks is in metres — the current-altitude keys (<kbd>A</kbd> MSL, <kbd>Q</kbd> AGL), the FCU selected-altitude read (<kbd>Shift</kbd>+<kbd>A</kbd>), and the selected/standby altitude panel fields — and, when you set the FCU altitude (<kbd>Ctrl</kbd>+<kbd>A</kbd>), the value you type is taken as metres. Turn MTRS off and everything is feet again. Separately, the flyPad <strong>US/metric weight</strong> setting (or the MCDU Units button, <kbd>Alt</kbd>+<kbd>U</kbd>, inside the MFD window) switches MSFSBA's weight readouts — gross weight and total fuel — between kilograms and pounds, and is announced when it changes. The standby ISIS altitude always stays in feet (it is the backup instrument).</p>
+<p>The A380 has two unit toggles that MSFSBA honours in <em>its own</em> readouts, so what you hear matches the cockpit. When the FCU <strong>metric-altitude</strong> button (MTRS) is on, <strong>every</strong> altitude MSFSBA speaks is in metres — the current-altitude keys (<kbd>A</kbd> MSL, <kbd>Q</kbd> AGL), the FCU selected-altitude read (<kbd>Shift</kbd>+<kbd>A</kbd>), and the selected/standby altitude panel fields — and, when you set the FCU altitude (<kbd>Ctrl</kbd>+<kbd>A</kbd>), the value you type is taken as metres. Turn MTRS off and everything is feet again. Separately, the flyPad <strong>US/metric weight</strong> setting (or the MCDU Units button, <kbd>Alt</kbd>+<kbd>N</kbd>, inside the MFD window) switches MSFSBA's weight readouts — gross weight and total fuel — between kilograms and pounds, and is announced when it changes. The standby ISIS altitude always stays in feet (it is the backup instrument).</p>
 
 <h3>State changes</h3>
 <p>Engine state (Off/On/Starting/Shutting Down), engine masters and crossfeeds, doors, wheel chocks, safety cones, external power available, ATC message waiting, destination fuel OK/below-minimum, and the E/WD memo callouts (PARK BRK ON, APU AVAIL, ELEC EXT PWR, and so on).</p>
@@ -372,6 +381,9 @@
 <h4>Autoflight, gear, brakes, engines, lights, fuel, electrics, hydraulics</h4>
 <p>Autopilot 1/2, localizer, approach, expedite; autobrake (Disarm/BTV/Low/L2/L3/High) and RTO arm; gear and gravity extension; flaps, parking brake, speedbrake, thrust-lever detents; engine masters/mode/start; all exterior and interior lights; fuel transfer/jettison/crossfeed; ELEC, HYD, BLEED, ADIRS, the PRIM/SEC flight-control computers; GPWS/TAWS; weather radar; ground services (doors, jet bridge, stairs); and "Load Aircraft Preset" (Cold &amp; Dark / Powered / Pushback / Taxi / Takeoff).</p>
 
+<h4>Engine start — watchdog protected</h4>
+<p>The <strong>engine masters</strong> are ordinary Off/On combos and the <strong>engine mode selector</strong> (Crank / Norm / Ignition-Start) is a combo, all in the Engines panel. The FlyByWire cockpit's physical start-selector has a known bug where it only feeds ignition to engines 1 and 2, leaving engines 3 and 4 motoring without ever lighting. MSFSBA runs an automatic <strong>watchdog</strong> that mirrors the selector onto engines 3 and 4, so all four engines start normally no matter how the selector was moved — the MSFSBA combo, the cockpit knob, a preset or a checklist. You do not need to do anything; just start the engines as normal.</p>
+
 <div class="note">A few overhead pushbuttons (Flight Director, some packs/bleeds/bus-ties and the like) are <strong>computed outputs</strong> on this build: the FBW systems recompute them every frame, so an external "set" reverts. MSFSBA still reads their true state and announces changes; they are simply not settable from outside until FBW provides a control. This is a platform limitation, not a missing feature.</div>
 
 <!-- ===================================================================== -->
@@ -381,11 +393,16 @@
 <p><strong>What you need for the full feature.</strong> The airport maps come from <strong>Navigraph</strong>, an online subscription service — there is no file to install. To get the full BTV (the runway/exit lists and predicted distances) you need a <strong>Navigraph subscription</strong> and to be <strong>logged into Navigraph inside the flyPad EFB</strong> (open it with <kbd>Shift</kbd>+<kbd>T</kbd>, go to the Navigraph page, and complete the login). Without that, only the manual BTV fallback is available. The window's top line always tells you which you have: "OANS: full …" or "OANS: Navigraph maps NOT loaded — manual BTV only".</p>
 <p>Read the controls with the arrow keys; <kbd>Enter</kbd> activates a button or opens a list, you type a code into a field and press <kbd>Enter</kbd>, <kbd>F5</kbd> refreshes, and <kbd>Escape</kbd> closes. Three tabs — arrow to one and press <kbd>Enter</kbd>:</p>
 <ul>
-  <li><strong>Map and BTV</strong> — the main tab. Pick the <strong>BTV runway</strong> from the list and activate <strong>Arm runway</strong>; pick the <strong>BTV exit</strong> from the list and activate <strong>Arm exit</strong>; <strong>Clear BTV</strong> removes the selection. The readout below speaks back the armed runway and its landing distance available, the exit and its distance from the threshold, the predicted <strong>dry / wet / live stop</strong> distances (these compute on approach, not on the ground), the <strong>runway-occupancy</strong> and <strong>turnaround</strong> times, and a "runway X ahead" caution if one is active. When Navigraph maps are not loaded, a <strong>Manual BTV</strong> section appears: it shows the runway length, lets you type a <strong>stop distance</strong> in metres and Apply it, then prompts you to select the landing runway in the FMS.</li>
+  <li><strong>Map and BTV</strong> — the main tab. Pick the <strong>BTV runway</strong> from the list and activate <strong>Arm runway</strong>; pick the <strong>BTV exit</strong> from the list and activate <strong>Arm exit</strong>; <strong>Clear BTV</strong> removes the selection. The exit list shows only the exits valid for the armed runway, <strong>sorted closest-first</strong>, and each entry announces its distance down the runway as you arrow through (for example "Q, 2,289 metres") — so picking an exit beyond the wet stopping distance is easy. If the aircraft rejects an exit (wrong side of the runway, or too close to the threshold), MSFSBA announces the rejection; it is never silent. The readout below speaks back the armed runway and its landing distance available, the exit and its distance from the threshold, the predicted <strong>dry / wet / live stop</strong> distances (these compute on approach, not on the ground), the <strong>runway-occupancy</strong> and <strong>turnaround</strong> times, and a "runway X ahead" caution if one is active. When Navigraph maps are not loaded, a <strong>Manual BTV</strong> section appears: it shows the runway length, lets you type a <strong>stop distance</strong> in metres and Apply it, then prompts you to select the landing runway in the FMS.</li>
   <li><strong>Airport</strong> — choose which airport's map to load. Type a 3- or 4-letter ICAO into the field and activate <strong>Display airport</strong>, or use the <strong>Origin / Destination / Alternate</strong> buttons to jump to your flight-plan airports. The loaded airport name is shown below.</li>
   <li><strong>Status</strong> — whether the airport database is loaded, and the AIRAC cycle.</li>
 </ul>
-<p>To arm BTV end-to-end: set the autobrake selector to <strong>BTV</strong> (in the pedestal panels; confirm on the FMA), then in this window arm your landing runway and an exit beyond the "wet" stopping distance. After touchdown BTV optimises braking to reach that exit at about 10 knots.</p>
+<div class="warn"><strong>Arming BTV is a TWO-step process — both steps are required.</strong>
+<ol>
+  <li><strong>Select on the map:</strong> in this window (Map and BTV tab), arm your landing runway, then arm an exit beyond the predicted "wet" stopping distance. On its own this is only the <em>map-side selection</em> — it does not yet arm anything on the aircraft.</li>
+  <li><strong>Select BTV on the autobrake:</strong> set the <strong>Autobrake</strong> combo to <strong>BTV</strong> (Instrument section → Autobrake panel, <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>Ctrl</kbd>+<kbd>2</kbd> to browse there).</li>
+</ol>
+<p>Only when <em>both</em> are done does the aircraft actually arm, and MSFSBA announces <strong>"Brake To Vacate: Armed"</strong>. If you never hear that announcement, BTV is not armed — check the autobrake selector. The order of the two steps does not matter. After touchdown BTV optimises braking to reach the chosen exit at about 10 knots.</p></div>
 <div class="note">The maps only populate once the inertial system (ADIRS) is aligned and an airport is loaded. <strong>Load it from the Airport tab</strong> — type the ICAO and press Display airport, or use the Origin / Destination / Alternate buttons. (It may also auto-load on the ground, but only when the aircraft's OANS performance mode is off; pressing Display airport always works, so prefer that.) The <strong>visual</strong> map controls a sighted pilot has — centre map, crosses/flags, stands, de-icing areas, LDG SHIFT — are intentionally left out, because they have no audio meaning. For turn-by-turn taxi directions, MSFSBA's separate Taxi Assist feature (<kbd>Y</kbd> / <kbd>Shift</kbd>+<kbd>Y</kbd>) is the primary tool — it uses the navigation database directly and needs no Navigraph.</div>
 <p><strong>Rollout callouts.</strong> When BTV is doing the braking, MSFSBA speaks the BTV state ("Brake To Vacate, Decel", "End of Braking") and counts down the <strong>distance to your selected exit</strong> and the <strong>runway remaining</strong> as they shrink (for example "500 meters to exit", "300 meters runway remaining"), at a few thresholds so it is informative without being chatty. These only speak during the actual braking rollout. Mute any of them from the Monitor Manager (<kbd>Ctrl</kbd>+<kbd>M</kbd>): "BTV Distance to Exit", "Runway Remaining", "Brake To Vacate".</p>
 <p>Independently of BTV, the <strong>ROW/ROP</strong> runway-overrun protection is active whenever an autobrake mode is armed, and MSFSBA speaks its callouts on approach and rollout.</p>
@@ -408,7 +425,7 @@
 <h3>Taxi and takeoff</h3>
 <div class="step">
 <ol>
-  <li>Request pushback and engine start via the flyPad Ground app or the overhead.</li>
+  <li>For pushback use <strong>GSX</strong> (INPUT <kbd>Alt</kbd>+<kbd>G</kbd> opens the accessible GSX menu; OUTPUT <kbd>Ctrl</kbd>+<kbd>G</kbd> reads the latest GSX tooltip) — the flyPad's own pushback is deliberately not implemented. Start the engines from the Engines panel (mode selector to ignition/start, then the master combos); MSFSBA's watchdog covers the cockpit bug that would otherwise leave engines 3 and 4 unlit (<a href="#part10">Part 10</a>).</li>
   <li>For taxi, open Taxi Assist (INPUT <kbd>Shift</kbd>+<kbd>Y</kbd>), enter your ATC taxi clearance, and follow the turn-by-turn guidance (<kbd>Y</kbd> reads status, <kbd>Ctrl</kbd>+<kbd>Y</kbd> repeats).</li>
   <li>Set takeoff config; the FMA, thrust-lever detents and flap settings all announce. On the takeoff roll, autothrust and SRS modes call out.</li>
 </ol>
@@ -427,7 +444,7 @@
 <div class="step">
 <ol>
   <li>Confirm the approach is set and the minimums are entered (PERF APPR). Arm the approach; the FMA announces capability (CAT 1/2/3).</li>
-  <li>If using BTV, arm it and pick your exit (Part 11). Otherwise an autobrake mode still gives you ROW/ROP overrun protection.</li>
+  <li>If using BTV, remember it is a <strong>two-step arm</strong>: pick the runway and exit in the OANS window <em>and</em> set the Autobrake combo to BTV — wait for the "Brake To Vacate: Armed" announcement (<a href="#part11">Part 11</a>). Otherwise an ordinary autobrake mode still gives you ROW/ROP overrun protection.</li>
   <li>On final and rollout, listen for the overrun callouts and use the Landing Exit Planner (INPUT <kbd>Shift</kbd>+<kbd>X</kbd>) if you want exit guidance.</li>
 </ol>
 </div>
@@ -448,12 +465,14 @@
 <tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Monitor Manager (choose what auto-announces) / Toggle ECAM E/WD call-outs</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport Map &amp; BTV (OANS) window</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Shift</kbd>+<kbd>C</kbd></td><td>Live Electronic Checklist (ECL) window / static text checklist</td></tr>
 <tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL (in metres when the FCU MTRS button is on — see <a href="#part9">Part 9</a>)</td></tr>
 <tr><td><kbd>S</kbd> / <kbd>T</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>IAS / TAS / Ground Speed / Mach</td></tr>
 <tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>
 <tr><td><kbd>D</kbd></td><td>Distance to destination (from the FMS)</td></tr>
-<tr><td><kbd>Shift</kbd>+<kbd>D</kbd></td><td>Distance to Top of Descent (once computed in flight)</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Last landing rate (touchdown vertical speed, fpm) / last landing peak g-force</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>D</kbd></td><td>Distance <em>and time</em> to Top of Descent, once computed in flight (e.g. "145 miles to top of descent: 00:16:58")</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd></td><td>Read the ND active "TO" waypoint: name, distance, bearing</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Last landing rate (touchdown vertical speed, fpm) / last landing peak g-force. (Note: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> in INPUT mode is the RMP window instead — the modes differ.)</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>H</kbd> / <kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>Shift</kbd>+<kbd>V</kbd></td><td>Read FCU Heading / Speed / Altitude / Vertical Speed</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>6</kbd></td><td>Characteristic speeds: Green Dot, S, F, VLS, VS, VFE-next</td></tr>
 <tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Total fuel on board, pounds / kilograms</td></tr>
@@ -474,6 +493,8 @@
 <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>Read latest GSX tooltip</td></tr>
 </table>
 
+<p class="small"><strong>Hand-fly / Visual-guidance quick keys.</strong> While Hand-fly mode (<kbd>Ctrl</kbd>+<kbd>H</kbd>) or Visual Guidance (<kbd>Ctrl</kbd>+<kbd>V</kbd>) is active, a shared set of single-letter keys works without a mode bracket: <kbd>A</kbd> altitude MSL, <kbd>Q</kbd> AGL, <kbd>S</kbd> IAS, <kbd>H</kbd> magnetic heading, <kbd>V</kbd> vertical speed, <kbd>P</kbd> pitch, <kbd>B</kbd> bank, <kbd>D</kbd> distance to the destination runway — plus <kbd>F</kbd> (target vertical speed), which is Visual-Guidance-only.</p>
+
 <h3>INPUT mode (press <kbd>[</kbd> first) — actions</h3>
 <table>
 <tr><th>Key</th><th>Action</th></tr>
@@ -484,13 +505,18 @@
 <tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>Open Landing Exit Planner</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>Runway teleport / Gate teleport / Fix tracking / Select destination runway</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Shift</kbd>+<kbd>P</kbd></td><td>Autopilot 1 / Autopilot 2 / Approach mode</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd> / <kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Toggle Autothrust (A/THR arm / disconnect) / Toggle Localizer (LOC arm)</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>4</kbd> / <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>4</kbd></td><td>Push / Pull the Heading, Altitude, Speed, VS knobs</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Set Heading / Speed / Altitude / VS value (opens an edit box)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Set Heading / Speed / Altitude / VS — each opens a window with value entry, knob Push/Pull and mode toggles (Altitude includes the 100/1000 increment and the Metric toggle; the value is in metres when metric altitude is on)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Autopilot panel (AP1/AP2, A/THR engage + disconnect, APPR/LOC/EXPED, Flight Director status) / Altimeter window (enter QNH once for both sides; STD/QNH; hPa/inHg)</td></tr>
 <tr><td><kbd>Alt</kbd>+<kbd>G</kbd></td><td>Open GSX window</td></tr>
 </table>
 
 <h3>Inside the MCDU window</h3>
-<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace/Alt+C, Delete, Ctrl+Up/Down, F5) and the <a href="#pagenav">Alt+letter page buttons</a> (INIT, F-PLN, PERF, FUEL &amp; LOAD, RAD NAV, SEC FPL, DIR, ATC COM, SURV, Refresh). <kbd>Alt</kbd>+<kbd>N</kbd> toggles MSFSBA's weight units (kilograms / pounds) for its own readouts.</p>
+<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace/Alt+C, Delete, Ctrl+Up/Down, Alt+S scratchpad, F5) and the <a href="#pagenav">Alt+letter page buttons</a> (INIT, F-PLN, PERF, FUEL &amp; LOAD, RAD NAV, SEC FPL, DIR, ATC COM, SURV, Refresh). <kbd>Alt</kbd>+<kbd>N</kbd> toggles MSFSBA's weight units (kilograms / pounds) for its own readouts.</p>
+
+<h3>Inside the RMP window</h3>
+<p>See <a href="#part10">Part 10</a>: <kbd>Alt</kbd>+<kbd>V</kbd> VHF page, <kbd>Alt</kbd>+<kbd>T</kbd> Transponder page, <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> select radio (load with <kbd>Enter</kbd>), <kbd>Alt</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> swap standby↔active, type digits directly on the screen, <kbd>Alt</kbd>+<kbd>C</kbd> full clear, <kbd>Alt</kbd>+<kbd>I</kbd> transponder IDENT, <kbd>Alt</kbd>+<kbd>Home</kbd> jump back to the screen.</p>
 
 <!-- ===================================================================== -->
 <h2 id="part14">14. FlyByWire A380X feature status and limitations</h2>
@@ -501,7 +527,7 @@
   <li><strong>Experimental / in progress:</strong> a native MSFS 2024 build (current 2024 support is a compatibility layer), the Vertical Display, and the OIT/OIS onboard terminal (only a flight log and company-message inbox so far).</li>
   <li><strong>Incomplete / disabled:</strong> FLS / F-G/S approaches (non-functional), the second ISIS (disabled), and OANS airport data that depends on a Navigraph subscription.</li>
   <li><strong>Status/INOP/limitations lists:</strong> the data MSFSBA needs to read the STATUS page's inoperative-systems and limitations lists is reachable, but the FBW development build does not fully populate it yet; MSFSBA will surface it as soon as FBW ships the data.</li>
-  <li><strong>D / Shift+D distance hotkeys:</strong> distance to destination works on the ground and in flight; distance to top of descent only reads once the FMS has computed a descent (in flight). ETA and landing-fuel are planned additions once the in-flight prediction data is verified.</li>
+  <li><strong>D / Shift+D distance hotkeys:</strong> distance to destination works on the ground and in flight; distance <em>and time</em> to top of descent only read once the FMS has computed a descent (in flight). Destination ETA and landing-fuel are planned additions once the in-flight prediction data is verified.</li>
   <li><strong>Oxygen pressure (PSI) is not simulated.</strong> The FBW build shows a fixed crew/passenger oxygen pressure on the DOOR/OXY page — there is no underlying variable, so MSFSBA cannot read a live value. The oxygen <em>status</em> that <em>is</em> modelled (passenger masks deployed, passenger-oxygen light, the timer-reset control and its fault) is read and announced.</li>
   <li><strong>Chronometer:</strong> the clock CHR stopwatch and ET elapsed-time counter <em>are</em> modelled and read live (formatted as minutes/seconds and hours/minutes) — they run only when the clock is powered (DC essential bus).</li>
   <li><strong>Fluid quantities</strong> (hydraulic reservoirs in gallons, engine oil in quarts, fuel in kg) are read live and were verified against the FBW source; engine oil pressure is not exposed because the build's value is unreliable.</li>
@@ -516,6 +542,8 @@
   <li><a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/main-panel/mfd/">MFD</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/pedestal/kccu/">KCCU</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/main-panel/sd/">System Display</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/pedestal/ecam-cp/">ECAM control panel</a></li>
   <li><a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/03_preparing-fms/">Preparing the FMS</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-advanced-guides/oans-btv/">OANS/BTV</a>, <a href="https://docs.flybywiresim.com/aircraft/common/flypados3/">flyPadOS 3</a></li>
 </ul>
+
+<p class="small">Manual last updated 12 June 2026, against the MSFS Blind Assist source and the FlyByWire A380X development build of the same date.</p>
 
 <p class="small"><a href="#top">Back to top</a></p>
 
