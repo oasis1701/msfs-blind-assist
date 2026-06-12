@@ -5868,7 +5868,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         var form = factory();
         _trackedWindows[typeof(T)] = form;
-        form.FormClosed += (_, _) => _trackedWindows.Remove(typeof(T));
+        // Only evict OUR entry — guards against a stale close (e.g. a future
+        // hide-on-close window's deferred real close) removing a successor window.
+        form.FormClosed += (s, _) =>
+        {
+            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
+                _trackedWindows.Remove(typeof(T));
+        };
         show(form);
     }
 
@@ -5876,7 +5882,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         foreach (var f in _trackedWindows.Values.ToList())
         {
-            try { if (!f.IsDisposed) f.Dispose(); } catch { }
+            try
+            {
+                if (f.IsDisposed) continue;
+                // Form.Dispose() raises neither FormClosing nor FormClosed (the documented
+                // hide-on-close/RMP trap), but the FCU windows tear their refresh timers
+                // down in OnFormClosing — Close() first so the timers actually stop. None
+                // of the tracked windows hide-on-close, so Close() really closes (and the
+                // FormClosed dict self-removal is safe against the ToList copy).
+                if (f.IsHandleCreated) f.Close();
+                if (!f.IsDisposed) f.Dispose();
+            }
+            catch { }
         }
         _trackedWindows.Clear();
     }

@@ -89,6 +89,6 @@ public sealed class TcasRaGuidance
         _ => null
     };
 
-    private static string FmtSignedFpm(double v) =>
+    public static string FmtSignedFpm(double v) =>
         Math.Abs(v) < 1 ? "0" : $"{(v > 0 ? "plus" : "minus")} {Math.Abs(v):0}";
 }

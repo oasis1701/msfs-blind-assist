@@ -3519,9 +3519,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             announcer.AnnounceImmediate(text);
     }
 
-    private static string FmtSignedFpm(double v) =>
-        Math.Abs(v) < 1 ? "0" : $"{(v > 0 ? "plus" : "minus")} {Math.Abs(v):0}";
-
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
     // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
     // hysteresis (entered icing / cleared), not as a spammy raw value. _icingActive
@@ -5106,14 +5103,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             displayText = Math.Abs(_tcasRa.GreenMin) < 1 && Math.Abs(_tcasRa.GreenMax) < 1
                 ? "no advisory"
-                : $"{FmtSignedFpm(_tcasRa.GreenMin)} to {FmtSignedFpm(_tcasRa.GreenMax)} feet per minute";
+                : $"{Services.TcasRaGuidance.FmtSignedFpm(_tcasRa.GreenMin)} to {Services.TcasRaGuidance.FmtSignedFpm(_tcasRa.GreenMax)} feet per minute";
             return true;
         }
         if (varKey == "A32NX_TCAS_VSPEED_RED:1")
         {
             displayText = Math.Abs(_tcasRa.RedMin) < 1 && Math.Abs(_tcasRa.RedMax) < 1
                 ? "no advisory"
-                : $"{FmtSignedFpm(_tcasRa.RedMin)} to {FmtSignedFpm(_tcasRa.RedMax)} feet per minute";
+                : $"{Services.TcasRaGuidance.FmtSignedFpm(_tcasRa.RedMin)} to {Services.TcasRaGuidance.FmtSignedFpm(_tcasRa.RedMax)} feet per minute";
             return true;
         }
         // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".
@@ -6212,7 +6209,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         var form = factory();
         _trackedWindows[typeof(T)] = form;
-        form.FormClosed += (_, _) => _trackedWindows.Remove(typeof(T));
+        // Only evict OUR entry — guards against a stale close (e.g. a future
+        // hide-on-close window's deferred real close) removing a successor window.
+        form.FormClosed += (s, _) =>
+        {
+            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
+                _trackedWindows.Remove(typeof(T));
+        };
         show(form);
     }
 
@@ -6220,7 +6223,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         foreach (var f in _trackedWindows.Values.ToList())
         {
-            try { if (!f.IsDisposed) f.Dispose(); } catch { }
+            try
+            {
+                if (f.IsDisposed) continue;
+                // Form.Dispose() raises neither FormClosing nor FormClosed (the documented
+                // hide-on-close/RMP trap), but the FCU windows tear their refresh timers
+                // down in OnFormClosing — Close() first so the timers actually stop. None
+                // of the tracked windows hide-on-close, so Close() really closes (and the
+                // FormClosed dict self-removal is safe against the ToList copy).
+                if (f.IsHandleCreated) f.Close();
+                if (!f.IsDisposed) f.Dispose();
+            }
+            catch { }
         }
         _trackedWindows.Clear();
     }
