@@ -46,6 +46,7 @@ public class FlyByWireDcduForm : Form
     private string? _scrapeJs;
     private bool _refreshing;
     private string _btnL1 = "", _btnL2 = "", _btnR1 = "", _btnR2 = "";
+    private int _calcSeq;
 
     public FlyByWireDcduForm(ScreenReaderAnnouncer announcer, SimConnect.SimConnectManager simConnect)
     {
@@ -151,10 +152,16 @@ public class FlyByWireDcduForm : Form
                 }
                 if (root.TryGetProperty("btns", out var btns))
                 {
+                    string prevR2 = _btnR2;
                     _btnL1 = btns.TryGetProperty("L1", out var l1) ? l1.GetString() ?? "" : "";
                     _btnL2 = btns.TryGetProperty("L2", out var l2) ? l2.GetString() ?? "" : "";
                     _btnR1 = btns.TryGetProperty("R1", out var r1) ? r1.GetString() ?? "" : "";
                     _btnR2 = btns.TryGetProperty("R2", out var r2) ? r2.GetString() ?? "" : "";
+                    // Answer armed (WILCO/UNABLE/STBY/AFFIRM/...) → the unit now
+                    // wants a confirm press. Cue the two-step flow so the pilot
+                    // knows the answer hasn't gone out yet.
+                    if (_btnR2 == "SEND" && prevR2 != "SEND")
+                        _announcer.Announce("Press right 2 again to send.");
                 }
             }
             catch
@@ -224,7 +231,7 @@ public class FlyByWireDcduForm : Form
             string key = e.Control
                 ? (e.KeyCode == Keys.PageUp ? "POEPLUS" : "POEMINUS")
                 : (e.KeyCode == Keys.PageUp ? "MS0PLUS" : "MS0MINUS");
-            _simConnect.ExecuteCalculatorCode($"(>H:A32NX_DCDU_BTN_MPL_{key})");
+            FireDcduEvent($"BTN_MPL_{key}");
             _postActionTimer.Stop();
             _postActionTimer.Start();
             e.Handled = true; e.SuppressKeyPress = true;
@@ -250,13 +257,26 @@ public class FlyByWireDcduForm : Form
             _announcer.AnnounceImmediate("No action on that key.");
             return;
         }
-        _simConnect.ExecuteCalculatorCode($"(>H:A32NX_DCDU_BTN_MPL_{slot})");
+        FireDcduEvent($"BTN_MPL_{slot}");
         // The DCDU confirms a press visually for 1 s before acting — speak the
         // label now (action confirmation, not a UI echo) and re-scrape after
         // the action lands.
         _announcer.AnnounceImmediate(label.Replace("*", "").Trim());
         _postActionTimer.Stop();
         _postActionTimer.Start();
+    }
+
+    /// <summary>
+    /// Fires a DCDU H-event with a sequence-uniquified calc string. MobiFlight
+    /// commands travel through a client-data area where two CONSECUTIVE
+    /// IDENTICAL strings coalesce and the second never executes (the seat-motor
+    /// lesson) — exactly the WILCO→SEND flow, which presses the same R2 slot
+    /// twice in a row. The "{seq} 0 *" prefix evaluates to a discarded 0 but
+    /// makes every string unique.
+    /// </summary>
+    private void FireDcduEvent(string key)
+    {
+        _simConnect.ExecuteCalculatorCode($"{++_calcSeq} 0 * (>H:A32NX_DCDU_{key})");
     }
 
     protected override void Dispose(bool disposing)

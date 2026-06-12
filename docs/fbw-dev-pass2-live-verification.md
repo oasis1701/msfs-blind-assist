@@ -26,7 +26,7 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 - [x] flyPad Checklists page — LIVE-TOURED 2026-06-12 (manual mode): checklist selector buttons, items as checkboxes with state, Mark/Reset reachable. The autofill-ON variant + dimmed-tile actuation check remain for a session with autofill enabled (not flipping the user's persistent setting).
 - [ ] E/WD: ABN-PROC preview lines read as "(not yet active)"; LAND ASAP/ANSA name correctly during a serious failure; `<5m` limitations report Cyan.
 - [ ] A32NX GPWS test-flash — still pending a powered ground session (skipped at the dark KORD gate; the light monitors are ordinary Mon vars, same code path as every verified monitor).
-- [ ] A32NX TCAS advisory state announce (TA/RA onset + "clear of conflict"); DCDU message-waiting announce + ACK on a CPDLC message.
+- [x] A32NX TCAS advisory state announce — TA verified live 2026-06-12 ("TCAS advisory: traffic advisory" on ground traffic; the RA guidance sentence still needs an airborne RA — RAs are inhibited on the ground by design). DCDU CPDLC verified end-to-end 2026-06-12 with a real SayIntentions session (VCCF logon → uplink rendered → WILCO armed → SEND transmitted; the SEND press needed sequence-uniquified calc strings — see the CLAUDE.md DCDU section).
 
 ## Deferred features/probes (build after verification or live iteration)
 
