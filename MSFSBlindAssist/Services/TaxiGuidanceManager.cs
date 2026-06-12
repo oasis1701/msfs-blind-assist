@@ -67,8 +67,13 @@ public class TaxiGuidanceManager : IDisposable
     public void SetSteeringToneSuppressed(bool suppressed)
     {
         if (_steeringToneSuppressed == suppressed) return;
+        // Latch only AFTER Pause/Resume succeeds. If the call threw with the latch
+        // already flipped, the equality guard above would block every retry with the
+        // same value and the tone would stay stuck in the wrong state. The caller
+        // feeds this per-frame, so an unchanged latch retries on the next frame.
+        try { if (suppressed) _steeringTone.Pause(); else _steeringTone.Resume(); }
+        catch { return; }
         _steeringToneSuppressed = suppressed;
-        try { if (suppressed) _steeringTone.Pause(); else _steeringTone.Resume(); } catch { }
     }
 
     private bool _dockingActive;
