@@ -32,6 +32,20 @@ void CheckEqual<T>(T actual, T expected, string name)
 
     parts = GsxService.SplitTooltipParts("[GSX] Boarding, 3 bags loaded, rear door closing");
     CheckEqual(parts.Count, 3, "split: multi-segment line");
+
+    // A separator comma routinely FOLLOWS a digit: the status renderer joins
+    // fragments and bullets with ", " ("... $ 5.50, Timer: ..."). Only
+    // digit-on-BOTH-sides commas are thousands grouping.
+    parts = GsxService.SplitTooltipParts("Passenger boarding 45/100, GPU connected");
+    CheckEqual(parts.Count, 2, "split: digit-comma-space still separates");
+
+    parts = GsxService.SplitTooltipParts("GPU $ 5.50, Timer: running 00:12:34");
+    CheckEqual(parts.Count, 2, "split: amount-then-timer separates");
+
+    parts = GsxService.SplitTooltipParts("Total $ 5,989.76, GPU connected");
+    CheckEqual(parts.Count, 2, "split: thousands kept while trailing separator splits");
+    if (parts.Count == 2)
+        CheckEqual(parts[0], "Total $ 5,989.76", "split: thousands amount intact in first part");
 }
 
 // ── Price normalization (real receipt shapes) ───────────────────────────────

@@ -24,6 +24,15 @@ public sealed partial class GsxService
     internal const string CurrencyTokenPattern =
         @"(?:" + CurrencyCodePattern + @"|" + CurrencyWordPattern + @"|" + CurrencySymbolPattern + @")";
 
+    // Splits a tooltip line on commas — but never inside a digit-grouped
+    // amount ("$ 5,989.76"). A comma is a separator unless digits flank
+    // BOTH sides: the status renderer joins fragments and bullet items with
+    // ", ", so separators routinely FOLLOW a digit ("... $ 5.50, Timer:
+    // ..."), while digit,digit only occurs as thousands grouping.
+    private static readonly Regex TooltipPartSeparatorRegex = new(
+        @"(?<!\d),|,(?!\d)",
+        RegexOptions.Compiled);
+
     internal static List<string> SplitTooltipParts(string text)
     {
         var parts = new List<string>();
@@ -32,7 +41,7 @@ public sealed partial class GsxService
 
         foreach (string line in text.ReplaceLineEndings("\n").Split('\n'))
         {
-            foreach (string segment in Regex.Split(line, @"(?<!\d),(?!\d)"))
+            foreach (string segment in TooltipPartSeparatorRegex.Split(line))
             {
                 string trimmed = segment.Trim();
                 if (trimmed.Length > 0)
