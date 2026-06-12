@@ -42,6 +42,7 @@ namespace MSFSBlindAssist.SimConnect
         private const string DebuggerBase = "http://127.0.0.1:19999";
         private const string MfdTitleNeedle = "A380X_MFD";
         private const int PollIntervalMs = 350;
+        private const int IdleIntervalMs = 1000;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
         private const int ConnectTimeoutMs = 4000;
@@ -61,6 +62,7 @@ namespace MSFSBlindAssist.SimConnect
         private int _mcduIndex = 1;
         private volatile bool _connected;
         private volatile bool _agentInstalled;
+        private volatile bool _active = true;
         private DateTime _lastGoodScrapeUtc = DateTime.MinValue;
         private bool _connectedPushSent;
         private string _lastScreenHash = "";
@@ -112,6 +114,20 @@ namespace MSFSBlindAssist.SimConnect
             _ws = null;
             _connected = false;
             _agentInstalled = false;
+        }
+
+        /// <summary>
+        /// Pause/resume the 350 ms MFD scrape poll — only poll while the MCDU window is
+        /// visible. UNLIKE CoherentDisplayClient.SetActive, the inspector socket and the
+        /// installed agent are KEPT ALIVE while idle: EvalForResultAsync (the D / Shift+D
+        /// flight-info hotkeys, which work with the window closed) and EnqueueCommand need a
+        /// live socket, and reactivation then needs no reconnect or agent re-install.
+        /// Re-activation forces a full re-push so the form fills in immediately.
+        /// </summary>
+        public void SetActive(bool active)
+        {
+            _active = active;
+            if (active) { _lastScreenHash = ""; _lastElementsHash = ""; }
         }
 
         // ---- IMcduBridge command surface --------------------------------
@@ -211,8 +227,10 @@ namespace MSFSBlindAssist.SimConnect
                         await Task.Delay(ReconnectDelayMs, ct);
                         continue;
                     }
-                    await PollOnce(ct);
-                    await Task.Delay(PollIntervalMs, ct);
+                    // Idle = connection + agent stay warm (D/Shift+D flight info, commands,
+                    // instant reactivation), but the heavy DOM scrape is paused.
+                    if (_active) await PollOnce(ct);
+                    await Task.Delay(_active ? PollIntervalMs : IdleIntervalMs, ct);
                 }
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)

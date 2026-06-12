@@ -319,6 +319,7 @@ public partial class MainForm : Form
         {
             coherentClient = new CoherentDebuggerClient();
             coherentClient.Start();
+            coherentClient.SetActive(false);   // connect + install agent now; scrape only while the MCDU window is open
             StartEFBBridgeServer();
             StartA380EWDMonitor();
         }
@@ -2874,7 +2875,14 @@ public partial class MainForm : Form
             fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(
                 bridge, announcer,
                 currentAircraft as Aircraft.FlyByWireA380Definition);
+            // Idle-gate the 350 ms MFD scrape to the window's visibility. The form hides
+            // (not closes) on user-close, so VisibleChanged fires on every open/close; the
+            // form and client are both disposed on aircraft swap, so the closure can't
+            // dangle. The connection itself stays warm for D / Shift+D flight info.
+            var form = fbwA380MCDUForm;
+            form.VisibleChanged += (_, _) => coherentClient?.SetActive(!form.IsDisposed && form.Visible);
         }
+        coherentClient.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
         fbwA380MCDUForm.ShowForm();
     }
 
@@ -2893,7 +2901,12 @@ public partial class MainForm : Form
             string title = currentAircraft?.AircraftCode == "A320"
                 ? "A320 flyPad EFB" : "A380X flyPad EFB";
             fbwEfbForm = new Forms.FBWA380.FbwEfbForm(bridge, announcer, title, "flyPad");
+            // Idle-gate the 600 ms flyPad scrape to the window's visibility (same pattern
+            // as the MCDU window above); the connection + powerOn handshake stay warm.
+            var form = fbwEfbForm;
+            form.VisibleChanged += (_, _) => coherentEFBClient?.SetActive(!form.IsDisposed && form.Visible);
         }
+        coherentEFBClient.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
         fbwEfbForm.ShowForm();
     }
 
@@ -4767,6 +4780,7 @@ public partial class MainForm : Form
             // the client now so it is connected by the time the user opens the MCDU.
             coherentClient = new CoherentDebuggerClient();
             coherentClient.Start();
+            coherentClient.SetActive(false);   // connect + install agent now; scrape only while the MCDU window is open
             // EFB form still uses the legacy bridge server until it moves to a
             // served accessible page; keep it running for now.
             StartEFBBridgeServer();

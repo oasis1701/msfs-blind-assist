@@ -33,6 +33,7 @@ namespace MSFSBlindAssist.SimConnect
         // WebSocket/JSON load vs the old 400ms without feeling sluggish, and the form
         // coalesces renders so polls can never pile up overlapping WebView2 updates.
         private const int PollIntervalMs = 600;
+        private const int IdleIntervalMs = 1500;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
         private const int ConnectTimeoutMs = 4000;
@@ -53,6 +54,7 @@ namespace MSFSBlindAssist.SimConnect
         private int _msgId;
         private volatile bool _connected;
         private volatile bool _agentInstalled;
+        private volatile bool _active = true;
         private DateTime _lastGoodScrapeUtc = DateTime.MinValue;
         private bool _connectedPushSent;
         private string _lastElementsHash = "";
@@ -105,6 +107,18 @@ namespace MSFSBlindAssist.SimConnect
             _agentInstalled = false;
         }
 
+        /// <summary>
+        /// Pause/resume the 600 ms flyPad scrape poll — only poll while the flyPad window is
+        /// visible. The inspector socket, installed agent, and the powerOn() handshake are
+        /// KEPT WARM while idle so reactivation needs no reconnect or agent re-install.
+        /// Re-activation forces a full re-push so the form fills in immediately.
+        /// </summary>
+        public void SetActive(bool active)
+        {
+            _active = active;
+            if (active) { _lastElementsHash = ""; }
+        }
+
         // ---- IMcduBridge command surface --------------------------------
 
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
@@ -155,8 +169,10 @@ namespace MSFSBlindAssist.SimConnect
                         await Task.Delay(ReconnectDelayMs, ct);
                         continue;
                     }
-                    await PollOnce(ct);
-                    await Task.Delay(PollIntervalMs, ct);
+                    // Idle = connection + agent + powerOn handshake stay warm, but the
+                    // heavy DOM scrape is paused.
+                    if (_active) await PollOnce(ct);
+                    await Task.Delay(_active ? PollIntervalMs : IdleIntervalMs, ct);
                 }
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
