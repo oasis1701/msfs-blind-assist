@@ -70,9 +70,12 @@ public class FlyByWireDcduForm : Form
         };
         Controls.Add(_display);
 
-        _pollTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+        // 1 s poll: the DCDU itself delays every key action 1 s (its visual
+        // press-confirm), so the perceived lag after a key is confirm + scrape;
+        // the tight poll keeps that near the floor without a persistent socket.
+        _pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _pollTimer.Tick += async (_, _) => await RefreshDisplayAsync();
-        _postActionTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+        _postActionTimer = new System.Windows.Forms.Timer { Interval = 1200 };
         _postActionTimer.Tick += async (_, _) => { _postActionTimer.Stop(); await RefreshDisplayAsync(); };
 
         Shown += async (_, _) =>

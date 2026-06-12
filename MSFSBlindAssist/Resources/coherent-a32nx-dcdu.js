@@ -47,11 +47,13 @@
         var slot = rel > 0.86 ? '2' : '1';
         var key = side + slot;
         if (btns[key]) { slot = slot === '1' ? '2' : '1'; key = side + slot; }
-        btns[key] = txt;
-        // The label carries its key identity inline — "(L1)".."(R2)" — so a
-        // first-glance read tells which chord presses it (L=Ctrl/F1-F2,
-        // R=Alt/F7-F8 per the MCDU LSK scheme).
-        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt + ' (' + key + ')', btn: side });
+        // Strip the asterisk — it is the unit's own "key armed" marker (real
+        // Airbus DCDU convention); the accessible rendering replaces it with
+        // the MCDU arrow convention ("<" = left key, ">" = right key) plus the
+        // key number at the line start, so the marker would be noise.
+        var label = txt.replace(/\*/g, '').trim();
+        btns[key] = label;
+        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: label, btn: side, slot: slot });
       } else {
         var spans2 = t.querySelectorAll('tspan');
         if (spans2.length > 1) {
@@ -71,22 +73,32 @@
     entries.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
     // Y-cluster into rows (tolerance from the text's own height so the scrape
     // is resolution-independent), folding any soft key into its row.
+    // Key rows render as "1 <STBY" (left key 1) / "2          RECALL>" (right
+    // key 2, right-aligned): the key NUMBER leads the line, "<" marks a left
+    // key and ">" a right key — the chord is the number with Ctrl (left) or
+    // Alt (right), or F1/F2 + F7/F8 in alternate mode.
     var rows = [];
     var cur = null;
     var lastY = -1e9;
     function flush() {
       if (!cur) return;
-      if (cur.l || cur.r) rows.push({ t: 'keys', l: cur.l, c: cur.c.join(' '), r: cur.r });
-      else if (cur.c.length) rows.push({ t: 'plain', txt: cur.c.join(' ') });
+      if (cur.lTxt || cur.rTxt) {
+        var digit = cur.lTxt ? cur.lSlot : cur.rSlot;
+        var l = cur.lTxt ? digit + ' <' + cur.lTxt : digit;
+        var r = cur.rTxt ? cur.rTxt + '>' : '';
+        rows.push({ t: 'keys', l: l, c: cur.c.join(' '), r: r });
+      } else if (cur.c.length) {
+        rows.push({ t: 'plain', txt: cur.c.join(' ') });
+      }
       cur = null;
     }
     for (var j = 0; j < entries.length; j++) {
       var it = entries[j];
       var tol = it.h > 0 ? it.h * 0.7 : 40;
-      if (!cur || (it.y - lastY) > tol) { flush(); cur = { l: '', c: [], r: '' }; }
+      if (!cur || (it.y - lastY) > tol) { flush(); cur = { lTxt: '', lSlot: '', rTxt: '', rSlot: '', c: [] }; }
       lastY = it.y;
-      if (it.btn === 'L') cur.l = it.txt;
-      else if (it.btn === 'R') cur.r = it.txt;
+      if (it.btn === 'L') { cur.lTxt = it.txt; cur.lSlot = it.slot; }
+      else if (it.btn === 'R') { cur.rTxt = it.txt; cur.rSlot = it.slot; }
       else cur.c.push(it.txt);
     }
     flush();
