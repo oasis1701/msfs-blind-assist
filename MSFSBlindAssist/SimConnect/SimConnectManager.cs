@@ -33,6 +33,11 @@ public class SimConnectManager
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
+    /// <summary>
+    /// Fires when the loaded aircraft's ICAO type designator becomes known (on connect / aircraft change).
+    /// The string is the extracted ICAO code (e.g. "B77W", "A20N") — may be empty if unresolved.
+    /// </summary>
+    public event EventHandler<string>? AircraftIcaoTypeDetected;
 
     // Aircraft definition
     public IAircraftDefinition? CurrentAircraft { get; set; }
@@ -126,6 +131,15 @@ public class SimConnectManager
     private string currentAircraftAtcId = "";
     private string currentAircraftAirline = "";
     private string currentAircraftFlightNumber = "";
+    private string currentAircraftAtcModel = ""; // raw ATC MODEL simvar value
+    private string currentAircraftTitle = "";    // TITLE simvar value (aircraft.cfg [FLTSIM.N] title)
+    /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
+    public string CurrentAircraftIcaoType { get; private set; } = "";
+
+    // Universal aircraft.cfg ICAO catalog — the runtime fallback used ONLY when the ATC MODEL
+    // simvar doesn't resolve to a clean ICAO. Pure/dependency-light; its scan runs on a
+    // background thread and never blocks the SimConnect callback.
+    private readonly Services.AircraftCfgCatalog aircraftCfgCatalog = new();
 
     // Aircraft connection announcement - wait for both aircraft info and ATC data
     private AircraftInfo? pendingAircraftInfo = null;
@@ -250,7 +264,14 @@ public class SimConnectManager
     {
         Dummy = 0
     }
-    
+
+    /// <summary>IDs for SimConnect SubscribeToSystemEvent notifications.</summary>
+    private enum SYSTEM_EVENT_ID : uint
+    {
+        AircraftLoaded = 9000
+    }
+
+
     
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct FCUValues
@@ -279,6 +300,8 @@ public class SimConnectManager
         public string atcAirline;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
         public string atcFlightNumber;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string atcModel; // ATC MODEL simvar — usually the ICAO type designator (B77W, A20N, …)
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -502,6 +525,10 @@ public class SimConnectManager
                 SimulatorVersionDetected?.Invoke(this, "MSFS 2024 detected");
             }
 
+            // Warm the universal aircraft.cfg ICAO catalog in the background so the rare
+            // ATC-MODEL-miss fallback can resolve a TITLE→ICAO without any latency. Non-blocking.
+            aircraftCfgCatalog.BeginBuild();
+
             // Check aircraft type
             RequestAircraftInfo();
         }
@@ -584,6 +611,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.STRING256, 0.0f, (uint)2);
         sc.AddToDataDefinition(DATA_DEFINITIONS.ATC_ID_INFO, "ATC FLIGHT NUMBER", null,
             SIMCONNECT_DATATYPE.STRING256, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.ATC_ID_INFO, "ATC MODEL", null,
+            SIMCONNECT_DATATYPE.STRING256, 0.0f, (uint)4);
         sc.RegisterDataDefineStruct<AircraftAtcData>(DATA_DEFINITIONS.ATC_ID_INFO);
 
         // Register INIT_POSITION for teleportation
@@ -1105,6 +1134,11 @@ public class SimConnectManager
         sc.OnRecvClientData += SimConnect_OnRecvClientData;
         sc.OnRecvException += SimConnect_OnRecvException;
         sc.OnRecvEnumerateInputEvents += SimConnect_OnRecvEnumerateInputEvents;
+        // AircraftLoaded fires when the user changes aircraft in-sim (or reloads).
+        // The handler re-reads ATC MODEL / ICAO so AircraftIcaoTypeDetected re-fires
+        // and the door-offset map is re-queried for the new aircraft.
+        sc.OnRecvEventFilename += SimConnect_OnRecvEventFilename;
+        sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.AircraftLoaded, "AircraftLoaded");
     }
 
     /// <summary>
@@ -1164,10 +1198,7 @@ public class SimConnectManager
     {
         try
         {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string dir = System.IO.Path.Combine(appData, "MSFSBlindAssist", "logs");
-            System.IO.Directory.CreateDirectory(dir);
-            string path = System.IO.Path.Combine(dir, "input_events.txt");
+            string path = MSFSBlindAssist.Utils.AppLogs.PathFor("input_events.txt");
             using var writer = new System.IO.StreamWriter(path, append: false);
             writer.WriteLine($"# InputEvent catalog — generated {DateTime.Now:s}");
             writer.WriteLine($"# Aircraft: {CurrentAircraft?.AircraftName ?? "(unknown)"}");
@@ -1270,6 +1301,20 @@ public class SimConnectManager
     private void SimConnect_OnRecvQuit(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV data)
     {
         Disconnect();
+    }
+
+    /// <summary>
+    /// Fires when SimConnect delivers a system event that carries a filename (e.g. AircraftLoaded).
+    /// For AircraftLoaded, re-request ATC MODEL / ICAO so the door-offset map is updated for the new aircraft.
+    /// </summary>
+    private void SimConnect_OnRecvEventFilename(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data)
+    {
+        if ((SYSTEM_EVENT_ID)data.uEventID == SYSTEM_EVENT_ID.AircraftLoaded)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AircraftLoaded system event: {data.szFileName}");
+            // Re-read ATC MODEL so AircraftIcaoTypeDetected fires for the newly loaded aircraft.
+            RequestAircraftInfo();
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -1383,7 +1428,8 @@ public class SimConnectManager
                     currentAircraftAtcId = atcData.atcId?.Trim() ?? "";
                     currentAircraftAirline = atcData.atcAirline?.Trim() ?? "";
                     currentAircraftFlightNumber = atcData.atcFlightNumber?.Trim() ?? "";
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
+                    currentAircraftAtcModel = atcData.atcModel?.Trim() ?? "";
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Model: '{currentAircraftAtcModel}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
                     atcDataReceived = true;
                     TryAnnounceConnection();
                 }
@@ -2952,6 +2998,50 @@ public class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Extracts an ICAO type designator from the raw ATC MODEL simvar value.
+    /// <para>
+    /// Resolution order:
+    /// 1. Localisation token with AC_MODEL followed by a space or underscore and then the ICAO
+    ///    (e.g. "ATCCOM.AC_MODEL B77W.0.text" or "TT:ATCCOM.AC_MODEL_B77W.0.text").
+    ///    Regex: AC_MODEL[ _]([A-Za-z0-9]{2,6}) — group 1 uppercased.
+    /// 2. Bare ICAO: the whole trimmed string already matches ^[A-Za-z][A-Za-z0-9]{1,5}$ → uppercased.
+    /// 3. Otherwise return empty string — do NOT use a greedy right-to-left grab that can
+    ///    return wrong tokens like "NG3" or "CEO". An empty result yields offset 0, which is
+    ///    the safe fallback. The raw + extracted values are written to docking-aircraft.log for diagnosis.
+    /// </para>
+    /// </summary>
+    public static string ExtractIcaoFromAtcModel(string? rawAtcModel)
+    {
+        if (string.IsNullOrWhiteSpace(rawAtcModel)) return "";
+        string s = rawAtcModel.Trim();
+
+        // 1. Localisation token: AC_MODEL followed by space or underscore then the ICAO.
+        //    e.g. "TT:ATCCOM.AC_MODEL_B77W.0.text" → B77W
+        //         "ATCCOM.AC_MODEL B77W.0.text"     → B77W
+        var mToken = System.Text.RegularExpressions.Regex.Match(
+            s,
+            @"AC_MODEL[ _]([A-Za-z0-9]{2,6})",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (mToken.Success)
+        {
+            string candidate = mToken.Groups[1].Value.ToUpperInvariant();
+            System.Diagnostics.Debug.WriteLine($"[ExtractIcao] token-match → '{candidate}' from '{s}'");
+            return candidate;
+        }
+
+        // 2. Bare ICAO: whole string is already the designator (letter + 1-5 alphanum).
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[A-Za-z][A-Za-z0-9]{1,5}$"))
+        {
+            System.Diagnostics.Debug.WriteLine($"[ExtractIcao] bare-icao → '{s.ToUpperInvariant()}' from '{s}'");
+            return s.ToUpperInvariant();
+        }
+
+        // 3. Unresolved — return empty so offset defaults to 0 (safe fallback).
+        System.Diagnostics.Debug.WriteLine($"[ExtractIcao] unresolved → '' from '{s}'");
+        return "";
+    }
+
     private void CheckAircraftType(AircraftInfo info)
     {
         // Build smart identification string based on available ATC data
@@ -2984,6 +3074,33 @@ public class SimConnectManager
         // This is the earliest reliable moment to enumerate them.
         RequestEnumerateInputEvents();
 
+        // Capture the TITLE simvar so the aircraft.cfg catalog fallback (below) can map it to
+        // an ICAO when the ATC MODEL doesn't resolve. info.title is the [FLTSIM.N] title.
+        currentAircraftTitle = info.title?.Trim() ?? "";
+
+        // Extract and publish the ICAO type designator so subscribers (e.g. docking guidance)
+        // can look up per-aircraft door offsets from GSX gsx.cfg files.
+        string icao = ExtractIcaoFromAtcModel(currentAircraftAtcModel);
+        CurrentAircraftIcaoType = icao;
+        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC MODEL raw='{currentAircraftAtcModel}' → ICAO='{icao}'");
+
+        // FALLBACK: only when the ATC MODEL gave us nothing usable (rare add-on with no clean
+        // ATC model), try the universal aircraft.cfg catalog by TITLE. The common case (ATC
+        // model present) is byte-for-byte unchanged. The catalog scan is done on a background
+        // thread — we NEVER block this SimConnect callback on the folder scan.
+        if (string.IsNullOrWhiteSpace(icao) && !string.IsNullOrWhiteSpace(currentAircraftTitle))
+            TryResolveIcaoFromCatalog(currentAircraftTitle);
+
+        try
+        {
+            string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
+            System.IO.File.AppendAllText(logPath,
+                $"{DateTime.Now:HH:mm:ss}  raw ATC MODEL=\"{currentAircraftAtcModel}\"  -> extracted ICAO=\"{icao}\"{System.Environment.NewLine}");
+        }
+        catch { /* never propagate log failures */ }
+
+        AircraftIcaoTypeDetected?.Invoke(this, icao);
+
         // Log whether this is the expected FBW A32NX aircraft
         if (info.title.Contains("A32NX") || info.title.Contains("A320"))
         {
@@ -2993,6 +3110,77 @@ public class SimConnectManager
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Connected to {info.title}{identification} - not FBW A32NX");
         }
+    }
+
+    /// <summary>
+    /// Fallback ICAO resolution via the universal aircraft.cfg catalog, keyed on the TITLE
+    /// simvar. Used ONLY when ATC MODEL didn't yield an ICAO. Runs entirely off the SimConnect
+    /// callback thread: if the catalog is already built we look up immediately; otherwise we
+    /// kick the background scan and re-resolve when it finishes (mirroring the door-offset map
+    /// background re-fire pattern). When a valid ICAO is found it sets
+    /// <see cref="CurrentAircraftIcaoType"/> and re-fires <see cref="AircraftIcaoTypeDetected"/>.
+    /// Never blocks the caller; never throws.
+    /// </summary>
+    private void TryResolveIcaoFromCatalog(string title)
+    {
+        // Snapshot the title so a later aircraft change can't make us publish a stale match.
+        string titleSnapshot = title;
+
+        // Do the (potentially blocking) catalog wait/lookup on a background task — NEVER on
+        // the SimConnect callback thread.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                // Kick the scan if it hasn't started; this is cheap and idempotent.
+                aircraftCfgCatalog.BeginBuild();
+
+                // EnumerateInstalled() waits for the build; but we only want the title lookup,
+                // and TryGetIcaoByTitle returns false until ready. Force readiness by waiting
+                // via EnumerateInstalled (bounded), then look up.
+                if (!aircraftCfgCatalog.IsReady)
+                    aircraftCfgCatalog.EnumerateInstalled(); // blocks here, on the background task only
+
+                if (!aircraftCfgCatalog.TryGetIcaoByTitle(titleSnapshot, out var catIcao))
+                    return;
+                if (!IsValidIcaoShape(catIcao))
+                    return;
+
+                // Guard against a race: if the aircraft changed while we scanned, the live
+                // title no longer matches our snapshot — don't clobber the newer aircraft.
+                if (!string.Equals(currentAircraftTitle, titleSnapshot, StringComparison.Ordinal))
+                    return;
+                // If ATC MODEL has since resolved an ICAO for this same aircraft, leave it.
+                if (!string.IsNullOrWhiteSpace(CurrentAircraftIcaoType))
+                    return;
+
+                CurrentAircraftIcaoType = catIcao;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SimConnectManager] ATC MODEL had no ICAO; aircraft.cfg catalog resolved TITLE='{titleSnapshot}' → ICAO='{catIcao}'");
+
+                try
+                {
+                    string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
+                    System.IO.File.AppendAllText(logPath,
+                        $"{DateTime.Now:HH:mm:ss}  catalog fallback: TITLE=\"{titleSnapshot}\"  -> ICAO=\"{catIcao}\"{System.Environment.NewLine}");
+                }
+                catch { /* never propagate log failures */ }
+
+                AircraftIcaoTypeDetected?.Invoke(this, catIcao);
+            }
+            catch { /* fallback is best-effort — never propagate */ }
+        });
+    }
+
+    /// <summary>True if <paramref name="s"/> looks like an ICAO type designator: 2–4 alphanumerics.</summary>
+    private static bool IsValidIcaoShape(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        s = s.Trim();
+        if (s.Length < 2 || s.Length > 4) return false;
+        foreach (char c in s)
+            if (!char.IsLetterOrDigit(c)) return false;
+        return true;
     }
 
     private void SimConnect_OnRecvSimobjectDataBytype(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
@@ -4366,6 +4554,7 @@ public class SimConnectManager
                 simConnect.OnRecvSimobjectDataBytype -= SimConnect_OnRecvSimobjectDataBytype;
                 simConnect.OnRecvClientData -= SimConnect_OnRecvClientData;
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
+                simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
 
                 System.Diagnostics.Debug.WriteLine("[SimConnectManager] Event handlers unregistered, disposing SimConnect...");
             }

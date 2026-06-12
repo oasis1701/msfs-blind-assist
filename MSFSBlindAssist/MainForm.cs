@@ -59,6 +59,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
     private TaxiGuidanceManager taxiGuidanceManager = null!;
+    private DockingGuidanceManager dockingGuidanceManager = null!;
     private TaxiAssistForm? taxiAssistForm;
     private LandingExitPlanner landingExitPlanner = null!;
     private GroundTrafficMonitor groundTrafficMonitor = null!;
@@ -69,6 +70,16 @@ public partial class MainForm : Form
     // tooltip updates in the background when configured.
     private GsxService? _gsxService;
     private Forms.AccessGSXForm? _accessGsxForm;
+
+    // Per-aircraft gsx.cfg geometry — docking consumes only the door SIDE (the spoken
+    // "jetway on your left/right" cue); the stop math is datum-aligned and takes no door
+    // offset. Constructed once; background scan is warmed at startup so the first docking
+    // session has the side ready. Thread-safe internally (single-flight Lazy build).
+    private readonly MSFSBlindAssist.Services.Gsx.GsxAirplaneProfile _gsxAirplaneProfile = new();
+    // Tracks ICAOs that have already triggered a Refresh() so we only rebuild the map once
+    // per distinct ICAO miss (a Refresh re-scans the package folders — seconds on a cold
+    // disk). Mutated from concurrent Task.Run handlers — always lock(_refreshedIcaos).
+    private readonly System.Collections.Generic.HashSet<string> _refreshedIcaos = new();
 
     // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
     // event so any feature that needs to know "on ground vs airborne" right now
@@ -136,6 +147,10 @@ public partial class MainForm : Form
         // Load last selected aircraft from settings
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         currentAircraft = LoadAircraftFromCode(settings.LastAircraft ?? "A320");
+
+        // Wire distance formatter to the active settings unit.
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.SettingsManager.Current.GroundDistanceUnit;
 
         InitializeComponent();
         InitializeManagers();
@@ -215,6 +230,15 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
+        simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
+
+        // Warm the GSX door-offset map in the background so docking sessions have
+        // offsets ready without blocking the UI thread for the ~12 s scan.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { _gsxAirplaneProfile.GetDoorOffsetMetres("B77W"); } // warms the map
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[MainForm] GsxAirplaneProfile warm failed: {ex.Message}"); }
+        });
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and
@@ -259,6 +283,15 @@ public partial class MainForm : Form
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
 
+        // Initialize docking guidance manager
+        dockingGuidanceManager = new DockingGuidanceManager(announcer);
+
+        // When docking reaches the precise GSX stop ("GSX docking complete."), stop taxi
+        // guidance so the whole flow ends cleanly instead of taxi sitting in LiningUp forever.
+        // Raised on the SimConnect position thread; StopGuidance is thread-safe + silent (docking
+        // already announced the stop), so no marshalling and no contradictory second callout.
+        dockingGuidanceManager.DockingCompleted += () => taxiGuidanceManager.StopGuidance();
+
         // Subscribe to taxi guidance state changes ONCE, here at construction time.
         // This wires SimConnect taxi-position monitoring on/off (see
         // OnTaxiGuidanceStateChanged). Previously the subscription only happened
@@ -286,6 +319,10 @@ public partial class MainForm : Form
         groundTrafficMonitor.SuppressCheck = () =>
             takeoffAssistManager.IsActive
             || taxiGuidanceManager.State == TaxiGuidanceState.Inactive;
+
+        // Per-aircraft rollout-anticipation lead for the taxi steering tone
+        // (see IAircraftDefinition.TaxiTurnLeadSeconds).
+        taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -481,6 +518,71 @@ public partial class MainForm : Form
                 System.Diagnostics.Debug.WriteLine($"[MainForm] GsxService.Stop failed: {ex.Message}");
             }
         }
+    }
+
+    /// <summary>
+    /// Called when SimConnect resolves the loaded aircraft's ICAO type designator.
+    /// Looks up the aircraft's gsx.cfg geometry and feeds the preferred-door SIDE to the
+    /// docking guidance manager (the "jetway on your left/right" cue). The longitudinal
+    /// door offset is deliberately NOT plumbed anywhere — the stop math aligns the aircraft
+    /// DATUM to the stop position (see the comment block in DockingGuidanceManager); the
+    /// offset's only former consumer was a telemetry column.
+    /// </summary>
+    private void OnAircraftIcaoTypeDetected(object? sender, string icaoType)
+    {
+        // Run on a background thread so neither the UI thread nor the SimConnect
+        // thread is blocked by the GsxAirplaneProfile disk scan (~12 s on first call).
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var geom = _gsxAirplaneProfile.GetGeometry(icaoType);
+                bool shouldRefresh;
+                if (geom == null && GsxLikelyInstalled())
+                {
+                    // _refreshedIcaos is mutated from concurrently-running Task.Run handlers
+                    // (the event fires on connect, on every AircraftLoaded, and again from the
+                    // aircraft.cfg catalog fallback) — HashSet is not thread-safe, so lock it.
+                    lock (_refreshedIcaos) { shouldRefresh = _refreshedIcaos.Add(icaoType ?? ""); }
+                }
+                else shouldRefresh = false;
+
+                if (shouldRefresh)
+                {
+                    // First miss for this ICAO — rebuild the map in case a gsx.cfg was
+                    // written after startup (e.g. user just installed a GSX profile via
+                    // the GSX installer into %APPDATA%\Virtuali\Airplanes). Only useful
+                    // when GSX is actually installed; skip the disk scan otherwise.
+                    _gsxAirplaneProfile.Refresh();
+                    geom = _gsxAirplaneProfile.GetGeometry(icaoType);
+                }
+
+                // Stale-task guard: the Refresh() scan can take seconds; if the user swapped
+                // aircraft meanwhile, a late-finishing task for the OLD ICAO must not clobber
+                // the NEW aircraft's door side (the spoken "jetway on your left/right" cue).
+                // Mirrors the title-snapshot recheck in SimConnectManager's catalog fallback.
+                if (!string.Equals(simConnectManager.CurrentAircraftIcaoType, icaoType, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                string side = geom?.Side switch
+                {
+                    MSFSBlindAssist.Services.Gsx.DoorSide.Left => "left",
+                    MSFSBlindAssist.Services.Gsx.DoorSide.Right => "right",
+                    _ => ""
+                };
+                dockingGuidanceManager.SetDoorSide(side);
+                System.Diagnostics.Debug.WriteLine($"[MainForm] Door side for ICAO '{icaoType}': '{side}'");
+
+                try
+                {
+                    string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
+                    System.IO.File.AppendAllText(logPath,
+                        $"{DateTime.Now:HH:mm:ss}  ICAO=\"{icaoType}\"  doorSide={side}{System.Environment.NewLine}");
+                }
+                catch { /* never propagate log failures */ }
+            }
+            catch { }
+        });
     }
 
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
@@ -796,9 +898,7 @@ public partial class MainForm : Form
                     _diagLoggedFirstRolloutPos = true;
                     try
                     {
-                        string diagPath = System.IO.Path.Combine(
-                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                            "MSFSBlindAssist", "landing_exit.log");
+                        string diagPath = MSFSBlindAssist.Utils.AppLogs.PathFor("landing_exit.log");
                         System.IO.File.AppendAllText(diagPath,
                             $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] First TAXI_GUIDANCE_POSITION in LandingRollout: " +
                             $"lat={pos.Latitude:F6} lon={pos.Longitude:F6} hdgMag={pos.HeadingMagnetic:F1} " +
@@ -811,6 +911,45 @@ public partial class MainForm : Form
                     pos.HeadingMagnetic, pos.MagneticVariation,
                     pos.GroundSpeedKnots);
             }
+        }
+
+        // Docking guidance runs on every TAXI_GUIDANCE_POSITION frame regardless of
+        // taxi-guidance state — it has its own guard (_gate == null / disabled / not Idle
+        // → reset), so calling it every frame is safe and cheap. NOTE the feed itself is
+        // taxi-scoped: OnTaxiGuidanceStateChanged stops position monitoring when taxi
+        // reaches Arrived/Inactive, so docking gets NO frames after that point. That is
+        // fine by design — arrival ownership is engage-latched (docking has either already
+        // finished, or never engaged and taxi announced the arrival), the parked solid
+        // tone is self-sustaining until the pilot presses Stop, and stale docking state is
+        // cleared at the next flight boundary (takeoff-assist / LandingRollout) or healed
+        // by the absolute-distance disengage on the next route's frames.
+        if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
+        {
+            var pos = e.PositionData.Value;
+            dockingGuidanceManager.UpdatePosition(
+                pos.Latitude, pos.Longitude,
+                pos.HeadingMagnetic, pos.MagneticVariation,
+                pos.GroundSpeedKnots);
+
+            // Exactly one panning tone at a time, and ENGAGE-LATCHED arrival ownership.
+            // Docking owns the PRECISE final lineup: once it is engaged (within ~50 m of the
+            // stop, roughly aligned, slow) it pans an intercept-angle cue to the gate centerline,
+            // so mute the taxi steering tone AND taxi's terminal arrival callouts while docking
+            // is active (Docking or Stopped). Before engagement taxi speaks and steers normally —
+            // critical for navdata gates where docking may NEVER engage (approach outside the 70°
+            // cone, stop beyond engage range, approximate navdata heading): the pilot still gets
+            // taxi's full arrival sequence instead of total verbal silence. The brief overlap case
+            // (taxi says "Stop. Hold position." at its route-end node and docking engages a moment
+            // later with "Docking guidance… X to stop") is sequential and self-correcting — far
+            // better than the silent-arrival failure mode of suppressing for the whole approach.
+            // IsActive / IsArmedAwaitingEngage are lock-free volatile snapshots — no lock cost.
+            bool dockingActive = dockingGuidanceManager.IsActive;
+            taxiGuidanceManager.SetSteeringToneSuppressed(dockingActive);
+            taxiGuidanceManager.SetDockingActive(dockingActive);
+            // Pre-engage window: docking armed with the GSX stop still ahead — taxi's
+            // arrival wording redirects forward instead of saying "parking brake" at
+            // the navdata point (KATL F3 2026-06-11: 26 s parked short, docking Armed).
+            taxiGuidanceManager.SetDockingPending(dockingGuidanceManager.IsArmedAwaitingEngage);
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are
@@ -1672,7 +1811,20 @@ public partial class MainForm : Form
             case HotkeyAction.TaxiStatus:
                 // Y — rolling current status from live position (current taxiway, next turn,
                 // distance to destination). Recomputed on every press from the route + position.
-                announcer.AnnounceImmediate(taxiGuidanceManager.GetStatusAnnouncement());
+                // While docking owns the final approach, report ITS distance to the precise
+                // stop — not taxi's distance to the route-end node — so the status never
+                // contradicts the live docking countdown ("25 m to gate" vs "20 m to stop").
+                if (dockingGuidanceManager.IsActive)
+                {
+                    string dockStatus = dockingGuidanceManager.GetStatusAnnouncement();
+                    announcer.AnnounceImmediate(string.IsNullOrEmpty(dockStatus)
+                        ? taxiGuidanceManager.GetStatusAnnouncement()
+                        : dockStatus);
+                }
+                else
+                {
+                    announcer.AnnounceImmediate(taxiGuidanceManager.GetStatusAnnouncement());
+                }
                 break;
             case HotkeyAction.TaxiRepeat:
                 // Ctrl+Y — replays the most recent actionable instruction (turn callout,
@@ -1686,6 +1838,7 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.TaxiStop:
                 taxiGuidanceManager.StopGuidance();
+                dockingGuidanceManager?.SetDestinationGate(null);
                 simConnectManager.StopTaxiGuidanceMonitoring();
                 announcer.AnnounceImmediate("Taxi guidance stopped.");
                 break;
@@ -1881,7 +2034,7 @@ public partial class MainForm : Form
         if (!ValidateDatabaseSimulatorMatch())
             return;
 
-        var dialog = new GateTeleportForm(airportDataProvider, announcer, simConnectManager.AircraftWingSpan);
+        var dialog = new GateTeleportForm(airportDataProvider, announcer, simConnectManager.AircraftWingSpan, BuildGateDataSource());
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             if (dialog.SelectedParkingSpot != null && dialog.SelectedAirport != null)
@@ -2689,13 +2842,51 @@ public partial class MainForm : Form
         });
     }
 
+    private Services.GateDataSource? BuildGateDataSource()
+    {
+        if (airportDataProvider == null) return null;
+        // GSX gates only when GSX is running this session (Couatl started) AND a profile matches.
+        return new Services.GateDataSource(
+            airportDataProvider,
+            () => _gsxService != null && _gsxService.CouatlStarted);
+    }
+
+    /// <summary>
+    /// Constructs a <see cref="Services.Gsx.GsxGateSelector"/> when GSX is
+    /// available in this session. Returns <c>null</c> when there is no GSX
+    /// service (GSX not installed / not yet started), so callers can simply
+    /// null-check before using it.
+    /// </summary>
+    private Services.Gsx.GsxGateSelector? BuildGsxGateSelector()
+    {
+        if (_gsxService == null) return null;
+        return new Services.Gsx.GsxGateSelector(
+            _gsxService,
+            new Services.Gsx.GsxMenuAutomation(_gsxService),
+            announcer);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the GSX installation folder
+    /// (%APPDATA%\Virtuali) exists, indicating GSX is likely installed.
+    /// Used to gate the per-ICAO profile rescan: the Refresh() call is only
+    /// useful to pick up a gsx.cfg written by GSX to %APPDATA%\Virtuali\Airplanes,
+    /// which never happens on a machine without GSX.
+    /// </summary>
+    private static bool GsxLikelyInstalled()
+    {
+        try { return System.IO.Directory.Exists(System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Virtuali")); }
+        catch { return false; }
+    }
+
     private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
             taxiAssistForm = new TaxiAssistForm(
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan);
+                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
@@ -2773,9 +2964,7 @@ public partial class MainForm : Form
         // them with the rollout-phase per-frame log entries.
         try
         {
-            string diagPath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MSFSBlindAssist", "landing_exit.log");
+            string diagPath = MSFSBlindAssist.Utils.AppLogs.PathFor("landing_exit.log");
             System.IO.File.AppendAllText(diagPath,
                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] OnTaxiGuidanceStateChanged newState={newState}{Environment.NewLine}");
         }
@@ -2790,6 +2979,15 @@ public partial class MainForm : Form
         {
             case TaxiGuidanceState.Taxiing:
                 simConnectManager.StartTaxiGuidanceMonitoring();
+                break;
+            case TaxiGuidanceState.LandingRollout:
+                // A landing just started (Landing Exit Planner auto-activation). Any docking
+                // destination still set belongs to the PREVIOUS flight's arrival — clear it so
+                // the stale gate can't keep IsActive latched and mute the rollout steering tone.
+                // Covers hand-flown departures where the takeoff-assist clear never ran.
+                // (Position monitoring is unchanged here — it's already running from the
+                // route-load Taxiing transition.)
+                dockingGuidanceManager?.SetDestinationGate(null);
                 break;
             case TaxiGuidanceState.Arrived:
             case TaxiGuidanceState.Inactive:
@@ -3193,6 +3391,14 @@ public partial class MainForm : Form
             {
                 taxiGuidanceManager.StopGuidance();
             }
+
+            // The flight is departing — clear any docking destination from the previous
+            // arrival. Without this the gate (and a latched Docking/Stopped state) survived
+            // the whole flight: on landing, the rollout's position frames fed docking a stale
+            // departure-airport gate and could keep the landing-exit steering tone muted.
+            // (The Stopped state also self-heals on absolute distance now, but takeoff is the
+            // unambiguous "previous arrival is over" boundary — clear it here.)
+            dockingGuidanceManager?.SetDestinationGate(null);
 
             // Start monitoring position, pitch, and IAS for takeoff assist
             simConnectManager.StartTakeoffAssistMonitoring();
@@ -3618,7 +3824,11 @@ public partial class MainForm : Form
             currentSettings.TaxiGuidanceHardPanTone,
             currentSettings.TaxiGuidanceAnnounceCrossings,
             currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
-            currentSettings.GroundTrafficUseMetres))
+            currentSettings.GroundTrafficUseMetres,
+            currentSettings.GsxAutoSelectGateOnRoute,
+            currentSettings.DockingGuidanceEnabled,
+            currentSettings.DockingBeepWaveform,
+            currentSettings.DockingBeepVolume))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -3628,7 +3838,12 @@ public partial class MainForm : Form
                 currentSettings.TaxiGuidanceHardPanTone = settingsForm.HardPanSteeringTone;
                 currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
                 currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
+                currentSettings.GroundDistanceUnit = settingsForm.SelectedDistanceUnit;
                 currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
+                currentSettings.GsxAutoSelectGateOnRoute = settingsForm.GsxAutoSelectGateOnRoute;
+                currentSettings.DockingGuidanceEnabled = settingsForm.DockingGuidanceEnabled;
+                currentSettings.DockingBeepWaveform = settingsForm.DockingBeepWaveform;
+                currentSettings.DockingBeepVolume = settingsForm.DockingBeepVolume;
                 SettingsManager.Save();
 
                 statusLabel.Text = "Taxi guidance options saved successfully";
@@ -3719,6 +3934,8 @@ public partial class MainForm : Form
         // Update the aircraft instance
         currentAircraft = newAircraft;
 
+        taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
+
         // Refresh aircraft-conditional menu items (FMC Settings is PMDG-only).
         UpdateAircraftSpecificMenuItems();
 
@@ -3750,6 +3967,9 @@ public partial class MainForm : Form
         {
             simConnectManager.ReregisterAllVariables();
             simConnectManager.RestartContinuousMonitoring();
+            // Re-read ATC MODEL / ICAO for the newly selected aircraft definition so
+            // the door-offset map is refreshed for the new aircraft profile.
+            simConnectManager.RequestAircraftInfo();
 
             // Start grace period for new aircraft variables to populate
             // This prevents announcement flood when hundreds of continuous variables send initial values
@@ -5639,8 +5859,9 @@ public partial class MainForm : Form
         weatherAnnouncementTimer?.Stop();
         weatherAnnouncementTimer?.Dispose();
 
-        // Clean up taxi guidance and ground traffic monitor
+        // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
+        dockingGuidanceManager?.Dispose();
         groundTrafficMonitor?.Dispose();
 
         // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not

@@ -17,6 +17,22 @@ public class ParkingSpot
     public bool HasJetway { get; set; }
     public string AirlineCodes { get; set; }
 
+    // GSX-source enrichment (null/default for navdata-sourced spots).
+    public GateSource Source { get; set; } = GateSource.Navdata;
+    public string? VdgsType { get; set; }              // e.g. "SafeDockT42", "Marshaller"
+    public double? MaxWingspanMeters { get; set; }     // GSX "maxwingspan"
+    public double? StopLatitude { get; set; }          // GSX parkingsystem_stopposition lat
+    public double? StopLongitude { get; set; }         // GSX parkingsystem_stopposition lon
+    public double? StopHeading { get; set; }           // GSX stop-position nose heading (deg true); null for navdata-only
+    public bool IsDeiceArea { get; set; }              // true when parsed from a GSX is_deicearea = 1 section
+    /// <summary>
+    /// GSX "gatedistancethreshold" (metres) — the distance at which GSX activates the VDGS
+    /// for this stand. Present only for .ini-sourced gates; null for navdata-only stands.
+    /// Docking guidance uses this as the engage range (clamped to [20, 70] m) instead of
+    /// the fixed 50 m default when non-null.
+    /// </summary>
+    public double? GateDistanceThreshold { get; set; }
+
     public ParkingSpot()
     {
         AirportICAO = string.Empty;
@@ -68,10 +84,59 @@ public class ParkingSpot
         };
     }
 
+    /// <summary>
+    /// Returns whether this spot fits an aircraft with the given wing span
+    /// (in FEET — matches <c>SimConnectManager.AircraftWingSpan</c>).
+    /// <para>
+    /// UNIT-AWARE by SOURCE:
+    ///   • GSX spots carry the authoritative max allowed wing span in METERS
+    ///     (<see cref="MaxWingspanMeters"/>) — compare directly (aircraft → metres).
+    ///     The GSX-sourced <see cref="Radius"/> is metres (maxwingspan/2), so the old
+    ///     "Radius >= wingspanFeet/2" test mixed metres with a feet threshold and
+    ///     filtered almost everything out. A GSX spot whose profile omits maxwingspan
+    ///     has no reliable size → treat it as fitting (don't hide it).
+    ///   • Navdata spots have a physical parking <see cref="Radius"/> in FEET — keep the
+    ///     original "radius holds the half-span" test (both feet).
+    /// </para>
+    /// An unknown wing span (&lt;= 0) fits everything (filter is a no-op).
+    /// </summary>
+    public bool FitsAircraft(double aircraftWingspanFeet)
+    {
+        if (aircraftWingspanFeet <= 0) return true;
+
+        if (Source == GateSource.Gsx)
+        {
+            // No GSX size info → don't filter it out (placeholder Radius is not real).
+            if (!MaxWingspanMeters.HasValue) return true;
+
+            const double feetToMeters = 0.3048;
+            double aircraftWingspanMeters = aircraftWingspanFeet * feetToMeters;
+            return MaxWingspanMeters.Value >= aircraftWingspanMeters;
+        }
+
+        // Navdata: physical parking radius (feet) must hold the half-span (feet).
+        return Radius >= aircraftWingspanFeet / 2.0;
+    }
+
+    private static string FriendlyVdgs(string? vdgs)
+    {
+        if (string.IsNullOrWhiteSpace(vdgs)) return string.Empty;
+        if (vdgs.StartsWith("Safedock", StringComparison.OrdinalIgnoreCase))  return "SafeDock";   // incl. SafeDock*
+        if (vdgs.StartsWith("Marshaller", StringComparison.OrdinalIgnoreCase)) return "Marshaller";
+        if (vdgs.StartsWith("Apis", StringComparison.OrdinalIgnoreCase))      return "APIS";
+        if (vdgs.StartsWith("Agnis", StringComparison.OrdinalIgnoreCase))     return "AGNIS";
+        if (vdgs.StartsWith("Honeywell", StringComparison.OrdinalIgnoreCase)) return "Honeywell";
+        if (vdgs.StartsWith("Rlg", StringComparison.OrdinalIgnoreCase))       return "RLG";
+        if (vdgs.StartsWith("Vgds", StringComparison.OrdinalIgnoreCase))      return "VDGS";
+        return string.Empty; // "Dummy", "1", or anything not a recognized VDGS -> no suffix
+    }
+
     public override string ToString()
     {
         string baseDescription;
-        string numberPart = Number > 0 ? $"{Number}{Suffix}" : "";
+        string numberPart = Number > 0
+            ? $"{Number}{Suffix}"
+            : (!string.IsNullOrEmpty(Suffix) ? $"0{Suffix}" : "");
 
         if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(numberPart))
             baseDescription = $"{Name} {numberPart} - {GetParkingType()}";
@@ -84,6 +149,10 @@ public class ParkingSpot
 
         if (HasJetway)
             baseDescription += " (Jetway)";
+
+        string vdgs = FriendlyVdgs(VdgsType);
+        if (!string.IsNullOrEmpty(vdgs))
+            baseDescription += $" [{vdgs}]";
 
         return baseDescription;
     }

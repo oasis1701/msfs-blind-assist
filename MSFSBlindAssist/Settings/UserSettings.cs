@@ -140,6 +140,18 @@ public class UserSettings
         // Units
         public string DistanceUnits { get; set; } = "miles";
 
+        /// <summary>
+        /// Unit used for user-facing ground/horizontal distance readouts
+        /// (e.g. taxi distance-to-turn, parking countdown).
+        /// Metres (0) is the ICAO default and matches GSX distances.
+        /// Feet (1) is the North American / FAA convention.
+        /// </summary>
+        public DistanceUnit GroundDistanceUnit { get; set; } = DistanceUnit.Metres;
+
+        // Independent of GroundDistanceUnit: ground-traffic proximity alerts have their own
+        // metres/feet toggle (default feet). Not governed by the app-wide distance-units setting.
+        public bool GroundTrafficUseMetres { get; set; } = false;
+
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
@@ -212,9 +224,10 @@ public class UserSettings
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
-        // Ground traffic proximity distances in metres instead of feet.
-        // Default false (feet) — aviation uses feet for taxiway spacing.
-        public bool GroundTrafficUseMetres { get; set; } = false;
+        // Docking (VDGS / marshalling) guidance
+        public bool DockingGuidanceEnabled { get; set; } = true;
+        public HandFlyWaveType DockingBeepWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double DockingBeepVolume { get; set; } = 0.05;
 
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
@@ -246,6 +259,14 @@ public class UserSettings
         /// while the form is hidden — the form is the only speech surface.
         /// </summary>
         public bool GsxBackgroundMonitoring { get; set; } = false;
+
+        /// <summary>
+        /// When true, calculating a route to a gate in Taxi Assist automatically
+        /// drives the GSX parking-selection menu to select that gate (so the
+        /// marshaller/VDGS arms there). Only fires when GSX is running
+        /// (CouatlStarted). Default on.
+        /// </summary>
+        public bool GsxAutoSelectGateOnRoute { get; set; } = true;
 
         /// <summary>
         /// Creates a new UserSettings instance with default values.
@@ -308,6 +329,8 @@ public class UserSettings
             MajorCityPopulationThreshold = MajorCityPopulationThreshold,
             MajorCityAPIThreshold = MajorCityAPIThreshold,
             DistanceUnits = DistanceUnits,
+            GroundDistanceUnit = GroundDistanceUnit,
+            GroundTrafficUseMetres = GroundTrafficUseMetres,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
@@ -324,10 +347,13 @@ public class UserSettings
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
-            GroundTrafficUseMetres = GroundTrafficUseMetres,
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
             Hs787SimVersionOverride = Hs787SimVersionOverride,
-            GsxBackgroundMonitoring = GsxBackgroundMonitoring
+            GsxBackgroundMonitoring = GsxBackgroundMonitoring,
+            GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute,
+            DockingGuidanceEnabled = DockingGuidanceEnabled,
+            DockingBeepWaveform = DockingBeepWaveform,
+            DockingBeepVolume = DockingBeepVolume
         };
     }
 }
