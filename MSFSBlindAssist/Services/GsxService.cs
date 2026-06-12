@@ -54,8 +54,13 @@ public sealed class GsxService : IDisposable
     private static readonly TimeSpan GroundConnectionTimerAnnouncementInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan FuelingProgressAnnouncementInterval = TimeSpan.FromSeconds(30);
     private const int BoardingPassengerAnnouncementInterval = 10;
+    private const string CurrencyCodePattern =
+        @"(?:AED|AFN|ALL|AMD|ANG|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BOV|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHE|CHF|CHW|CLF|CLP|CNY|COP|COU|CRC|CUC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MXV|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLE|SLL|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|USN|UYI|UYU|UYW|UZS|VED|VES|VND|VUV|WST|XAF|XAG|XAU|XBA|XBB|XBC|XBD|XCD|XCG|XDR|XOF|XPD|XPF|XPT|XSU|XTS|XUA|XXX|YER|ZAR|ZMW|ZWG)";
+    private const string CurrencyWordPattern =
+        @"(?:ARIARY|BAHT|BALBOA|BIRR|BOLIVAR|BOLIVARES|BOLIVIANO|BOLIVIANOS|CEDI|CEDIS|COLON|COLONES|CORDOBA|CORDOBAS|DALASI|DENAR|DENARS|DINAR|DINARS|DIRHAM|DIRHAMS|DOLLAR|DOLLARS|DONG|DRAM|ESCUDO|ESCUDOS|EURO|EUROS|FLORIN|FORINT|FRANC|FRANCS|GOURDE|GOURDES|GUARANI|HRYVNIA|KINA|KIP|KORUNA|KORUNY|KRONA|KRONER|KRONOR|KWACHA|KWANZA|KYAT|LARI|LEI|LEK|LEMPIRA|LEMPIRAS|LEONE|LEV|LEVA|LILANGENI|LIRA|LIRE|LOTI|MANAT|METICAL|METICALS|NAIRA|NAKFA|OUGUIYA|PAANGA|PATACA|PATACAS|PESO|PESOS|POUND|POUNDS|PULA|QUETZAL|RAND|REAL|REALS|RIEL|RINGGIT|RIYAL|RIYALS|RMB|ROUBLE|ROUBLES|RUBLE|RUBLES|RUFIYAA|RUPEE|RUPEES|RUPIAH|SHEKEL|SHEKELS|SHILLING|SHILLINGS|SOL|SOM|SOMONI|TAKA|TALA|TENGE|TUGRIK|VATU|WON|YEN|YUAN|ZLOTY|ZLOTYS)";
+    private const string CurrencySymbolPattern = @"[$€£¥₩₹₽₺₪₫₴¢₦₱฿₡₲₵₭₮₾₼]";
     private const string CurrencyTokenPattern =
-        @"(?:USD|EUR|GBP|JPY|CNY|RMB|CAD|AUD|NZD|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|TRY|ILS|AED|SAR|QAR|INR|KRW|SGD|HKD|TWD|THB|MYR|IDR|PHP|VND|BRL|MXN|ARS|CLP|COP|ZAR|[$€£¥₩₹₽₺₪₫₴])";
+        @"(?:" + CurrencyCodePattern + @"|" + CurrencyWordPattern + @"|" + CurrencySymbolPattern + @")";
     private static readonly HashSet<string> AnnounceableReceiptFolders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Catering",
@@ -1060,14 +1065,18 @@ public sealed class GsxService : IDisposable
 
         bool exactDuplicate = string.Equals(text, _lastTooltip, StringComparison.Ordinal);
         bool stableChanged = !string.Equals(stableText, _lastStatusStableText, StringComparison.Ordinal);
+        bool timerStatusText = IsTimerStatusText(text);
+        bool announcementStableChanged = timerStatusText
+            ? !TimerStatusContextEquals(text, _lastTooltip)
+            : stableChanged;
         TimeSpan timerOnlyInterval = GetTimerOnlyAnnouncementInterval(text);
         bool timerOnlyChangeAllowed = allowTimerOnlyAnnouncements
             && !exactDuplicate
-            && !stableChanged
+            && !announcementStableChanged
             && DateTime.UtcNow - _lastTimerOnlyStatusAnnouncementUtc >= timerOnlyInterval;
 
         bool shouldAnnounce = !isThrottled
-            && (forceAnnouncement || (!exactDuplicate && (stableChanged || timerOnlyChangeAllowed)));
+            && (forceAnnouncement || (!exactDuplicate && (announcementStableChanged || timerOnlyChangeAllowed)));
 
         // Always keep the visible-text state current so the AccessGSX
         // tooltip textbox shows live ETA / kg / etc., even when the
@@ -1108,7 +1117,7 @@ public sealed class GsxService : IDisposable
         if (string.IsNullOrWhiteSpace(announceText))
             return;
 
-        if (timerOnlyChangeAllowed || IsTimerStatusText(text))
+        if (timerOnlyChangeAllowed || timerStatusText)
             _lastTimerOnlyStatusAnnouncementUtc = DateTime.UtcNow;
 
         _lastAnnouncementText = announceText;
@@ -1162,7 +1171,7 @@ public sealed class GsxService : IDisposable
 
         foreach (string line in text.ReplaceLineEndings("\n").Split('\n'))
         {
-            foreach (string segment in line.Split(','))
+            foreach (string segment in Regex.Split(line, @"(?<!\d),(?!\d)"))
             {
                 string trimmed = segment.Trim();
                 if (trimmed.Length > 0)
@@ -1197,9 +1206,10 @@ public sealed class GsxService : IDisposable
     // milestone hasn't advanced). Whole-segment match so any segment that
     // carries additional info ("rear loader leaving while 5 boarded") is
     // left alone — only standalone "pax 5/100" / "5 passengers" / "5 pax
-    // boarded" type lines are stripped.
+    // boarded" type lines, plus GSX's "Passenger boarding 5/100 passengers"
+    // status shape, are stripped.
     private static readonly Regex PaxOnlySegmentRegex = new(
-        @"^\s*(?:\[gsx\]\s+)?(?:pax\s+\d{1,4}(?:\s*/\s*\d{1,4})?|\d{1,4}(?:\s*/\s*\d{1,4})?\s+(?:passengers?|pax)(?:\s+boarded)?)\s*$",
+        @"^\s*(?:\[gsx\]\s+)?(?:(?:passenger\s+(?:de)?boarding)\s+)?(?:pax\s+\d{1,4}(?:\s*/\s*\d{1,4})?|\d{1,4}(?:\s*/\s*\d{1,4})?\s+(?:passengers?|pax)(?:\s+boarded)?)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Aircraft fuel quantity is GSX's rapidly-updating internal aircraft
@@ -1265,11 +1275,12 @@ public sealed class GsxService : IDisposable
         bool advanced;
         if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
         {
-            advanced = true;
+            advanced = IsBoardingAnnouncementBoundary(passengers);
         }
         else
         {
-            advanced = currentMilestone != lastMilestone;
+            advanced = currentMilestone != lastMilestone
+                && IsBoardingAnnouncementBoundary(passengers);
         }
 
         if (advanced)
@@ -1280,6 +1291,9 @@ public sealed class GsxService : IDisposable
 
         return StripSegmentsMatching(announceText, PaxOnlySegmentRegex);
     }
+
+    private static bool IsBoardingAnnouncementBoundary(int passengers) =>
+        passengers <= 1 || passengers % BoardingPassengerAnnouncementInterval == 0;
 
     private string StripThrottledBagsSegments(string announceText, string fullText)
     {
@@ -1582,27 +1596,41 @@ public sealed class GsxService : IDisposable
         // below that for the rest of the session.
         var match = Regex.Match(
             text,
-            @"\b(?<count>\d{1,3})\s*/\s*\d+\s*(?:passengers|pax)\b",
+            @"\bpassenger\s+(?:de)?boarding\s+(?<count>\d{1,4})\s*/\s*\d+\s*(?:passengers|pax)\b",
             RegexOptions.IgnoreCase);
         if (!match.Success)
         {
             match = Regex.Match(
                 text,
-                @"\bpax\s+(?<count>\d{1,3})\s*/\s*\d+\b",
+                @"\bpassenger\s+(?:de)?boarding\s+(?<count>\d{1,4})\s*(?:passengers|pax)\b",
                 RegexOptions.IgnoreCase);
         }
         if (!match.Success)
         {
             match = Regex.Match(
                 text,
-                @"\b(?<count>\d{1,3})\s*(?:passengers|pax)\b",
+                @"\b(?<count>\d{1,4})\s*/\s*\d+\s*(?:passengers|pax)\b",
                 RegexOptions.IgnoreCase);
         }
         if (!match.Success)
         {
             match = Regex.Match(
                 text,
-                @"\bpax\s+(?<count>\d{1,3})\b",
+                @"\bpax\s+(?<count>\d{1,4})\s*/\s*\d+\b",
+                RegexOptions.IgnoreCase);
+        }
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                text,
+                @"\b(?<count>\d{1,4})\s*(?:passengers|pax)\b",
+                RegexOptions.IgnoreCase);
+        }
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                text,
+                @"\bpax\s+(?<count>\d{1,4})\b",
                 RegexOptions.IgnoreCase);
         }
         if (!match.Success)
@@ -1619,6 +1647,44 @@ public sealed class GsxService : IDisposable
 
     private static bool IsTimerStatusText(string text) =>
         text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TimerStatusContextEquals(string currentText, string previousText)
+    {
+        if (string.IsNullOrWhiteSpace(previousText))
+            return false;
+
+        string currentContext = BuildTimerStatusContextKey(currentText);
+        string previousContext = BuildTimerStatusContextKey(previousText);
+        return currentContext.Length > 0
+            && string.Equals(currentContext, previousContext, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildTimerStatusContextKey(string text)
+    {
+        var parts = SplitTooltipParts(text);
+        if (parts.Count == 0)
+            return string.Empty;
+
+        var stableParts = parts
+            .Select(BuildTimerStatusContextPart)
+            .Where(part => !string.IsNullOrWhiteSpace(part));
+
+        return string.Join("|", stableParts);
+    }
+
+    private static string BuildTimerStatusContextPart(string part)
+    {
+        if (part.Equals("Current charges:", StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+
+        if (IsTimerStatusLine(part))
+            return NormalizeStatusStableText(FormatGroundConnectionTimerServiceText(part));
+
+        if (IsChargeStatusLine(part))
+            return string.Empty;
+
+        return NormalizeStatusStableText(part);
+    }
 
     private void ReloadAndPublishSettings()
     {
@@ -1648,7 +1714,7 @@ public sealed class GsxService : IDisposable
         }
 
         var settingsItems = ParseSettingsHtml(html);
-        ApplySavedSettingValues(settingsItems);
+        var liveSyncItems = ApplySavedSettingValues(settingsItems);
 
         _settingsItems.Clear();
         _settingsItems.AddRange(settingsItems);
@@ -1658,6 +1724,8 @@ public sealed class GsxService : IDisposable
             settingsText = "GSX Settings opened, but no settings could be read.";
 
         PublishSettingsText(settingsText);
+
+        SyncSavedSettingsToLiveGsx(liveSyncItems);
     }
 
     private void PublishSettingsText(string settingsText)
@@ -1826,14 +1894,15 @@ public sealed class GsxService : IDisposable
 
     private sealed record SettingsSection(string Title, int Start, int End);
 
-    private static void ApplySavedSettingValues(List<GsxSettingItem> items)
+    private List<GsxSettingItem> ApplySavedSettingValues(List<GsxSettingItem> items)
     {
+        var liveSyncItems = new List<GsxSettingItem>();
         if (items.Count == 0)
-            return;
+            return liveSyncItems;
 
         var savedValues = LoadSavedGsxSettings();
         if (savedValues.Count == 0)
-            return;
+            return liveSyncItems;
 
         for (int i = 0; i < items.Count; i++)
         {
@@ -1842,8 +1911,54 @@ public sealed class GsxService : IDisposable
                 continue;
 
             if (TryGetSavedSettingValue(item, savedValues, out string? savedValue))
-                items[i] = item with { Value = savedValue };
+            {
+                var updatedItem = item with { Value = savedValue };
+                items[i] = updatedItem;
+
+                if (!SettingUiValuesEqual(item, savedValue)
+                    && IsLiveSyncableSetting(updatedItem))
+                {
+                    liveSyncItems.Add(updatedItem);
+                }
+            }
         }
+
+        return liveSyncItems;
+    }
+
+    private void SyncSavedSettingsToLiveGsx(IReadOnlyList<GsxSettingItem> items)
+    {
+        foreach (var item in items)
+        {
+            if (string.IsNullOrWhiteSpace(item.Key))
+                continue;
+
+            if (string.Equals(item.Type, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                SetSettingText(item.Key, item.Value);
+                continue;
+            }
+
+            SetSettingNumber(item.Key, ParseDouble(item.Value));
+        }
+    }
+
+    private static bool IsLiveSyncableSetting(GsxSettingItem item) =>
+        string.Equals(item.Type, "toggle", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(item.Type, "range", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(item.Type, "text", StringComparison.OrdinalIgnoreCase);
+
+    private static bool SettingUiValuesEqual(GsxSettingItem item, string value)
+    {
+        if (string.Equals(item.Type, "toggle", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.Type, "range", StringComparison.OrdinalIgnoreCase))
+        {
+            return Math.Abs(ParseDouble(item.Value) - ParseDouble(value)) < 0.000001;
+        }
+
+        return string.Equals(item.Value, value, StringComparison.Ordinal);
     }
 
     private static bool TryGetSavedSettingValue(
@@ -3177,7 +3292,7 @@ public sealed class GsxService : IDisposable
         // approximates the user-requested "tell me again if the ETA changes
         // by ~5 minutes" behaviour).
         stable = DurationTokenRegex.Replace(stable, BucketDurationToken);
-        stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*{CurrencyTokenPattern}", "<price>",
+        stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d[\d,.]*|\d[\d,.]*\s*{CurrencyTokenPattern}", "<price>",
             RegexOptions.IgnoreCase);
         stable = Regex.Replace(stable, @"\(~?\s*<price>\)", "(<price>)",
             RegexOptions.IgnoreCase);
