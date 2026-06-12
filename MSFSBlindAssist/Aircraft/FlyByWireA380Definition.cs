@@ -3989,8 +3989,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName is "A32NX_ROW_ROP_WORD_1" or "A32NX_OANS_WORD_1")
         {
             var word = new SimConnect.Arinc429Word(value);
+            // Bit map from the FBW writer (a380_systems hydraulic/autobrakes.rs):
+            // 11 = ROW/ROP operative (status, not spoken), 12 = ROP actively
+            // braking UNDER AUTOBRAKE, 13 = ROP manual-braking warning (throttles
+            // idle, no autobrake), 14/15 = in-flight ROW wet/dry too short.
+            // Bit 12 was missing from this decode — an autobrake landing where
+            // ROP commanded max braking announced nothing.
             (int bit, string phrase)[] bits = varName == "A32NX_ROW_ROP_WORD_1"
-                ? new[] { (13, "Max braking"), (14, "If wet, runway too short"), (15, "Runway too short") }
+                ? new[] { (12, "Maximum braking"), (13, "Max braking"), (14, "If wet, runway too short"), (15, "Runway too short") }
                 : new[] { (11, "Runway ahead") };
             bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
             foreach (var (bit, phrase) in bits)
