@@ -277,11 +277,10 @@ public class SimConnectManager
         REQUEST_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly requests
         REQUEST_SQUAWK_CODE = 329,
-        // 330-337 used by hardcoded V-speed requests; 340-349 fuel/payload.
+        // 330-337 used by hardcoded V-speed requests.
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
-        REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -338,7 +337,6 @@ public class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
-        ECAM_MESSAGES = 350,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -1646,8 +1644,6 @@ public class SimConnectManager
                 NavRadioReceived?.Invoke(this, navRadioData);
                 break;
 
-            // REQUEST_ECAM_MESSAGES case removed - now handled via MobiFlight
-
             case DATA_REQUESTS.REQUEST_HEADING:
                 SingleValue headingData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1998,42 +1994,6 @@ public class SimConnectManager
                     VarName = "SPEED_VS",
                     Value = speedVSData.value,
                     Description = $"Stall Speed {speedVSData.value:0} knots"
-                });
-                break;
-
-            // Fuel and Payload Data Requests (340-363)
-            case (DATA_REQUESTS)340: // Fuel Weight Per Gallon
-            case (DATA_REQUESTS)341: // Fuel Left Aux
-            case (DATA_REQUESTS)342: // Fuel Left Main
-            case (DATA_REQUESTS)343: // Fuel Center
-            case (DATA_REQUESTS)344: // Fuel Right Main
-            case (DATA_REQUESTS)345: // Fuel Right Aux
-            case (DATA_REQUESTS)346: // Pax A
-            case (DATA_REQUESTS)347: // Pax B
-            case (DATA_REQUESTS)348: // Pax C
-            case (DATA_REQUESTS)349: // Pax D
-            case (DATA_REQUESTS)350: // Pax Weight
-            case (DATA_REQUESTS)351: // Bag Weight
-            case (DATA_REQUESTS)352: // Cargo Fwd
-            case (DATA_REQUESTS)353: // Cargo Aft Container
-            case (DATA_REQUESTS)354: // Cargo Aft Baggage
-            case (DATA_REQUESTS)355: // Cargo Aft Bulk
-            case (DATA_REQUESTS)356: // Empty Weight
-            case (DATA_REQUESTS)357: // ZFW
-            case (DATA_REQUESTS)358: // GW
-            case (DATA_REQUESTS)359: // CG MAC
-            case (DATA_REQUESTS)360: // GW CG
-            case (DATA_REQUESTS)361: // FMS Pax
-            case (DATA_REQUESTS)362: // FMS ZFW
-            case (DATA_REQUESTS)363: // FMS GW
-            case (DATA_REQUESTS)364: // FMS CG
-                SingleValue fuelPayloadData = (SingleValue)data.dwData[0];
-                string varName = GetFuelPayloadVarName((int)data.dwRequestID);
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = varName,
-                    Value = fuelPayloadData.value,
-                    Description = $"{varName}: {fuelPayloadData.value}"
                 });
                 break;
 
@@ -3916,34 +3876,6 @@ public class SimConnectManager
         }
     }
 
-    /// <summary>
-    /// A32NX-SPECIFIC: Requests total fuel quantity for FlyByWire Airbus A320neo.
-    /// Uses L:A32NX_TOTAL_FUEL_QUANTITY variable specific to FlyByWire implementation.
-    /// Called by Forms/A32NX/ECAMDisplayForm.cs and FlyByWireA320Definition.cs.
-    /// </summary>
-    public void RequestFuelQuantity()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
-            }
-        }
-    }
-
     public void RequestSingleValue(int id, string simVarName, string units, string varName)
     {
         if (IsConnected && simConnect != null)
@@ -3965,38 +3897,6 @@ public class SimConnectManager
                 System.Diagnostics.Debug.WriteLine($"Error requesting {varName}: {ex.Message}");
             }
         }
-    }
-
-    private string GetFuelPayloadVarName(int requestId)
-    {
-        return requestId switch
-        {
-            340 => "FUEL_WEIGHT_PER_GALLON",
-            341 => "FUEL_LEFT_AUX",
-            342 => "FUEL_LEFT_MAIN",
-            343 => "FUEL_CENTER",
-            344 => "FUEL_RIGHT_MAIN",
-            345 => "FUEL_RIGHT_AUX",
-            346 => "PAX_A",
-            347 => "PAX_B",
-            348 => "PAX_C",
-            349 => "PAX_D",
-            350 => "PAX_WEIGHT",
-            351 => "BAG_WEIGHT",
-            352 => "CARGO_FWD",
-            353 => "CARGO_AFT_CONT",
-            354 => "CARGO_AFT_BAG",
-            355 => "CARGO_AFT_BULK",
-            356 => "EMPTY_WEIGHT",
-            357 => "ZFW",
-            358 => "GW",
-            359 => "ZFW_CG_MAC",
-            360 => "GW_CG_MAC",
-            362 => "FMS_ZFW",
-            363 => "FMS_GW",
-            364 => "FMS_CG",
-            _ => "UNKNOWN"
-        };
     }
 
     public void RequestLVarValue(string varName)
@@ -5310,58 +5210,6 @@ public class SimConnectManager
                 Value = 0,
                 Description = $"Error requesting ILS guidance: {ex.Message}"
             });
-        }
-    }
-
-    /// <summary>
-    /// A32NX-SPECIFIC: Requests ECAM (Engine Warning and Advisory Display) message codes for FlyByWire Airbus A320neo.
-    /// Retrieves 14 numeric L-variables (A32NX_Ewd_LOWER_LEFT_LINE_*, A32NX_Ewd_LOWER_RIGHT_LINE_*) that map to ECAM messages.
-    /// Also requests master warning/caution/stall indicators. Called by Forms/A32NX/ECAMDisplayForm.cs only.
-    /// </summary>
-    public void RequestECAMMessages()
-    {
-        if (!IsConnected || simConnect == null)
-        {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot request ECAM messages - not connected");
-            return;
-        }
-
-        try
-        {
-            // Reset collection state
-            ecamStringData.Clear();
-            ecamStringsReceived = 0;
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requesting ECAM message codes via SimConnect...");
-
-            // Request all 14 numeric L-vars via standard SimConnect (NO MobiFlight needed!)
-            // These return numeric codes that get looked up in EWDMessageLookup
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_1");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_2");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_3");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_4");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_5");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_6");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_7");
-
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_1");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_2");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_3");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_4");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_5");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_6");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_7");
-
-            // Request numeric status variables
-            RequestVariable("A32NX_MASTER_WARNING");
-            RequestVariable("A32NX_MASTER_CAUTION");
-            RequestVariable("A32NX_STALL_WARNING");
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] All 14 ECAM code requests sent via SimConnect");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ECAM messages: {ex.Message}");
         }
     }
 
