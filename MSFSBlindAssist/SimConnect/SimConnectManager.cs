@@ -92,16 +92,45 @@ public class SimConnectManager
     // L:var (MSFSBA_BRIDGE_PROBE, registered by the FBW defs) and reads it back over
     // the independent data-def channel. A match PROVES the WASM module executed our
     // RPN — the only presence signal that works when the module's response side is
-    // silent. Currently observability (transport.log verdict) + the documented basis
-    // for a future no-module gate; the live gate stays IsMobiFlightConnected above.
+    // silent (IsMobiFlightConnected is true even when no WASM module is installed,
+    // because MobiFlightWasmModule.Initialize() is purely local client-data setup).
+    // This IS the live gate for the calc-path write routing in SetLVar/SendEvent.
     public bool CalcPathVerified { get; private set; }
+
+    // True once the probe has reached a conclusion either way: VERIFIED, or given up
+    // (module absent / probe not applicable on this aircraft). Until concluded, dotted
+    // custom events are queued rather than dropped (see SendEvent); once concluded
+    // unverified, they fall back to the legacy TransmitClientEvent transport.
+    public bool CalcPathProbeConcluded { get; private set; }
 
     public void MarkCalcPathVerified()
     {
         if (CalcPathVerified) return;
         CalcPathVerified = true;
-        LogTransport("[Probe] calc path VERIFIED end-to-end (nonce round-trip)");
+        CalcPathProbeConcluded = true;
         FlushPendingCalcEvents();
+    }
+
+    /// <summary>
+    /// Called by MainForm's bridge probe when verification cannot succeed: either the
+    /// probe gave up (module absent or data-def read failing) or the loaded aircraft
+    /// doesn't register the probe var (non-FBW). Queued dotted events are released to
+    /// the legacy TransmitClientEvent transport; queued H: events are fired at the
+    /// MobiFlight channel anyway (there is no alternative transport for H: events).
+    /// </summary>
+    public void MarkCalcPathProbeConcluded()
+    {
+        if (CalcPathProbeConcluded) return;
+        CalcPathProbeConcluded = true;
+        FlushPendingCalcEvents();
+    }
+
+    /// <summary>Re-arms the probe verdict (called from MainForm's probe re-arm path on
+    /// reconnect/aircraft swap, alongside the Disconnect() reset).</summary>
+    public void ResetCalcPathProbe()
+    {
+        CalcPathVerified = false;
+        CalcPathProbeConcluded = false;
     }
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
@@ -4034,14 +4063,17 @@ public class SimConnectManager
         // why dozens of A380/A32NX controls had to be hand-routed through the calc path one prefix at a
         // time in each aircraft def's HandleUIVariableSet catch-all. Routing every L:var write that
         // reaches this fallback through the calc path fixes them all globally. Guardrails:
-        //   * Only when MobiFlight is actually connected (IsMobiFlightConnected checks
-        //     mobiFlightWasm.IsConnected) -- otherwise fall through to the data-def write so users without
-        //     the WASM module keep working. (Fenix's data-def write also remains intact if MobiFlight is
-        //     absent; with MobiFlight present, the calc path is live-verified to set Fenix L:vars too.)
+        //   * Only when the calc path is PROVEN alive end-to-end (CalcPathVerified — the nonce
+        //     round-trip probe). IsMobiFlightConnected is NOT sufficient: it is true even when no
+        //     WASM module is installed (purely local setup), and routing on it sent every L:var
+        //     write into a dead client-data area for no-module users. Until/unless verification
+        //     succeeds, fall through to the data-def write — the exact legacy (main) behavior,
+        //     which works for Fenix and degrades to main's known imperfection for FBW for the
+        //     few seconds before the probe verifies.
         //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
         //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
         //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
-        if (IsMobiFlightConnected
+        if (CalcPathVerified
             && !string.IsNullOrEmpty(varName)
             && varName.IndexOf(' ') < 0
             && varName.IndexOf(':') < 0)
@@ -4153,34 +4185,52 @@ public class SimConnectManager
 
         System.Diagnostics.Debug.WriteLine($"Sending event: {eventName} with data: {data}");
 
-        // Two FlyByWire event classes are NOT dispatchable via
-        // MapClientEventToSimEvent + TransmitClientEvent — that path silently
-        // no-ops (verified live: SimConnect returns "event not found"). They MUST
-        // be fired as calculator code via the MobiFlight WASM bridge:
-        //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — the
-        //      EFIS baro STD/QNH push-pull and similar.
-        //   2. Dotted custom input events (e.g. A32NX.FCU_HDG_SET,
-        //      A32NX.FCU_AP_1_PUSH) — the whole A380/A320 FCU/AP/ATHR.
-        if (mobiFlightWasm != null
-            && (eventName.StartsWith("H:", StringComparison.Ordinal) || eventName.Contains('.')))
+        // Two FlyByWire event classes prefer the MobiFlight calculator path:
+        //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — these have NO
+        //      TransmitClientEvent transport AT ALL (main never sent H: via SendEvent; its
+        //      SendHVar was MobiFlight-only too), so they always go to the MobiFlight
+        //      channel, queued during the brief connect window.
+        //   2. Dotted custom input events (e.g. A32NX.FCU_HDG_SET, A32NX.FCU_AP_1_PUSH) —
+        //      the calc path is preferred once VERIFIED end-to-end, but these DO have a
+        //      legacy transport: MapClientEventToSimEvent + TransmitClientEvent is the
+        //      shipping path for the A32NX FCU on main (the FBW WASM registers the custom
+        //      client events with the sim). So: verified → calc; probe still running →
+        //      queue (flushed on the probe's conclusion); concluded-unverified (module
+        //      absent, or a non-FBW aircraft that can't probe) → legacy transmit below.
+        if (eventName.StartsWith("H:", StringComparison.Ordinal))
         {
+            if (mobiFlightWasm == null) return; // no transport exists for H: without the module object
             if (IsMobiFlightConnected)
-            {
                 FireCalcEvent(eventName, data);
-            }
             else
-            {
-                // The WASM module exists but hasn't finished connecting yet (brief post-load window).
-                // Unlike SetLVar's L:var write, these events have NO TransmitClientEvent fallback, so
-                // falling through would silently DROP them — queue and flush on connect instead.
                 lock (pendingCalcEvents)
                 {
                     if (pendingCalcEvents.Count < MaxPendingCalcEvents)
                         pendingCalcEvents.Enqueue((eventName, data));
-                    LogTransport($"[Event] QUEUED (bridge not responding yet, depth {pendingCalcEvents.Count}): {eventName}");
                 }
-            }
             return;
+        }
+        if (eventName.Contains('.') && mobiFlightWasm != null)
+        {
+            if (CalcPathVerified)
+            {
+                FireCalcEvent(eventName, data);
+                return;
+            }
+            if (!CalcPathProbeConcluded)
+            {
+                // Probe still in flight (post-aircraft-load window): don't pick a loser yet.
+                // Queue; MarkCalcPathVerified flushes via calc, MarkCalcPathProbeConcluded
+                // flushes via the legacy transmit fallback in FlushPendingCalcEvents.
+                lock (pendingCalcEvents)
+                {
+                    if (pendingCalcEvents.Count < MaxPendingCalcEvents)
+                        pendingCalcEvents.Enqueue((eventName, data));
+                }
+                return;
+            }
+            // Probe concluded without verification — fall through to the legacy
+            // MapClientEventToSimEvent + TransmitClientEvent path below.
         }
 
         // Map the event name to an ID if not already mapped
@@ -4208,8 +4258,10 @@ public class SimConnectManager
             ExecuteCalculatorCode($"{data} (>K:{eventName})");
     }
 
-    // Flush any H:/dotted events queued while the WASM bridge was still connecting. Called from the
-    // MobiFlight ConnectionStatusChanged handler once IsMobiFlightConnected becomes true.
+    // Flush events queued while the calc-path verdict was pending. Called from
+    // MarkCalcPathVerified (flush via calc) and MarkCalcPathProbeConcluded (flush
+    // dotted events via the legacy TransmitClientEvent transport; H: events go to
+    // the MobiFlight channel regardless — they have no other transport).
     private void FlushPendingCalcEvents()
     {
         (string eventName, uint data)[] toFire;
@@ -4219,7 +4271,33 @@ public class SimConnectManager
             toFire = pendingCalcEvents.ToArray();
             pendingCalcEvents.Clear();
         }
-        foreach (var e in toFire) FireCalcEvent(e.eventName, e.data);
+        foreach (var e in toFire)
+        {
+            if (CalcPathVerified || e.eventName.StartsWith("H:", StringComparison.Ordinal))
+                FireCalcEvent(e.eventName, e.data);
+            else
+                SendEvent(e.eventName, e.data); // re-enters; CalcPathProbeConcluded routes it to TransmitClientEvent
+        }
+    }
+
+    // Release any H: events queued during the MobiFlight connect window without
+    // disturbing queued dotted events (which wait for the probe's verdict).
+    private void FlushPendingHEvents()
+    {
+        List<(string eventName, uint data)> hEvents = new();
+        lock (pendingCalcEvents)
+        {
+            if (pendingCalcEvents.Count == 0) return;
+            var keep = new Queue<(string eventName, uint data)>();
+            while (pendingCalcEvents.Count > 0)
+            {
+                var e = pendingCalcEvents.Dequeue();
+                if (e.eventName.StartsWith("H:", StringComparison.Ordinal)) hEvents.Add(e);
+                else keep.Enqueue(e);
+            }
+            while (keep.Count > 0) pendingCalcEvents.Enqueue(keep.Dequeue());
+        }
+        foreach (var e in hEvents) FireCalcEvent(e.eventName, e.data);
     }
 
     public void ProcessWindowMessage(ref Message m)
@@ -4354,8 +4432,10 @@ public class SimConnectManager
             mobiFlightWasm.ConnectionStatusChanged += (sender, status) =>
             {
                 System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight status: {status}");
-                // Flush any H:/dotted events fired during the connect window (see SendEvent).
-                if (IsMobiFlightConnected) FlushPendingCalcEvents();
+                // Release any H: events queued during the connect window. Dotted events stay
+                // queued until the end-to-end probe concludes (see MarkCalcPathVerified /
+                // MarkCalcPathProbeConcluded).
+                if (IsMobiFlightConnected) FlushPendingHEvents();
             };
 
             mobiFlightWasm.LVarUpdated += MobiFlightWasm_LVarUpdated;
@@ -4612,7 +4692,8 @@ public class SimConnectManager
             mobiFlightWasm.Disconnect();
             mobiFlightWasm.Dispose();
             mobiFlightWasm = null;
-            CalcPathVerified = false; // re-probe after the next bridge init
+            CalcPathVerified = false;        // re-probe after the next bridge init
+            CalcPathProbeConcluded = false;
             lock (pendingCalcEvents) pendingCalcEvents.Clear();   // don't carry queued events across a teardown
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] MobiFlight WASM module disconnected");
         }

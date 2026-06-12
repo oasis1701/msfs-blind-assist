@@ -147,10 +147,16 @@ public partial class MainForm : Form
                 _bridgeProbeAttempts = 0;
                 _bridgeProbeAwaitingRead = false;
                 _bridgeProbeRebound = false;
+                simConnectManager.ResetCalcPathProbe();
             }
-            if (simConnectManager.CalcPathVerified || _bridgeProbeAttempts >= 40) return;
-            // Only the FBW defs register the probe var; skip other aircraft.
-            if (currentAircraft is not (Aircraft.FlyByWireA320Definition or Aircraft.FlyByWireA380Definition)) return;
+            if (simConnectManager.CalcPathVerified || simConnectManager.CalcPathProbeConcluded) return;
+            // Only the FBW defs register the probe var; other aircraft can never verify —
+            // conclude immediately so dotted events route via the legacy transport.
+            if (currentAircraft is not (Aircraft.FlyByWireA320Definition or Aircraft.FlyByWireA380Definition))
+            {
+                simConnectManager.MarkCalcPathProbeConcluded();
+                return;
+            }
 
             if (_bridgeProbeAwaitingRead)
             {
@@ -177,7 +183,7 @@ public partial class MainForm : Form
             simConnectManager.RequestVariable("MSFSBA_BRIDGE_PROBE", forceUpdate: true);
             _bridgeProbeAwaitingRead = true;
             if (_bridgeProbeAttempts == 40)
-                SimConnect.SimConnectManager.LogTransport("[Probe] gave up after 40 attempts — calc path unverified (module absent or data-def read failing)");
+                simConnectManager.MarkCalcPathProbeConcluded(); // give up: module absent or data-def read failing
         }
         catch { /* a probe fault must never disturb the app */ }
     }
