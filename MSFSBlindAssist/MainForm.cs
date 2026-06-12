@@ -2560,7 +2560,7 @@ public partial class MainForm : Form
         // Create form if it doesn't exist or has been disposed
         if (fenixMonitorManagerForm == null || fenixMonitorManagerForm.IsDisposed)
         {
-            fenixMonitorManagerForm = new FenixMonitorManagerForm(announcer, currentAircraft.GetVariables());
+            fenixMonitorManagerForm = new FenixMonitorManagerForm(currentAircraft.GetVariables());
         }
 
         // Show the form (reuses same instance to preserve state)

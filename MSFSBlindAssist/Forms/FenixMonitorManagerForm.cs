@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
@@ -26,7 +25,7 @@ public partial class FenixMonitorManagerForm : Form
     private IntPtr previousWindow;
     private static int lastSelectedItemIndex;
 
-    public FenixMonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
+    public FenixMonitorManagerForm(Dictionary<string, SimVarDefinition> variables)
     {
 
         // Build the manageable list: every announced continuous var, by display name.
