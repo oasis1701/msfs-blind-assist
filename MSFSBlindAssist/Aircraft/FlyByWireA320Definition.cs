@@ -5272,6 +5272,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_FG_CROSS_TRACK_ERROR",
             "A32NX_FMGC_L_RNP",
             "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS",
+            "A32NX_EFIS_L_APPR_MSG_0",
             "A32NX_RADIO_RECEIVER_LOC_IS_VALID",
             "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
             "A32NX_RADIO_RECEIVER_GS_IS_VALID",
@@ -6192,6 +6193,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // any real ident; word 1 cached for completeness). Cached as it flows through
     // ProcessSimVarUpdate; TryGetDisplayOverride on the *_0 word decodes it.
     private double _ndIdent0, _ndIdent1;
+    private double _apprMsg0, _apprMsg1;   // packed ND approach message (e.g. "CAT 3 DUAL")
 
     // ---- Doors — read-only status map (parity with A380 _doorDefs) ----
     // Verified live on the running A32NX (TRUST THIS map):
@@ -6802,6 +6804,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
     {
         if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
+        // The packed-word *_1 halves aren't in the ND display set (only the *_0 keys render),
+        // so a panel open / F5 wouldn't otherwise re-read them — request them here so the
+        // decoded ident / approach message is built from fresh halves.
+        if (panelKey == "ND" && simConnect.IsConnected)
+        {
+            simConnect.RequestVariable("A32NX_EFIS_L_TO_WPT_IDENT_1");
+            simConnect.RequestVariable("A32NX_EFIS_L_APPR_MSG_1");
+        }
         if (panelKey != "System Display" || !simConnect.IsConnected) return;
         int page = (int)Math.Round(simConnect.GetCachedVariableValue(SdPageVar) ?? 0);
         RefreshDisplayBoxAsync(page, simConnect);
@@ -7039,6 +7049,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             string msgs = DecodeFmMessageFlags((int)Math.Round(value));
             displayText = msgs.Length == 0 ? "None" : msgs;
+            return true;
+        }
+        if (varKey == "A32NX_EFIS_L_APPR_MSG_0")
+        {
+            string msg = UnpackSixBit(_apprMsg0, _apprMsg1);
+            displayText = string.IsNullOrWhiteSpace(msg) ? "No approach active" : msg;
             return true;
         }
 
@@ -7384,6 +7400,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             case "A32NX_EFIS_L_TO_WPT_IDENT_0": _ndIdent0 = value; break;
             case "A32NX_EFIS_L_TO_WPT_IDENT_1": _ndIdent1 = value; break;
+            case "A32NX_EFIS_L_APPR_MSG_0": _apprMsg0 = value; break;
+            case "A32NX_EFIS_L_APPR_MSG_1": _apprMsg1 = value; break;
         }
 
         // EFIS baro (altimeter) — speak the setting on knob turn / unit change. The HPA
