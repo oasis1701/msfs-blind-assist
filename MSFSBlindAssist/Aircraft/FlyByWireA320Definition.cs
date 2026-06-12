@@ -1143,12 +1143,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["GW_KG_CACHE"] = new SimConnect.SimVarDefinition
         {
             Name = "TOTAL WEIGHT", DisplayName = "Gross Weight (cache)",
-            Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true
+            Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
         },
         ["A32NX_AIRFRAME_GW_CG_PERCENT_MAC"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AIRFRAME_GW_CG_PERCENT_MAC", DisplayName = "Gross Weight CG",
-            Type = SimConnect.SimVarType.LVar, Units = "number", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true
+            Type = SimConnect.SimVarType.LVar, Units = "number", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
         },
         ["FUEL_QUANTITY_KG"] = new SimConnect.SimVarDefinition
         {
@@ -2353,53 +2355,55 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // 2000 feet per minute.") — see ComposeTcasRaGuidance. The colon-indexed
         // names ride the continuous batch, the proven transport for indexed
         // L:vars (A32NX_AUTOTHRUST_TLA:n precedent).
+        // Silent caches — their speech rides the A32NX_TCAS_STATE monitor entry,
+        // so they're hidden from the Ctrl+M list (ExcludeFromMonitorManager).
         ["A32NX_TCAS_VSPEED_GREEN:1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_GREEN:1", DisplayName = "TCAS target vertical speed minimum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute"
+            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_GREEN:2"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_GREEN:2", DisplayName = "TCAS target vertical speed maximum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute"
+            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_RED:1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_RED:1", DisplayName = "TCAS avoid vertical speed minimum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute"
+            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_RED:2"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_RED:2", DisplayName = "TCAS avoid vertical speed maximum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute"
+            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_RA_CORRECTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_RA_CORRECTIVE", DisplayName = "TCAS RA corrective",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true
+            IsAnnounced = true, ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_RA_UP_ADVISORY_STATUS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_RA_UP_ADVISORY_STATUS", DisplayName = "TCAS RA up advisory",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true
+            IsAnnounced = true, ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_RA_DOWN_ADVISORY_STATUS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", DisplayName = "TCAS RA down advisory",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true
+            IsAnnounced = true, ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_RA_RATE_TO_MAINTAIN"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_RA_RATE_TO_MAINTAIN", DisplayName = "TCAS RA rate to maintain",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute"
+            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
         },
         // EGPWS (GPWS/TAWS) escape-maneuver callouts — enum verified against the FBW EGPWS source.
         ["A32NX_GPWS_AURAL_OUTPUT"] = new SimConnect.SimVarDefinition

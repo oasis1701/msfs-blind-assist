@@ -1209,7 +1209,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["GW_KG_CACHE"] = new SimVarDefinition
         {
             Name = "TOTAL WEIGHT", DisplayName = "Gross Weight (cache)", Type = SimVarType.SimVar,
-            Units = "kilograms", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+            Units = "kilograms", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
         };
 
         // Metric/imperial WEIGHT unit (kg vs lb). `CONFIG_USING_METRIC_UNIT` (the
@@ -1966,6 +1967,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.SimVar, Units = "millibars",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
         };
+        // Silent caches — never spoken individually (TCAS detail speech rides the
+        // A32NX_TCAS_STATE monitor entry; CG feeds the W/Shift+W readouts; the BARO
+        // MB mirrors only drive the STD-flag watchdog) — hide from the Ctrl+M list.
+        foreach (var k in new[] {
+            "A32NX_TCAS_VSPEED_GREEN:1", "A32NX_TCAS_VSPEED_GREEN:2",
+            "A32NX_TCAS_VSPEED_RED:1", "A32NX_TCAS_VSPEED_RED:2",
+            "A32NX_TCAS_RA_CORRECTIVE", "A32NX_TCAS_RA_UP_ADVISORY_STATUS",
+            "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", "A32NX_TCAS_RA_RATE_TO_MAINTAIN",
+            "A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "BARO_MB_WATCH_L", "BARO_MB_WATCH_R" })
+            vars[k].ExcludeFromMonitorManager = true;
         // End-to-end MobiFlight probe target: MainForm calc-writes a nonce here and
         // reads it back via the data-def path — the only reliable "calc path alive"
         // signal (response-based detection is invalid: a healthy install can execute

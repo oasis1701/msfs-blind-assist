@@ -40,7 +40,8 @@ public partial class FBWA380MonitorManagerForm : Form
         bool anyEwd = false;
         foreach (var kv in variables)
         {
-            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced) continue;
+            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced
+                || kv.Value.ExcludeFromMonitorManager) continue;
             if (kv.Key.StartsWith("A32NX_EWD_LOWER_", StringComparison.Ordinal)) { anyEwd = true; continue; }
             _keys.Add(kv.Key);
         }

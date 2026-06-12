@@ -40,6 +40,16 @@ public class SimVarDefinition
     /// Only meaningful when UpdateFrequency == Continuous.
     /// </summary>
     public bool ExcludeFromBatch { get; set; }
+
+    /// <summary>
+    /// When true, hide this variable from the Ctrl+M monitor-manager list. For
+    /// Continuous+IsAnnounced vars that are SILENT CACHES — ProcessSimVarUpdate
+    /// consumes them (return true) and never speaks them individually (e.g.
+    /// "Gross Weight (cache)", the TCAS RA detail vars whose speech rides the
+    /// A32NX_TCAS_STATE entry, the A380 BARO_MB watchdog feeders). Listing them
+    /// offered a checkbox whose un-check did nothing.
+    /// </summary>
+    public bool ExcludeFromMonitorManager { get; set; }
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
 
