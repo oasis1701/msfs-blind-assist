@@ -89,9 +89,10 @@ public static class GsxNavdataMerger
             return byConc.Count > 0 ? byConc[0] : null; // no concourse match -> drop (don't borrow wrong pier)
         }
 
-        // No GSX concourse — best-effort placement against any same-number candidate.
-        if (pool.Count == 1) return pool[0];
-        return pool[0]; // best-effort
+        // Only reachable when the GSX gate has NO concourse (gc.Length == 0): every
+        // gate WITH a concourse already returned inside the SAFETY block above, so
+        // this best-effort first-candidate pick can never borrow across concourses.
+        return pool[0];
     }
 
     private static string NormSuffix(string? s) => (s ?? string.Empty).Trim().ToUpperInvariant();

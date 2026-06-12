@@ -5469,6 +5469,10 @@ public class TaxiGuidanceManager : IDisposable
     // rollout-phase per-frame loop is interleaved with the planner's touchdown
     // events. Cheap (one File.AppendAllText per ~few seconds during rollout);
     // entirely removed once we've identified the root cause of the RJAA bug.
+    // NOTE: diag lines log raw FEET on purpose (unlike user-facing callouts, which
+    // go through DistanceFormatter). The internal rollout math and its constants
+    // are feet-native, and logs must be comparable across users regardless of the
+    // GroundDistanceUnit setting — do not "fix" these to be unit-aware.
     private static readonly string _rolloutDiagPath = Utils.AppLogs.PathFor("landing_exit.log");
 
     private static void RolloutDiag(string msg)

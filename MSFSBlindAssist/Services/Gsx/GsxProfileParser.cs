@@ -260,6 +260,9 @@ public static class GsxProfileParser
         a = b = c = 0;
         var parts = val.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2) return false;
+        // Non-short-circuit `&` on purpose: attempt BOTH parses so `b` is populated even
+        // when `a` fails (out params are pre-zeroed above, so `&&` would also compile —
+        // this is about always running both side effects, not definite assignment).
         bool ok = double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out a)
                 & double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out b);
         if (parts.Length >= 3)
