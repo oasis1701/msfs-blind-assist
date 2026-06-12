@@ -1236,22 +1236,16 @@ public sealed partial class GsxService : IDisposable
         // drops from a high milestone back down to 0/1 — with the previous
         // ">" rule, stale dict state from the earlier boarding silenced
         // the next session's first-passenger marker.
-        bool advanced;
-        if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
-        {
-            advanced = IsBoardingAnnouncementBoundary(passengers);
-        }
-        else
-        {
-            advanced = currentMilestone != lastMilestone
-                && IsBoardingAnnouncementBoundary(passengers);
-        }
+        int? lastMilestone = _lastBoardingPassengerAnnouncementByService
+            .TryGetValue(serviceKey, out int storedMilestone) ? storedMilestone : null;
+        bool advanced = ShouldAnnounceBoardingProgress(passengers, lastMilestone);
+        // Always track the latest milestone: on first sight this seeds the
+        // baseline silently; afterwards the write only differs from the
+        // stored value when the bucket changed (i.e. when we announced).
+        _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
 
         if (advanced)
-        {
-            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
             return announceText;
-        }
 
         return StripSegmentsMatching(announceText, PaxOnlySegmentRegex);
     }

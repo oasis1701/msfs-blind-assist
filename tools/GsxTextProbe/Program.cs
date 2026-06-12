@@ -135,6 +135,53 @@ void CheckEqual<T>(T actual, T expected, string name)
         "pax: segment with extra info is NOT strippable");
 }
 
+// ── Boarding milestone gate ─────────────────────────────────────────────────
+{
+    // Simulate the per-service dict exactly as StripThrottledPaxSegments
+    // drives it: announce when ShouldAnnounceBoardingProgress says so,
+    // always record the latest milestone.
+    List<int> Announced(IEnumerable<int> samples)
+    {
+        int? last = null;
+        var spoken = new List<int>();
+        foreach (int p in samples)
+        {
+            if (GsxService.ShouldAnnounceBoardingProgress(p, last))
+                spoken.Add(p);
+            last = GsxService.ComputeBoardingMilestone(p);
+        }
+        return spoken;
+    }
+
+    // Step-1 sampling: announce at 1 and each decade, no repeats in between.
+    var spoken = Announced(Enumerable.Range(1, 35));
+    CheckEqual(string.Join(",", spoken), "1,10,20,30", "boarding: step-1 announces 1 + decades");
+
+    // Sampling that skips every multiple of 10 (fast boarding, ~1 s polling)
+    // must STILL announce roughly once per decade — never go silent.
+    spoken = Announced(new[] { 3, 8, 14, 19, 26, 33, 38, 45, 52, 58 });
+    Check(spoken.Count >= 4, $"boarding: skipping sampler still announces (got {spoken.Count})");
+    Check(spoken.Contains(14) && spoken.Contains(26), "boarding: first sample past a decade announces");
+
+    // Repeated identical counts never re-announce.
+    spoken = Announced(new[] { 50, 50, 50, 50 });
+    CheckEqual(string.Join(",", spoken), "50", "boarding: repeats are silent");
+
+    // Mid-boarding first sight (app started late) seeds silently, then the
+    // next decade crossing announces.
+    spoken = Announced(new[] { 47, 48, 53 });
+    CheckEqual(string.Join(",", spoken), "53", "boarding: late start seeds silently, next bucket speaks");
+
+    // Turnaround: counter drops back to low numbers -> announce restart.
+    spoken = Announced(new[] { 150, 2 });
+    Check(spoken.Contains(2), "boarding: turnaround restart announces");
+
+    // The PR widened the parse patterns to \d{1,4}; the clamp must match so
+    // 4-digit counts (A380 deboarding totals) are not silently truncated.
+    Check(GsxService.TryParsePassengerCount("Passenger deboarding 1023/1200 passengers", out int big) && big == 1023,
+        "boarding: 4-digit count parses unclamped");
+}
+
 // ── Real-data sweep: every charge amount in every real receipt ──────────────
 {
     string receiptsRoot = Path.Combine(

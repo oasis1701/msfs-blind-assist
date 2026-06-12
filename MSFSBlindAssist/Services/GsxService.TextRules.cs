@@ -138,7 +138,9 @@ public sealed partial class GsxService
         if (!match.Success)
             return false;
 
-        passengers = Math.Clamp(int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture), 0, 999);
+        // Clamp ceiling matches the \d{1,4} patterns above — 4-digit counts
+        // (A380 deboarding totals) must not silently truncate to 999.
+        passengers = Math.Clamp(int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture), 0, 9999);
         return true;
     }
 
@@ -158,6 +160,20 @@ public sealed partial class GsxService
 
     internal static bool IsBoardingAnnouncementBoundary(int passengers) =>
         passengers <= 1 || passengers % BoardingPassengerAnnouncementInterval == 0;
+
+    // Decides whether a parsed boarding/deboarding count should be announced.
+    // First sight of a count for a service announces only on a clean boundary
+    // (0/1 start marker or an exact multiple of the interval) — late app
+    // starts and dict resets stay quiet mid-decade. Every later sample
+    // announces on any milestone-BUCKET change, NOT only on exact multiples:
+    // the tooltip is polled (~1 s) while GSX increments the counter, so
+    // samples routinely skip the round numbers (48 -> 53). Requiring
+    // passengers % 10 == 0 on every announce silenced entire boardings at
+    // fast boarding rates.
+    internal static bool ShouldAnnounceBoardingProgress(int passengers, int? lastMilestone) =>
+        lastMilestone is null
+            ? IsBoardingAnnouncementBoundary(passengers)
+            : ComputeBoardingMilestone(passengers) != lastMilestone.Value;
 
     internal static bool IsTimerStatusText(string text) =>
         text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
