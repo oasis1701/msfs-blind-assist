@@ -131,7 +131,46 @@ public class TaxiAssistForm : Form
         if (!string.IsNullOrEmpty(nearestIcao))
         {
             txtAirport.Text = nearestIcao.ToUpperInvariant();
-            LoadAirportData(nearestIcao);
+            _ = LoadAirportDataAsync(nearestIcao);
+        }
+    }
+
+    public async Task ApplyExternalRouteAsync(
+        double lat,
+        double lon,
+        double heading,
+        string icao,
+        bool isRunwayDestination,
+        string destinationName,
+        IReadOnlyList<string> taxiwaySequence,
+        string? holdShortRunway,
+        bool startGuidance)
+    {
+        _aircraftLat = lat;
+        _aircraftLon = lon;
+        _aircraftHeading = heading;
+
+        txtAirport.Text = icao.ToUpperInvariant();
+        await LoadAirportDataAsync(icao);
+        var uiTaxiwaySequence = CollapseConsecutiveTaxiways(taxiwaySequence);
+
+        cmbDestType.SelectedIndex = isRunwayDestination ? 0 : 1;
+        SelectComboItem(cmbDestination, destinationName);
+        SelectTaxiwaySequence(uiTaxiwaySequence);
+        ApplyExternalHoldShortRunway(uiTaxiwaySequence, holdShortRunway);
+
+        if (startGuidance)
+        {
+            OnCalculateClicked(btnCalculate, EventArgs.Empty);
+        }
+        else
+        {
+            string sequence = uiTaxiwaySequence.Count > 0
+                ? string.Join(", ", uiTaxiwaySequence)
+                : "shortest path";
+            lblStatus.Text = "SayIntentions route loaded for review. Press Calculate Route to start guidance.";
+            txtRouteSummary.Text = $"SayIntentions route preset. Destination {destinationName}. Taxiways: {sequence}.";
+            _announcer.Announce("SayIntentions route loaded in Taxi Guidance. Review the fields, then press Calculate Route to start guidance.");
         }
     }
 
@@ -202,7 +241,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Airport ICAO",
             AccessibleDescription = "Enter the four-letter ICAO code for the airport"
         };
-        txtAirport.Leave += (s, e) => LoadAirportData(txtAirport.Text.Trim());
+        txtAirport.Leave += (s, e) => _ = LoadAirportDataAsync(txtAirport.Text.Trim());
         y += 30;
 
         // Destination type
@@ -468,7 +507,7 @@ public class TaxiAssistForm : Form
         };
     }
 
-    private async void LoadAirportData(string icao)
+    private async Task LoadAirportDataAsync(string icao)
     {
         if (string.IsNullOrWhiteSpace(icao)) return;
 
@@ -554,6 +593,87 @@ public class TaxiAssistForm : Form
 
         // Populate first taxiway combobox sorted by distance, closest first
         PopulateFirstTaxiway();
+    }
+
+    private static bool SelectComboItem(ComboBox combo, string value)
+    {
+        for (int i = 0; i < combo.Items.Count; i++)
+        {
+            string? item = combo.Items[i]?.ToString();
+            if (item != null && item.Equals(value, StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedIndex = i;
+                return true;
+            }
+        }
+
+        for (int i = 0; i < combo.Items.Count; i++)
+        {
+            string? item = combo.Items[i]?.ToString();
+            if (item != null && item.Contains(value, StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedIndex = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void SelectTaxiwaySequence(IReadOnlyList<string> taxiwaySequence)
+    {
+        ClearAllAdditionalTaxiways();
+
+        if (taxiwaySequence.Count == 0)
+        {
+            SelectComboItem(cmbFirstTaxiway, "(None - calculate shortest path)");
+            return;
+        }
+
+        if (!SelectComboItem(cmbFirstTaxiway, taxiwaySequence[0]))
+            return;
+
+        for (int i = 1; i < taxiwaySequence.Count; i++)
+        {
+            OnAddTaxiwayClicked(btnAddTaxiway, EventArgs.Empty);
+            if (_additionalTaxiways.Count < i)
+                return;
+
+            var row = _additionalTaxiways[i - 1];
+            if (!SelectComboItem(row.combo, taxiwaySequence[i]))
+                return;
+        }
+
+        UpdateAddTaxiwayButtonState();
+    }
+
+    private static List<string> CollapseConsecutiveTaxiways(IReadOnlyList<string> taxiwaySequence)
+    {
+        var result = new List<string>();
+        foreach (string taxiway in taxiwaySequence)
+        {
+            if (result.Count == 0 || !result[^1].Equals(taxiway, StringComparison.OrdinalIgnoreCase))
+                result.Add(taxiway);
+        }
+
+        return result;
+    }
+
+    private void ApplyExternalHoldShortRunway(IReadOnlyList<string> taxiwaySequence, string? holdShortRunway)
+    {
+        if (taxiwaySequence.Count == 0 || string.IsNullOrWhiteSpace(holdShortRunway))
+            return;
+
+        int sequenceIndex = taxiwaySequence.Count - 1;
+        if (sequenceIndex == 0)
+        {
+            SelectComboItem(cmbFirstHoldShortRunway, holdShortRunway);
+            return;
+        }
+
+        int rowIndex = sequenceIndex - 1;
+        if (rowIndex >= 0 && rowIndex < _additionalTaxiways.Count)
+            SelectComboItem(_additionalTaxiways[rowIndex].holdShortRunway, holdShortRunway);
     }
 
     /// <summary>

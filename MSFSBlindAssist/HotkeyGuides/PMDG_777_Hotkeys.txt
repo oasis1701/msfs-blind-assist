@@ -168,6 +168,11 @@ Ground Services:
              the window. If multiple GSX services are active, use the Active
              services combo to choose which service drives tooltip announcements.
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance or gate
+
 INPUT MODE - Press [ to activate
 
 Teleport:
