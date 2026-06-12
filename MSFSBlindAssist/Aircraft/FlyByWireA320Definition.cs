@@ -3012,6 +3012,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             Units = "number"
         },
+        // ARINC429 IN-ACTIVE-UNIT word (0.001 resolution). REQUIRED for exact inHg
+        // readouts: unlike the A380, the A32NX quantizes its _HPA word to WHOLE hPa
+        // (live KORD 2026-06-12: HPA=1002.0 while this word read 29.60), so
+        // converting the hPa word to inches is ±0.01 off. Cached silently; the
+        // announce phrase uses it in inHg mode.
+        ["A32NX_FCU_LEFT_EIS_BARO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_LEFT_EIS_BARO",
+            DisplayName = "Captain Altimeter (active unit)",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "number"
+        },
         ["KOHLSMAN SETTING MB:2"] = new SimConnect.SimVarDefinition
         {
             Name = "KOHLSMAN SETTING MB:2",
@@ -3045,6 +3059,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_FCU_RIGHT_EIS_BARO_HPA",
             DisplayName = "First Officer Altimeter",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "number"
+        },
+        // F/O in-active-unit word — see the captain entry for why (whole-hPa
+        // quantization of the _HPA word makes converted inches ±0.01 off).
+        ["A32NX_FCU_RIGHT_EIS_BARO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_RIGHT_EIS_BARO",
+            DisplayName = "First Officer Altimeter (active unit)",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -5735,9 +5760,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     double w = baroW.Value >= 4294967296.0 ? new SimConnect.Arinc429Word(baroW.Value).ValueOr(0f) : baroW.Value;
                     if (w > 0) baroHpa = w;
                 }
+                // The _HPA word is WHOLE-hPa quantized on the A32NX, so the inches
+                // half converts from the IN-UNIT word when the FCU is in inHg mode
+                // (0.001 res); the hPa half keeps the whole-hPa word (exact there).
+                double inchesOut = baroHpa * 0.0295299830714;
+                double? inUnitW = simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO");
+                if (inUnitW.HasValue)
+                {
+                    double iu = inUnitW.Value >= 4294967296.0 ? new SimConnect.Arinc429Word(inUnitW.Value).ValueOr(0f) : inUnitW.Value;
+                    if (iu >= 22 && iu <= 33) inchesOut = iu;            // FCU in inHg mode
+                    else if (iu >= 745 && iu <= 1100) baroHpa = iu;       // FCU in hPa mode (same value, full res)
+                }
                 announcer.AnnounceImmediate(baroMode == 0
                     ? "Altimeter standard"
-                    : $"Altimeter: {baroHpa:F0}, {baroHpa * 0.0295299830714:F2}");
+                    : $"Altimeter: {baroHpa:F0}, {inchesOut:F2}");
                 return true;
             }
             // Ctrl+W (output): ND TO-waypoint name/distance/bearing via SimVars (no Coherent — see NdWaypointReadout).
@@ -5973,24 +6009,52 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
     // EFIS baro (altimeter) state — auto-announced on knob turn + read on demand (B).
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
+    private int _fmgcPhase = -1; // numeric FMGC flight phase (0 Preflight..7 Done); gates the capability announce
     private bool _baroStdDiscrep, _baroRefDiscrep; // FWC word 124 bits 24/25 (announced edges)
-    private double _baroHpa = -1;          // last decoded captain baro, hectopascals
+    private double _baroHpa = -1;          // last decoded captain baro, hectopascals (FBW quantizes to WHOLE hPa)
     private int _baroMode = -1;            // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD,1=hPa,2=inHg
-    private int _lastAnnouncedBaroHpa = -1;
     private double _baroHpaR = -1;         // last decoded F/O baro, hectopascals
     private int _baroModeR = -1;           // A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE
-    private int _lastAnnouncedBaroHpaR = -1;
+    private double _baroInUnitL = -1, _baroInUnitR = -1; // FCU in-active-unit words (0.001 res — the inHg precision source)
+    private string? _lastBaroPhraseL, _lastBaroPhraseR;  // phrase-level dedup (seeded silently)
 
     // ---- COM radio auto-announce state (Fenix/A380 RMP parity) ----
     // Keyed by var key ("COM_ACTIVE_FREQUENCY:1", "COM_TRANSMIT:2"); freqs in kHz.
     // Seeded silently on first sample so connecting doesn't read the whole stack.
     private readonly Dictionary<string, double> _lastComKhz = new();
     private readonly Dictionary<string, bool> _comTxOn = new();
-    private static string BaroPhrase(double hpa, int mode)
+    // inUnit = the FCU's IN-ACTIVE-UNIT word (0.001 resolution). The A32NX
+    // quantizes its _HPA word to WHOLE hPa, so converting it to inches is ±0.01
+    // off (live KORD 2026-06-12: HPA=1002.0 vs in-unit 29.60 → spoke "29.59").
+    // Use the in-unit value whenever it is in the unit's sane range.
+    private static string BaroPhrase(double hpa, int mode, double inUnit = -1)
     {
         if (mode == 0) return "Altimeter standard";
-        if (mode == 2) return $"Altimeter {hpa * 0.0295299830714:F2} inches";
-        return $"Altimeter {hpa:F0} hectopascals";
+        if (mode == 2)
+        {
+            double inches = (inUnit >= 22 && inUnit <= 33) ? inUnit : hpa * 0.0295299830714;
+            return $"Altimeter {inches:F2} inches";
+        }
+        double hpaVal = (inUnit >= 745 && inUnit <= 1100) ? inUnit : hpa;
+        return $"Altimeter {hpaVal:F0} hectopascals";
+    }
+
+    // Phrase-level dedup + announce for either side's baro. Phrase-keyed (not
+    // whole-hPa-keyed) so a 0.01-inch knob click that doesn't cross a whole-hPa
+    // boundary still announces, and a repeated identical value stays silent.
+    // First valid phrase per side seeds SILENTLY (the startup double-announce fix).
+    private void AnnounceBaroIfChanged(bool capt, ScreenReaderAnnouncer announcer)
+    {
+        int mode = capt ? _baroMode : _baroModeR;
+        double hpa = capt ? _baroHpa : _baroHpaR;
+        double inUnit = capt ? _baroInUnitL : _baroInUnitR;
+        if (mode < 0) return;                       // mode not seeded yet
+        if (mode != 0 && hpa <= 0 && inUnit <= 0) return; // no value yet
+        string phrase = BaroPhrase(hpa, mode, inUnit);
+        string? last = capt ? _lastBaroPhraseL : _lastBaroPhraseR;
+        if (capt) _lastBaroPhraseL = phrase; else _lastBaroPhraseR = phrase;
+        if (last != null && last != phrase)
+            announcer.Announce(capt ? phrase : "First Officer " + phrase);
     }
 
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
@@ -7010,32 +7074,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             double hpa = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
             if (hpa > 0) _baroHpa = hpa;
-            int mode = _baroMode < 0 ? 1 : _baroMode;
-            if (mode != 0 && _baroHpa > 0)
-            {
-                int r = (int)System.Math.Round(_baroHpa);
-                // First valid read: seed the cache SILENTLY (no first-start announce —
-                // this + the mode handler below were each announcing on first detect,
-                // which is the "altimeter spoken twice on start" bug). Only a genuine
-                // later knob change speaks.
-                if (_lastAnnouncedBaroHpa == -1) _lastAnnouncedBaroHpa = r;
-                else if (r != _lastAnnouncedBaroHpa)
-                {
-                    _lastAnnouncedBaroHpa = r;
-                    announcer.Announce(BaroPhrase(_baroHpa, mode));
-                }
-            }
+            AnnounceBaroIfChanged(true, announcer);
+            return true;
+        }
+        // IN-ACTIVE-UNIT word (0.001 res) — the precision source for inHg mode;
+        // cached silently, the announce flows through the shared phrase dedup.
+        if (varName == "A32NX_FCU_LEFT_EIS_BARO")
+        {
+            double v = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
+            if (v > 0) _baroInUnitL = v;
+            AnnounceBaroIfChanged(true, announcer);
             return true;
         }
         if (varName == "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE")
         {
-            int mode = (int)System.Math.Round(value);
-            bool firstMode = _baroMode < 0;   // first detect → seed silently, don't announce
-            if (mode != _baroMode)
-            {
-                _baroMode = mode;
-                if (!firstMode) announcer.Announce(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, mode));
-            }
+            _baroMode = (int)System.Math.Round(value);
+            AnnounceBaroIfChanged(true, announcer);
             return true;
         }
         // F/O EFIS baro — same logic as the captain side, prefixed "First Officer" so the
@@ -7045,28 +7099,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             double hpa = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
             if (hpa > 0) _baroHpaR = hpa;
-            int mode = _baroModeR < 0 ? 1 : _baroModeR;
-            if (mode != 0 && _baroHpaR > 0)
-            {
-                int r = (int)System.Math.Round(_baroHpaR);
-                if (_lastAnnouncedBaroHpaR == -1) _lastAnnouncedBaroHpaR = r;
-                else if (r != _lastAnnouncedBaroHpaR)
-                {
-                    _lastAnnouncedBaroHpaR = r;
-                    announcer.Announce("First Officer " + BaroPhrase(_baroHpaR, mode));
-                }
-            }
+            AnnounceBaroIfChanged(false, announcer);
+            return true;
+        }
+        if (varName == "A32NX_FCU_RIGHT_EIS_BARO")
+        {
+            double vr = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
+            if (vr > 0) _baroInUnitR = vr;
+            AnnounceBaroIfChanged(false, announcer);
             return true;
         }
         if (varName == "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE")
         {
-            int mode = (int)System.Math.Round(value);
-            bool firstMode = _baroModeR < 0;
-            if (mode != _baroModeR)
-            {
-                _baroModeR = mode;
-                if (!firstMode) announcer.Announce("First Officer " + BaroPhrase(_baroHpaR < 0 ? 1013 : _baroHpaR, mode));
-            }
+            _baroModeR = (int)System.Math.Round(value);
+            AnnounceBaroIfChanged(false, announcer);
             return true;
         }
 
@@ -7091,6 +7137,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Flight phase tracking (A32NX-specific)
         if (varName == "A32NX_FMGC_FLIGHT_PHASE")
         {
+            _fmgcPhase = (int)Math.Round(value);
             var variables = GetVariables();
             if (variables.ContainsKey(varName) && variables[varName].ValueDescriptions.TryGetValue(value, out string? phaseName))
             {
@@ -7107,6 +7154,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
         // Autoland capability (FMGC FG discrete word 4, bits 23/24/25). Announce
         // decoded transitions only; suppress the raw ARINC word from the generic path.
+        // GATED on the in-flight FMGC phases (Climb..Go-around): on the ground the
+        // capability word flickers none↔LAND 3 dual as systems align during taxi,
+        // which spammed "Approach capability dual" callouts (user report, KORD
+        // taxi-in 2026-06-12). The capability only matters when an approach can
+        // actually be flown; the hotkey readout stays available at all times.
         if (varName == "PFD_AUTOLAND")
         {
             var w = new SimConnect.Arinc429Word(value);
@@ -7114,7 +7166,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 : w.BitValueOr(25, false) ? "LAND 3 dual"
                 : w.BitValueOr(24, false) ? "LAND 3 single"
                 : w.BitValueOr(23, false) ? "LAND 2" : "none";
-            if (_lastAutolandCap != null && _lastAutolandCap != cap && cap != "none")
+            bool inFlightPhase = _fmgcPhase >= 2 && _fmgcPhase <= 6; // Climb..Go-around
+            if (inFlightPhase && _lastAutolandCap != null && _lastAutolandCap != cap && cap != "none")
                 announcer.Announce($"Approach capability {cap}");
             _lastAutolandCap = cap;
             return true;
@@ -7413,30 +7466,35 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
 
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's axis
-        // value (-1..1 scaled to +-16384). FBW default-style calibration (Reverse -1.0 /
-        // Rev Idle -0.80 / Idle -0.50 / Climb 0.0 / Flex-MCT 0.50 / TOGA 1.0); the
-        // throttle mapping snaps the lever to the detent. Values are the FBW default-
-        // calibration band centers; custom EFB calibrations may differ — see pass-2 checklist. Two engines on the A320.
+        // value (-1..1 scaled to +-16384). The detent axis is computed LIVE inside
+        // the RPN from the FBW throttle-mapping L:vars (band center = (LOW+HIGH)/2):
+        // a custom EFB throttle calibration MOVES the bands, so hardcoded default
+        // centers miss the detents entirely (live KORD 2026-06-12: the user's CLB
+        // band was [0.385, 0.485] vs default center 0.0 — the lever landed at TLA
+        // 15.5° between detents; the dynamic RPN hit TLA 25.0 exactly). The
+        // hardcoded default is only the in-RPN fallback when the mapping vars are
+        // absent (LOW+HIGH==0 AND LOW==0 — never true for a populated band; the
+        // default CLB band [-0.05,0.05] sums to 0 but falls back to the SAME 0.0).
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
             int didx = (int)Math.Round(value);
-            // Band CENTERS of the FBW default calibration (ThrottleAxisMapping.h):
-            // REV [-1,-0.95] / REV-IDLE [-0.85,-0.75] / IDLE [-0.55,-0.45] /
-            // CLB [-0.05,0.05] / FLX [0.45,0.55] / TOGA [0.95,1]. The old -0.70 fell
-            // in the gap between REV-IDLE and IDLE and never reached the detent.
-            double[] detentAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
+            string[] mapNames = { "REVERSE", "REVERSE_IDLE", "IDLE", "CLIMB", "FLEXMCT", "TOGA" };
+            double[] defaultAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
             string[] dnames = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
-            if (didx < 0 || didx >= detentAxis.Length) return true;
-            uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[didx] * 16384));
+            if (didx < 0 || didx >= mapNames.Length) return true;
+            string fb = defaultAxis[didx].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            void FireDetent(int n) => simConnect.ExecuteCalculatorCode(
+                $"(L:A32NX_THROTTLE_MAPPING_{mapNames[didx]}_LOW:{n}) s0 (L:A32NX_THROTTLE_MAPPING_{mapNames[didx]}_HIGH:{n}) s1 " +
+                $"l0 l1 + 0 == l0 0 == and if{{ {fb} }} els{{ l0 l1 + 2 / }} 16384 * near (>K:THROTTLE{n}_AXIS_SET_EX1)");
             if (varKey == "THROTTLE_ALL_DETENT")
             {
-                for (int n = 1; n <= 2; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
+                for (int n = 1; n <= 2; n++) FireDetent(n);
                 announcer.Announce($"All thrust levers {dnames[didx]}");
             }
             else
             {
                 int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
-                simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
+                FireDetent(eng);
                 announcer.Announce($"Thrust lever {eng} {dnames[didx]}");
             }
             return true;

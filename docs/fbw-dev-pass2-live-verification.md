@@ -6,12 +6,12 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 ## Verify the Pass-1 changes that could not be bench-tested
 
 - [x] A380 STD/QNH — LIVE-VERIFIED 2026-06-11 via MCP: semantics are PUSH=STD / PULL=QNH (OPPOSITE of the snapshot-source reading and of the A32NX); `KOHLSMAN SETTING STD:n` is written on transitions only (stale-at-session-join case covered by the MainForm MB watchdog). Re-confirm once via the app combo after the fix build.
-- [ ] A32NX baro unit toggle — PARTIAL 2026-06-12: the IS_INHG calc write sticks both ways, but the aircraft was on STD at cruise (DISPLAY_BARO_VALUE_MODE=0) where the display can't re-render the unit; confirm the displayed-unit switch during a QNH phase.
+- [x] A32NX baro unit toggle — USER-VERIFIED 2026-06-12 during the KORD arrival: QNH set works in both hPa and inHg. The ±0.01-inch readout bug found alongside is fixed (the A32NX quantizes its _HPA word to WHOLE hPa — readouts now use the 0.001-res in-active-unit word, live-decoded at the gate: HPA=1002.0 vs in-unit 29.60).
 - [x] A32NX LS — LIVE-VERIFIED 2026-06-12: LS_PUSH flips LS_LIGHT_ON both ways.
-- [ ] A32NX GEN/APU GEN toggle events — DEFERRED TO GROUND (mid-cruise generator toggling causes an ELEC transient + master caution).
+- [x] A32NX GEN/APU GEN — LIVE-VERIFIED 2026-06-12 (KORD gate, engines off): TOGGLE_ALTERNATOR1 and APU_GENERATOR_SWITCH_TOGGLE both flip their stock simvars and restore.
 - [x] A32NX wipers + dome — LIVE-VERIFIED 2026-06-12: circuit 77 toggled on at power 75 (slow) and back off; dome pot 7 followed 0→50→0 via the def's exact RPNs.
 - [x] A32NX runway turn-off — LIVE-VERIFIED 2026-06-12: `2 1 (>K:2:TAXI_LIGHTS_SET)` lit LIGHT TAXI:2 and off restored (index 3 = same template; the simvar IS the cockpit-switch state source).
-- [ ] A32NX thrust detents — DEFERRED TO GROUND (an axis write mid-flight commands real thrust).
+- [x] A32NX thrust detents — LIVE-VERIFIED + FIXED 2026-06-12 (KORD gate, engines off): the user HAS a custom EFB calibration (CLB band [0.385,0.485]) so the hardcoded default centers missed every detent (TLA 15.5° instead of CLB 25°). Detent axis now computed LIVE in-RPN from the A32NX_THROTTLE_MAPPING_*_LOW/HIGH:n vars — hit TLA exactly 25.0 then 0.0. Same fix applied to the A380 handler (same var family).
 - [x] A32NX FPA ×10 — LIVE-VERIFIED 2026-06-12: `25 (>K:A32NX.FCU_VS_SET)` in TRK/FPA → FPA_SELECTED = 2.5 AND AFS_DISPLAY_VS_FPA_VALUE = 2.5 (mode restored, nothing engaged).
 - [x] A380 FPA set ×10 — LIVE-VERIFIED 2026-06-11 via MCP: `25 (>K:A32NX.FCU_VS_SET)` in TRK/FPA mode → `A32NX_AUTOPILOT_FPA_SELECTED` = 2.5°.
 - [x] A380 transfer pumps + anti-skid — LIVE-VERIFIED 2026-06-11: circuit 70 toggled 1→0→1 via the pump RPN; `ANTISKID_BRAKES_TOGGLE` flipped `ANTISKID BRAKES ACTIVE` both ways (states restored). Same template covers circuits 71-81.
@@ -19,13 +19,13 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 - [x] A32NX LDG ELEV — LIVE-VERIFIED 2026-06-12: knob held 2000 ft and restored to -4000 Auto.
 - [x] COM3 + brightness — LIVE-VERIFIED 2026-06-12: COM3 standby set 121.50, swap moved it active, both restored; pedestal flood pot 76 followed 0→40→0 via the def's indexed LIGHT_POTENTIOMETER_SET.
 - [ ] Approach-capability announce on an ILS approach (LAND 2 / LAND 3 transitions, both jets). PARTIAL 2026-06-11: A380 cruise word reads SSM=NormalOp, zero bits → "none computed" decode path verified; the LAND transitions still need an approach.
-- [ ] A32NX fire-handle pull + interlock — DEFERRED TO GROUND (never pull a fire handle in flight).
+- [x] A32NX fire handle — LIVE-VERIFIED 2026-06-12 (engines off): A32NX_FIRE_BUTTON_ENG1 pulls and restows via the calc path. The app-side discharge interlock is cache-gated code (reviewed); a real bottle discharge was NOT tested (permanent for the flight) — the user can hear "Pull the fire handle first." by pressing discharge un-pulled any time.
 - [ ] MCDU print: press an MCDU PRINT prompt (e.g. D-ATIS) → announced; MCDU2 fallback under AC ESS SHED failure.
 - [ ] OANS: re-arm exit E→K reports honestly; manual stop 400-4000 validation; runway-ahead clears when stopped.
 - [ ] MFD duplicate-names dialog reads + is clickable (type an ambiguous VOR ident); FO-side URI navigation.
 - [x] flyPad Checklists page — LIVE-TOURED 2026-06-12 (manual mode): checklist selector buttons, items as checkboxes with state, Mark/Reset reachable. The autofill-ON variant + dimmed-tile actuation check remain for a session with autofill enabled (not flipping the user's persistent setting).
 - [ ] E/WD: ABN-PROC preview lines read as "(not yet active)"; LAND ASAP/ANSA name correctly during a serious failure; `<5m` limitations report Cyan.
-- [ ] A32NX GPWS — PARTIAL 2026-06-12: light + switch vars read clean 0 baselines (registered correctly); the TEST-triggered light flash is DEFERRED TO GROUND (aural + inhibits in flight).
+- [ ] A32NX GPWS test-flash — still pending a powered ground session (skipped at the dark KORD gate; the light monitors are ordinary Mon vars, same code path as every verified monitor).
 - [ ] A32NX TCAS advisory state announce (TA/RA onset + "clear of conflict"); DCDU message-waiting announce + ACK on a CPDLC message.
 
 ## Deferred features/probes (build after verification or live iteration)
@@ -48,3 +48,5 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 - [ ] NEW FEATURE: CG envelope verdict helper (transcribe envelope limits from FBW source, speak "within limits").
 - [ ] A380 wheel chocks/cones tiles were REMOVED upstream (commented out in A380Services.tsx) — expect them to disappear from the flyPad after the next aircraft update; no MSFSBA action.
 - [ ] STATUS/INOP/LIMITATIONS: dev FBW now POPULATES `inopSys*`/`limitations*` (FwsInopSys.ts/FwsLimitations.ts) — the CoherentFwsFailureClient path should go live; verify during a failure scenario. Note the subjects were made `private` upstream (runtime-fine, rename risk on FBW updates).
+
+- NEW FIXES 2026-06-12 (KORD ground session): approach-capability announce now GATED on FMGC in-flight phases (Climb..Go-around) on BOTH jets — the word flickers none<->capability during taxi and spammed callouts (user report).
