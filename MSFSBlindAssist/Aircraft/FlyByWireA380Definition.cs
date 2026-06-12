@@ -3066,8 +3066,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAPS_OFF",
             "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_TEST"
         };
-        // "PFD" is NOT a navigable control panel — it's the variable set the PFD
-        // window (ShowPFD hotkey) requests/reads. Intentionally absent from
+        // "PFD" is NOT a navigable control panel — it's the variable set the
+        // (now-retired) PFD-window hotkey requested/read. Intentionally absent from
         // GetPanelStructure so it isn't shown as a UI panel.
         // PFD / ND are status-box-only display panels (the read-out lives in
         // GetPanelDisplayVariables); no interactive controls.
@@ -6385,9 +6385,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // via the ECAM Control Panel page combo + status box, the E/WD has its own
             // status box (Displays > E/WD panel), and PFD/ND/ISIS flight values stay on
             // the individual readout hotkeys (ReadAltimeter/ReadSpeed/... — kept). The
-            // ShowPFD/ShowNavigationDisplay/ShowECAM/ShowStatusPage hotkeys are gone;
-            // the shared ReadDisplay* actions fall through to no-op on the FBW jets
-            // (still used by PMDG/Fenix). Alt+E still speaks the current E/WD lines.
+            // ShowPFD/ShowNavigationDisplay/ShowECAM/ShowStatusPage hotkeys were
+            // retired app-wide (enum entries + registrations deleted — no aircraft ever
+            // handled them besides the deleted A32NX windows). The shared ReadDisplay*
+            // actions remain (used by PMDG/Fenix) and fall through to no-op on the FBW
+            // jets. Alt+E still speaks the current E/WD lines.
             // Alt+E now opens the E/WD as a pop-out WINDOW (auto-refreshing, F5 to
             // refresh, Escape to close) showing the whole E/WD — engine parameters plus
             // the live ECAM memo / warning lines — instead of speaking it once. The old

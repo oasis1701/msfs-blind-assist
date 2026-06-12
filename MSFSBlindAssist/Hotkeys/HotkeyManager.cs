@@ -44,7 +44,6 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_GATE_TELEPORT = 9022;
         private const int HOTKEY_LOCATION_INFO = 9023;
         private const int HOTKEY_SIMBRIEF_BRIEFING = 9025;
-        private const int HOTKEY_PFD = 9026;
         private const int HOTKEY_TOGGLE_AP1 = 9027;
         private const int HOTKEY_TOGGLE_APPR = 9028;
         private const int HOTKEY_TOGGLE_ATHR = 9230;   // Ctrl+J (Autothrust)  — input mode
@@ -83,10 +82,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_CHECKLIST = 9052;
         private const int HOTKEY_CHECKLIST_ECL = 9213;   // Ctrl+Shift+C (A380 live ECL)
         private const int HOTKEY_FUEL_QUANTITY = 9053;
-        private const int HOTKEY_NAV_DISPLAY = 9054;
         private const int HOTKEY_WAYPOINT_INFO = 9055;
-        private const int HOTKEY_ECAM_DISPLAY = 9056;
-        private const int HOTKEY_STATUS_DISPLAY = 9057;
         private const int HOTKEY_TOGGLE_TRIM = 9100;
         private const int HOTKEY_DISTANCE_TO_DEST = 9101;
         private const int HOTKEY_DISTANCE_TO_TOD = 9102;
@@ -334,9 +330,6 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_COLD_TEMP_CORRECTION:
                             TriggerHotkey(HotkeyAction.ShowColdTempCorrection);
                             break;
-                        case HOTKEY_PFD:
-                            TriggerHotkey(HotkeyAction.ShowPFD);
-                            break;
                         case HOTKEY_LOCATION_INFO:
                             TriggerHotkey(HotkeyAction.LocationInfo);
                             break;
@@ -394,20 +387,11 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_GROSS_WEIGHT_KG:
                             TriggerHotkey(HotkeyAction.ReadGrossWeightKg);
                             break;
-                        case HOTKEY_NAV_DISPLAY:
-                            TriggerHotkey(HotkeyAction.ShowNavigationDisplay);
-                            break;
                         case HOTKEY_WAYPOINT_INFO:
                             TriggerHotkey(HotkeyAction.ReadWaypointInfo);
                             break;
                         case HOTKEY_ND_WAYPOINT:
                             TriggerHotkey(HotkeyAction.ReadNDWaypoint);
-                            break;
-                        case HOTKEY_ECAM_DISPLAY:
-                            TriggerHotkey(HotkeyAction.ShowECAM);
-                            break;
-                        case HOTKEY_STATUS_DISPLAY:
-                            TriggerHotkey(HotkeyAction.ShowStatusPage);
                             break;
                         case HOTKEY_TOGGLE_TRIM:
                             TriggerHotkey(HotkeyAction.ToggleTrimAnnouncements);
@@ -705,7 +689,6 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO, MOD_NONE, 0x4E); // N (NAV Radio Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)
             RegisterHotKey(windowHandle, HOTKEY_COLD_TEMP_CORRECTION, MOD_CONTROL | MOD_SHIFT, 0x54); // Ctrl+Shift+T (Cold Temperature Altitude Correction)
-            RegisterHotKey(windowHandle, HOTKEY_PFD, MOD_SHIFT, 0x50); // Shift+P (PFD Window)
             RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x42); // Shift+B (SimBrief Briefing)
             RegisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD, MOD_SHIFT, 0x44); // Shift+D (Distance to TOD)
             RegisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY, MOD_CONTROL, 0x30); // Ctrl+0 (Approach Capability)
@@ -726,11 +709,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_GEAR, MOD_SHIFT, 0x47);          // Shift+G (Gear)
             RegisterHotKey(windowHandle, HOTKEY_ALTIMETER, MOD_NONE, 0x42);      // B (Altimeter)
             RegisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG, MOD_SHIFT, 0x57); // Shift+W (Gross Weight KG)
-            RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
             RegisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT, MOD_CONTROL, 0x57); // Ctrl+W (FBW ND TO-waypoint info)
-            RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
-            RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x59); // Shift+Y (STATUS Display)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
@@ -772,11 +752,9 @@ public class HotkeyManager : IDisposable
             // Taxi guidance hotkeys (Output mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_STATUS, MOD_NONE, 0x59);             // Y (Taxi Status)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT, MOD_CONTROL, 0x59);          // Ctrl+Y (Repeat Instruction)
-            // Where Am I lives on Alt+Y (output). Shift+Y is already taken by HOTKEY_STATUS_DISPLAY
-            // earlier in this same activation block — Win32 RegisterHotKey silently rejects the
-            // second registration of the same chord, which made Where Am I a dead key. We can't
-            // give up Shift+Y for STATUS Display (it's a long-standing FBW/Fenix display hotkey),
-            // so Where Am I moves to Alt+Y. Stays on the same physical key — easy to remember.
+            // Where Am I lives on Alt+Y (output). It originally moved off Shift+Y because that
+            // chord was held by the (now-retired) STATUS Display hotkey; it stays on Alt+Y so
+            // existing users' muscle memory and all guides remain valid.
             RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
             RegisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP, MOD_CONTROL, 0x47);     // Ctrl+G (Read latest GSX tooltip)
@@ -816,7 +794,6 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_WIND_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_METAR_REPORT);
             UnregisterHotKey(windowHandle, HOTKEY_COLD_TEMP_CORRECTION);
-            UnregisterHotKey(windowHandle, HOTKEY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_DEST);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD);
@@ -839,11 +816,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_GEAR);
             UnregisterHotKey(windowHandle, HOTKEY_ALTIMETER);
             UnregisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG);
-            UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT);
-            UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
-            UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
@@ -1260,7 +1234,6 @@ public class HotkeyManager : IDisposable
         GateTeleport,
         LocationInfo,
         SimBriefBriefing,
-        ShowPFD,
         ToggleAutopilot1,
         ToggleApproachMode,
         ToggleAutothrust,
@@ -1296,11 +1269,8 @@ public class HotkeyManager : IDisposable
         FCUSetBaro,
         SetNavRadios,
         ReadGrossWeightKg,
-        ShowNavigationDisplay,
         ReadWaypointInfo,
         ReadNDWaypoint,   // Ctrl+W (output) — FBW ND TO-waypoint name/distance/bearing
-        ShowECAM,
-        ShowStatusPage,
         ToggleTakeoffAssist,
         ToggleECAMMonitoring,
         MonitorManager,

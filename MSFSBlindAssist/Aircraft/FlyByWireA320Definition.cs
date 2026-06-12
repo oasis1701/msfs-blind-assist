@@ -6003,8 +6003,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // PFD / ND / ECAM / SD display WINDOWS are removed — the A32NX now reads
             // these through the accessible status-box panels (Instrument > PFD / ND /
-            // ISIS / System Display), exactly like the A380. ShowPFD /
-            // ShowNavigationDisplay / ShowECAM / ShowStatusPage fall through to no-op.
+            // ISIS / System Display), exactly like the A380. The ShowPFD /
+            // ShowNavigationDisplay / ShowECAM / ShowStatusPage hotkeys were retired
+            // app-wide and no longer exist.
             // EWD on-demand read (output mode → ReadDisplayUpperECAM): opens the E/WD as a
             // pop-out WINDOW (auto-refreshing, F5 to refresh, Escape to close) showing the
             // DECODED upper E/WD (engine row + memos + warnings) from SimVars — NOT a Coherent

@@ -136,8 +136,6 @@ Displays and Windows:
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
-  Shift+N    Navigation Display
-  Shift+P    PFD Window
 
 Hand Fly Mode Hotkeys:
   A          Read MSL

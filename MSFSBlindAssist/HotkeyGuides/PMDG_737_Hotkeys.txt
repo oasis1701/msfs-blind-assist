@@ -134,8 +134,6 @@ Displays and Windows:
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
-  Shift+N    Navigation Display
-  Shift+P    PFD Window
 
 Note: The EFB tablet (Shift+T in Input mode on the 777) is not yet supported
 for the 737-800 — EFB bridge support is planned for a follow-up release.
