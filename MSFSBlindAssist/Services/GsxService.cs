@@ -1723,7 +1723,7 @@ public sealed partial class GsxService : IDisposable
 
     private sealed record SettingsSection(string Title, int Start, int End);
 
-    private List<GsxSettingItem> ApplySavedSettingValues(List<GsxSettingItem> items)
+    private static List<GsxSettingItem> ApplySavedSettingValues(List<GsxSettingItem> items)
     {
         var liveSyncItems = new List<GsxSettingItem>();
         if (items.Count == 0)
