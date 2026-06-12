@@ -218,6 +218,13 @@ public partial class ColdTemperatureCorrectionForm : Form
         }
     }
 
+    // Plausibility bounds for the inputs. Outside these the EUROCONTROL formula is
+    // physically meaningless (and a typo like a missing minus or an extra digit is
+    // far more likely): coldest recorded surface temp ≈ −89 °C, hottest ≈ +57 °C;
+    // lowest land ≈ −1,400 ft (Dead Sea), highest paved airports ≈ 14,500 ft.
+    private const double MIN_TEMP_C = -90, MAX_TEMP_C = 60;
+    private const double MIN_ELEV_FT = -2000, MAX_ELEV_FT = 15000;
+
     private void Calculate()
     {
         if (!TryParseSigned(elevationTextBox.Text, out double fieldElevation))
@@ -226,9 +233,21 @@ public partial class ColdTemperatureCorrectionForm : Form
             elevationTextBox.Focus();
             return;
         }
+        if (fieldElevation < MIN_ELEV_FT || fieldElevation > MAX_ELEV_FT)
+        {
+            ShowError($"Field elevation must be between minus 2,000 and 15,000 feet (got {fieldElevation:0}).");
+            elevationTextBox.Focus();
+            return;
+        }
         if (!TryParseSigned(temperatureTextBox.Text, out double temperatureC))
         {
             ShowError("Enter a valid temperature in degrees Celsius.");
+            temperatureTextBox.Focus();
+            return;
+        }
+        if (temperatureC < MIN_TEMP_C || temperatureC > MAX_TEMP_C)
+        {
+            ShowError($"Temperature must be between minus 90 and plus 60 degrees Celsius (got {temperatureC:0.#}).");
             temperatureTextBox.Focus();
             return;
         }
@@ -266,7 +285,10 @@ public partial class ColdTemperatureCorrectionForm : Form
         }
 
         string header = $"Cold temperature correction at {fieldElevation:0} ft field elevation, {temperatureC:0.#} Celsius:";
-        resultsTextBox.Text = header + Environment.NewLine + string.Join(Environment.NewLine, outputs);
+        string advisory = "Advisory only — verify against official sources.";
+        resultsTextBox.Text = header + Environment.NewLine
+            + string.Join(Environment.NewLine, outputs) + Environment.NewLine
+            + advisory;
 
         // For a SINGLE altitude, speak the answer directly (instant feedback). For several,
         // say nothing extra — just move focus into the results box (below) so the screen reader
