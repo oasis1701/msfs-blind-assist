@@ -964,10 +964,7 @@ public class SimConnectManager
             System.Diagnostics.Debug.WriteLine($"[Registration] ⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
         try
         {
-            string regLog = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MSFSBlindAssist", "logs", "registration.log");
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(regLog)!);
+            string regLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
             System.IO.File.AppendAllText(regLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {regSummary}{Environment.NewLine}");
         }
         catch { }
@@ -1362,10 +1359,7 @@ public class SimConnectManager
     {
         try
         {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string dir = System.IO.Path.Combine(appData, "MSFSBlindAssist", "logs");
-            System.IO.Directory.CreateDirectory(dir);
-            string path = System.IO.Path.Combine(dir, "input_events.txt");
+            string path = MSFSBlindAssist.Utils.AppLogs.PathFor("input_events.txt");
             using var writer = new System.IO.StreamWriter(path, append: false);
             writer.WriteLine($"# InputEvent catalog — generated {DateTime.Now:s}");
             writer.WriteLine($"# Aircraft: {CurrentAircraft?.AircraftName ?? "(unknown)"}");
@@ -3200,9 +3194,7 @@ public class SimConnectManager
         // (footprint + clean connect) and any future "not connected" regression is obvious by its absence.
         try
         {
-            string regLog = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MSFSBlindAssist", "logs", "registration.log");
+            string regLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
             System.IO.File.AppendAllText(regLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [Detection] FULLY CONNECTED — '{info.title}' (hotkeys enabled){Environment.NewLine}");
         }
         catch { }
@@ -3387,10 +3379,7 @@ public class SimConnectManager
         {
             try
             {
-                string exLog = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "MSFSBlindAssist", "logs", "registration.log");
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(exLog)!);
+                string exLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
                 System.IO.File.AppendAllText(exLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [CEILING] SimConnect {exceptionName} (SendID {data.dwSendID}) — exceeded the ~1000 data-definition/request limit. Some vars are unregistered; detection is still protected.{Environment.NewLine}");
             }
             catch { }
