@@ -5271,6 +5271,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_EFIS_L_TO_WPT_ETA",
             "A32NX_FG_CROSS_TRACK_ERROR",
             "A32NX_FMGC_L_RNP",
+            "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS",
             "A32NX_RADIO_RECEIVER_LOC_IS_VALID",
             "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
             "A32NX_RADIO_RECEIVER_GS_IS_VALID",
@@ -6245,6 +6246,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         return s.Trim();
     }
+
+    // FBW ND FM message flag bits (EfisNdFmMessageFlags) — same table the deleted
+    // NavigationDisplayForm.DecodeFmMessageFlags used, and the same bits
+    // SimConnectManager.FormatNDFMMessage announces (priority-first) on change.
+    private static readonly string[] FmMessageNames =
+    {
+        "Select True Ref",               // bit 0
+        "Check North Ref",               // bit 1
+        "Nav Accuracy Downgrade",        // bit 2
+        "Nav Accuracy Upgrade No GPS",   // bit 3
+        "Specified VOR DME Unavailable", // bit 4
+        "Nav Accuracy Upgrade GPS",      // bit 5
+        "GPS Primary",                   // bit 6
+        "Map Partly Displayed",          // bit 7
+        "Set Offside Range Mode",        // bit 8
+        "Offside FM Control",            // bit 9
+        "Offside FM Weather Control",    // bit 10
+        "Offside Weather Control",       // bit 11
+        "GPS Primary Lost",              // bit 12
+        "RTA Missed",                    // bit 13
+        "Backup Nav",                    // bit 14
+    };
+
+    private static string DecodeFmMessageFlags(int flags)
+    {
+        var msgs = new List<string>();
+        for (int bit = 0; bit < FmMessageNames.Length; bit++)
+            if ((flags & (1 << bit)) != 0) msgs.Add(FmMessageNames[bit]);
+        return msgs.Count == 0 ? "" : string.Join(", ", msgs);
+    }
+
     private static readonly Dictionary<double, string> SdPageNames = new()
     {
         [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
@@ -7001,6 +7033,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_RADIO_RECEIVER_LOC_DEVIATION" || varKey == "A32NX_RADIO_RECEIVER_GS_DEVIATION")
         {
             displayText = $"{value:F2} degrees";
+            return true;
+        }
+        if (varKey == "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS")
+        {
+            string msgs = DecodeFmMessageFlags((int)Math.Round(value));
+            displayText = msgs.Length == 0 ? "None" : msgs;
             return true;
         }
 
