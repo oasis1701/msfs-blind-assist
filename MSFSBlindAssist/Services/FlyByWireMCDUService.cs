@@ -28,6 +28,13 @@ public class FlyByWireMCDUService : IDisposable
     private const string CaptainSide = "left";
 
     private ClientWebSocket? _ws;
+
+    // Serializes ALL SendAsync calls on the single socket. ClientWebSocket allows only one
+    // outstanding send; SendButtonPress is fire-and-forget while SendTextToMCDU awaits a
+    // sequential per-character loop, so two concurrent sends threw InvalidOperationException
+    // (swallowed by SendRaw's catch → silently dropped keypress).
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+
     private CancellationTokenSource? _cts;
     private readonly SynchronizationContext? _syncContext;
     private bool _isConnected;
@@ -96,10 +103,11 @@ public class FlyByWireMCDUService : IDisposable
 
     private async Task ConnectAndReceive(CancellationToken ct)
     {
+        var ws = new ClientWebSocket();
+        _ws = ws;
         try
         {
-            _ws = new ClientWebSocket();
-            await _ws.ConnectAsync(new Uri(WsUrl), ct);
+            await ws.ConnectAsync(new Uri(WsUrl), ct);
             _reconnectAttempt = 0;
             SetConnected(true);
             await SendRaw("requestUpdate", ct);
@@ -108,13 +116,13 @@ public class FlyByWireMCDUService : IDisposable
             // Accumulate raw bytes and decode once at EndOfMessage — per-fragment decoding
             // corrupts a multibyte UTF-8 char (°, arrows) split across a receive boundary.
             var ms = new System.IO.MemoryStream();
-            while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
+            while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
             {
                 ms.SetLength(0);
                 WebSocketReceiveResult result;
                 do
                 {
-                    result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                    result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
                     if (result.MessageType == WebSocketMessageType.Close) { return; }
                     ms.Write(buffer, 0, result.Count);
                 } while (!result.EndOfMessage);
@@ -124,9 +132,14 @@ public class FlyByWireMCDUService : IDisposable
         }
         finally
         {
-            // Release this attempt's socket on every exit (close frame, exception,
-            // cancellation) — each retry previously leaked the failed instance.
-            CloseWebSocket();
+            // Release THIS attempt's socket on every exit (close frame, exception,
+            // cancellation). CompareExchange clears the field only when it still points at
+            // OUR socket — a concurrent Dispose/Disconnect may have claimed it first via
+            // Interlocked.Exchange, in which case it already aborted+disposed this same
+            // instance and the calls below are idempotent no-ops.
+            Interlocked.CompareExchange(ref _ws, null, ws);
+            try { ws.Abort(); } catch { }
+            try { ws.Dispose(); } catch { }
         }
     }
 
@@ -214,11 +227,14 @@ public class FlyByWireMCDUService : IDisposable
 
     private async Task SendRaw(string message, CancellationToken ct)
     {
-        if (_ws == null || _ws.State != WebSocketState.Open) { return; }
+        var ws = _ws;
+        if (ws == null || ws.State != WebSocketState.Open) { return; }
         var bytes = Encoding.UTF8.GetBytes(message);
         try
         {
-            await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
+            await _sendLock.WaitAsync(ct);
+            try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct); }
+            finally { _sendLock.Release(); }
         }
         catch (Exception ex)
         {
@@ -241,20 +257,17 @@ public class FlyByWireMCDUService : IDisposable
 
     private void CloseWebSocket()
     {
-        if (_ws != null)
-        {
-            try
-            {
-                if (_ws.State == WebSocketState.Open)
-                {
-                    _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None)
-                        .Wait(TimeSpan.FromSeconds(2));
-                }
-            }
-            catch { }
-            _ws.Dispose();
-            _ws = null;
-        }
+        // Interlocked.Exchange guarantees exactly ONE caller tears a given socket down.
+        // Dispose() on the UI thread and the pool thread's ConnectAndReceive finally used to
+        // race through the null check together: the UI thread parked up to 2 s in
+        // CloseAsync(...).Wait() (UI freeze) while the pool thread disposed and nulled the
+        // field under it, then NRE'd at _ws.Dispose() outside any catch. Abort() (no close
+        // handshake, never blocks) matches the Coherent clients; the SimBridge gateway
+        // treats it like any dropped client.
+        var ws = Interlocked.Exchange(ref _ws, null);
+        if (ws == null) { return; }
+        try { ws.Abort(); } catch { }
+        try { ws.Dispose(); } catch { }
     }
 
     public void Dispose()
