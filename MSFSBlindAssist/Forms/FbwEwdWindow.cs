@@ -106,4 +106,17 @@ public sealed class FbwEwdWindow : Form
         base.OnFormClosed(e);
         if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
     }
+
+    // Form.Dispose() does NOT raise OnFormClosed, so an aircraft-swap Dispose of a
+    // tracked window must stop the refresh timer here too (both paths are idempotent).
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _timer?.Stop();
+            _timer?.Dispose();
+            _timer = null;
+        }
+        base.Dispose(disposing);
+    }
 }

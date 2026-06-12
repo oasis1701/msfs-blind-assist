@@ -4507,7 +4507,10 @@ public partial class MainForm : Form
         var oldAircraft = currentAircraft;
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
+        // Both FBW defs' StopAllMotion also dispose their TCAS RA compose timer and
+        // any tracked hotkey windows (FCU/Baro/E/WD) the old def instance created.
         (oldAircraft as FlyByWireA380Definition)?.StopAllMotion();
+        (oldAircraft as FlyByWireA320Definition)?.StopAllMotion();
 
         // Update the aircraft instance
         currentAircraft = newAircraft;

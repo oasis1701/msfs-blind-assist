@@ -5851,6 +5851,36 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         };
     }
 
+    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
+    // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
+    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
+    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
+    // keep live windows (and the E/WD window's refresh timer) running against the
+    // new aircraft.
+    private readonly Dictionary<Type, Form> _trackedWindows = new();
+
+    private void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : Form
+    {
+        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed)
+        {
+            show((T)existing);
+            return;
+        }
+        var form = factory();
+        _trackedWindows[typeof(T)] = form;
+        form.FormClosed += (_, _) => _trackedWindows.Remove(typeof(T));
+        show(form);
+    }
+
+    private void DisposeTrackedWindows()
+    {
+        foreach (var f in _trackedWindows.Values.ToList())
+        {
+            try { if (!f.IsDisposed) f.Dispose(); } catch { }
+        }
+        _trackedWindows.Clear();
+    }
+
     /// <summary>
     /// Handles complex hotkey actions that require custom dialogs or logic.
     /// </summary>
@@ -5924,27 +5954,27 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // replaces the old single-field ShowA320*InputDialog dialogs.
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
-                new Forms.FBWA320.FBWA320HeadingWindow(this, simConnect, announcer).ShowForm();
+                ShowTrackedWindow(() => new Forms.FBWA320.FBWA320HeadingWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
 
             case HotkeyAction.FCUSetSpeed:
                 hotkeyManager.ExitInputHotkeyMode();
-                new Forms.FBWA320.FBWA320SpeedWindow(this, simConnect, announcer).ShowForm();
+                ShowTrackedWindow(() => new Forms.FBWA320.FBWA320SpeedWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
 
             case HotkeyAction.FCUSetAltitude:
                 hotkeyManager.ExitInputHotkeyMode();
-                new Forms.FBWA320.FBWA320AltitudeWindow(this, simConnect, announcer).ShowForm();
+                ShowTrackedWindow(() => new Forms.FBWA320.FBWA320AltitudeWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
 
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
-                new Forms.FBWA320.FBWA320VSWindow(this, simConnect, announcer).ShowForm();
+                ShowTrackedWindow(() => new Forms.FBWA320.FBWA320VSWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
 
             case HotkeyAction.FCUSetAutopilot:
                 hotkeyManager.ExitInputHotkeyMode();
-                new Forms.FBWA320.FBWA320AutopilotWindow(this, simConnect, announcer).ShowForm();
+                ShowTrackedWindow(() => new Forms.FBWA320.FBWA320AutopilotWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
 
             // A32NX FCU value readouts
@@ -6020,8 +6050,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // auto-announces new memos/warnings independently.
             case HotkeyAction.ReadDisplayUpperECAM:
                 hotkeyManager.ExitOutputHotkeyMode();
-                new Forms.FbwEwdWindow("A320 E/WD — Engine / Warning Display",
-                    () => BuildEwdWindowTextAsync(simConnect), announcer).Show();
+                ShowTrackedWindow(
+                    () => new Forms.FbwEwdWindow("A320 E/WD — Engine / Warning Display",
+                        () => BuildEwdWindowTextAsync(simConnect), announcer),
+                    w => { w.Show(); w.BringToFront(); w.Activate(); });
                 return true;
             // On-demand flaps / gear read (parity with the A380; L and Shift+G). Read
             // straight from the live cache — a forced request of an UNCHANGED monitored
@@ -6064,7 +6096,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
-                new Forms.FBWA320.FBWA320BaroWindow(this, simConnect, announcer).ShowForm();
+                ShowTrackedWindow(() => new Forms.FBWA320.FBWA320BaroWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
         }
 
@@ -7159,6 +7191,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private string _lastTcasRaGuidance = "";
     private System.Windows.Forms.Timer? _tcasRaComposeTimer;
     private Accessibility.ScreenReaderAnnouncer? _tcasRaAnnouncer;
+
+    /// <summary>
+    /// Aircraft-swap cleanup hook (named for symmetry with the A380 def, which also
+    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer and
+    /// disposes any hotkey windows this def created, so a discarded instance can't
+    /// keep UI-thread timers or windows alive against the new aircraft.
+    /// </summary>
+    public void StopAllMotion()
+    {
+        try
+        {
+            _tcasRaComposeTimer?.Stop();
+            _tcasRaComposeTimer?.Dispose();
+            _tcasRaComposeTimer = null;
+            _tcasRaAnnouncer = null;
+        }
+        catch { }
+        try { DisposeTrackedWindows(); } catch { }
+    }
 
     private void MaybeAnnounceTcasRaGuidance(Accessibility.ScreenReaderAnnouncer announcer)
     {
