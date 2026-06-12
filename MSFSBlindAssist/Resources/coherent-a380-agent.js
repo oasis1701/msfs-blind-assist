@@ -1759,10 +1759,12 @@
       // Coherent/SimVar paths only if the instrument bus can't be reached.
       var bus = A.mfdBus();
       if (bus && typeof bus.pub === "function") { bus.pub("hEvent", eventName, true); return "ok"; }
-      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") Coherent.trigger("H:" + eventName);
-      else if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") SimVar.SetSimVarValue("H:" + eventName, "number", 0);
-    } catch (e) {}
-    return "ok";
+      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") { Coherent.trigger("H:" + eventName); return "ok"; }
+      if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") { SimVar.SetSimVarValue("H:" + eventName, "number", 0); return "ok"; }
+      return "no-dispatch-path";
+    } catch (e) {
+      return "ERR: " + ((e && e.message) ? e.message : String(e));
+    }
   };
 
   A.clickNode = function (node) {

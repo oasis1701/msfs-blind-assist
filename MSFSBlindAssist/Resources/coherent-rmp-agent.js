@@ -83,7 +83,7 @@
         if (rows.length === 0) rows.push('RMP page has no readable rows (powered? on VHF/HF/TEL/SQWK?).');
         return JSON.stringify({ ok: true, rows: rows });
       } catch (e) {
-        return JSON.stringify({ ok: true, rows: ['RMP scrape error: ' + e] });
+        return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
       }
     }
 

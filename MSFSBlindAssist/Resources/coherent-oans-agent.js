@@ -255,7 +255,8 @@
     if (!rl || !thr) return "runway " + name + " not found on map";
     try {
       var want = (A.get(o.dataAirportIcao) || "") + name;
-      o.btvUtils.selectRunwayFromOans(want, rl.associatedFeature, thr);
+      var pr = o.btvUtils.selectRunwayFromOans(want, rl.associatedFeature, thr);
+      if (pr && pr.catch) pr.catch(function () {});   // async: swallow late rejection (would be unhandled in the ND page)
       // selectRunwayFromOans is async — but the btvRunway observable is set
       // synchronously before its first await, so an immediate read-back is valid.
       var got = A.get(o.btvUtils.btvRunway);
@@ -282,7 +283,8 @@
       // Per-feature try/continue: a throw on one same-named feature must NOT abort the loop,
       // or a malformed earlier feature would block the valid later one (the KSFO 28R / Q bug).
       try {
-        b.selectExitFromOans(name, f);
+        var pe = b.selectExitFromOans(name, f);
+        if (pe && pe.catch) pe.catch(function () {});   // async: swallow late rejection
         var got = A.get(b.btvExit);
         // Success ONLY when btvExit now equals the requested name — a rejected
         // select leaves the PREVIOUS exit in place (re-arm false-success bug).
@@ -312,7 +314,11 @@
     var name = String(icao).toUpperCase();
     var o = A.oanc();
     if (o && typeof o.loadAirportMap === "function") {
-      try { o.loadAirportMap(name); return "loading " + name; }   // async; next snapshot poll sees the data
+      try {
+        var pl = o.loadAirportMap(name);                  // async; next snapshot poll sees the data
+        if (pl && pl.catch) pl.catch(function () {});     // swallow late rejection (unhandled in the ND page otherwise)
+        return "loading " + name;
+      }
       catch (e) { /* fall through to the bus path */ }
     }
     var bus = A.bus(); if (!bus) return "no bus";

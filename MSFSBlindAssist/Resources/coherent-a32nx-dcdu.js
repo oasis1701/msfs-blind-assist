@@ -118,6 +118,6 @@
     flush();
     return JSON.stringify({ ok: true, rows: rows, btns: btns, act: act });
   } catch (e) {
-    return JSON.stringify({ ok: false, err: '' + e.message });
+    return JSON.stringify({ ok: false, err: (e && e.message) ? e.message : String(e) });
   }
 })()
