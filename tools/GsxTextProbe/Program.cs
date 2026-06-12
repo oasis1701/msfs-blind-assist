@@ -63,6 +63,36 @@ void CheckEqual<T>(T actual, T expected, string name)
     Check(s.Contains("<price>"), "price: no-space symbol amount");
 }
 
+// ── Currency false positives must NOT eat real quantities ───────────────────
+{
+    // Weight in pounds is mass, not money — eating it makes two different
+    // fuel states normalize identically and the change is never announced.
+    string s1 = GsxService.NormalizeStatusStableText("Refueling 12,000 pounds");
+    string s2 = GsxService.NormalizeStatusStableText("Refueling 13,000 pounds");
+    Check(!s1.Contains("<price>"), "currency: 'pounds' (mass) not a price");
+    Check(s1 != s2, "currency: fuel-in-pounds changes stay distinct");
+
+    // Lowercase 'all' must not match the ALL (Albanian lek) ISO code.
+    s1 = GsxService.NormalizeStatusStableText("boarded all 38 passengers");
+    s2 = GsxService.NormalizeStatusStableText("boarded all 39 passengers");
+    Check(!s1.Contains("<price>"), "currency: lowercase 'all 38' not a price");
+    Check(s1 != s2, "currency: 'all N' changes stay distinct");
+
+    // Embedded code fragments must not match ('overall 5' contains 'all 5').
+    Check(!GsxService.NormalizeStatusStableText("overall 5 items").Contains("<price>"),
+        "currency: word-boundary required ('overall 5')");
+    Check(!GsxService.NormalizeStatusStableText("retry 3 times").Contains("<price>"),
+        "currency: lowercase 'try 3' not a price (TRY code is case-sensitive)");
+
+    // Real shapes must still work after tightening.
+    Check(GsxService.NormalizeStatusStableText("Fee ALL 500").Contains("<price>"),
+        "currency: uppercase ALL code still matches");
+    Check(GsxService.NormalizeStatusStableText("Fee 25 euros").Contains("<price>"),
+        "currency: spelled-out word still matches (any case)");
+    Check(GsxService.NormalizeStatusStableText("Fee 1,250.75 USD").Contains("<price>"),
+        "currency: grouped amount before code");
+}
+
 // ── Charge/timer classification ─────────────────────────────────────────────
 {
     Check(GsxService.IsChargeStatusLine("GPU timer: running 00:12:34"), "charge: timer line is a charge line");

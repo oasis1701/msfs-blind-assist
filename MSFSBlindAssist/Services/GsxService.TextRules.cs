@@ -16,10 +16,21 @@ namespace MSFSBlindAssist.Services;
 public sealed partial class GsxService
 {
     internal const int BoardingPassengerAnnouncementInterval = 10;
+    // ISO-4217 codes are matched CASE-SENSITIVELY ((?-i:...) overrides the
+    // call sites' IgnoreCase): the status renderer itself emits uppercase
+    // ("EUR ", "GBP ") and receipts print uppercase codes, while several
+    // codes are common lowercase English words ("all", "try", "top") that
+    // would otherwise eat real quantities ("boarded all 38 passengers").
     internal const string CurrencyCodePattern =
-        @"(?:AED|AFN|ALL|AMD|ANG|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BOV|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHE|CHF|CHW|CLF|CLP|CNY|COP|COU|CRC|CUC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MXV|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLE|SLL|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|USN|UYI|UYU|UYW|UZS|VED|VES|VND|VUV|WST|XAF|XAG|XAU|XBA|XBB|XBC|XBD|XCD|XCG|XDR|XOF|XPD|XPF|XPT|XSU|XTS|XUA|XXX|YER|ZAR|ZMW|ZWG)";
+        @"(?-i:\b(?:AED|AFN|ALL|AMD|ANG|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BOV|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHE|CHF|CHW|CLF|CLP|CNY|COP|COU|CRC|CUC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MXV|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLE|SLL|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|USN|UYI|UYU|UYW|UZS|VED|VES|VND|VUV|WST|XAF|XAG|XAU|XBA|XBB|XBC|XBD|XCD|XCG|XDR|XOF|XPD|XPF|XPT|XSU|XTS|XUA|XXX|YER|ZAR|ZMW|ZWG)\b)";
+    // Spelled-out currency names stay case-insensitive ("25 euros"), but are
+    // word-bounded, and POUND/POUNDS are deliberately ABSENT: "pounds" is a
+    // mass unit in fuel/W&B text, and eating "12,000 pounds" as a price
+    // makes two different fuel states normalize identically — the change is
+    // then silently never announced. GBP money arrives as "GBP " (the
+    // renderer maps the pound symbol) so nothing is lost.
     internal const string CurrencyWordPattern =
-        @"(?:ARIARY|BAHT|BALBOA|BIRR|BOLIVAR|BOLIVARES|BOLIVIANO|BOLIVIANOS|CEDI|CEDIS|COLON|COLONES|CORDOBA|CORDOBAS|DALASI|DENAR|DENARS|DINAR|DINARS|DIRHAM|DIRHAMS|DOLLAR|DOLLARS|DONG|DRAM|ESCUDO|ESCUDOS|EURO|EUROS|FLORIN|FORINT|FRANC|FRANCS|GOURDE|GOURDES|GUARANI|HRYVNIA|KINA|KIP|KORUNA|KORUNY|KRONA|KRONER|KRONOR|KWACHA|KWANZA|KYAT|LARI|LEI|LEK|LEMPIRA|LEMPIRAS|LEONE|LEV|LEVA|LILANGENI|LIRA|LIRE|LOTI|MANAT|METICAL|METICALS|NAIRA|NAKFA|OUGUIYA|PAANGA|PATACA|PATACAS|PESO|PESOS|POUND|POUNDS|PULA|QUETZAL|RAND|REAL|REALS|RIEL|RINGGIT|RIYAL|RIYALS|RMB|ROUBLE|ROUBLES|RUBLE|RUBLES|RUFIYAA|RUPEE|RUPEES|RUPIAH|SHEKEL|SHEKELS|SHILLING|SHILLINGS|SOL|SOM|SOMONI|TAKA|TALA|TENGE|TUGRIK|VATU|WON|YEN|YUAN|ZLOTY|ZLOTYS)";
+        @"\b(?:ARIARY|BAHT|BALBOA|BIRR|BOLIVAR|BOLIVARES|BOLIVIANO|BOLIVIANOS|CEDI|CEDIS|COLON|COLONES|CORDOBA|CORDOBAS|DALASI|DENAR|DENARS|DINAR|DINARS|DIRHAM|DIRHAMS|DOLLAR|DOLLARS|DONG|DRAM|ESCUDO|ESCUDOS|EURO|EUROS|FLORIN|FORINT|FRANC|FRANCS|GOURDE|GOURDES|GUARANI|HRYVNIA|KINA|KIP|KORUNA|KORUNY|KRONA|KRONER|KRONOR|KWACHA|KWANZA|KYAT|LARI|LEI|LEK|LEMPIRA|LEMPIRAS|LEONE|LEV|LEVA|LILANGENI|LIRA|LIRE|LOTI|MANAT|METICAL|METICALS|NAIRA|NAKFA|OUGUIYA|PAANGA|PATACA|PATACAS|PESO|PESOS|PULA|QUETZAL|RAND|REAL|REALS|RIEL|RINGGIT|RIYAL|RIYALS|RMB|ROUBLE|ROUBLES|RUBLE|RUBLES|RUFIYAA|RUPEE|RUPEES|RUPIAH|SHEKEL|SHEKELS|SHILLING|SHILLINGS|SOL|SOM|SOMONI|TAKA|TALA|TENGE|TUGRIK|VATU|WON|YEN|YUAN|ZLOTY|ZLOTYS)\b";
     internal const string CurrencySymbolPattern = @"[$€£¥₩₹₽₺₪₫₴¢₦₱฿₡₲₵₭₮₾₼]";
     internal const string CurrencyTokenPattern =
         @"(?:" + CurrencyCodePattern + @"|" + CurrencyWordPattern + @"|" + CurrencySymbolPattern + @")";
@@ -204,7 +215,7 @@ public sealed partial class GsxService
     internal static bool ContainsMoneyAmount(string text) =>
         Regex.IsMatch(
             text,
-            $@"{CurrencyTokenPattern}\s*\d|\d[\d,.]*\s*{CurrencyTokenPattern}",
+            $@"{CurrencyTokenPattern}\s*\d|\d+(?:[.,]\d+)*\s*{CurrencyTokenPattern}",
             RegexOptions.IgnoreCase);
 
     internal static bool IsTimerStatusLine(string text) =>
@@ -234,7 +245,7 @@ public sealed partial class GsxService
         // approximates the user-requested "tell me again if the ETA changes
         // by ~5 minutes" behaviour).
         stable = DurationTokenRegex.Replace(stable, BucketDurationToken);
-        stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d[\d,.]*|\d[\d,.]*\s*{CurrencyTokenPattern}", "<price>",
+        stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d+(?:[.,]\d+)*|\d+(?:[.,]\d+)*\s*{CurrencyTokenPattern}", "<price>",
             RegexOptions.IgnoreCase);
         stable = Regex.Replace(stable, @"\(~?\s*<price>\)", "(<price>)",
             RegexOptions.IgnoreCase);
