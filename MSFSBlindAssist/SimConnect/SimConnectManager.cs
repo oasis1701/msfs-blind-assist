@@ -73,7 +73,7 @@ public class SimConnectManager
     private MobiFlightWasmModule? mobiFlightWasm;
     // ⚠️ Gate ONLY on Initialize having completed (IsConnected). Two "smarter"
     // gates were tried 2026-06-11 and BOTH broke working installs (the A380 "STD
-    // combo bounces back" regression, root-caused via transport.log):
+    // combo bounces back" regression):
     //   - IsRegistered: the FBWBA client registration can time out (documented
     //     "Timeout - Using Fallback" state) while the DEFAULT MobiFlight.Command
     //     channel works fine — the calc path needs no registration.
@@ -3550,11 +3550,11 @@ public class SimConnectManager
                 simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
                     varDef.Name, varDef.Units ?? "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
             simConnect.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)dataDefId);
-            LogTransport($"[Probe] data definition re-bound for {varKey} (def {dataDefId})");
+            System.Diagnostics.Debug.WriteLine($"[Probe] data definition re-bound for {varKey} (def {dataDefId})");
         }
         catch (Exception ex)
         {
-            LogTransport($"[Probe] rebind FAILED for {varKey}: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[Probe] rebind FAILED for {varKey}: {ex.Message}");
         }
     }
 
@@ -4112,40 +4112,16 @@ public class SimConnectManager
     /// Useful for atomic read-modify-write operations on LVars.
     /// Example: "(L:E_FCU_EFIS1_BARO) 5 + (>L:E_FCU_EFIS1_BARO)"
     /// </summary>
-    /// <summary>
-    /// Always-on transport diagnostics (%LOCALAPPDATA%/MSFSBlindAssist/logs/transport.log):
-    /// every calc-path write, H:/dotted gate decision and MobiFlight lifecycle event, so a
-    /// "control does nothing" report can be traced to the exact dead hop without a debugger.
-    /// </summary>
-    public static void LogTransport(string message)
-    {
-        try
-        {
-            string log = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MSFSBlindAssist", "logs", "transport.log");
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(log)!);
-            System.IO.File.AppendAllText(log, $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
-        }
-        catch { }
-    }
-
     public void ExecuteCalculatorCode(string rpnCode)
     {
-        if (!IsConnected || mobiFlightWasm == null)
-        {
-            LogTransport($"[Calc] DROPPED (IsConnected={IsConnected}, wasm={(mobiFlightWasm != null ? "present" : "null")}): {rpnCode}");
-            return;
-        }
+        if (!IsConnected || mobiFlightWasm == null) return;
 
         try
         {
-            LogTransport($"[Calc] {rpnCode}");
             mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}");
         }
         catch (Exception ex)
         {
-            LogTransport($"[Calc] EXCEPTION: {ex.Message} for {rpnCode}");
             System.Diagnostics.Debug.WriteLine($"Error executing calculator code: {ex.Message}");
         }
     }

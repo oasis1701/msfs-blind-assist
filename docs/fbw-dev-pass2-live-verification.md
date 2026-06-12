@@ -41,8 +41,8 @@ because they need a running sim. Verify each against the DEV A32NX/A380X; check 
 
 ## Deferred features/probes (build after verification or live iteration)
 
-- [x] MobiFlight end-to-end probe — IMPLEMENTED 2026-06-11 (nonce round-trip via MainForm.BridgeProbeTimer_Tick → MSFSBA_BRIDGE_PROBE → MarkCalcPathVerified; verdict in transport.log). Gate intentionally stays IsConnected; the probe is observability + the basis for a future gate. Verify the "[Probe] calc path VERIFIED" line on the next launch.
-- [x] ECP HVar channel — RESOLVED 2026-06-12: `SendHVar` already falls back to the DEFAULT channel after the registration timeout, so the A32NX ECP buttons work on this install; only the ≤2 s pre-timeout startup window drops HVars (now logged to transport.log).
+- [x] MobiFlight end-to-end probe — IMPLEMENTED 2026-06-11 (nonce round-trip via MainForm.BridgeProbeTimer_Tick → MSFSBA_BRIDGE_PROBE → MarkCalcPathVerified). CalcPathVerified is the live gate for the calc-path write routing.
+- [x] ECP HVar channel — RESOLVED 2026-06-12: `SendHVar` already falls back to the DEFAULT channel after the registration timeout, so the A32NX ECP buttons work on this install; only the ≤2 s pre-timeout startup window drops HVars.
 
 - [x] Metric-alt probe — RESOLVED 2026-06-12: the event is registered but INERT on the installed build (A32NX_METRIC_ALT_TOGGLE never moves; no consumer in any installed bundle — only the ISIS/EFB metric settings exist). Do not expose; the real A320 has no MTRS button.
 - [ ] Probe: gravity gear extension (`A32NX_GRAVITYGEAR_TURNED`=1 + `_ROTATIONS`=3 stickiness) — add controls if it actuates (the A380 already has gravity-gear controls; the A320 has none).

@@ -351,7 +351,7 @@ public partial class MainForm : Form
         // MobiFlight end-to-end bridge probe: calc-write a nonce L:var, read it back
         // over the data-def channel; a match proves the WASM executed our RPN (the
         // only valid presence signal — the response side can be silent on healthy
-        // installs). Result goes to transport.log; FBW defs register the probe var.
+        // installs). FBW defs register the probe var.
         _bridgeProbeTimer = new System.Windows.Forms.Timer { Interval = 1500 };
         _bridgeProbeTimer.Tick += BridgeProbeTimer_Tick;
         _bridgeProbeTimer.Start();
