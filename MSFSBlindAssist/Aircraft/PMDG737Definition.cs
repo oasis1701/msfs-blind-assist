@@ -212,6 +212,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "MCP", "Warnings", "EFIS Captain", "EFIS First Officer", "Display Select"
             },
+            ["Interior"] = new List<string>
+            {
+                "Cockpit Furniture", "Cabin Bins", "Cabin Items", "Galley"
+            },
         };
     }
 
@@ -1577,6 +1581,228 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ValueDescriptions = new Dictionary<double, string> { [0] = "On", [100] = "Off" }
         };
 
+        // =================================================================
+        // CABIN & COCKPIT FURNITURE (737)
+        // -----------------------------------------------------------------
+        // All L-var names and polarities are read directly from PMDG's own
+        // model behavior XMLs (verified 2026-06-11/12):
+        //   - 73X_Cockpit_Behavior.xml      (windows, visors, shades, headrests,
+        //                                    rudder-pedal adjust)
+        //   - 73X_Cabin_Ceiling_Behavior.xml (overhead bins — "SPACE BIN nL/nR")
+        //   - 73X_Cabin_Walls_Behavior.xml   (passenger window blinds, cabin lights)
+        //   - 73X_Galley_Fwd/Aft_Behavior.xml (galley lights, curtains, lav doors)
+        // These are plain L-vars PMDG's VC click-spots toggle directly, so a
+        // direct SetLVar reproduces the cockpit/cabin interaction exactly
+        // (same mechanism as the xBAW vars above). The sliding windows are the
+        // one exception — PMDG's click code ALSO fires K:TOGGLE_AIRCRAFT_EXIT_FAST
+        // (exit 16 = Captain, 17 = F/O) and honors an L:CanOpenWindows guard, so
+        // those are special-cased in HandleUIVariableSet.
+        // Attendant/Ground call buttons use the SDK events (CDA, parameter 1 —
+        // live-verified 2026-06-11: press counters increment; note parameter 0
+        // ALSO registers as a press, same as the CDU keys). The existing
+        // COMM_*_PressCount announce handler provides the audible confirmation.
+        // =================================================================
+        d["COMM_AttendCallBtn"] = Momentary("COMM_AttendCallBtn", "Call Attendants");
+        d["COMM_AttendCallBtn"].HelpText = "Press the overhead ATTEND button (cabin chime)";
+        d["COMM_GrndCallBtn"] = Momentary("COMM_GrndCallBtn", "Call Ground Crew");
+        d["COMM_GrndCallBtn"].HelpText =
+            "Press the overhead GRD CALL button. The ground-crew horn keeps sounding until pressed again";
+
+        // Sliding cockpit windows. PMDG only allows opening when L:CanOpenWindows
+        // is set (on the ground, slow, unpressurized) — when blocked, the set is
+        // silently ignored by the guard and the state announcement simply won't fire.
+        SimConnect.SimVarDefinition WindowVar(string lvar, string display) => new()
+        {
+            Name = lvar,
+            DisplayName = display,
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
+            HelpText = "Sliding cockpit window. Only opens on the ground at low speed"
+        };
+        d["Window_OpenClose_CA"] = WindowVar("Window_OpenClose_CA", "Captain Window");
+        d["Window_OpenClose_FO"] = WindowVar("Window_OpenClose_FO", "First Officer Window");
+
+        // Sun visors (0 = stowed, 1 = deployed across the window). PMDG blocks
+        // deploying while the same-side window is open — mirrored in dispatch.
+        SimConnect.SimVarDefinition CabinToggle(string lvar, string display, string off, string on, string? help = null) => new()
+        {
+            Name = lvar,
+            DisplayName = display,
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = off, [1] = on },
+            HelpText = help
+        };
+        d["visors_stow_unstow_L"] = CabinToggle("visors_stow_unstow_L", "Captain Sun Visor", "Stowed", "Deployed");
+        d["visors_stow_unstow_R"] = CabinToggle("visors_stow_unstow_R", "First Officer Sun Visor", "Stowed", "Deployed");
+
+        // Cockpit window shades (only fitted when the airframe's WindowShadesOption
+        // is enabled; toggling without the option fitted has no visible effect).
+        d["shade_LF"] = CabinToggle("shade_LF", "Window Shade Left Forward", "Stowed", "Extended");
+        d["shade_LR"] = CabinToggle("shade_LR", "Window Shade Left Rear", "Stowed", "Extended");
+        d["shade_RF"] = CabinToggle("shade_RF", "Window Shade Right Forward", "Stowed", "Extended");
+        d["shade_RR"] = CabinToggle("shade_RR", "Window Shade Right Rear", "Stowed", "Extended");
+
+        // Seat headrests + rudder-pedal adjust — drag positions 0–100 (50 = the
+        // position PMDG initializes at spawn). Clamped in HandleUIVariableSet.
+        // The varKey carries a "_SET" suffix so MainForm renders a TextBox +
+        // Set button (the numeric-input control); without it, a no-
+        // ValueDescriptions var falls through to the plain-button branch whose
+        // click always dispatches value 1 — the position slammed to 1/100 on
+        // every press and the control "only went to one position".
+        SimConnect.SimVarDefinition DragVar(string lvar, string display) => new()
+        {
+            Name = lvar,
+            DisplayName = display,
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            HelpText = "Position 0 to 100. 50 is the default"
+        };
+        d["headrest_CA_drag_h_SET"] = DragVar("headrest_CA_drag_h", "Captain Headrest");
+        d["headrest_FO_drag_h_SET"] = DragVar("headrest_FO_drag_h", "First Officer Headrest");
+        d["rudder_ped_adjust_CA_drag_h_SET"] = DragVar("rudder_ped_adjust_CA_drag_h", "Captain Rudder Pedals");
+        d["rudder_ped_adjust_FO_drag_h_SET"] = DragVar("rudder_ped_adjust_FO_drag_h", "First Officer Rudder Pedals");
+
+        // Jumpseat + armrests — SDK events with a POSITION parameter (CDA param
+        // 0/1), state read back from the PMDG-owned switch anim L-vars (0/100).
+        // Live-verified 2026-06-12 with PMDGDispatchTester:
+        //   cda 71633 1 → L:switch_2001_73X = 100 (jumpseat extended)
+        //   cda 71633 0 → L:switch_2001_73X = 0   (jumpseat stowed)
+        //   cda 70638 1/0 → L:switch_1006_73X = 100/0 (CA left armrest)
+        // The original Momentary-button design always sent parameter 1, which is
+        // why these "worked once" (extend) and never went back. The switch L-vars
+        // are SDK-owned read-backs (a raw SetLVar would revert — same family as
+        // the 777's switch_NNN_a), so the EVENT is the actuator and the L-var
+        // only drives the combo display — dispatch is intercepted BEFORE the
+        // generic LVar SetLVar branch in HandleUIVariableSet.
+        SimConnect.SimVarDefinition SdkFurnitureCombo(string lvar, string display, string atZero, string atHundred) => new()
+        {
+            Name = lvar,
+            DisplayName = display,
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = atZero, [100] = atHundred }
+        };
+        d["switch_2001_73X"] = SdkFurnitureCombo("switch_2001_73X", "Jumpseat", "Stowed", "Extended");
+        d["switch_1006_73X"] = SdkFurnitureCombo("switch_1006_73X", "Captain Left Armrest", "Down", "Up");
+        d["switch_1007_73X"] = SdkFurnitureCombo("switch_1007_73X", "Captain Right Armrest", "Down", "Up");
+        d["switch_1008_73X"] = SdkFurnitureCombo("switch_1008_73X", "First Officer Left Armrest", "Down", "Up");
+        d["switch_1009_73X"] = SdkFurnitureCombo("switch_1009_73X", "First Officer Right Armrest", "Down", "Up");
+
+        // Overhead bins — every "SPACE BIN" click-spot in the cabin ceiling.
+        // Rows 1–18 left/right, plus the two small 3L/3R bins fitted on the
+        // TC cabin layout. Bins that don't exist on the loaded cabin config
+        // are harmless no-ops.
+        foreach (int row in Enumerable.Range(1, 18))
+        {
+            foreach (var (suffix, sideLabel) in new[] { ("L", "Left"), ("R", "Right") })
+            {
+                string lvar = $"bin_{row}{suffix}_anim";
+                d[lvar] = CabinToggle(lvar, $"Bin {row} {sideLabel}", "Closed", "Open");
+            }
+        }
+        d["bin_3LTC_anim"] = CabinToggle("bin_3LTC_anim", "Bin 3 Left Small", "Closed", "Open");
+        d["bin_3RTC_anim"] = CabinToggle("bin_3RTC_anim", "Bin 3 Right Small", "Closed", "Open");
+        d["CABIN_AllBinsOpen"]  = Momentary("CABIN_AllBinsOpen",  "Open All Bins");
+        d["CABIN_AllBinsClose"] = Momentary("CABIN_AllBinsClose", "Close All Bins");
+
+        // Passenger window blinds — exposed as all-up/all-down composites only
+        // (87 individual blinds would drown the panel; per-blind L-vars are
+        // window{1..41}{L,R}_blind_anim + 14ROS + 4 EE-row, 1 = down).
+        d["CABIN_AllBlindsUp"]   = Momentary("CABIN_AllBlindsUp",   "Raise All Window Blinds");
+        d["CABIN_AllBlindsDown"] = Momentary("CABIN_AllBlindsDown", "Lower All Window Blinds");
+
+        // Cabin & galley lighting, curtains, lavatory doors.
+        d["cabin_ceiling_light_fwd"] = CabinToggle("cabin_ceiling_light_fwd", "Cabin Ceiling Lights Forward", "Off", "On");
+        d["cabin_ceiling_light_aft"] = CabinToggle("cabin_ceiling_light_aft", "Cabin Ceiling Lights Aft", "Off", "On");
+        d["fwd_galley_lights"] = CabinToggle("fwd_galley_lights", "Forward Galley Lights", "Off", "On");
+        d["aft_galley_lights"] = CabinToggle("aft_galley_lights", "Aft Galley Lights", "Off", "On");
+        d["galley_fwd_curtain_anim"] = CabinToggle("galley_fwd_curtain_anim", "Forward Galley Curtain", "Open", "Drawn");
+        d["galley_aft_curtain_anim"] = CabinToggle("galley_aft_curtain_anim", "Aft Galley Curtain", "Open", "Drawn");
+        d["fwd_lavatory_handle_anim"] = CabinToggle("fwd_lavatory_handle_anim", "Forward Lavatory Door", "Closed", "Open");
+        d["aft_left_lavatory_handle_anim"] = CabinToggle("aft_left_lavatory_handle_anim", "Aft Left Lavatory Door", "Closed", "Open");
+        d["aft_right_lavatory_handle_anim"] = CabinToggle("aft_right_lavatory_handle_anim", "Aft Right Lavatory Door", "Closed", "Open");
+        d["divider_curtain_left_anim"]  = CabinToggle("divider_curtain_left_anim",  "Divider Curtain Left",  "Open", "Drawn");
+        d["divider_curtain_right_anim"] = CabinToggle("divider_curtain_right_anim", "Divider Curtain Right", "Open", "Drawn");
+
+        // --- Cockpit storage cubbies (binders/docs placed or removed) + the
+        //     cubby bar. "BINDERS REMOVE/STOW" on the centre cubby hides a
+        //     timed easter egg: with the cubby bar raised, toggling
+        //     L:CubbyTrigger makes PMDG's own model Update reveal a cookie
+        //     stash (CookiesVis/CubbyTimer) — live-verified end-to-end.
+        d["side_cubby_CA"]      = CabinToggle("side_cubby_CA",      "Captain Side Cubby", "Empty", "Stocked");
+        d["side_cubby_FO"]      = CabinToggle("side_cubby_FO",      "First Officer Side Cubby", "Empty", "Stocked");
+        d["doc_cubby_ca"]       = CabinToggle("doc_cubby_ca",       "Captain Document Cubby", "Empty", "Stocked");
+        d["doc_cubby_fo"]       = CabinToggle("doc_cubby_fo",       "First Officer Document Cubby", "Empty", "Stocked");
+        d["glareshield_cubby"]  = CabinToggle("glareshield_cubby",  "Glareshield Cubby", "Empty", "Stocked");
+        d["cubby_bar_drag_v_SET"] = DragVar("cubby_bar_drag_v", "Cubby Bar");
+        d["CubbyTrigger"] = CabinToggle("CubbyTrigger", "Binder Cookie Stash", "Hidden", "Revealed",
+            "PMDG's hidden cookie stash behind the binders. Revealing raises the cubby bar automatically");
+        d["CA_CupholderDrink"] = Momentary("CA_CupholderDrink", "Captain Cupholder Drink");
+        d["CA_CupholderDrink"].HelpText = "Cycle a random drink into the captain's cupholder";
+        d["FO_CupholderDrink"] = Momentary("FO_CupholderDrink", "First Officer Cupholder Drink");
+        d["FO_CupholderDrink"].HelpText = "Cycle a random drink into the first officer's cupholder";
+
+        // --- Galley equipment (all plain L-vars, write-stick verified). The
+        //     water on/off and cold/warm pushbutton pairs are radio buttons —
+        //     PMDG's click code sets one and clears the other; the combo key
+        //     is the "active" button of the pair and dispatch writes both.
+        d["water_on_btn"]   = CabinToggle("water_on_btn",   "Galley Water", "Off", "On");
+        d["water_warm_btn"] = CabinToggle("water_warm_btn", "Galley Water Temperature", "Cold", "Warm");
+        d["sink1_tap"] = CabinToggle("sink1_tap", "Forward Sink Tap 1", "Off", "Running");
+        d["sink2_tap"] = CabinToggle("sink2_tap", "Forward Sink Tap 2", "Off", "Running");
+        d["coffee1_valve"] = CabinToggle("coffee1_valve", "Forward Coffee Valve", "Closed", "Open");
+        d["coffee2_valve"] = CabinToggle("coffee2_valve", "Aft Coffee Valve", "Closed", "Open");
+        d["sanitizer1_pump"] = CabinToggle("sanitizer1_pump", "Aft Sanitizer Pump 1", "Up", "Pressed");
+        d["sanitizer2_pump"] = CabinToggle("sanitizer2_pump", "Aft Sanitizer Pump 2", "Up", "Pressed");
+        d["powerplug1_slide"] = CabinToggle("powerplug1_slide", "Forward Power Outlet 1", "Covered", "Open");
+        d["powerplug2_slide"] = CabinToggle("powerplug2_slide", "Forward Power Outlet 2", "Covered", "Open");
+        d["powerplug3_slide"] = CabinToggle("powerplug3_slide", "Aft Power Outlet 1", "Covered", "Open");
+        d["powerplug4_slide"] = CabinToggle("powerplug4_slide", "Aft Power Outlet 2", "Covered", "Open");
+        d["secret_compartment_one"] = CabinToggle("secret_compartment_one", "Secret Compartment 1", "Closed", "Open");
+        d["secret_compartment_two"] = CabinToggle("secret_compartment_two", "Secret Compartment 2", "Closed", "Open");
+
+        // --- Forward airstair control panel (fwd galley) + FAP ground-service
+        //     switch. These switches have NO entries in the public SDK header,
+        //     but PMDG's switch-number == event-offset convention holds:
+        //     event_base + 1646/1648/1654/1658/2050 all move the corresponding
+        //     switch_NNNN_73X read-back L-vars (live-verified 2026-06-12).
+        //     Extend/retract/standby are pushbuttons (press-and-release
+        //     dispatch); lights is a 3-position selector (param 0/1/2 →
+        //     L-var 0/50/100); ground service is a 2-position switch.
+        //     The airstair itself only exists when the airframe option is
+        //     fitted — without it the switches are harmless no-ops.
+        d["AIRSTAIR_Extend"]  = Momentary("AIRSTAIR_Extend",  "Extend Airstair");
+        d["AIRSTAIR_Retract"] = Momentary("AIRSTAIR_Retract", "Retract Airstair");
+        d["AIRSTAIR_Standby"] = Momentary("AIRSTAIR_Standby", "Airstair Standby");
+        d["switch_1654_73X"] = new SimConnect.SimVarDefinition
+        {
+            Name = "switch_1654_73X",
+            DisplayName = "Airstair Lights",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            // Anim positions 0/50/100 = selector detents 0/1/2. Middle/full
+            // labels are a best guess (panel labels unreadable in navdata) —
+            // flip if a tester reports otherwise.
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [50] = "Dim", [100] = "Bright" }
+        };
+        d["switch_2050_73X"] = new SimConnect.SimVarDefinition
+        {
+            Name = "switch_2050_73X",
+            DisplayName = "Ground Service Switch",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            HelpText = "Flight attendant panel ground-service power switch",
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [100] = "On" }
+        };
+
         return d;
     }
 
@@ -1799,7 +2025,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Calls"] = new List<string>
             {
                 "COMM_SelectedMic_0", "COMM_SelectedMic_1",
-                "COMM_ServiceInterphoneSw"
+                "COMM_ServiceInterphoneSw",
+                // Overhead ATTEND / GRD CALL push buttons (live-verified CDA
+                // param-1 dispatch). The press-count announce handler speaks
+                // "Attend call" / "Ground call" as the confirmation.
+                "COMM_AttendCallBtn", "COMM_GrndCallBtn"
             },
             ["Flight Deck Door"] = new List<string>
             {
@@ -1816,7 +2046,67 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "ANR_onoff", "HydPumpMfg", "switch_277_73X"
             },
+
+            // ===== Cabin & Furniture =====
+            // All L-var-backed (see the CABIN & COCKPIT FURNITURE region in
+            // GetVariables for sources + polarity verification).
+            ["Cockpit Furniture"] = new List<string>
+            {
+                "Window_OpenClose_CA", "Window_OpenClose_FO",
+                "visors_stow_unstow_L", "visors_stow_unstow_R",
+                "shade_LF", "shade_LR", "shade_RF", "shade_RR",
+                "headrest_CA_drag_h_SET", "headrest_FO_drag_h_SET",
+                "rudder_ped_adjust_CA_drag_h_SET", "rudder_ped_adjust_FO_drag_h_SET",
+                "switch_2001_73X",
+                "switch_1006_73X", "switch_1007_73X",
+                "switch_1008_73X", "switch_1009_73X",
+                "side_cubby_CA", "side_cubby_FO",
+                "doc_cubby_ca", "doc_cubby_fo", "glareshield_cubby",
+                "cubby_bar_drag_v_SET", "CubbyTrigger",
+                "CA_CupholderDrink", "FO_CupholderDrink"
+            },
+            ["Cabin Bins"] = BuildCabinBinControls(),
+            ["Cabin Items"] = new List<string>
+            {
+                "CABIN_AllBlindsUp", "CABIN_AllBlindsDown",
+                "cabin_ceiling_light_fwd", "cabin_ceiling_light_aft",
+                "fwd_galley_lights", "aft_galley_lights",
+                "galley_fwd_curtain_anim", "galley_aft_curtain_anim",
+                "divider_curtain_left_anim", "divider_curtain_right_anim",
+                "fwd_lavatory_handle_anim",
+                "aft_left_lavatory_handle_anim", "aft_right_lavatory_handle_anim"
+            },
+            ["Galley"] = new List<string>
+            {
+                "water_on_btn", "water_warm_btn",
+                "sink1_tap", "sink2_tap",
+                "coffee1_valve", "coffee2_valve",
+                "sanitizer1_pump", "sanitizer2_pump",
+                "powerplug1_slide", "powerplug2_slide",
+                "powerplug3_slide", "powerplug4_slide",
+                "secret_compartment_one", "secret_compartment_two",
+                "AIRSTAIR_Extend", "AIRSTAIR_Retract", "AIRSTAIR_Standby",
+                "switch_1654_73X", "switch_2050_73X"
+            },
         };
+    }
+
+    // Composite buttons first, then bins in row order (1L, 1R, 2L, ... 18R) with
+    // the TC-layout small bins after their full-size row-3 siblings.
+    private static List<string> BuildCabinBinControls()
+    {
+        var list = new List<string> { "CABIN_AllBinsOpen", "CABIN_AllBinsClose" };
+        foreach (int row in Enumerable.Range(1, 18))
+        {
+            list.Add($"bin_{row}L_anim");
+            list.Add($"bin_{row}R_anim");
+            if (row == 3)
+            {
+                list.Add("bin_3LTC_anim");
+                list.Add("bin_3RTC_anim");
+            }
+        }
+        return list;
     }
 
     public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
@@ -2938,6 +3228,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // ===== Various =====
             { "EVT_JUMPSEAT_STOW_EXTEND",                    event_base + 2001 },
+            // NOT in the public SDK header — discovered via PMDG's switch-number
+            // == event-offset convention and live-verified 2026-06-12 (each one
+            // moves its switch_NNNN_73X read-back L-var; ground service confirmed
+            // two-way 0↔100, lights confirmed 3-position 0/50/100 for param 0/1/2).
+            { "EVT_GALLEY_AIRSTAIR_RETRACT",                 event_base + 1646 },
+            { "EVT_GALLEY_AIRSTAIR_EXTEND",                  event_base + 1648 },
+            { "EVT_GALLEY_AIRSTAIR_LIGHTS",                  event_base + 1654 },
+            { "EVT_GALLEY_AIRSTAIR_STANDBY",                 event_base + 1658 },
+            { "EVT_FAP_GROUND_SERVICE",                      event_base + 2050 },
             { "EVT_ALT_GEAR_EXT_DOOR",                       event_base + 2002 },
             { "EVT_ALT_GEAR_EXT_HANDLE_RIGHT",               event_base + 2003 },
             { "EVT_ALT_GEAR_EXT_HANDLE_LEFT",                event_base + 2004 },
@@ -3259,6 +3558,92 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         };
 
     // =========================================================================
+    // Cabin & furniture dispatch tables (see the 0-cabin region in
+    // HandleUIVariableSet). All shapes live-verified 2026-06-12.
+    // =========================================================================
+    // Call buttons: momentary press, CDA parameter 1 (parameter 0 also presses).
+    private static readonly Dictionary<string, string> _cabinMomentaryEventMap = new()
+    {
+        ["COMM_AttendCallBtn"] = "EVT_OH_ATTND_CALL_SWITCH",
+        ["COMM_GrndCallBtn"]   = "EVT_OH_GRND_CALL_SWITCH",
+    };
+
+    // Jumpseat/armrest combos: varKey = the PMDG-owned read-back L-var (combo
+    // display, 0/100), value = the SDK event whose CDA parameter IS the position.
+    private static readonly Dictionary<string, string> _sdkFurnitureEventMap = new()
+    {
+        ["switch_2001_73X"] = "EVT_JUMPSEAT_STOW_EXTEND",
+        ["switch_1006_73X"] = "EVT_CA_ARMREST_LEFT_SWITCH",
+        ["switch_1007_73X"] = "EVT_CA_ARMREST_RIGHT_SWITCH",
+        ["switch_1008_73X"] = "EVT_FO_ARMREST_LEFT_SWITCH",
+        ["switch_1009_73X"] = "EVT_FO_ARMREST_RIGHT_SWITCH",
+        ["switch_2050_73X"] = "EVT_FAP_GROUND_SERVICE",   // FAP ground service, 2-position
+    };
+
+    // Airstair pushbuttons: press-and-release (param 1, brief hold, param 0) —
+    // these are momentary panel buttons whose switch L-var latches at 100 if
+    // never released (observed in probing).
+    private static readonly Dictionary<string, string> _pressReleaseEventMap = new()
+    {
+        ["AIRSTAIR_Extend"]  = "EVT_GALLEY_AIRSTAIR_EXTEND",
+        ["AIRSTAIR_Retract"] = "EVT_GALLEY_AIRSTAIR_RETRACT",
+        ["AIRSTAIR_Standby"] = "EVT_GALLEY_AIRSTAIR_STANDBY",
+    };
+
+    // Galley water pushbutton radio-pairs: combo key = the "active" button of
+    // the pair; PMDG's own click code sets one and clears the other.
+    //   varKey → (the paired opposite L-var)
+    private static readonly Dictionary<string, string> _waterPairMap = new()
+    {
+        ["water_on_btn"]   = "water_off_btn",
+        ["water_warm_btn"] = "water_cold_btn",
+    };
+
+    private static async Task PressAndReleaseAsync(
+        SimConnect.SimConnectManager simConnect, string eventName, uint eventId)
+    {
+        simConnect.SendPMDGEvent(eventName, eventId, 1);
+        await Task.Delay(350).ConfigureAwait(false);
+        simConnect.SendPMDGEvent(eventName, eventId, 0);
+    }
+
+    // Overhead bins: rows 1–18 left/right + the two small TC-layout row-3 bins.
+    private static readonly string[] s_binLvars = BuildBinLvarList();
+    private static string[] BuildBinLvarList()
+    {
+        var list = new List<string>();
+        foreach (int row in Enumerable.Range(1, 18))
+        {
+            list.Add($"bin_{row}L_anim");
+            list.Add($"bin_{row}R_anim");
+        }
+        list.Add("bin_3LTC_anim");
+        list.Add("bin_3RTC_anim");
+        return list.ToArray();
+    }
+
+    // Passenger window blinds: rows 1–41 left/right, the right-overwing-special
+    // 14ROS blind, and the four emergency-exit-row blinds. Extracted from
+    // 73X_Cabin_Walls_Behavior.xml; 1 = blind down. Different cabin layouts use
+    // different subsets — setting a blind the layout doesn't have is a no-op.
+    private static readonly string[] s_blindLvars = BuildBlindLvarList();
+    private static string[] BuildBlindLvarList()
+    {
+        var list = new List<string>();
+        foreach (int row in Enumerable.Range(1, 41))
+        {
+            list.Add($"window{row}L_blind_anim");
+            list.Add($"window{row}R_blind_anim");
+        }
+        list.Add("window14ROS_blind_anim");
+        list.Add("windowEEL1_blind_anim");
+        list.Add("windowEEL2_blind_anim");
+        list.Add("windowEER1_blind_anim");
+        list.Add("windowEER2_blind_anim");
+        return list.ToArray();
+    }
+
+    // =========================================================================
     // Guarded switch table: varKey → (guardEvent, switchEvent)
     //
     // The UI layer fires the guard event first (open the guard), then the
@@ -3516,8 +3901,186 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 0-cabin. Cabin & cockpit furniture (see the CABIN & COCKPIT
+        //     FURNITURE region in GetVariables). All dispatch shapes below
+        //     were live-verified closed-loop with PMDGDispatchTester
+        //     (lvar/lvarget/cda/kev) on 2026-06-12. These branches MUST run
+        //     before the generic LVar branch below.
+        // ------------------------------------------------------------------
+        // Jumpseat + armrests: SDK event with the POSITION as the CDA
+        // parameter (0 = stowed/down, 1 = extended/up). The varKey is the
+        // PMDG-owned read-back L-var (drives the combo display); a raw
+        // SetLVar to it would revert, so intercept and fire the event.
+        // Combo values are 0/100 (the L-var's anim scale) — collapse to 0/1.
+        if (_sdkFurnitureEventMap.TryGetValue(varKey, out string? furnEvName) &&
+            EventIds.TryGetValue(furnEvName, out int furnEvId))
+        {
+            int furnTarget = value != 0 ? 1 : 0;
+            simConnect.SendPMDGEvent(furnEvName, (uint)furnEvId, furnTarget);
+            return true;
+        }
+
+        // Sliding windows: replicate PMDG's VC click code exactly — set the
+        // anim L-var, fire K:TOGGLE_AIRCRAFT_EXIT_FAST with the exit index
+        // (16 = Captain, 17 = F/O), update PMDG's WindowOpen*/WindowClose*
+        // mirror flags, all gated on PMDG's L:CanOpenWindows. The guard can
+        // only be evaluated atomically in RPN (MobiFlight calculator code);
+        // without MobiFlight, fall back to an unguarded set (worst case the
+        // L-var animates while PMDG considers windows locked). When the guard
+        // blocks, nothing changes and the state monitor stays silent.
+        // Verified live (CanOpenWindows=1 at the gate): open → L-var 1, close
+        // → L-var 0, exit toggle audible both ways.
+        if (varKey == "Window_OpenClose_CA" || varKey == "Window_OpenClose_FO")
+        {
+            bool isCaptain = varKey == "Window_OpenClose_CA";
+            int target = (int)value;
+            int exitIndex = isCaptain ? 16 : 17;
+            string openFlag  = isCaptain ? "WindowOpenCA"  : "WindowOpenFO";
+            string closeFlag = isCaptain ? "WindowCloseCA" : "WindowCloseFO";
+            if (simConnect.IsMobiFlightConnected)
+            {
+                simConnect.ExecuteCalculatorCode(
+                    $"(L:CanOpenWindows, number) 0 != (L:{varKey}, bool) {target} != and " +
+                    $"if{{ {target} (>L:{varKey}, bool) " +
+                    $"{target} {exitIndex} (>K:TOGGLE_AIRCRAFT_EXIT_FAST) " +
+                    $"{target} (>L:{openFlag}, bool) {1 - target} (>L:{closeFlag}, bool) }}");
+            }
+            else
+            {
+                simConnect.SetLVar(varKey, target);
+                simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT_FAST", (uint)exitIndex);
+            }
+            return true;
+        }
+
+        // Sun visors: PMDG blocks DEPLOYING a visor while the same-side window
+        // is open (the visor swings across the window opening). Mirror that
+        // guard when deploying; stowing is always allowed.
+        if (varKey is "visors_stow_unstow_L" or "visors_stow_unstow_R")
+        {
+            int target = (int)value;
+            string windowLvar = varKey.EndsWith("_L") ? "Window_OpenClose_CA" : "Window_OpenClose_FO";
+            if (target == 1 && simConnect.IsMobiFlightConnected)
+                simConnect.ExecuteCalculatorCode(
+                    $"(L:{windowLvar}, bool) 0 == if{{ 1 (>L:{varKey}, bool) }}");
+            else
+                simConnect.SetLVar(varKey, target);
+            return true;
+        }
+
+        // Headrest / rudder-pedal drag positions — numeric text input
+        // ("_SET" keys); clamp to the 0–100 anim range (PMDG's ANIM_CODE
+        // reads the raw value; out-of-range writes glitch the animation).
+        // Write varDef.Name (the bare L-var), not the "_SET" varKey.
+        if (varKey is "headrest_CA_drag_h_SET" or "headrest_FO_drag_h_SET"
+                    or "rudder_ped_adjust_CA_drag_h_SET" or "rudder_ped_adjust_FO_drag_h_SET")
+        {
+            double clamped = Math.Clamp(value, 0, 100);
+            simConnect.SetLVar(varDef.Name, clamped);
+            announcer.AnnounceImmediate($"{varDef.DisplayName} {clamped:F0}");
+            return true;
+        }
+
+        // Attendant / ground call — SDK events via CDA with parameter 1
+        // (live-verified 2026-06-11: press counters increment; parameter 0
+        // ALSO registers as a press on this family — same as the CDU keys —
+        // so always send 1).
+        if (_cabinMomentaryEventMap.TryGetValue(varKey, out string? cabinEvName) &&
+            EventIds.TryGetValue(cabinEvName, out int cabinEvId))
+        {
+            simConnect.SendPMDGEvent(cabinEvName, (uint)cabinEvId, 1);
+            return true;
+        }
+
+        // Airstair pushbuttons — press-and-release momentary dispatch.
+        if (_pressReleaseEventMap.TryGetValue(varKey, out string? prEvName) &&
+            EventIds.TryGetValue(prEvName, out int prEvId))
+        {
+            _ = PressAndReleaseAsync(simConnect, prEvName, (uint)prEvId);
+            return true;
+        }
+
+        // Airstair lights — 3-position selector; combo values are the anim
+        // detents 0/50/100, the event parameter is the detent INDEX 0/1/2
+        // (live-verified: param 1 → L-var 50, param 2 → 100).
+        if (varKey == "switch_1654_73X" &&
+            EventIds.TryGetValue("EVT_GALLEY_AIRSTAIR_LIGHTS", out int lightsEvId))
+        {
+            simConnect.SendPMDGEvent("EVT_GALLEY_AIRSTAIR_LIGHTS", (uint)lightsEvId, (int)(value / 50.0));
+            return true;
+        }
+
+        // Galley water pushbutton radio-pairs — write the chosen button AND
+        // clear its opposite, exactly as PMDG's click code does.
+        if (_waterPairMap.TryGetValue(varKey, out string? oppositeLvar))
+        {
+            int sel = value != 0 ? 1 : 0;
+            simConnect.SetLVar(varKey, sel);
+            simConnect.SetLVar(oppositeLvar, 1 - sel);
+            return true;
+        }
+
+        // Cubby bar position — numeric text input, clamp like the headrests.
+        if (varKey == "cubby_bar_drag_v_SET")
+        {
+            double clampedBar = Math.Clamp(value, 0, 100);
+            simConnect.SetLVar(varDef.Name, clampedBar);
+            announcer.AnnounceImmediate($"{varDef.DisplayName} {clampedBar:F0}");
+            return true;
+        }
+
+        // Binder cookie stash — PMDG's model gates the reveal on the cubby
+        // bar being raised (>98) and runs the reveal animation itself from a
+        // model-side Update loop once L:CubbyTrigger is set (live-verified:
+        // trigger 1 → CubbyTimer ramps to 40, CookiesVis 1; trigger 0 resets).
+        // Raise the bar automatically when revealing so the gate is satisfied.
+        if (varKey == "CubbyTrigger")
+        {
+            int trig = value != 0 ? 1 : 0;
+            if (trig == 1)
+                simConnect.SetLVar("cubby_bar_drag_v", 100);
+            simConnect.SetLVar("CubbyTrigger", trig);
+            return true;
+        }
+
+        // Cupholder drinks — PMDG's click spot picks a pseudo-random drink
+        // (anim positions 1..6). Cycle deterministically so repeated presses
+        // step through every drink; needs MobiFlight for the read-modify-write,
+        // otherwise just place drink 1.
+        if (varKey is "CA_CupholderDrink" or "FO_CupholderDrink")
+        {
+            string cupLvar = varKey == "CA_CupholderDrink" ? "ca_cupholder_rand" : "fo_cupholder_rand";
+            if (simConnect.IsMobiFlightConnected)
+                simConnect.ExecuteCalculatorCode($"(L:{cupLvar}, number) 6 % 1 + (>L:{cupLvar}, number)");
+            else
+                simConnect.SetLVar(cupLvar, 1);
+            return true;
+        }
+
+        // Composite bin / blind buttons — one SetLVar per item. The L-vars are
+        // plain bools toggled by PMDG's own cabin click-spots (write-stick
+        // verified both directions); bins/blinds not fitted on the loaded
+        // cabin layout are harmless no-ops.
+        if (varKey is "CABIN_AllBinsOpen" or "CABIN_AllBinsClose")
+        {
+            double binTarget = varKey == "CABIN_AllBinsOpen" ? 1 : 0;
+            foreach (string lvar in s_binLvars)
+                simConnect.SetLVar(lvar, binTarget);
+            return true;
+        }
+        if (varKey is "CABIN_AllBlindsUp" or "CABIN_AllBlindsDown")
+        {
+            double blindTarget = varKey == "CABIN_AllBlindsDown" ? 1 : 0;
+            foreach (string lvar in s_blindLvars)
+                simConnect.SetLVar(lvar, blindTarget);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 0b. Plain L-vars (Boris/xBAW Audio Works soundpack: ANR_onoff,
-        //     HydPumpMfg, switch_277_73X). These accept a direct SetLVar and
+        //     HydPumpMfg, switch_277_73X — and the cabin furniture toggles
+        //     above that need no special handling: bins, shades, lights,
+        //     curtains, lavatory doors). These accept a direct SetLVar and
         //     persist — verified in-sim — unlike the PMDG-owned CDA switches.
         // ------------------------------------------------------------------
         if (varDef.Type == SimConnect.SimVarType.LVar)
