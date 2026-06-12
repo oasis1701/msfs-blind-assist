@@ -229,10 +229,9 @@ Windows:
              Ctrl+1/Ctrl+2 = left keys, Alt+1/Alt+2 = right keys (or F1/F2
              and F7/F8 in alternate mode).
              Answering is a TWO-STEP flow, like the real unit: the first
-             press arms the answer (e.g. Alt+2 = WILCO), the keys change to
-             CANCEL / SEND and the window says "Press right 2 again to send"
-             — the second Alt+2 actually transmits. After sending, right 2
-             becomes CLOSE to dismiss the message.
+             press arms the answer (e.g. Alt+2 = WILCO) and the keys change
+             to CANCEL / SEND — the second Alt+2 actually transmits. After
+             sending, right 2 becomes CLOSE to dismiss the message.
              PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
              scroll within a long message (Ctrl+PageDown = next page). NOTE:
              on a long multi-page uplink the answer keys stay inactive until

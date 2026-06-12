@@ -168,16 +168,10 @@ public class FlyByWireDcduForm : Form
                 }
                 if (root.TryGetProperty("btns", out var btns))
                 {
-                    string prevR2 = _btnR2;
                     _btnL1 = btns.TryGetProperty("L1", out var l1) ? l1.GetString() ?? "" : "";
                     _btnL2 = btns.TryGetProperty("L2", out var l2) ? l2.GetString() ?? "" : "";
                     _btnR1 = btns.TryGetProperty("R1", out var r1) ? r1.GetString() ?? "" : "";
                     _btnR2 = btns.TryGetProperty("R2", out var r2) ? r2.GetString() ?? "" : "";
-                    // Answer armed (WILCO/UNABLE/STBY/AFFIRM/...) → the unit now
-                    // wants a confirm press. Cue the two-step flow so the pilot
-                    // knows the answer hasn't gone out yet.
-                    if (_btnR2 == "SEND" && prevR2 != "SEND")
-                        _announcer.Announce("Press right 2 again to send.");
                 }
                 if (root.TryGetProperty("act", out var acts))
                 {
