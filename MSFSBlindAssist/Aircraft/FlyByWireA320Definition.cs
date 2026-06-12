@@ -2954,13 +2954,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 { 2, "Engineering display test in progress" }
             }
         },
+        // ARINC FM word — see the FM1 entry; flagged so the announce decodes.
         ["A32NX_FM2_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FM2_MINIMUM_DESCENT_ALTITUDE",
             DisplayName = "Minimum Descent Height (Radio)",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "feet"
+            Units = "feet",
+            IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
         },
         ["A32NX_FCU_EFIS_L_FD_LIGHT_ON"] = new SimConnect.SimVarDefinition
         {
@@ -3360,6 +3362,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 [8] = "Fuel", [9] = "Doors", [10] = "Engine", [11] = "Flight Controls"
             }
         },
+        // FM minimums are ARINC429 words (FmArinc429OutputWord — live-verified 2^32
+        // no-data at the gate); without the flag the announce spoke the raw word.
         ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
@@ -3367,7 +3371,66 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Units = "feet"
+            Units = "feet",
+            IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
+        },
+        // Decision Height (CAT II/III minimums) — same ARINC FM word family; was
+        // entirely missing (only MDA was read), so DH entries were silent.
+        ["A32NX_FM1_DECISION_HEIGHT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FM1_DECISION_HEIGHT",
+            DisplayName = "Decision Height",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "feet",
+            IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
+        },
+        // Predicted takeoff pitch trim (FMS-computed THS target; ARINC degrees,
+        // positive = nose up). A380 parity — decoded in TryGetDisplayOverride.
+        ["A32NX_FM1_TO_PITCH_TRIM"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FM1_TO_PITCH_TRIM",
+            DisplayName = "Predicted Takeoff Pitch Trim",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        // FUEL MODE SEL pushbutton (overhead). The cockpit click toggles the L:var
+        // AND routes the center-tank transfer junctions 4+5 — replicated verbatim
+        // in HandleUIVariableSet (live-verified: junction 4 follows the set).
+        ["A32NX_OVHD_FUEL_MODESEL_MANUAL"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_FUEL_MODESEL_MANUAL",
+            DisplayName = "Fuel Mode Selector",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Auto", [1] = "Manual" }
+        },
+        // Evacuation HORN SHUT OFF. Writing 1 silences the cockpit evac horn
+        // (sound.xml plays it only while PUSH_OVHD_EVAC_HORN <= 0); re-arming the
+        // EVAC COMMAND resets the L:var, so the set is one-way by design — do NOT
+        // pulse it back to 0 (that would resume the horn). Synthetic Act combo.
+        ["A32NX_EVAC_HORN_SHUTOFF"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EVAC_HORN_SHUTOFF",
+            DisplayName = "Evacuation Horn Shut Off",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Silence horn" }
+        },
+        // Blue (yellow-named in FBW vars) electric pump OVERRIDE — the maintenance
+        // panel PB that forces the blue e-pump on ground for flight-control checks.
+        // Momentary press-to-toggle: the combo state reads _IS_ON and the set
+        // pulses _IS_PRESSED (live-verified: separated press/release toggles the
+        // latch; a same-frame 1->0 pulse is NOT seen by the Rust sampler).
+        ["A32NX_OVHD_HYD_EPUMPY_OVRD_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_EPUMPY_OVRD_IS_ON",
+            DisplayName = "Blue Electric Pump Override",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Override on" }
         },
         ["A32NX_DESTINATION_QNH"] = new SimConnect.SimVarDefinition
         {
@@ -5060,6 +5123,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             // FAC-computed rudder trim position (ARINC; decoded in TryGetDisplayOverride).
             "A32NX_FAC_1_RUDDER_TRIM_POS",
+            // FMS-predicted takeoff THS setting (ARINC; decoded in TryGetDisplayOverride).
+            "A32NX_FM1_TO_PITCH_TRIM",
             // Nosewheel-steering angle + tiller-handle read-outs (decoded in TryGetDisplayOverride).
             "A32NX_NOSE_WHEEL_POSITION", "A32NX_TILLER_HANDLE_POSITION"
         },
@@ -5324,6 +5389,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Hydraulics"] = new List<string>
         {
+            "A32NX_OVHD_HYD_EPUMPY_OVRD_IS_ON",
             "A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO",
             "A32NX_OVHD_HYD_ENG_1_PUMP_PB_HAS_FAULT",
             "A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO",
@@ -5340,7 +5406,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED",
         },
         ["Fuel"] = new List<string>
-        { 
+        {
+            "A32NX_OVHD_FUEL_MODESEL_MANUAL",
             "FUEL_PUMP_L1",
             "FUEL_PUMP_L2",
             "FUEL_PUMP_R1",
@@ -5472,6 +5539,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_EVAC_COMMAND_TOGGLE",
             "A32NX_EVAC_CAPT_TOGGLE",
+            "A32NX_EVAC_HORN_SHUTOFF",
         },
         ["Cargo Smoke"] = new List<string>
         {
@@ -6282,10 +6350,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (cache != null)
                 activeCpc = (cpc1Disc.HasValue && new SimConnect.Arinc429Word(cpc1Disc.Value).BitValueOr(11, false)) ? 1 : 2;
             string cpc = $"A32NX_PRESS_CPC_{activeCpc}_";
-            r.Add(("Cabin altitude", cpc + "CABIN_ALTITUDE", FtAir));
-            r.Add(("Cabin vertical speed", cpc + "CABIN_VS", FpmAir));
-            r.Add(("Differential pressure", cpc + "CABIN_DELTA_PRESSURE", PsiAir));
-            r.Add(("Outflow valve", cpc + "OUTFLOW_VALVE_OPEN_PERCENTAGE", PctAir));
+            // In MANUAL pressurization mode (MODE SEL -> MAN) the CPC ARINC words go
+            // invalid — exactly the abnormal scenario where the pilot hand-flies cabin
+            // V/S. Fall back to the plain A32NX_PRESS_MAN_* L:vars the FBW SD itself
+            // reads in MAN mode (live-verified plain values at the gate).
+            if (cache == null || ArincValid(cpc + "CABIN_ALTITUDE"))
+            {
+                r.Add(("Cabin altitude", cpc + "CABIN_ALTITUDE", FtAir));
+                r.Add(("Cabin vertical speed", cpc + "CABIN_VS", FpmAir));
+                r.Add(("Differential pressure", cpc + "CABIN_DELTA_PRESSURE", PsiAir));
+                r.Add(("Outflow valve", cpc + "OUTFLOW_VALVE_OPEN_PERCENTAGE", PctAir));
+            }
+            else
+            {
+                r.Add(("Cabin altitude (manual mode)", "A32NX_PRESS_MAN_CABIN_ALTITUDE", v => $"{v:0} feet"));
+                r.Add(("Cabin vertical speed (manual mode)", "A32NX_PRESS_MAN_CABIN_VS", v => $"{v:0} feet per minute"));
+                r.Add(("Differential pressure (manual mode)", "A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", v => $"{v:0.0} psi"));
+                r.Add(("Outflow valve (manual mode)", "A32NX_PRESS_MAN_OUTFLOW_VALVE_OPEN_PERCENTAGE", v => $"{v:0} %"));
+            }
             r.Add(("Safety valve", "A32NX_PRESS_SAFETY_VALVE_OPEN_PERCENTAGE", Pct));
             // Landing elevation: prefer the active CPC's word when it's a valid ARINC signal;
             // fall back to the FM value (which renders "auto" when the FMS computes it).
@@ -6305,6 +6387,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 r.Add(("Pressure controller 1 landing elevation", "A32NX_PRESS_CPC_1_LANDING_ELEVATION", _ => ""));
                 r.Add(("Pressure controller 2 landing elevation", "A32NX_PRESS_CPC_2_LANDING_ELEVATION", _ => ""));
                 r.Add(("Pressure controller 1 discrete", "A32NX_PRESS_CPC_1_DISCRETE_WORD", _ => ""));
+                // Manual-mode fallback vars (read when the CPC words go invalid).
+                r.Add(("Manual cabin altitude", "A32NX_PRESS_MAN_CABIN_ALTITUDE", _ => ""));
+                r.Add(("Manual cabin VS", "A32NX_PRESS_MAN_CABIN_VS", _ => ""));
+                r.Add(("Manual delta pressure", "A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", _ => ""));
+                r.Add(("Manual outflow valve", "A32NX_PRESS_MAN_OUTFLOW_VALVE_OPEN_PERCENTAGE", _ => ""));
             }
         }
         else if (page == 4) // APU
@@ -6750,6 +6837,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             || varKey.StartsWith("COM_STANDBY_FREQUENCY:", StringComparison.Ordinal))
         {
             displayText = $"{value / 1000.0:F3}";
+            return true;
+        }
+        // Predicted takeoff pitch trim (ARINC429 degrees, positive = nose UP;
+        // "Not computed" until the FMS has perf data). Mirrors the A380 decode.
+        if (varKey == "A32NX_FM1_TO_PITCH_TRIM")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not computed"; return true; }
+            double deg = w.Value;
+            displayText = Math.Abs(deg) < 0.05
+                ? "Neutral"
+                : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
             return true;
         }
 
@@ -7555,6 +7654,48 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // 2026-06-04 against A320_NEO_INTERIOR.xml [writes it] + PseudoFWC.ts:2375 [reads it]; the
         // old "no A" PUSH_AUTOPILOT_MASTERWARN_L was DEAD, so this aural-cancel never worked).
         // Calc-path write. The combo announces its own On/Off, so no extra speech here.
+        // FUEL MODE SEL — the cockpit click toggles the L:var AND routes the
+        // center-tank transfer junctions 4+5 with the same value (cockpit XML
+        // LEFT_SINGLE_CODE, replicated verbatim for an absolute set). Live-
+        // verified: junction 4 follows; restores cleanly on Auto.
+        if (varKey == "A32NX_OVHD_FUEL_MODESEL_MANUAL")
+        {
+            int t = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode(
+                $"{t} (>L:A32NX_OVHD_FUEL_MODESEL_MANUAL) {t} 4 (>K:2:FUELSYSTEM_JUNCTION_SET) {t} 5 (>K:2:FUELSYSTEM_JUNCTION_SET)");
+            return true;
+        }
+
+        // Evacuation HORN SHUT OFF — one-way write by design: 1 silences the horn
+        // (sound gate plays while the L:var <= 0) and the EVAC COMMAND re-arm
+        // resets it. Never pulse back to 0 — that would resume the horn.
+        if (varKey == "A32NX_EVAC_HORN_SHUTOFF")
+        {
+            if (value > 0.5)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_OVHD_EVAC_HORN)");
+                announcer.AnnounceImmediate("Evacuation horn silenced");
+            }
+            return true;
+        }
+
+        // Blue electric pump OVERRIDE — momentary press-to-toggle (the Rust
+        // controller latches _IS_ON on each press edge). Pulse only when the
+        // requested state differs from the cached latch; the press and release
+        // are SEPARATE calc calls so they land in different frames (a same-frame
+        // 1->0 is not seen by the sampler — live-verified).
+        if (varKey == "A32NX_OVHD_HYD_EPUMPY_OVRD_IS_ON")
+        {
+            double? current = simConnect.GetCachedVariableValue(varKey);
+            int target = value > 0.5 ? 1 : 0;
+            if (!current.HasValue || (current.Value > 0.5 ? 1 : 0) != target)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:A32NX_OVHD_HYD_EPUMPY_OVRD_IS_PRESSED)");
+                simConnect.ExecuteCalculatorCode("0 (>L:A32NX_OVHD_HYD_EPUMPY_OVRD_IS_PRESSED)");
+            }
+            return true;
+        }
+
         if (varKey == "A32NX_FIRE_TEST_ENG1" || varKey == "A32NX_FIRE_TEST_ENG2"
             || varKey == "A32NX_FIRE_TEST_APU" || varKey == "A32NX_FIRE_TEST_CARGO")
         {
