@@ -940,10 +940,10 @@ public class SimConnectManager
                         (DATA_REQUESTS)dataDefId,
                         (DATA_DEFINITIONS)dataDefId,
                         SIMCONNECT_OBJECT_ID_USER,
-                        SIMCONNECT_PERIOD.SECOND,
-                        SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                        varDef.HighFrequency ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND,
+                        varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
-                    System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}");
+                    System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
                 }
 
                 // Log visual guidance variables specifically

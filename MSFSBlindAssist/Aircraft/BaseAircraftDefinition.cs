@@ -99,12 +99,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "GForce",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                // MUST be IsAnnounced=true: the continuous monitoring batch only includes
-                // Continuous + IsAnnounced vars (SimConnectManager ~L805). With it false this
-                // was never monitored, so the peak-g tracker never got fed and the landing
-                // readout always said "no landing recorded". MainForm routes G_FORCE to the
-                // landing tracker and suppresses the generic call-out (HandleSpecialAnnouncements).
-                IsAnnounced = true
+                // MUST be IsAnnounced=true to be monitored at all. ExcludeFromBatch +
+                // HighFrequency route it through a per-var SIM_FRAME subscription — the
+                // 1 Hz continuous batch missed the touchdown impact spike entirely, so
+                // the peak-g readout under-reported every landing. MainForm routes
+                // G_FORCE to the landing tracker and suppresses the generic call-out
+                // (HandleSpecialAnnouncements).
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                HighFrequency = true
             },
             // Touchdown vertical speed — the sim latches this at touchdown and it persists until
             // the next landing, so the ReadLastLandingRate output hotkey reads it straight from

@@ -1914,8 +1914,10 @@ public partial class MainForm : Form
             {
                 // Read straight from the persistent touchdown-velocity cache (ft/s × 60 = fpm).
                 // The value is latched by the sim at touchdown and survives until the next landing.
+                // Gated on a touchdown edge actually OBSERVED this session (HasLanding) — the
+                // SimVar can hold a junk latched value at a runway spawn.
                 double? td = simConnectManager.GetCachedVariableValue("PLANE_TOUCHDOWN_NORMAL_VELOCITY");
-                if (td.HasValue && System.Math.Abs(td.Value) > 0.01)
+                if (landingRateAnnouncer.HasLanding && td.HasValue && System.Math.Abs(td.Value) > 0.01)
                 {
                     int fpm = (int)System.Math.Round(System.Math.Abs(td.Value) * 60.0);
                     announcer.AnnounceImmediate($"Landing rate {fpm} feet per minute.");

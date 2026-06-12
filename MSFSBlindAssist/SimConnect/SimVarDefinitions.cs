@@ -50,6 +50,15 @@ public class SimVarDefinition
     /// offered a checkbox whose un-check did nothing.
     /// </summary>
     public bool ExcludeFromMonitorManager { get; set; }
+
+    /// <summary>
+    /// Only meaningful with ExcludeFromBatch on a Continuous var: request the per-var
+    /// individual subscription at SIMCONNECT_PERIOD.SIM_FRAME (~30–60 Hz) with the
+    /// CHANGED flag, instead of SECOND. For transient-capture vars (G FORCE touchdown
+    /// spike) where 1 Hz sampling misses the event entirely. CHANGED keeps steady-state
+    /// traffic near zero (a static value produces no deliveries).
+    /// </summary>
+    public bool HighFrequency { get; set; }
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
 
