@@ -538,7 +538,9 @@ public class FBWA380MCDUForm : Form
         // A stale old-page elements push renders the same lines it already showed, so its signature
         // is unchanged — in that case keep the reset pending instead of jumping to line 0 of the old
         // list (the wrong-line-after-page-change bug).
-        string signature = string.Join("", lines);
+        // Join with a separator so line boundaries are part of the signature —
+        // ["AB","C"] must not equal ["A","BC"].
+        string signature = string.Join("\n", lines);
         bool contentChanged = signature != _lastRenderedSignature;
         _lastRenderedSignature = signature;
 
