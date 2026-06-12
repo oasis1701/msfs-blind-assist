@@ -66,6 +66,8 @@ public partial class MainForm : Form
     private CoherentFwsFailureClient? coherentFwsFailureClient;
     private Forms.FBWA380.FBWA380OansForm? fbwA380OansForm;
     private Forms.FBWA380.FBWA380RmpForm? fbwA380RmpForm;
+    // A32NX DCDU (CPDLC) window — one-shot Coherent evals, no persistent socket.
+    private Forms.FlyByWireA320.FlyByWireDcduForm? fbwDcduForm;
     // Live A380X Electronic Checklist window (normal checklists + ECP controls),
     // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
     private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
@@ -2056,6 +2058,16 @@ public partial class MainForm : Form
                     announcer.AnnounceImmediate("The Radio Management Panel window is only available on the A380.");
                 }
                 break;
+            case HotkeyAction.ShowDCDU:
+                if (currentAircraft.AircraftCode == "A320")
+                {
+                    ShowA32NXDcduDialog();
+                }
+                else
+                {
+                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX.");
+                }
+                break;
             case HotkeyAction.ShowOANS:
                 if (currentAircraft?.AircraftCode == "FBW_A380")
                 {
@@ -2879,6 +2891,22 @@ public partial class MainForm : Form
     // Vacate) exit selection and airport/runway/exit search.
     // Open the accessible A380 RMP window (Ctrl+Shift+R in input mode) — replaces the old
     // per-key RMP button panel. Scrapes A380X_RMP_1/2 live; one window, Captain ↔ FO combo.
+    private void ShowA32NXDcduDialog()
+    {
+        // Opened by an INPUT-mode hotkey — release the mode hotkeys so the
+        // form's Ctrl+1/2 / Alt+1/2 soft keys and PageUp/Down navigation reach
+        // the window instead of the global registrations (RMP/OANS precedent).
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (fbwDcduForm == null || fbwDcduForm.IsDisposed)
+        {
+            fbwDcduForm = new Forms.FlyByWireA320.FlyByWireDcduForm(announcer, simConnectManager);
+        }
+        fbwDcduForm.Show();
+        fbwDcduForm.BringToFront();
+        fbwDcduForm.Activate();
+    }
+
     private void ShowFBWA380RmpDialog()
     {
         if (currentAircraft is not FlyByWireA380Definition a380rmp) return;
@@ -4640,6 +4668,13 @@ public partial class MainForm : Form
         {
             fbwA380RmpForm.Dispose();
             fbwA380RmpForm = null;
+        }
+        // The DCDU window polls the A32NX DCDU view via one-shot evals on a timer —
+        // dispose on swap so it can't keep evaluating against the wrong aircraft.
+        if (fbwDcduForm != null && !fbwDcduForm.IsDisposed)
+        {
+            fbwDcduForm.Dispose();
+            fbwDcduForm = null;
         }
         // The ECL checklist form is bound (readonly ctor field) to the CoherentEWDClient
         // that StopA380EWDMonitor disposes below; left alive it would be reused on the

@@ -220,6 +220,13 @@ FCU Set Values (each opens a window: value entry, knob Push/Pull, mode toggles, 
 Windows:
   Shift+M    Open MCDU window
   Shift+T    Open flyPad EFB window
+  Ctrl+Shift+D  Open DCDU window (CPDLC — read uplinks and answer WILCO /
+             STANDBY / UNABLE. In the window: Ctrl+1/Ctrl+2 = left soft keys,
+             Alt+1/Alt+2 = right soft keys, PageUp/PageDown = older/newer
+             message, Ctrl+PageUp/PageDown = scroll a long message, F5 refresh.
+             Needs a datalink connection: set the ACARS provider (Hoppie /
+             SayIntentions / BeyondATC) in the flyPad Settings, then log on
+             to ATC from the MCDU ATSU pages.)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
