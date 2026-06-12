@@ -32,6 +32,7 @@ namespace MSFSBlindAssist.SimConnect
         private const int PollIntervalMs = 1000;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
+        private const int ConnectTimeoutMs = 4000;
 
         /// <summary>Raised (on the creating thread) for each NEW failure, already formatted
         /// for speech (e.g. "ENG 3 FAIL, Amber").</summary>
@@ -96,7 +97,21 @@ namespace MSFSBlindAssist.SimConnect
 
         public void Start()
         {
-            if (_cts != null) return;
+            if (_cts != null)
+            {
+                // Stop() cancels _cts but intentionally does not null it (RunLoop may still be
+                // unwinding on it), so Start() after Stop() used to be a SILENT no-op. Restart
+                // is not a supported lifecycle — every call site dispose-and-recreates — so
+                // fail loudly in Debug and log in Release rather than half-support it.
+                if (_cts.IsCancellationRequested)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        "CoherentFwsFailureClient.Start() called after Stop() — not supported; create a new instance.");
+                    System.Diagnostics.Debug.Assert(false,
+                        "CoherentFwsFailureClient: Start() after Stop() is a no-op. Dispose and create a new client instead.");
+                }
+                return;
+            }
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => RunLoop(_cts.Token));
         }
@@ -124,6 +139,10 @@ namespace MSFSBlindAssist.SimConnect
                     System.Diagnostics.Debug.WriteLine($"CoherentFwsFailureClient loop: {ex.Message}");
                     try { _ws?.Abort(); } catch { }
                     _ws = null;
+                    // Fail any in-flight Runtime.evaluate calls now instead of letting
+                    // them hang until their per-call timeout (the socket is dead).
+                    foreach (var kv in _pending) kv.Value.TrySetCanceled();
+                    _pending.Clear();
                     _baselineDone = false;   // page went away → re-baseline silently on reconnect
                     try { await Task.Delay(ReconnectDelayMs, ct); } catch { break; }
                 }
@@ -148,7 +167,17 @@ namespace MSFSBlindAssist.SimConnect
             if (pageId == null) return false;
 
             var ws = new ClientWebSocket();
-            await ws.ConnectAsync(new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}"), ct);
+            try
+            {
+                using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                connectCts.CancelAfter(ConnectTimeoutMs);
+                await ws.ConnectAsync(new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}"), connectCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                try { ws.Dispose(); } catch { }
+                return false;
+            }
             _ws = ws;
             foreach (var kv in _pending) kv.Value.TrySetCanceled();   // cancel evals orphaned by the reconnect (else they hang to timeout)
             _pending.Clear();

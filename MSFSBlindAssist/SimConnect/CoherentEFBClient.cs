@@ -35,6 +35,7 @@ namespace MSFSBlindAssist.SimConnect
         private const int PollIntervalMs = 600;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
+        private const int ConnectTimeoutMs = 4000;
         // Unit-separator used to join a <select>'s option labels into one state value.
         private const char OptionSeparator = (char)0x1f;
 
@@ -67,7 +68,21 @@ namespace MSFSBlindAssist.SimConnect
 
         public void Start()
         {
-            if (_cts != null) return;
+            if (_cts != null)
+            {
+                // Stop() cancels _cts but intentionally does not null it (RunLoop may still be
+                // unwinding on it), so Start() after Stop() used to be a SILENT no-op. Restart
+                // is not a supported lifecycle — every call site dispose-and-recreates — so
+                // fail loudly in Debug and log in Release rather than half-support it.
+                if (_cts.IsCancellationRequested)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        "CoherentEFBClient.Start() called after Stop() — not supported; create a new instance.");
+                    System.Diagnostics.Debug.Assert(false,
+                        "CoherentEFBClient: Start() after Stop() is a no-op. Dispose and create a new client instead.");
+                }
+                return;
+            }
             _cts = new CancellationTokenSource();
             try
             {
@@ -151,6 +166,10 @@ namespace MSFSBlindAssist.SimConnect
                     _agentInstalled = false;
                     try { _ws?.Abort(); } catch { }
                     _ws = null;
+                    // Fail any in-flight Runtime.evaluate calls now instead of letting
+                    // them hang until their per-call timeout (the socket is dead).
+                    foreach (var kv in _pending) kv.Value.TrySetCanceled();
+                    _pending.Clear();
                     try { await Task.Delay(ReconnectDelayMs, ct); } catch { break; }
                 }
             }
@@ -185,7 +204,23 @@ namespace MSFSBlindAssist.SimConnect
 
             var ws = new ClientWebSocket();
             var url = new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}");
-            await ws.ConnectAsync(url, ct);
+            try
+            {
+                // Per-attempt connect timeout (CoherentEvalClient pattern). Without it a
+                // half-open debugger port can park ConnectAsync indefinitely — and in the
+                // Display/EWD clients that wedges while HOLDING _connectLock.
+                using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                connectCts.CancelAfter(ConnectTimeoutMs);
+                await ws.ConnectAsync(url, connectCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Timeout, NOT shutdown — must not surface as OperationCanceledException,
+                // which the RunLoop catch treats as "stop": that would kill the loop forever.
+                try { ws.Dispose(); } catch { }
+                _connected = false;
+                return false;
+            }
             _ws = ws;
             foreach (var kv in _pending) kv.Value.TrySetCanceled();   // cancel evals orphaned by the reconnect (else they hang to timeout)
             _pending.Clear();
