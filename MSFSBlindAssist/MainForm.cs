@@ -311,11 +311,13 @@ public partial class MainForm : Form
         // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
         // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
-        // Suppress traffic auto-alerts in two contexts: during takeoff roll
-        // (pilot's hands are on rudder + throttle, can't act on a callout)
-        // and when Taxi Guidance is not engaged (no route loaded / pre-pushback
-        // / post-stop). Hotkey summary (Alt+G) remains available in both cases
-        // because it lives outside this poll loop.
+        // Suppress traffic auto-alerts in three contexts: during takeoff roll
+        // (pilot's hands are on rudder + throttle, can't act on a callout),
+        // when Taxi Guidance is not engaged (no route loaded / pre-pushback
+        // / post-stop), and during the landing rollout (hands on brakes +
+        // rudder, and the exit/runway-end callouts must not be talked over).
+        // Hotkey summary (Alt+G) remains available in all cases because it
+        // lives outside this poll loop.
         groundTrafficMonitor.SuppressCheck = () =>
             takeoffAssistManager.IsActive
             || taxiGuidanceManager.State == TaxiGuidanceState.Inactive
