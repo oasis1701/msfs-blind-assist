@@ -666,6 +666,15 @@ public class TaxiGuidanceManager : IDisposable
     private const double LINEUP_NOISE_DEADBAND_FEET = 8.0;
     private const double LINEUP_INTERCEPT_SAT_FEET = 100.0;
 
+    // Minimum along-runway distance (m) the lineup point must still be AHEAD of
+    // the aircraft for the LiningUp status readout to speak "X to go". At or
+    // below this (abeam/behind — the normal case once the pilot has turned onto
+    // the runway at an entry downfield of the start-table point), the distance
+    // is omitted: a lineup point behind the aircraft has no actionable meaning,
+    // and a straight-line readout there GROWS with correct forward progress
+    // (the "increasing distance while centered" complaint, KBWI 28 2026-06-11).
+    private const double LINEUP_TOGO_MIN_AHEAD_M = 5.0;
+
     // Conversion constants
     private const double METERS_TO_FEET = 3.28084;
     private const double METERS_TO_NM = 0.000539957;
@@ -5225,12 +5234,38 @@ public class TaxiGuidanceManager : IDisposable
             // cross-track feet — the tone is the cross-track instrument
             // (see the blind-pilot-cue rule); distance-remaining + heading
             // are the numbers a pilot can actually use.
+            //
+            // RUNWAY lineups measure SIGNED ALONG-RUNWAY distance to the lineup
+            // point, NOT straight-line distance. Pilots normally reach the runway
+            // at or downfield of the navdata start-table point, so the point
+            // passes abeam and falls BEHIND during the turn onto the centerline —
+            // straight-line distance then GROWS with every metre of correct
+            // forward progress (KBWI 28, 2026-06-11: 55 m abeam climbing to
+            // 165 m while the pilot sat 9 ft off centerline, 2° off heading).
+            // The along-track projection decreases monotonically with forward
+            // progress and is immune to lateral convergence; once the point is
+            // abeam/behind (≤ LINEUP_TOGO_MIN_AHEAD_M) the distance is omitted
+            // entirely — a lineup point behind the aircraft carries no
+            // actionable information, and heading + tone own the alignment.
+            // GATE lineups keep straight-line: the aircraft converges ONTO the
+            // gate point, so the distance is meaningful all the way to zero.
             string lineupDistStr = "";
             if (_hasLineupTarget && _positionInitialized)
             {
-                double dM = TaxiGraph.FastDistanceMeters(
-                    _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
-                lineupDistStr = $" {FormatDistance(dM)} to go.";
+                if (_isRunwayLineup)
+                {
+                    double aheadM = SignedAlongRunwayMeters(
+                        _lineupTargetLat, _lineupTargetLon,
+                        _lastLat, _lastLon, _lineupHeadingTrue);
+                    if (aheadM > LINEUP_TOGO_MIN_AHEAD_M)
+                        lineupDistStr = $" {FormatDistance(aheadM)} to go.";
+                }
+                else
+                {
+                    double dM = TaxiGraph.FastDistanceMeters(
+                        _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
+                    lineupDistStr = $" {FormatDistance(dM)} to go.";
+                }
             }
             return $"Lining up {_destinationName}, {what} heading {hdg}. Follow the tone.{lineupDistStr}";
         }
