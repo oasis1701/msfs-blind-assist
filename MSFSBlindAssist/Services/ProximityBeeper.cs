@@ -20,6 +20,7 @@ public sealed class ProximityBeeper : IDisposable
     private AudioToneGenerator? _gen;
     private System.Threading.Timer? _timer;
     private double _volume = 0.05;
+    private HandFlyWaveType _waveform = HandFlyWaveType.Sine;
     private double _intervalMs = DockingGeometry.BeepIntervalFarMs;
     private double _smoothedIntervalMs = DockingGeometry.BeepIntervalFarMs;
     private bool _active;
@@ -39,6 +40,17 @@ public sealed class ProximityBeeper : IDisposable
             _smoothedIntervalMs = DockingGeometry.BeepIntervalFarMs;
             _intervalMs = DockingGeometry.BeepIntervalFarMs;
             _lastTickMs = _stopwatch.Elapsed.TotalMilliseconds;
+            // The generator is kept alive across Start calls (a docking re-engage goes
+            // through SilenceLocked, which does NOT Stop the beeper), so a waveform
+            // setting changed between engagements must recreate it — reusing the old
+            // generator would silently keep the stale waveform.
+            if (_gen != null && waveform != _waveform)
+            {
+                try { _gen.Stop(); } catch { }
+                _gen.Dispose();
+                _gen = null;
+            }
+            _waveform = waveform;
             if (_gen == null)
             {
                 _gen = new AudioToneGenerator();
