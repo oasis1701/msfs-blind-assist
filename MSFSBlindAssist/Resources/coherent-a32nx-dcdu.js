@@ -20,23 +20,52 @@
     var entries = [];
     var svg = document.querySelector('svg.dcdu');
     var sr = svg ? svg.getBoundingClientRect() : null;
+    // A multi-line DCDU message is ONE <text> whose <tspan> children are the
+    // visual lines — textContent concatenates them WITHOUT separators ("RECALL
+    // EMPTYCONSULT MSG RECORD"), so content tspans are emitted as their own
+    // items with their own rects and cluster into proper rows.
+    function wholeText(node) {
+      var spans = node.querySelectorAll('tspan');
+      if (spans.length === 0) return (node.textContent || '').replace(/\s+/g, ' ').trim();
+      var parts = [];
+      for (var s = 0; s < spans.length; s++) {
+        var st = (spans[s].textContent || '').replace(/\s+/g, ' ').trim();
+        if (st) parts.push(st);
+      }
+      return parts.join(' ');
+    }
     var texts = document.querySelectorAll('text');
     for (var i = 0; i < texts.length; i++) {
       var t = texts[i];
-      var txt = (t.textContent || '').replace(/\s+/g, ' ').trim();
-      if (!txt) continue;
       var cls = t.getAttribute('class') || '';
       var r = t.getBoundingClientRect();
       if (cls.indexOf('button') !== -1) {
+        var txt = wholeText(t);
+        if (!txt) continue;
         var side = cls.indexOf('button-left') !== -1 ? 'L' : 'R';
         var rel = sr && sr.height > 0 ? (r.top - sr.top) / sr.height : 1;
         var slot = rel > 0.86 ? '2' : '1';
         var key = side + slot;
-        if (btns[key]) key = side + (slot === '1' ? '2' : '1');
+        if (btns[key]) { slot = slot === '1' ? '2' : '1'; key = side + slot; }
         btns[key] = txt;
-        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt, btn: side });
+        // The label carries its key identity inline — "(L1)".."(R2)" — so a
+        // first-glance read tells which chord presses it (L=Ctrl/F1-F2,
+        // R=Alt/F7-F8 per the MCDU LSK scheme).
+        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt + ' (' + key + ')', btn: side });
       } else {
-        entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: txt, btn: '' });
+        var spans2 = t.querySelectorAll('tspan');
+        if (spans2.length > 1) {
+          for (var k = 0; k < spans2.length; k++) {
+            var stxt = (spans2[k].textContent || '').replace(/\s+/g, ' ').trim();
+            if (!stxt) continue;
+            var srct = spans2[k].getBoundingClientRect();
+            entries.push({ x: srct.left, y: srct.top, h: srct.height || 0, txt: stxt, btn: '' });
+          }
+        } else {
+          var ptxt = (t.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!ptxt) continue;
+          entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: ptxt, btn: '' });
+        }
       }
     }
     entries.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
