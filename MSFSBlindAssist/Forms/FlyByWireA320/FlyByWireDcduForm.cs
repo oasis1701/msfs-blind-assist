@@ -180,6 +180,13 @@ public class FlyByWireDcduForm : Form
                     _actR1 = acts.TryGetProperty("R1", out var a3) && a3.GetBoolean();
                     _actR2 = acts.TryGetProperty("R2", out var a4) && a4.GetBoolean();
                 }
+                else
+                {
+                    // Older scrape js without the act field (hot-dropped mix):
+                    // assume label-present = active rather than refusing every key.
+                    _actL1 = _btnL1.Length > 0; _actL2 = _btnL2.Length > 0;
+                    _actR1 = _btnR1.Length > 0; _actR2 = _btnR2.Length > 0;
+                }
             }
             catch
             {
