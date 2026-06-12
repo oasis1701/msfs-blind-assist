@@ -1146,10 +1146,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // cache feeds the beta-target decode above.
         Mon("A32NX_BETA_TARGET_ACTIVE", "Sideslip target",
             new Dictionary<double, string> { [0] = "inactive", [1] = "active" });
-        // TCAS resolution-advisory vertical-speed band (green = fly toward, red = avoid). Only
-        // meaningful during an RA; decoded "fly to N fpm" / "—" in TryGetDisplayOverride.
-        Read("A32NX_TCAS_VSPEED_GREEN", "TCAS target vertical speed", "feet per minute");
-        Read("A32NX_TCAS_VSPEED_RED", "TCAS avoid vertical speed", "feet per minute");
+        // TCAS resolution-advisory vertical-speed band (green = fly toward, red = avoid).
+        // FBW writes ONLY the :1/:2 INDEXED L:vars (LegacyTcasComputer.ts:1281-1285 —
+        // min/max of each band); the unindexed names are never written, so the old
+        // unindexed reads could never see an RA. Continuous (batch path — the proven
+        // transport for colon-indexed L:vars, same as A32NX_AUTOTHRUST_TLA:n); cached
+        // silently in ProcessSimVarUpdate and spoken as composed RA guidance.
+        MonNum("A32NX_TCAS_VSPEED_GREEN:1", "TCAS target vertical speed minimum", "feet per minute");
+        MonNum("A32NX_TCAS_VSPEED_GREEN:2", "TCAS target vertical speed maximum", "feet per minute");
+        MonNum("A32NX_TCAS_VSPEED_RED:1", "TCAS avoid vertical speed minimum", "feet per minute");
+        MonNum("A32NX_TCAS_VSPEED_RED:2", "TCAS avoid vertical speed maximum", "feet per minute");
+        // RA detail (plain unindexed L:vars): corrective flag, up/down advisory status
+        // (0 none, 1 climb/descend, 2 don't, 3/4/5 don't >500/1000/2000 fpm) and the
+        // rate to maintain — together these compose the spoken "what to fly" guidance
+        // (see ComposeTcasRaGuidance). All reset by FBW on clear of conflict.
+        MonNum("A32NX_TCAS_RA_CORRECTIVE", "TCAS RA corrective");
+        MonNum("A32NX_TCAS_RA_UP_ADVISORY_STATUS", "TCAS RA up advisory");
+        MonNum("A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", "TCAS RA down advisory");
+        MonNum("A32NX_TCAS_RA_RATE_TO_MAINTAIN", "TCAS RA rate to maintain", "feet per minute");
         // Managed / preselected target speeds + selected V/S + expedite + flight directors.
         // Decoded in TryGetDisplayOverride (none / knots / mach / fpm). Preselect = -1 when unset.
         Read("A32NX_SPEEDS_MANAGED_PFD", "Managed speed", "knots");
@@ -3322,7 +3336,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
             "PFD_RA", "PFD_VS", "PFD_TRANS_ALT", "PFD_TRANS_LVL",
             "FCU_SEL_ALT", "FCU_SEL_HDG", "PFD_SAT", "PFD_TAT",
-            "A32NX_BETA_TARGET", "A32NX_TCAS_VSPEED_GREEN", "A32NX_TCAS_VSPEED_RED",
+            "A32NX_BETA_TARGET", "A32NX_TCAS_VSPEED_GREEN:1", "A32NX_TCAS_VSPEED_RED:1",
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
             "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT",
@@ -3477,6 +3491,70 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private string? _lastAllDetent;
     private bool _tlaBaselineDone;   // suppress the startup "thrust 1/2/3/4 / all" spam
     private readonly HashSet<string> _rowRopActive = new();   // active ROW/ROP/OANS warning bits
+
+    // TCAS resolution-advisory guidance. The detail vars (corrective flag, up/down
+    // advisory status, rate to maintain, green/red V/S bands) are cached silently;
+    // during an RA (A32NX_TCAS_STATE == 2) every cache update recomposes the spoken
+    // "what to fly" sentence and announces it when it CHANGES — so the pilot hears
+    // the band once per advisory plus any strengthening/reversal, never per frame.
+    private int _tcasAdvisoryState;                       // 0 none, 1 TA, 2 RA
+    private bool _tcasRaCorrective;
+    private int _tcasRaUpAdvisory, _tcasRaDownAdvisory;   // UpDownAdvisoryStatus 0-5
+    private double _tcasRaRate;                           // rate to maintain, fpm
+    private double _tcasGreenMin, _tcasGreenMax, _tcasRedMin, _tcasRedMax;
+    private string _lastTcasRaGuidance = "";
+
+    private void MaybeAnnounceTcasRaGuidance(ScreenReaderAnnouncer announcer)
+    {
+        if (_tcasAdvisoryState != 2) return;
+        string text = ComposeTcasRaGuidance();
+        if (text.Length == 0 || text == _lastTcasRaGuidance) return;
+        _lastTcasRaGuidance = text;
+        // Mute rides the TCAS_STATE monitor entry — one Ctrl+M checkbox governs
+        // both the state announce and the composed guidance.
+        if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains("A32NX_TCAS_STATE"))
+            announcer.AnnounceImmediate(text);
+    }
+
+    /// <summary>
+    /// Builds the spoken RA guidance from the cached detail vars. Corrective RA →
+    /// the green fly-to band ("Climb. Fly vertical speed plus 1500 to plus 2000
+    /// feet per minute."); preventive RA → the do-not limits and/or the rate to
+    /// maintain. Empty when nothing meaningful is cached yet (the next var update
+    /// recomposes). Enum semantics from FBW TcasConstants.ts (UpDownAdvisoryStatus).
+    /// </summary>
+    private string ComposeTcasRaGuidance()
+    {
+        bool greenBand = Math.Abs(_tcasGreenMin) >= 1 || Math.Abs(_tcasGreenMax) >= 1;
+        if (_tcasRaCorrective && greenBand)
+        {
+            string action = _tcasGreenMin >= -1 ? "Climb"
+                          : _tcasGreenMax <= 1 ? "Descend"
+                          : "Adjust vertical speed";
+            return $"TCAS: {action}. Fly vertical speed {FmtSignedFpm(_tcasGreenMin)} to {FmtSignedFpm(_tcasGreenMax)} feet per minute.";
+        }
+        var parts = new List<string>();
+        string? up = TcasAdvisoryPhrase(_tcasRaUpAdvisory, "climb");
+        string? down = TcasAdvisoryPhrase(_tcasRaDownAdvisory, "descend");
+        if (up != null) parts.Add(up);
+        if (down != null) parts.Add(down);
+        if (Math.Abs(_tcasRaRate) >= 1)
+            parts.Add($"Maintain {FmtSignedFpm(_tcasRaRate)} feet per minute");
+        return parts.Count == 0 ? "" : "TCAS: " + string.Join(". ", parts) + ".";
+    }
+
+    private static string? TcasAdvisoryPhrase(int status, string verb) => status switch
+    {
+        1 => verb == "climb" ? "Climb" : "Descend",
+        2 => $"Do not {verb}",
+        3 => $"Do not {verb} more than 500 feet per minute",
+        4 => $"Do not {verb} more than 1000 feet per minute",
+        5 => $"Do not {verb} more than 2000 feet per minute",
+        _ => null
+    };
+
+    private static string FmtSignedFpm(double v) =>
+        $"{(v >= 0 ? "plus" : "minus")} {Math.Abs(v):0}";
 
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
     // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
@@ -3874,6 +3952,38 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Runway Overrun Warning / Protection (ROW/ROP) + OANS RWY AHEAD — decode
         // the ARINC429 discrete word and announce each safety call-out on its rising
         // edge (0->1). On the ground pre-flight every bit is 0, so this is silent at
+        // ---- TCAS resolution-advisory guidance (cache + composed announce) ----
+        // The detail vars cache silently; during an RA each update recomposes the
+        // spoken guidance and announces only when the sentence changes. The state
+        // var itself returns FALSE so the generic Mon announce ("TCAS advisory:
+        // resolution advisory") still fires first — the guidance follows it.
+        switch (varName)
+        {
+            case "A32NX_TCAS_RA_CORRECTIVE":
+                _tcasRaCorrective = value >= 0.5; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_RA_UP_ADVISORY_STATUS":
+                _tcasRaUpAdvisory = (int)value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS":
+                _tcasRaDownAdvisory = (int)value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_RA_RATE_TO_MAINTAIN":
+                _tcasRaRate = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_GREEN:1":
+                _tcasGreenMin = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_GREEN:2":
+                _tcasGreenMax = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_RED:1":
+                _tcasRedMin = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_RED:2":
+                _tcasRedMax = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+        }
+        if (varName == "A32NX_TCAS_STATE")
+        {
+            _tcasAdvisoryState = (int)value;
+            if (_tcasAdvisoryState != 2) _lastTcasRaGuidance = "";
+            else MaybeAnnounceTcasRaGuidance(announcer);
+            return false; // generic Mon announce still speaks the state itself
+        }
+
         // baseline and only speaks the real landing/taxi warnings ("Runway too
         // short", "Max braking", "Runway ahead"). Honours the Ctrl+M mute.
         if (varName is "A32NX_ROW_ROP_WORD_1" or "A32NX_OANS_WORD_1")
@@ -5004,10 +5114,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                         : $"{Math.Abs(value):0.0} degrees {(value > 0 ? "left" : "right")}";
             return true;
         }
-        // TCAS RA vertical-speed band: green = fly toward, red = avoid; 0 = no advisory.
-        if (varKey == "A32NX_TCAS_VSPEED_GREEN" || varKey == "A32NX_TCAS_VSPEED_RED")
+        // TCAS RA vertical-speed band: green = fly toward, red = avoid. The :1 display
+        // key renders the WHOLE band from the cached :1/:2 values (the raw value alone
+        // is only the band minimum).
+        if (varKey == "A32NX_TCAS_VSPEED_GREEN:1")
         {
-            displayText = Math.Abs(value) < 1 ? "no advisory" : $"{value:0} feet per minute";
+            displayText = Math.Abs(_tcasGreenMin) < 1 && Math.Abs(_tcasGreenMax) < 1
+                ? "no advisory"
+                : $"{FmtSignedFpm(_tcasGreenMin)} to {FmtSignedFpm(_tcasGreenMax)} feet per minute";
+            return true;
+        }
+        if (varKey == "A32NX_TCAS_VSPEED_RED:1")
+        {
+            displayText = Math.Abs(_tcasRedMin) < 1 && Math.Abs(_tcasRedMax) < 1
+                ? "no advisory"
+                : $"{FmtSignedFpm(_tcasRedMin)} to {FmtSignedFpm(_tcasRedMax)} feet per minute";
             return true;
         }
         // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".

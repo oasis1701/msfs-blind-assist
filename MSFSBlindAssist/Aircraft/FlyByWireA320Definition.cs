@@ -2344,6 +2344,63 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string>
             { [0] = "clear of conflict", [1] = "traffic advisory", [2] = "resolution advisory" }
         },
+        // TCAS resolution-advisory DETAIL — what to FLY during an RA. The V/S bands
+        // are written ONLY as the :1/:2 INDEXED L:vars (TcasComputer.ts:1267-1271,
+        // min/max of the green fly-to and red avoid bands; reset on clear of
+        // conflict since upstream #10662); the detail vars are plain L:vars.
+        // All cached SILENTLY in ProcessSimVarUpdate and spoken as one composed
+        // guidance sentence ("TCAS: Climb. Fly vertical speed plus 1500 to plus
+        // 2000 feet per minute.") — see ComposeTcasRaGuidance. The colon-indexed
+        // names ride the continuous batch, the proven transport for indexed
+        // L:vars (A32NX_AUTOTHRUST_TLA:n precedent).
+        ["A32NX_TCAS_VSPEED_GREEN:1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_VSPEED_GREEN:1", DisplayName = "TCAS target vertical speed minimum",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "feet per minute"
+        },
+        ["A32NX_TCAS_VSPEED_GREEN:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_VSPEED_GREEN:2", DisplayName = "TCAS target vertical speed maximum",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "feet per minute"
+        },
+        ["A32NX_TCAS_VSPEED_RED:1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_VSPEED_RED:1", DisplayName = "TCAS avoid vertical speed minimum",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "feet per minute"
+        },
+        ["A32NX_TCAS_VSPEED_RED:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_VSPEED_RED:2", DisplayName = "TCAS avoid vertical speed maximum",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "feet per minute"
+        },
+        ["A32NX_TCAS_RA_CORRECTIVE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_RA_CORRECTIVE", DisplayName = "TCAS RA corrective",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        },
+        ["A32NX_TCAS_RA_UP_ADVISORY_STATUS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_RA_UP_ADVISORY_STATUS", DisplayName = "TCAS RA up advisory",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        },
+        ["A32NX_TCAS_RA_DOWN_ADVISORY_STATUS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", DisplayName = "TCAS RA down advisory",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        },
+        ["A32NX_TCAS_RA_RATE_TO_MAINTAIN"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_TCAS_RA_RATE_TO_MAINTAIN", DisplayName = "TCAS RA rate to maintain",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, Units = "feet per minute"
+        },
         // EGPWS (GPWS/TAWS) escape-maneuver callouts — enum verified against the FBW EGPWS source.
         ["A32NX_GPWS_AURAL_OUTPUT"] = new SimConnect.SimVarDefinition
         {
@@ -6933,8 +6990,102 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
+    // TCAS resolution-advisory guidance. Mirrors FlyByWireA380Definition: the
+    // detail vars cache silently and the composed "what to fly" sentence speaks
+    // once per advisory plus any strengthening/reversal — never per frame.
+    private int _tcasAdvisoryState;                       // A32NX_TCAS_STATE: 0 none, 1 TA, 2 RA
+    private bool _tcasRaCorrective;
+    private int _tcasRaUpAdvisory, _tcasRaDownAdvisory;   // UpDownAdvisoryStatus 0-5
+    private double _tcasRaRate;                           // rate to maintain, fpm
+    private double _tcasGreenMin, _tcasGreenMax, _tcasRedMin, _tcasRedMax;
+    private string _lastTcasRaGuidance = "";
+
+    private void MaybeAnnounceTcasRaGuidance(Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (_tcasAdvisoryState != 2) return;
+        string text = ComposeTcasRaGuidance();
+        if (text.Length == 0 || text == _lastTcasRaGuidance) return;
+        _lastTcasRaGuidance = text;
+        // Mute rides the TCAS_STATE monitor entry — one Ctrl+M checkbox governs
+        // both the state announce and the composed guidance.
+        if (!Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains("A32NX_TCAS_STATE"))
+            announcer.AnnounceImmediate(text);
+    }
+
+    /// <summary>
+    /// Builds the spoken RA guidance from the cached detail vars. Corrective RA →
+    /// the green fly-to band; preventive RA → the do-not limits and/or the rate to
+    /// maintain. Empty when nothing meaningful is cached yet (the next var update
+    /// recomposes). Enum semantics from FBW TcasConstants.ts (UpDownAdvisoryStatus).
+    /// </summary>
+    private string ComposeTcasRaGuidance()
+    {
+        bool greenBand = Math.Abs(_tcasGreenMin) >= 1 || Math.Abs(_tcasGreenMax) >= 1;
+        if (_tcasRaCorrective && greenBand)
+        {
+            string action = _tcasGreenMin >= -1 ? "Climb"
+                          : _tcasGreenMax <= 1 ? "Descend"
+                          : "Adjust vertical speed";
+            return $"TCAS: {action}. Fly vertical speed {FmtSignedFpm(_tcasGreenMin)} to {FmtSignedFpm(_tcasGreenMax)} feet per minute.";
+        }
+        var parts = new List<string>();
+        string? up = TcasAdvisoryPhrase(_tcasRaUpAdvisory, "climb");
+        string? down = TcasAdvisoryPhrase(_tcasRaDownAdvisory, "descend");
+        if (up != null) parts.Add(up);
+        if (down != null) parts.Add(down);
+        if (Math.Abs(_tcasRaRate) >= 1)
+            parts.Add($"Maintain {FmtSignedFpm(_tcasRaRate)} feet per minute");
+        return parts.Count == 0 ? "" : "TCAS: " + string.Join(". ", parts) + ".";
+    }
+
+    private static string? TcasAdvisoryPhrase(int status, string verb) => status switch
+    {
+        1 => verb == "climb" ? "Climb" : "Descend",
+        2 => $"Do not {verb}",
+        3 => $"Do not {verb} more than 500 feet per minute",
+        4 => $"Do not {verb} more than 1000 feet per minute",
+        5 => $"Do not {verb} more than 2000 feet per minute",
+        _ => null
+    };
+
+    private static string FmtSignedFpm(double v) =>
+        $"{(v >= 0 ? "plus" : "minus")} {Math.Abs(v):0}";
+
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // ---- TCAS resolution-advisory guidance (cache + composed announce) ----
+        // The detail vars cache silently; during an RA (A32NX_TCAS_STATE == 2) each
+        // update recomposes the spoken "what to fly" guidance and announces only
+        // when the sentence changes. The state var itself returns FALSE so the
+        // generic ValueDescriptions announce ("TCAS advisory: resolution advisory")
+        // still fires — the guidance follows it. Mirrors the A380 implementation.
+        switch (varName)
+        {
+            case "A32NX_TCAS_RA_CORRECTIVE":
+                _tcasRaCorrective = value >= 0.5; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_RA_UP_ADVISORY_STATUS":
+                _tcasRaUpAdvisory = (int)value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS":
+                _tcasRaDownAdvisory = (int)value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_RA_RATE_TO_MAINTAIN":
+                _tcasRaRate = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_GREEN:1":
+                _tcasGreenMin = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_GREEN:2":
+                _tcasGreenMax = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_RED:1":
+                _tcasRedMin = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+            case "A32NX_TCAS_VSPEED_RED:2":
+                _tcasRedMax = value; MaybeAnnounceTcasRaGuidance(announcer); return true;
+        }
+        if (varName == "A32NX_TCAS_STATE")
+        {
+            _tcasAdvisoryState = (int)value;
+            if (_tcasAdvisoryState != 2) _lastTcasRaGuidance = "";
+            else MaybeAnnounceTcasRaGuidance(announcer);
+            return false; // generic ValueDescriptions announce still speaks the state
+        }
+
         // Doors — read-only auto-announce. Passenger doors (key contains _DOOR_) read the
         // stock INTERACTIVE POINT OPEN SimVar, a 0..1 FRACTION (a half-open door is e.g.
         // 0.6), so open = value > 0.05. Cargo doors (key contains _CARGO_) read the FBW
