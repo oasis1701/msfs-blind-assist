@@ -733,88 +733,38 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- AUDIO CONTROL PANEL (ACP) — receive selectors, RMP 1 ----
         // Which sources the captain hears (#107 transcript: "ensure VHF1 + cabin
         // interphone selected"). Settable L:vars via the calculator catch-all.
+        // VHF receive on/off + the VHF receive VOLUME levels (0-100). These are the
+        // ONLY real ACP audio controls — the FBW A380 RMP dev build models VHF +
+        // transponder only (RmpPageStack routes VhfPage/SquawkPage), so the
+        // HF/TEL/CAB/INT/PA/NAV receive switches, volumes and transmit selects were
+        // DEAD L:vars (write holds, drives nothing — confirmed absent from the
+        // MobiFlight registered-var catalog; only A380X_RMP_{1,2}_VHF_* +
+        // A380X_RMP_3_PA exist). They were pruned 2026-06-13 because exposing radio
+        // controls that do nothing is worse than omitting them. The VHF channels (3
+        // radios), the screen brightness, and the VHF transmit select are kept.
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
-        // VHF receive VOLUME levels (0-100 sliders) — settable via the calc path (live-verified
-        // A380X_RMP_1_VHF_VOL_1 holds 40/80). Lets a blind pilot balance the radios: VHF1 (ATC)
-        // loud, the rest quieter. The HF/TEL/CAB/INT/PA/NAV volume knobs exist too but are niche.
         Slider("A380X_RMP_1_VHF_VOL_1", "VHF 1 Volume");
         Slider("A380X_RMP_1_VHF_VOL_2", "VHF 2 Volume");
         Slider("A380X_RMP_1_VHF_VOL_3", "VHF 3 Volume");
-        // The rest of the ACP receive-volume knobs (all settable 0-100 sliders, same calc path).
-        // Niche for a sim pilot (HF/TEL/cabin comms) but exposed for completeness; NAV volume is
-        // the navaid (VOR/ILS) ident audio level. Plus the RMP screen brightness knob.
-        Slider("A380X_RMP_1_HF_VOL_1", "HF 1 Volume");
-        Slider("A380X_RMP_1_HF_VOL_2", "HF 2 Volume");
-        Slider("A380X_RMP_1_TEL_VOL_1", "Telephone Volume");
-        Slider("A380X_RMP_1_CAB_VOL", "Cabin Interphone Volume");
-        Slider("A380X_RMP_1_INT_VOL", "Interphone Volume");
-        Slider("A380X_RMP_1_PA_VOL", "PA Volume");
-        Slider("A380X_RMP_1_NAV_VOL", "Navaid Volume");
         Slider("A380X_RMP_1_BRIGHTNESS_KNOB", "RMP Screen Brightness");
-        OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
-        OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
-        OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
-        OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_2", "TEL 2 Receive");
-        OnOff("A380X_RMP_1_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
-        OnOff("A380X_RMP_1_INT_VOL_RX_SWITCH", "Interphone Receive");
-        OnOff("A380X_RMP_1_PA_VOL_RX_SWITCH", "PA Receive");
-        OnOff("A380X_RMP_1_NAV_VOL_RX_SWITCH", "Navaid Receive");
-        // Transmit (which radio the PTT keys) — the captain's TX select. All channels
-        // live-verified ({CHANNEL}_TX_n). The real RMP transmit is mutually exclusive
-        // (radio-button); modelled here as independent On/Off combos like the verified
-        // VHF_TX_1, so the pilot can select/clear each channel's transmit.
         OnOff("A380X_RMP_1_VHF_TX_1", "VHF 1 Transmit");
         OnOff("A380X_RMP_1_VHF_TX_2", "VHF 2 Transmit");
         OnOff("A380X_RMP_1_VHF_TX_3", "VHF 3 Transmit");
-        OnOff("A380X_RMP_1_HF_TX_1", "HF 1 Transmit");
-        OnOff("A380X_RMP_1_HF_TX_2", "HF 2 Transmit");
-        OnOff("A380X_RMP_1_TEL_TX_1", "TEL 1 Transmit");
-        OnOff("A380X_RMP_1_TEL_TX_2", "TEL 2 Transmit");
-        // INT/CAB/PA transmit: single channels — the real vars have NO "_1" index suffix
-        // (build-verified in the installed rmp.js: _INT_TX/_CAB_TX/_PA_TX exist, the _1
-        // forms do not). NAV transmit removed — A380X_RMP_n_NAV_TX exists nowhere in the
-        // build (you don't transmit on a navaid). VHF/HF/TEL transmit ARE indexed (kept).
-        OnOff("A380X_RMP_1_INT_TX", "Interphone Transmit");
-        OnOff("A380X_RMP_1_CAB_TX", "Cabin Interphone Transmit");
-        OnOff("A380X_RMP_1_PA_TX", "PA Transmit");
 
         // ---- AUDIO CONTROL PANEL — First Officer (RMP 2), captain/F-O split ----
-        // The RMP is identical hardware per seat; all RMP-2 switches live-verified to
-        // exist. Same receive selectors + transmit as the captain side.
-        Slider("A380X_RMP_2_VHF_VOL_1", "VHF 1 Volume");
-        Slider("A380X_RMP_2_VHF_VOL_2", "VHF 2 Volume");
-        Slider("A380X_RMP_2_VHF_VOL_3", "VHF 3 Volume");
-        Slider("A380X_RMP_2_HF_VOL_1", "HF 1 Volume");
-        Slider("A380X_RMP_2_HF_VOL_2", "HF 2 Volume");
-        Slider("A380X_RMP_2_TEL_VOL_1", "Telephone Volume");
-        Slider("A380X_RMP_2_CAB_VOL", "Cabin Interphone Volume");
-        Slider("A380X_RMP_2_INT_VOL", "Interphone Volume");
-        Slider("A380X_RMP_2_PA_VOL", "PA Volume");
-        Slider("A380X_RMP_2_NAV_VOL", "Navaid Volume");
-        Slider("A380X_RMP_2_BRIGHTNESS_KNOB", "RMP Screen Brightness");
+        // VHF only (see the captain note above — non-VHF channels are unmodelled/dead).
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
-        OnOff("A380X_RMP_2_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
-        OnOff("A380X_RMP_2_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
-        OnOff("A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
-        OnOff("A380X_RMP_2_TEL_VOL_RX_SWITCH_2", "TEL 2 Receive");
-        OnOff("A380X_RMP_2_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
-        OnOff("A380X_RMP_2_INT_VOL_RX_SWITCH", "Interphone Receive");
-        OnOff("A380X_RMP_2_PA_VOL_RX_SWITCH", "PA Receive");
-        OnOff("A380X_RMP_2_NAV_VOL_RX_SWITCH", "Navaid Receive");
+        Slider("A380X_RMP_2_VHF_VOL_1", "VHF 1 Volume");
+        Slider("A380X_RMP_2_VHF_VOL_2", "VHF 2 Volume");
+        Slider("A380X_RMP_2_VHF_VOL_3", "VHF 3 Volume");
+        Slider("A380X_RMP_2_BRIGHTNESS_KNOB", "RMP Screen Brightness");
         OnOff("A380X_RMP_2_VHF_TX_1", "VHF 1 Transmit");
         OnOff("A380X_RMP_2_VHF_TX_2", "VHF 2 Transmit");
         OnOff("A380X_RMP_2_VHF_TX_3", "VHF 3 Transmit");
-        OnOff("A380X_RMP_2_HF_TX_1", "HF 1 Transmit");
-        OnOff("A380X_RMP_2_HF_TX_2", "HF 2 Transmit");
-        OnOff("A380X_RMP_2_TEL_TX_1", "TEL 1 Transmit");
-        OnOff("A380X_RMP_2_TEL_TX_2", "TEL 2 Transmit");
-        OnOff("A380X_RMP_2_INT_TX", "Interphone Transmit");
-        OnOff("A380X_RMP_2_CAB_TX", "Cabin Interphone Transmit");
-        OnOff("A380X_RMP_2_PA_TX", "PA Transmit");
 
         // ---- RADIO MANAGEMENT PANEL (RMP) ----
         // The A380 RMP (VHF + transponder tuning — the only two pages the FBW dev build models)
@@ -1396,11 +1346,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 [-1] = "Default automatic page", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Cond", [4] = "Press",
                 [5] = "Door", [6] = "Elec AC", [7] = "Elec DC", [8] = "Fuel", [9] = "Wheel", [10] = "Hyd",
-                [11] = "F/Ctl", [13] = "Cruise",
-                // C/B (12), Status (14) and Video (15) were REMOVED from the picker: the FBW SD
-                // rejects those page indices (rewrites the index back a few frames later), so the
-                // combo snapped back and the slow DOM-scrape fallback ran for nothing. The
-                // remaining pages are all SimVar-decoded.
+                [11] = "F/Ctl",
+                // C/B (circuit breakers) — NOT SimVar-decoded; read via the live DOM scrape
+                // (RefreshSdPageDisplayAsync falls back to the scrape for undecoded pages). Re-added
+                // 2026-06-13: the FBW SD now ACCEPTS this page index (it sticks — live-verified; the
+                // old snap-back that the index used to revert is gone), so the scrape shows real C/B
+                // content. Low pilot value (tripped breakers also surface via ECAM) but readable.
+                [12] = "C/B", [13] = "Cruise",
+                // Status (14) and Video (15) stay OUT: Status is FBW-WIP (renders empty), and Video
+                // is the cockpit-door CAMERA feed (an image — no text to scrape).
                 // Not an SD page — selecting this scrapes the UPPER ECAM / E-WD instead
                 // (engine N1/EGT/N2/FF + memos/warnings) into the same status box.
                 [16] = "Upper E/WD"
@@ -2287,8 +2241,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         PressSilent("A32NX_BTN_CHECK_RH", "ECAM Check Right");
         ReadEnum("A32NX_SD_MORE_SHOWN", "SD More Page", new Dictionary<double, string> { [0] = "No", [1] = "Shown" });
 
-        // ATC datalink (DCDU).
-        Btn("A32NX_DCDU_ATC_MSG_ACK", "ATC Message Acknowledge");
+        // ATC datalink — the A380 has NO DCDU instrument (CPDLC lives on the MFD
+        // ATCCOM pages, NOT a DCDU). The A32NX_DCDU_ATC_MSG_ACK "acknowledge" button
+        // acts on a DCDU that doesn't exist on this airframe, so it was REMOVED
+        // 2026-06-13 (it's a dead control here; the A32NX keeps its real DCDU window).
+        // Answering a CPDLC clearance on the A380 is done on the MFD ATCCOM pages,
+        // which are unimplemented in the current FBW dev build (MfdNotFound). The
+        // "ATC Message Waiting" indicator IS real (the shared ATSU datalink sets it)
+        // and drives the incoming-CPDLC auto-announce — kept; the message content is
+        // read on the MFD MSG RECORD page.
         Mon("A32NX_DCDU_ATC_MSG_WAITING", "ATC Message Waiting", new Dictionary<double, string> { [0] = "No", [1] = "Message Waiting" });
 
         // FMS switching + destination fuel warning.
@@ -2877,35 +2838,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_ENTERTAINMENT_CWS_OFF",
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
         };
+        // VHF-only — the non-VHF audio channels were dead L:vars (unmodelled by FBW),
+        // pruned 2026-06-13. See the OnOff/Slider block above for the full rationale.
         p["Audio Control Panel Captain"] = new List<string>
         {
             "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "A380X_RMP_1_VHF_VOL_RX_SWITCH_3",
             "A380X_RMP_1_VHF_VOL_1", "A380X_RMP_1_VHF_VOL_2", "A380X_RMP_1_VHF_VOL_3",
-            "A380X_RMP_1_HF_VOL_1", "A380X_RMP_1_HF_VOL_2", "A380X_RMP_1_TEL_VOL_1",
-            "A380X_RMP_1_CAB_VOL", "A380X_RMP_1_INT_VOL", "A380X_RMP_1_PA_VOL", "A380X_RMP_1_NAV_VOL",
             "A380X_RMP_1_BRIGHTNESS_KNOB",
-            "A380X_RMP_1_HF_VOL_RX_SWITCH_1", "A380X_RMP_1_HF_VOL_RX_SWITCH_2",
-            "A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "A380X_RMP_1_TEL_VOL_RX_SWITCH_2",
-            "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
-            "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH",
-            "A380X_RMP_1_VHF_TX_1", "A380X_RMP_1_VHF_TX_2", "A380X_RMP_1_VHF_TX_3",
-            "A380X_RMP_1_HF_TX_1", "A380X_RMP_1_HF_TX_2", "A380X_RMP_1_TEL_TX_1", "A380X_RMP_1_TEL_TX_2",
-            "A380X_RMP_1_INT_TX", "A380X_RMP_1_CAB_TX", "A380X_RMP_1_PA_TX"
+            "A380X_RMP_1_VHF_TX_1", "A380X_RMP_1_VHF_TX_2", "A380X_RMP_1_VHF_TX_3"
         };
         p["Audio Control Panel First Officer"] = new List<string>
         {
             "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "A380X_RMP_2_VHF_VOL_RX_SWITCH_3",
             "A380X_RMP_2_VHF_VOL_1", "A380X_RMP_2_VHF_VOL_2", "A380X_RMP_2_VHF_VOL_3",
-            "A380X_RMP_2_HF_VOL_1", "A380X_RMP_2_HF_VOL_2", "A380X_RMP_2_TEL_VOL_1",
-            "A380X_RMP_2_CAB_VOL", "A380X_RMP_2_INT_VOL", "A380X_RMP_2_PA_VOL", "A380X_RMP_2_NAV_VOL",
             "A380X_RMP_2_BRIGHTNESS_KNOB",
-            "A380X_RMP_2_HF_VOL_RX_SWITCH_1", "A380X_RMP_2_HF_VOL_RX_SWITCH_2",
-            "A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "A380X_RMP_2_TEL_VOL_RX_SWITCH_2",
-            "A380X_RMP_2_CAB_VOL_RX_SWITCH", "A380X_RMP_2_INT_VOL_RX_SWITCH",
-            "A380X_RMP_2_PA_VOL_RX_SWITCH", "A380X_RMP_2_NAV_VOL_RX_SWITCH",
-            "A380X_RMP_2_VHF_TX_1", "A380X_RMP_2_VHF_TX_2", "A380X_RMP_2_VHF_TX_3",
-            "A380X_RMP_2_HF_TX_1", "A380X_RMP_2_HF_TX_2", "A380X_RMP_2_TEL_TX_1", "A380X_RMP_2_TEL_TX_2",
-            "A380X_RMP_2_INT_TX", "A380X_RMP_2_CAB_TX", "A380X_RMP_2_PA_TX"
+            "A380X_RMP_2_VHF_TX_1", "A380X_RMP_2_VHF_TX_2", "A380X_RMP_2_VHF_TX_3"
         };
         // (Radio Management Panel removed — the RMP is now the dedicated accessible RMP WINDOW,
         // Ctrl+Shift+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
@@ -3087,7 +3034,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
         // (EFIS filter/overlay/baro-unit/OANS folded into the per-side EFIS panels above.)
         p["ECAM Control Panel"].AddRange(new[] { "A32NX_BTN_CHECK_LH", "A32NX_BTN_CHECK_RH" });
-        p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
+        // (A32NX_DCDU_ATC_MSG_ACK removed — the A380 has no DCDU to acknowledge on.)
 
         // ---- new panels ----
         p["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
@@ -4342,12 +4289,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // announced), so it reflects state and auto-announces; this only handles the
     // write side.
     // Settable temperature selectors: the _SET combo key -> the FBW knob L:var
-    // (0-300) and the zone's Celsius range. knob = (temp - Lo)/(Hi - Lo)*300.
-    private sealed record TempSel(string Knob, double Lo, double Hi, string Label);
+    // and the zone's Celsius range. knob = (temp - Lo)/(Hi - Lo)*300 + Offset.
+    // Offset is the per-knob bias FBW applies: the cockpit/cargo knobs are a plain
+    // 0-300 sweep (Offset 0), but the CABIN knob is biased by +50 — FBW's reader
+    // (a380_systems air_conditioning/mod.rs selected_cabin_temperature does
+    // `knob % 400 - 50`) and its own setter (command_cabin_selected_temperature:
+    // `(temp-18)/0.04 + 50`) both carry the +50. Without it the cabin lands ~2 C
+    // cold across the whole band (knob is ~50 units / 2 C too low).
+    private sealed record TempSel(string Knob, double Lo, double Hi, string Label, double Offset = 0);
     private static readonly Dictionary<string, TempSel> _tempSelectors = new Dictionary<string, TempSel>
     {
         ["COND_CKPT_TEMP_SET"] = new TempSel("A32NX_OVHD_COND_CKPT_SELECTOR_KNOB", 18, 30, "Cockpit"),
-        ["COND_CABIN_TEMP_SET"] = new TempSel("A32NX_OVHD_COND_CABIN_SELECTOR_KNOB", 18, 30, "Cabin"),
+        ["COND_CABIN_TEMP_SET"] = new TempSel("A32NX_OVHD_COND_CABIN_SELECTOR_KNOB", 18, 30, "Cabin", 50),
         ["CARGO_FWD_TEMP_SET"] = new TempSel("A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", 5, 25, "Forward cargo"),
         ["CARGO_BULK_TEMP_SET"] = new TempSel("A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB", 5, 25, "Bulk cargo"),
     };
@@ -4632,8 +4585,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // chosen; the idle option (0) does nothing.
         if (varKey == "XPNDR_IDENT_ON") { if (value > 0.5) simConnect.SendEvent("XPNDR_IDENT_ON"); return true; }
         // Air-cond/cargo target temperature: user enters degrees C; the FBW
-        // selector knob is 0-300 over the zone's range (cockpit/cabin 18-30 C,
-        // cargo 5-25 C), so knob = (temp - lo) / (hi - lo) * 300.
+        // selector knob is a 0-300 sweep over the zone's range (cockpit/cabin
+        // 18-30 C, cargo 5-25 C) plus the per-knob Offset, so
+        // knob = (temp - lo) / (hi - lo) * 300 + Offset (cabin Offset = 50).
         if (_tempSelectors.TryGetValue(varKey, out var ts))
         {
             if (value < ts.Lo || value > ts.Hi)
@@ -4644,7 +4598,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Invariant fixed-point: raw interpolation used CurrentCulture — a fractional
             // temperature on a comma-decimal locale emitted "87,5 (>L:...)", broken RPN.
             simConnect.ExecuteCalculatorCode(
-                ((value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                ((value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0 + ts.Offset).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
                 + $" (>L:{ts.Knob})");
             announcer.Announce($"{ts.Label} temperature set to {value:0} degrees");
             return true;
