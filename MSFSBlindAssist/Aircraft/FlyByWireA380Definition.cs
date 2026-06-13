@@ -1346,15 +1346,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 [-1] = "Default automatic page", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Cond", [4] = "Press",
                 [5] = "Door", [6] = "Elec AC", [7] = "Elec DC", [8] = "Fuel", [9] = "Wheel", [10] = "Hyd",
-                [11] = "F/Ctl",
-                // C/B (circuit breakers) — NOT SimVar-decoded; read via the live DOM scrape
-                // (RefreshSdPageDisplayAsync falls back to the scrape for undecoded pages). Re-added
-                // 2026-06-13: the FBW SD now ACCEPTS this page index (it sticks — live-verified; the
-                // old snap-back that the index used to revert is gone), so the scrape shows real C/B
-                // content. Low pilot value (tripped breakers also surface via ECAM) but readable.
-                [12] = "C/B", [13] = "Cruise",
-                // Status (14) and Video (15) stay OUT: Status is FBW-WIP (renders empty), and Video
-                // is the cockpit-door CAMERA feed (an image — no text to scrape).
+                [11] = "F/Ctl", [13] = "Cruise",
+                // C/B (12), Status (14) and Video (15) stay OUT of the picker. The page index now
+                // STICKS (the old snap-back is gone — re-checked live 2026-06-13), BUT there is
+                // nothing behind it: FBW's CbPage.tsx is a 7-line STUB that renders only the "C/B"
+                // title (no circuit-breaker content), Status is FBW-WIP (empty), and Video is the
+                // cockpit-door CAMERA feed (an image). Selecting any would show only the SD's
+                // permanent status bar (TAT/SAT/GW/FOB/time) — misleading, so they're excluded.
                 // Not an SD page — selecting this scrapes the UPPER ECAM / E-WD instead
                 // (engine N1/EGT/N2/FF + memos/warnings) into the same status box.
                 [16] = "Upper E/WD"
