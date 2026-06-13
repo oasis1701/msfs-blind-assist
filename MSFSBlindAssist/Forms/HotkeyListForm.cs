@@ -270,7 +270,15 @@ public partial class HotkeyListForm : Form
 
         if (matchingSections.Count == 0)
         {
-            hotkeyTextBox.Text = $"No hotkeys match \"{search}\".";
+            // Mention the active mode so a keyword that exists only in the
+            // other mode doesn't read as "no such hotkey anywhere".
+            string modeSuffix = selectedMode switch
+            {
+                HotkeyMode.Output => " in output hotkeys",
+                HotkeyMode.Input => " in input hotkeys",
+                _ => string.Empty
+            };
+            hotkeyTextBox.Text = $"No hotkeys match \"{search}\"{modeSuffix}.";
             return;
         }
 
@@ -307,9 +315,22 @@ public partial class HotkeyListForm : Form
         updatingSearchChoices = true;
         try
         {
-            searchComboBox.Items.Clear();
-            searchComboBox.Items.Add(AllCategoriesLabel);
-            AddSearchChoicesForMode(selectedMode);
+            // Turn autocomplete off around the Items mutation. Clearing and
+            // repopulating Items while AutoCompleteSource.ListItems is active is
+            // a known WinForms instability (it can throw or corrupt the
+            // suggestion list); restoring the mode rebinds it to the new items.
+            AutoCompleteMode previousAutoComplete = searchComboBox.AutoCompleteMode;
+            searchComboBox.AutoCompleteMode = AutoCompleteMode.None;
+            try
+            {
+                searchComboBox.Items.Clear();
+                searchComboBox.Items.Add(AllCategoriesLabel);
+                AddSearchChoicesForMode(selectedMode);
+            }
+            finally
+            {
+                searchComboBox.AutoCompleteMode = previousAutoComplete;
+            }
 
             if (string.IsNullOrEmpty(currentSearch)
                 || AllCategoriesLabel.Equals(currentSearch, StringComparison.OrdinalIgnoreCase)
@@ -538,6 +559,12 @@ public partial class HotkeyListForm : Form
             }
         }
 
+        // Hotkey entries sit at the shallow base indent (the guides use two
+        // spaces). Wrapped description text is indented far deeper to align
+        // under the description column (~13 spaces). This ceiling separates the
+        // two with headroom for guides that indent keys a little more.
+        private const int MaxHotkeyLineIndent = 6;
+
         private static bool StartsNewHotkeyLine(string line)
         {
             string trimmedLine = line.TrimStart();
@@ -546,6 +573,21 @@ public partial class HotkeyListForm : Form
                 return false;
             }
 
+            // Requiring a shallow indent keeps a capitalized continuation line
+            // ("Approach button shows...", "Hand Fly mode does...") attached to
+            // its hotkey's block instead of being split into an orphan block.
+            int indent = line.Length - trimmedLine.Length;
+            if (indent > MaxHotkeyLineIndent)
+            {
+                return false;
+            }
+
+            // The first token must also look like a key — a digit, an uppercase
+            // letter, or a chord/separator (+, /) — so base-indent prose notes
+            // and bullets ("(Open the form ...)", "- MCP value changes") stay
+            // with the preceding block. Note guides aren't uniform: some hotkey
+            // lines use a single space before the description ("M Read Mach
+            // Number."), so don't gate on the key/description gap width.
             string firstToken = trimmedLine.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
             char firstChar = firstToken[0];
 
