@@ -240,6 +240,28 @@ public class TaxiGuidanceManager : IDisposable
     private const double TURN_LEAD_MAX_DEG = 30.0;
     private const double TURN_LEAD_MIN_RATE_DEG_SEC = 1.0;
     private const double YAW_RATE_FILTER_ALPHA = 0.3;
+    // Taxiing-tone slew-rate limit (degrees of heading-error change per second).
+    // The taxiing pan is driven by the heading error to a look-ahead walk target.
+    // Two events can move that target DISCONTINUOUSLY — a one-frame jump the
+    // low-pass filter barely dents:
+    //   1. Segment-skip: AdvanceToNearestSegment picks the nearest *endpoint*
+    //      over a 6-segment window, so a large aircraft (A380: ~50 m+ turn
+    //      radius) that swings wide through a sharp corner can leap the segment
+    //      index several steps in one frame, jumping the target tens of metres
+    //      (PHNL 04L 2026-06-13: seg 8→11, target jumped ~65 m, pan slammed
+    //      +44°→−80°, the aircraft over-rotated, off-route recalc followed).
+    //   2. Recalc: TryRecalculateRoute swaps the route in place and resets the
+    //      heading-error smoother, so the pan snaps to the new target instantly.
+    // A real turn changes the error gradually at roughly the yaw rate (the A380
+    // taxis at ~8°/s, well under 20°/s even with route curvature), so a 60°/s
+    // cap passes genuine turns untouched while stretching a 60–110° discontinuity
+    // into a smooth ~1–1.5 s sweep — a clear "ease across" cue instead of a slam.
+    // Applied AFTER the rate-lead projection so it also bounds lead-driven swings.
+    // Taxiing phase ONLY (lineup/docking keep their own precision profiles).
+    private const double TAXI_TONE_MAX_SLEW_DEG_PER_SEC = 60.0;
+    private double _lastToneError;
+    private DateTime _lastToneErrorTime = DateTime.MinValue;
+    private bool _toneErrorInitialized = false;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
     private const double STRAIGHTEN_EPISODE_END_RATE_DEG_SEC = 1.5;  // close episode (hysteresis)
@@ -1902,6 +1924,9 @@ public class TaxiGuidanceManager : IDisposable
                 ? GuidanceGeometry.ProjectHeadingError(
                       _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG)
                 : _smoothedHeadingError;
+            // Soften discontinuous target jumps (segment-skip on a sharp corner,
+            // or a route recalc) into a smooth sweep — see SlewLimitToneError.
+            toneError = SlewLimitToneError(toneError);
             _steeringTone.Resume();
             _steeringTone.UpdateHeadingError(toneError, currentSeg.PathWidth);
         }
@@ -5147,6 +5172,11 @@ public class TaxiGuidanceManager : IDisposable
         _currentSegmentIndex = 0;
         _positionInitialized = false;
         _headingErrorInitialized = false;
+        // Reset the tone slew-limiter baseline so a fresh guidance session snaps
+        // to its first target instead of sweeping from a stale value. (Recalcs
+        // do NOT reset it — they swap the route in place without StopGuidance —
+        // so a recalc pan-snap is intentionally softened by the limiter.)
+        _toneErrorInitialized = false;
         _lastGroundSpeedKts = 0;
         _hasLineupTarget = false;
         _lineupAnnouncedAligned = false;
@@ -5700,6 +5730,51 @@ public class TaxiGuidanceManager : IDisposable
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
+    }
+
+    /// <summary>
+    /// Slew-rate limits the taxiing steering-tone heading error so a
+    /// DISCONTINUOUS target jump (a segment-index skip when a large aircraft
+    /// cuts a sharp corner, or a route recalc that resets the smoother) becomes
+    /// a smooth fast sweep instead of an instant left↔right pan slam. A genuine
+    /// turn changes the error gradually (≈ the yaw rate, well under the cap), so
+    /// it passes through untouched; only one-frame artifacts get stretched.
+    ///
+    /// Baseline is established on the first call and persists across in-place
+    /// route recalcs (so a recalc snap is softened too); it is reset only by
+    /// StopGuidance, so a genuinely fresh guidance session still snaps to its
+    /// first target on frame one rather than sweeping from a stale value.
+    /// Wrap-safe: the step is taken along the shortest angular path and the
+    /// result is re-normalized to [-180, 180]. A stale/huge dt (paused sim,
+    /// reconnect) re-baselines rather than allowing an unbounded jump.
+    /// </summary>
+    private double SlewLimitToneError(double target)
+    {
+        var now = DateTime.UtcNow;
+        if (!_toneErrorInitialized)
+        {
+            _toneErrorInitialized = true;
+            _lastToneError = target;
+            _lastToneErrorTime = now;
+            return target;
+        }
+
+        double dt = (now - _lastToneErrorTime).TotalSeconds;
+        _lastToneErrorTime = now;
+        if (dt <= 0.0 || dt > 1.0)
+        {
+            // Non-positive (clock skew) or a long gap — don't let it license an
+            // unbounded step; treat as a fresh baseline.
+            _lastToneError = target;
+            return target;
+        }
+
+        double maxStep = TAXI_TONE_MAX_SLEW_DEG_PER_SEC * dt;
+        double delta = NormalizeAngle(target - _lastToneError);
+        if (delta > maxStep) delta = maxStep;
+        else if (delta < -maxStep) delta = -maxStep;
+        _lastToneError = NormalizeAngle(_lastToneError + delta);
+        return _lastToneError;
     }
 
     /// <summary>
