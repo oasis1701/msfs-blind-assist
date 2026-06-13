@@ -180,3 +180,72 @@ First-time install needs **one sim restart** for MSFS to load the override HTML 
 injects when the tablet opens). The 738's Flight Attendant Panel (`PMDGFlightAttendantPanel.*`)
 is a separate VCockpit instrument with its own DOM and is NOT part of the EFB bridge — making it
 accessible would need its own bridge package and is out of scope.
+
+## Interior section
+
+A dedicated "Interior" panel section exposes the cockpit/cabin items PMDG models as
+plain L-vars (names + polarity verified directly against PMDG's behavior XMLs in
+`pmdg-aircraft-738\SimObjects\...\attachments\pmdg\` — `73X_Cockpit_Behavior.xml`,
+`73X_Cabin_Ceiling/Walls_Behavior.xml`, `73X_Galley_Fwd/Aft_Behavior.xml`). Every dispatch shape
+below was live-verified CLOSED-LOOP on 2026-06-12 with `tools/PMDGDispatchTester` (new
+`lvar` / `lvarget` / `kev` commands — write, read back, write the other way, read back).
+
+- **Cockpit Furniture** — sliding windows (CA/FO), sun visors, window shades, headrests,
+  rudder-pedal adjust, jumpseat, armrests, storage cubbies (side/doc/glareshield), cubby bar,
+  cupholder drinks, and the binder cookie-stash easter egg (PMDG's model Update drives the
+  reveal once `L:CubbyTrigger` is set with the cubby bar raised — both live-verified).
+- **Cabin Bins** — all 38 overhead "SPACE BIN" click-spots individually + Open All / Close All.
+- **Cabin Items** — window-blind raise/lower-all composites (87 blinds incl. EE-row),
+  cabin/galley lights, galley + class-divider curtains, lavatory doors.
+- **Galley** — water on/off + cold/warm (pushbutton radio-pairs: set one L-var, clear its
+  opposite), sink taps, coffee valves, sanitizer pumps, power-outlet covers, the two secret
+  compartments, the forward-airstair control panel, and the FAP ground-service switch.
+
+**Undocumented switch events.** The airstair panel (retract 1646 / extend 1648 / lights 1654 /
+standby 1658) and the FAP ground-service switch (2050) have NO defines in the public SDK header,
+but PMDG's switch-number == event-offset convention holds: `event_base + N` moves the
+corresponding `switch_N_73X` read-back L-var (all live-verified 2026-06-12; ground service
+two-way 0↔100; lights is 3-position — param 0/1/2 → L-var 0/50/100). The airstair
+extend/retract/standby buttons are PUSHBUTTONS — dispatch is press-and-release (param 1, 350 ms,
+param 0) or the switch L-var latches pressed. Note: switch presses verified, but the actual
+STAIR did not deploy on the test airframe (`DOOR_annunAIRSTAIR` stayed 0) — the airstair is an
+airframe option and may also need standby armed; without it the switches are no-ops.
+
+Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
+
+- **Jumpseat + armrests: the CDA parameter IS the position (0 = stowed/down, 1 = extended/up),
+  NOT a press.** Live-verified: `cda 71633 1` → `L:switch_2001_73X` = 100, `cda 71633 0` → 0;
+  armrests 70638–70641 ↔ `L:switch_1006..1009_73X` identical. The first implementation exposed
+  these as momentary buttons that always sent parameter 1 — they "worked once" (extend) and never
+  went back. They are now COMBOS whose varKey is the PMDG-owned read-back L-var (0/100 display
+  scale) and whose set dispatches the SDK event with the 0/1 position. A raw SetLVar to those
+  switch L-vars reverts (SDK-owned read-backs, same family as the 777's `switch_NNN_a`) — the
+  event is the actuator; do NOT let them fall through to the generic LVar branch.
+- **Sliding windows are NOT a bare L-var set.** PMDG's VC click code toggles
+  `L:Window_OpenClose_CA/FO` **and** fires `K:TOGGLE_AIRCRAFT_EXIT_FAST` with exit index
+  16 (CA) / 17 (FO), gated on PMDG-owned `L:CanOpenWindows` (ground + slow). The dispatch
+  replicates that atomically via MobiFlight calculator code (with an unguarded
+  SetLVar+SendEvent fallback when MobiFlight is absent). Both directions live-verified.
+- **Visor deploy is blocked while the same-side window is open** (mirrors PMDG's guard).
+- **ATTEND / GRD CALL buttons** (`COMM_AttendCallBtn` / `COMM_GrndCallBtn`) dispatch the SDK
+  events via CDA **parameter 1** — live-verified (press counters increment). **Parameter 0 ALSO
+  registers as a press** on this event family (same as the CDU keys) — unlike the
+  jumpseat/armrest family where the parameter is a position. Never assume one family's parameter
+  semantics for another; probe each. The PMDG ground-call horn keeps sounding until the button
+  is pressed a second time — PMDG behaviour, not a stuck dispatch.
+- Plain L-var toggles (bins, shades, visors, blinds, lights, curtains, lav doors) and drag
+  positions (headrests, rudder pedals, clamped 0–100) write-stick both directions — verified.
+  Composite bin/blind buttons loop `SetLVar` over static lists (`s_binLvars` / `s_blindLvars`);
+  L-vars not fitted on the loaded cabin layout are harmless no-ops.
+- **Drag-position varKeys carry a `_SET` suffix** (`headrest_CA_drag_h_SET` etc., Name = the bare
+  L-var). MainForm only renders the TextBox + Set numeric input for keys containing "_SET"; a
+  no-ValueDescriptions var without it falls through to the plain-button branch, whose click
+  always dispatches value 1 — the position slammed to 1/100 on every press ("only goes to one
+  position"). Keep the suffix on any future numeric-input L-var.
+- **Cabin item audio is positional.** Bins (BinIn/Out), blinds (BlindIn/Out), curtains
+  (CurtainIn/Out) and lavatory doors (\*lavatoryIn/Out) have wwise sounds at their CABIN
+  location — from the cockpit they're attenuated to near-silence, and the cabin/galley LIGHTS
+  have no sound at all (visual-only). "No sound from the cockpit" does not mean the control
+  failed; the app's state-change announcement is the confirmation channel.
+- Seats themselves are **not movable** — `L:capt_seat` / `L:fo_seat` are model-variant
+  visibility selectors, not positions. Headrests are the only adjustable seat part.

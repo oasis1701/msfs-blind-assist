@@ -44,11 +44,9 @@ public class LandingExitPlanner
     private const double LANDING_MIN_GS_KNOTS = 40.0;
 
     // Diagnostic log so we can see why activation didn't fire when only the
-    // "On ground" callout was heard at touchdown. Same pattern as taxi router:
-    // ApplicationData\MSFSBlindAssist\landing_exit.log.
-    private static readonly string DiagLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "landing_exit.log");
+    // "On ground" callout was heard at touchdown. Lives with every other MSFSBA
+    // log in the canonical AppLogs folder (%APPDATA%\MSFSBlindAssist\logs).
+    private static readonly string DiagLogPath = Utils.AppLogs.PathFor("landing_exit.log");
 
     private static void DiagLog(string msg)
     {
@@ -113,11 +111,11 @@ public class LandingExitPlanner
                 $"node={exit.NodeId} currentlyAirborne={currentlyAirborne} _wasAirborne={_wasAirborne} " +
                 $"HasPendingExit={HasPendingExit}");
 
-        int distFt = (int)Math.Round(exit.DistanceFromThresholdFeet);
+        string dist = DistanceFormatter.FromFeet(exit.DistanceFromThresholdFeet, round: false);
         string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "unnamed taxiway" : $"taxiway {exit.TaxiwayName}";
         _announcer.Announce(
             $"Landing exit planned: {name} at {icao} runway {runway.RunwayID}, " +
-            $"{distFt} feet from threshold. Guidance will auto-start on touchdown.");
+            $"{dist} from threshold. Guidance will auto-start on touchdown.");
     }
 
     /// <summary>Clears any pending selection without activating.</summary>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs" Link="Linked\GateSource.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs" Link="Linked\ParkingSpot.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\GsxGate.cs" Link="Linked\GsxGate.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxProfileParser.cs" Link="Linked\GsxProfileParser.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxGateMapper.cs" Link="Linked\GsxGateMapper.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxNavdataMerger.cs" Link="Linked\GsxNavdataMerger.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxProfileLocator.cs" Link="Linked\GsxProfileLocator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\GateSearchFilter.cs" Link="Linked\GateSearchFilter.cs" />
+  </ItemGroup>
+</Project>

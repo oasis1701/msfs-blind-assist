@@ -9,9 +9,8 @@ namespace MSFSBlindAssist.Navigation;
 public class TaxiRouter
 {
     private readonly TaxiGraph _graph;
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "taxi_router.log");
+    private static readonly string LogPath = MSFSBlindAssist.Utils.AppLogs.PathFor("taxi_router.log");
+    private const long MAX_ROUTER_LOG_BYTES = 1_000_000;
 
     private static void Log(string message)
     {
@@ -45,8 +44,20 @@ public class TaxiRouter
     /// </summary>
     public TaxiRoute? FindConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence)
     {
-        // Clear log for fresh run
-        try { File.WriteAllText(LogPath, $"=== Constrained Route {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}"); } catch { }
+        // Append a session header (size-capped) — the old truncate-per-run
+        // destroyed the previous build's log: debugging the KIAH 2026-06-10
+        // 6 km loop was blinded because the 15:24 recalc wiped the 15:14
+        // initial build's entry. Mirrors taxi_guidance.log's cap-at-LoadRoute
+        // pattern.
+        try
+        {
+            var fi = new FileInfo(LogPath);
+            if (fi.Exists && fi.Length > MAX_ROUTER_LOG_BYTES)
+                File.WriteAllText(LogPath, string.Empty);
+            File.AppendAllText(LogPath,
+                $"=== Constrained Route {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}");
+        }
+        catch { }
 
         var startN = _graph.Nodes[startNodeId];
         var endN = _graph.Nodes[endNodeId];

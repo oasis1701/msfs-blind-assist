@@ -79,10 +79,10 @@ public class LandingExit
 
     public override string ToString()
     {
-        int distFt = (int)Math.Round(DistanceFromThresholdFeet);
+        string dist = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(DistanceFromThresholdFeet, shortForm: true, round: false);
         int angle = (int)Math.Round(ExitAngleDegrees);
         string nameLabel = string.IsNullOrEmpty(TaxiwayName) ? "(unnamed)" : TaxiwayName;
         string sideLabel = string.IsNullOrEmpty(ExitSide) ? "" : $", {ExitSide.ToLower()}";
-        return $"{nameLabel} — {distFt} ft from threshold ({ExitType}{sideLabel}, {angle}°)";
+        return $"{nameLabel} — {dist} from threshold ({ExitType}{sideLabel}, {angle}°)";
     }
 }

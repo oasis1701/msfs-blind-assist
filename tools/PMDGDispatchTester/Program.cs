@@ -53,6 +53,13 @@ public struct PMDGControl
     public uint Parameter;
 }
 
+// One-double payload for lvarget reads.
+[StructLayout(LayoutKind.Sequential)]
+public struct LvarValue
+{
+    public double Value;
+}
+
 // ---------------------------------------------------------------------------
 // Subset of PMDG_NG3_Data — we only define the FIRST byte we need, then we
 // read individual fields by offset using AddToClientDataDefinition's offset
@@ -121,6 +128,11 @@ class Program
     static SimConnect _sc;
     static readonly Dictionary<string, uint> _aliasMap = new();
     static uint _nextTxId = (uint)TxEventGroup.First;
+    static uint _nextLvarDefId = 0;
+    static uint _nextKevId = 0;
+    // lvarget bookkeeping: request id -> L-var name (result printed on receipt)
+    static readonly Dictionary<uint, string> _lvarGetRequests = new();
+    static uint _nextLvarGetReqId = 70000;
     static readonly object _lock = new();
 
     // Cached last values per field for delta detection
@@ -145,6 +157,7 @@ class Program
 
         _sc.OnRecvException     += OnException;
         _sc.OnRecvClientData    += OnClientData;
+        _sc.OnRecvSimobjectData += OnSimobjectData;
         _sc.OnRecvQuit          += (_, _) => { Console.WriteLine("[INFO] Sim quit."); _quit = true; };
 
         SetupClientData();
@@ -242,6 +255,19 @@ class Program
 
         Console.WriteLine("[OK] Subscribed to PMDG_NG3_Data (PERIOD.ON_SET, FLAG.CHANGED)");
         Console.WriteLine("[OK] Ready to write to PMDG_NG3_Control");
+    }
+
+    static void OnSimobjectData(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
+    {
+        string? name = null;
+        lock (_lock)
+        {
+            if (_lvarGetRequests.TryGetValue(data.dwRequestID, out name))
+                _lvarGetRequests.Remove(data.dwRequestID);
+        }
+        if (name == null) return;
+        var v = (LvarValue)data.dwData[0];
+        Console.WriteLine($"[LVARGET] L:{name} = {v.Value}");
     }
 
     static void OnException(SimConnect sender, SIMCONNECT_RECV_EXCEPTION ex)
@@ -350,6 +376,12 @@ class Program
         // APU
         "APU_Selector",
         "APU_EGTNeedle",
+        // Attendant / ground call (cabin-call probe)
+        "COMM_Attend_PressCount",
+        "COMM_GrdCall_PressCount",
+        "COMM_annunCALL",
+        // Airstair door state (interior-controls probe)
+        "DOOR_annunAIRSTAIR",
     };
 
     static (string, double)[] ExtractFields(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct data)
@@ -442,6 +474,49 @@ class Program
                     uint eventId = ParseUInt(parts[1]);
                     uint parameter = ParseUInt(parts[2]);
                     SendViaTransmit(eventId, parameter);
+                    break;
+                }
+                case "lvar":
+                {
+                    // lvar <name> <value> — set an L-var via a throwaway data
+                    // definition (same mechanism as the main app's SetLVar).
+                    if (parts.Length != 3) { Console.WriteLine("usage: lvar <name> <value>"); break; }
+                    double lv = double.Parse(parts[2], CultureInfo.InvariantCulture);
+                    var defId = (DataDefId)(0x4E477750 + _nextLvarDefId++);
+                    _sc.AddToDataDefinition(defId, $"L:{parts[1]}", "number",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    _sc.SetDataOnSimObject(defId, SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_DATA_SET_FLAG.DEFAULT, lv);
+                    Console.WriteLine($"[LVAR] L:{parts[1]} = {lv} sent.");
+                    break;
+                }
+                case "lvarget":
+                {
+                    // lvarget <name> — one-shot read of an L-var; value prints
+                    // asynchronously as [LVARGET] when the sim responds.
+                    if (parts.Length != 2) { Console.WriteLine("usage: lvarget <name>"); break; }
+                    var defId = (DataDefId)(0x4E477750 + _nextLvarDefId++);
+                    uint reqId = _nextLvarGetReqId++;
+                    _sc.AddToDataDefinition(defId, $"L:{parts[1]}", "number",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    _sc.RegisterDataDefineStruct<LvarValue>(defId);
+                    lock (_lock) { _lvarGetRequests[reqId] = parts[1]; }
+                    _sc.RequestDataOnSimObject((DataRequestId)reqId, defId,
+                        SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_PERIOD.ONCE,
+                        SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                    break;
+                }
+                case "kev":
+                {
+                    // kev <K-event-name> <data> — map + transmit a standard sim event.
+                    if (parts.Length != 3) { Console.WriteLine("usage: kev <name> <data>"); break; }
+                    uint kData = ParseUInt(parts[2]);
+                    var kId = (TxEventGroup)(90000 + _nextKevId++);
+                    _sc.MapClientEventToSimEvent(kId, parts[1]);
+                    _sc.TransmitClientEvent(SimConnect.SIMCONNECT_OBJECT_ID_USER, kId, kData,
+                        NotifGroup.Default, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+                    Console.WriteLine($"[KEV] {parts[1]} data={kData} sent.");
                     break;
                 }
                 case "q":

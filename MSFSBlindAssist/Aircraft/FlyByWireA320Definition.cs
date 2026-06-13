@@ -72,6 +72,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
         };
 
+    // MEASURED 2026-06-10 (open-loop, old no-lead tone; 13 turn rollouts,
+    // KATL/KIAH/KPHX, A20N): required lead median 0.95 s, IQR 0.52–1.94 s
+    // → initial value 1.3. CLOSED-LOOP REVALIDATION 2026-06-11 (KSFO, A20N,
+    // rate-lead active at 1.3): both clean turns rolled out ~15° LONG —
+    // with the cue available the pilot now WAITS for tone-centre before
+    // unwinding (unlike the Boeings, where ingrained self-anticipation made
+    // the same leads come out SHORT), exposing the full reaction+inertia
+    // chain. Raw correction suggested +1.6–1.9 s; stepped conservatively to
+    // 1.6 (n=2). Re-fly to converge.
+    public override double TaxiTurnLeadSeconds => 1.6;
+
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
         if (_cachedVariables != null) return _cachedVariables;

@@ -442,6 +442,12 @@ public sealed class GroundTrafficMonitor : IDisposable
         return $"{RoundFeet(feet)} feet";
     }
 
+    private static int RoundFeet(double feet)
+    {
+        double step = feet > 200.0 ? 50.0 : 25.0;
+        return (int)(Math.Round(feet / step) * step);
+    }
+
     private static string DescribeDirection(double relBearing)
     {
         // relBearing: 0 = dead ahead, 90 = hard right, 180 = dead behind
@@ -456,12 +462,6 @@ public sealed class GroundTrafficMonitor : IDisposable
     }
 
     private static double NormalizeDeg(double d) => ((d % 360.0) + 360.0) % 360.0;
-
-    private static int RoundFeet(double feet)
-    {
-        double step = feet > 200.0 ? 50.0 : 25.0;
-        return (int)(Math.Round(feet / step) * step);
-    }
 
     // ──────────────────────────────────────────────────────────────────────────
 

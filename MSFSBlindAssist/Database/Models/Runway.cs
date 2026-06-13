@@ -76,7 +76,17 @@ public class Runway
 
         public override string ToString()
         {
-            string baseInfo = $"Runway {RunwayID} - {Length:0}ft {GetSurfaceType()}";
+            string len = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(Length, shortForm: true, round: false);
+            string baseInfo;
+            if (Width > 0)
+            {
+                string wid = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(Width, shortForm: true, round: false);
+                baseInfo = $"Runway {RunwayID} - {len} long, {wid} wide - {GetSurfaceType()}";
+            }
+            else
+            {
+                baseInfo = $"Runway {RunwayID} - {len} {GetSurfaceType()}";
+            }
 
             if (ILSFreq > 0)
             {

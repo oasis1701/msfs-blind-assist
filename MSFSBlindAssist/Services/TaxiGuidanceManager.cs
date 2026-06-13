@@ -62,6 +62,52 @@ public class TaxiGuidanceManager : IDisposable
     private TaxiRoute? _route;
     private TaxiGuidanceState _state = TaxiGuidanceState.Inactive;
 
+    private bool _steeringToneSuppressed;
+    /// <summary>When true, the taxi steering tone is silenced (e.g. while docking guidance owns the centerline cue near the gate).</summary>
+    public void SetSteeringToneSuppressed(bool suppressed)
+    {
+        if (_steeringToneSuppressed == suppressed) return;
+        // Latch only AFTER Pause/Resume succeeds. If the call threw with the latch
+        // already flipped, the equality guard above would block every retry with the
+        // same value and the tone would stay stuck in the wrong state. The caller
+        // feeds this per-frame, so an unchanged latch retries on the next frame.
+        try { if (suppressed) _steeringTone.Pause(); else _steeringTone.Resume(); }
+        catch { return; }
+        _steeringToneSuppressed = suppressed;
+    }
+
+    private bool _dockingActive;
+    /// <summary>
+    /// True while docking guidance is ENGAGED on the destination gate (its state machine is in
+    /// Docking or Stopped) — fed per-frame from <c>DockingGuidanceManager.IsActive</c>. While
+    /// true, taxi suppresses its OWN terminal arrival callouts (the parking countdown, "Stop.
+    /// Hold position.", the "Align with…"/"Destination reached" verbal, and the gate-lineup
+    /// "Parking brake.") so it never contradicts docking's countdown to the precise GSX stop —
+    /// which sits a few metres beyond taxi's route-end node. ENGAGE-LATCHED by design: before
+    /// docking engages, taxi speaks its normal arrival sequence — so a gate where docking never
+    /// engages (approach outside the cone, stop beyond engage range, navdata heading off) still
+    /// gets full verbal arrival guidance instead of total silence. Do NOT widen this back to
+    /// "a gate is set" semantics — that silenced every navdata user's gate arrival.
+    /// Written and read on the same marshalled UI-thread frame (write follows taxi's own
+    /// UpdatePosition in the MainForm handler), so a plain bool is safe; worst case one frame stale.
+    /// </summary>
+    public void SetDockingActive(bool active) { _dockingActive = active; }
+
+    /// <summary>
+    /// True while docking guidance is ARMED for this gate with the GSX stop position
+    /// still AHEAD of the aircraft, but not yet engaged (see
+    /// DockingGuidanceManager.IsArmedAwaitingEngage). In that window taxi's arrival
+    /// wording must redirect the pilot FORWARD — "continue ahead for docking
+    /// guidance" — instead of "Parking brake." / "hold position": the GSX stop is
+    /// routinely tens of metres past the navdata parking point where taxi's route
+    /// ends, and the gate's GSX gatedistancethreshold can shrink docking's engage
+    /// range below that gap (KATL F3 2026-06-11: pilot parked-on-instruction at
+    /// 33.7 m and sat 26 s with docking Armed). Same write/read pattern as
+    /// SetDockingActive (one frame stale at worst).
+    /// </summary>
+    public void SetDockingPending(bool pending) { _dockingPending = pending; }
+    private bool _dockingPending;
+
     // Single lock serializing all access to _route / _graph / _state and related
     // tracking fields between the SimConnect position thread (UpdatePosition)
     // and UI-thread callers (LoadRoute, StopGuidance, ContinuePastHoldShort,
@@ -76,6 +122,35 @@ public class TaxiGuidanceManager : IDisposable
     private string _icao = "";
     private List<string>? _originalTaxiwaySequence;
 
+    // Route polyline cache for GuidanceGeometry (node k = segment k's FromNode,
+    // last entry = final ToNode). Rebuilt lazily whenever _route changes —
+    // keyed by reference so every assignment site (LoadRoute, recalc,
+    // retarget) is covered without per-site invalidation duties.
+    private TaxiRoute? _routePointsSource;
+    private double[] _routeLats = Array.Empty<double>();
+    private double[] _routeLons = Array.Empty<double>();
+
+    private (double[] lats, double[] lons) RoutePoints()
+    {
+        var route = _route!;
+        if (!ReferenceEquals(_routePointsSource, route))
+        {
+            int n = route.Segments.Count;
+            var lats = new double[n + 1];
+            var lons = new double[n + 1];
+            for (int i = 0; i < n; i++)
+            {
+                lats[i] = route.Segments[i].FromNode.Latitude;
+                lons[i] = route.Segments[i].FromNode.Longitude;
+            }
+            lats[n] = route.Segments[n - 1].ToNode.Latitude;
+            lons[n] = route.Segments[n - 1].ToNode.Longitude;
+            _routeLats = lats; _routeLons = lons;
+            _routePointsSource = route;
+        }
+        return (_routeLats, _routeLons);
+    }
+
     // Current tracking state
     private int _currentSegmentIndex = 0;
     // True when the active route came from the Landing Exit Planner (it
@@ -84,8 +159,24 @@ public class TaxiGuidanceManager : IDisposable
     private bool _isLandingExitRoute = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
-    private bool _approachAnnounced = false;      // "In X feet, turn..." at ~300ft
+    private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
+    private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
     private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
+    // Yaw-episode tracker driving the "Straighten." rollout cue. The original
+    // design armed off the route's per-junction TurnAngleDegrees — DEAD ON REAL
+    // NAVDATA: a measured KSFO route had 107 junctions and only ONE ≥ 60° (real
+    // 90° turns are chains of 5–15° micro-bends), so the cue never fired
+    // (pilot report 2026-06-11). Episodes are route-classification-independent:
+    // an episode opens when sustained |yaw| ≥ STRAIGHTEN_EPISODE_MIN_RATE,
+    // accumulates signed heading change, and closes when yaw settles. The cue
+    // fires once per episode when (a) the episode has turned ≥
+    // STRAIGHTEN_MIN_TURN_DEG, (b) the route ahead is straight-ish (so a
+    // mid-curve steady arc — where the projected error legitimately hovers
+    // near zero — can't false-fire), and (c) the projected error crosses
+    // through centre against the yaw direction.
+    private int _yawEpisodeSign;            // 0 = no episode in progress
+    private double _yawEpisodeTurnDeg;      // signed accumulated heading change
+    private bool _straightenFiredThisEpisode;
     private bool _crossingAnnounced = false;       // "Crossing taxiway X" at ~150ft
     private int _lastCrossingNodeId = -1;          // suppress re-announce for same node
     // Time-windowed dedup per taxiway NAME — many airports split what looks like a single
@@ -107,6 +198,17 @@ public class TaxiGuidanceManager : IDisposable
     private const double TURN_IMMINENT_MAX_M = 75.0;             // ceiling: ~245ft (fast jet taxi)
     private const double TURN_IMMINENT_SEC_LEAD = 4.0;           // desired lead time at current ground speed
     private const double CROSSING_ANNOUNCE_DISTANCE_M = 50.0;    // ~150ft "crossing taxiway X"
+    // Cumulative-curve verbal cue. Navdata models gentle curves as chains of
+    // 5–15 m segments bending 5–15° each — every step is below the 20°
+    // discrete-turn threshold, so no turn callout ever fired for a 30–90°
+    // cumulative curve (KATL 2026-06-10: a 48° curve produced a silent −72°
+    // tone error at 20 kt). Announce once per curve direction when the next
+    // CURVE_SCAN_WINDOW_M of route bends ≥ CURVE_ANNOUNCE_MIN_DEG without any
+    // single discrete step (discrete turns keep their own callouts).
+    private const double CURVE_SCAN_WINDOW_M = 100.0;
+    private const double CURVE_ANNOUNCE_MIN_DEG = 30.0;
+    private const double CURVE_RESET_DEG = 15.0;   // hysteresis: re-arm when the window straightens
+    private const double CURVE_ANNOUNCE_MAX_OPPOSITE_YAW_DEG_SEC = 3.0;  // defer cue while yawing against it
     // Runway-destination arrival radius (12 m ≈ 40 ft). Tight enough that the
     // 300/150/50 ft countdown fires in full BEFORE HandleArrival takes over
     // (previously 30 m preempted the 50 ft "Stop." callout). The pilot therefore
@@ -115,7 +217,35 @@ public class TaxiGuidanceManager : IDisposable
     // hold-short node — enough braking room even at brisk taxi speed.
     private const double ARRIVAL_RADIUS_M = 12.0;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
-    private const double GUIDANCE_LOOK_AHEAD_M = 50.0;           // Min distance for heading target
+    // Steering-tone look-ahead: target = the point this many metres ahead
+    // along the route polyline (continuous walk — see GuidanceGeometry).
+    // Speed-scaled so the tone leads turns earlier at speed: 6 s of travel,
+    // clamped. At 10 kt → 50 m (floor); 20 kt → 62 m; 30 kt+ → 93–120 m.
+    // The 50 m floor matches the old fixed GUIDANCE_LOOK_AHEAD_M so slow-taxi
+    // cross-track sensitivity is unchanged.
+    private const double GUIDANCE_LOOK_AHEAD_SEC = 6.0;
+    private const double GUIDANCE_LOOK_AHEAD_MIN_M = 50.0;
+    private const double GUIDANCE_LOOK_AHEAD_MAX_M = 120.0;
+    // Rollout anticipation: project the tone's heading error forward by the
+    // yaw rate over TurnLeadSeconds so the tone centres BEFORE the nose
+    // arrives — the pilot starts unwinding on time instead of overshooting
+    // the turn (reaction time + airframe yaw inertia). Lead is PER-AIRCRAFT
+    // (IAircraftDefinition.TaxiTurnLeadSeconds, wired by MainForm on aircraft
+    // load/switch): FBW Airbuses need ~1.3–1.6 s (1.3 measured from 13 turn
+    // rollouts in the 2026-06-10 A20N telemetry), PMDG Boeings ~0.8–1.0 s.
+    // 0 disables the projection entirely. Contribution clamped; rate
+    // low-passed; only applied while actually yawing.
+    // Cross-thread note: written by the UI thread on aircraft load/switch, read per-frame on the SimConnect thread WITHOUT _stateLock — benign (single aligned double, no coupled invariant). Do not couple a second field to it without taking the lock.
+    public double TurnLeadSeconds { get; set; } = 1.2;
+    private const double TURN_LEAD_MAX_DEG = 30.0;
+    private const double TURN_LEAD_MIN_RATE_DEG_SEC = 1.0;
+    private const double YAW_RATE_FILTER_ALPHA = 0.3;
+    // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
+    private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
+    private const double STRAIGHTEN_EPISODE_END_RATE_DEG_SEC = 1.5;  // close episode (hysteresis)
+    private const double STRAIGHTEN_MIN_TURN_DEG = 35.0;             // episode must have turned this much
+    private const double STRAIGHTEN_AHEAD_WINDOW_M = 60.0;           // route-ahead straightness scan
+    private const double STRAIGHTEN_AHEAD_STRAIGHT_DEG = 15.0;       // ...must bend less than this
     // If the aircraft is within this distance of the destination, suppress off-route
     // recalculation entirely. Navdata gaps between the last taxiway and the runway/gate
     // node (e.g., J1 terminus → K1 junction at VHHH is 67 m from 07R), combined with
@@ -183,8 +313,22 @@ public class TaxiGuidanceManager : IDisposable
     private const double RECALC_LENGTH_BLOWUP_PAD_M = 500.0;
     private const double RECALC_BACKWARDS_DELTA_DEG = 120.0;
 
+    // Initial-load constrained-route advisory. The recalc path has a sanity
+    // gate (RECALC_LENGTH_BLOWUP_*) but the INITIAL LoadRoute had none — a
+    // mis-picked taxiway ("via FE" at KIAH when the gate was 600 m away)
+    // produced a 6,094 m tour with out-and-back loops and zero warning.
+    // Same thresholds as the recalc gate; advisory only (the clearance might
+    // be genuine — ATC can route around closures), so the route still loads
+    // and the pilot decides.
+    private const double CONSTRAINED_WARN_RATIO = 2.0;
+    private const double CONSTRAINED_WARN_PAD_M = 500.0;
+    private const double CONSTRAINED_WARN_FIRST_TW_M = 300.0;
+
     // Position tracking
     private double _lastLat, _lastLon, _lastHeading;
+    private double _yawRateDegSec;            // low-passed, right-positive
+    private DateTime _lastYawSampleTime = DateTime.MinValue;
+    private double _lastYawHeading;
     private double _lastGroundSpeedKts;
     private bool _positionInitialized = false;
 
@@ -209,9 +353,7 @@ public class TaxiGuidanceManager : IDisposable
     // APPENDS a session header (preserving prior sessions' traces for post-flight analysis),
     // so the file grows across sessions. To bound that growth it is truncated at LoadRoute
     // time once it exceeds MAX_GUIDANCE_LOG_BYTES.
-    private static readonly string GuidanceLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "taxi_guidance.log");
+    private static readonly string GuidanceLogPath = Utils.AppLogs.PathFor("taxi_guidance.log");
     private DateTime _lastGuidanceLogTime = DateTime.MinValue;
     private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
     // Size cap for the cross-session diagnostic trace. A single taxi tops out ≈2 MB
@@ -512,6 +654,7 @@ public class TaxiGuidanceManager : IDisposable
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
     private const double LINEUP_HEADING_TOLERANCE_DEG = 5.0;             // gate default
+    private const double LINEUP_CENTERLINE_TOLERANCE_FEET = 25.0;
     private const double GATE_ARRIVAL_RADIUS_FEET = 20.0;
 
     // Runway-lineup blend band: when far from centerline, steer toward the threshold
@@ -525,6 +668,15 @@ public class TaxiGuidanceManager : IDisposable
     // pan, while still saturating gracefully at large offsets.
     private const double LINEUP_NOISE_DEADBAND_FEET = 8.0;
     private const double LINEUP_INTERCEPT_SAT_FEET = 100.0;
+
+    // Minimum along-runway distance (m) the lineup point must still be AHEAD of
+    // the aircraft for the LiningUp status readout to speak "X to go". At or
+    // below this (abeam/behind — the normal case once the pilot has turned onto
+    // the runway at an entry downfield of the start-table point), the distance
+    // is omitted: a lineup point behind the aircraft has no actionable meaning,
+    // and a straight-line readout there GROWS with correct forward progress
+    // (the "increasing distance while centered" complaint, KBWI 28 2026-06-11).
+    private const double LINEUP_TOGO_MIN_AHEAD_M = 5.0;
 
     // Conversion constants
     private const double METERS_TO_FEET = 3.28084;
@@ -901,6 +1053,8 @@ public class TaxiGuidanceManager : IDisposable
             if (route == null || route.Segments.Count == 0)
                 return "Could not calculate a route to the destination.";
 
+            string? constrainedLengthWarning = null;
+
             route.DestinationName = destinationName;
             if (taxiwaySequence != null)
                 route.TaxiwaySequence = taxiwaySequence;
@@ -945,12 +1099,44 @@ public class TaxiGuidanceManager : IDisposable
             // pattern as ATC-instructed hold-shorts.
             InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
 
+            // Constrained-route sanity advisory: compare against the
+            // unconstrained shortest path from the aircraft's natural start
+            // node. Fires only for user-sequenced routes that built fully
+            // (a fallback route is already announced via its fallback reason).
+            // Computed AFTER TruncateToHoldShort so the spoken warning quotes
+            // the same total the route summary speaks (the direct comparison
+            // is untruncated either way — 500 m pad dwarfs the ~60 m
+            // hold-short trim).
+            if (taxiwaySequence is { Count: > 0 } &&
+                string.IsNullOrEmpty(route.ConstrainedFallbackReason))
+            {
+                var directStart = _graph.FindNearestNodeInDirection(
+                    aircraftLat, aircraftLon, aircraftHeading,
+                    requiredComponentId: destComponentId) ?? startNode;
+                var direct = router.FindShortestPath(directStart.NodeId, destinationNodeId);
+                if (direct != null && direct.Segments.Count > 0 &&
+                    route.TotalDistanceMeters >
+                        direct.TotalDistanceMeters * CONSTRAINED_WARN_RATIO + CONSTRAINED_WARN_PAD_M)
+                {
+                    double firstTwDist = TaxiGraph.FastDistanceMeters(
+                        aircraftLat, aircraftLon, startNode.Latitude, startNode.Longitude);
+                    string firstTwNote = firstTwDist > CONSTRAINED_WARN_FIRST_TW_M
+                        ? $" Taxiway {taxiwaySequence[0]} is {FormatDistance(firstTwDist)} from your position."
+                        : "";
+                    constrainedLengthWarning =
+                        $"Warning: route via {string.Join(", ", taxiwaySequence)} is " +
+                        $"{FormatDistance(route.TotalDistanceMeters)}; direct route is " +
+                        $"{FormatDistance(direct.TotalDistanceMeters)}.{firstTwNote} Check taxiway selection.";
+                }
+            }
+
             _route = route;
             _currentSegmentIndex = 0;
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
             _isLandingExitRoute = false;
             _approachAnnounced = false;
+            _curveAnnouncedSign = 0;
             _turnImminentAnnounced = false;
             _crossingAnnounced = false;
             _lastCrossingNodeId = -1;
@@ -1005,6 +1191,14 @@ public class TaxiGuidanceManager : IDisposable
                 string summary = BuildRouteSummary(route, isRunwayDestination);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
+                // The length advisory goes FIRST, not last. The summary is plain
+                // queued speech, and the first AnnounceImmediate tactical callout
+                // after the pilot starts rolling INTERRUPTS it — a warning at the
+                // tail of a long summary never gets heard. KATL 2026-06-11 "via V":
+                // a 7,073 m tour (direct 1.1 km) taxied for 7 minutes with the
+                // warning almost certainly cut off before it played.
+                if (!string.IsNullOrEmpty(constrainedLengthWarning))
+                    summary = constrainedLengthWarning + " " + summary;
                 LastRouteSummary = summary;
                 if (announceSummary)
                     _announcer.Announce(summary);
@@ -1202,7 +1396,7 @@ public class TaxiGuidanceManager : IDisposable
                 ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
                 : (int)Math.Round(exit.DistanceFromTouchdownFeet);
             if (distFt > 0)
-                AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
+                AnnounceInstruction($"Touchdown. {exitClass} {name} in {DistanceFormatter.FromFeet(distFt)}.");
             else
                 AnnounceInstruction($"Touchdown. {exitClass} {name}.");
         }
@@ -1300,7 +1494,7 @@ public class TaxiGuidanceManager : IDisposable
                 ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
                 : (int)Math.Round(exit.DistanceFromTouchdownFeet);
             if (distFt > 0)
-                AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
+                AnnounceInstruction($"Touchdown. {exitClass} {name} in {DistanceFormatter.FromFeet(distFt)}.");
             else
                 AnnounceInstruction($"Touchdown. {exitClass} {name}.");
         }
@@ -1345,6 +1539,52 @@ public class TaxiGuidanceManager : IDisposable
         _lastLon = lon;
         _lastHeading = headingTrue;
         _positionInitialized = true;
+
+        // Yaw-rate tracking for rollout anticipation (wrap-safe, low-passed).
+        var nowYaw = DateTime.UtcNow;
+        if (_lastYawSampleTime != DateTime.MinValue)
+        {
+            double dt = (nowYaw - _lastYawSampleTime).TotalSeconds;
+            if (dt > 0.01 && dt < 1.0)
+            {
+                double dHdg = NormalizeAngle(headingTrue - _lastYawHeading);
+                double rate = dHdg / dt;
+                _yawRateDegSec = _yawRateDegSec * (1 - YAW_RATE_FILTER_ALPHA)
+                               + rate * YAW_RATE_FILTER_ALPHA;
+
+                // Yaw-episode tracking for the "Straighten." cue. An episode is a
+                // sustained turn in one direction; a direction flip restarts it.
+                if (Math.Abs(_yawRateDegSec) >= STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC)
+                {
+                    int s = Math.Sign(_yawRateDegSec);
+                    if (_yawEpisodeSign != s)
+                    {
+                        _yawEpisodeSign = s;
+                        _yawEpisodeTurnDeg = 0.0;
+                        _straightenFiredThisEpisode = false;
+                    }
+                    _yawEpisodeTurnDeg += dHdg;
+                }
+                else if (Math.Abs(_yawRateDegSec) < STRAIGHTEN_EPISODE_END_RATE_DEG_SEC)
+                {
+                    _yawEpisodeSign = 0;
+                    _yawEpisodeTurnDeg = 0.0;
+                }
+                else if (_yawEpisodeSign != 0)
+                {
+                    // between the two thresholds: episode continues accumulating
+                    _yawEpisodeTurnDeg += dHdg;
+                }
+            }
+            else if (dt >= 1.0)
+            {
+                _yawRateDegSec = 0;   // stale gap (paused sim / reconnect) — reset
+                _yawEpisodeSign = 0;
+                _yawEpisodeTurnDeg = 0.0;
+            }
+        }
+        _lastYawSampleTime = nowYaw;
+        _lastYawHeading = headingTrue;
 
         // Handle lineup phase separately
         if (_state == TaxiGuidanceState.LiningUp)
@@ -1585,8 +1825,51 @@ public class TaxiGuidanceManager : IDisposable
         // Pan-direction settings (InvertPan / HardPan) are refreshed at the
         // top of UpdatePosition so they apply uniformly to taxiing, lining-up,
         // and runway-aligned phases.
-        _steeringTone.Resume();
-        _steeringTone.UpdateHeadingError(_smoothedHeadingError, currentSeg.PathWidth);
+        if (!_steeringToneSuppressed)
+        {
+            // Rollout anticipation: only while genuinely yawing, so straight-line
+            // sensor noise can't perturb the tone. Runway/gate lineup and docking
+            // keep their own precision profiles — this applies to Taxiing only.
+            // TurnLeadSeconds is per-aircraft (0 = disabled).
+            double toneError = TurnLeadSeconds > 0.0
+                               && Math.Abs(_yawRateDegSec) >= TURN_LEAD_MIN_RATE_DEG_SEC
+                ? GuidanceGeometry.ProjectHeadingError(
+                      _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG)
+                : _smoothedHeadingError;
+            _steeringTone.Resume();
+            _steeringTone.UpdateHeadingError(toneError, currentSeg.PathWidth);
+        }
+
+        // Turn rollout cue ("Straighten.") — yaw-episode based, independent of
+        // route junction classification (see the _yawEpisodeSign field comment:
+        // real navdata splits 90° turns into micro-bends, so per-junction angle
+        // gates never fire). Fires once per sustained-yaw episode when the
+        // aircraft has genuinely turned (≥ STRAIGHTEN_MIN_TURN_DEG), the route
+        // ahead is straight (a steady mid-curve arc holds projected error near
+        // zero by DESIGN — without the straightness gate this would false-fire
+        // inside every long curve), and the projected error crosses through
+        // centre against the yaw direction: unwind NOW or overshoot.
+        if (TurnLeadSeconds > 0.0 && _yawEpisodeSign != 0 && !_straightenFiredThisEpisode
+            && Math.Abs(_yawRateDegSec) >= STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC
+            && Math.Abs(_yawEpisodeTurnDeg) >= STRAIGHTEN_MIN_TURN_DEG)
+        {
+            var (slats, slons) = RoutePoints();
+            double cumAhead = GuidanceGeometry.CumulativeTurnDeg(
+                slats, slons, _currentSegmentIndex, _lastLat, _lastLon,
+                STRAIGHTEN_AHEAD_WINDOW_M, out _);
+            if (Math.Abs(cumAhead) < STRAIGHTEN_AHEAD_STRAIGHT_DEG)
+            {
+                double projected = GuidanceGeometry.ProjectHeadingError(
+                    _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG);
+                // Crossed centre: projected error now on the OPPOSITE side of the
+                // yaw direction (turning right but projected error says left).
+                if (projected * _yawEpisodeSign <= 0)
+                {
+                    AnnounceInstruction("Straighten.");
+                    _straightenFiredThisEpisode = true;
+                }
+            }
+        }
 
         // Diagnostic trace — captures raw and smoothed inputs to the steering
         // tone so post-hoc analysis can pinpoint where erratic L/R flipping
@@ -1767,79 +2050,25 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Gets a guidance target point at least GUIDANCE_LOOK_AHEAD_M meters ahead on the route.
-    /// This smooths steering through short navdata segments that would otherwise cause jitter.
-    ///
-    /// CRITICAL: Never look past a turn. If the next segment is a turn (>25°), the look-ahead
-    /// is clamped to the current segment's ToNode — otherwise the tone would push the blind
-    /// pilot to cut the corner diagonally through grass.
+    /// Gets the steering-tone target: the point a speed-scaled look-ahead
+    /// distance ahead along the route polyline, via the continuous arc-length
+    /// walk in <see cref="GuidanceGeometry.WalkTarget"/>. Continuous in both
+    /// aircraft position and segment advancement — replaces the old binary
+    /// turn/no-turn target picker whose one-frame 100+ m target jumps caused
+    /// violent steering-tone pan flips at junctions.
     /// </summary>
     private (double lat, double lon) GetGuidanceTarget(double aircraftLat, double aircraftLon)
     {
-        if (_route == null || _currentSegmentIndex >= _route.Segments.Count)
+        if (_route == null || _route.Segments.Count == 0 ||
+            _currentSegmentIndex >= _route.Segments.Count)
             return (aircraftLat, aircraftLon);
 
-        var currentSeg = _route.Segments[_currentSegmentIndex];
-
-        // Check whether the next segment is a turn (bearing change > 25°).
-        TaxiRouteSegment? nextTurnSeg = null;
-        if (_currentSegmentIndex + 1 < _route.Segments.Count)
-        {
-            var ns = _route.Segments[_currentSegmentIndex + 1];
-            bool isTurn = ns.TurnDirection != "straight" ||
-                          Math.Abs(NormalizeAngle(ns.BearingDegrees - currentSeg.BearingDegrees)) > 25.0;
-            if (isTurn) nextTurnSeg = ns;
-        }
-
-        // Distance from aircraft to the current segment's end node (the junction).
-        double accumulatedDist = TaxiGraph.FastDistanceMeters(
-            aircraftLat, aircraftLon,
-            currentSeg.ToNode.Latitude,
-            currentSeg.ToNode.Longitude);
-
-        // Approaching a turn junction: if we're still outside the look-ahead window,
-        // aim at the junction (keep pointing straight ahead). Once we're inside the
-        // window, wrap the remaining distance past the junction along the next segment
-        // so the tone begins panning toward the turn direction before we arrive.
-        if (nextTurnSeg != null)
-        {
-            if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
-                return (currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude);
-            double remaining = GUIDANCE_LOOK_AHEAD_M - accumulatedDist;
-            return GeoProjectPoint(currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude,
-                                   nextTurnSeg.BearingDegrees, remaining);
-        }
-
-        // If the immediate ToNode is already far enough, use it
-        if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
-        {
-            return (currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude);
-        }
-
-        // Otherwise, keep looking further along the route (stop at first turn)
-        for (int i = _currentSegmentIndex + 1; i < _route.Segments.Count; i++)
-        {
-            var seg = _route.Segments[i];
-
-            // Stop if this segment is a turn — use previous segment's ToNode as target
-            bool thisIsTurn = seg.TurnDirection != "straight" ||
-                              (i > 0 && Math.Abs(NormalizeAngle(
-                                  seg.BearingDegrees - _route.Segments[i - 1].BearingDegrees)) > 25.0);
-            if (thisIsTurn)
-            {
-                return (_route.Segments[i - 1].ToNode.Latitude, _route.Segments[i - 1].ToNode.Longitude);
-            }
-
-            accumulatedDist += seg.DistanceMeters;
-            if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
-            {
-                return (seg.ToNode.Latitude, seg.ToNode.Longitude);
-            }
-        }
-
-        // If the entire remaining route is <50m, aim for the final destination
-        var lastSeg = _route.Segments[^1];
-        return (lastSeg.ToNode.Latitude, lastSeg.ToNode.Longitude);
+        var (lats, lons) = RoutePoints();
+        double lookAhead = Math.Clamp(
+            _lastGroundSpeedKts * 0.5144 * GUIDANCE_LOOK_AHEAD_SEC,
+            GUIDANCE_LOOK_AHEAD_MIN_M, GUIDANCE_LOOK_AHEAD_MAX_M);
+        return GuidanceGeometry.WalkTarget(
+            lats, lons, _currentSegmentIndex, aircraftLat, aircraftLon, lookAhead);
     }
 
     /// <summary>
@@ -1857,6 +2086,12 @@ public class TaxiGuidanceManager : IDisposable
             _holdShortStopAnnounced = false;
             return;
         }
+
+        // All three callouts already fired — nothing left to compute. (Without this
+        // early-out the live-distance label below was re-formatted ~30×/s for the
+        // entire stationary wait at the hold line: pure garbage on the position thread.)
+        if (_holdShortOuterAnnounced && _holdShortSlowDownAnnounced && _holdShortStopAnnounced)
+            return;
 
         double distFeet = distToTargetM * METERS_TO_FEET;
         string what = !string.IsNullOrEmpty(currentSeg.HoldShortRunway)
@@ -1877,26 +2112,27 @@ public class TaxiGuidanceManager : IDisposable
         double slowDownDistFt = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  8.0, 150.0, 400.0);
         double stopDistFt     = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  4.0,  50.0, 200.0);
 
+        // Hold-short speaks the LIVE distance: its triggers are speed-proportional
+        // and cannot be pre-tabulated like the fixed parking/exit/runway-end milestones.
+        // Formatted only inside the firing branch — not per frame.
+
         // Fire in natural countdown order. Each block returns after announcing so
         // only one callout fires per frame — no stacking.
         if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
-            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
-            AnnounceInstruction($"Hold short {what} in {ft} feet.");
+            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}.");
             _holdShortOuterAnnounced = true;
             return;
         }
         if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
-            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
-            AnnounceInstruction($"Hold short {what} in {ft} feet. Slow down.");
+            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
             _holdShortSlowDownAnnounced = true;
             return;
         }
         if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
-            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
-            AnnounceInstruction($"Hold short {what} in {ft} feet. Stop.");
+            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
             _holdShortStopAnnounced = true;
             return;
         }
@@ -2059,6 +2295,10 @@ public class TaxiGuidanceManager : IDisposable
     private void CheckParkingCountdown(double distToTargetM)
     {
         if (_route == null) return;
+        // Docking guidance owns the final approach to the precise GSX stop (a few metres
+        // beyond this route's end node), so let ITS countdown be the only one — otherwise
+        // taxi says "5 m. Stop." at the node while docking is still 20 m from the stop.
+        if (_dockingActive) return;
         if (_currentSegmentIndex != _route.Segments.Count - 1)
         {
             _parkingAnnounce50 = false;
@@ -2071,26 +2311,34 @@ public class TaxiGuidanceManager : IDisposable
         if (_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
             return;
 
-        double feet = distToTargetM * METERS_TO_FEET;
+        // All milestones fired — skip the per-frame table build (it allocates).
+        if (_parkingAnnounce50 && _parkingAnnounce20 && _parkingAnnounce10)
+            return;
 
-        // Fire thresholds in natural order (50 → 20 → 10). Independent `if` blocks so
-        // a fast arrival that first samples inside 20 ft or 10 ft still fires the
+        var pm = DistanceMilestones.ParkingArrival(); // far->near: [0]=50ft/15m, [1]=20ft/10m, [2]=10ft/5m
+
+        // Fire thresholds in natural order (far → mid → near). Independent `if` blocks so
+        // a fast arrival that first samples inside the mid or near trigger still fires the
         // earlier callouts. One announce per frame to avoid stacking.
-        if (feet < 50 && !_parkingAnnounce50)
+        if (distToTargetM < pm[0].TriggerMetres && !_parkingAnnounce50)
         {
-            AnnounceInstruction($"{_destinationName} in 50 feet.");
+            AnnounceInstruction($"{_destinationName} in {pm[0].Label}.");
             _parkingAnnounce50 = true;
             return;
         }
-        if (feet < 20 && !_parkingAnnounce20)
+        if (distToTargetM < pm[1].TriggerMetres && !_parkingAnnounce20)
         {
-            AnnounceInstruction("20 feet.");
+            AnnounceInstruction($"{pm[1].Label}.");
             _parkingAnnounce20 = true;
             return;
         }
-        if (feet < 10 && !_parkingAnnounce10)
+        if (distToTargetM < pm[2].TriggerMetres && !_parkingAnnounce10)
         {
-            AnnounceInstruction("10 feet. Stop.");
+            // Docking pending: the GSX stop is still ahead of the navdata point this
+            // countdown measures to — a "Stop." directive here parks the pilot short.
+            AnnounceInstruction(_dockingPending
+                ? $"{pm[2].Label}. Continue ahead for docking."
+                : $"{pm[2].Label}. Stop.");
             _parkingAnnounce10 = true;
             return;
         }
@@ -2099,10 +2347,13 @@ public class TaxiGuidanceManager : IDisposable
         // aircraft hasn't actually arrived, so a `"{gate}. Stop."` callout reads
         // misleadingly like an arrival announcement. The dedicated arrival
         // announcement fires separately when the aircraft is within the
-        // arrival radius.
+        // arrival radius. With docking PENDING the correct instruction is the
+        // opposite — keep rolling until docking engages (KATL F3 2026-06-11).
         if (_parkingAnnounce50 && !_parkingAnnounce10 && _lastGroundSpeedKts < 1.0)
         {
-            AnnounceInstruction("Stop. Hold position.");
+            AnnounceInstruction(_dockingPending
+                ? "Docking guidance ahead. Continue forward."
+                : "Stop. Hold position.");
             _parkingAnnounce10 = true;
         }
     }
@@ -2288,11 +2539,20 @@ public class TaxiGuidanceManager : IDisposable
         // no valid path exists, setting ConstrainedFallbackReason.
         TaxiRoute? newRoute;
         if (remainingSequence != null && remainingSequence.Count > 0)
+        {
             newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence);
-        else if (_originalTaxiwaySequence != null && _originalTaxiwaySequence.Count > 0)
-            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, _originalTaxiwaySequence);
+        }
         else
+        {
+            // The aircraft is near NO taxiway of the cleared sequence — it is
+            // either past the whole clearance or far off it. Re-applying the
+            // FULL original sequence from here routes the pilot BACKWARDS
+            // through the entire clearance (KIAH 2026-06-10 15:24: a via-FE
+            // recalc built a 126-node loop back to a taxiway 1.5 km behind;
+            // only the post-recalc sanity gate stopped it). Shortest path to
+            // the destination is the honest recovery.
             newRoute = router.FindShortestPath(nearestNode.NodeId, _destinationNodeId);
+        }
 
         if (newRoute == null || newRoute.Segments.Count == 0)
         {
@@ -2377,6 +2637,7 @@ public class TaxiGuidanceManager : IDisposable
         _route = newRoute;
         _currentSegmentIndex = 0;
         _approachAnnounced = false;
+        _curveAnnouncedSign = 0;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
@@ -2491,6 +2752,10 @@ public class TaxiGuidanceManager : IDisposable
         if (currentSeg.IsHoldShortPoint)
             return;
 
+        // Cumulative-curve cue — fires for gentle multi-segment curves that the
+        // discrete-turn logic below cannot see (every individual junction < 20°).
+        TryAnnounceCurve();
+
         string nextTaxiway = nextSeg.TaxiwayName;
         bool taxiwayChanging = !string.IsNullOrEmpty(nextTaxiway) &&
             !nextTaxiway.Equals(currentSeg.TaxiwayName, StringComparison.OrdinalIgnoreCase);
@@ -2575,6 +2840,43 @@ public class TaxiGuidanceManager : IDisposable
             AnnounceInstruction($"{sharpStr}{turnStr} now{taxiStr}.");
             _turnImminentAnnounced = true;
         }
+    }
+
+    private void TryAnnounceCurve()
+    {
+        if (_route == null || _route.Segments.Count == 0 ||
+            _currentSegmentIndex >= _route.Segments.Count) return;
+
+        var (lats, lons) = RoutePoints();
+        double cum = GuidanceGeometry.CumulativeTurnDeg(
+            lats, lons, _currentSegmentIndex, _lastLat, _lastLon,
+            CURVE_SCAN_WINDOW_M, out bool hasDiscreteStep);
+
+        // A discrete junction inside the window is owned by the approach/now
+        // callouts — saying "curving" as well would double-speak the same bend.
+        if (hasDiscreteStep) return;
+
+        int sign = cum <= -CURVE_ANNOUNCE_MIN_DEG ? -1
+                 : cum >= CURVE_ANNOUNCE_MIN_DEG ? 1 : 0;
+
+        if (sign == 0)
+        {
+            if (Math.Abs(cum) < CURVE_RESET_DEG) _curveAnnouncedSign = 0;  // re-arm
+            return;
+        }
+        if (sign == _curveAnnouncedSign) return;   // this curve already announced
+
+        // Don't announce a NEW direction while the aircraft is still yawing the
+        // OTHER way: near a curve's exit the scan window already reaches into the
+        // next, opposite curve, and announcing it mid-turn reads as a contradiction
+        // ("Curving right." while the pilot is still steering left — pilot report
+        // 2026-06-11). Defer; the cue fires the moment the current turn settles.
+        if (_yawRateDegSec * sign < 0 &&
+            Math.Abs(_yawRateDegSec) >= CURVE_ANNOUNCE_MAX_OPPOSITE_YAW_DEG_SEC)
+            return;
+
+        _curveAnnouncedSign = sign;
+        AnnounceInstruction(sign < 0 ? "Curving left." : "Curving right.");
     }
 
     /// <summary>
@@ -2787,6 +3089,13 @@ public class TaxiGuidanceManager : IDisposable
         // Gate / parking destination with lineup heading data — guide heading.
         if (_hasLineupTarget)
         {
+            // NOTE: taxi keeps steering here even when docking is active. The final
+            // turn INTO the gate box happens in the last ~20 m past the route node —
+            // taxi has the gate-lineup heading and can steer that turn; docking's
+            // straight-to-stop tone cannot. Docking owns distance + the precise stop
+            // (taxi's parking distance countdown is suppressed in CheckParkingCountdown
+            // while _dockingActive), so the two never give conflicting countdowns, but
+            // taxi remains the steering authority all the way in.
             SetState(TaxiGuidanceState.LiningUp);
             _lineupAnnouncedAligned = false;
 
@@ -2795,12 +3104,23 @@ public class TaxiGuidanceManager : IDisposable
             _smoothedHeadingError = 0.0;
             _headingErrorInitialized = false;
 
-            int hdgAnnounce = (int)Math.Round(_lineupHeadingMag);
-            double headingError = NormalizeAngle(_lineupHeadingTrue - _lastHeading);
-            string turnDir = Math.Abs(headingError) < 10 ? "" :
-                (headingError > 0 ? " Turn right." : " Turn left.");
-
-            AnnounceInstruction($"Align with {_destinationName}, heading {hdgAnnounce}.{turnDir}");
+            // _dockingActive here means docking has ENGAGED (engage-latched semantics): it
+            // already announced "Docking guidance… X to stop" and owns the countdown to the
+            // precise stop, so taxi stays silent to avoid a contradictory "Align with X" over
+            // it. When docking has NOT engaged (the common navdata case), taxi announces the
+            // alignment normally — this is the pilot's only arrival guidance then. Taxi holds
+            // LiningUp state either way; its tone is muted separately while docking is active.
+            if (!_dockingActive)
+            {
+                int hdgAnnounce = (int)Math.Round(_lineupHeadingMag);
+                double headingError = NormalizeAngle(_lineupHeadingTrue - _lastHeading);
+                string turnDir = Math.Abs(headingError) < 10 ? "" :
+                    (headingError > 0 ? " Turn right." : " Turn left.");
+                // Docking pending: the GSX stop is still ahead — tell the pilot now
+                // so the arrival doesn't read as "park here" (see SetDockingPending).
+                string dockNote = _dockingPending ? " Then continue ahead for docking guidance." : "";
+                AnnounceInstruction($"Align with {_destinationName}, heading {hdgAnnounce}.{turnDir}{dockNote}");
+            }
 
             // Keep tone going for lineup guidance
             _steeringTone.Resume();
@@ -2824,8 +3144,10 @@ public class TaxiGuidanceManager : IDisposable
                 $"Off the runway at {exitName}. Hold position. " +
                 $"Open the taxi planner to set a route to your gate.");
         }
-        else
+        else if (!_dockingActive)
         {
+            // Docking, when it owns this arrival, announces the stop itself — suppress the
+            // generic "Destination reached" so the two don't double up.
             AnnounceInstruction($"{_route?.DestinationName ?? "Destination"} reached.");
         }
     }
@@ -3266,7 +3588,7 @@ public class TaxiGuidanceManager : IDisposable
                     string newName = string.IsNullOrEmpty(earlierExit.TaxiwayName)
                         ? "earlier exit"
                         : $"taxiway {earlierExit.TaxiwayName}";
-                    string msg = $"Taking earlier exit, {newName}, {(int)Math.Round(earlierExitDistFt)} feet ahead.";
+                    string msg = $"Taking earlier exit, {newName}, {DistanceFormatter.FromFeet(earlierExitDistFt)} ahead.";
                     RolloutDiag($"UNDERSHOOT: retargeting to '{earlierExit.TaxiwayName}' at {earlierExitDistFt:F0}ft " +
                         $"(planned was '{_rolloutExit.TaxiwayName}')");
                     RetargetLandingExit(earlierExit, lat, lon, headingTrue, overrideAnnouncement: msg);
@@ -3279,44 +3601,55 @@ public class TaxiGuidanceManager : IDisposable
         // in BeginLandingRollout). Use ">= threshold" with a generous
         // window so a fast aircraft skipping past 1500 ft between frames
         // doesn't lose the announcement.
-        string exitClass = _rolloutExit.ExitType switch
+        // Skip the per-frame label/table builds once all have fired (they allocate at
+        // 30 Hz during the most latency-sensitive audio phase). The 900 ft cue only
+        // exists for high-speed exits, so it counts as "done" for the other types.
+        // NOT an early return — the turn-now callout and exit handoff below must
+        // keep running every frame.
+        bool approachCalloutsDone = _rolloutApproach1500Announced && _rolloutApproach500Announced
+            && (_rolloutApproach900Announced || _rolloutExit.ExitType != "High-speed");
+        if (!approachCalloutsDone)
         {
-            "High-speed" => "high-speed exit",
-            "End"        => "runway-end exit",
-            _            => "exit"
-        };
-        string name = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
-            ? "exit"
-            : $"taxiway {_rolloutExit.TaxiwayName}";
+            string exitClass = _rolloutExit.ExitType switch
+            {
+                "High-speed" => "high-speed exit",
+                "End"        => "runway-end exit",
+                _            => "exit"
+            };
+            string name2 = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+                ? "exit"
+                : $"taxiway {_rolloutExit.TaxiwayName}";
 
-        if (!_rolloutApproach1500Announced && distToExitFeet <= 1500.0 && distToExitFeet > 900.0)
-        {
-            RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
-            AnnounceInstruction($"Approaching {exitClass} {name}, 1500 feet.");
-            _rolloutApproach1500Announced = true;
-        }
+            var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
+            if (!_rolloutApproach1500Announced && distToExitFeet <= xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
+            {
+                RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
+                AnnounceInstruction($"Approaching {exitClass} {name2}, {xm[0].Label}.");
+                _rolloutApproach1500Announced = true;
+            }
 
-        // High-speed exits only: extra callout at 900 ft, analogous to the first RETIL
-        // flash (~984 ft). Gives blind pilots a second awareness cue before the 500 ft
-        // "prepare to turn" window — sighted pilots would see the first RETIL light here.
-        if (!_rolloutApproach900Announced && _rolloutExit.ExitType == "High-speed"
-            && distToExitFeet <= 900.0 && distToExitFeet > 500.0)
-        {
-            RolloutDiag($"900-ft high-speed callout firing: distToExit={distToExitFeet:F0}ft");
-            AnnounceInstruction($"{CapFirst(name)}, 900 feet.");
-            _rolloutApproach900Announced = true;
-        }
+            // High-speed exits only: extra callout at 900 ft, analogous to the first RETIL
+            // flash (~984 ft). Gives blind pilots a second awareness cue before the 500 ft
+            // "prepare to turn" window — sighted pilots would see the first RETIL light here.
+            if (!_rolloutApproach900Announced && _rolloutExit.ExitType == "High-speed"
+                && distToExitFeet <= xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
+            {
+                RolloutDiag($"900-ft high-speed callout firing: distToExit={distToExitFeet:F0}ft");
+                AnnounceInstruction($"{CapFirst(name2)}, {xm[1].Label}.");
+                _rolloutApproach900Announced = true;
+            }
 
-        if (!_rolloutApproach500Announced && distToExitFeet <= 500.0 && distToExitFeet > 150.0)
-        {
-            RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
-            // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
-            // approach speed for those exits; telling the pilot to slow down contradicts
-            // the reason they picked one.
-            bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
-            string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
-            AnnounceInstruction($"{CapFirst(name)}, 500 feet.{slowSuffix}");
-            _rolloutApproach500Announced = true;
+            if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)   // feet — turn-now handoff boundary (not a milestone)
+            {
+                RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
+                // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
+                // approach speed for those exits; telling the pilot to slow down contradicts
+                // the reason they picked one.
+                bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
+                string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
+                AnnounceInstruction($"{CapFirst(name2)}, {xm[2].Label}.{slowSuffix}");
+                _rolloutApproach500Announced = true;
+            }
         }
 
         if (!_rolloutTurnNowAnnounced && distToExitFeet <= 150.0)
@@ -3332,7 +3665,10 @@ public class TaxiGuidanceManager : IDisposable
             // initial input, not a committed turn — "gentle" prevents over-rotation.
             // ≥ 20°: genuine RETs and normal exits warrant a deliberate turn input.
             string turnWord = _rolloutExit.ExitAngleDegrees < 20.0 ? "Gentle" : "Turn";
-            AnnounceInstruction($"{turnWord} {dir} now, {name}.");
+            string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+                ? "exit"
+                : $"taxiway {_rolloutExit.TaxiwayName}";
+            AnnounceInstruction($"{turnWord} {dir} now, {exitName}.");
             _rolloutTurnNowAnnounced = true;
             // Normal exits (50–110°): reset the heading-error smoother immediately
             // so the ExitBearingTrue-based tone below starts with a sharp hard-pan
@@ -3446,14 +3782,17 @@ public class TaxiGuidanceManager : IDisposable
                 ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + rawError * HEADING_ERROR_FILTER_ALPHA
                 : rawError;
             _headingErrorInitialized = true;
-            _steeringTone.Resume();
-            // Tight explicit thresholds so the tone gives fine steering even on
-            // shallow exits (3–5°). Silent on-bearing, pans with any meaningful deviation.
-            _steeringTone.UpdateHeadingErrorWithThresholds(
-                _smoothedHeadingError,
-                ROLLOUT_EXIT_TONE_SILENT_DEG,
-                ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
-                ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
+            if (!_steeringToneSuppressed)
+            {
+                _steeringTone.Resume();
+                // Tight explicit thresholds so the tone gives fine steering even on
+                // shallow exits (3–5°). Silent on-bearing, pans with any meaningful deviation.
+                _steeringTone.UpdateHeadingErrorWithThresholds(
+                    _smoothedHeadingError,
+                    ROLLOUT_EXIT_TONE_SILENT_DEG,
+                    ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
+                    ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
+            }
         }
         else
         {
@@ -3495,8 +3834,9 @@ public class TaxiGuidanceManager : IDisposable
         //
         // (c) Extension node adjacent to the junction in the exit direction — for single-
         //     junction exits at any angle (15°, 45°, 90° etc.). Gives the route a second
-        //     segment so GetGuidanceTarget wraps the look-ahead past the junction and pans
-        //     the tone toward the exit direction before the aircraft arrives.
+        //     segment so the look-ahead walk (GuidanceGeometry.WalkTarget) continues past
+        //     the junction and pans the tone toward the exit direction before the
+        //     aircraft arrives.
         //
         // (d) NodeId — last resort if graph has no adjacent exit node (dead-end junction).
         int destNodeId;
@@ -3630,8 +3970,8 @@ public class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// Finds the first graph node adjacent to <paramref name="junctionNodeId"/> in
     /// approximately the exit direction. Used to extend landing-exit routes by one
-    /// segment past the junction so <see cref="GetGuidanceTarget"/> can wrap the
-    /// look-ahead around the corner and start panning the tone before the junction.
+    /// segment past the junction so the look-ahead walk (GuidanceGeometry.WalkTarget)
+    /// can continue around the corner and start panning the tone before the junction.
     /// Returns -1 if no suitable node is found.
     /// </summary>
     private int FindExitExtensionNode(int junctionNodeId, double exitBearingTrue)
@@ -3714,28 +4054,34 @@ public class TaxiGuidanceManager : IDisposable
         // to retire the countdown when the pilot stops or maneuvers.
         if (distToEndFt <= 0) return;
 
-        if (!_rolloutEnd1500Announced && distToEndFt <= 1500.0 && distToEndFt > 500.0)
+        // All three fired — skip the per-frame table build (it allocates). Nothing
+        // follows in this method, so the early return is safe.
+        if (_rolloutEnd1500Announced && _rolloutEnd500Announced && _rolloutEnd100Announced)
+            return;
+
+        var rm = DistanceMilestones.RunwayEnd(); // far->near: [0]=1500ft/500m, [1]=500ft/150m, [2]=100ft/30m
+        if (!_rolloutEnd1500Announced && distToEndFt <= rm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
-            AnnounceInstruction("Runway end in 1500 feet.");
+            AnnounceInstruction($"Runway end in {rm[0].Label}.");
             _rolloutEnd1500Announced = true;
         }
 
-        if (!_rolloutEnd500Announced && distToEndFt <= 500.0 && distToEndFt > 100.0)
+        if (!_rolloutEnd500Announced && distToEndFt <= rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
             // "Slow down" is added only when the pilot still has real speed
             // to bleed off. ROLLOUT_TAXI_GS_KTS (30) is the threshold below
             // which the aircraft is at normal taxi speed and the suffix is
-            // patronising noise. The 100 ft "Stop" callout below is
-            // unconditional by contrast — at 100 ft from the end the pilot
+            // patronising noise. The near "Stop" callout below is
+            // unconditional by contrast — at that distance from the end the pilot
             // needs the directive regardless of current speed.
             string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
-            AnnounceInstruction($"Runway end in 500 feet.{slowSuffix}");
+            AnnounceInstruction($"Runway end in {rm[1].Label}.{slowSuffix}");
             _rolloutEnd500Announced = true;
         }
 
-        if (!_rolloutEnd100Announced && distToEndFt <= 100.0)
+        if (!_rolloutEnd100Announced && distToEndFt <= rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
-            AnnounceInstruction("Runway end in 100 feet. Stop.");
+            AnnounceInstruction($"Runway end in {rm[2].Label}. Stop.");
             _rolloutEnd100Announced = true;
         }
     }
@@ -3817,7 +4163,7 @@ public class TaxiGuidanceManager : IDisposable
                 // requested exit; if we fell forward to a later one, drop it.
                 string announcement = (candidate == newExit && overrideAnnouncement != null)
                     ? overrideAnnouncement
-                    : $"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.";
+                    : $"Missed {prevName}. Retargeting {newName}, {DistanceFormatter.FromFeet(distAheadFt)} ahead.";
                 AnnounceInstruction(announcement);
                 return;
             }
@@ -3966,18 +4312,21 @@ public class TaxiGuidanceManager : IDisposable
             {
                 _smoothedHeadingError = headingError;
                 _headingErrorInitialized = true;
-                _steeringTone.Resume(); // activate from the initial U-turn silence
+                if (!_steeringToneSuppressed) _steeringTone.Resume(); // activate from the initial U-turn silence
             }
             else
             {
                 _smoothedHeadingError = _smoothedHeadingError * (1.0 - HEADING_ERROR_FILTER_ALPHA)
                                       + headingError * HEADING_ERROR_FILTER_ALPHA;
             }
-            _steeringTone.UpdateHeadingErrorWithThresholds(
-                _smoothedHeadingError,
-                silentThresholdDeg:     0.5,
-                activationThresholdDeg: 1.0,
-                maxPanThresholdDeg:     15.0);
+            if (!_steeringToneSuppressed)
+            {
+                _steeringTone.UpdateHeadingErrorWithThresholds(
+                    _smoothedHeadingError,
+                    silentThresholdDeg:     0.5,
+                    activationThresholdDeg: 1.0,
+                    maxPanThresholdDeg:     15.0);
+            }
         }
         else
         {
@@ -4148,11 +4497,14 @@ public class TaxiGuidanceManager : IDisposable
             // past 1°. Max-pan at 15° (vs old 19.5°) gives stronger feedback
             // sooner. This is precision work at low speed — the tone has to be
             // tighter than the GPS noise floor for runway-takeoff alignment.
-            _steeringTone.UpdateHeadingErrorWithThresholds(
-                _smoothedHeadingError,
-                silentThresholdDeg: 0.5,
-                activationThresholdDeg: 1.0,
-                maxPanThresholdDeg: 15.0);
+            if (!_steeringToneSuppressed)
+            {
+                _steeringTone.UpdateHeadingErrorWithThresholds(
+                    _smoothedHeadingError,
+                    silentThresholdDeg: 0.5,
+                    activationThresholdDeg: 1.0,
+                    maxPanThresholdDeg: 15.0);
+            }
 
             // Lineup-aligned hysteresis (gates the "Lined up" announcement and
             // the steering-tone Pause). Enter when BOTH heading < 1° AND
@@ -4212,7 +4564,7 @@ public class TaxiGuidanceManager : IDisposable
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
                 _lineupAnnouncedAligned = false;
-                _steeringTone.Resume();
+                if (!_steeringToneSuppressed) _steeringTone.Resume();
             }
 
             // Stopped + misaligned → PULSE the tone on/off instead of continuous.
@@ -4236,44 +4588,114 @@ public class TaxiGuidanceManager : IDisposable
                 _lastGroundSpeedKts <= LINEUP_PULSE_MAX_GS_KTS &&
                 (Math.Abs(headingError) >= LINEUP_PULSE_MIN_HDG_ERR_DEG ||
                  absCrossFeet >= LINEUP_PULSE_MIN_CROSS_FEET);
-            _steeringTone.SetPulse(stoppedAndMisaligned);
+            if (!_steeringToneSuppressed) _steeringTone.SetPulse(stoppedAndMisaligned);
         }
         else
         {
-            // Gate lineup never pulses — pulse cue is for runway lineup only,
-            // where the pilot may sit on the runway misaligned for a long time
-            // ("line up and wait"). At a gate, you're either taxiing in or
-            // parked; pulse would be noise.
-            _steeringTone.SetPulse(false);
+            // A gate DOES have a centerline: the lead-in line through the parking
+            // position along the gate heading. Steer to it with the SAME intercept-
+            // angle model as the runway lineup, so we correct BOTH lateral offset
+            // (cross-track) AND heading — converging precisely onto the centerline,
+            // aligned with the gate. The old heading-only cue ignored cross-track,
+            // so a pilot could stop heading-aligned but laterally offset and a few
+            // degrees of yaw off ("parked a bit to the right and askew", per GSX).
+            var track = RunwayCenterlineTracker.Compute(
+                lat, lon, headingTrue, _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
+            double headingError   = track.HeadingErrorDeg;
+            double absCrossFeet   = track.AbsCrossTrackFeet;
+            double crossTrackFeet = track.CrossTrackFeet; // signed: + = left of CL, - = right
 
-            double headingError = NormalizeAngle(_lineupHeadingTrue - headingTrue);
-            // Gate lineup: heading only (gates aren't lines)
+            const double MAX_INTERCEPT_DEG = 30.0;
+            double interceptDeg;
+            if (absCrossFeet <= LINEUP_NOISE_DEADBAND_FEET)
+                interceptDeg = 0.0;
+            else
+            {
+                double effectiveCross = absCrossFeet - LINEUP_NOISE_DEADBAND_FEET;
+                double saturationSpan = LINEUP_INTERCEPT_SAT_FEET - LINEUP_NOISE_DEADBAND_FEET;
+                double normalized = Math.Clamp(effectiveCross / saturationSpan, 0.0, 1.0);
+                interceptDeg = MAX_INTERCEPT_DEG * Math.Sqrt(normalized) * Math.Sign(crossTrackFeet);
+            }
+            double desiredHeadingTrue = _lineupHeadingTrue + interceptDeg;
+            double toneHeadingError = NormalizeAngle(desiredHeadingTrue - headingTrue);
+
             _smoothedHeadingError = _headingErrorInitialized
-                ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + headingError * HEADING_ERROR_FILTER_ALPHA
-                : headingError;
+                ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + toneHeadingError * HEADING_ERROR_FILTER_ALPHA
+                : toneHeadingError;
             _headingErrorInitialized = true;
-            // Gate lineup: use baseline (60 ft) — no strong reason to widen or
-            // tighten, and gates don't have a well-defined "width" concept.
-            _steeringTone.UpdateHeadingError(_smoothedHeadingError);
 
-            // Hysteresis (gate): enter ±4°, exit ±7°
-            double enterHdg = LINEUP_HEADING_TOLERANCE_DEG - 1.0;
-            double exitHdg  = LINEUP_HEADING_TOLERANCE_DEG + 2.0;
-            bool enterAligned = Math.Abs(headingError) < enterHdg;
-            bool stillAligned = Math.Abs(headingError) < exitHdg;
+            // Precision thresholds (same as runway lineup): keep panning until the
+            // heading is centred within ½°, full pan by 15° — tighter than the old
+            // 5° gate tolerance so the final park is square on the centerline.
+            if (!_steeringToneSuppressed)
+                _steeringTone.UpdateHeadingErrorWithThresholds(_smoothedHeadingError, 0.5, 1.0, 15.0);
+
+            // Gate-lineup telemetry (rate-limited). seg=-2 marks gate-lineup frames
+            // (runway lineup uses -1). Columns: hdg=aircraft true heading, segBrg=the
+            // heading the tone is steering to (desired), w=_lineupHeadingTrue (the gate
+            // reference heading — should match the gate, var-corrected), nxtTurn=1 when
+            // the tone is SUPPRESSED (so I can see if docking muted it), raw=signed
+            // cross-track ft, smooth=smoothed tone error (the actual pan driver).
+            LogGuidanceFrame(
+                lat, lon, headingTrue, _lastGroundSpeedKts,
+                /* seg = gate-lineup marker */ -2,
+                /* segBrg = desired heading */ desiredHeadingTrue,
+                /* w = gate reference heading */ _lineupHeadingTrue,
+                /* nxtTurn = tone suppressed? */ _steeringToneSuppressed,
+                _lineupTargetLat, _lineupTargetLon,
+                /* raw = signed cross-track ft */ crossTrackFeet,
+                /* smooth = smoothed tone error */ _smoothedHeadingError);
+
+            // Aligned hysteresis — heading AND cross-track, but the PRECISION depends on
+            // who finishes the park. The synthetic centerline runs through the navdata
+            // parking point, which is routinely metres off the real stand markings:
+            // • Docking ENGAGED (_dockingActive): docking's own tone + 0.3 m stop own the
+            //   precision and taxi's verbal is suppressed anyway — keep the tight
+            //   runway-grade band so the brief pre-mute window can't flap.
+            // • Docking NOT engaged (disabled / never engaged): taxi IS the arrival
+            //   guidance. Use the forgiving band — requiring ~12 ft to a possibly-offset
+            //   navdata point left correctly-parked pilots permanently "not aligned"
+            //   (no "Parking brake." cue) even though they were square on the real stand.
+            double enterHdg = _dockingActive ? 1.0 : LINEUP_HEADING_TOLERANCE_DEG - 1.0;        // 1° / 4°
+            double exitHdg  = _dockingActive ? 2.0 : LINEUP_HEADING_TOLERANCE_DEG + 2.0;        // 2° / 7°
+            double enterCtr = _dockingActive ? LINEUP_CENTERLINE_TOLERANCE_FEET * 0.5
+                                             : LINEUP_CENTERLINE_TOLERANCE_FEET;                // 12.5 / 25 ft
+            double exitCtr  = _dockingActive ? LINEUP_CENTERLINE_TOLERANCE_FEET
+                                             : LINEUP_CENTERLINE_TOLERANCE_FEET * 1.6;          // 25 / 40 ft
+            bool enterAligned = Math.Abs(headingError) < enterHdg && absCrossFeet < enterCtr;
+            bool stillAligned = Math.Abs(headingError) < exitHdg && absCrossFeet < exitCtr;
 
             // Same as runway branch — stay in LiningUp; mute/resume via hysteresis.
             if (!_lineupAnnouncedAligned && enterAligned)
             {
                 _lineupAnnouncedAligned = true;
                 _steeringTone.Pause();
-                _announcer.AnnounceImmediate($"Aligned with {_destinationName}. Parking brake.");
+                // When docking owns the stop it announces the stop/brake at the precise
+                // position — don't pre-empt with "parking brake" the moment we're merely
+                // laterally aligned (we may still be a couple of metres short of the stop).
+                // Docking PENDING (armed, GSX stop still ahead, not yet engaged): saying
+                // "Parking brake." here parks the pilot tens of metres short of the real
+                // stop (KATL F3: 26 s stationary at 33.7 m) — redirect them forward.
+                if (!_dockingActive)
+                    _announcer.AnnounceImmediate(_dockingPending
+                        ? $"Aligned with {_destinationName}. Continue ahead. Docking guidance will take over."
+                        : $"Aligned with {_destinationName}. Parking brake.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
                 _lineupAnnouncedAligned = false;
-                _steeringTone.Resume();
+                if (!_steeringToneSuppressed) _steeringTone.Resume();
             }
+
+            // Gate lineup never pulses. The runway-style stopped-misaligned pulse was
+            // briefly enabled here for parking precision, but precision parking is now
+            // docking guidance's job (its engaged tone + 0.3 m stop): while docking is
+            // engaged taxi's tone is muted entirely, and while it is NOT engaged the
+            // reference is a navdata parking point that can sit metres off the real
+            // stand — pulsing 3 Hz at a correctly-parked pilot demanding precision to
+            // a wrong point is a misfeature. (Runway lineup keeps its pulse — its
+            // centerline reference is authoritative.)
+            if (!_steeringToneSuppressed) _steeringTone.SetPulse(false);
         }
     }
 
@@ -4637,6 +5059,7 @@ public class TaxiGuidanceManager : IDisposable
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).
         _approachAnnounced = false;
+        _curveAnnouncedSign = 0;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
@@ -4742,8 +5165,8 @@ public class TaxiGuidanceManager : IDisposable
                         _rolloutRunway.StartLat, _rolloutRunway.StartLon,
                         _rolloutRunwayHeadingTrue);
                     double distToEndFt = (_rolloutRunway.Length * 0.3048 - alongFromStartM) * METERS_TO_FEET;
-                    int distFt = (int)Math.Max(0, Math.Round(distToEndFt));
-                    return $"Rolling out. No exit. Runway end in {distFt} feet.{gsStr}";
+                    double distFt = Math.Max(0, distToEndFt);
+                    return $"Rolling out. No exit. Runway end in {DistanceFormatter.FromFeet(distFt)}.{gsStr}";
                 }
                 return $"Rolling out. No exit planned.{gsStr}";
             }
@@ -4752,11 +5175,11 @@ public class TaxiGuidanceManager : IDisposable
             {
                 double distToExitM = TaxiGraph.FastDistanceMeters(
                     _lastLat, _lastLon, _rolloutExit.Latitude, _rolloutExit.Longitude);
-                int distFt = (int)Math.Max(0, Math.Round(distToExitM * METERS_TO_FEET));
+                double distFt = Math.Max(0, distToExitM * METERS_TO_FEET);
                 string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
                     ? "unnamed exit"
                     : $"taxiway {_rolloutExit.TaxiwayName}";
-                return $"Rolling out. {_rolloutExit.ExitType} exit {exitName} in {distFt} feet.{gsStr}";
+                return $"Rolling out. {_rolloutExit.ExitType} exit {exitName} in {DistanceFormatter.FromFeet(distFt)}.{gsStr}";
             }
 
             return $"Rolling out.{gsStr}";
@@ -4771,8 +5194,7 @@ public class TaxiGuidanceManager : IDisposable
             {
                 double distM = TaxiGraph.FastDistanceMeters(
                     _lastLat, _lastLon, _backtrackConnectionLat, _backtrackConnectionLon);
-                int distFt = (int)Math.Max(0, Math.Round(distM * METERS_TO_FEET));
-                return $"Backtracking. {distFt} feet to taxiway connection.{gsStr}";
+                return $"Backtracking. {DistanceFormatter.FromMetres(distM)} to taxiway connection.{gsStr}";
             }
             return $"Backtracking.{gsStr}";
         }
@@ -4800,9 +5222,13 @@ public class TaxiGuidanceManager : IDisposable
 
             // Aligned: the tone is intentionally muted (we paused it on
             // alignment). Say so explicitly so a silent tone reads as
-            // "done, hold position" rather than "lost / broken".
+            // "done, hold position" rather than "lost / broken". With docking
+            // PENDING the pilot must keep rolling to the GSX stop — a status
+            // query must never tell them to hold short of it (KATL F3).
             if (_lineupAnnouncedAligned)
-                return $"Lined up {_destinationName}, heading {hdg}. Aligned — hold position.";
+                return _dockingPending
+                    ? $"Lined up {_destinationName}, heading {hdg}. Continue ahead for docking guidance."
+                    : $"Lined up {_destinationName}, heading {hdg}. Aligned — hold position.";
 
             // Not yet aligned: surface distance-to-go so a silent tone
             // (between hysteresis pulses, or while the system is busy) still
@@ -4810,12 +5236,38 @@ public class TaxiGuidanceManager : IDisposable
             // cross-track feet — the tone is the cross-track instrument
             // (see the blind-pilot-cue rule); distance-remaining + heading
             // are the numbers a pilot can actually use.
+            //
+            // RUNWAY lineups measure SIGNED ALONG-RUNWAY distance to the lineup
+            // point, NOT straight-line distance. Pilots normally reach the runway
+            // at or downfield of the navdata start-table point, so the point
+            // passes abeam and falls BEHIND during the turn onto the centerline —
+            // straight-line distance then GROWS with every metre of correct
+            // forward progress (KBWI 28, 2026-06-11: 55 m abeam climbing to
+            // 165 m while the pilot sat 9 ft off centerline, 2° off heading).
+            // The along-track projection decreases monotonically with forward
+            // progress and is immune to lateral convergence; once the point is
+            // abeam/behind (≤ LINEUP_TOGO_MIN_AHEAD_M) the distance is omitted
+            // entirely — a lineup point behind the aircraft carries no
+            // actionable information, and heading + tone own the alignment.
+            // GATE lineups keep straight-line: the aircraft converges ONTO the
+            // gate point, so the distance is meaningful all the way to zero.
             string lineupDistStr = "";
             if (_hasLineupTarget && _positionInitialized)
             {
-                double dM = TaxiGraph.FastDistanceMeters(
-                    _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
-                lineupDistStr = $" {FormatDistance(dM)} to go.";
+                if (_isRunwayLineup)
+                {
+                    double aheadM = SignedAlongRunwayMeters(
+                        _lineupTargetLat, _lineupTargetLon,
+                        _lastLat, _lastLon, _lineupHeadingTrue);
+                    if (aheadM > LINEUP_TOGO_MIN_AHEAD_M)
+                        lineupDistStr = $" {FormatDistance(aheadM)} to go.";
+                }
+                else
+                {
+                    double dM = TaxiGraph.FastDistanceMeters(
+                        _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
+                    lineupDistStr = $" {FormatDistance(dM)} to go.";
+                }
             }
             return $"Lining up {_destinationName}, {what} heading {hdg}. Follow the tone.{lineupDistStr}";
         }
@@ -4904,17 +5356,26 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Formats a distance in meters to feet or nautical miles.
+    /// Formats a distance in meters using the active unit (via DistanceFormatter).
+    /// Long distances (over ~6000 ft) switch to the big unit MATCHING the ground
+    /// distance setting: kilometres in metres mode, nautical miles in feet mode
+    /// (route summaries and status readouts — a metric user should never hear NM
+    /// for a taxi distance).
     /// </summary>
     private static string FormatDistance(double meters)
     {
         double feet = meters * METERS_TO_FEET;
         if (feet > 6000)
         {
+            if (DistanceFormatter.IsMetres)
+            {
+                double km = meters / 1000.0;
+                return $"{km:F1} kilometres";
+            }
             double nm = meters * METERS_TO_NM;
             return $"{nm:F1} nautical miles";
         }
-        return $"{(int)feet} feet";
+        return DistanceFormatter.FromMetres(meters);
     }
 
     private string BuildRouteSummary(TaxiRoute route, bool isRunwayDestination)
@@ -5005,9 +5466,11 @@ public class TaxiGuidanceManager : IDisposable
     // rollout-phase per-frame loop is interleaved with the planner's touchdown
     // events. Cheap (one File.AppendAllText per ~few seconds during rollout);
     // entirely removed once we've identified the root cause of the RJAA bug.
-    private static readonly string _rolloutDiagPath = System.IO.Path.Combine(
-        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-        "MSFSBlindAssist", "landing_exit.log");
+    // NOTE: diag lines log raw FEET on purpose (unlike user-facing callouts, which
+    // go through DistanceFormatter). The internal rollout math and its constants
+    // are feet-native, and logs must be comparable across users regardless of the
+    // GroundDistanceUnit setting — do not "fix" these to be unit-aware.
+    private static readonly string _rolloutDiagPath = Utils.AppLogs.PathFor("landing_exit.log");
 
     private static void RolloutDiag(string msg)
     {
@@ -5140,20 +5603,6 @@ public class TaxiGuidanceManager : IDisposable
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
-    }
-
-    /// <summary>
-    /// Projects a point `distM` metres from (lat, lon) along `bearingDeg` (true,
-    /// clockwise from north). Equirectangular — accurate at taxi/runway scales.
-    /// </summary>
-    private static (double lat, double lon) GeoProjectPoint(
-        double lat, double lon, double bearingDeg, double distM)
-    {
-        const double MPD = 111132.0;
-        double rad = bearingDeg * Math.PI / 180.0;
-        double cosLat = Math.Cos(lat * Math.PI / 180.0);
-        return (lat + distM * Math.Cos(rad) / MPD,
-                lon + distM * Math.Sin(rad) / (MPD * cosLat));
     }
 
     /// <summary>

@@ -26,7 +26,7 @@ namespace MSFSBlindAssist.Services;
 /// updates, and exposes events the UI form (AccessGSXForm) and MainForm
 /// background hook subscribe to.
 /// </summary>
-public sealed class GsxService : IDisposable
+public sealed partial class GsxService : IDisposable
 {
     // Distinct WM_USER message id — the main SimConnect uses 0x0402, this
     // one uses 0x0403 so both clients' ReceiveMessage calls are dispatched
@@ -53,9 +53,6 @@ public sealed class GsxService : IDisposable
     private static readonly TimeSpan TimerOnlyStatusAnnouncementInterval = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan GroundConnectionTimerAnnouncementInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan FuelingProgressAnnouncementInterval = TimeSpan.FromSeconds(30);
-    private const int BoardingPassengerAnnouncementInterval = 10;
-    private const string CurrencyTokenPattern =
-        @"(?:USD|EUR|GBP|JPY|CNY|RMB|CAD|AUD|NZD|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|TRY|ILS|AED|SAR|QAR|INR|KRW|SGD|HKD|TWD|THB|MYR|IDR|PHP|VND|BRL|MXN|ARS|CLP|COP|ZAR|[$€£¥₩₹₽₺₪₫₴])";
     private static readonly HashSet<string> AnnounceableReceiptFolders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Catering",
@@ -75,6 +72,9 @@ public sealed class GsxService : IDisposable
     {
         RequestRemote,
         RequestCouatlStarted,
+        RequestSetGateName,
+        RequestSetGateNumber,
+        RequestSetGateSuffix,
     }
 
     private enum DataDefineId
@@ -83,6 +83,9 @@ public sealed class GsxService : IDisposable
         MenuOpen,
         MenuChoice,
         RemoteControl,
+        SetGateName,
+        SetGateNumber,
+        SetGateSuffix,
     }
 
     private enum GroupId
@@ -160,6 +163,28 @@ public sealed class GsxService : IDisposable
     }
     public string LastSettingsText => _lastSettingsText;
     public IReadOnlyList<GsxSettingItem> SettingsItems => _settingsItems;
+
+    // ── SetGate_* read-only L-vars (GSX confirmation of selected gate) ──
+    // Default -1 until GSX sets a gate. Updated via VISUAL_FRAME polling.
+
+    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Name</c> (integer enum; -1 until set).</summary>
+    public int SetGateName { get; private set; } = -1;
+
+    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Number</c> (-1 until set).</summary>
+    public int SetGateNumber { get; private set; } = -1;
+
+    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Suffix</c> (-1 until set).</summary>
+    public int SetGateSuffix { get; private set; } = -1;
+
+    // ── Serialize flag ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// True while a GSX menu is showing (set on the menu-shown path, cleared
+    /// on <see cref="MenuHidden"/>/<see cref="MenuTimedOut"/>).  The
+    /// auto-gate selector uses this to avoid driving the menu while the user
+    /// is already navigating it manually.
+    /// </summary>
+    public bool IsMenuActive { get; private set; }
 
     /// <summary>
     /// When true, the service speaks tooltip updates itself (via the injected
@@ -436,6 +461,79 @@ public sealed class GsxService : IDisposable
         ScheduleSettingsFallback();
     }
 
+    // ── Awaitable next-menu ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a <see cref="Task{T}"/> that completes with the next
+    /// <see cref="MenuOptions"/> snapshot when <see cref="MenuChanged"/>
+    /// fires, or faults if the menu is hidden/times out before a new menu
+    /// arrives, or if <paramref name="timeout"/> elapses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Thread safety: <see cref="MenuChanged"/>, <see cref="MenuHidden"/>,
+    /// and <see cref="MenuTimedOut"/> all fire on the WndProc / UI thread
+    /// (via <see cref="ProcessWindowMessage"/>).  The one-shot handlers
+    /// registered here therefore run on that same thread, which is consistent
+    /// with the rest of the GsxService contract.  Callers that await this on
+    /// the UI thread will resume on the UI thread (no <c>ConfigureAwait</c>
+    /// suppression), so they can touch UI controls directly.
+    /// </para>
+    /// <para>
+    /// Call this BEFORE triggering the menu action (OpenMenu / Choose) so
+    /// the completion source is registered before the event can fire.
+    /// </para>
+    /// </remarks>
+    public Task<IReadOnlyList<MenuOption>> WaitForNextMenuAsync(TimeSpan timeout)
+    {
+        var tcs = new TaskCompletionSource<IReadOnlyList<MenuOption>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var cts = new CancellationTokenSource(timeout);
+
+        // NOTE: we intentionally do NOT fault on MenuHidden. GsxService.Choose()
+        // ALWAYS calls HideMenuInternal() (which fires MenuHidden) immediately
+        // BEFORE sending the menu choice — so a MenuHidden fires on every Choose
+        // and would race-fault this wait before GSX's real submenu (MenuChanged)
+        // arrives. We complete only on the next MenuChanged, or the timeout —
+        // which correctly covers a terminal action that opens no submenu.
+        EventHandler? onMenuChanged = null;
+        EventHandler? onMenuTimedOut = null;
+
+        void Unsubscribe()
+        {
+            MenuChanged  -= onMenuChanged;
+            MenuTimedOut -= onMenuTimedOut;
+            cts.Dispose();
+        }
+
+        onMenuChanged = (_, _) =>
+        {
+            if (tcs.TrySetResult(_menuOptions.ToList()))
+                Unsubscribe();
+        };
+
+        onMenuTimedOut = (_, _) =>
+        {
+            if (tcs.TrySetException(
+                    new InvalidOperationException("GSX menu timed out before a new menu arrived.")))
+                Unsubscribe();
+        };
+
+        // Register cancellation (timeout) callback — fires on the ThreadPool,
+        // but TrySetCanceled is thread-safe.
+        cts.Token.Register(() =>
+        {
+            if (tcs.TrySetException(new TimeoutException(
+                    $"WaitForNextMenuAsync: no menu arrived within {timeout}.")))
+                Unsubscribe();
+        });
+
+        MenuChanged  += onMenuChanged;
+        MenuTimedOut += onMenuTimedOut;
+
+        return tcs.Task;
+    }
+
     /// <summary>Submit a menu choice (0..9 for the numbered options, 10..14 for A..E).</summary>
     public void Choose(int choice)
     {
@@ -591,6 +689,27 @@ public sealed class GsxService : IDisposable
                     SendVariable(DataDefineId.RemoteControl, 1);
                 break;
             }
+            case DataRequestId.RequestSetGateName:
+            {
+                var value = (DoubleValue)data.dwData[0];
+                SetGateName = (int)value.Value;
+                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Name = {SetGateName}");
+                break;
+            }
+            case DataRequestId.RequestSetGateNumber:
+            {
+                var value = (DoubleValue)data.dwData[0];
+                SetGateNumber = (int)value.Value;
+                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Number = {SetGateNumber}");
+                break;
+            }
+            case DataRequestId.RequestSetGateSuffix:
+            {
+                var value = (DoubleValue)data.dwData[0];
+                SetGateSuffix = (int)value.Value;
+                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Suffix = {SetGateSuffix}");
+                break;
+            }
         }
     }
 
@@ -611,10 +730,21 @@ public sealed class GsxService : IDisposable
         _simConnect.AddToDataDefinition(DataDefineId.RemoteControl, "L:FSDT_GSX_SET_REMOTECONTROL", "number",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
 
+        // SetGate read-only confirmation L-vars (GSX manual p.94+).
+        _simConnect.AddToDataDefinition(DataDefineId.SetGateName, "L:FSDT_GSX_SetGate_Name", "number",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
+        _simConnect.AddToDataDefinition(DataDefineId.SetGateNumber, "L:FSDT_GSX_SetGate_Number", "number",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
+        _simConnect.AddToDataDefinition(DataDefineId.SetGateSuffix, "L:FSDT_GSX_SetGate_Suffix", "number",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
+
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.CouatlStarted);
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.MenuOpen);
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.MenuChoice);
         _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.RemoteControl);
+        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateName);
+        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateNumber);
+        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateSuffix);
     }
 
     private void MapEvents()
@@ -637,6 +767,17 @@ public sealed class GsxService : IDisposable
             Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
             SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
         _simConnect.RequestDataOnSimObject(DataRequestId.RequestCouatlStarted, DataDefineId.CouatlStarted,
+            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+
+        // Poll the read-only SetGate confirmation vars on every changed frame.
+        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateName, DataDefineId.SetGateName,
+            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateNumber, DataDefineId.SetGateNumber,
+            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateSuffix, DataDefineId.SetGateSuffix,
             Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
             SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
     }
@@ -949,6 +1090,7 @@ public sealed class GsxService : IDisposable
         _menuOptions.Add(new MenuOption("E", "Reload Simbrief", 14));
 
         _menuOpen = true;
+        IsMenuActive = true;
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -956,6 +1098,7 @@ public sealed class GsxService : IDisposable
     {
         if (!_menuOpen && _menuOptions.Count == 0) return;
         _menuOpen = false;
+        IsMenuActive = false;
         _menuOptions.Clear();
         MenuHidden?.Invoke(this, EventArgs.Empty);
     }
@@ -1072,14 +1215,18 @@ public sealed class GsxService : IDisposable
 
         bool exactDuplicate = string.Equals(text, _lastTooltip, StringComparison.Ordinal);
         bool stableChanged = !string.Equals(stableText, _lastStatusStableText, StringComparison.Ordinal);
+        bool timerStatusText = IsTimerStatusText(text);
+        bool announcementStableChanged = timerStatusText
+            ? !TimerStatusContextEquals(text, _lastTooltip)
+            : stableChanged;
         TimeSpan timerOnlyInterval = GetTimerOnlyAnnouncementInterval(text);
         bool timerOnlyChangeAllowed = allowTimerOnlyAnnouncements
             && !exactDuplicate
-            && !stableChanged
+            && !announcementStableChanged
             && DateTime.UtcNow - _lastTimerOnlyStatusAnnouncementUtc >= timerOnlyInterval;
 
         bool shouldAnnounce = !isThrottled
-            && (forceAnnouncement || (!exactDuplicate && (stableChanged || timerOnlyChangeAllowed)));
+            && (forceAnnouncement || (!exactDuplicate && (announcementStableChanged || timerOnlyChangeAllowed)));
 
         // Always keep the visible-text state current so the AccessGSX
         // tooltip textbox shows live ETA / kg / etc., even when the
@@ -1120,7 +1267,7 @@ public sealed class GsxService : IDisposable
         if (string.IsNullOrWhiteSpace(announceText))
             return;
 
-        if (timerOnlyChangeAllowed || IsTimerStatusText(text))
+        if (timerOnlyChangeAllowed || timerStatusText)
             _lastTimerOnlyStatusAnnouncementUtc = DateTime.UtcNow;
 
         _lastAnnouncementText = announceText;
@@ -1166,24 +1313,6 @@ public sealed class GsxService : IDisposable
         return string.Join(", ", changedParts);
     }
 
-    private static List<string> SplitTooltipParts(string text)
-    {
-        var parts = new List<string>();
-        if (string.IsNullOrWhiteSpace(text))
-            return parts;
-
-        foreach (string line in text.ReplaceLineEndings("\n").Split('\n'))
-        {
-            foreach (string segment in line.Split(','))
-            {
-                string trimmed = segment.Trim();
-                if (trimmed.Length > 0)
-                    parts.Add(trimmed);
-            }
-        }
-        return parts;
-    }
-
     private static readonly Regex EtaSegmentRegex = new(
         @"\beta\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -1204,15 +1333,6 @@ public sealed class GsxService : IDisposable
             return text;
         return string.Join(", ", kept);
     }
-
-    // Pax-count-only segments (the things we silence when boarding's
-    // milestone hasn't advanced). Whole-segment match so any segment that
-    // carries additional info ("rear loader leaving while 5 boarded") is
-    // left alone — only standalone "pax 5/100" / "5 passengers" / "5 pax
-    // boarded" type lines are stripped.
-    private static readonly Regex PaxOnlySegmentRegex = new(
-        @"^\s*(?:\[gsx\]\s+)?(?:pax\s+\d{1,4}(?:\s*/\s*\d{1,4})?|\d{1,4}(?:\s*/\s*\d{1,4})?\s+(?:passengers?|pax)(?:\s+boarded)?)\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Aircraft fuel quantity is GSX's rapidly-updating internal aircraft
     // fuel row, separate from the useful fueling progress announcement.
@@ -1274,21 +1394,16 @@ public sealed class GsxService : IDisposable
         // drops from a high milestone back down to 0/1 — with the previous
         // ">" rule, stale dict state from the earlier boarding silenced
         // the next session's first-passenger marker.
-        bool advanced;
-        if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
-        {
-            advanced = true;
-        }
-        else
-        {
-            advanced = currentMilestone != lastMilestone;
-        }
+        int? lastMilestone = _lastBoardingPassengerAnnouncementByService
+            .TryGetValue(serviceKey, out int storedMilestone) ? storedMilestone : null;
+        bool advanced = ShouldAnnounceBoardingProgress(passengers, lastMilestone);
+        // Always track the latest milestone: on first sight this seeds the
+        // baseline silently; afterwards the write only differs from the
+        // stored value when the bucket changed (i.e. when we announced).
+        _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
 
         if (advanced)
-        {
-            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
             return announceText;
-        }
 
         return StripSegmentsMatching(announceText, PaxOnlySegmentRegex);
     }
@@ -1421,21 +1536,6 @@ public sealed class GsxService : IDisposable
             @"\bbill[\s:]*\$?\d+(?:[.,]\d+)?\b",
             RegexOptions.IgnoreCase);
 
-    private static string StripSegmentsMatching(string text, Regex regex)
-    {
-        var parts = SplitTooltipParts(text);
-        if (parts.Count == 0)
-            return text;
-
-        var kept = parts.Where(p => !regex.IsMatch(p)).ToList();
-        if (kept.Count == 0)
-            return string.Empty;
-        if (kept.Count == parts.Count)
-            return text;
-        return string.Join(", ", kept);
-    }
-
-
     private static bool IsPlaceholderLiveServiceText(string text)
     {
         string normalized = NormalizeWhitespace(text);
@@ -1554,20 +1654,6 @@ public sealed class GsxService : IDisposable
         return false;
     }
 
-    // Boarding-progress milestones — chosen so the user hears:
-    //   * pax 0 (service started, nobody on yet)
-    //   * pax 1 (boarding has actually begun)
-    //   * every multiple of BoardingPassengerAnnouncementInterval (10, 20, …)
-    // with no upper cap, so 110 / 120 / 130 / … keep announcing instead of
-    // collapsing into a single milestone-100 ceiling like Tower's original
-    // formula did.
-    private static int ComputeBoardingMilestone(int passengers)
-    {
-        if (passengers <= 0) return 0;
-        if (passengers < BoardingPassengerAnnouncementInterval) return 1;
-        return (passengers / BoardingPassengerAnnouncementInterval) + 1;
-    }
-
     // Variant used by the progress throttles (fueling, boarding). Always uses
     // the fixed service prefix as the key root, optionally suffixed with the
     // operator if one is extractable. This guarantees the dict key stays the
@@ -1582,55 +1668,10 @@ public sealed class GsxService : IDisposable
             : $"{fixedService}|{serviceOperator}";
     }
 
-    private static bool TryParsePassengerCount(string text, out int passengers)
-    {
-        passengers = 0;
-
-        // GSX writes the boarding count several ways. The "N/M" forms must
-        // be tried first — the bare "\b\d{1,3}\s*passengers\b" pattern
-        // would otherwise greedily capture M (the total) out of "50/550
-        // passengers", poisoning the milestone throttle by recording
-        // milestone 100 (M/10) and silencing every subsequent milestone
-        // below that for the rest of the session.
-        var match = Regex.Match(
-            text,
-            @"\b(?<count>\d{1,3})\s*/\s*\d+\s*(?:passengers|pax)\b",
-            RegexOptions.IgnoreCase);
-        if (!match.Success)
-        {
-            match = Regex.Match(
-                text,
-                @"\bpax\s+(?<count>\d{1,3})\s*/\s*\d+\b",
-                RegexOptions.IgnoreCase);
-        }
-        if (!match.Success)
-        {
-            match = Regex.Match(
-                text,
-                @"\b(?<count>\d{1,3})\s*(?:passengers|pax)\b",
-                RegexOptions.IgnoreCase);
-        }
-        if (!match.Success)
-        {
-            match = Regex.Match(
-                text,
-                @"\bpax\s+(?<count>\d{1,3})\b",
-                RegexOptions.IgnoreCase);
-        }
-        if (!match.Success)
-            return false;
-
-        passengers = Math.Clamp(int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture), 0, 999);
-        return true;
-    }
-
     private static TimeSpan GetTimerOnlyAnnouncementInterval(string text) =>
         IsGroundConnectionService(text)
             ? GroundConnectionTimerAnnouncementInterval
             : TimerOnlyStatusAnnouncementInterval;
-
-    private static bool IsTimerStatusText(string text) =>
-        text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
 
     private void ReloadAndPublishSettings()
     {
@@ -1660,7 +1701,7 @@ public sealed class GsxService : IDisposable
         }
 
         var settingsItems = ParseSettingsHtml(html);
-        ApplySavedSettingValues(settingsItems);
+        var liveSyncItems = ApplySavedSettingValues(settingsItems);
 
         _settingsItems.Clear();
         _settingsItems.AddRange(settingsItems);
@@ -1670,6 +1711,8 @@ public sealed class GsxService : IDisposable
             settingsText = "GSX Settings opened, but no settings could be read.";
 
         PublishSettingsText(settingsText);
+
+        SyncSavedSettingsToLiveGsx(liveSyncItems);
     }
 
     private void PublishSettingsText(string settingsText)
@@ -1838,14 +1881,15 @@ public sealed class GsxService : IDisposable
 
     private sealed record SettingsSection(string Title, int Start, int End);
 
-    private static void ApplySavedSettingValues(List<GsxSettingItem> items)
+    private static List<GsxSettingItem> ApplySavedSettingValues(List<GsxSettingItem> items)
     {
+        var liveSyncItems = new List<GsxSettingItem>();
         if (items.Count == 0)
-            return;
+            return liveSyncItems;
 
         var savedValues = LoadSavedGsxSettings();
         if (savedValues.Count == 0)
-            return;
+            return liveSyncItems;
 
         for (int i = 0; i < items.Count; i++)
         {
@@ -1854,8 +1898,54 @@ public sealed class GsxService : IDisposable
                 continue;
 
             if (TryGetSavedSettingValue(item, savedValues, out string? savedValue))
-                items[i] = item with { Value = savedValue };
+            {
+                var updatedItem = item with { Value = savedValue };
+                items[i] = updatedItem;
+
+                if (!SettingUiValuesEqual(item, savedValue)
+                    && IsLiveSyncableSetting(updatedItem))
+                {
+                    liveSyncItems.Add(updatedItem);
+                }
+            }
         }
+
+        return liveSyncItems;
+    }
+
+    private void SyncSavedSettingsToLiveGsx(IReadOnlyList<GsxSettingItem> items)
+    {
+        foreach (var item in items)
+        {
+            if (string.IsNullOrWhiteSpace(item.Key))
+                continue;
+
+            if (string.Equals(item.Type, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                SetSettingText(item.Key, item.Value);
+                continue;
+            }
+
+            SetSettingNumber(item.Key, ParseDouble(item.Value));
+        }
+    }
+
+    private static bool IsLiveSyncableSetting(GsxSettingItem item) =>
+        string.Equals(item.Type, "toggle", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(item.Type, "range", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(item.Type, "text", StringComparison.OrdinalIgnoreCase);
+
+    private static bool SettingUiValuesEqual(GsxSettingItem item, string value)
+    {
+        if (string.Equals(item.Type, "toggle", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.Type, "range", StringComparison.OrdinalIgnoreCase))
+        {
+            return Math.Abs(ParseDouble(item.Value) - ParseDouble(value)) < 0.000001;
+        }
+
+        return string.Equals(item.Value, value, StringComparison.Ordinal);
     }
 
     private static bool TryGetSavedSettingValue(
@@ -2308,9 +2398,6 @@ public sealed class GsxService : IDisposable
     private static string DecodeHtml(string value) =>
         System.Net.WebUtility.HtmlDecode(value ?? string.Empty);
 
-    private static string NormalizeWhitespace(string value) =>
-        Regex.Replace(value.ReplaceLineEndings(" "), @"\s+", " ").Trim();
-
     // ─────────────────────────────────────────────────────────────────────
     // Status text + event raise helpers.
     // ─────────────────────────────────────────────────────────────────────
@@ -2644,42 +2731,10 @@ public sealed class GsxService : IDisposable
     private static bool HasConnectedStatusWord(string text) =>
         ConnectedWordRegex.IsMatch(text) && !DisconnectedWordRegex.IsMatch(text);
 
-    private static bool IsChargeStatusLine(string text)
-    {
-        string normalized = text.ToLowerInvariant();
-        return normalized.Contains("timer:")
-            || normalized.Contains("invoice:")
-            || normalized.Contains("eur ")
-            || normalized.Contains("â‚¬")
-            || normalized.Contains("$")
-            || normalized.Contains("£")
-            || ContainsMoneyAmount(text);
-    }
-
-    private static bool ContainsMoneyAmount(string text) =>
-        Regex.IsMatch(
-            text,
-            $@"{CurrencyTokenPattern}\s*\d|\d[\d,.]*\s*{CurrencyTokenPattern}",
-            RegexOptions.IgnoreCase);
-
-    private static bool IsTimerStatusLine(string text) =>
-        text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
-
     private static bool IsRunningGroundConnectionTimerLine(string text) =>
         IsTimerStatusLine(text)
         && text.Contains("running", StringComparison.OrdinalIgnoreCase)
         && IsGroundConnectionService(text);
-
-    private static string FormatGroundConnectionTimerServiceText(string timerLine)
-    {
-        string serviceName = Regex.Replace(timerLine, @"\s+timer\s*:.*$", string.Empty,
-            RegexOptions.IgnoreCase);
-        serviceName = NormalizeWhitespace(serviceName);
-        if (string.IsNullOrWhiteSpace(serviceName))
-            return string.Empty;
-
-        return $"{serviceName} service is running";
-    }
 
     private static string FormatCompletedServiceTotal(string serviceText, IReadOnlyList<string> chargeRows)
     {
@@ -3174,47 +3229,6 @@ public sealed class GsxService : IDisposable
             yield return row;
             previous = row;
         }
-    }
-
-    private static string NormalizeStatusStableText(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return string.Empty;
-
-        string stable = text;
-        stable = Regex.Replace(stable, @"\b\d{1,2}:\d{2}(?::\d{2})?\b", "<time>");
-        // Bucket durations into 5-minute groups so an ETA that counts down
-        // second-by-second doesn't re-announce on every tick. A re-announce
-        // fires only when the value crosses a 5-minute boundary (which
-        // approximates the user-requested "tell me again if the ETA changes
-        // by ~5 minutes" behaviour).
-        stable = DurationTokenRegex.Replace(stable, BucketDurationToken);
-        stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*{CurrencyTokenPattern}", "<price>",
-            RegexOptions.IgnoreCase);
-        stable = Regex.Replace(stable, @"\(~?\s*<price>\)", "(<price>)",
-            RegexOptions.IgnoreCase);
-        return NormalizeWhitespace(stable);
-    }
-
-    private static readonly Regex DurationTokenRegex = new(
-        @"\b(?<num>\d+(?:[.,]\d+)?)\s*(?<unit>seconds?|secs?|minutes?|mins?)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    private static string BucketDurationToken(Match match)
-    {
-        if (!double.TryParse(
-                match.Groups["num"].Value.Replace(',', '.'),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double n))
-        {
-            return "<duration>";
-        }
-
-        string unit = match.Groups["unit"].Value.ToLowerInvariant();
-        double totalSeconds = unit.StartsWith("m") ? n * 60.0 : n;
-        int bucket = (int)Math.Floor(totalSeconds / 300.0);
-        return $"<duration-{bucket}>";
     }
 
     private void UpdateStatusText()
