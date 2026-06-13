@@ -3490,7 +3490,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // unreliably via the data-def path on the A380 (live-verified: same batch returned
     // 1 AND 0), so the cached "current" got stuck at On and the combo's "select On" never
     // fired the toggle. ANTISKID_BRAKES_TOGGLE reliably FLIPS the switch, so we track the
-    // commanded state ourselves and don't re-read the flaky cache after the first use.
+    // commanded state ourselves, seeded to the power-on default (ON) instead of the flaky
+    // cache, and never re-read the data-def value.
     private bool? _antiskidOn;
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private int _fmgcPhaseA380 = -1; // numeric FMGC flight phase; gates the capability announce (taxi flicker spam)
@@ -4569,12 +4570,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // the A380 (live-verified: same batch returned 1 AND 0), so the cached "current"
         // got stuck at On and "select On" never fired the toggle (the user's bug). Track
         // the commanded state ourselves: the toggle reliably flips it, so after each set we
-        // KNOW the result. Seed once from the best-effort cache, then drive off _antiskidOn.
+        // KNOW the result. Seed to the A380's power-on default (anti-skid ON) rather than the
+        // flaky cache — a bad first read could otherwise fire a spurious toggle on the user's
+        // first "select On"; thereafter drive off _antiskidOn.
         if (varKey == "ANTISKID_BRAKES_ACTIVE")
         {
             bool desiredOn = value > 0.5;
-            bool currentOn = _antiskidOn
-                ?? ((simConnect.GetCachedVariableValue("ANTISKID_BRAKES_ACTIVE") ?? 1.0) > 0.5);
+            bool currentOn = _antiskidOn ?? true;
             if (desiredOn != currentOn) simConnect.SendEvent("ANTISKID_BRAKES_TOGGLE");
             _antiskidOn = desiredOn;
             return true;
