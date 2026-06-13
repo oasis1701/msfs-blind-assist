@@ -261,6 +261,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var onOff = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
         var normFault = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" };
         var signSw = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" };
+        // Emergency-exit sign switch: same 0=On/1=mid/2=Off mapping, but the middle
+        // position is ARM (auto-on if power lost), not "Auto" (FBW A380_COCKPIT.xml
+        // ANIMTIP_1 "Set emergency exit signs to ARM").
+        var emerExitSw = new Dictionary<double, string> { [0] = "On", [1] = "Arm", [2] = "Off" };
         var srcSw = new Dictionary<double, string> { [0] = "Capt", [1] = "Norm", [2] = "F/O" };
         var discSw = new Dictionary<double, string> { [0] = "Disconnected", [1] = "Normal" };
 
@@ -537,8 +541,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_FIRE_TEST_CARGO", "Cargo Smoke Detection Test");
 
         // ---- OXYGEN ----
+        // reverse:true so Off (resting, value 1) is at the top and the other position
+        // is reached with the down arrow. Label of value 0 ("Auto") to be live-verified
+        // (FBW preset calls it "Crew Oxy On"); the order fix is the reported bug.
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
-            new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
+            new Dictionary<double, string> { [0] = "Auto", [1] = "Off" }, reverse: true);
         OnOff("A32NX_OXYGEN_MASKS_DEPLOYED", "Passenger Masks Deployed");
         ReadEnum("A32NX_OXYGEN_PASSENGER_LIGHT_ON", "Passenger Oxygen Light", onOff);
         Btn("A32NX_OXYGEN_TMR_RESET", "Oxygen Timer Reset");   // momentary push-button (was a combo)
@@ -674,8 +681,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
-        Sel("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "No Smoking", signSw);
-        Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", signSw);
+        // reverse:true so the combo lists Off (top) -> Auto/Arm -> On (bottom): the FBW
+        // value mapping is On=0/mid=1/Off=2, and without reversing the user had to arrow
+        // UP from the resting Off state to reach Auto/On. Down-arrow now progresses naturally.
+        Sel("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "No Smoking", signSw, reverse: true);
+        Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", emerExitSw, reverse: true);
 
         // ---- ADIRS ----
         for (int n = 1; n <= 3; n++)
@@ -4388,9 +4398,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
                 simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
             }
-            announcer.Announce(varKey == "A32NX_FIRE_TEST_CARGO"
-                ? (on == 1 ? "Cargo smoke test on" : "Cargo smoke test off")
-                : (on == 1 ? "Fire test on" : "Fire test off"));
+            // No explicit announce here: the screen reader reads the combo change, and
+            // the Continuous+IsAnnounced monitor speaks the state change THROUGH the
+            // Ctrl+M-gated path (MainForm.OnSimVarUpdated). The old announcer.Announce
+            // bypassed that mute — the reported "doesn't respect global suppression" bug.
             return true;
         }
         // System Display PAGE combo: drive the SD to the chosen page, then scrape that
