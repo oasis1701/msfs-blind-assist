@@ -3,6 +3,7 @@ Fenix A320 HOTKEY REFERENCE
 Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -58,6 +59,8 @@ Altimeter:
 
 Vertical:
   V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
 
 Weather:
   I          Wind Info
@@ -117,6 +120,7 @@ control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
   Shift+M,    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
+  Ctrl+Shift+T, Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+T,    Toggle Trim Announcements
   Shift+B,    SimBrief Briefing
   Shift+C,    Show Checklist

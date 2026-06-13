@@ -1,0 +1,42 @@
+# perf_to
+input | idx 24 | ECON (combobox)
+input | idx 25 | 15
+input | idx 26 | NONE (combobox)
+input | idx 27 | FL 380
+input | idx 28 | 1510 FT
+input | idx 30 | 18000 FT
+text | idx 0 | CI, DERATED CLB, MODE, SPD, MACH, PRED TO, MANAGED, 290, KT, .84, THR RED, ACCEL, CLB SPD LIM, 250, KT, /, FL, 100, TRANS
+text | idx 0 | ACTIVE/PERF
+input | idx 1 | CRZ: FL 380
+text | idx 0 | OPT, FL, 405, REC MAX, FL, 425
+text | idx 0 | EO MAX, FL, 340
+subtab | idx 2 | T.O (active)
+subtab | idx 3 | CLB
+subtab | idx 4 | CRZ
+subtab | idx 5 | DES
+subtab | idx 6 | APPR
+subtab | idx 7 | GA
+input | idx 8 | T.O SHIFT: ---- FT
+text | idx 0 | RWY, 04L
+input | idx 9 | V1: 139 KT
+text | idx 0 | F, 156, KT
+radio | idx 12 | TOGA
+input | idx 10 | VR: 144 KT
+radio | idx 13 | FLEX
+input | idx 15 | +65 °C
+text | idx 0 | S, 181, KT
+input | idx 11 | V2: 150 KT
+text | idx 0 | 244, KT
+radio | idx 14 | DERATED
+input | idx 16 | FLAPS: 1 (combobox)
+input | idx 17 | THS FOR: 40.3 %
+input | idx 18 | PACKS: ON (combobox)
+input | idx 19 | ANTI ICE: OFF (combobox)
+input | idx 20 | THR RED: 1510 FT
+input | idx 21 | ACCEL: 1510 FT
+input | idx 22 | TRANS: 18000 FT
+input | idx 23 | EO ACCEL: 1510 FT
+button | idx 32 | ACTIVATE APPR *
+button | idx 31 | RETURN
+button | idx 33 | POS MONITOR
+button | idx 34 | MSG LIST

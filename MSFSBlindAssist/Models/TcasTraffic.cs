@@ -25,7 +25,7 @@ public class TcasTraffic
     public double RelativeBearing   { get; set; }  // -180..+180 relative to own heading
 
     /// <summary>
-    /// Compact description: "2.3nm, 2,000ft above, ahead" used as the tree node label.
+    /// Compact description: "2.3nm, 2,000ft above, 1 o'clock" used as the list line label.
     /// </summary>
     public string RelativePositionSummary => FormatRelativePosition(includeAltitude: true);
 
@@ -34,13 +34,28 @@ public class TcasTraffic
     /// </summary>
     public string RelativePositionSummaryNoAltitude => FormatRelativePosition(includeAltitude: false);
 
+    /// <summary>
+    /// Relative direction as a clock position (12 = straight ahead, 3 = right, 6 = behind,
+    /// 9 = left), derived from <see cref="RelativeBearing"/>. Far more useful to a pilot
+    /// than a bare ahead/behind — it conveys side and angle in one word the way a real
+    /// traffic call does ("traffic, two o'clock").
+    /// </summary>
+    public int ClockPosition
+    {
+        get
+        {
+            int c = (int)Math.Round(((RelativeBearing + 360.0) % 360.0) / 30.0) % 12;
+            return c == 0 ? 12 : c;
+        }
+    }
+
     private string FormatRelativePosition(bool includeAltitude)
     {
         string distStr = DistanceNm < 10.0
             ? $"{DistanceNm:F1}nm"
             : $"{(int)Math.Round(DistanceNm)}nm";
 
-        string posStr = Math.Abs(RelativeBearing) <= 90.0 ? "ahead" : "behind";
+        string posStr = $"{ClockPosition} o'clock";
 
         if (!includeAltitude)
             return $"{distStr}, {posStr}";

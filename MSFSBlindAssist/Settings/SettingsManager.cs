@@ -70,7 +70,7 @@ public static class SettingsManager
                 {
                     System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
-                    Save(defaultSettings);
+                    SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
                     return defaultSettings;
                 }
 
@@ -89,6 +89,7 @@ public static class SettingsManager
                     Debug.WriteLine("[SettingsManager] Settings loaded successfully from JSON");
                 }
 
+                SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
                 return settings;
             }
             catch (Exception ex)
@@ -97,6 +98,36 @@ public static class SettingsManager
                 // Return default settings on error
                 return new UserSettings();
             }
+        }
+
+        /// <summary>
+        /// One-time seed of Fenix vars that should be auto-monitored but NOT spoken by
+        /// default — added to the Fenix disabled-monitor list (the combo/display still
+        /// tracks them; only the spoken call-out is gated off):
+        ///   * CLOCK CHRONO / ELAPSED / UTC and the FenixQuartz chrono/ET counters —
+        ///     raw-seconds counters that tick every second.
+        ///   * the four seat height/distance switches — Continuous so the combo can spring
+        ///     to "Stop" at the travel limit, but silent (the user just wants the value).
+        /// Runs once (guarded by FenixMonitorDefaultsSeeded) so a deliberate re-enable in
+        /// the Ctrl+M monitor is never overwritten.
+        /// </summary>
+        private static void SeedFenixMonitorDefaults(UserSettings s)
+        {
+            if (s.FenixMonitorDefaultsSeeded) return;
+            s.FenixMonitorDefaultsSeeded = true;
+            string[] defaultSilent =
+            {
+                "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED", "N_MIP_CLOCK_UTC",
+                "FNX2PLD_clockChr", "FNX2PLD_clockEt",
+                "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
+                "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
+            };
+            foreach (var key in defaultSilent)
+            {
+                if (!s.FenixDisabledMonitorVariables.Contains(key))
+                    s.FenixDisabledMonitorVariables.Add(key);
+            }
+            Save(s);
         }
 
         /// <summary>

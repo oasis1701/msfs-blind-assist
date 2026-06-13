@@ -1,0 +1,1 @@
+(function(){try{var e=document.querySelectorAll('text');var a=[];for(var i=0;i<e.length && a.length<30;i++){var s=(e[i].textContent||'').replace(/\s+/g,' ').trim();if(s)a.push(s);}return JSON.stringify({n:e.length,sample:a});}catch(x){return 'ERR '+x.message;}})()

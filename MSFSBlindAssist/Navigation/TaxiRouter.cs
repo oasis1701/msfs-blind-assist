@@ -327,40 +327,6 @@ public class TaxiRouter
     }
 
     /// <summary>
-    /// Finds the nearest node on a given taxiway to a starting node.
-    /// </summary>
-    private int FindNearestNodeOnTaxiway(int fromNodeId, string taxiwayName)
-    {
-        var fromNode = _graph.Nodes[fromNodeId];
-        int fromComponent = fromNode.ComponentId;
-        int bestNode = -1;
-        double bestDist = double.MaxValue;
-
-        foreach (var kvp in _graph.Adjacency)
-        {
-            int nodeId = kvp.Key;
-            bool onTaxiway = kvp.Value.Any(e =>
-                e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase));
-
-            if (!onTaxiway) continue;
-
-            var node = _graph.Nodes[nodeId];
-            if (node.ComponentId != fromComponent) continue;
-
-            double dist = TaxiGraph.CalculateDistanceMeters(
-                fromNode.Latitude, fromNode.Longitude, node.Latitude, node.Longitude);
-
-            if (dist < bestDist)
-            {
-                bestDist = dist;
-                bestNode = nodeId;
-            }
-        }
-
-        return bestNode;
-    }
-
-    /// <summary>
     /// Finds the N nearest nodes on a given taxiway to a starting node.
     /// </summary>
     private List<int> FindNearestNodesOnTaxiway(int fromNodeId, string taxiwayName, int maxResults)

@@ -12,7 +12,6 @@ public partial class ChecklistForm : Form
 
     private Panel scrollPanel = null!;
     private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly string aircraftCode;
     private IntPtr previousWindow;
 
@@ -25,7 +24,6 @@ public partial class ChecklistForm : Form
 
     public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode)
     {
-        _announcer = announcer;
         this.aircraftCode = aircraftCode;
         InitializeComponent();
         SetupAccessibility();
@@ -103,7 +101,8 @@ public partial class ChecklistForm : Form
         var filenameMap = new Dictionary<string, string>
         {
             { "A320", "FBW_A320_Checklist.txt" },
-            { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" }
+            { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
+            { "FBW_A380", "FBW_A380_Checklist.txt" }
         };
 
         // Determine which file to load

@@ -1,0 +1,11 @@
+{
+  "name": "perf-builder-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom harness + regression tests for the A380 MFD PERF / STEP ALTs structure-aware scrape (coherent-a380-agent.js). Fixtures are real in-flight DOM captures with live visibility (data-vis) and geometry (data-rect) baked in, so the offline run faithfully replays the live scrape without a layout engine.",
+  "scripts": {
+    "test": "node --test",
+    "dump": "node run.js"
+  },
+  "dependencies": { "jsdom": "^24.1.0" }
+}

@@ -21,6 +21,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
@@ -57,6 +58,7 @@ namespace MSFSBlindAssist
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
@@ -219,9 +221,10 @@ namespace MSFSBlindAssist
             this.aircraftMenuItem.AccessibleDescription = "Select aircraft model";
             this.aircraftMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.flyByWireA320MenuItem,
+            this.flyByWireA380MenuItem,
             this.fenixA320MenuItem,
-            this.pmdg777MenuItem,
             this.pmdg737MenuItem,
+            this.pmdg777MenuItem,
             this.horizonSim787MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
@@ -256,6 +259,16 @@ namespace MSFSBlindAssist
             this.pmdg777MenuItem.Text = "PMDG Boeing &777";
             this.pmdg777MenuItem.Checked = false;
             this.pmdg777MenuItem.Click += new System.EventHandler(this.PMDG777MenuItem_Click);
+            //
+            // flyByWireA380MenuItem
+            //
+            this.flyByWireA380MenuItem.AccessibleName = "FlyByWire Airbus A380X";
+            this.flyByWireA380MenuItem.AccessibleDescription = "Switch to FlyByWire Airbus A380X";
+            this.flyByWireA380MenuItem.Name = "flyByWireA380MenuItem";
+            this.flyByWireA380MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.flyByWireA380MenuItem.Text = "FlyByWire Airbus A&380X";
+            this.flyByWireA380MenuItem.Checked = false;
+            this.flyByWireA380MenuItem.Click += new System.EventHandler(this.FlyByWireA380MenuItem_Click);
             //
             // pmdg737MenuItem
             //

@@ -15,7 +15,6 @@ public class SimBriefPlannerForm : Form
 {
     // ── Dependencies ─────────────────────────────────────────────────────────
     private readonly string _simbriefUsername;
-    private readonly ScreenReaderAnnouncer? _announcer;
     private readonly SimBriefService _service = new SimBriefService();
     private SimBriefOFP? _ofp;
     private bool _fetchInProgress = false;
@@ -65,7 +64,6 @@ public class SimBriefPlannerForm : Form
     public SimBriefPlannerForm(string simbriefUsername, ScreenReaderAnnouncer? announcer = null)
     {
         _simbriefUsername = simbriefUsername;
-        _announcer = announcer;
         InitializeComponent();
     }
 
@@ -1839,14 +1837,6 @@ public class SimBriefPlannerForm : Form
         if (int.TryParse(minutes, out int m))
             return $"{m / 60}h {m % 60:D2}m";
         return minutes;
-    }
-
-    private static string FormatMinutes(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return "";
-        if (int.TryParse(raw, out int m))
-            return $"{m / 60:D2}:{m % 60:D2}";
-        return raw;
     }
 
     /// <summary>Formats elapsed seconds as "H:MM" (e.g. 5040 → "1:24"). Returns "" if invalid.</summary>

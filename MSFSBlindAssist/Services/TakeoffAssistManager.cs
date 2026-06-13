@@ -68,7 +68,6 @@ public class TakeoffAssistManager : IDisposable
     // Configuration constants - modern mode
     private const double CENTERLINE_TOLERANCE_FEET = 25.0; // Within ±25 feet is "center"
     private const double CENTERLINE_CHANGE_THRESHOLD_FEET = 10.0; // Announce if deviation changes by >10 feet
-    private const double NM_TO_FEET = 6076.12;
     private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° heading deviation for full left/right pan
 
     // Configuration constants - legacy mode

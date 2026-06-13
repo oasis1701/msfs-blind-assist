@@ -18,6 +18,23 @@ public class SimConnectManager
     private IntPtr windowHandle;
     private const int WM_USER_SIMCONNECT = 0x0402;
 
+    // Re-entrancy guard for ReceiveMessage(). The managed SimConnect ReceiveMessage()
+    // is NOT reentrant: a nested call corrupts its internal receive buffer, which shows
+    // up as a native heap-corruption access violation (0xC0000005) inside coreclr.dll
+    // and a 0x80131506 ExecutionEngineException — uncatchable by managed try/catch.
+    // Application.DoEvents() pump loops (used while waiting for data-definition changes
+    // during aircraft switches/disconnect) can dispatch a queued WM_USER_SIMCONNECT and
+    // re-enter ReceiveMessage() in the middle of one already in flight. This flag blocks
+    // that; the skipped message stays queued and is drained on the next non-nested pump.
+    //
+    // SHARED (static) across BOTH SimConnect connections — the main one AND the always-on
+    // GsxService connection (MSFSBA_GSX). All dispatch happens on the UI thread (WndProc /
+    // DoEvents pumps), so a plain flag is sufficient. Making it shared is the key fix: a
+    // DoEvents pump during one connection's ReceiveMessage could otherwise dispatch the
+    // OTHER connection's WM_USER and interleave the two marshalling passes — the same
+    // corruption, just across connections. While EITHER is dispatching, the other defers.
+    internal static bool SimConnectDispatchInProgress;
+
     // Events
     public event EventHandler<string>? ConnectionStatusChanged;
     public event EventHandler<string>? SimulatorVersionDetected;
@@ -48,10 +65,86 @@ public class SimConnectManager
     public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
+    // Aircraft-detection retry. RequestAircraftInfo() fires once at Connect() with PERIOD.ONCE;
+    // on a heavy aircraft the one-shot AIRCRAFT_INFO/ATC response can be missed, so
+    // IsFullyConnected never flips and every hotkey reports "not connected" (continuous
+    // monitoring/auto-announce works — separate path). This timer re-requests every 2s until
+    // detection completes, independent of continuous monitoring. (5 doors connected fine; 16
+    // pushed setup past the tipping point — this makes it self-heal regardless of load.)
+    private System.Windows.Forms.Timer _detectRetryTimer = null!;
+    private int _detectRetryCount = 0;
 
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
+    // ⚠️ Gate ONLY on Initialize having completed (IsConnected). Two "smarter"
+    // gates were tried 2026-06-11 and BOTH broke working installs (the A380 "STD
+    // combo bounces back" regression):
+    //   - IsRegistered: the FBWBA client registration can time out (documented
+    //     "Timeout - Using Fallback" state) while the DEFAULT MobiFlight.Command
+    //     channel works fine — the calc path needs no registration.
+    //   - HasModuleResponded (any inbound response): on a real install the module's
+    //     RESPONSE side was completely silent (no registration Finished, no MF.Pong)
+    //     while the one-way COMMAND side executed everything — response-based
+    //     evidence can never open the gate there.
+    // So: module object initialized → fire the calc path. The no-WASM-install case
+    // (writes into a dead CDA) is NOT detectable from responses; a proper presence
+    // probe must be END-TO-END (calc-write a nonce L:var, read it back via the
+    // data-def path). That end-to-end probe now EXISTS (MSFSBA_BRIDGE_PROBE →
+    // CalcPathVerified, see below) and is the live gate for SetLVar/dotted-event
+    // routing; IsMobiFlightConnected's gate role is now limited to the H: event
+    // channel (which has no alternative transport).
     public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
+
+    // End-to-end calc-path verification: MainForm's bridge probe calc-writes a nonce
+    // L:var (MSFSBA_BRIDGE_PROBE, registered by the FBW defs) and reads it back over
+    // the independent data-def channel. A match PROVES the WASM module executed our
+    // RPN — the only presence signal that works when the module's response side is
+    // silent (IsMobiFlightConnected is true even when no WASM module is installed,
+    // because MobiFlightWasmModule.Initialize() is purely local client-data setup).
+    // This IS the live gate for the calc-path write routing in SetLVar/SendEvent.
+    public bool CalcPathVerified { get; private set; }
+
+    // True once the probe has reached a conclusion either way: VERIFIED, or given up
+    // (module absent / probe not applicable on this aircraft). Until concluded, dotted
+    // custom events are queued rather than dropped (see SendEvent); once concluded
+    // unverified, they fall back to the legacy TransmitClientEvent transport.
+    public bool CalcPathProbeConcluded { get; private set; }
+
+    public void MarkCalcPathVerified()
+    {
+        if (CalcPathVerified) return;
+        CalcPathVerified = true;
+        CalcPathProbeConcluded = true;
+        FlushPendingCalcEvents();
+    }
+
+    /// <summary>
+    /// Called by MainForm's bridge probe when verification cannot succeed: either the
+    /// probe gave up (module absent or data-def read failing) or the loaded aircraft
+    /// doesn't register the probe var (non-FBW). Queued dotted events are released to
+    /// the legacy TransmitClientEvent transport; queued H: events are fired at the
+    /// MobiFlight channel anyway (there is no alternative transport for H: events).
+    /// </summary>
+    public void MarkCalcPathProbeConcluded()
+    {
+        if (CalcPathProbeConcluded) return;
+        CalcPathProbeConcluded = true;
+        FlushPendingCalcEvents();
+    }
+
+    /// <summary>Re-arms the probe verdict (called from MainForm's probe re-arm path on
+    /// reconnect/aircraft swap, alongside the Disconnect() reset).</summary>
+    public void ResetCalcPathProbe()
+    {
+        CalcPathVerified = false;
+        CalcPathProbeConcluded = false;
+        // An aircraft swap re-arms the probe WITHOUT a MobiFlight teardown — drop any
+        // events queued during the previous aircraft's probe window so they can't
+        // replay at the new aircraft when the new verdict flushes. (Post-swap events
+        // can't be in here: until this reset runs, the stale latched verdict routes
+        // them immediately instead of queueing.)
+        lock (pendingCalcEvents) pendingCalcEvents.Clear();
+    }
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
@@ -86,6 +179,11 @@ public class SimConnectManager
     private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
     private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
+    // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
+    // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
+    // here and flushed when the bridge connects rather than dropped. Bounded + cleared on teardown.
+    private readonly Queue<(string eventName, uint data)> pendingCalcEvents = new();
+    private const int MaxPendingCalcEvents = 64;
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
     private static int nextTempDefId = 50000;  // Counter for temporary definition IDs (SetLVar/SetSimVar)
@@ -193,11 +291,10 @@ public class SimConnectManager
         REQUEST_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly requests
         REQUEST_SQUAWK_CODE = 329,
-        // 330-337 used by hardcoded V-speed requests; 340-349 fuel/payload.
+        // 330-337 used by hardcoded V-speed requests.
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
-        REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -254,7 +351,6 @@ public class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
-        ECAM_MESSAGES = 350,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -495,6 +591,25 @@ public class SimConnectManager
         reconnectTimer = new System.Windows.Forms.Timer();
         reconnectTimer.Interval = 5000;
         reconnectTimer.Tick += ReconnectTimer_Tick;
+
+        _detectRetryTimer = new System.Windows.Forms.Timer();
+        _detectRetryTimer.Interval = 2000;
+        _detectRetryTimer.Tick += DetectRetryTimer_Tick;
+    }
+
+    // Re-request aircraft info until detection completes (IsFullyConnected). Stops itself
+    // once connected. Ultimate fallback: after several retries, if aircraft info has arrived
+    // but ATC data never did, stop waiting on ATC and complete detection so hotkeys unblock.
+    private void DetectRetryTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!IsConnected || IsFullyConnected) { _detectRetryTimer.Stop(); return; }
+        _detectRetryCount++;
+        try { RequestAircraftInfo(); } catch { }
+        if (_detectRetryCount >= 5 && pendingAircraftInfo.HasValue && !atcDataReceived)
+        {
+            atcDataReceived = true;
+            TryAnnounceConnection();
+        }
     }
 
     public void Connect()
@@ -529,8 +644,12 @@ public class SimConnectManager
             // ATC-MODEL-miss fallback can resolve a TITLE→ICAO without any latency. Non-blocking.
             aircraftCfgCatalog.BeginBuild();
 
-            // Check aircraft type
+            // Check aircraft type — fire once now, and start the retry timer so a missed
+            // one-shot response self-heals (otherwise IsFullyConnected can stick at false).
+            _detectRetryCount = 0;
             RequestAircraftInfo();
+            _detectRetryTimer.Stop();
+            _detectRetryTimer.Start();
         }
         catch (COMException)
         {
@@ -585,14 +704,16 @@ public class SimConnectManager
     {
         var sc = simConnect!; // Local reference for cleaner null-safety
 
-        // Register all variables as individual data definitions
-        RegisterAllVariables();
-
-        // Start continuous monitoring for announced variables
-        StartContinuousMonitoring();
-
-        // NOTE: FCU values are now handled by aircraft-specific implementations
-        // Each aircraft definition (e.g., FlyByWireA320Definition) handles its own FCU variables
+        // ⚠️ RESILIENCE (2026-06): the bulk per-aircraft variable registration — which can be
+        // ~1000+ SimConnect data definitions and may approach SimConnect's documented hard
+        // ceiling of 1000 data definitions / 1000 requests per client (the A380 nearly hits it)
+        // — is now done LAST, AFTER all the fixed/critical data definitions below
+        // (AIRCRAFT_INFO, ATC, position, AI traffic, visual guidance, weather, nav radio…).
+        // This GUARANTEES the detection-critical AIRCRAFT_INFO/ATC defs register within
+        // SimConnect's budget even if the bulk registration later overflows — so aircraft
+        // detection (and position/AI-traffic/visual-guidance) can never again be stranded by a
+        // heavy aircraft's variable count. See RegisterAllVariables (the cap guard) and
+        // DetectRetryTimer_Tick (the force-complete fallback). FCU vars are handled per-aircraft.
 
         // Register aircraft info
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_INFO, "TITLE", null,
@@ -753,6 +874,12 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
+
+        // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
+        // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
+        // now guaranteed registered before the heavy var set can approach the SimConnect ceiling.
+        RegisterAllVariables();
+        StartContinuousMonitoring();
     }
 
     /// <summary>
@@ -762,7 +889,22 @@ public class SimConnectManager
     {
         var sc = simConnect!; // Local reference for cleaner null-safety
         int registeredCount = 0;
+        int batchCoveredCount = 0;
+        int cappedCount = 0;
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
+
+        // ⚠️ HEADROOM (root-caused 2026-06): SimConnect caps a client at ~1000 data definitions
+        // ("objects"). Every Continuous+IsAnnounced var was being registered TWICE — once here as
+        // its own individual data def, and again as a datum inside a CONTINUOUS_BATCH_n def in
+        // StartContinuousMonitoring — which nearly doubled the A380's footprint and pushed it over
+        // the ceiling (the 2nd batch's AddToDataDefinition then failed wholesale → detection broke).
+        // FIX: skip the individual def for these "batch-covered" vars. Their on-demand value is read
+        // from `lastVariableValues`, the SAME cache the batch update writes (verified: panels fall
+        // back to GetCachedVariableValue, forms use GetCachedVariableSnapshot, the batch keeps both
+        // fresh at 1 Hz). This roughly HALVES the data-definition footprint of continuous-heavy
+        // aircraft. ExcludeFromBatch vars KEEP their individual def (they run a per-var SECOND
+        // subscription on it); OnRequest vars KEEP theirs (read on demand); Never/HVar/PMDG skipped.
+        const int IndividualDefCap = 900;   // future-proof: stay well clear of the 1000 ceiling
 
         foreach (var kvp in variables)
         {
@@ -771,6 +913,24 @@ public class SimConnectManager
             // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by IPMDGDataManager)
             if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar || varDef.Type == SimVarType.PMDGVar)
                 continue;
+
+            // Batch-covered: Continuous + IsAnnounced + not ExcludeFromBatch. These are monitored
+            // (and cached) via the continuous batches — no individual data def needed.
+            if (varDef.UpdateFrequency == UpdateFrequency.Continuous && varDef.IsAnnounced && !varDef.ExcludeFromBatch)
+            {
+                batchCoveredCount++;
+                continue;
+            }
+
+            // FUTURE-PROOF cap: once the individual-def count approaches the SimConnect ceiling,
+            // stop creating more so a future mega-aircraft DEGRADES (a few on-demand vars unreadable)
+            // instead of overflowing and breaking detection. (Detection is already protected by
+            // registering the fixed defs first — see SetupDataDefinitions.)
+            if (registeredCount >= IndividualDefCap)
+            {
+                cappedCount++;
+                continue;
+            }
 
             // Get a unique data definition ID for this variable
             int dataDefId = nextDataDefinitionId++;
@@ -809,10 +969,10 @@ public class SimConnectManager
                         (DATA_REQUESTS)dataDefId,
                         (DATA_DEFINITIONS)dataDefId,
                         SIMCONNECT_OBJECT_ID_USER,
-                        SIMCONNECT_PERIOD.SECOND,
-                        SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                        varDef.HighFrequency ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND,
+                        varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
-                    System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}");
+                    System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
                 }
 
                 // Log visual guidance variables specifically
@@ -828,7 +988,21 @@ public class SimConnectManager
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"Successfully registered {registeredCount} individual variables");
+        // Observability: persist a one-line registration summary so a future ceiling problem is
+        // immediately diagnosable without re-instrumenting. registeredCount = individual on-demand
+        // defs; batchCoveredCount = continuous vars served by batches (no individual def);
+        // cappedCount = vars skipped at the future-proof cap (should be 0 in normal operation).
+        int totalDefs = registeredCount + 5 /*continuous batches*/ + 20 /*fixed defs, approx*/;
+        string regSummary = $"[Registration] aircraft={CurrentAircraft?.GetType().Name} individualDefs={registeredCount} batchCovered={batchCoveredCount} capped={cappedCount} approxTotalDefs~{totalDefs} (SimConnect ceiling ~1000)";
+        System.Diagnostics.Debug.WriteLine(regSummary);
+        if (cappedCount > 0)
+            System.Diagnostics.Debug.WriteLine($"[Registration] ⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
+        try
+        {
+            string regLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
+            System.IO.File.AppendAllText(regLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {regSummary}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     /// <summary>
@@ -899,14 +1073,16 @@ public class SimConnectManager
             return;
         }
 
-        if (continuousVariables.Count > 500)
+        if (continuousVariables.Count > 1500)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 500 (5 batches × 100)!");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 1500 (5 batches × 300)! Variables past the cap (alphabetically last) will NOT auto-announce.");
             // Continue anyway - we'll use as many batches as needed
         }
 
-        // Split variables into 5 batches (up to 100 variables per batch).
-        const int BATCH_SIZE = 100;
+        // Split variables into 5 batches (up to 300 variables per batch = 1500 total).
+        // The GenericBatch1-5 structs each hold 300 doubles to match BATCH_SIZE.
+        // (Headroom: the A380 currently uses ~700 continuous+announced vars.)
+        const int BATCH_SIZE = 300;
         const int NUM_BATCHES = 5;
 
         // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
@@ -981,6 +1157,31 @@ public class SimConnectManager
                         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Throttling after {totalVariablesAdded} total variables");
                         Thread.Sleep(5);
                     }
+                }
+
+                // CRITICAL: pad the data definition to EXACTLY BATCH_SIZE datums.
+                // The GenericBatchN struct is a FIXED BATCH_SIZE (300) doubles, but a partial
+                // batch only adds `batchVarCount` real vars. SimConnect then delivers just
+                // batchVarCount*8 bytes, while the managed SimConnect library marshals the
+                // received message with Marshal.PtrToStructure(typeof(GenericBatchN)) which copies
+                // the FULL 300*8 bytes — reading past the end of the message buffer. When that
+                // over-read crosses an unmapped page it's a 0xC0000005 access violation inside
+                // coreclr.dll (0x80131506 ExecutionEngineException) — the intermittent crash that
+                // hit the A32NX hardest (275 continuous vars => batch 1 partial => ~200-byte
+                // over-read every second). Filler datums (a benign always-valid FLOAT64 simvar)
+                // fill the unused tail of the struct; they are NEVER read back (only indices in
+                // continuousVariableIndexMap are consumed), so they are pure size padding.
+                for (int pad = batchVarCount; pad < BATCH_SIZE; pad++)
+                {
+                    sc.AddToDataDefinition(
+                        config.Item2,
+                        "SIMULATION TIME",
+                        "seconds",
+                        SIMCONNECT_DATATYPE.FLOAT64,
+                        0.0f,
+                        SIMCONNECT_UNUSED
+                    );
+                    if (pad % 50 == 0) Thread.Sleep(5); // let SimConnect drain its queue
                 }
 
                 var registerMethod = typeof(Microsoft.FlightSimulator.SimConnect.SimConnect)
@@ -1114,7 +1315,7 @@ public class SimConnectManager
         // Clear existing registrations
         variableDataDefinitions.Clear();
         lastVariableValues.Clear();
-        forceUpdateVariables.Clear();
+        lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
 
         // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
         nextDataDefinitionId = 1000;
@@ -1441,7 +1642,7 @@ public class SimConnectManager
                 }
                 break;
 
-            // Multi-batch continuous variable monitoring (5 batches of ~100 variables each)
+            // Multi-batch continuous variable monitoring (5 batches of up to 300 variables each)
             case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1:
                 GenericBatch1 batch1Data = (GenericBatch1)data.dwData[0];
                 ProcessContinuousBatch(1, in batch1Data);
@@ -1491,8 +1692,6 @@ public class SimConnectManager
                 NavRadioData navRadioData = (NavRadioData)data.dwData[0];
                 NavRadioReceived?.Invoke(this, navRadioData);
                 break;
-
-            // REQUEST_ECAM_MESSAGES case removed - now handled via MobiFlight
 
             case DATA_REQUESTS.REQUEST_HEADING:
                 SingleValue headingData = (SingleValue)data.dwData[0];
@@ -1844,42 +2043,6 @@ public class SimConnectManager
                     VarName = "SPEED_VS",
                     Value = speedVSData.value,
                     Description = $"Stall Speed {speedVSData.value:0} knots"
-                });
-                break;
-
-            // Fuel and Payload Data Requests (340-363)
-            case (DATA_REQUESTS)340: // Fuel Weight Per Gallon
-            case (DATA_REQUESTS)341: // Fuel Left Aux
-            case (DATA_REQUESTS)342: // Fuel Left Main
-            case (DATA_REQUESTS)343: // Fuel Center
-            case (DATA_REQUESTS)344: // Fuel Right Main
-            case (DATA_REQUESTS)345: // Fuel Right Aux
-            case (DATA_REQUESTS)346: // Pax A
-            case (DATA_REQUESTS)347: // Pax B
-            case (DATA_REQUESTS)348: // Pax C
-            case (DATA_REQUESTS)349: // Pax D
-            case (DATA_REQUESTS)350: // Pax Weight
-            case (DATA_REQUESTS)351: // Bag Weight
-            case (DATA_REQUESTS)352: // Cargo Fwd
-            case (DATA_REQUESTS)353: // Cargo Aft Container
-            case (DATA_REQUESTS)354: // Cargo Aft Baggage
-            case (DATA_REQUESTS)355: // Cargo Aft Bulk
-            case (DATA_REQUESTS)356: // Empty Weight
-            case (DATA_REQUESTS)357: // ZFW
-            case (DATA_REQUESTS)358: // GW
-            case (DATA_REQUESTS)359: // CG MAC
-            case (DATA_REQUESTS)360: // GW CG
-            case (DATA_REQUESTS)361: // FMS Pax
-            case (DATA_REQUESTS)362: // FMS ZFW
-            case (DATA_REQUESTS)363: // FMS GW
-            case (DATA_REQUESTS)364: // FMS CG
-                SingleValue fuelPayloadData = (SingleValue)data.dwData[0];
-                string varName = GetFuelPayloadVarName((int)data.dwRequestID);
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = varName,
-                    Value = fuelPayloadData.value,
-                    Description = $"{varName}: {fuelPayloadData.value}"
                 });
                 break;
 
@@ -2387,7 +2550,7 @@ public class SimConnectManager
         {
             return FormatFMAVerticalArmed((int)value);
         }
-        else if (varKey == "A32NX_EFIS_1_ND_FM_MESSAGE_FLAGS" || varKey == "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS")
+        else if (varKey == "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS")
         {
             return FormatNDFMMessage((int)value);
         }
@@ -2548,7 +2711,7 @@ public class SimConnectManager
         }
 
         // Use unsafe pointer access instead of reflection for performance and stability
-        // Each batch struct is a sequential struct of 100 doubles, so we can access directly
+        // Each batch struct is a sequential struct of 300 doubles, so we can access directly
         try
         {
             unsafe
@@ -2570,10 +2733,10 @@ public class SimConnectManager
                         if (varBatchNum != batchNum) continue;
 
                         // SAFETY: Validate index is within bounds
-                        // Each batch struct has 100 doubles (V0-V99)
-                        if (index < 0 || index >= 100)
+                        // Each batch struct has 300 doubles (matches BATCH_SIZE = 300)
+                        if (index < 0 || index >= 300)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-99] for variable '{varKey}'");
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-299] for variable '{varKey}'");
                             invalidIndexCount++;
                             continue;
                         }
@@ -2657,11 +2820,21 @@ public class SimConnectManager
                             hasChanged = Math.Abs(lastValue - value) > 0.001; // Small tolerance for floating point
                         }
 
+                        // Honor a pending forceUpdate (RequestVariable(key, forceUpdate:true)). Batch-covered
+                        // vars (Continuous+IsAnnounced) no longer have an individual data def, so a force-read
+                        // is delivered HERE via the batch stream, not via ProcessIndividualVariableResponse —
+                        // without this a force-read of an UNCHANGED batch-covered value would never fire.
+                        bool isForceUpdate;
+                        lock (forceUpdateVariables)
+                        {
+                            isForceUpdate = forceUpdateVariables.Remove(varKey);
+                        }
+
                         // Update cache
                         lastVariableValues[varKey] = value;
 
-                        // Only fire event if value changed (or it's the first time we're seeing it)
-                        if (hasChanged || !lastVariableValues.ContainsKey(varKey))
+                        // Only fire event if value changed, was force-requested, or it's the first time we see it
+                        if (hasChanged || isForceUpdate || !lastVariableValues.ContainsKey(varKey))
                         {
                             // Check if we should only announce matches to ValueDescriptions (e.g., thrust lever detents)
                             if (varDef.OnlyAnnounceValueDescriptionMatches &&
@@ -2702,16 +2875,13 @@ public class SimConnectManager
                 }  // end fixed
             }  // end unsafe
         }
-        catch (ExecutionEngineException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CRITICAL: ExecutionEngineException caught! This is a serious CLR error.");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Variable count: {continuousVariableIndexMap.Count}");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Skipping this batch to prevent crash. Please report this issue.");
-            return;  // Abort processing this batch to prevent crash
-        }
         catch (Exception ex)
         {
+            // NOTE: a fatal CLR error during the unsafe marshalling of a received batch
+            // (heap-corruption AccessViolation → 0x80131506 ExecutionEngineException, e.g. the
+            // struct over-read fixed in 8cbb502) is NOT catchable by managed try/catch and will
+            // FailFast regardless — there is intentionally no ExecutionEngineException catch here
+            // (it is obsolete/never-raised on .NET 9). This handler covers ordinary exceptions.
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
@@ -2987,6 +3157,19 @@ public class SimConnectManager
 
     private void TryAnnounceConnection()
     {
+        // Detection already completed — drop late duplicate (info, ATC) response pairs.
+        // The detect-retry timer re-fires RequestAircraftInfo (two PERIOD.ONCE requests)
+        // every 2 s while detection is pending; on a stalled sim load, the queued extra
+        // responses used to re-satisfy both flags and re-run the WHOLE connect pipeline
+        // (duplicate "Connected to ..." announce, PMDG data-manager re-init, a fresh
+        // 5 s announce blackout). IsFullyConnected is reset only in Disconnect().
+        if (IsFullyConnected)
+        {
+            pendingAircraftInfo = null;
+            atcDataReceived = false;
+            return;
+        }
+
         // Only announce when we have both aircraft info AND ATC data
         if (pendingAircraftInfo.HasValue && atcDataReceived)
         {
@@ -3068,6 +3251,14 @@ public class SimConnectManager
         ConnectionStatusChanged?.Invoke(this, $"Connected to {info.title}{identification}");
         wasConnected = true; // Mark that we're now successfully connected
         IsFullyConnected = true; // Aircraft detection complete, hotkeys are now safe to use
+        // Observability: log successful detection so the registration.log shows the full picture
+        // (footprint + clean connect) and any future "not connected" regression is obvious by its absence.
+        try
+        {
+            string regLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
+            System.IO.File.AppendAllText(regLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [Detection] FULLY CONNECTED — '{info.title}' (hotkeys enabled){Environment.NewLine}");
+        }
+        catch { }
 
         // Aircraft-specific InputEvents (WT Boeing 787 AT_Arm, bleed-air, engine start
         // rotaries, etc.) only exist in the catalog after the cockpit model is loaded.
@@ -3339,6 +3530,19 @@ public class SimConnectManager
         }
 
         System.Diagnostics.Debug.WriteLine($"SimConnect Exception: {data.dwException} ({exceptionName}) - SendID: {data.dwSendID}, Index: {data.dwIndex}");
+        // Observability: TOO_MANY_OBJECTS / TOO_MANY_REQUESTS mean we hit SimConnect's ~1000
+        // data-definition / request ceiling — the exact failure that used to silently break
+        // aircraft detection. Persist these so the ceiling is never again a mystery. (Non-throwing;
+        // harmless NAME_UNRECOGNIZED noise from probing nonexistent simvars is NOT logged.)
+        if (data.dwException == 11 /*TOO_MANY_OBJECTS*/ || data.dwException == 12 /*TOO_MANY_REQUESTS*/)
+        {
+            try
+            {
+                string exLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
+                System.IO.File.AppendAllText(exLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [CEILING] SimConnect {exceptionName} (SendID {data.dwSendID}) — exceeded the ~1000 data-definition/request limit. Some vars are unregistered; detection is still protected.{Environment.NewLine}");
+            }
+            catch { }
+        }
     }
 
     private void SimConnect_OnRecvClientData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_CLIENT_DATA data)
@@ -3417,6 +3621,29 @@ public class SimConnectManager
             return;
         }
 
+        // Record the force flag BEFORE the individual-def check below. Batch-covered vars
+        // (Continuous+IsAnnounced, no ExcludeFromBatch) have NO individual data def, so they take
+        // the early-return — but the continuous batch stream still delivers them and
+        // ProcessContinuousBatch honors forceUpdateVariables. Recording the flag here is what makes
+        // a force-read of an UNCHANGED batch-covered value actually re-fire (it previously sat after
+        // the early-return, so the flag was never set for batch-covered vars). Individual-def vars
+        // still have it consumed by ProcessIndividualVariableResponse exactly as before.
+        // Only record keys a delivery path can consume — individual data defs or the
+        // continuous batch. Unregistered/typo'd keys otherwise sit in the set until
+        // the next clear (silent growth, misleading when debugging).
+        if (forceUpdate)
+        {
+            bool deliverable = variableDataDefinitions.ContainsKey(varKey)
+                               || continuousVariableIndexMap.ContainsKey(varKey);
+            if (deliverable)
+            {
+                lock (forceUpdateVariables)
+                {
+                    forceUpdateVariables.Add(varKey);
+                }
+            }
+        }
+
         if (!variableDataDefinitions.ContainsKey(varKey))
         {
             return;
@@ -3424,15 +3651,6 @@ public class SimConnectManager
 
         try
         {
-            // Track if this should force an update
-            if (forceUpdate)
-            {
-                lock (forceUpdateVariables)
-                {
-                    forceUpdateVariables.Add(varKey);
-                }
-            }
-
             int dataDefId = variableDataDefinitions[varKey];
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId,
                 (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,
@@ -3456,6 +3674,39 @@ public class SimConnectManager
     }
 
     /// <summary>
+    /// Re-bind a variable's SimConnect data definition in place (same def id, so
+    /// requests and response dispatch are unchanged). Needed for L:vars that did
+    /// not EXIST at registration time: a data definition bound to a nonexistent
+    /// L:var never delivers values, even after the var is later created (observed
+    /// live 2026-06-12 — the bridge probe's nonce writes held in the sim while
+    /// MSFSBA's reads of the same var returned nothing). Call after the var has
+    /// been created (e.g. by a calc-path write).
+    /// </summary>
+    public void RebindVariableDataDefinition(string varKey)
+    {
+        if (simConnect == null || CurrentAircraft == null) return;
+        if (!variableDataDefinitions.TryGetValue(varKey, out int dataDefId)) return;
+        var vars = CurrentAircraft.GetVariables();
+        if (!vars.TryGetValue(varKey, out var varDef)) return;
+        try
+        {
+            simConnect.ClearDataDefinition((DATA_DEFINITIONS)dataDefId);
+            if (varDef.Type == SimVarType.LVar)
+                simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
+                    $"L:{varDef.Name}", "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            else
+                simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
+                    varDef.Name, varDef.Units ?? "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            simConnect.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)dataDefId);
+            System.Diagnostics.Debug.WriteLine($"[Probe] data definition re-bound for {varKey} (def {dataDefId})");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Probe] rebind FAILED for {varKey}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Get cached value for a variable if available
     /// </summary>
     public double? GetCachedVariableValue(string varKey)
@@ -3463,6 +3714,19 @@ public class SimConnectManager
         if (lastVariableValues.TryGetValue(varKey, out double value))
             return value;
         return null;
+    }
+
+    /// <summary>
+    /// Decoded ECAM memo line (raw text, still with ANSI color markers) for an
+    /// A32NX_Ewd_LOWER_* key, or "" if absent. The batch handler converts these memo
+    /// CODE vars to strings (ecamStringData) and `continue`s past the numeric-cache write,
+    /// so GetCachedVariableValue returns null for them — callers that want the memo text
+    /// (e.g. the decoded Upper E/WD readout) must use this accessor. Run CleanANSICodes on it.
+    /// </summary>
+    public string GetEcamLineRaw(string varKey)
+    {
+        try { return ecamStringData.TryGetValue(varKey, out var raw) ? raw : ""; }
+        catch { return ""; }
     }
 
     /// <summary>
@@ -3803,93 +4067,6 @@ public class SimConnectManager
         }
     }
 
-    /// <summary>
-    /// A32NX-SPECIFIC: Requests fuel and payload data for FlyByWire Airbus A320neo.
-    /// Uses both standard SimVars and A32NX-specific L-variables for weight/balance calculations.
-    /// Called by Forms/A32NX/FuelPayloadDisplayForm.cs only.
-    ///
-    /// NOTE: This method is safe for multi-aircraft - it's only called when the A32NX Fuel/Payload window
-    /// is opened (via hotkey or menu). Other aircraft (Fenix, PMDG, etc.) would have their own methods
-    /// with their own variable names if they implement this feature.
-    /// </summary>
-    public void RequestFuelAndPayloadData()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                // Request fuel data
-                RequestSingleValue(340, "FUEL WEIGHT PER GALLON", "kilograms", "FUEL_WEIGHT_PER_GALLON");
-                RequestSingleValue(341, "FUEL TANK LEFT AUX QUANTITY", "gallons", "FUEL_LEFT_AUX");
-                RequestSingleValue(342, "FUEL TANK LEFT MAIN QUANTITY", "gallons", "FUEL_LEFT_MAIN");
-                RequestSingleValue(343, "FUEL TANK CENTER QUANTITY", "gallons", "FUEL_CENTER");
-                RequestSingleValue(344, "FUEL TANK RIGHT MAIN QUANTITY", "gallons", "FUEL_RIGHT_MAIN");
-                RequestSingleValue(345, "FUEL TANK RIGHT AUX QUANTITY", "gallons", "FUEL_RIGHT_AUX");
-
-                // Request passenger data
-                RequestSingleValue(346, "L:A32NX_PAX_A", "number", "PAX_A");
-                RequestSingleValue(347, "L:A32NX_PAX_B", "number", "PAX_B");
-                RequestSingleValue(348, "L:A32NX_PAX_C", "number", "PAX_C");
-                RequestSingleValue(349, "L:A32NX_PAX_D", "number", "PAX_D");
-                RequestSingleValue(350, "L:A32NX_WB_PER_PAX_WEIGHT", "kilograms", "PAX_WEIGHT");
-                RequestSingleValue(351, "L:A32NX_WB_PER_BAG_WEIGHT", "kilograms", "BAG_WEIGHT");
-
-                // Request cargo data
-                RequestSingleValue(352, "PAYLOAD STATION WEIGHT:5", "kilograms", "CARGO_FWD");
-                RequestSingleValue(353, "PAYLOAD STATION WEIGHT:6", "kilograms", "CARGO_AFT_CONT");
-                RequestSingleValue(354, "PAYLOAD STATION WEIGHT:7", "kilograms", "CARGO_AFT_BAG");
-                RequestSingleValue(355, "PAYLOAD STATION WEIGHT:8", "kilograms", "CARGO_AFT_BULK");
-
-                // Request weights
-                RequestSingleValue(356, "EMPTY WEIGHT", "kilograms", "EMPTY_WEIGHT");
-                RequestSingleValue(357, "L:A32NX_AIRFRAME_ZFW", "number", "ZFW");
-                RequestSingleValue(358, "L:A32NX_AIRFRAME_GW", "number", "GW");
-                RequestSingleValue(359, "L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC", "number", "ZFW_CG_MAC");
-                RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
-
-                // Request FMS values (entered by pilot in MCDU)
-                RequestSingleValue(361, "L:A32NX_FMS_PAX_NUMBER", "number", "FMS_PAX");
-                RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
-                RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
-                RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");
-
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Fuel and payload data requested");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel and payload data: {ex.Message}");
-            }
-        }
-    }
-
-    /// <summary>
-    /// A32NX-SPECIFIC: Requests total fuel quantity for FlyByWire Airbus A320neo.
-    /// Uses L:A32NX_TOTAL_FUEL_QUANTITY variable specific to FlyByWire implementation.
-    /// Called by Forms/A32NX/ECAMDisplayForm.cs and FlyByWireA320Definition.cs.
-    /// </summary>
-    public void RequestFuelQuantity()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
-            }
-        }
-    }
-
     public void RequestSingleValue(int id, string simVarName, string units, string varName)
     {
         if (IsConnected && simConnect != null)
@@ -3911,39 +4088,6 @@ public class SimConnectManager
                 System.Diagnostics.Debug.WriteLine($"Error requesting {varName}: {ex.Message}");
             }
         }
-    }
-
-    private string GetFuelPayloadVarName(int requestId)
-    {
-        return requestId switch
-        {
-            340 => "FUEL_WEIGHT_PER_GALLON",
-            341 => "FUEL_LEFT_AUX",
-            342 => "FUEL_LEFT_MAIN",
-            343 => "FUEL_CENTER",
-            344 => "FUEL_RIGHT_MAIN",
-            345 => "FUEL_RIGHT_AUX",
-            346 => "PAX_A",
-            347 => "PAX_B",
-            348 => "PAX_C",
-            349 => "PAX_D",
-            350 => "PAX_WEIGHT",
-            351 => "BAG_WEIGHT",
-            352 => "CARGO_FWD",
-            353 => "CARGO_AFT_CONT",
-            354 => "CARGO_AFT_BAG",
-            355 => "CARGO_AFT_BULK",
-            356 => "EMPTY_WEIGHT",
-            357 => "ZFW",
-            358 => "GW",
-            359 => "ZFW_CG_MAC",
-            360 => "GW_CG_MAC",
-            361 => "FMS_PAX",
-            362 => "FMS_ZFW",
-            363 => "FMS_GW",
-            364 => "FMS_CG",
-            _ => "UNKNOWN"
-        };
     }
 
     public void RequestLVarValue(string varName)
@@ -4000,6 +4144,34 @@ public class SimConnectManager
     public void SetLVar(string varName, double value)
     {
         if (!IsConnected || simConnect == null) return;
+
+        // GLOBAL WRITE ROUTING: prefer the MobiFlight calculator path for real L:vars.
+        // The data-definition write below (AddToDataDefinition + SetDataOnSimObject) is UNRELIABLE for
+        // many add-on L:vars (FlyByWire L:vars in particular silently revert a frame later) -- which is
+        // why dozens of A380/A32NX controls had to be hand-routed through the calc path one prefix at a
+        // time in each aircraft def's HandleUIVariableSet catch-all. Routing every L:var write that
+        // reaches this fallback through the calc path fixes them all globally. Guardrails:
+        //   * Only when the calc path is PROVEN alive end-to-end (CalcPathVerified — the nonce
+        //     round-trip probe). IsMobiFlightConnected is NOT sufficient: it is true even when no
+        //     WASM module is installed (purely local setup), and routing on it sent every L:var
+        //     write into a dead client-data area for no-module users. Until/unless verification
+        //     succeeds, fall through to the data-def write — the exact legacy (main) behavior,
+        //     which works for Fenix and degrades to main's known imperfection for FBW for the
+        //     few seconds before the probe verifies.
+        //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
+        //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
+        //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
+        if (CalcPathVerified
+            && !string.IsNullOrEmpty(varName)
+            && varName.IndexOf(' ') < 0
+            && varName.IndexOf(':') < 0)
+        {
+            // Fixed-point format: the default double formatting emits scientific notation
+            // for small/large magnitudes ("1E-05"), which the MSFS RPN parser rejects.
+            ExecuteCalculatorCode(value.ToString("0.################", System.Globalization.CultureInfo.InvariantCulture)
+                + " (>L:" + varName + ")");
+            return;
+        }
 
         // For setting LVars, we'll need to use a workaround
         // Create a temporary data definition for this specific LVar
@@ -4074,9 +4246,57 @@ public class SimConnectManager
     public void SendEvent(string eventName, uint data = 0)
     {
         if (!IsConnected || simConnect == null) return;
-        
+
         System.Diagnostics.Debug.WriteLine($"Sending event: {eventName} with data: {data}");
-        
+
+        // Two FlyByWire event classes prefer the MobiFlight calculator path:
+        //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — these have NO
+        //      TransmitClientEvent transport AT ALL (main never sent H: via SendEvent; its
+        //      SendHVar was MobiFlight-only too), so they always go to the MobiFlight
+        //      channel, queued during the brief connect window.
+        //   2. Dotted custom input events (e.g. A32NX.FCU_HDG_SET, A32NX.FCU_AP_1_PUSH) —
+        //      the calc path is preferred once VERIFIED end-to-end, but these DO have a
+        //      legacy transport: MapClientEventToSimEvent + TransmitClientEvent is the
+        //      shipping path for the A32NX FCU on main (the FBW WASM registers the custom
+        //      client events with the sim). So: verified → calc; probe still running →
+        //      queue (flushed on the probe's conclusion); concluded-unverified (module
+        //      absent, or a non-FBW aircraft that can't probe) → legacy transmit below.
+        if (eventName.StartsWith("H:", StringComparison.Ordinal))
+        {
+            if (mobiFlightWasm == null) return; // no transport exists for H: without the module object
+            if (IsMobiFlightConnected)
+                FireCalcEvent(eventName, data);
+            else
+                lock (pendingCalcEvents)
+                {
+                    if (pendingCalcEvents.Count < MaxPendingCalcEvents)
+                        pendingCalcEvents.Enqueue((eventName, data));
+                }
+            return;
+        }
+        if (eventName.Contains('.') && mobiFlightWasm != null)
+        {
+            if (CalcPathVerified)
+            {
+                FireCalcEvent(eventName, data);
+                return;
+            }
+            if (!CalcPathProbeConcluded)
+            {
+                // Probe still in flight (post-aircraft-load window): don't pick a loser yet.
+                // Queue; MarkCalcPathVerified flushes via calc, MarkCalcPathProbeConcluded
+                // flushes via the legacy transmit fallback in FlushPendingCalcEvents.
+                lock (pendingCalcEvents)
+                {
+                    if (pendingCalcEvents.Count < MaxPendingCalcEvents)
+                        pendingCalcEvents.Enqueue((eventName, data));
+                }
+                return;
+            }
+            // Probe concluded without verification — fall through to the legacy
+            // MapClientEventToSimEvent + TransmitClientEvent path below.
+        }
+
         // Map the event name to an ID if not already mapped
         if (!eventIds.ContainsKey(eventName))
         {
@@ -4092,10 +4312,70 @@ public class SimConnectManager
             SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
     }
 
+    // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
+    // dotted custom events take the data param. Callers route here once the verdict/connection
+    // gates have been applied (the H: flush may fire during the brief connect window —
+    // ExecuteCalculatorCode drops safely if the module object is gone).
+    private void FireCalcEvent(string eventName, uint data)
+    {
+        if (eventName.StartsWith("H:", StringComparison.Ordinal))
+            ExecuteCalculatorCode($"(>{eventName})");
+        else
+            ExecuteCalculatorCode($"{data} (>K:{eventName})");
+    }
+
+    // Flush events queued while the calc-path verdict was pending. Called from
+    // MarkCalcPathVerified (flush via calc) and MarkCalcPathProbeConcluded (flush
+    // dotted events via the legacy TransmitClientEvent transport; H: events go to
+    // the MobiFlight channel regardless — they have no other transport).
+    private void FlushPendingCalcEvents()
+    {
+        (string eventName, uint data)[] toFire;
+        lock (pendingCalcEvents)
+        {
+            if (pendingCalcEvents.Count == 0) return;
+            toFire = pendingCalcEvents.ToArray();
+            pendingCalcEvents.Clear();
+        }
+        foreach (var e in toFire)
+        {
+            if (CalcPathVerified || e.eventName.StartsWith("H:", StringComparison.Ordinal))
+                FireCalcEvent(e.eventName, e.data);
+            else
+                SendEvent(e.eventName, e.data); // re-enters; CalcPathProbeConcluded routes it to TransmitClientEvent
+        }
+    }
+
+    // Release any H: events queued during the MobiFlight connect window without
+    // disturbing queued dotted events (which wait for the probe's verdict).
+    private void FlushPendingHEvents()
+    {
+        List<(string eventName, uint data)> hEvents = new();
+        lock (pendingCalcEvents)
+        {
+            if (pendingCalcEvents.Count == 0) return;
+            var keep = new Queue<(string eventName, uint data)>();
+            while (pendingCalcEvents.Count > 0)
+            {
+                var e = pendingCalcEvents.Dequeue();
+                if (e.eventName.StartsWith("H:", StringComparison.Ordinal)) hEvents.Add(e);
+                else keep.Enqueue(e);
+            }
+            while (keep.Count > 0) pendingCalcEvents.Enqueue(keep.Dequeue());
+        }
+        foreach (var e in hEvents) FireCalcEvent(e.eventName, e.data);
+    }
+
     public void ProcessWindowMessage(ref Message m)
     {
         if (m.Msg == WM_USER_SIMCONNECT && simConnect != null)
         {
+            // Never dispatch ReceiveMessage() reentrantly (see _inReceiveMessage). A DoEvents()
+            // pump can land us back here while an outer ReceiveMessage() is still on the stack;
+            // skipping leaves the data queued for the next clean pump rather than corrupting the
+            // marshalling buffer.
+            if (SimConnectDispatchInProgress) return;
+            SimConnectDispatchInProgress = true;
             try
             {
                 simConnect.ReceiveMessage();
@@ -4114,6 +4394,10 @@ public class SimConnectManager
             {
                 // Unexpected exception - log but don't crash
                 System.Diagnostics.Debug.WriteLine($"Unexpected exception in ProcessWindowMessage: {ex}");
+            }
+            finally
+            {
+                SimConnectDispatchInProgress = false;
             }
         }
     }
@@ -4214,6 +4498,10 @@ public class SimConnectManager
             mobiFlightWasm.ConnectionStatusChanged += (sender, status) =>
             {
                 System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight status: {status}");
+                // Release any H: events queued during the connect window. Dotted events stay
+                // queued until the end-to-end probe concludes (see MarkCalcPathVerified /
+                // MarkCalcPathProbeConcluded).
+                if (IsMobiFlightConnected) FlushPendingHEvents();
             };
 
             mobiFlightWasm.LVarUpdated += MobiFlightWasm_LVarUpdated;
@@ -4272,6 +4560,23 @@ public class SimConnectManager
             var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
             var varDef = variables.Values.FirstOrDefault(v =>
                 v.LedVariable == e.LedVariable);
+
+            // Fallback: route a one-shot MobiFlight read by var KEY when no def
+            // declares it as a LedVariable. Used for FCU readouts (e.g. the VS
+            // selected target) whose SimConnect data-def read is unreliable, so
+            // ReadLedVariable(key) can deliver the correct MobiFlight value under
+            // the var's own name without setting LedVariable (which would make
+            // MainForm re-request it over the unreliable SimConnect path).
+            if (varDef == null && variables.TryGetValue(e.LedVariable, out var byKey))
+            {
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = e.LedVariable,
+                    Value = e.Value,
+                    Description = byKey.DisplayName
+                });
+                return;
+            }
 
             if (varDef != null)
             {
@@ -4444,6 +4749,7 @@ public class SimConnectManager
     {
         // Stop reconnect timer first to prevent it from firing during cleanup
         reconnectTimer.Stop();
+        _detectRetryTimer.Stop();
         System.Diagnostics.Debug.WriteLine("[SimConnectManager] Reconnect timer stopped");
 
         // Disconnect MobiFlight WASM module
@@ -4452,6 +4758,9 @@ public class SimConnectManager
             mobiFlightWasm.Disconnect();
             mobiFlightWasm.Dispose();
             mobiFlightWasm = null;
+            CalcPathVerified = false;        // re-probe after the next bridge init
+            CalcPathProbeConcluded = false;
+            lock (pendingCalcEvents) pendingCalcEvents.Clear();   // don't carry queued events across a teardown
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] MobiFlight WASM module disconnected");
         }
 
@@ -4574,7 +4883,7 @@ public class SimConnectManager
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         eventIds.Clear();
-        forceUpdateVariables.Clear();
+        lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         ecamStringData.Clear();
         ecamAnnouncementData.Clear();
         previousECAMMessages.Clear();
@@ -5093,96 +5402,6 @@ public class SimConnectManager
                 Value = 0,
                 Description = $"Error requesting ILS guidance: {ex.Message}"
             });
-        }
-    }
-
-    /// <summary>
-    /// A32NX-SPECIFIC: Requests ECAM (Engine Warning and Advisory Display) message codes for FlyByWire Airbus A320neo.
-    /// Retrieves 14 numeric L-variables (A32NX_Ewd_LOWER_LEFT_LINE_*, A32NX_Ewd_LOWER_RIGHT_LINE_*) that map to ECAM messages.
-    /// Also requests master warning/caution/stall indicators. Called by Forms/A32NX/ECAMDisplayForm.cs only.
-    /// </summary>
-    public void RequestECAMMessages()
-    {
-        if (!IsConnected || simConnect == null)
-        {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot request ECAM messages - not connected");
-            return;
-        }
-
-        try
-        {
-            // Reset collection state
-            ecamStringData.Clear();
-            ecamStringsReceived = 0;
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requesting ECAM message codes via SimConnect...");
-
-            // Request all 14 numeric L-vars via standard SimConnect (NO MobiFlight needed!)
-            // These return numeric codes that get looked up in EWDMessageLookup
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_1");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_2");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_3");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_4");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_5");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_6");
-            RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_7");
-
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_1");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_2");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_3");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_4");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_5");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_6");
-            RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_7");
-
-            // Request numeric status variables
-            RequestVariable("A32NX_MASTER_WARNING");
-            RequestVariable("A32NX_MASTER_CAUTION");
-            RequestVariable("A32NX_STALL_WARNING");
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] All 14 ECAM code requests sent via SimConnect");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ECAM messages: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// A32NX-SPECIFIC: Requests ECAM STATUS page message codes for FlyByWire Airbus A320neo.
-    /// Retrieves 36 numeric L-variables (A32NX_STATUS_LEFT_LINE_1-18, A32NX_STATUS_RIGHT_LINE_1-18) for STATUS display.
-    /// Called by Forms/A32NX/StatusDisplayForm.cs only.
-    /// </summary>
-    public void RequestStatusMessages()
-    {
-        if (!IsConnected || simConnect == null)
-        {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot request STATUS messages - not connected");
-            return;
-        }
-
-        try
-        {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requesting STATUS message codes via SimConnect...");
-
-            // Request all 36 STATUS variables (18 LEFT + 18 RIGHT)
-            // LEFT side
-            for (int i = 1; i <= 18; i++)
-            {
-                RequestVariable($"A32NX_STATUS_LEFT_LINE_{i}");
-            }
-
-            // RIGHT side
-            for (int i = 1; i <= 18; i++)
-            {
-                RequestVariable($"A32NX_STATUS_RIGHT_LINE_{i}");
-            }
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] All 36 STATUS code requests sent via SimConnect");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting STATUS messages: {ex.Message}");
         }
     }
 

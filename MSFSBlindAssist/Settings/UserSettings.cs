@@ -155,6 +155,16 @@ public class UserSettings
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
+        // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
+        // are added to FenixDisabledMonitorVariables by default so they don't speak:
+        //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
+        //     every second and would spam the auto-announce;
+        //   * the four seat height/distance switches, which are Continuous so the combo
+        //     can track the spring-to-Stop at the travel limit but should do so silently.
+        // All stay toggleable in the Ctrl+M monitor; this flag stops them being re-seeded
+        // after the user deliberately re-enables one.
+        public bool FenixMonitorDefaultsSeeded { get; set; } = false;
+
         // PMDG Announcement Monitor Settings — variable keys that the user has
         // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-
         // monitoring branch consults this list when the loaded aircraft's
@@ -162,6 +172,19 @@ public class UserSettings
         // variable whose key is here. Persisted across sessions so the user
         // doesn't have to re-tick on every launch.
         public List<string> PMDGDisabledMonitorVariables { get; set; } = new List<string>();
+
+        // A380 Monitor Manager Settings — variable keys the user has unticked in
+        // FBWA380MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
+        // when AircraftCode == "FBW_A380". Persisted across sessions.
+        public List<string> A380DisabledMonitorVariables { get; set; } = new List<string>();
+
+        // FlyByWire A32NX Monitor Manager — variable keys the user has un-checked in
+        // FlyByWireA320MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
+        // when AircraftCode == "A320". Persisted across sessions.
+        public List<string> A32NXDisabledMonitorVariables { get; set; } = new List<string>();
+
+        // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
+        public bool AltitudeCalloutsEnabled { get; set; } = true;
 
         // FMC settings — meaningful when a PMDG aircraft or the Fenix A320 is
         // loaded; the FMC Settings menu item is gated on
@@ -332,7 +355,11 @@ public class UserSettings
             GroundDistanceUnit = GroundDistanceUnit,
             GroundTrafficUseMetres = GroundTrafficUseMetres,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
+            FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
+            A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
+            A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),
+            AltitudeCalloutsEnabled = AltitudeCalloutsEnabled,
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,

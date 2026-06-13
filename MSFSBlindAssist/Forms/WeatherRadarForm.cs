@@ -12,7 +12,6 @@ public class WeatherRadarForm : Form
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _simConnect;
     private readonly ActiveSkyClient _activeSky = new();
     // Cached liveness check for ActiveSky. Re-check on every Refresh, but
@@ -38,7 +37,6 @@ public class WeatherRadarForm : Form
     public WeatherRadarForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
         _previousWindow = GetForegroundWindow();
-        _announcer = announcer;
         _simConnect = simConnect;
         InitializeComponent();
         SetupAccessibility();

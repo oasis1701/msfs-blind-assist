@@ -399,8 +399,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     // Variables
     // =========================================================================
 
+    // Cached variable-definition dictionary (defs are static; rebuilding the whole dict
+    // on every call — and the panel-build loop calls GetVariables() twice per control —
+    // was wasted work. Same proven cache the PMDG defs already use.) Built once, reused.
+    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
+        if (_cachedVariables != null) return _cachedVariables;
         var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // -----------------------------------------------------------------
@@ -3407,6 +3412,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 v.ExcludeFromBatch = true;
         }
 
+        _cachedVariables = variables;
         return variables;
     }
 

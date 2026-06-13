@@ -178,7 +178,7 @@ public partial class FenixAltitudeWindow : Form
         }
     }
 
-    private async System.Threading.Tasks.Task HandleSetClick()
+    private System.Threading.Tasks.Task HandleSetClick()
     {
         string input = altitudeTextBox.Text.Trim();
 
@@ -186,7 +186,7 @@ public partial class FenixAltitudeWindow : Form
         {
             announcer.AnnounceImmediate("Please enter an altitude value");
             altitudeTextBox.Focus();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (!double.TryParse(input, out double value))
@@ -194,7 +194,7 @@ public partial class FenixAltitudeWindow : Form
             announcer.AnnounceImmediate("Invalid number format");
             altitudeTextBox.Focus();
             altitudeTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (value < 100 || value > 49000)
@@ -202,13 +202,14 @@ public partial class FenixAltitudeWindow : Form
             announcer.AnnounceImmediate("Altitude must be between 100 and 49000 feet");
             altitudeTextBox.Focus();
             altitudeTextBox.SelectAll();
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         int targetAltitude = (int)Math.Round(value);
         // Always use 100ft mode (userPreferredMode = 0), altitude scale is now in panels only
         _ = aircraft.SetFCUAltitude(targetAltitude, simConnect, announcer, 0);
         altitudeTextBox.SelectAll();
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 
     private void HandleButtonClick(string varKey)

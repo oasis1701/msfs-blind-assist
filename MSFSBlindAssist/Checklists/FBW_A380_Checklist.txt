@@ -1,0 +1,175 @@
+[Cockpit Preparation]
+This flow starts cold and dark, the live electronic checklist with sensed items is also available anytime with output mode then control shift C
+All four batteries on, BAT 1, ESS, BAT 2 and APU battery, in the ELEC panel
+External power 1 to 4 on if ground power is available, otherwise rely on the APU
+APU master switch on, then APU start, in the APU panel
+Fire test on then off in the Fire panel, listen for the warnings
+Crew oxygen supply on, in the Oxygen panel
+ADIRS, set all three IR mode selectors to nav, in the ADIRS panel
+Radio management panels 1 and 2 on, tune frequencies in the RMP window, input mode then control shift R
+Anti-skid on, in the Flaps and Brakes panel
+Navigation and logo lights on, strobe auto, in the Exterior Lighting panel
+Seat belts sign on and no smoking auto, in the Signs panel
+Emergency exit lights armed
+Cockpit and cabin temperature set in the overhead Air Conditioning panel
+Set the QNH once in the altimeter window, input mode then control B, it sets both sides
+Contact ATC for clearance, then set the squawk in the Transponder panel, the transponder mode is automatic on the A380
+
+[Flight Plan and Performance]
+Import the SimBrief flight plan in the flyPad, input mode then shift T
+Board passengers and load cargo from the flyPad ground operations page, or through GSX with input mode then alt G
+Request and complete refueling from the flyPad ground operations page
+Open the MCDU window with input mode then shift M
+On the active init page request the company flight plan, then activate the received company flight plan button and choose insert
+If not using SimBrief, enter the flight number, from and to airports manually on the init page
+Set the departure runway and SID, then insert the temporary flight plan
+Set the arrival runway, STAR and approach per clearance or expectation
+Check the flight plan page and clear any discontinuities
+Check the fuel and load page, confirm block fuel and zero fuel weight
+On the performance takeoff page confirm V1, VR, V2 and the flap setting, typically flaps 2
+Set the initial climb altitude in the FCU altitude window, input mode then control A
+
+[Before Pushback]
+Boarding complete and all doors closed, check the flyPad ground operations page
+Verify fuel on board with output mode then F for pounds or shift F for kilograms
+External power 1 to 4 off
+APU running with APU bleed on, needed for engine start
+Beacon light on
+Request pushback through GSX, open the Access GSX window with input mode then alt G
+
+[Engine Start]
+Parking brake set unless pushing back
+Engine mode selector to ignition start, in the Engines panel
+Wait about ten seconds before starting the engines
+Engine master 1 on, then engine master 2 on, in the Engines panel
+Monitor the start on the engine warning display, output mode then alt E
+Engine master 3 on, then engine master 4 on
+All four engines stable at idle
+Engine mode selector back to norm
+
+[After Start]
+APU bleed off
+APU master switch off
+Engine anti-ice as required, in the Anti Ice panel
+Ground spoilers armed, in the Speed Brake panel
+Flaps to the takeoff setting, typically flaps 2, in the Flaps and Brakes panel
+Rudder trim neutral, use the reset control in the Flight Control Computers panel
+Read the predicted takeoff pitch trim in the Flight Control Computers panel
+Set the pitch trim with the elevator trim keys until the actual pitch trim matches the predicted value, auto trim is not modeled for takeoff
+Flight control check, sweep the stick and pedals and read the surface deflections in the Flight Control Computers panel
+
+[Taxi]
+Contact ATC for taxi clearance
+Nose light to taxi and runway turnoff lights on, in the Exterior Lighting panel
+Parking brake released
+For guided taxi open the taxi assist form with input mode then shift Y and enter the clearance
+At a hold short point, press Y in input mode to continue once cleared
+Taxi status anytime with output mode then Y, current location with output mode then alt Y
+If not taxiing, position the aircraft on the runway with input mode then shift R
+Autobrake RTO, press the RTO autobrake arm button in the Autobrake panel
+Takeoff config test, press the TO CONFIG button in the ECAM Control Panel, no warnings expected
+
+[Before Takeoff]
+Departure clearance received
+TCAS to TA RA on the SURV controls page, reachable from the MCDU window page list, input mode then shift M
+Landing lights on and nose light to takeoff, in the Exterior Lighting panel
+Packs as required for takeoff
+Confirm aligned on the runway by reading the heading with output mode then H
+Confirm the takeoff flap setting with output mode then L
+Optional, takeoff assistance for centerline steering with output mode then control T
+
+[Takeoff]
+Parking brake released
+Thrust levers to the flex or toga detent, each detent is announced automatically
+Monitor airspeed with output mode then S
+Rotate at VR
+Positive climb, check vertical speed with output mode then V
+Gear up
+Autopilot 1 on with input mode then shift A as soon as practical
+When lever climb is called, set the thrust levers to the climb detent
+At F speed retract to flaps 1, read F speed with output mode then shift 3
+At S speed retract flaps fully, read S speed with output mode then shift 2
+Ground spoilers disarmed
+Runway turnoff lights off
+
+[Climb]
+Follow ATC, set cleared altitudes in the FCU altitude window, input mode then control A, push the knob for managed climb
+At transition altitude set both barometers to standard in the altimeter window, input mode then control B
+Landing lights off passing ten thousand feet
+Seat belts sign off when stable
+Set the cruise flight level when cleared
+
+[Cruise]
+Confirm altitude cruise on the flight mode annunciator, announced automatically
+Monitor fuel on board with output mode then F or shift F
+Distance to destination with output mode then D
+Distance and time to top of descent with output mode then shift D
+Review the arrival and descent before reaching top of descent
+
+[Descent Preparation]
+Destination weather, read the METAR with output mode then shift M
+MCDU performance approach page, enter the QNH, temperature, wind, transition level and minimum
+Confirm the arrival runway, STAR and approach in the flight plan
+Select the destination runway for ILS guidance with input mode then shift D
+Optional, plan the runway exit with the landing exit planner, input mode then shift X
+BTV step one, open the airport map and BTV window with output mode then control shift B
+In the BTV window display the destination airport, arm the landing runway, then arm the exit taxiway
+BTV step two, set the autobrake combo in the Autobrake panel to BTV, the window selection alone does not arm it
+If not using BTV, set the autobrake to low, L2, L3 or high instead
+At top of descent set a lower altitude in the FCU altitude window and push the knob for managed descent
+Seat belts sign on
+
+[Approach]
+Landing lights on passing ten thousand feet
+At transition level set the QNH on both sides in the altimeter window, input mode then control B
+Activate the approach phase on the MCDU performance page if it did not activate automatically
+Check the ILS with output mode then control I, or distance to the selected runway with control D
+Flaps 1, check the next flap limit speed with output mode then shift 6
+Approach mode on with input mode then shift P to capture the localizer and glide slope
+Autopilot 2 on with input mode then control O for autoland if desired
+Flaps 2
+Gear down by two thousand feet
+Ground spoilers armed, in the Speed Brake panel
+Flaps 3, then flaps full
+Confirm the autobrake or BTV armed mode in the Autobrake panel
+Land mode on the flight mode annunciator is announced automatically
+
+[Landing]
+For a manual landing disconnect the autopilot by minimums, otherwise keep both autopilots on for autoland
+Flare at about forty feet and bring the thrust levers to idle
+Reverse thrust as required, set the All Thrust Levers combo to reverse, only the two inboard engines have reversers
+Brake to vacate and runway overrun callouts are automatic during the rollout
+Vacate the runway, with BTV the autobrake releases at taxi speed
+Read the landing rate with output mode then control shift R
+
+[After Landing]
+Flaps up
+Ground spoilers disarmed
+Landing lights off, strobe auto, nose light to taxi
+APU master switch on, then APU start
+Contact ground and taxi to the gate with the taxi assist form, input mode then shift Y
+Or teleport to a gate with input mode then shift G
+With GSX, read the latest ground crew message with output mode then control G
+
+[Parking]
+Parking brake set
+Anti-ice off
+APU bleed on
+Engine master switches 1 to 4 off, in the Engines panel
+Seat belts sign off
+Beacon light off once the engines spool down
+Fuel pumps off, in the Fuel panel
+Exterior lights as required
+Verify remaining fuel with output mode then F
+
+[Securing the Aircraft]
+Crew oxygen supply off
+ADIRS, all three IR mode selectors off
+Emergency exit lights off
+No smoking selector off
+Exterior lights off
+APU bleed off
+External power 1 to 4 off
+APU master switch off
+All four batteries off, BAT 1, ESS, BAT 2 and APU battery
+Aircraft is now cold and dark

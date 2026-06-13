@@ -19,7 +19,6 @@ public class HS787AutopilotWindow : Form
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private readonly SimConnectManager _simConnect;
-    private readonly ScreenReaderAnnouncer _announcer;
     private IntPtr _previousWindow;
 
     private Button _apButton = null!;
@@ -37,7 +36,6 @@ public class HS787AutopilotWindow : Form
     public HS787AutopilotWindow(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         _simConnect = simConnect;
-        _announcer = announcer;
         BuildForm();
     }
 

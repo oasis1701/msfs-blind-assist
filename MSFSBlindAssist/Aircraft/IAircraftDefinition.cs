@@ -234,6 +234,28 @@ public interface IAircraftDefinition
     /// </summary>
     void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>
+    /// Called after a panel Event-type button is pressed, for an aircraft-specific
+    /// post-press read-out (e.g. FCU knob push/pull buttons speak their value).
+    /// </summary>
+    void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
+    /// <summary>
+    /// Called once after a panel is built/shown, so an aircraft with a multi-page
+    /// status box (driven by a page combo) can populate the box with the combo's
+    /// CURRENT page immediately, without the user having to cycle the combo.
+    /// </summary>
+    void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Lets an aircraft override the PANEL-DISPLAY string for a variable whose raw
+    /// numeric value isn't directly presentable (e.g. an ARINC429 word that reads
+    /// as ~14 billion, or a value that needs unit-aware decoding). Return true and
+    /// set <paramref name="displayText"/> to use it; return false to fall through
+    /// to the default ValueDescriptions / numeric formatting.
+    /// </summary>
+    bool TryGetDisplayOverride(string varKey, double value, out string displayText);
+
     // Variable Update Processing
 
     /// <summary>

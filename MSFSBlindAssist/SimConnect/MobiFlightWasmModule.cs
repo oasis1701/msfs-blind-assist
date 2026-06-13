@@ -45,11 +45,18 @@ public class MobiFlightWasmModule
         private const int MAX_RESPONSE_SIZE = 1024;
         private const int MAX_LVARS_SIZE = 4096;
         private const int MAX_LVARS_COUNT = 64;
-        private const int LVAR_VALUE_SIZE = 4; // 4 bytes per float
 
         // State management
         public bool IsConnected { get; private set; }
         public bool IsRegistered { get; private set; }
+        // True once ANY response has arrived from the WASM module (registration
+        // Finished, MF.Pong, lvar traffic, ...). This — not IsRegistered — is the
+        // correct "module present" gate for the DEFAULT-channel calc path
+        // (ExecuteCalculatorCode), which works without the FBWBA registration: the
+        // documented "Timeout - Using Fallback" state must keep calc writes flowing
+        // (gating them on IsRegistered silently queued every H:/dotted event — the
+        // A380 "STD combo does nothing" regression, live-debugged 2026-06-11).
+        public bool HasModuleResponded { get; private set; }
         public bool CanSendHVars => IsConnected; // Allow immediate sending through default channel
         public string ConnectionStatus
         {
@@ -127,9 +134,15 @@ public class MobiFlightWasmModule
             public string Value { get; set; } = "";
         }
 
+        // Captured at construction (on the UI thread, where SimConnect is created).
+        // SimConnect is NOT thread-safe, but System.Timers.Timer fires Elapsed on a
+        // threadpool thread — so the heartbeat marshals its SimConnect call back here.
+        private readonly System.Threading.SynchronizationContext? _syncContext;
+
         public MobiFlightWasmModule(Microsoft.FlightSimulator.SimConnect.SimConnect simConnect)
         {
             this.simConnect = simConnect;
+            _syncContext = System.Threading.SynchronizationContext.Current;
 
             // Initialize heartbeat timer
             heartbeatTimer = new System.Timers.Timer(30000); // 30 seconds
@@ -372,9 +385,20 @@ public class MobiFlightWasmModule
             }
         }
 
+        // Any inbound traffic proves the WASM module is present — flip the
+        // presence flag and notify (the SimConnectManager handler flushes the
+        // pending calc-event queue on this signal).
+        private void MarkModuleResponded()
+        {
+            if (HasModuleResponded) return;
+            HasModuleResponded = true;
+            ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM responding");
+        }
+
         private void ProcessResponse(string response)
         {
             System.Diagnostics.Debug.WriteLine($"[MobiFlight] Received response: {response}");
+            MarkModuleResponded();
 
             if (response.StartsWith($"MF.Clients.Add.{CLIENT_NAME}.Finished"))
             {
@@ -491,6 +515,7 @@ public class MobiFlightWasmModule
         {
             try
             {
+                MarkModuleResponded();
                 // Process default MobiFlight channel LVar updates
                 for (int i = 0; i < defaultChannelLVarList.Count && i < MAX_LVARS_COUNT; i++)
                 {
@@ -546,6 +571,7 @@ public class MobiFlightWasmModule
         {
             if (!IsRegistered && !registrationTimeoutOccurred)
             {
+                // Pre-timeout startup window (≤2 s): the HVar is DROPPED, not queued.
                 System.Diagnostics.Debug.WriteLine($"[MobiFlight] Cannot send H-variable - not registered and no timeout: {hvar}");
                 return;
             }
@@ -613,17 +639,42 @@ public class MobiFlightWasmModule
 
         private void HeartbeatTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
-            if (IsConnected && IsRegistered)
+            // CRITICAL: on .NET an unhandled exception thrown from a System.Timers.Timer
+            // Elapsed handler runs on a threadpool thread and CRASHES the process. The
+            // heartbeat fires every 30s while connected, so an unguarded SimConnect call
+            // here (which throws the moment MSFS hiccups or is mid-disconnect) was a prime
+            // "crashes while sitting there" cause. Guard it, AND marshal the SimConnect
+            // ping to the UI thread — SimConnect is not thread-safe and all other I/O runs
+            // there, so calling it from the threadpool raced ReceiveMessage.
+            try
             {
-                SendMFCommand("MF.Ping");
+                if (!IsConnected || !IsRegistered) return;
+                if (_syncContext != null)
+                    _syncContext.Post(_ => { try { if (IsConnected && IsRegistered) SendMFCommand("MF.Ping"); } catch { } }, null);
+                else
+                    SendMFCommand("MF.Ping");
             }
+            catch { /* never let a heartbeat fault take down the app */ }
         }
 
         private void RegistrationTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
-            registrationTimeoutOccurred = true;
-            System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
-            ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
+            // Also a threadpool callback — a throwing event subscriber would crash the
+            // process, so guard it.
+            try
+            {
+                registrationTimeoutOccurred = true;
+                System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
+                ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
+                // A present module can stay silent on a duplicate registration (e.g.
+                // MSFSBA restarted within one sim session) — elicit a pong on the
+                // default channel so HasModuleResponded still flips when it's alive.
+                // Marshal like the heartbeat does: this is a threadpool callback and
+                // SimConnect calls must run on the owning thread.
+                if (!HasModuleResponded)
+                    _syncContext?.Post(_ => { try { if (IsConnected && !HasModuleResponded) SendMFCommand("MF.Ping"); } catch { } }, null);
+            }
+            catch { /* never let the timeout callback take down the app */ }
         }
 
         public void Disconnect()
@@ -634,6 +685,7 @@ public class MobiFlightWasmModule
                 registrationTimer?.Stop();
                 IsConnected = false;
                 IsRegistered = false;
+                HasModuleResponded = false;
                 registrationTimeoutOccurred = false;
                 registeredLVars.Clear();
                 lvarList.Clear();

@@ -1,0 +1,214 @@
+<!-- source-derived from MfdFmsFpln.tsx (renderWaypointLine ~2002-2067, formatSpeed
+     ~1871-1924, formatAltitude ~1791-1869 incl. the WINDOW literal at ~1861, the
+     hold branch ~1676-1715, the destination footer ~1087-1148) and
+     ActivePageTitleBar.tsx 58-81 — NOT live-captured. Geometry (data-rect =
+     "top,left,right,bottom") and visibility (data-vis) follow the encoding of the
+     live-captured fpln.html fixture; per-cell x-positions copied from its real
+     column offsets (ident 0-192, time 201-271, spd ~322-356, alt ~417-470,
+     trk 593-649, dist 676-704, fpa 726-765).
+     Covers the F-PLN polish items: WINDOW constraints, SPD+ALT constraint
+     coexistence, SPD/ALT ditto marks, the FPA column, hold rows (SPD-in-time-cell),
+     TMPY/EO title flags, and the destination footer. -->
+<div class="mfd-main" data-vis="1" data-rect="0,0,768,1024">
+<div class="mfd-navigator-container" data-vis="1" data-rect="98,0,768,1024">
+  <div class="mfd-title-bar-container" data-vis="1" data-rect="98,0,768,138">
+    <div class="mfd-title-bar-title fr space-between" data-vis="1" data-rect="98,0,594,138">
+      <span class="mfd-label mfd-title-bar-text" data-vis="1" data-rect="101,7,235,135">ACTIVE/F-PLN </span>
+      <span class="mfd-title-bar-text label penalty" data-rect="101,447,584,135" style="visibility: hidden;">PENALTY</span>
+    </div>
+    <div class="mfd-title-bar-section eo" data-vis="1" data-rect="98,596,666,138">
+      <span class="mfd-label mfd-title-bar-text label eo" data-vis="1" data-rect="101,610,652,135" style="visibility: visible;">EO</span>
+    </div>
+    <div class="mfd-title-bar-section tmpy" data-vis="1" data-rect="98,668,768,138">
+      <span class="mfd-label mfd-title-bar-text label tmpy" data-vis="1" data-rect="101,678,758,135" style="visibility: visible;">TMPY</span>
+    </div>
+  </div>
+  <div class="mfd-page-container" data-vis="1" data-rect="138,0,768,950">
+
+    <!-- WAYPT1: SPD + ALT predictions, TRK/DIST and a descent FPA ("3.0") in the
+         rightmost upper-row column (fpaRef innerText = data.fpa.toFixed(1)) -->
+    <div class="mfd-fms-fpln-line" data-vis="1" data-rect="245,0,768,317">
+      <div data-vis="1" data-rect="245,0,192,317">
+        <div class="mfd-fms-fpln-line-annotation" data-vis="1" data-rect="245,0,192,277">J102</div>
+        <div class="mfd-fms-fpln-line-ident" data-vis="1" data-rect="277,0,192,317">WAYPT1</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="245,192,280,317">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="247,236,236,277"> </div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="277,201,271,315">18:04</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="245,280,395,317">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="247,322,322,277"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="277,322,356,315"><span style="margin-left: 20px;" data-vis="1" data-rect="282,342,356,309"><span data-vis="1" data-rect="282,342,356,309">250</span></span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="245,395,556,317">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="247,417,417,277"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="277,417,470,315"><span style="margin-left: 20px;" data-vis="1" data-rect="282,437,470,309"><span data-vis="1" data-rect="282,437,470,309">5000</span></span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="245,591,660,317">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="247,593,649,277">261°</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="277,593,593,315"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="245,660,706,317">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="247,676,704,277">29</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="277,704,704,315"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="245,706,767,317">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="247,726,765,277">3.0</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="277,765,765,315"></div>
+      </div>
+    </div>
+
+    <!-- WAYPT2: SPD and ALT both render the HoneywellMCDU ditto mark (")
+         (formatSpeed ~1887 / formatAltitude ~1808) - prediction unchanged from
+         WAYPT1, must read carried-forward as 250kts / 5000 -->
+    <div class="mfd-fms-fpln-line" data-vis="1" data-rect="317,0,768,389">
+      <div data-vis="1" data-rect="317,0,192,389">
+        <div class="mfd-fms-fpln-line-annotation" data-vis="1" data-rect="317,0,192,349">J102</div>
+        <div class="mfd-fms-fpln-line-ident" data-vis="1" data-rect="349,0,192,389">WAYPT2</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="317,192,280,389">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="319,236,236,349"> </div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="349,201,271,387">18:09</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="317,280,395,389">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="319,322,322,349"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="349,322,356,387"><span style="margin-left: 20px;" data-vis="1" data-rect="354,342,356,381"><span style="font-family: HoneywellMCDU, monospace; padding-left: 3px; padding-right: 3px;" data-vis="1" data-rect="354,342,356,381">"</span></span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="317,395,556,389">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="319,417,417,349"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="349,417,445,387"><span style="margin-left: 20px;" data-vis="1" data-rect="354,437,445,381"><span style="font-family: HoneywellMCDU, monospace;" data-vis="1" data-rect="354,437,445,381">"</span></span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="317,591,660,389">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="319,593,649,349">259°</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="349,593,593,387"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="317,660,706,389">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="319,676,704,349">41</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="349,704,704,387"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="317,706,767,389">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="319,765,765,349"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="349,765,765,387"></div>
+      </div>
+    </div>
+
+    <!-- WAYPT3: SPD constraint AND ALT constraint coexist, no predictions
+         (formatSpeed ~1914-1922 / formatAltitude ~1836-1867 constraint-only
+         branches) - both must be read, in their own columns -->
+    <div class="mfd-fms-fpln-line" data-vis="1" data-rect="389,0,768,461">
+      <div data-vis="1" data-rect="389,0,192,461">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="389,0,192,421"> </div>
+        <div class="mfd-fms-fpln-line-ident" data-vis="1" data-rect="421,0,192,461">WAYPT3</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="389,192,280,461">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="391,236,236,421"> </div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="421,201,271,459">--:--</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="389,280,395,461">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="391,322,322,421"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="421,322,356,459"><span class="mfd-fms-fpln-leg-constraint-respected" style="margin-left: 20px; font-size: 25px;" data-vis="1" data-rect="426,342,376,453">250</span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="389,395,556,461">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="391,417,417,421"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="421,417,490,459"><span class="mfd-fms-fpln-leg-constraint-respected" style="font-size: 25px;" data-vis="1" data-rect="426,437,490,453">+5000</span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="389,591,660,461">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="391,593,649,421">252°</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="421,593,593,459"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="389,660,706,461">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="391,676,704,421">157</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="421,704,704,459"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="389,706,767,461">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="391,765,765,421"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="421,765,765,459"></div>
+      </div>
+    </div>
+
+    <!-- WAYPT4: two-altitude WINDOW constraint - FBW renders only the literal word
+         "WINDOW" into the ALT column (displayedStr = altitudeConstraint.altitude2 ?
+         'WINDOW' : ..., MfdFmsFpln.tsx ~1861); the two altitudes are NOT in the DOM -->
+    <div class="mfd-fms-fpln-line" data-vis="1" data-rect="461,0,768,533">
+      <div data-vis="1" data-rect="461,0,192,533">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="461,0,192,493"> </div>
+        <div class="mfd-fms-fpln-line-ident" data-vis="1" data-rect="493,0,192,533">WAYPT4</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="461,192,280,533">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="463,236,236,493"> </div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="493,201,271,531">--:--</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="461,280,395,533">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="463,322,322,493"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="493,322,356,531"><span style="margin-left: 20px;" data-vis="1" data-rect="498,342,356,525"><span data-vis="1" data-rect="498,342,356,525">---</span></span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small clickable" data-vis="1" data-rect="461,395,556,533">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="463,417,417,493"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="493,417,520,531"><span class="mfd-fms-fpln-leg-constraint-respected" style="font-size: 25px;" data-vis="1" data-rect="498,437,520,525">WINDOW</span></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="461,591,660,533">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="463,593,649,493">250°</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="493,593,593,531"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="461,660,706,533">
+        <div class="mfd-fms-fpln-leg-upper-row" data-vis="1" data-rect="463,676,704,493">10</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="493,704,704,531"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="461,706,767,533">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="463,765,765,493"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="493,765,765,531"></div>
+      </div>
+    </div>
+
+    <!-- HOLD row (MfdFmsFpln.tsx ~1676-1715): ident "HOLD L", SPD/ALT cells
+         emptied, the hold SPEED in the TIME column under a "SPD" annotation
+         (timeAnnotation.set('SPD'); timeText.set(data.holdSpeed.toFixed(0))) -->
+    <div class="mfd-fms-fpln-line" data-vis="1" data-rect="533,0,768,605">
+      <div data-vis="1" data-rect="533,0,192,605">
+        <div class="mfd-fms-fpln-line-annotation" data-rect="533,0,192,565"> </div>
+        <div class="mfd-fms-fpln-line-ident" data-vis="1" data-rect="565,0,192,605">HOLD L</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="533,192,280,605">
+        <div class="mfd-fms-fpln-line-annotation" data-vis="1" data-rect="535,226,266,565">SPD</div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="565,201,271,603">210</div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="533,280,395,605">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="535,322,322,565"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="565,322,356,603"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="533,395,556,605">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="535,417,417,565"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-vis="1" data-rect="565,417,445,603"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="533,591,660,605">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="535,593,593,565"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="565,593,593,603"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="533,660,706,605">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="535,704,704,565"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="565,704,704,603"></div>
+      </div>
+      <div class="mfd-fms-fpln-label-small" data-vis="1" data-rect="533,706,767,605">
+        <div class="mfd-fms-fpln-leg-upper-row" data-rect="535,765,765,565"></div>
+        <div class="mfd-fms-fpln-leg-lower-row" data-rect="565,765,765,603"></div>
+      </div>
+    </div>
+
+    <!-- destination footer (MfdFmsFpln.tsx ~1087-1148): DEST ident button + ETA +
+         EFOB (label-value-container, weight unit) + distance (label-value-container,
+         NM) + the scroll-row DEST button; rects copied from the live fpln.html -->
+    <div class="mfd-fms-fpln-line-destination" data-vis="1" data-rect="823,0,768,894">
+      <div data-vis="1" data-rect="835,0,155,883">
+        <span class="mfd-button" data-vis="1" data-rect="835,0,150,883"><span data-vis="1" data-rect="846,9,142,876">KLAX24R</span></span>
+      </div>
+      <span class="mfd-label" data-vis="1" data-rect="849,190,255,869">19:57</span>
+      <div class="mfd-label-value-container" data-vis="1" data-rect="842,290,401,876"><span class="mfd-label" data-vis="1" data-rect="849,297,349,869">29.4</span><span class="mfd-label-unit mfd-unit-trailing" data-vis="1" data-rect="849,355,394,869" style="visibility: visible;">KLB</span></div>
+      <div class="mfd-label-value-container" data-vis="1" data-rect="842,436,521,876"><span class="mfd-label" data-vis="1" data-rect="849,443,482,869">877</span><span class="mfd-label-unit mfd-unit-trailing" data-vis="1" data-rect="849,488,514,869" style="visibility: visible;">NM</span></div>
+      <div data-vis="1" data-rect="829,556,765,889">
+        <span class="mfd-button" data-vis="1" data-rect="829,686,765,889"><span data-vis="1" data-rect="841,696,755,876">DEST</span></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>

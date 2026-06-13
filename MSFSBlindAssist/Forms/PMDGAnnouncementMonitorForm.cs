@@ -32,8 +32,6 @@ public partial class PMDGAnnouncementMonitorForm : Form
 
     private CheckedListBox variableListBox = null!;
     private TextBox filterTextBox = null!;
-    private readonly ScreenReaderAnnouncer _announcer;
-    private readonly Dictionary<string, SimVarDefinition> _variables;
 
     /// <summary>
     /// Snapshot of (key, displayName) for every PMDG variable surfaceable
@@ -70,9 +68,6 @@ public partial class PMDGAnnouncementMonitorForm : Form
 
     public PMDGAnnouncementMonitorForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
     {
-        _announcer = announcer;
-        _variables = variables;
-
         // Build the canonical sorted list once. We surface variables whose
         // definitions say they're meant to auto-announce continuously —
         // anything OnRequest, momentary buttons, etc. is excluded because

@@ -1,3 +1,4 @@
+#nullable enable annotations
 // PMDG NG3 Dispatch Test Utility
 //
 // Connects directly to the running MSFS sim, subscribes to PMDG_NG3_Data

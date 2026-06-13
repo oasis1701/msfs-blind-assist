@@ -51,7 +51,6 @@ public class PMDG777DataManager : IPMDGDataManager
     // ------------------------------------------------------------------
     // Other constants
     // ------------------------------------------------------------------
-    private const uint THIRD_PARTY_EVENT_ID_MIN    = 0x00011000; // 69632
 
     // CDU dimensions
     private const int CDU_COLS = 24;
@@ -61,7 +60,6 @@ public class PMDG777DataManager : IPMDGDataManager
     // State
     // ------------------------------------------------------------------
     private Microsoft.FlightSimulator.SimConnect.SimConnect? _simConnect;
-    private MobiFlightWasmModule? _mobiFlightWasm;
 
     private PMDG777XDataStruct _lastDataSnapshot;
     private bool _hasSnapshot;
@@ -91,7 +89,6 @@ public class PMDG777DataManager : IPMDGDataManager
         MobiFlightWasmModule mobiFlightWasm)
     {
         _simConnect     = simConnect;
-        _mobiFlightWasm = mobiFlightWasm;
 
         try
         {
@@ -256,24 +253,6 @@ public class PMDG777DataManager : IPMDGDataManager
             }
         }
 
-    }
-
-    private void RaiseAllFields(PMDG777XDataStruct data)
-    {
-        foreach (var field in s_dataFields)
-        {
-            object? val = field.GetValue(data);
-
-            if (field.FieldType.IsArray && val is Array arr)
-            {
-                for (int i = 0; i < arr.Length; i++)
-                    RaiseVariableChanged($"{field.Name}_{i}", ToDouble(arr.GetValue(i)));
-            }
-            else
-            {
-                RaiseVariableChanged(field.Name, ToDouble(val));
-            }
-        }
     }
 
     private void CompareArrayField(string fieldName, object? oldVal, object? newVal)

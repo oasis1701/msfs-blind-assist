@@ -1,0 +1,19 @@
+# fpln
+text | idx 0 | ACTIVE/F-PLN
+dropdown | idx 1 | SPD ALT
+text | idx 0 |               TRK  NM  SPD  ALT    TIME
+fplnwpt | idx 7 | (T/C)                  .84  FL380  18:01
+fplnwpt | idx 8 | RYLIE   J102  261° 29  "    "      18:04
+fplnwpt | idx 9 | LAA     J102  259° 41  "    "      18:09
+fplnwpt | idx 10 | ALS     J102  252° 157 "    "      18:29
+fplnwpt | idx 11 | RSK     J44   252° 115 "    "      18:43
+fplnwpt | idx 12 | COCAN   J64   257° 112 "    "      18:57
+fplnwpt | idx 13 | RHYSS   J64   256° 26  "    "      19:00
+fplnwpt | idx 14 | TBC     J64   255° 20  "    "      19:03
+fplnwpt | idx 15 | JASSE         264° 27  "    "      19:06
+text | idx 0 | Destination KLAX24R, ETA 19:57, 877 NM, EFOB 29.4 KLB
+button | idx 3 | DEST
+button | idx 2 | KLAX24R
+dropdown | idx 4 | F-PLN INFO
+button | idx 5 | DIR TO
+button | idx 6 | MSG LIST

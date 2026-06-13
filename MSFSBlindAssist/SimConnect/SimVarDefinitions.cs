@@ -40,6 +40,25 @@ public class SimVarDefinition
     /// Only meaningful when UpdateFrequency == Continuous.
     /// </summary>
     public bool ExcludeFromBatch { get; set; }
+
+    /// <summary>
+    /// When true, hide this variable from the Ctrl+M monitor-manager list. For
+    /// Continuous+IsAnnounced vars that are SILENT CACHES — ProcessSimVarUpdate
+    /// consumes them (return true) and never speaks them individually (e.g.
+    /// "Gross Weight (cache)", the TCAS RA detail vars whose speech rides the
+    /// A32NX_TCAS_STATE entry, the A380 BARO_MB watchdog feeders). Listing them
+    /// offered a checkbox whose un-check did nothing.
+    /// </summary>
+    public bool ExcludeFromMonitorManager { get; set; }
+
+    /// <summary>
+    /// Only meaningful with ExcludeFromBatch on a Continuous var: request the per-var
+    /// individual subscription at SIMCONNECT_PERIOD.SIM_FRAME (~30–60 Hz) with the
+    /// CHANGED flag, instead of SECOND. For transient-capture vars (G FORCE touchdown
+    /// spike) where 1 Hz sampling misses the event entirely. CHANGED keeps steady-state
+    /// traffic near zero (a static value produces no deliveries).
+    /// </summary>
+    public bool HighFrequency { get; set; }
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
 
@@ -55,7 +74,34 @@ public class SimVarDefinition
 
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
+    /// <summary>
+    /// When true (opt-in, set by the FBW momentary-button helpers), the panel label
+    /// SUPPRESSES the value-0 resting state ("Released"/"Off"/"Idle") — a momentary
+    /// push-button has no meaningful resting value, so appending it reads as noise.
+    /// MUST stay opt-in: PMDG 777 MCP buttons and the HS787 Baro STD use value-0
+    /// descriptions that ARE meaningful state ("LNAV: Off", "Baro STD: QNH") and a
+    /// blanket suppression silenced them (PR #85 review finding M4).
+    /// </summary>
+    public bool SuppressRestingButtonState { get; set; }
+    // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
+    // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
+    // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,
+    // else SetLVar). Screen readers expose it as a slider (arrow = 1%, Page = 10%).
+    public bool RenderAsSlider { get; set; }
+    public double SliderMin { get; set; } = 0;
+    public double SliderMax { get; set; } = 100;
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
+
+    // ----- ARINC429 auto-decode -----
+    // When true, the raw double is a FlyByWire ARINC429 word (numeric-truncate to u64; low
+    // 32 bits = IEEE-754 float in engineering units, bits 32-33 = SSM). The generic decode
+    // hook (BaseAircraftDefinition.TryDecodeArinc429, called from MainForm's display + announce
+    // paths) renders "<value> <unit>" when the SSM is NormalOperation/FunctionalTest, else the
+    // not-available text — so any ARINC var surfaces decoded instead of a raw ~14-billion word.
+    public bool IsArinc429 { get; set; }
+    public string Arinc429Unit { get; set; } = string.Empty;          // suffix after the value, e.g. "psi", "feet", "kg"
+    public string Arinc429Format { get; set; } = "0";                 // .NET numeric format, e.g. "0.0"
+    public string Arinc429NotAvailableText { get; set; } = "not available";
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
     /// <summary>
     /// When true, the panel renderer skips the ComboBox/Button path and renders a read-only TextBox

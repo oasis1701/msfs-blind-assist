@@ -37,8 +37,6 @@ public class LandingExitPlanner
     // Touchdown detection state
     private bool _wasAirborne;
     private bool _activatedThisLanding;
-    private DateTime _lastGroundStateUpdate = DateTime.MinValue;
-    private double _lastGroundSpeedKnots;
 
     // Minimum ground speed at on-ground transition for it to count as a real landing
     // rather than a teleport or taxi-onto-ground. Light aircraft touch down around
@@ -145,9 +143,6 @@ public class LandingExitPlanner
     public bool ProcessGroundState(bool onGround, double groundSpeedKnots,
         double lat, double lon, double headingTrue)
     {
-        _lastGroundStateUpdate = DateTime.UtcNow;
-        _lastGroundSpeedKnots = groundSpeedKnots;
-
         DiagLog($"ProcessGroundState onGround={onGround} gs={groundSpeedKnots:F1} " +
                 $"lat={lat:F6} lon={lon:F6} hdgTrue={headingTrue:F1} " +
                 $"_wasAirborne={_wasAirborne} _activatedThisLanding={_activatedThisLanding} " +

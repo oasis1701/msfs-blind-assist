@@ -196,13 +196,11 @@ The vertical path is **FPM-based** (target FPM derived from 3° glideslope + alt
 | `glideslopeAltitudeBiasFt` `[profile]` | 60 *(est.)* | Added to ideal glidepath so VG matches the real ILS (TCH + datum). PMDG 777 = 80 (measured). |
 | `flareAltitudeBiasFt` `[profile]` | 12 *(est.)* | Subtracted from measured altitude before flare/touchdown checks → true gear height. PMDG 777 = 30 (measured). |
 | `flareTriggerWheelHeightFt` `[profile]` | 30 | True gear height at which the flare cue announces. PMDG 777 = 40 (matches autopilot autoland). |
-| `FLARE_ALTITUDE_FT` | 30.0 | Legacy default for `flareTriggerWheelHeightFt`; the profile field is authoritative. |
 | `TOUCHDOWN_ALTITUDE_FT` | 5.0 | Touchdown phase entry — true main-gear height (`wheelHeightAGL`) |
 | `FPM_P_GAIN` | 0.005 | Pitch correction per FPM error (deg per FPM) |
 | `FPM_D_GAIN` | 0.002 | Pitch damping per FPM/sec error rate |
 | `FPM_SMOOTHING_FACTOR` | 0.7 | EMA on raw VS reading |
-| `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. `FLARE_TARGET_PITCH_DEG` const below is now a legacy default. |
-| `FLARE_TARGET_PITCH_DEG` | 6.0° | Legacy default for `flareTargetPitchDeg`; the profile field is authoritative. |
+| `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. |
 | `MAX_FLARE_PITCH_RATE` | 1.5 | Cap on pitch rate during flare (deg/sec) |
 
 ## Tuning Guide

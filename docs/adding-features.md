@@ -165,6 +165,8 @@ if (e.VarName == "NEW_HOTKEY_VALUE")
 
 ## Workflow 5: Adding New Aircraft
 
+> **If the new aircraft's MCDU / EFB / glass-cockpit displays are rendered in Coherent GT** (FBW, WT/Asobo, most modern study sims), you can read and drive them live via the Coherent debugger — and the existing scrapers may be reusable. See **[Developer Tooling Guide](tooling.md)** for the transport, and **[§9 "Adaptability to other aircraft"](tooling.md)** for a per-tool verdict (transport + generic scrape core are universal; the aircraft-specific selector/navigation/input layer must be re-derived) plus a step-by-step recipe (§9.3) for adapting the MFD/CDU scraper to a new aircraft. For closed add-ons with their own SDK surface (PMDG, Fenix), use that SDK instead of scraping.
+
 **Step 1:** Create aircraft definition class
 
 **File:** `Aircraft/YourAircraftDefinition.cs`

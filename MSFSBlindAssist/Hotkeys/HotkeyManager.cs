@@ -39,15 +39,22 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_ILS_GUIDANCE = 9015;
         private const int HOTKEY_WIND_INFO = 9016;
         private const int HOTKEY_METAR_REPORT = 9017;
+        private const int HOTKEY_COLD_TEMP_CORRECTION = 9250; // Ctrl+Shift+T (cold-temperature altitude correction)
         private const int HOTKEY_RUNWAY_TELEPORT = 9021;
         private const int HOTKEY_GATE_TELEPORT = 9022;
         private const int HOTKEY_LOCATION_INFO = 9023;
         private const int HOTKEY_SIMBRIEF_BRIEFING = 9025;
-        private const int HOTKEY_PFD = 9026;
         private const int HOTKEY_TOGGLE_AP1 = 9027;
         private const int HOTKEY_TOGGLE_APPR = 9028;
+        private const int HOTKEY_TOGGLE_ATHR = 9230;   // Ctrl+J (Autothrust)  — input mode
+        private const int HOTKEY_TOGGLE_LOC = 9231;    // Ctrl+L (Localizer)   — input mode
         private const int HOTKEY_FCU_VSFPA = 9029;
         private const int HOTKEY_APPROACH_CAPABILITY = 9030;
+        private const int HOTKEY_LANDING_RATE = 9240;     // Ctrl+Shift+R (last landing rate)  — output mode
+        private const int HOTKEY_LANDING_PEAK_G = 9241;   // Ctrl+Shift+G (last landing g-force) — output mode
+        private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
+        private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
+        private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
         private const int HOTKEY_FCU_HDG_PUSH = 9031;
@@ -73,11 +80,9 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SPEED_VLS = 9050;
         private const int HOTKEY_SPEED_VS = 9051;
         private const int HOTKEY_CHECKLIST = 9052;
+        private const int HOTKEY_CHECKLIST_ECL = 9213;   // Ctrl+Shift+C (A380 live ECL)
         private const int HOTKEY_FUEL_QUANTITY = 9053;
-        private const int HOTKEY_NAV_DISPLAY = 9054;
         private const int HOTKEY_WAYPOINT_INFO = 9055;
-        private const int HOTKEY_ECAM_DISPLAY = 9056;
-        private const int HOTKEY_STATUS_DISPLAY = 9057;
         private const int HOTKEY_TOGGLE_TRIM = 9100;
         private const int HOTKEY_DISTANCE_TO_DEST = 9101;
         private const int HOTKEY_DISTANCE_TO_TOD = 9102;
@@ -109,6 +114,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_ND = 9072;
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
+        private const int HOTKEY_SHOW_OANS = 9099; // A380 ND OANS / BTV control panel
 
         // Hand fly mode global hotkey IDs (separate from output mode)
         private const int HOTKEY_HANDFLY_HEADING = 9077;
@@ -286,6 +292,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_MACH_SPEED:
                             TriggerHotkey(HotkeyAction.ReadMachSpeed);
                             break;
+                        case HOTKEY_LANDING_RATE:
+                            TriggerHotkey(HotkeyAction.ReadLastLandingRate);
+                            break;
+                        case HOTKEY_LANDING_PEAK_G:
+                            TriggerHotkey(HotkeyAction.ReadLastLandingPeakG);
+                            break;
                         case HOTKEY_VERTICAL_SPEED:
                         case HOTKEY_HANDFLY_VERTICAL_SPEED:
                             TriggerHotkey(HotkeyAction.ReadVerticalSpeed);
@@ -315,8 +327,8 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_METAR_REPORT:
                             TriggerHotkey(HotkeyAction.ShowMETARReport);
                             break;
-                        case HOTKEY_PFD:
-                            TriggerHotkey(HotkeyAction.ShowPFD);
+                        case HOTKEY_COLD_TEMP_CORRECTION:
+                            TriggerHotkey(HotkeyAction.ShowColdTempCorrection);
                             break;
                         case HOTKEY_LOCATION_INFO:
                             TriggerHotkey(HotkeyAction.LocationInfo);
@@ -357,6 +369,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_CHECKLIST:
                             TriggerHotkey(HotkeyAction.ShowChecklist);
                             break;
+                        case HOTKEY_CHECKLIST_ECL:
+                            TriggerHotkey(HotkeyAction.ShowChecklistECL);
+                            break;
                         case HOTKEY_FUEL_QUANTITY:
                             TriggerHotkey(HotkeyAction.ReadFuelQuantity);
                             break;
@@ -372,17 +387,11 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_GROSS_WEIGHT_KG:
                             TriggerHotkey(HotkeyAction.ReadGrossWeightKg);
                             break;
-                        case HOTKEY_NAV_DISPLAY:
-                            TriggerHotkey(HotkeyAction.ShowNavigationDisplay);
-                            break;
                         case HOTKEY_WAYPOINT_INFO:
                             TriggerHotkey(HotkeyAction.ReadWaypointInfo);
                             break;
-                        case HOTKEY_ECAM_DISPLAY:
-                            TriggerHotkey(HotkeyAction.ShowECAM);
-                            break;
-                        case HOTKEY_STATUS_DISPLAY:
-                            TriggerHotkey(HotkeyAction.ShowStatusPage);
+                        case HOTKEY_ND_WAYPOINT:
+                            TriggerHotkey(HotkeyAction.ReadNDWaypoint);
                             break;
                         case HOTKEY_TOGGLE_TRIM:
                             TriggerHotkey(HotkeyAction.ToggleTrimAnnouncements);
@@ -392,6 +401,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_TOGGLE_ECAM_MONITORING:
                             TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
+                            break;
+                        case HOTKEY_SHOW_OANS:
+                            TriggerHotkey(HotkeyAction.ShowOANS);
                             break;
                         case HOTKEY_MONITOR_MANAGER:
                             TriggerHotkey(HotkeyAction.MonitorManager);
@@ -507,6 +519,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TOGGLE_APPR:
                             TriggerHotkey(HotkeyAction.ToggleApproachMode);
                             break;
+                        case HOTKEY_TOGGLE_ATHR:
+                            TriggerHotkey(HotkeyAction.ToggleAutothrust);
+                            break;
+                        case HOTKEY_TOGGLE_LOC:
+                            TriggerHotkey(HotkeyAction.ToggleLocalizer);
+                            break;
                         case HOTKEY_FCU_HDG_PUSH:
                             TriggerHotkey(HotkeyAction.FCUHeadingPush);
                             break;
@@ -563,6 +581,12 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_PMDG_EFB:
                             TriggerHotkey(HotkeyAction.ShowPMDGEFB);
+                            break;
+                        case HOTKEY_SHOW_RMP:
+                            TriggerHotkey(HotkeyAction.ShowRMP);
+                            break;
+                        case HOTKEY_SHOW_DCDU:
+                            TriggerHotkey(HotkeyAction.ShowDCDU);
                             break;
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
@@ -664,10 +688,12 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_WIND_INFO, MOD_NONE, 0x49); // I (Wind Info)
             RegisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO, MOD_NONE, 0x4E); // N (NAV Radio Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)
-            RegisterHotKey(windowHandle, HOTKEY_PFD, MOD_SHIFT, 0x50); // Shift+P (PFD Window)
+            RegisterHotKey(windowHandle, HOTKEY_COLD_TEMP_CORRECTION, MOD_CONTROL | MOD_SHIFT, 0x54); // Ctrl+Shift+T (Cold Temperature Altitude Correction)
             RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x42); // Shift+B (SimBrief Briefing)
             RegisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD, MOD_SHIFT, 0x44); // Shift+D (Distance to TOD)
             RegisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY, MOD_CONTROL, 0x30); // Ctrl+0 (Approach Capability)
+            RegisterHotKey(windowHandle, HOTKEY_LANDING_RATE, MOD_CONTROL | MOD_SHIFT, 0x52);   // Ctrl+Shift+R (Last Landing Rate)
+            RegisterHotKey(windowHandle, HOTKEY_LANDING_PEAK_G, MOD_CONTROL | MOD_SHIFT, 0x47);  // Ctrl+Shift+G (Last Landing Peak G)
 
             // Register speed tape hotkeys
             RegisterHotKey(windowHandle, HOTKEY_SPEED_GD, MOD_SHIFT, 0x31);      // Shift+1 (O Speed)
@@ -676,19 +702,19 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VLS, MOD_SHIFT, 0x34);     // Shift+4 (Minimum Selectable Speed)
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VS, MOD_SHIFT, 0x35);      // Shift+5 (Stall Speed)
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VFE, MOD_SHIFT, 0x36);     // Shift+6 (V FE Speed)
-            RegisterHotKey(windowHandle, HOTKEY_CHECKLIST, MOD_SHIFT, 0x43);     // Shift+C (Checklist Window)
+            RegisterHotKey(windowHandle, HOTKEY_CHECKLIST, MOD_SHIFT, 0x43);     // Shift+C (static text checklist)
+            RegisterHotKey(windowHandle, HOTKEY_CHECKLIST_ECL, MOD_CONTROL | MOD_SHIFT, 0x43); // Ctrl+Shift+C (A380 live ECL)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
             RegisterHotKey(windowHandle, HOTKEY_FLAPS, MOD_NONE, 0x4C);          // L (Flaps)
             RegisterHotKey(windowHandle, HOTKEY_GEAR, MOD_SHIFT, 0x47);          // Shift+G (Gear)
             RegisterHotKey(windowHandle, HOTKEY_ALTIMETER, MOD_NONE, 0x42);      // B (Altimeter)
             RegisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG, MOD_SHIFT, 0x57); // Shift+W (Gross Weight KG)
-            RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
-            RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
-            RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x59); // Shift+Y (STATUS Display)
+            RegisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT, MOD_CONTROL, 0x57); // Ctrl+W (FBW ND TO-waypoint info)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_OANS, MOD_CONTROL | MOD_SHIFT, 0x42);  // Ctrl+Shift+B (A380 OANS / BTV)
             RegisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER, MOD_CONTROL, 0x4D); // Ctrl+M (Monitor Manager - per-aircraft)
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
             RegisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE, MOD_CONTROL, 0x56); // Ctrl+V (Visual Guidance)
@@ -726,11 +752,9 @@ public class HotkeyManager : IDisposable
             // Taxi guidance hotkeys (Output mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_STATUS, MOD_NONE, 0x59);             // Y (Taxi Status)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT, MOD_CONTROL, 0x59);          // Ctrl+Y (Repeat Instruction)
-            // Where Am I lives on Alt+Y (output). Shift+Y is already taken by HOTKEY_STATUS_DISPLAY
-            // earlier in this same activation block — Win32 RegisterHotKey silently rejects the
-            // second registration of the same chord, which made Where Am I a dead key. We can't
-            // give up Shift+Y for STATUS Display (it's a long-standing FBW/Fenix display hotkey),
-            // so Where Am I moves to Alt+Y. Stays on the same physical key — easy to remember.
+            // Where Am I lives on Alt+Y (output). It originally moved off Shift+Y because that
+            // chord was held by the (now-retired) STATUS Display hotkey; it stays on Alt+Y so
+            // existing users' muscle memory and all guides remain valid.
             RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
             RegisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP, MOD_CONTROL, 0x47);     // Ctrl+G (Read latest GSX tooltip)
@@ -769,12 +793,14 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_LOCATION_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_WIND_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_METAR_REPORT);
-            UnregisterHotKey(windowHandle, HOTKEY_PFD);
+            UnregisterHotKey(windowHandle, HOTKEY_COLD_TEMP_CORRECTION);
             UnregisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_DEST);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY);
+            UnregisterHotKey(windowHandle, HOTKEY_LANDING_RATE);
+            UnregisterHotKey(windowHandle, HOTKEY_LANDING_PEAK_G);
 
             // Unregister speed tape hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_GD);
@@ -784,18 +810,18 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_VS);
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_VFE);
             UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST);
+            UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST_ECL);
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
             UnregisterHotKey(windowHandle, HOTKEY_FLAPS);
             UnregisterHotKey(windowHandle, HOTKEY_GEAR);
             UnregisterHotKey(windowHandle, HOTKEY_ALTIMETER);
             UnregisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG);
-            UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
-            UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
-            UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
+            UnregisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_OANS);
             UnregisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER);
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
@@ -845,6 +871,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY, MOD_SHIFT, 0x44); // Shift+D (Destination Runway)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP1, MOD_SHIFT, 0x41);        // Shift+A (Toggle Autopilot 1)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_APPR, MOD_SHIFT, 0x50);       // Shift+P (Toggle Approach Mode)
+            RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ATHR, MOD_CONTROL, 0x4A);     // Ctrl+J (Toggle Autothrust)
+            RegisterHotKey(windowHandle, HOTKEY_TOGGLE_LOC, MOD_CONTROL, 0x4C);      // Ctrl+L (Toggle Localizer)
 
             // Register FCU push/pull hotkeys
             RegisterHotKey(windowHandle, HOTKEY_FCU_HDG_PUSH, MOD_SHIFT, 0x31);     // Shift+1 (Push Heading Knob)
@@ -868,6 +896,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_RMP, MOD_CONTROL | MOD_SHIFT, 0x52);  // Ctrl+Shift+R (A380 Radio Management Panel)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_DCDU, MOD_CONTROL | MOD_SHIFT, 0x44); // Ctrl+Shift+D (A32NX DCDU / CPDLC window)
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
@@ -895,6 +925,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP1);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_APPR);
+            UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ATHR);
+            UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_LOC);
 
             // Unregister FCU push/pull hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_FCU_HDG_PUSH);
@@ -918,6 +950,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_RMP);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_DCDU);
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
@@ -1183,6 +1217,8 @@ public class HotkeyManager : IDisposable
         ReadAirspeedTrue,
         ReadGroundSpeed,
         ReadMachSpeed,
+        ReadLastLandingRate,
+        ReadLastLandingPeakG,
         ReadVerticalSpeed,
         ReadHeadingMagnetic,
         ReadHeadingTrue,
@@ -1193,13 +1229,15 @@ public class HotkeyManager : IDisposable
         ReadILSGuidance,
         ReadWindInfo,
         ShowMETARReport,
+        ShowColdTempCorrection,
         RunwayTeleport,
         GateTeleport,
         LocationInfo,
         SimBriefBriefing,
-        ShowPFD,
         ToggleAutopilot1,
         ToggleApproachMode,
+        ToggleAutothrust,
+        ToggleLocalizer,
         ReadFCUVerticalSpeedFPA,
         ReadApproachCapability,
         FCUHeadingPush,
@@ -1223,6 +1261,7 @@ public class HotkeyManager : IDisposable
         ReadSpeedVLS,
         ReadSpeedVS,
         ShowChecklist,
+        ShowChecklistECL,
         ReadFuelQuantity,
         ReadFlaps,
         ReadGear,
@@ -1230,10 +1269,8 @@ public class HotkeyManager : IDisposable
         FCUSetBaro,
         SetNavRadios,
         ReadGrossWeightKg,
-        ShowNavigationDisplay,
         ReadWaypointInfo,
-        ShowECAM,
-        ShowStatusPage,
+        ReadNDWaypoint,   // Ctrl+W (output) — FBW ND TO-waypoint name/distance/bearing
         ToggleTakeoffAssist,
         ToggleECAMMonitoring,
         MonitorManager,
@@ -1258,6 +1295,9 @@ public class HotkeyManager : IDisposable
         ReadTargetFPM,
         ShowFenixMCDU,
         ShowPMDGEFB,
+        ShowRMP,
+        ShowDCDU,
+        ShowOANS,
         ReadNearestCity,
         ReadDistanceToTOD,
         ReadDistanceToDest,

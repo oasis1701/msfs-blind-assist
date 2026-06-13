@@ -1,0 +1,8 @@
+{
+  "name": "flypad-settings-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom harness + regression tests for the flyPad Settings scrape (coherent-flypad-agent.js buildSettingsLines). Fixtures are live DOM captures with baked data-vis/data-rect.",
+  "scripts": { "test": "node --test", "dump": "node run.js" },
+  "dependencies": { "jsdom": "^24.1.0" }
+}

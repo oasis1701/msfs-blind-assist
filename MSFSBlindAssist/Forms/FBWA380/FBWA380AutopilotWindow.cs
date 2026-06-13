@@ -1,0 +1,91 @@
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Forms.FBWA380;
+
+// A380 Autopilot panel: AP1/AP2, A/THR engage + disconnect, AP disconnect,
+// APPR/LOC/EXPED, and a read-only Flight Director status (uncontrollable on this
+// FBW build). State labels refresh from the live cache.
+public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
+{
+    private readonly Button ap1, ap2, appr, loc, exped;
+    private readonly Label fdLabel;
+    private readonly System.Windows.Forms.Timer refreshTimer;
+
+    public FBWA380AutopilotWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+        : base(aircraft, simConnect, announcer)
+    {
+        Text = "A380 Autopilot";
+        Size = new Size(420, 360);
+
+        ap1 = MakeToggle("AP 1", 20, 20, "A32NX.FCU_AP_1_PUSH", 0);
+        ap2 = MakeToggle("AP 2", 210, 20, "A32NX.FCU_AP_2_PUSH", 1);
+        loc = MakeToggle("LOC", 20, 65, "A32NX.FCU_LOC_PUSH", 2);
+        appr = MakeToggle("APPR", 210, 65, "A32NX.FCU_APPR_PUSH", 3);
+        exped = MakeToggle("EXPED", 20, 110, "A32NX.FCU_EXPED_PUSH", 4);
+
+        var athr = new Button { Text = "A/THR engage", Location = new Point(210, 110), Size = new Size(180, 35), TabIndex = 5, AccessibleName = "Autothrust engage" };
+        athr.Click += (s, e) => { simConnect.SendEvent("AUTO_THROTTLE_ARM"); RefreshStates(); };
+        var apDisc = new Button { Text = "AP disconnect", Location = new Point(20, 155), Size = new Size(180, 35), TabIndex = 6, AccessibleName = "Autopilot disconnect" };
+        // Same A380-new-FCU K-event family as the mode buttons (the dotted H-event is inert).
+        // NOTE: not fire-tested live (would disconnect the AP in flight) — verify on the ground.
+        apDisc.Click += (s, e) => { simConnect.ExecuteCalculatorCode("(>K:A32NX.FCU_AP_DISCONNECT_PUSH)"); RefreshStates(); };
+        var athrDisc = new Button { Text = "A/THR disconnect", Location = new Point(210, 155), Size = new Size(180, 35), TabIndex = 7, AccessibleName = "Autothrust disconnect" };
+        athrDisc.Click += (s, e) => { simConnect.ExecuteCalculatorCode("(>K:A32NX.FCU_ATHR_DISCONNECT_PUSH)"); RefreshStates(); };
+
+        fdLabel = new Label { Location = new Point(20, 205), Size = new Size(370, 20), AccessibleName = "Flight Director status", Text = "Flight Director: ..." };
+
+        var closeButton = new Button { Text = "Close", Location = new Point(140, 250), Size = new Size(140, 35), TabIndex = 8, DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        closeButton.Click += (s, e) => Close();
+
+        Controls.AddRange(new Control[] { ap1, ap2, loc, appr, exped, athr, apDisc, athrDisc, fdLabel, closeButton });
+        CancelButton = closeButton;
+
+        // Continuous refresh so every button label tracks the LIVE state — including EXPED,
+        // which only engages when there's an altitude gap and so often flips a moment AFTER the
+        // press (the old one-shot 250 ms timer stopped itself and missed that late change).
+        refreshTimer = new System.Windows.Forms.Timer { Interval = 400 };
+        refreshTimer.Tick += (s, e) => { aircraft.RequestAutopilotStates(simConnect); UpdateLabels(); };
+    }
+
+    private Button MakeToggle(string name, int x, int y, string evt, int tab)
+    {
+        var b = new Button { Text = name + " ...", Location = new Point(x, y), Size = new Size(180, 35), TabIndex = tab, AccessibleName = name, Tag = name };
+        // CRITICAL: the A380's NEW FCU (FCU/Managers/AutopilotManager.ts) consumes these as
+        // K-EVENTS (K:A32NX.FCU_AP_1_PUSH / AP_2 / LOC / APPR / EXPED) — NOT the dotted H-event the
+        // A320 used. Firing the H-event does NOTHING (live-verified: H:A32NX.FCU_AP_2_PUSH left
+        // A32NX_AUTOPILOT_2_ACTIVE at 0; the K-event flipped it to 1). So fire via the calc K path.
+        b.Click += (s, e) => { simConnect.ExecuteCalculatorCode($"(>K:{evt})"); RefreshStates(); };
+        return b;
+    }
+
+    protected override void SpeakInitialReadout() { RefreshStates(); refreshTimer.Start(); }
+
+    // Request a fresh read + repaint the labels right now (on open and after a press, for
+    // immediate feedback); the continuous timer keeps them current thereafter.
+    private void RefreshStates() { aircraft.RequestAutopilotStates(simConnect); UpdateLabels(); }
+
+    private void UpdateLabels()
+    {
+        SetState(ap1, "AP 1", "A32NX_AUTOPILOT_1_ACTIVE");
+        SetState(ap2, "AP 2", "A32NX_AUTOPILOT_2_ACTIVE");
+        SetState(loc, "LOC", "A32NX_FCU_LOC_MODE_ACTIVE");
+        SetState(appr, "APPR", "A32NX_FCU_APPR_MODE_ACTIVE");
+        SetState(exped, "EXPED", "A32NX_FMA_EXPEDITE_MODE");
+        // The def's FD combos read the stock simvar (the old FCU_EFIS_*_FD_ACTIVE
+        // L:vars don't exist on the A380X) — use the same cache keys.
+        bool fdL = (simConnect.GetCachedVariableValue("FD_1_CTL") ?? 0) > 0.5;
+        bool fdR = (simConnect.GetCachedVariableValue("FD_2_CTL") ?? 0) > 0.5;
+        fdLabel.Text = $"Flight Director: Captain {(fdL ? "on" : "off")}, First Officer {(fdR ? "on" : "off")}";
+    }
+
+    private void SetState(Button b, string name, string stateVar)
+    {
+        bool on = (simConnect.GetCachedVariableValue(stateVar) ?? 0) > 0.5;
+        b.Text = $"{name} ({(on ? "on" : "off")})";
+        b.AccessibleName = $"{name} {(on ? "on" : "off")}";
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e) { refreshTimer.Stop(); refreshTimer.Dispose(); base.OnFormClosing(e); }
+}
