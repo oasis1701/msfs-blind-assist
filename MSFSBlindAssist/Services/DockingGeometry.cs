@@ -264,8 +264,10 @@ public static class DockingGeometry
     /// Fires ONLY when (a) the base stop itself is inside the circle
     /// (<paramref name="gateDistanceThreshold"/> ≥ base-stop along-track distance) AND (b) the
     /// shifted datum would land outside it. It then pulls the stop back ALONG the gate heading
-    /// to (threshold − <see cref="OccupancyClampMarginMetres"/>), leaving the lateral component
-    /// untouched. At gates whose stop already sits BEYOND the threshold (e.g. EDDF A66:
+    /// to (threshold − <see cref="OccupancyClampMarginMetres"/>), FLOORED AT 0 so a malformed
+    /// profile with threshold &lt; margin can never park the datum behind this_parking_pos,
+    /// leaving the lateral component untouched. At gates whose stop already sits BEYOND the
+    /// threshold (e.g. EDDF A66:
     /// threshold 15 &lt; gap 25.1) it is a strict NO-OP — those stands are accepted only via
     /// GSX's dynamic VDGS approach-dock, and clamping would pull the datum far short of the bar
     /// and break jetway reach. Also a NO-OP when the datum is already inside the circle, so
@@ -299,7 +301,13 @@ public static class DockingGeometry
         if (baseStopAlong > gateDistanceThreshold + ClampBaseStopToleranceMetres) return false;
         if (desiredAlong <= gateDistanceThreshold) return false;
 
-        clampedAlong = gateDistanceThreshold - OccupancyClampMarginMetres;
+        // Floor at 0: a malformed profile with gateDistanceThreshold < OccupancyClampMarginMetres
+        // would otherwise make clampedAlong negative and pull the datum BEHIND this_parking_pos.
+        // Real thresholds are ~15-30 m so this never affects a legitimate gate; it only guarantees
+        // bad scenery data degrades to "datum on the parking point" (still inside any positive
+        // circle) rather than inverting the geometry. pullBack stays > 0: desiredAlong is already
+        // > gateDistanceThreshold >= 0, and clampedAlong <= gateDistanceThreshold - margin.
+        clampedAlong = Math.Max(0.0, gateDistanceThreshold - OccupancyClampMarginMetres);
         double pullBack = desiredAlong - clampedAlong; // > 0
         ShiftStopMetres(sLat, sLon, stopHeadingTrue, -pullBack, 0.0, out sLat, out sLon);
         return true;

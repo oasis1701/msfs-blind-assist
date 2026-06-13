@@ -181,6 +181,21 @@ Check("OccupancyClampMarginMetres == 2.0", DockingGeometry.OccupancyClampMarginM
         ref sLat, ref sLon, out _, out _, out _);
     Check("clamp inside-circle: no-op (desired 23 <= T 25)", !moved && sLat == s0Lat && sLon == s0Lon);
 }
+{
+    // Degenerate/malformed profile: threshold (1 m) < OccupancyClampMarginMetres (2 m). The
+    // clamp still fires (base stop inside, .py datum outside), but threshold - margin = -1 m
+    // would pull the datum BEHIND this_parking_pos. The zero-floor must keep clampedAlong at 0
+    // (the parking point), never negative.
+    double ppLat = 51.0, ppLon = 0.0, H = 270.0, T = 1.0;
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 0.5, 0.0, out double bsLat, out double bsLon);
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 4.0, 0.0, out double sLat, out double sLon);
+    bool moved = DockingGeometry.ClampStopToOccupancy(ppLat, ppLon, bsLat, bsLon, H, T,
+        ref sLat, ref sLon, out _, out _, out double clamped);
+    Check("clamp tiny-threshold: fires", moved);
+    Check("clamp tiny-threshold: clamped floored at 0 (not -1)", Near(clamped, 0.0, 1e-9));
+    Check("clamp tiny-threshold: result sits on this_parking_pos, not behind",
+        Near(sLat, ppLat, 1e-7) && Near(sLon, ppLon, 1e-7));
+}
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;
