@@ -129,5 +129,73 @@ Check("BeepFarMetres == 30.0", DockingGeometry.BeepFarMetres == 30.0);
     Check("shift +100m long @hdg90 -> east", exLon > lon0 && Near(exLat, lat0, 1e-9));
 }
 
+// ClampStopToOccupancy — GSX static-occupancy clamp (2026-06-13 KBOS E13 live findings).
+// Points are built with ShiftStopMetres so along-track distances are exact. The clamp fires
+// only when the base stop is inside the circle AND the .py-shifted datum lands outside it.
+Check("OccupancyClampMarginMetres == 2.0", DockingGeometry.OccupancyClampMarginMetres == 2.0);
+{
+    // KBOS E13: T=25, gap=25, .py datum 31.5 m -> clamp to T-margin = 23 m. (Verified live:
+    // 31.5 m = reposition, 23 m = services + jetway.)
+    double ppLat = 42.0, ppLon = -71.0, H = 207.7, T = 25.0;
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 25.0, 0.0, out double bsLat, out double bsLon);
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 31.5, 0.0, out double sLat, out double sLon);
+    bool moved = DockingGeometry.ClampStopToOccupancy(ppLat, ppLon, bsLat, bsLon, H, T,
+        ref sLat, ref sLon, out double gap, out double desired, out double clamped);
+    Check("clamp KBOS: fires", moved);
+    Check("clamp KBOS: gap ~25", Near(gap, 25.0, 1e-3));
+    Check("clamp KBOS: desired ~31.5", Near(desired, 31.5, 1e-3));
+    Check("clamp KBOS: clamped to T-margin (23)", Near(clamped, 23.0, 1e-3));
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 23.0, 0.0, out double exLat, out double exLon);
+    Check("clamp KBOS: result point sits 23 m forward", Near(sLat, exLat, 1e-7) && Near(sLon, exLon, 1e-7));
+}
+{
+    // EDDF A66: T=15 < gap=25.1 -> base stop already beyond the circle -> NO-OP (VDGS-reliant).
+    double ppLat = 50.0, ppLon = 8.5, H = 339.9, T = 15.0;
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 25.1, 0.0, out double bsLat, out double bsLon);
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 30.4, 0.0, out double sLat, out double sLon);
+    double s0Lat = sLat, s0Lon = sLon;
+    bool moved = DockingGeometry.ClampStopToOccupancy(ppLat, ppLon, bsLat, bsLon, H, T,
+        ref sLat, ref sLon, out double gap, out _, out _);
+    Check("clamp EDDF: no-op (stop beyond threshold)", !moved && sLat == s0Lat && sLon == s0Lon);
+    Check("clamp EDDF: gap ~25.1", Near(gap, 25.1, 1e-3));
+}
+{
+    // KATL C20: T=25, gap=12.7, offset 0 -> datum already inside the circle -> NO-OP.
+    double ppLat = 33.64, ppLon = -84.43, H = 90.0, T = 25.0;
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 12.7, 0.0, out double bsLat, out double bsLon);
+    double sLat = bsLat, sLon = bsLon; // .py offset 0 -> datum at the base stop
+    double s0Lat = sLat, s0Lon = sLon;
+    bool moved = DockingGeometry.ClampStopToOccupancy(ppLat, ppLon, bsLat, bsLon, H, T,
+        ref sLat, ref sLon, out _, out double desired, out _);
+    Check("clamp KATL: no-op (datum inside circle)", !moved && sLat == s0Lat && sLon == s0Lon);
+    Check("clamp KATL: desired ~12.7", Near(desired, 12.7, 1e-3));
+}
+{
+    // Inside the circle with a forward offset (gap 20, datum 23, T 25): 23 <= 25 -> NO-OP,
+    // so currently-working docks are byte-identical.
+    double ppLat = 40.0, ppLon = -80.0, H = 180.0, T = 25.0;
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 20.0, 0.0, out double bsLat, out double bsLon);
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 23.0, 0.0, out double sLat, out double sLon);
+    double s0Lat = sLat, s0Lon = sLon;
+    bool moved = DockingGeometry.ClampStopToOccupancy(ppLat, ppLon, bsLat, bsLon, H, T,
+        ref sLat, ref sLon, out _, out _, out _);
+    Check("clamp inside-circle: no-op (desired 23 <= T 25)", !moved && sLat == s0Lat && sLon == s0Lon);
+}
+{
+    // Degenerate/malformed profile: threshold (1 m) < OccupancyClampMarginMetres (2 m). The
+    // clamp still fires (base stop inside, .py datum outside), but threshold - margin = -1 m
+    // would pull the datum BEHIND this_parking_pos. The zero-floor must keep clampedAlong at 0
+    // (the parking point), never negative.
+    double ppLat = 51.0, ppLon = 0.0, H = 270.0, T = 1.0;
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 0.5, 0.0, out double bsLat, out double bsLon);
+    DockingGeometry.ShiftStopMetres(ppLat, ppLon, H, 4.0, 0.0, out double sLat, out double sLon);
+    bool moved = DockingGeometry.ClampStopToOccupancy(ppLat, ppLon, bsLat, bsLon, H, T,
+        ref sLat, ref sLon, out _, out _, out double clamped);
+    Check("clamp tiny-threshold: fires", moved);
+    Check("clamp tiny-threshold: clamped floored at 0 (not -1)", Near(clamped, 0.0, 1e-9));
+    Check("clamp tiny-threshold: result sits on this_parking_pos, not behind",
+        Near(sLat, ppLat, 1e-7) && Near(sLon, ppLon, 1e-7));
+}
+
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;
