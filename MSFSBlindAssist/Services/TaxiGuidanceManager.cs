@@ -442,6 +442,35 @@ public class TaxiGuidanceManager : IDisposable
     private bool _isRunwayLineup = false;  // true = runway (use centerline), false = gate (heading only)
     private bool _hasLineupTarget = false; // explicit flag — safer than (_lineupTargetLat != 0)
 
+    // Unreachable-runway safety net (PHNL 04L 2026-06-13). A runway-destination
+    // route must end ON the runway centerline (a real hold-short sits on the
+    // centerline extended, only a few feet of cross-track). When the entered
+    // taxiway clearance ends on a taxiway that merely PARALLELS the runway —
+    // with no connector taxiway to the runway itself — the route ends tens to
+    // hundreds of metres off to the side, then guidance silently holds short
+    // there and tries to "line up" on a runway it has no path to. The intercept
+    // controller saturates and the cross-track never closes, so the lineup tone
+    // pans forever and the pilot has no idea why. These two thresholds drive
+    // (a) an up-front route-load warning and (b) a during-lineup spoken bailout
+    // so the failure becomes an actionable message instead of an endless tone.
+    // RUNWAY_REACH_MAX_CROSS_M is the perpendicular distance from the route's
+    // final point to the runway centerline beyond which the route clearly does
+    // not reach the runway. 120 m sits safely above any LEGITIMATE hold-short
+    // offset — ICAO Annex 14 Table 3-2 caps the runway-holding-position distance
+    // from the centerline at ~90 m even for CAT II/III code-F precision runways
+    // (which is also the worst case for an intersection departure, where the
+    // hold-short sits on a taxiway crossing the runway) — yet well below the
+    // ~456 m the PHNL 04L failure produced.
+    private const double RUNWAY_REACH_MAX_CROSS_M = 120.0;
+    // During LiningUp, cross-track this far off the centerline (≈122 m, again
+    // above the ~90 m legitimate-hold-short ceiling) sustained for
+    // LINEUP_UNREACHABLE_SEC without converging means the route never reached
+    // the runway — fire the one-shot spoken bailout.
+    private const double LINEUP_UNREACHABLE_CROSS_FEET = 400.0;
+    private const double LINEUP_UNREACHABLE_SEC = 12.0;
+    private DateTime _lineupHugeCrossTrackSince = DateTime.MinValue;
+    private bool _runwayLineupUnreachableWarned = false;
+
     // When true, we are currently holding short AT the destination runway
     // (FAA/ICAO: ATC taxi-to clearance never authorizes entering the assigned
     // takeoff runway — pilot must wait for "line up and wait" or "cleared for
@@ -1099,6 +1128,35 @@ public class TaxiGuidanceManager : IDisposable
             // pattern as ATC-instructed hold-shorts.
             InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
 
+            // Runway-reach safety check. A runway-destination route must end ON
+            // the runway centerline (a hold-short sits on the centerline
+            // extended). If the route's final point is well off to the side, the
+            // entered taxiway sequence ended on a taxiway that only PARALLELS the
+            // runway, with no connector to the runway itself — guidance would
+            // hold short here and then try to line up on a runway it cannot
+            // reach (PHNL 04L 2026-06-13: route ended ~150 m off, lineup tone
+            // panned for 4 minutes). Warn the pilot up front so they reprogram
+            // with the connector taxiway. The route still loads — ATC routings
+            // and odd navdata exist — the pilot decides.
+            string? runwayReachWarning = null;
+            if (isRunwayDestination && _hasLineupTarget && route.Segments.Count > 0)
+            {
+                var endNode = route.Segments[^1].ToNode;
+                if (endNode != null)
+                {
+                    double endCrossM = AbsLateralFromRunwayMeters(
+                        endNode.Latitude, endNode.Longitude,
+                        _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
+                    if (endCrossM > RUNWAY_REACH_MAX_CROSS_M)
+                    {
+                        runwayReachWarning =
+                            $"Warning: this route ends about {FormatDistance(endCrossM)} to the side of " +
+                            $"{destinationName} and does not reach the runway. You may be missing the " +
+                            $"taxiway that connects to the runway. Check your taxiway entry and reprogram.";
+                    }
+                }
+            }
+
             // Constrained-route sanity advisory: compare against the
             // unconstrained shortest path from the aircraft's natural start
             // node. Fires only for user-sequenced routes that built fully
@@ -1150,6 +1208,8 @@ public class TaxiGuidanceManager : IDisposable
             // inherit stale values from the prior route (e.g., "aligned" carrying over
             // would suppress the first alignment announcement on the new lineup target).
             _lineupAnnouncedAligned = false;
+            _lineupHugeCrossTrackSince = DateTime.MinValue;
+            _runwayLineupUnreachableWarned = false;
             _lastRecalculationTime = DateTime.MinValue;
             _lastSpeedWarningTime = DateTime.MinValue;
             _lastIncursionWarningTime = DateTime.MinValue;
@@ -1199,6 +1259,12 @@ public class TaxiGuidanceManager : IDisposable
                 // warning almost certainly cut off before it played.
                 if (!string.IsNullOrEmpty(constrainedLengthWarning))
                     summary = constrainedLengthWarning + " " + summary;
+                // The runway-reach warning is the most safety-critical of the
+                // three, so it goes FIRST (same "warning before summary"
+                // reasoning as the length advisory — a tail-position warning is
+                // cut off by the first tactical callout once rolling).
+                if (!string.IsNullOrEmpty(runwayReachWarning))
+                    summary = runwayReachWarning + " " + summary;
                 LastRouteSummary = summary;
                 if (announceSummary)
                     _announcer.Announce(summary);
@@ -4589,6 +4655,35 @@ public class TaxiGuidanceManager : IDisposable
                 (Math.Abs(headingError) >= LINEUP_PULSE_MIN_HDG_ERR_DEG ||
                  absCrossFeet >= LINEUP_PULSE_MIN_CROSS_FEET);
             if (!_steeringToneSuppressed) _steeringTone.SetPulse(stoppedAndMisaligned);
+
+            // Unreachable-runway bailout. If the aircraft sits far off the
+            // runway centerline and stays there, the route never reached the
+            // runway (the entered clearance ended on a parallel taxiway, with no
+            // connector). The intercept controller saturates and the cross-track
+            // never closes, so the tone would pan forever (PHNL 04L 2026-06-13,
+            // ~4 minutes). Rather than steer toward an unreachable target
+            // silently, tell the pilot once — clearly and actionably. One-shot
+            // per route (latch reset on LoadRoute / StopGuidance). A normal
+            // lineup begins on the centerline extended (small cross-track), so a
+            // sustained >400 ft offset is unambiguous and never false-fires on a
+            // legitimate (even mid-runway intersection) lineup.
+            if (absCrossFeet > LINEUP_UNREACHABLE_CROSS_FEET)
+            {
+                if (_lineupHugeCrossTrackSince == DateTime.MinValue)
+                    _lineupHugeCrossTrackSince = DateTime.UtcNow;
+                else if (!_runwayLineupUnreachableWarned &&
+                         (DateTime.UtcNow - _lineupHugeCrossTrackSince).TotalSeconds >= LINEUP_UNREACHABLE_SEC)
+                {
+                    _runwayLineupUnreachableWarned = true;
+                    _announcer.AnnounceImmediate(
+                        $"This route does not reach {_destinationName}. Reprogram the taxi " +
+                        $"route, including the taxiway that connects to the runway.");
+                }
+            }
+            else
+            {
+                _lineupHugeCrossTrackSince = DateTime.MinValue;
+            }
         }
         else
         {
@@ -5055,6 +5150,8 @@ public class TaxiGuidanceManager : IDisposable
         _lastGroundSpeedKts = 0;
         _hasLineupTarget = false;
         _lineupAnnouncedAligned = false;
+        _lineupHugeCrossTrackSince = DateTime.MinValue;
+        _runwayLineupUnreachableWarned = false;
         _autoActivateFired = false;
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).
