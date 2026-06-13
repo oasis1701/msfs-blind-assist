@@ -3486,6 +3486,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // BTV (Brake-To-Vacate) rollout call-outs: current BTV state (gate) and which
     // distance thresholds have already been spoken this landing (reset between).
     private int _btvState = 0;
+    // Self-tracked anti-skid switch state. The stock A:ANTISKID BRAKES ACTIVE reads
+    // unreliably via the data-def path on the A380 (live-verified: same batch returned
+    // 1 AND 0), so the cached "current" got stuck at On and the combo's "select On" never
+    // fired the toggle. ANTISKID_BRAKES_TOGGLE reliably FLIPS the switch, so we track the
+    // commanded state ourselves and don't re-read the flaky cache after the first use.
+    private bool? _antiskidOn;
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private int _fmgcPhaseA380 = -1; // numeric FMGC flight phase; gates the capability announce (taxi flicker spam)
     private readonly int[] _gpuAvail = { -1, -1, -1, -1 };   // last external-power-available state per GPU (-1 = unseen)
@@ -4558,13 +4564,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
             return true;
         }
-        // Anti-skid: TOGGLE-only event (the cockpit switch fires K:ANTISKID_BRAKES_TOGGLE,
-        // state = A:ANTISKID BRAKES ACTIVE); fire only when desired != current.
+        // Anti-skid: TOGGLE-only event (K:ANTISKID_BRAKES_TOGGLE flips the switch). The
+        // stock A:ANTISKID BRAKES ACTIVE state reads UNRELIABLY via the data-def path on
+        // the A380 (live-verified: same batch returned 1 AND 0), so the cached "current"
+        // got stuck at On and "select On" never fired the toggle (the user's bug). Track
+        // the commanded state ourselves: the toggle reliably flips it, so after each set we
+        // KNOW the result. Seed once from the best-effort cache, then drive off _antiskidOn.
         if (varKey == "ANTISKID_BRAKES_ACTIVE")
         {
             bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("ANTISKID_BRAKES_ACTIVE") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            bool currentOn = _antiskidOn
+                ?? ((simConnect.GetCachedVariableValue("ANTISKID_BRAKES_ACTIVE") ?? 1.0) > 0.5);
             if (desiredOn != currentOn) simConnect.SendEvent("ANTISKID_BRAKES_TOGGLE");
+            _antiskidOn = desiredOn;
             return true;
         }
         // --- Combos whose STATE is a SimVar but whose CONTROL is a K-event
