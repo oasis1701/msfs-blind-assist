@@ -41,6 +41,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override string AircraftName => "FlyByWire A380X";
     public override string AircraftCode => "FBW_A380";
 
+    // Taxi-turn rollout-anticipation lead (see IAircraftDefinition.TaxiTurnLeadSeconds).
+    // The PR-85 (A380) and PR-87 (taxi rollout anticipation) branches merged
+    // independently, so the A380 silently inherited the 1.2 s base default. MEASURED
+    // 2026-06-11 flying the A380 on the A320's 1.3 s lead: five rollouts ran 10-42 deg
+    // LONG at 15-19 kt (the pilot could only cope by slowing below 13 kt) -- the heaviest
+    // yaw inertia in the fleet needs the most lead. 1.8 s; re-measure from telemetry.
+    public override double TaxiTurnLeadSeconds => 1.8;
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
