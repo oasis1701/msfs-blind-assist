@@ -20,6 +20,8 @@ public class TaxiGuidanceOptionsForm : Form
     private CheckBox announceCrossingsCheckBox = null!;
     private Label gsAnnounceLabel = null!;
     private ComboBox gsAnnounceCombo = null!;
+    private Label takeoffGsAnnounceLabel = null!;
+    private ComboBox takeoffGsAnnounceCombo = null!;
     private CheckBox useFeetForDistancesCheckBox = null!;
     private CheckBox useMetresCheckBox = null!;
     private CheckBox gsxAutoSelectGateCheckBox = null!;
@@ -43,6 +45,7 @@ public class TaxiGuidanceOptionsForm : Form
     public bool HardPanSteeringTone { get; private set; }
     public bool AnnounceCrossings { get; private set; }
     public int GroundSpeedAnnounceInterval { get; private set; }
+    public int TakeoffGroundSpeedAnnounceInterval { get; private set; }
     public DistanceUnit SelectedDistanceUnit =>
         useFeetForDistancesCheckBox.Checked ? DistanceUnit.Feet : DistanceUnit.Metres;
     public bool GroundTrafficUseMetres { get; private set; }
@@ -58,6 +61,7 @@ public class TaxiGuidanceOptionsForm : Form
         bool hardPanSteeringTone,
         bool announceCrossings,
         int groundSpeedAnnounceInterval,
+        int takeoffGroundSpeedAnnounceInterval,
         bool groundTrafficUseMetres,
         bool gsxAutoSelectGateOnRoute = true,
         bool dockingGuidanceEnabled = true,
@@ -70,6 +74,7 @@ public class TaxiGuidanceOptionsForm : Form
         HardPanSteeringTone = hardPanSteeringTone;
         AnnounceCrossings = announceCrossings;
         GroundSpeedAnnounceInterval = groundSpeedAnnounceInterval;
+        TakeoffGroundSpeedAnnounceInterval = takeoffGroundSpeedAnnounceInterval;
         GroundTrafficUseMetres = groundTrafficUseMetres;
         GsxAutoSelectGateOnRoute = gsxAutoSelectGateOnRoute;
         DockingGuidanceEnabled = dockingGuidanceEnabled;
@@ -82,7 +87,7 @@ public class TaxiGuidanceOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Taxi Guidance Options";
-        Size = new Size(500, 695);
+        Size = new Size(500, 730);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -265,11 +270,58 @@ public class TaxiGuidanceOptionsForm : Form
             };
         };
 
+        // Separate ground-speed cadence used WHILE TAKEOFF ASSIST IS ACTIVE. The global
+        // GS announcer already covers the takeoff roll using the taxi interval; this lets
+        // the pilot pick a COARSER cadence (or silence) on the roll so the callouts don't
+        // crowd out the centerline-deviation announcements. "Same as taxi" (default) keeps
+        // today's behaviour; "Off" silences the roll; 5 / 10 override the taxi interval.
+        takeoffGsAnnounceLabel = new Label
+        {
+            Text = "During takeoff assist, announce ground speed every:",
+            Location = new Point(20, 320),
+            Size = new Size(300, 20),
+            AccessibleName = "Takeoff assist ground speed announcement interval Label"
+        };
+        takeoffGsAnnounceCombo = new ComboBox
+        {
+            Location = new Point(320, 318),
+            Size = new Size(150, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Takeoff assist ground speed announcement interval",
+            AccessibleDescription = "Choose how often ground speed is announced during the takeoff roll. Same as taxi uses the taxi interval; Off disables ground speed callouts while takeoff assist is active; or pick a 5 or 10 knot interval."
+        };
+        takeoffGsAnnounceCombo.Items.AddRange(new object[]
+        {
+            "Same as taxi (default)",
+            "Off",
+            "Every 5 knots",
+            "Every 10 knots"
+        });
+        // Map the stored interval back to the combo index. -1 = same as taxi (default),
+        // 0 = off, 5 / 10 = explicit cadence; anything unexpected loads as same-as-taxi.
+        takeoffGsAnnounceCombo.SelectedIndex = TakeoffGroundSpeedAnnounceInterval switch
+        {
+            0 => 1,
+            5 => 2,
+            10 => 3,
+            _ => 0,
+        };
+        takeoffGsAnnounceCombo.SelectedIndexChanged += (s, e) =>
+        {
+            TakeoffGroundSpeedAnnounceInterval = takeoffGsAnnounceCombo.SelectedIndex switch
+            {
+                1 => 0,
+                2 => 5,
+                3 => 10,
+                _ => -1,
+            };
+        };
+
         // App-wide distance unit toggle: feet or metres
         useFeetForDistancesCheckBox = new CheckBox
         {
             Text = "Use feet for distances (default: metres)",
-            Location = new Point(20, 320),
+            Location = new Point(20, 355),
             Size = new Size(450, 25),
             Checked = SettingsManager.Current.GroundDistanceUnit == DistanceUnit.Feet,
             AccessibleName = "Use feet for distances",
@@ -280,7 +332,7 @@ public class TaxiGuidanceOptionsForm : Form
         useMetresCheckBox = new CheckBox
         {
             Text = "Show ground traffic distances in metres (default: feet)",
-            Location = new Point(20, 355),
+            Location = new Point(20, 390),
             Size = new Size(450, 25),
             Checked = GroundTrafficUseMetres,
             AccessibleName = "Show ground traffic distances in metres",
@@ -294,7 +346,7 @@ public class TaxiGuidanceOptionsForm : Form
         gsxAutoSelectGateCheckBox = new CheckBox
         {
             Text = "Auto-select arrival gate in GSX on route calculation",
-            Location = new Point(20, 385),
+            Location = new Point(20, 420),
             Size = new Size(450, 25),
             Checked = GsxAutoSelectGateOnRoute,
             AccessibleName = "Auto-select arrival gate in GSX on route calculation",
@@ -309,7 +361,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingEnabledCheckBox = new CheckBox
         {
             Text = "Docking guidance (auto-engage at the gate)",
-            Location = new Point(20, 415),
+            Location = new Point(20, 450),
             Size = new Size(450, 25),
             Checked = DockingGuidanceEnabled,
             AccessibleName = "Docking guidance",
@@ -322,7 +374,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingBeepTypeLabel = new Label
         {
             Text = "Docking beep sound:",
-            Location = new Point(20, 450),
+            Location = new Point(20, 485),
             Size = new Size(250, 20),
             AccessibleName = "Docking beep sound Label"
         };
@@ -330,7 +382,7 @@ public class TaxiGuidanceOptionsForm : Form
         // Docking beep type combo
         dockingBeepTypeCombo = new ComboBox
         {
-            Location = new Point(280, 448),
+            Location = new Point(280, 483),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Docking beep sound",
@@ -351,7 +403,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingBeepVolumeLabel = new Label
         {
             Text = "Docking beep volume:",
-            Location = new Point(20, 490),
+            Location = new Point(20, 525),
             Size = new Size(100, 20),
             AccessibleName = "Docking beep volume Label"
         };
@@ -359,7 +411,7 @@ public class TaxiGuidanceOptionsForm : Form
         // Docking beep volume trackbar
         dockingBeepVolumeTrackBar = new TrackBar
         {
-            Location = new Point(120, 485),
+            Location = new Point(120, 520),
             Size = new Size(300, 45),
             Minimum = 0,
             Maximum = 100,
@@ -378,7 +430,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingBeepVolumeValueLabel = new Label
         {
             Text = $"{dockingBeepVolumeTrackBar.Value}%",
-            Location = new Point(430, 490),
+            Location = new Point(430, 525),
             Size = new Size(40, 20),
             AccessibleName = "Docking Beep Volume Value",
             TextAlign = ContentAlignment.MiddleLeft
@@ -388,7 +440,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingBeepTestButton = new Button
         {
             Text = "Test",
-            Location = new Point(20, 540),
+            Location = new Point(20, 575),
             Size = new Size(120, 35),
             AccessibleName = "Test docking beep",
             AccessibleDescription = "Play a preview of the docking proximity beep at the selected sound and volume"
@@ -425,7 +477,7 @@ public class TaxiGuidanceOptionsForm : Form
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 605),
+            Location = new Point(310, 640),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -442,7 +494,7 @@ public class TaxiGuidanceOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 605),
+            Location = new Point(395, 640),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -458,6 +510,7 @@ public class TaxiGuidanceOptionsForm : Form
             hardPanToneCheckBox,
             announceCrossingsCheckBox,
             gsAnnounceLabel, gsAnnounceCombo,
+            takeoffGsAnnounceLabel, takeoffGsAnnounceCombo,
             useFeetForDistancesCheckBox,
             useMetresCheckBox,
             gsxAutoSelectGateCheckBox,
@@ -482,6 +535,7 @@ public class TaxiGuidanceOptionsForm : Form
         hardPanToneCheckBox.TabIndex = tabIdx++;
         announceCrossingsCheckBox.TabIndex = tabIdx++;
         gsAnnounceCombo.TabIndex = tabIdx++;
+        takeoffGsAnnounceCombo.TabIndex = tabIdx++;
         useFeetForDistancesCheckBox.TabIndex = tabIdx++;
         useMetresCheckBox.TabIndex = tabIdx++;
         gsxAutoSelectGateCheckBox.TabIndex = tabIdx++;

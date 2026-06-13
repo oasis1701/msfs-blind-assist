@@ -247,6 +247,20 @@ public class UserSettings
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
+        /// <summary>
+        /// Ground-speed announcement cadence used WHILE TAKEOFF ASSIST IS ACTIVE,
+        /// applied by the global <see cref="Services.GroundSpeedAnnouncer"/> (NOT a
+        /// separate announcer). Sentinel-encoded:
+        ///   -1 = same as the taxi interval (default — existing behaviour, the roll uses
+        ///        <see cref="TaxiGuidanceGroundSpeedAnnounceInterval"/>),
+        ///    0 = off (silent during the takeoff roll),
+        ///    5 / 10 = announce every 5 / 10 knots.
+        /// Lets the pilot pick a coarser cadence (or silence) on the roll so GS callouts
+        /// don't crowd out the centerline-deviation announcements, while taxiing keeps a
+        /// finer interval. Default -1 so existing users see no behaviour change.
+        /// </summary>
+        public int TakeoffAssistGroundSpeedAnnounceInterval { get; set; } = -1;
+
         // Docking (VDGS / marshalling) guidance
         public bool DockingGuidanceEnabled { get; set; } = true;
         public HandFlyWaveType DockingBeepWaveform { get; set; } = HandFlyWaveType.Sine;
@@ -374,6 +388,7 @@ public class UserSettings
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
+            TakeoffAssistGroundSpeedAnnounceInterval = TakeoffAssistGroundSpeedAnnounceInterval,
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
             Hs787SimVersionOverride = Hs787SimVersionOverride,
             GsxBackgroundMonitoring = GsxBackgroundMonitoring,

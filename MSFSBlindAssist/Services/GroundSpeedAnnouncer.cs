@@ -31,6 +31,11 @@ public class GroundSpeedAnnouncer
     // user doesn't get a spurious callout the moment the app connects.
     private int lastAnnouncedBucket = -1;
 
+    // The effective interval used on the previous sample. When it changes — a taxi<->takeoff
+    // transition, or a settings edit — the baseline is reset so the first sample at the new
+    // cadence is silent instead of emitting a stale bucket. 0 = no cadence seen yet.
+    private int lastEffectiveInterval = 0;
+
     // Once a bucket has been announced, the speed must be at least this many knots past
     // the rounding boundary into the new bucket before we re-announce. Kills "5 / 10 / 5"
     // flutter when the throttle holds steady near a midpoint (e.g. 7.5 kt with interval 5).
@@ -57,13 +62,41 @@ public class GroundSpeedAnnouncer
     /// While airborne the bucket baseline is left FROZEN (not reset) — so the first sample
     /// after touchdown compares the rollout speed against the last on-ground bucket and
     /// announces immediately, rather than spending a sample re-establishing a baseline.
+    ///
+    /// While Takeoff Assist is active the cadence is governed by the separate
+    /// <see cref="UserSettings.TakeoffAssistGroundSpeedAnnounceInterval"/> setting: its -1
+    /// sentinel means "same as taxi" (existing behaviour), 0 silences the roll, and 5/10
+    /// override the taxi interval with a coarser cadence so GS callouts don't crowd out the
+    /// centerline-deviation announcements.
     /// </summary>
-    public void ProcessGroundSpeed(double groundSpeedKts, bool onGround)
+    public void ProcessGroundSpeed(double groundSpeedKts, bool onGround, bool takeoffAssistActive)
     {
         if (!onGround)
             return;  // airborne — GS callouts are on-ground only; baseline left frozen
 
-        int interval = SettingsManager.Current.TaxiGuidanceGroundSpeedAnnounceInterval;
+        // Resolve the effective cadence. While Takeoff Assist is active the takeoff setting
+        // wins; its -1 sentinel means "same as taxi" (so existing users keep roll callouts),
+        // 0 means silence the roll, 5/10 override the cadence.
+        int taxiInterval = SettingsManager.Current.TaxiGuidanceGroundSpeedAnnounceInterval;
+        int interval;
+        if (takeoffAssistActive)
+        {
+            int takeoffInterval = SettingsManager.Current.TakeoffAssistGroundSpeedAnnounceInterval;
+            interval = takeoffInterval < 0 ? taxiInterval : takeoffInterval;
+        }
+        else
+        {
+            interval = taxiInterval;
+        }
+
+        // Re-baseline on a cadence change so a taxi<->takeoff transition (or a settings edit)
+        // doesn't emit a stale bucket at the new interval.
+        if (interval != lastEffectiveInterval)
+        {
+            lastAnnouncedBucket = -1;
+            lastEffectiveInterval = interval;
+        }
+
         if (interval <= 0 || groundSpeedKts < 0)
             return;
 
