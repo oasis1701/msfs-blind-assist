@@ -541,11 +541,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_FIRE_TEST_CARGO", "Cargo Smoke Detection Test");
 
         // ---- OXYGEN ----
-        // reverse:true so Off (resting, value 1) is at the top and the other position
-        // is reached with the down arrow. Label of value 0 ("Auto") to be live-verified
-        // (FBW preset calls it "Crew Oxy On"); the order fix is the reported bug.
+        // Ascending order (value 0 at top) to mirror the cockpit, consistent with the
+        // signs above. (Value 0 = the armed/on position; FBW preset calls it "Crew Oxy On".)
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
-            new Dictionary<double, string> { [0] = "Auto", [1] = "Off" }, reverse: true);
+            new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
         OnOff("A32NX_OXYGEN_MASKS_DEPLOYED", "Passenger Masks Deployed");
         ReadEnum("A32NX_OXYGEN_PASSENGER_LIGHT_ON", "Passenger Oxygen Light", onOff);
         Btn("A32NX_OXYGEN_TMR_RESET", "Oxygen Timer Reset");   // momentary push-button (was a combo)
@@ -681,11 +680,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
-        // reverse:true so the combo lists Off (top) -> Auto/Arm -> On (bottom): the FBW
-        // value mapping is On=0/mid=1/Off=2, and without reversing the user had to arrow
-        // UP from the resting Off state to reach Auto/On. Down-arrow now progresses naturally.
-        Sel("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "No Smoking", signSw, reverse: true);
-        Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", emerExitSw, reverse: true);
+        // Order MIRRORS the real cockpit switch (user-confirmed): On (top) -> Auto/Arm ->
+        // Off (bottom), ascending by the FBW value (On=0/mid=1/Off=2) — you flip the
+        // physical overhead switch UP for On, so up-arrow from the resting position goes
+        // toward On/Auto, matching the cockpit.
+        Sel("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "No Smoking", signSw);
+        Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", emerExitSw);
 
         // ---- ADIRS ----
         for (int n = 1; n <= 3; n++)
