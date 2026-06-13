@@ -261,6 +261,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var onOff = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
         var normFault = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" };
         var signSw = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" };
+        // Emergency-exit sign switch: same 0=On/1=mid/2=Off mapping, but the middle
+        // position is ARM (auto-on if power lost), not "Auto" (FBW A380_COCKPIT.xml
+        // ANIMTIP_1 "Set emergency exit signs to ARM").
+        var emerExitSw = new Dictionary<double, string> { [0] = "On", [1] = "Arm", [2] = "Off" };
         var srcSw = new Dictionary<double, string> { [0] = "Capt", [1] = "Norm", [2] = "F/O" };
         var discSw = new Dictionary<double, string> { [0] = "Disconnected", [1] = "Normal" };
 
@@ -537,6 +541,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_FIRE_TEST_CARGO", "Cargo Smoke Detection Test");
 
         // ---- OXYGEN ----
+        // Ascending order (value 0 at top) to mirror the cockpit, consistent with the
+        // signs above. (Value 0 = the armed/on position; FBW preset calls it "Crew Oxy On".)
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
             new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
         OnOff("A32NX_OXYGEN_MASKS_DEPLOYED", "Passenger Masks Deployed");
@@ -674,8 +680,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
+        // Order MIRRORS the real cockpit switch (user-confirmed): On (top) -> Auto/Arm ->
+        // Off (bottom), ascending by the FBW value (On=0/mid=1/Off=2) — you flip the
+        // physical overhead switch UP for On, so up-arrow from the resting position goes
+        // toward On/Auto, matching the cockpit.
         Sel("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "No Smoking", signSw);
-        Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", signSw);
+        Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", emerExitSw);
 
         // ---- ADIRS ----
         for (int n = 1; n <= 3; n++)
@@ -3476,6 +3486,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // BTV (Brake-To-Vacate) rollout call-outs: current BTV state (gate) and which
     // distance thresholds have already been spoken this landing (reset between).
     private int _btvState = 0;
+    // Self-tracked anti-skid switch state. The stock A:ANTISKID BRAKES ACTIVE reads
+    // unreliably via the data-def path on the A380 (live-verified: same batch returned
+    // 1 AND 0), so the cached "current" got stuck at On and the combo's "select On" never
+    // fired the toggle. ANTISKID_BRAKES_TOGGLE reliably FLIPS the switch, so we track the
+    // commanded state ourselves, seeded to the power-on default (ON) instead of the flaky
+    // cache, and never re-read the data-def value.
+    private bool? _antiskidOn;
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private int _fmgcPhaseA380 = -1; // numeric FMGC flight phase; gates the capability announce (taxi flicker spam)
     private readonly int[] _gpuAvail = { -1, -1, -1, -1 };   // last external-power-available state per GPU (-1 = unseen)
@@ -4388,9 +4405,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
                 simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
             }
-            announcer.Announce(varKey == "A32NX_FIRE_TEST_CARGO"
-                ? (on == 1 ? "Cargo smoke test on" : "Cargo smoke test off")
-                : (on == 1 ? "Fire test on" : "Fire test off"));
+            // No explicit announce here: the screen reader reads the combo change, and
+            // the Continuous+IsAnnounced monitor speaks the state change THROUGH the
+            // Ctrl+M-gated path (MainForm.OnSimVarUpdated). The old announcer.Announce
+            // bypassed that mute — the reported "doesn't respect global suppression" bug.
             return true;
         }
         // System Display PAGE combo: drive the SD to the chosen page, then scrape that
@@ -4547,13 +4565,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
             return true;
         }
-        // Anti-skid: TOGGLE-only event (the cockpit switch fires K:ANTISKID_BRAKES_TOGGLE,
-        // state = A:ANTISKID BRAKES ACTIVE); fire only when desired != current.
+        // Anti-skid: TOGGLE-only event (K:ANTISKID_BRAKES_TOGGLE flips the switch). The
+        // stock A:ANTISKID BRAKES ACTIVE state reads UNRELIABLY via the data-def path on
+        // the A380 (live-verified: same batch returned 1 AND 0), so the cached "current"
+        // got stuck at On and "select On" never fired the toggle (the user's bug). Track
+        // the commanded state ourselves: the toggle reliably flips it, so after each set we
+        // KNOW the result. Seed to the A380's power-on default (anti-skid ON) rather than the
+        // flaky cache — a bad first read could otherwise fire a spurious toggle on the user's
+        // first "select On"; thereafter drive off _antiskidOn.
         if (varKey == "ANTISKID_BRAKES_ACTIVE")
         {
             bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("ANTISKID_BRAKES_ACTIVE") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            bool currentOn = _antiskidOn ?? true;
             if (desiredOn != currentOn) simConnect.SendEvent("ANTISKID_BRAKES_TOGGLE");
+            _antiskidOn = desiredOn;
             return true;
         }
         // --- Combos whose STATE is a SimVar but whose CONTROL is a K-event
