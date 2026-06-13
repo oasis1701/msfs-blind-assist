@@ -4881,13 +4881,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (s == null || !s.IsConnected) return;
         if (rmp < 1 || rmp > 3) rmp = 1;   // 1=Captain, 2=First Officer, 3=Overhead (RMP 3)
-        // CRITICAL: fire PRESS and RELEASE in ONE calculator call. MobiFlight's command channel
+        // CRITICAL #1: fire PRESS and RELEASE in ONE calculator call. MobiFlight's command channel
         // is a single shared buffer it reads once per frame — two back-to-back ExecuteCalculatorCode
         // calls (separate SetClientData writes) land in the same frame, so the RELEASE overwrites the
         // PRESS before the WASM module processes it. The key then never registers as pressed and the
         // page switch / digit / swap silently does nothing. One call = one buffer write = both events
         // run together (live-verified: page switch + digit entry only work this way through the app).
-        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED) (>H:RMP_{rmp}_{key}_RELEASED)");
+        // CRITICAL #2: the SAME channel also COALESCES two CONSECUTIVE IDENTICAL command strings — so
+        // typing a repeated key (the "22" in 122.800, or the select-then-load double-press of LSK_1 /
+        // swap double-press of ADK_1) silently dropped the second press (122.800 -> 128.000; load/swap
+        // no-op). The leading "{seq} 0 *" makes every call's string textually unique (computes a
+        // discarded 0) so it's never deduped — same anti-dedup idiom as FireDcduEvent / the seat-motor
+        // ticks. (Earlier "verified" repeats like 118500/11850 hid this because their auto-complete
+        // padded the dropped-duplicate result back to the right frequency; 122.800 does not.)
+        s.ExecuteCalculatorCode($"{++_rmpKeySeq} 0 * (>H:RMP_{rmp}_{key}_PRESSED) (>H:RMP_{rmp}_{key}_RELEASED)");
     }
 
     /// <summary>Set the transponder squawk straight from the RMP window via the stock <c>XPNDR_SET</c>
@@ -6912,6 +6919,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private long _seatMotorSeq;
     private int _seatMotorTicks;
     private long _sdWriteSeq;   // makes the SD-page-index calc write unique each time (anti-dedup)
+    private long _rmpKeySeq;    // makes each RMP keypad calc string unique (anti-dedup; see SendRmpKey)
 
     private static readonly Dictionary<string, (string Disp, string Hi, string Lo)> _seatMotorMeta = new()
     {
