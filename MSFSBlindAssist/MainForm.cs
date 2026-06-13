@@ -1064,7 +1064,7 @@ public partial class MainForm : Form
         // (_lastOnGround, cached from SIM_ON_GROUND) — GS callouts are on-ground only.
         if (e.VarName == "GROUND_VELOCITY")
         {
-            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround);
+            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround, takeoffAssistManager.IsActive);
             return true;
         }
 
@@ -4607,6 +4607,7 @@ public partial class MainForm : Form
             currentSettings.TaxiGuidanceHardPanTone,
             currentSettings.TaxiGuidanceAnnounceCrossings,
             currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
+            currentSettings.TakeoffAssistGroundSpeedAnnounceInterval,
             currentSettings.GroundTrafficUseMetres,
             currentSettings.GsxAutoSelectGateOnRoute,
             currentSettings.DockingGuidanceEnabled,
@@ -4621,6 +4622,7 @@ public partial class MainForm : Form
                 currentSettings.TaxiGuidanceHardPanTone = settingsForm.HardPanSteeringTone;
                 currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
                 currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
+                currentSettings.TakeoffAssistGroundSpeedAnnounceInterval = settingsForm.TakeoffGroundSpeedAnnounceInterval;
                 currentSettings.GroundDistanceUnit = settingsForm.SelectedDistanceUnit;
                 currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
                 currentSettings.GsxAutoSelectGateOnRoute = settingsForm.GsxAutoSelectGateOnRoute;
