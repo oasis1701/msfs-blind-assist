@@ -76,6 +76,11 @@ public sealed class DockingGuidanceManager : IDisposable
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
     private static readonly string DockLogPath = Utils.AppLogs.PathFor("docking.log");
     private DateTime _lastDockLogUtc = DateTime.MinValue;
+    // One-shot diagnostic for the occupancy clamp (written to docking-aircraft.log, the same
+    // file as the STOPOFFSET line). Reset per gate in ResetLocked so a re-dock re-logs once;
+    // NOT written per frame (the clamp math runs every frame but the file write is latched).
+    private static readonly string AircraftLogPath = Utils.AppLogs.PathFor("docking-aircraft.log");
+    private bool _occupancyClampLogged;
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
         => _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
@@ -203,6 +208,33 @@ public sealed class DockingGuidanceManager : IDisposable
                 if ((_stopOffset.LongitudinalMetres != 0.0 || _stopOffset.LateralMetres != 0.0)
                     && _gate.IsDeiceArea != true)
                     ShiftStop(ref sLat, ref sLon, centerHdg, _stopOffset);
+
+                // Occupancy-safe clamp: keep the aircraft DATUM inside GSX's static occupancy
+                // circle (radius ≈ gatedistancethreshold, centred on this_parking_pos =
+                // _gate.Latitude/Longitude) so GSX registers the aircraft as PARKED and offers
+                // arrival services + the jetway, rather than "reposition". The .py offset above
+                // can push the datum past that circle at gates whose threshold is tight relative
+                // to the stop distance (KBOS E13: datum 31.5 m > 25 m circle → reposition).
+                // Strict NO-OP for deice pads, navdata-only gates (no StopLatitude / threshold),
+                // VDGS-reliant gates whose stop sits beyond the threshold (EDDF A66), and any
+                // datum already inside its circle. See
+                // docs/superpowers/specs/2026-06-13-gsx-vdgs-nose-stop-datum-handoff.md.
+                if (_gate.StopLatitude.HasValue && _gate.StopLongitude.HasValue
+                    && _gate.GateDistanceThreshold.HasValue && _gate.IsDeiceArea != true)
+                {
+                    bool clamped = DockingGeometry.ClampStopToOccupancy(
+                        _gate.Latitude, _gate.Longitude,
+                        _gate.StopLatitude.Value, _gate.StopLongitude.Value,
+                        centerHdg, _gate.GateDistanceThreshold.Value,
+                        ref sLat, ref sLon,
+                        out double baseStopAlong, out double desiredAlong, out double clampedAlong);
+                    if (clamped && !_occupancyClampLogged)
+                    {
+                        _occupancyClampLogged = true;
+                        LogOccupancyClamp(_gate.GateDistanceThreshold.Value,
+                            baseStopAlong, desiredAlong, clampedAlong, sLat, sLon);
+                    }
+                }
 
                 double distM = NavigationCalculator.CalculateDistance(lat, lon, sLat, sLon) * DockingGeometry.MetresPerNm;
                 double brg = NavigationCalculator.CalculateBearing(lat, lon, sLat, sLon);
@@ -497,6 +529,30 @@ public sealed class DockingGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// One-shot diagnostic written the first frame the occupancy clamp moves the stop for a
+    /// gate (latched by <c>_occupancyClampLogged</c>, reset per gate in ResetLocked). Lands in
+    /// docking-aircraft.log next to the STOPOFFSET line so a "GSX still says reposition" report
+    /// can be checked at a glance: thr = gatedistancethreshold, gap = base-stop along-track,
+    /// desired = the .py-shifted along-track, clamped = the new along-track. Never throws.
+    /// </summary>
+    private void LogOccupancyClamp(double threshold, double baseStopAlong,
+                                   double desiredAlong, double clampedAlong, double sLat, double sLon)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(AircraftLogPath)!);
+            File.AppendAllText(AircraftLogPath, string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:HH:mm:ss}  OCCUPANCY-CLAMP  icao='{1}' gate='{2}' vdgs='{3}' thr={4:F1} " +
+                "gap={5:F1} desired={6:F1} -> clamped={7:F1} (margin {8:F1}) stopLat={9:F8} stopLon={10:F8}{11}",
+                DateTime.Now, _gate?.AirportICAO ?? "", _gate?.ToString() ?? "", _gate?.VdgsType ?? "",
+                threshold, baseStopAlong, desiredAlong, clampedAlong,
+                DockingGeometry.OccupancyClampMarginMetres, sLat, sLon, Environment.NewLine));
+        }
+        catch { /* logging must never break docking */ }
+    }
+
+    /// <summary>
     /// Intercept-angle lineup error (degrees) to the gate centerline — the line through the
     /// stop position (<paramref name="sLat"/>,<paramref name="sLon"/>) along the stop heading
     /// (<paramref name="centerHdgTrue"/>). Mirrors the runway/gate lineup: the desired heading
@@ -553,6 +609,7 @@ public sealed class DockingGuidanceManager : IDisposable
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;
+        _occupancyClampLogged = false;
     }
 
     public void Dispose()

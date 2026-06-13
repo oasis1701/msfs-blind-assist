@@ -230,4 +230,93 @@ public static class DockingGeometry
         double cosLat = Math.Cos(sLat * Math.PI / 180.0);
         newLon = sLon + (Math.Abs(cosLat) > 1e-9 ? east_m / (MetresPerDegLat * cosLat) : 0.0);
     }
+
+    /// <summary>
+    /// Safety margin (m) the occupancy clamp keeps the datum INSIDE the static-circle edge.
+    /// The KBOS E13 live sweep (2026-06-13) flipped GSX services→reposition at ~25.5 m
+    /// (gatedistancethreshold 25); clamping to threshold − 2 m (23 m) was verified to give
+    /// GSX arrival services AND a connecting jetway, with ~2.5 m of slack for docking scatter.
+    /// </summary>
+    public const double OccupancyClampMarginMetres = 2.0;
+
+    /// <summary>
+    /// Tolerance (m) for treating the base stop as "inside the static circle" in the clamp's
+    /// gate (a). Scenery authors routinely set <c>gatedistancethreshold</c> equal to the stop
+    /// distance (KBOS E13: both 25 m), so a strict <c>baseStopAlong &gt; threshold</c> test
+    /// rejects exactly the gate we want to fix the moment float/coordinate noise pushes the
+    /// computed gap a hair over the threshold. 1 m keeps that knife-edge on the CLAMP side
+    /// while still cleanly excluding genuinely VDGS-reliant stands (EDDF A66: gap 25.1 m vs
+    /// threshold 15 m — 10 m clear). Worst-case extra pull-short of the bar is margin + this = 3 m.
+    /// </summary>
+    public const double ClampBaseStopToleranceMetres = 1.0;
+
+    /// <summary>
+    /// Occupancy-safe clamp of the (already-.py-shifted) docking stop point so the aircraft
+    /// DATUM cannot end OUTSIDE GSX's static occupancy region — a circle of radius
+    /// ≈ <paramref name="gateDistanceThreshold"/> centred on this_parking_pos
+    /// (<paramref name="ppLat"/>,<paramref name="ppLon"/>). When the GSX .py per-aircraft
+    /// offset pushes the datum past that circle, GSX does NOT register the aircraft as parked
+    /// and offers "reposition" instead of arrival services (live-verified KBOS E13: the B772
+    /// datum landed 31.5 m out, past the 25 m circle → reposition; the same circle accepts the
+    /// datum at ≤ 25 m, including 10 m BEHIND this_parking_pos → it is a radius, not a
+    /// forward-only segment).
+    /// <para>
+    /// Fires ONLY when (a) the base stop itself is inside the circle
+    /// (<paramref name="gateDistanceThreshold"/> ≥ base-stop along-track distance) AND (b) the
+    /// shifted datum would land outside it. It then pulls the stop back ALONG the gate heading
+    /// to (threshold − <see cref="OccupancyClampMarginMetres"/>), leaving the lateral component
+    /// untouched. At gates whose stop already sits BEYOND the threshold (e.g. EDDF A66:
+    /// threshold 15 &lt; gap 25.1) it is a strict NO-OP — those stands are accepted only via
+    /// GSX's dynamic VDGS approach-dock, and clamping would pull the datum far short of the bar
+    /// and break jetway reach. Also a NO-OP when the datum is already inside the circle, so
+    /// currently-working docks are byte-identical (minimal blast radius: only datums that would
+    /// otherwise land outside their circle are moved).
+    /// </para>
+    /// <para>
+    /// Verified live (KBOS E13, B772, 2026-06-13): datum 31.5 m → 23 m → GSX arrival services
+    /// + jetway connects; EDDF A66 / KATL C20 untouched. See
+    /// docs/superpowers/specs/2026-06-13-gsx-vdgs-nose-stop-datum-handoff.md. Pure function;
+    /// a sign error here parks the aircraft in the wrong spot — keep probe-tested.
+    /// </para>
+    /// </summary>
+    /// <returns>true if the stop point was moved.</returns>
+    public static bool ClampStopToOccupancy(
+        double ppLat, double ppLon,
+        double baseStopLat, double baseStopLon,
+        double stopHeadingTrue, double gateDistanceThreshold,
+        ref double sLat, ref double sLon,
+        out double baseStopAlong, out double desiredAlong, out double clampedAlong)
+    {
+        baseStopAlong = AlongTrackFrom(ppLat, ppLon, baseStopLat, baseStopLon, stopHeadingTrue);
+        desiredAlong  = AlongTrackFrom(ppLat, ppLon, sLat, sLon, stopHeadingTrue);
+        clampedAlong  = desiredAlong;
+
+        // (a) Base stop sits clearly beyond the static circle → VDGS-reliant gate; clamping
+        // would pull the datum well short of the bar (EDDF A66: gap 25.1 m, threshold 15 m).
+        // The tolerance keeps the author-set-threshold-==-stop-distance knife-edge (KBOS E13:
+        // both 25 m) on the CLAMP side despite float/coordinate noise. (b) Datum already inside
+        // the circle → nothing to fix. Either case: no-op.
+        if (baseStopAlong > gateDistanceThreshold + ClampBaseStopToleranceMetres) return false;
+        if (desiredAlong <= gateDistanceThreshold) return false;
+
+        clampedAlong = gateDistanceThreshold - OccupancyClampMarginMetres;
+        double pullBack = desiredAlong - clampedAlong; // > 0
+        ShiftStopMetres(sLat, sLon, stopHeadingTrue, -pullBack, 0.0, out sLat, out sLon);
+        return true;
+    }
+
+    /// <summary>
+    /// Forward (along-<paramref name="headingTrueDeg"/>) distance in metres from
+    /// (<paramref name="originLat"/>,<paramref name="originLon"/>) to
+    /// (<paramref name="pLat"/>,<paramref name="pLon"/>). Equirectangular, same bearing
+    /// convention as <see cref="ShiftStopMetres"/> (north = cos(hdg), east = sin(hdg)).
+    /// </summary>
+    private static double AlongTrackFrom(
+        double originLat, double originLon, double pLat, double pLon, double headingTrueDeg)
+    {
+        double northM = (pLat - originLat) * MetresPerDegLat;
+        double eastM  = (pLon - originLon) * MetresPerDegLat * Math.Cos(originLat * Math.PI / 180.0);
+        double hdg = headingTrueDeg * Math.PI / 180.0;
+        return northM * Math.Cos(hdg) + eastM * Math.Sin(hdg);
+    }
 }
