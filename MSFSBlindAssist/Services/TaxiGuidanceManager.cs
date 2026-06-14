@@ -274,6 +274,13 @@ public class TaxiGuidanceManager : IDisposable
     // StopGuidance (NOT on recalc — mid-taxi recalcs use the normal turn cues).
     private const double INITIAL_TURN_CUE_DEG = 100.0;
     private bool _initialTurnCueAnnounced = false;
+    // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
+    // and taxiway-change callouts so they don't stomp that (longer, safety-
+    // critical) warning at guidance start — 2026-06-13: "Crossing taxiway G" cut
+    // the warning off mid-sentence. Hold-shorts, runway-crossing callouts, and the
+    // lineup bailout are NOT gated by this.
+    private const double REACH_WARNING_CHATTER_GRACE_SEC = 8.0;
+    private DateTime _startChatterSuppressUntil = DateTime.MinValue;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
     private const double STRAIGHTEN_EPISODE_END_RATE_DEG_SEC = 1.5;  // close episode (hysteresis)
@@ -1314,9 +1321,20 @@ public class TaxiGuidanceManager : IDisposable
                     ? summary
                     : runwayReachWarning + " " + summary;
                 LastRouteSummary = boxText;
+                // SPOKEN warning is a short one-liner (~5 s) so it's heard before
+                // the first tactical callout can interrupt it; the full detail
+                // (distance off, "missing connector") stays in the box above for
+                // re-reading. A 3-sentence spoken warning got cut by "Crossing
+                // taxiway G" at guidance start (2026-06-13).
                 LastRouteReachWarning = string.IsNullOrEmpty(runwayReachWarning)
-                    ? null : runwayReachWarning;
-                if (announceSummary)
+                    ? null
+                    : $"Warning: this route does not reach {destinationName}. " +
+                      "Check your taxiway entry and reprogram.";
+                // For a route that doesn't reach its runway, skip the SPOKEN
+                // summary (it still shows in the box) — the warning is the
+                // message, and the summary would just pile onto the start-of-
+                // guidance speech. Normal routes announce the summary as usual.
+                if (announceSummary && LastRouteReachWarning == null)
                     _announcer.Announce(summary);
             }
 
@@ -1337,6 +1355,13 @@ public class TaxiGuidanceManager : IDisposable
         lock (_stateLock)
         {
         if (_route == null || _route.Segments.Count == 0) return;
+
+        // If this route can't reach its runway, the form speaks the reach warning
+        // right after this call. Open a short grace window so the informational
+        // taxiway-crossing / taxiway-change callouts don't stomp it at start.
+        _startChatterSuppressUntil = LastRouteReachWarning != null
+            ? DateTime.UtcNow.AddSeconds(REACH_WARNING_CHATTER_GRACE_SEC)
+            : DateTime.MinValue;
 
         _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
 
@@ -3088,6 +3113,16 @@ public class TaxiGuidanceManager : IDisposable
         {
             // All names are duplicates of recent announcements — still mark this node
             // as "handled" so we don't retry on every frame while within range.
+            _crossingAnnounced = true;
+            _lastCrossingNodeId = junctionNode.NodeId;
+            return;
+        }
+
+        // Hold this informational callout during the post-reach-warning grace
+        // window so it doesn't stomp the warning at guidance start. Mark the node
+        // handled so we don't re-test every frame while inside the window.
+        if (DateTime.UtcNow < _startChatterSuppressUntil)
+        {
             _crossingAnnounced = true;
             _lastCrossingNodeId = junctionNode.NodeId;
             return;
@@ -5226,6 +5261,7 @@ public class TaxiGuidanceManager : IDisposable
         _positionInitialized = false;
         _headingErrorInitialized = false;
         _initialTurnCueAnnounced = false;
+        _startChatterSuppressUntil = DateTime.MinValue;
         // Reset the tone slew-limiter baseline so a fresh guidance session snaps
         // to its first target instead of sweeping from a stale value. (Recalcs
         // do NOT reset it — they swap the route in place without StopGuidance —
