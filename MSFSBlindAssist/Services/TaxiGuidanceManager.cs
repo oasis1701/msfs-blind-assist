@@ -18,6 +18,13 @@ public enum TaxiGuidanceState
     LiningUp,
     Arrived,
     /// <summary>
+    /// A Progressive Taxi leg has reached its terminator (hold short of a
+    /// runway/taxiway, just past a cleared crossing, or end of taxiway). The
+    /// tone is off and the aircraft holds; the pilot sets the next leg. No
+    /// lineup, no Takeoff-Assist, no docking.
+    /// </summary>
+    ProgressiveHold,
+    /// <summary>
     /// Set immediately after a landing-exit auto-activation. The aircraft
     /// is still on the runway at high speed, decelerating; we don't want
     /// the steering tone firing on slight heading offsets that just mean
@@ -1643,6 +1650,10 @@ public class TaxiGuidanceManager : IDisposable
             // lies east of the S6 exit on the way to the terminal).
             if (_state == TaxiGuidanceState.Arrived && _graph != null)
                 CheckRunwayIncursion(lat, lon);
+            // ProgressiveHold is a terminal no-op: tone is off, the aircraft holds,
+            // the pilot sets the next leg. No tone, no recalc, no movement logic.
+            // (The unreachable-runway safety net and lineup path are gated on
+            // _isRunwayLineup / _hasLineupTarget, which progressive never sets.)
             return;
         }
 
@@ -3089,6 +3100,19 @@ public class TaxiGuidanceManager : IDisposable
 
     private void HandleArrival()
     {
+        // Progressive Taxi leg: reached its terminator (hold short / after crossing /
+        // end of taxiway). Tone off, announce the end-of-leg callout, hold position.
+        // This intercept must run before the runway/gate/lineup branches so a
+        // progressive route never enters LiningUp, fires RequestTakeoffAssistAutoActivate,
+        // or triggers docking arrival.
+        if (_progressiveTerminator is { } term)
+        {
+            _steeringTone.Stop();
+            SetState(TaxiGuidanceState.ProgressiveHold);
+            AnnounceInstruction(term.EndAnnouncement());
+            return;
+        }
+
         // FAA AIM 4-3-18, ATC 7110.65 §3-7-2, and §3-7-2-h: an ATC taxi clearance
         // NEVER authorizes entering or crossing any runway — including the assigned
         // takeoff runway. Pilot must hold short until given "cleared to cross",
