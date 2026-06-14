@@ -1281,15 +1281,25 @@ public class TaxiGuidanceManager : IDisposable
                 // warning almost certainly cut off before it played.
                 if (!string.IsNullOrEmpty(constrainedLengthWarning))
                     summary = constrainedLengthWarning + " " + summary;
-                // The runway-reach warning is the most safety-critical of the
-                // three, so it goes FIRST (same "warning before summary"
-                // reasoning as the length advisory — a tail-position warning is
-                // cut off by the first tactical callout once rolling).
-                if (!string.IsNullOrEmpty(runwayReachWarning))
-                    summary = runwayReachWarning + " " + summary;
-                LastRouteSummary = summary;
+                // The runway-reach warning ("route does not reach Runway X") is
+                // safety-critical and MUST be heard at calculate time. The route
+                // summary is plain queued speech that the first tactical callout
+                // (or guidance start) flushes, so a warning merely prepended to it
+                // shows in the box but is never spoken — confirmed in-sim
+                // 2026-06-13: the pilot saw it in the box and heard the lineup
+                // bailout (AnnounceImmediate) but NOT this one at calculate. Speak
+                // it via AnnounceImmediate, like the bailout; keep it in the box
+                // text but NOT in the queued summary (avoids double-speak).
+                string boxText = string.IsNullOrEmpty(runwayReachWarning)
+                    ? summary
+                    : runwayReachWarning + " " + summary;
+                LastRouteSummary = boxText;
                 if (announceSummary)
+                {
+                    if (!string.IsNullOrEmpty(runwayReachWarning))
+                        _announcer.AnnounceImmediate(runwayReachWarning);
                     _announcer.Announce(summary);
+                }
             }
 
             return null;
