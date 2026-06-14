@@ -1456,7 +1456,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // multi-state ValueDescriptions var as a settable combo (MainForm ~5178), which
         // is exactly the confusing A/THR combo we're dropping.
         vars["A32NX_AUTOTHRUST_STATUS"].RenderAsReadOnlyStatus = true;
-        Read("A32NX_FMS_PAX_NUMBER", "Passenger Number");
+        Read("A32NX_FMS_PAX_NUMBER", "Passengers on Board");
+        // Per-station seat bitmasks → boarded total (see PaxStationVars). Continuous +
+        // IsAnnounced so they ride the continuous batch (live-cached every second, so the
+        // running total is always current when the Status panel is viewed — no timing race),
+        // but handled in ProcessSimVarUpdate (returns true → never spoken) and
+        // ExcludeFromMonitorManager so they don't clutter the Ctrl+M list.
+        foreach (var pk in PaxStationVars)
+            vars[pk] = new SimVarDefinition
+            {
+                Name = pk, DisplayName = pk, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ExcludeFromMonitorManager = true, Units = "number"
+            };
         ReadEnum("A32NX_ECAM_FAILURE_ACTIVE", "ECAM Failure Active", onOff);
         Mon("A32NX_FMGC_FLIGHT_PHASE", "Flight Phase",
             new Dictionary<double, string>
@@ -3526,6 +3538,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ND TO-waypoint ident: packed 6 bits/char, 8 chars/word (low bits first),
     // char = code + 31. Cached from ProcessSimVarUpdate; decoded in TryGetDisplayOverride.
     private double _ndIdent0, _ndIdent1;
+
+    // ---- Passengers on board (Status panel) ----
+    // A32NX_FMS_PAX_NUMBER (the var the Status panel used to read) is written ONLY by
+    // the MFD FUEL&LOAD page (MfdFmsFuelLoad.tsx) — so boarding via the flyPad never
+    // sets it and it reads 0. The real boarded count is the sum of occupied seats across
+    // the 14 per-station seat-bitmask L:vars (each holds an integer whose set-bit count =
+    // filled seats in that cabin zone; ≤ 50 seats/station, so the value is < 2^53 and is
+    // exact as a double — the same float64 the FBW EFB itself reads). We popcount each
+    // and sum; the result is shown for "A32NX_FMS_PAX_NUMBER" in TryGetDisplayOverride.
+    private static readonly string[] PaxStationVars =
+    {
+        "A32NX_PAX_MAIN_FWD_A", "A32NX_PAX_MAIN_FWD_B",
+        "A32NX_PAX_MAIN_MID_1A", "A32NX_PAX_MAIN_MID_1B", "A32NX_PAX_MAIN_MID_1C",
+        "A32NX_PAX_MAIN_MID_2A", "A32NX_PAX_MAIN_MID_2B", "A32NX_PAX_MAIN_MID_2C",
+        "A32NX_PAX_MAIN_AFT_A", "A32NX_PAX_MAIN_AFT_B",
+        "A32NX_PAX_UPPER_FWD", "A32NX_PAX_UPPER_MID_A", "A32NX_PAX_UPPER_MID_B", "A32NX_PAX_UPPER_AFT"
+    };
+    private readonly Dictionary<string, int> _paxFilledByStation = new();
+    private int _paxOnBoard;
     // ---- Doors (read-only status + auto-announce; NO settable combos — the user opens/closes
     // via the flyPad). ALL 18 modelled doors, authoritative ip→door mapping from the FBW SD
     // DoorPage.tsx: 16 passenger doors = stock SimVar INTERACTIVE POINT OPEN:0..15 (0..1 anim
@@ -3592,6 +3623,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
         else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
         else if (varName == "A32NX_BETA_TARGET_ACTIVE") _betaTargetActive = value > 0.5;
+
+        // Passengers on board: each station L:var is an integer seat-bitmask (set bit =
+        // filled seat). Popcount it, cache per station, and keep the running total.
+        // Value < 2^53 (≤ 50 seats/station), so (long)value is exact. Never announced.
+        if (varName.StartsWith("A32NX_PAX_", StringComparison.Ordinal) && varName.IndexOf("_DESIRED", StringComparison.Ordinal) < 0)
+        {
+            _paxFilledByStation[varName] = System.Numerics.BitOperations.PopCount((ulong)(long)Math.Round(value));
+            int total = 0;
+            foreach (var c in _paxFilledByStation.Values) total += c;
+            _paxOnBoard = total;
+            return true;
+        }
 
         // Icing conditions — A32NX_ICING_STATE_ICING_STICK_INDICATOR is the cockpit
         // ice-accretion "stick" (the visual ice-evidence probe): a CONTINUOUS 0..1
@@ -5034,6 +5077,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Passengers on board: A32NX_FMS_PAX_NUMBER only reflects the MFD FUEL&LOAD page
+        // entry (0 when boarding via the flyPad), so show the real boarded total summed
+        // from the per-station seat bitmasks (cached in ProcessSimVarUpdate).
+        if (varKey == "A32NX_FMS_PAX_NUMBER")
+        {
+            displayText = _paxOnBoard.ToString();
+            return true;
+        }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
         // state + live level ("Icing, 30 percent" / "None") instead of a raw "0.3".
         if (varKey == "A32NX_ICING_STATE_ICING_STICK_INDICATOR")
@@ -5993,8 +6044,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int n = 1; n <= 4; n++) r.Add(($"Generator {n} line contactor", $"A32NX_ELEC_CONTACTOR_990XU{n}_IS_CLOSED", v => Flag(v, "closed", "open")));
                 r.Add(("Emergency generator contactor", "A32NX_ELEC_CONTACTOR_5XE_IS_CLOSED", v => Flag(v, "closed", "open")));
                 // AC EHA bus (electro-hydraulic actuators) + its supply contactors (911XN from AC3,
-                // 911XH from AC ESS).
-                r.Add(("AC EHA bus", "A32NX_ELEC_AC_EHA_BUS_IS_POWERED", OnOff));
+                // 911XH from AC ESS). The bus is the named bus 247XP — the invented
+                // A32NX_ELEC_AC_EHA_BUS_IS_POWERED does NOT exist (read 0; live-verified the real
+                // 247XP bus reads powered in flight), same trap as the BAT_ESS/APU note below.
+                r.Add(("AC EHA bus", "A32NX_ELEC_247XP_BUS_IS_POWERED", OnOff));
                 r.Add(("AC EHA contactor from AC 3", "A32NX_ELEC_CONTACTOR_911XN_IS_CLOSED", v => Flag(v, "closed", "open")));
                 r.Add(("AC EHA contactor from AC ESS", "A32NX_ELEC_CONTACTOR_911XH_IS_CLOSED", v => Flag(v, "closed", "open")));
                 break;
@@ -6021,8 +6074,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int n = 1; n <= 2; n++) r.Add(($"DC bus {n}", $"A32NX_ELEC_DC_{n}_BUS_IS_POWERED", OnOff));
                 r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
                 r.Add(("DC APU bus", "A32NX_ELEC_309PP_BUS_IS_POWERED", OnOff));
-                // DC EHA bus + its supply contactors (14PH from DC ESS, 970PN2 from DC 2).
-                r.Add(("DC EHA bus", "A32NX_ELEC_DC_EHA_BUS_IS_POWERED", OnOff));
+                // DC EHA bus + its supply contactors (14PH from DC ESS, 970PN2 from DC 2). The bus
+                // is the named bus 247PP — the invented A32NX_ELEC_DC_EHA_BUS_IS_POWERED does NOT
+                // exist (read 0; live-verified the real 247PP bus reads powered in flight).
+                r.Add(("DC EHA bus", "A32NX_ELEC_247PP_BUS_IS_POWERED", OnOff));
                 r.Add(("DC EHA contactor from DC ESS", "A32NX_ELEC_CONTACTOR_14PH_IS_CLOSED", v => Flag(v, "closed", "open")));
                 r.Add(("DC EHA contactor from DC 2", "A32NX_ELEC_CONTACTOR_970PN2_IS_CLOSED", v => Flag(v, "closed", "open")));
                 break;
