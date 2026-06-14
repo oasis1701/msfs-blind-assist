@@ -1146,6 +1146,56 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Returns the node on <paramref name="fromTaxiway"/> that also has an outgoing edge on
+    /// <paramref name="toTaxiway"/> within the given connected component — i.e. the intersection
+    /// node where the two taxiways meet.  Used by the progressive-taxi terminator to locate
+    /// "hold short of taxiway Y while on taxiway X".
+    /// Returns -1 when no such node exists in the component.
+    /// </summary>
+    public int FindTaxiwayIntersectionNode(string fromTaxiway, string toTaxiway, int requiredComponentId)
+    {
+        foreach (var kvp in Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!Nodes.TryGetValue(nodeId, out var node) || node.ComponentId != requiredComponentId)
+                continue;
+            bool onFrom = false, onTo = false;
+            foreach (var e in kvp.Value)
+            {
+                if (e.TaxiwayName.Equals(fromTaxiway, StringComparison.OrdinalIgnoreCase)) onFrom = true;
+                else if (e.TaxiwayName.Equals(toTaxiway, StringComparison.OrdinalIgnoreCase)) onTo = true;
+            }
+            if (onFrom && onTo) return nodeId;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Returns the node on <paramref name="taxiway"/> (in the same connected component as
+    /// <paramref name="fromNodeId"/>) that is farthest — by straight-line distance — from
+    /// <paramref name="fromNodeId"/>.  Used by the progressive-taxi terminator to locate
+    /// the "end of taxiway" destination.
+    /// Returns -1 when <paramref name="fromNodeId"/> is not found or no node on
+    /// <paramref name="taxiway"/> exists in the component.
+    /// </summary>
+    public int FindTaxiwayEndNode(int fromNodeId, string taxiway)
+    {
+        if (!Nodes.TryGetValue(fromNodeId, out var from)) return -1;
+        int comp = from.ComponentId;
+        int best = -1;
+        double bestDist = -1;
+        foreach (var kvp in Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!Nodes.TryGetValue(nodeId, out var node) || node.ComponentId != comp) continue;
+            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiway, StringComparison.OrdinalIgnoreCase))) continue;
+            double d = FastDistanceMeters(from.Latitude, from.Longitude, node.Latitude, node.Longitude);
+            if (d > bestDist) { bestDist = d; best = nodeId; }
+        }
+        return best;
+    }
+
+    /// <summary>
     /// Gets the edge between two adjacent nodes on a specific taxiway, or any edge if taxiway is empty.
     /// </summary>
     public TaxiEdge? GetEdge(int fromNodeId, int toNodeId, string? preferredTaxiway = null)
