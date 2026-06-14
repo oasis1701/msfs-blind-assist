@@ -441,6 +441,11 @@ public class TaxiGuidanceManager : IDisposable
     private const double LINEUP_PULSE_MIN_CROSS_FEET = 10.0;
     private bool _isRunwayLineup = false;  // true = runway (use centerline), false = gate (heading only)
     private bool _hasLineupTarget = false; // explicit flag — safer than (_lineupTargetLat != 0)
+    // Non-null while a Progressive Taxi leg is active. Drives the terminal
+    // "progressive hold" end-state + announcement and suppresses the auto
+    // hold-short on a cleared crossing. Cleared on every LoadRoute (set fresh
+    // below) and StopGuidance.
+    private Navigation.ProgressiveTerminator? _progressiveTerminator;
 
     // When true, we are currently holding short AT the destination runway
     // (FAA/ICAO: ATC taxi-to clearance never authorizes entering the assigned
@@ -942,7 +947,12 @@ public class TaxiGuidanceManager : IDisposable
         // never need this; it's the explicit override for ATC clearances where
         // the pilot wants to confirm the SPECIFIC runway named, or where the
         // auto-detect didn't fire for some reason.
-        Dictionary<int, string>? userRunwayHoldShorts = null)
+        Dictionary<int, string>? userRunwayHoldShorts = null,
+        // Non-null for Progressive Taxi legs. Carries the terminal end-state
+        // type/target; drives the progressive-hold end announcement and (for
+        // AfterCrossingRunway) suppresses the auto hold-short on the cleared
+        // crossing. Task 4 consumes this for the terminal state machine.
+        Navigation.ProgressiveTerminator? progressiveTerminator = null)
     {
         lock (_stateLock)
         {
@@ -957,6 +967,7 @@ public class TaxiGuidanceManager : IDisposable
 
             // Store lineup target data (runway threshold or gate position) for lineup phase
             _isRunwayLineup = isRunwayDestination;
+            _progressiveTerminator = progressiveTerminator;
             if (destinationThresholdLat.HasValue && destinationThresholdLon.HasValue && destinationHeading.HasValue)
             {
                 _lineupTargetLat = destinationThresholdLat.Value;
@@ -1098,6 +1109,22 @@ public class TaxiGuidanceManager : IDisposable
             // VATSIM. This pause-and-resume flow uses the same Continue hotkey
             // pattern as ATC-instructed hold-shorts.
             InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
+
+            // Progressive "after crossing" terminator: the pilot is cleared to
+            // cross the terminator runway, so strip the auto hold-short for it
+            // (other crossings keep their safety hold — spec Decision 2).
+            if (_progressiveTerminator?.ClearedCrossingRunway is string clearedRwy)
+            {
+                foreach (var seg in route.Segments)
+                {
+                    if (seg.IsHoldShortPoint && !string.IsNullOrEmpty(seg.HoldShortRunway) &&
+                        RunwayDesignatorsMatch(seg.HoldShortRunway, clearedRwy))
+                    {
+                        seg.IsHoldShortPoint = false;
+                        seg.HoldShortRunway = "";
+                    }
+                }
+            }
 
             // Constrained-route sanity advisory: compare against the
             // unconstrained shortest path from the aircraft's natural start
@@ -5054,6 +5081,7 @@ public class TaxiGuidanceManager : IDisposable
         _headingErrorInitialized = false;
         _lastGroundSpeedKts = 0;
         _hasLineupTarget = false;
+        _progressiveTerminator = null;
         _lineupAnnouncedAligned = false;
         _autoActivateFired = false;
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
@@ -5533,6 +5561,43 @@ public class TaxiGuidanceManager : IDisposable
     /// — sub-cm accuracy at runway scale.
     ///
     /// Runway heading is measured clockwise from true north, so the unit vector
+    /// <summary>
+    /// Returns true when the tagged segment's HoldShortRunway designator (which
+    /// may include the "runway " prefix added by
+    /// <see cref="InsertRunwayCrossingHoldShorts"/>) names the same physical
+    /// pavement as <paramref name="target"/> — either as the same designator
+    /// or its reciprocal (e.g. "09" matches "27", "09L" matches "27R").
+    /// Used by the Progressive Taxi suppression pass to strip the cleared
+    /// crossing hold-short without touching other auto-inserted holds.
+    /// </summary>
+    private static bool RunwayDesignatorsMatch(string tagged, string target)
+    {
+        // Strip the "runway " prefix that InsertRunwayCrossingHoldShorts prepends.
+        string a = tagged.Replace("runway", "", StringComparison.OrdinalIgnoreCase).Trim();
+        string b = target.Trim();
+        if (a.Equals(b, StringComparison.OrdinalIgnoreCase)) return true;
+        return Reciprocal(a).Equals(b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns the reciprocal runway designator: adds 18 (mod 36, 1-based)
+    /// and swaps L↔R suffix (C stays C). "09" → "27", "27L" → "09R", "36" → "18".
+    /// Returns <paramref name="designator"/> unchanged if it is blank or does
+    /// not parse as a runway heading number.
+    /// </summary>
+    private static string Reciprocal(string designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return designator;
+        string d = designator.Trim().ToUpperInvariant();
+        string suffix = "";
+        if (d.EndsWith("L"))      { suffix = "R"; d = d[..^1]; }
+        else if (d.EndsWith("R")) { suffix = "L"; d = d[..^1]; }
+        else if (d.EndsWith("C")) { suffix = "C"; d = d[..^1]; }
+        if (!int.TryParse(d, out int num)) return designator;
+        int recip = ((num - 1 + 18) % 36) + 1;  // 1-based 1–36; +18 mod 36
+        return $"{recip:D2}{suffix}";
+    }
+
     /// along the runway in (east, north) coordinates is (sin H, cos H). The
     /// signed projection is the dot product of (dE, dN) with that unit vector.
     /// </summary>
