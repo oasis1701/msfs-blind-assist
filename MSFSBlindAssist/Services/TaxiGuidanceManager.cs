@@ -5251,6 +5251,10 @@ public class TaxiGuidanceManager : IDisposable
             return $"Backtracking.{gsStr}";
         }
 
+        if (_state == TaxiGuidanceState.ProgressiveHold)
+            return _progressiveTerminator?.EndAnnouncement()
+                   ?? "Holding. Set a new route when cleared.";
+
         if (_route == null || _route.Segments.Count == 0)
             return "No route loaded.";
 
@@ -5585,6 +5589,23 @@ public class TaxiGuidanceManager : IDisposable
     /// — sub-cm accuracy at runway scale.
     ///
     /// Runway heading is measured clockwise from true north, so the unit vector
+    /// along the runway in (east, north) coordinates is (sin H, cos H). The
+    /// signed projection is the dot product of (dE, dN) with that unit vector.
+    /// </summary>
+    private static double SignedAlongRunwayMeters(
+        double pointLat, double pointLon,
+        double refLat, double refLon,
+        double runwayHeadingTrueDeg)
+    {
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double latMidRad = (pointLat + refLat) * 0.5 * Math.PI / 180.0;
+        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
+        double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
+        double dE = (pointLon - refLon) * metersPerDegLon;
+        double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
+        return dE * Math.Sin(hdgRad) + dN * Math.Cos(hdgRad);
+    }
+
     /// <summary>
     /// Returns true when the tagged segment's HoldShortRunway designator (which
     /// may include the "runway " prefix added by
@@ -5620,23 +5641,6 @@ public class TaxiGuidanceManager : IDisposable
         if (!int.TryParse(d, out int num)) return designator;
         int recip = ((num - 1 + 18) % 36) + 1;  // 1-based 1–36; +18 mod 36
         return $"{recip:D2}{suffix}";
-    }
-
-    /// along the runway in (east, north) coordinates is (sin H, cos H). The
-    /// signed projection is the dot product of (dE, dN) with that unit vector.
-    /// </summary>
-    private static double SignedAlongRunwayMeters(
-        double pointLat, double pointLon,
-        double refLat, double refLon,
-        double runwayHeadingTrueDeg)
-    {
-        const double METERS_PER_DEG_LAT = 111132.0;
-        double latMidRad = (pointLat + refLat) * 0.5 * Math.PI / 180.0;
-        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
-        double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
-        double dE = (pointLon - refLon) * metersPerDegLon;
-        double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
-        return dE * Math.Sin(hdgRad) + dN * Math.Cos(hdgRad);
     }
 
     /// <summary>

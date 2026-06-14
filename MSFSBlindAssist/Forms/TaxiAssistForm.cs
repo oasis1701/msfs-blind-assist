@@ -597,7 +597,14 @@ public class TaxiAssistForm : Form
         // AFTER every dynamic row inside the panel. Dynamic rows get sequential
         // TabIndexes starting low (= panel control count at add time); a high base
         // keeps the terminator combos last in the panel's tab stream.
-        cmbTerminatorType.TabIndex = 9000;
+        // Tab order within the terminator block: type label → type combo → taxiway
+        // label → taxiway combo. The label's mnemonic (Alt+N / Alt+W) focuses the
+        // NEXT tab-stop after the label, so the label must be immediately before its
+        // paired combo. With high base indices these always tab AFTER every dynamic
+        // taxiway row (which get sequential low indices as rows are added).
+        lblTerminatorType.TabIndex = 8998;
+        cmbTerminatorType.TabIndex = 8999;
+        lblTerminatorTaxiway.TabIndex = 9000;
         cmbTerminatorTaxiway.TabIndex = 9001;
         this.Controls.Add(pnlTaxiways);
         this.Controls.Add(btnCalculate);
@@ -1643,6 +1650,22 @@ public class TaxiAssistForm : Form
             {
                 _announcer.Announce("Select at least one taxiway for progressive taxi.");
                 return;
+            }
+
+            // Guard: if the last UI row has no taxiway selected, the "Hold short
+            // of runway" combo on that row belongs to an incomplete entry — the
+            // effective last taxiway (progSeq[^1]) and the UI last row diverge,
+            // which would cause LastRowHoldShortRunway() to read the wrong combo.
+            // Reject with a clear message so the user fixes the entry before
+            // proceeding.
+            if (_additionalTaxiways.Count > 0)
+            {
+                string? lastRowSel = _additionalTaxiways[^1].combo.SelectedItem?.ToString();
+                if (string.IsNullOrEmpty(lastRowSel) || lastRowSel.StartsWith("(None"))
+                {
+                    _announcer.Announce("The last taxiway row has no taxiway selected. Select a taxiway or remove that row.");
+                    return;
+                }
             }
 
             // Component + start node for the graph-distance terminator helpers,
