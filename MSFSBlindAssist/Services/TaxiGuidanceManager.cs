@@ -4713,10 +4713,8 @@ public class TaxiGuidanceManager : IDisposable
     {
         if (route.Segments.Count == 0) return;
 
-        // Pass 1: prefer an IHS (ILSHoldShort) node over plain HS when both
-        // exist. IHS sits further back from the threshold to clear the ILS
-        // critical area — the safer stop for an ILS-equipped runway. For
-        // non-ILS runways, the two types collapse to "whichever is latest."
+        // Pass 1: find the latest (closest-to-runway) ILS hold-short and plain
+        // hold-short the route passes through.
         int truncateAtIHS = -1;
         int truncateAtHS  = -1;
         for (int i = route.Segments.Count - 1; i >= 0; i--)
@@ -4728,7 +4726,40 @@ public class TaxiGuidanceManager : IDisposable
             if (truncateAtIHS >= 0 && truncateAtHS >= 0) break;
         }
 
-        int truncateAt = truncateAtIHS >= 0 ? truncateAtIHS : truncateAtHS;
+        // Prefer the IHS over the HS ONLY when both sit on the SAME final approach
+        // — i.e. the ILS hold is just behind the CAT I hold on the same connector
+        // (the safer "clear the ILS critical area" stop). The old code preferred
+        // the IHS UNCONDITIONALLY, which broke at airports where the route merely
+        // CROSSES an ILS-critical-area hold on a transit taxiway before turning
+        // onto the final connector to the runway: that transit IHS was picked over
+        // the real runway hold, stopping the pilot a whole taxiway early.
+        //   OMDB 30R via N12 (fs2024): the cleared route runs down taxiway N —
+        //   which carries its own IHS nodes ~620 m from N12's HSND hold — then
+        //   turns onto the short N12 connector. The N IHS hijacked the truncation,
+        //   so guidance announced the hold-short on N instead of N12 (the actual
+        //   30R hold). Reported by the user.
+        // Geometric proximity, NOT route-segment count, gates "same approach": a
+        // real CAT II/III hold sits only tens of metres behind the CAT I line,
+        // whereas a transit hold on the prior taxiway is hundreds of metres away.
+        const double SAME_APPROACH_IHS_MAX_M = 150.0;
+        int truncateAt;
+        if (truncateAtIHS >= 0 && truncateAtHS >= 0 && truncateAtIHS < truncateAtHS)
+        {
+            // IHS is further from the runway than the HS. Honour it only when the
+            // two holds are physically close (same final approach); otherwise the
+            // HS on the final connector is the real runway hold.
+            var ihsNode = route.Segments[truncateAtIHS].ToNode!;
+            var hsNode  = route.Segments[truncateAtHS].ToNode!;
+            double holdSep = TaxiGraph.FastDistanceMeters(
+                ihsNode.Latitude, ihsNode.Longitude, hsNode.Latitude, hsNode.Longitude);
+            truncateAt = holdSep <= SAME_APPROACH_IHS_MAX_M ? truncateAtIHS : truncateAtHS;
+        }
+        else
+        {
+            // No IHS, no HS, or the IHS is already the closest hold to the runway
+            // → take whichever hold-short is latest in the route.
+            truncateAt = Math.Max(truncateAtIHS, truncateAtHS);
+        }
 
         // Pass 2 (universal-DB fallback): if the graph has no HS/IHS nodes on
         // this runway at all (common at small airports, new-numbered runways,
