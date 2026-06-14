@@ -1772,7 +1772,24 @@ public class TaxiGuidanceManager : IDisposable
         // This prevents tone jitter from very short segments (5-15m in navdata)
         var (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
         double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
-        double headingError = NormalizeAngle(bearingToTarget - headingTrue);
+        double headingError;
+        if (_rolloutHandoffActive)
+        {
+            // During the post-handoff exit phase, use segment bearing instead of
+            // bearing-to-waypoint. The exit node sits north of the runway; while the
+            // aircraft is still on the pavement, bearing-to-node is nearly due north
+            // (~350° for a westward runway), giving ~80° of right pan regardless of
+            // actual heading. That drove the pilot far past the exit arc and into a loop.
+            // Segment bearing tracks the arc itself (288.6° → 289.7° → 296.2° for a
+            // shallow RET) and decays correctly to zero as the aircraft aligns.
+            // _rolloutHandoffActive clears at turnBegunPH (15° from runway heading),
+            // by which point the aircraft is physically on the exit and look-ahead works.
+            headingError = NormalizeAngle(currentSeg.BearingDegrees - headingTrue);
+        }
+        else
+        {
+            headingError = NormalizeAngle(bearingToTarget - headingTrue);
+        }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
         // tone stays active during the initial flat section of a shallow RET where
@@ -1800,10 +1817,22 @@ public class TaxiGuidanceManager : IDisposable
             {
                 _postHighSpeedExitMinBearing = 0.0;
             }
-            else
+            else if (_rolloutHandoffActive)
             {
+                // _rolloutHandoffActive: using segment bearing, which can be shallower
+                // than ExitBearingTrue on a stub RET (e.g. EIDW S5 at ~runway heading).
+                // Floor ensures the tone stays at least at ExitBearingTrue in that case.
                 headingError = minError >= 0.0 ? Math.Max(headingError, minError)
                                                : Math.Min(headingError, minError);
+            }
+            else
+            {
+                // _rolloutHandoffActive already cleared (turnBegunPH at 15°) but
+                // turnComplete not yet fired. bearing-to-target is still distorted
+                // (exit node sits north of the runway). Use ExitBearingTrue directly
+                // so the tone decays smoothly to zero rather than jumping to a large
+                // bearing-to-node error for the brief gap between the two releases.
+                headingError = minError;
             }
         }
 
@@ -3342,7 +3371,25 @@ public class TaxiGuidanceManager : IDisposable
             && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
             && pastExit;
 
-        if (turnBegun || exitedLaterally || alignedWithExit || (atTaxiSpeed && nearExit && !pastExit) || trulyStopped)
+        // Speed-based "decelerated near the exit" handoff. EXCLUDED for high-speed
+        // (rapid-exit) taxiways. On a normal-deceleration landing the aircraft is
+        // already below ROLLOUT_TAXI_GS_KTS (30 kt) a few hundred feet short of a
+        // mid-field RET, so this gate would fire while still dead-centre on the
+        // runway and PREEMPT the exit-bearing tone (arms ≤300 ft), the high-speed
+        // TryEarlyExitHandoff (≤300 ft) and the 150 ft "turn now" verbal — all of
+        // which live AFTER this handoff's return. That stranded the pilot with no
+        // directional turn cue and let them roll past the exit (EDDM 26L → B6:
+        // handoff fired at distToExit=311 ft, lateral=3 ft, hdgDelta=0°, then the
+        // overshoot monitor retargeted to the next exit). High-speed exits therefore
+        // hand off via TryEarlyExitHandoff / turnBegun / exitedLaterally /
+        // alignedWithExit / trulyStopped instead, so their guidance gets to run.
+        // Normal/End exits keep the speed-gate: their hard turn is guided fine by the
+        // post-handoff re-route and turnBegun (15°) fires almost immediately on a 90°
+        // exit, so there is no equivalent preemption window to lose.
+        bool speedNearExitHandoff = atTaxiSpeed && nearExit && !pastExit
+                                    && _rolloutExit.ExitType != "High-speed";
+
+        if (turnBegun || exitedLaterally || alignedWithExit || speedNearExitHandoff || trulyStopped)
         {
             RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
                 $"turnBegun={turnBegun} exitedLaterally={exitedLaterally} alignedWithExit={alignedWithExit} " +
