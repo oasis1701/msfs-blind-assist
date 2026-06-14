@@ -376,6 +376,16 @@ public class TaxiGuidanceManager : IDisposable
     // Off-route persistence tracker — off-route must be sustained for
     // OFF_ROUTE_PERSISTENCE_SEC before a recalc fires. MinValue = not off-route.
     private DateTime _offRouteSince = DateTime.MinValue;
+    // Route-joined latch. Off-route detection (and thus auto-recalc) is suppressed
+    // until the aircraft has actually reached the route line at least once. The
+    // post-pushback taxi from the gate ONTO the first taxiway is legitimately off
+    // the route's first segment (the route starts on the taxiway, often 100 m+
+    // from the gate), and recalcing during that join was silently trimming the
+    // entered clearance before the pilot started following it (PHNL 2026-06-13:
+    // 4–5 recalcs at 3–6 kt while still on segment 0, cutting Z A L N Z D → Z D).
+    // Set true the first frame the aircraft is within perp tolerance of the route;
+    // reset on LoadRoute / StopGuidance.
+    private bool _hasJoinedRoute = false;
     // Timestamp of the last segment advance (AdvanceSegment or
     // AdvanceToNearestSegment). Used with POST_TURN_OFFROUTE_GRACE_SEC to
     // suppress off-route detection briefly after we cross a turn node.
@@ -1262,6 +1272,7 @@ public class TaxiGuidanceManager : IDisposable
             _lastSpeedWarningTime = DateTime.MinValue;
             _lastIncursionWarningTime = DateTime.MinValue;
             _offRouteSince = DateTime.MinValue;
+            _hasJoinedRoute = false;
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
@@ -2188,7 +2199,13 @@ public class TaxiGuidanceManager : IDisposable
         if ((DateTime.Now - _lastSegmentAdvanceTime).TotalSeconds < POST_TURN_OFFROUTE_GRACE_SEC)
             nearTurn = true;
 
-        bool offRouteNow = !nearTurn && (perp > perpTolerance || farBehindStart || goingBackward);
+        // Route-joined latch (see field). Until the aircraft has reached the route
+        // line once, the taxi from the gate onto the first taxiway reads as
+        // "off-route" by definition — suppress recalc so the entered clearance
+        // isn't trimmed before the pilot joins it.
+        if (perp <= perpTolerance) _hasJoinedRoute = true;
+
+        bool offRouteNow = _hasJoinedRoute && !nearTurn && (perp > perpTolerance || farBehindStart || goingBackward);
 
         // Persistence: off-route must be sustained for N seconds AND the aircraft
         // must actually be moving. This kills two bugs:
@@ -2819,9 +2836,24 @@ public class TaxiGuidanceManager : IDisposable
         _headingErrorInitialized = false;
 
         string firstTaxiway = newRoute.Segments[0].TaxiwayName;
-        string taxiStr = !string.IsNullOrEmpty(firstTaxiway) ? $" Taxiway {firstTaxiway}." : "";
         string distStr = FormatDistance(newRoute.TotalDistanceMeters);
-        AnnounceInstruction($"Recalculating. {distStr} to {_destinationName}.{taxiStr}");
+
+        // Announce the NEW taxiway sequence so the pilot hears that their cleared
+        // route changed — a recalc can trim/replace the entered clearance (PHNL
+        // 2026-06-13: "Z A L N Z D" silently became "Z D", and the old generic
+        // "Recalculating. … Taxiway Z." never said the sequence had changed).
+        // Distinct consecutive named taxiways of the new route, in order.
+        var viaNames = new List<string>();
+        foreach (var s in newRoute.Segments)
+        {
+            if (!string.IsNullOrEmpty(s.TaxiwayName) &&
+                (viaNames.Count == 0 || !viaNames[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
+                viaNames.Add(s.TaxiwayName);
+        }
+        string callout = viaNames.Count > 0
+            ? $"Route changed. Now via {string.Join(", ", viaNames)}. {distStr} to {_destinationName}."
+            : $"Route changed. {distStr} to {_destinationName}.";
+        AnnounceInstruction(callout);
 
         _lastAnnouncedTaxiway = firstTaxiway;
     }
@@ -5290,6 +5322,7 @@ public class TaxiGuidanceManager : IDisposable
         _lastSpeedWarningTime = DateTime.MinValue;
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
+        _hasJoinedRoute = false;
         _lastSegmentAdvanceTime = DateTime.MinValue;
         _holdShortAtDestination = false;
         _recentCrossingAnnouncements.Clear();
