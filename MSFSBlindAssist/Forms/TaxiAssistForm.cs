@@ -134,7 +134,8 @@ public class TaxiAssistForm : Form
     private Dictionary<string, double> _destinationHeadingMap = new();
     private Dictionary<string, double> _destinationHeadingTrueMap = new();
     private Dictionary<string, (double lat, double lon)> _destinationThresholdMap = new();
-    // Cross-runway mode: maps display name → Runway, used to compute the far-side node at Calculate time
+    // Progressive Taxi: maps "Runway X" display name → Runway, used by the "After crossing runway"
+    // and "Hold short of runway" terminators to resolve the far-side / near-side node at Calculate time.
     private Dictionary<string, Runway> _crossRunwayMap = new();
     // Gate mode: maps the display label (same key as _destinationNodeMap) → ParkingSpot.
     // Populated in the gate branch of PopulateDestinations so OnCalculateClicked can pass the
@@ -1854,7 +1855,7 @@ public class TaxiAssistForm : Form
 
         // GSX gate auto-select: fire-and-forget when heading to a gate and
         // the feature is enabled. Conditions:
-        //   - destination is a gate (not runway, not cross-runway, not deice area)
+        //   - destination is a gate (not runway, not progressive taxi, not deice area)
         //   - setting is on
         //   - a selector was provided (i.e. GsxService exists in this session)
         //   - GSX CouatlStarted is confirmed via the selector being non-null
