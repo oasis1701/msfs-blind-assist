@@ -216,6 +216,18 @@ public class TaxiGuidanceManager : IDisposable
     // Press continue when cleared." in that order, ending at ~40 ft from the
     // hold-short node — enough braking room even at brisk taxi speed.
     private const double ARRIVAL_RADIUS_M = 12.0;
+    // Landing-exit ("vacate onto the taxiway") arrival capture. A landing-exit route
+    // ends at the exit taxiway's extension node — the hold-clear point past the
+    // runway. Unlike a gate, the pilot rolls THROUGH this node at taxi speed
+    // (15-25 kt on a high-speed exit) and typically passes 15-25 m to the SIDE of the
+    // exact graph node, so the ~6 m gate radius never fires: the "Off the runway.
+    // Hold position." closure is silently lost, the tone goes quiet (the pilot is
+    // aligned), and they sail on up the taxiway (LPPT 02 → U5, 2026-06-12, closest
+    // approach to the node was 15.4 m). These looser captures fire arrival for EVERY
+    // exit type — a 25 m radius for the normal rolling pass, plus an along-track
+    // backstop for a wide pass (drew abeam/past the node but >25 m to the side).
+    private const double LANDING_EXIT_ARRIVAL_RADIUS_M = 25.0;
+    private const double LANDING_EXIT_ARRIVAL_CROSS_M = 60.0;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
     // Steering-tone look-ahead: target = the point this many metres ahead
     // along the route polyline (continuous walk — see GuidanceGeometry).
@@ -1759,7 +1771,33 @@ public class TaxiGuidanceManager : IDisposable
             ? ARRIVAL_RADIUS_M
             : GATE_ARRIVAL_RADIUS_FEET / METERS_TO_FEET; // 20 ft → ~6 m
 
-        if (_currentSegmentIndex == _route.Segments.Count - 1 && distToTarget < arrivalRadius)
+        bool onFinalSegment = _currentSegmentIndex == _route.Segments.Count - 1;
+
+        // Landing-exit ("vacate onto the taxiway") arrival — fire the "Off the runway.
+        // Stop and hold position." closure for EVERY exit type. The final node is the
+        // hold-clear point past the runway; the pilot rolls through it at taxi speed
+        // and won't pass within the tight gate radius, so use looser captures: a 25 m
+        // radius for a normal rolling pass, plus an along-track backstop for a wide
+        // pass (drew abeam/past the node but never entered the radius). Without this
+        // the pilot gets silence and sails up the taxiway. Gated on !_hasLineupTarget
+        // so only HandleArrival's "just stop" / landing-exit branch is affected
+        // (landing-exit routes never carry lineup data — they don't go to a gate).
+        if (_isLandingExitRoute && onFinalSegment && !_hasLineupTarget)
+        {
+            AlongTrackToSegmentEnd(lat, lon, currentSeg,
+                out double alongRemainingM, out double crossM);
+            bool pastNode = alongRemainingM <= 0.0
+                            && Math.Abs(crossM) <= LANDING_EXIT_ARRIVAL_CROSS_M;
+            if (distToTarget < LANDING_EXIT_ARRIVAL_RADIUS_M || pastNode)
+            {
+                RolloutDiag($"Landing-exit arrival: distToTarget={distToTarget:F0}m " +
+                    $"alongRemaining={alongRemainingM:F0}m cross={crossM:F0}m pastNode={pastNode}");
+                HandleArrival();
+                return;
+            }
+        }
+
+        if (onFinalSegment && distToTarget < arrivalRadius)
         {
             // Announce the 50/20/10ft countdown one last time before arriving,
             // so it fires even if updates are sparse near the target.
@@ -3170,7 +3208,7 @@ public class TaxiGuidanceManager : IDisposable
             // route.
             string exitName = _route?.DestinationName ?? "the exit";
             AnnounceInstruction(
-                $"Off the runway at {exitName}. Hold position. " +
+                $"Off the runway at {exitName}. Stop and hold position. " +
                 $"Open the taxi planner to set a route to your gate.");
         }
         else if (!_dockingActive)
@@ -5595,6 +5633,33 @@ public class TaxiGuidanceManager : IDisposable
         double dE = (pointLon - refLon) * metersPerDegLon;
         double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
         return dE * Math.Sin(hdgRad) + dN * Math.Cos(hdgRad);
+    }
+
+    /// <summary>
+    /// Projects the aircraft onto a route segment (equirectangular). Outputs the
+    /// remaining along-track distance to the segment's END node
+    /// (<paramref name="alongRemainingM"/>: positive = the node is still ahead in the
+    /// segment direction, ≤ 0 = the aircraft is abeam or past it) and the signed
+    /// perpendicular cross-track offset (<paramref name="crossM"/>). Used by the
+    /// landing-exit "vacate" arrival so the closure fires even when the pilot rolls
+    /// through the final node wide of the exact graph point.
+    /// </summary>
+    private static void AlongTrackToSegmentEnd(
+        double lat, double lon, TaxiRouteSegment seg,
+        out double alongRemainingM, out double crossM)
+    {
+        const double MPD = 111132.0;
+        double latMid = (seg.FromNode.Latitude + seg.ToNode.Latitude) * 0.5;
+        double mpl = MPD * Math.Cos(latMid * Math.PI / 180.0);
+        double dx = (seg.ToNode.Longitude - seg.FromNode.Longitude) * mpl;
+        double dy = (seg.ToNode.Latitude  - seg.FromNode.Latitude)  * MPD;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 1.0) { alongRemainingM = 0.0; crossM = 0.0; return; }
+        double ux = dx / len, uy = dy / len;             // unit vector along segment
+        double ex = (seg.ToNode.Longitude - lon) * mpl;  // aircraft → end node
+        double ey = (seg.ToNode.Latitude  - lat) * MPD;
+        alongRemainingM = ex * ux + ey * uy;             // >0: end node ahead
+        crossM = ex * (-uy) + ey * ux;                   // signed perpendicular
     }
 
     /// <summary>
