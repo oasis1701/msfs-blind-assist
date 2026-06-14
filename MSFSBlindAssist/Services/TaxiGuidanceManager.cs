@@ -262,6 +262,18 @@ public class TaxiGuidanceManager : IDisposable
     private double _lastToneError;
     private DateTime _lastToneErrorTime = DateTime.MinValue;
     private bool _toneErrorInitialized = false;
+    // Initial big-turn cue. When guidance starts with the aircraft pointing well
+    // away from the route's first segment — the normal post-pushback case, where
+    // the route leaves the gate one way but the tug left the aircraft facing
+    // another — a tone alone starts at full pan and can't convey "turn around
+    // which way", which is disorienting (PHNL 2026-06-13: pilot faced 269° while
+    // the route headed 91°, a ~180° turnaround, and felt the initial cue was
+    // "really off"). On the FIRST taxiing frame, if the heading error exceeds
+    // this threshold, speak a one-shot turn-direction cue (sign matches the tone)
+    // so the pilot knows which way to come around. One-shot, reset on LoadRoute /
+    // StopGuidance (NOT on recalc — mid-taxi recalcs use the normal turn cues).
+    private const double INITIAL_TURN_CUE_DEG = 100.0;
+    private bool _initialTurnCueAnnounced = false;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
     private const double STRAIGHTEN_EPISODE_END_RATE_DEG_SEC = 1.5;  // close episode (hysteresis)
@@ -745,6 +757,12 @@ public class TaxiGuidanceManager : IDisposable
     /// often interrupted by the screen reader).
     /// </summary>
     public string LastRouteSummary { get; private set; } = "";
+    /// <summary>
+    /// The unreachable-runway warning for the most recent LoadRoute, or null if
+    /// the route reaches its runway. The caller (TaxiAssistForm) speaks this
+    /// AFTER StartGuidance so it isn't stomped by the first-taxiway callout.
+    /// </summary>
+    public string? LastRouteReachWarning { get; private set; }
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
@@ -1222,6 +1240,7 @@ public class TaxiGuidanceManager : IDisposable
             _lastCrossingNodeId = -1;
             _lastAnnouncedTaxiway = "";
             _headingErrorInitialized = false;
+            _initialTurnCueAnnounced = false;
             _smoothedHeadingError = 0;
             _lastIncursionWarnedNodeId = -1;
             _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
@@ -1282,24 +1301,23 @@ public class TaxiGuidanceManager : IDisposable
                 if (!string.IsNullOrEmpty(constrainedLengthWarning))
                     summary = constrainedLengthWarning + " " + summary;
                 // The runway-reach warning ("route does not reach Runway X") is
-                // safety-critical and MUST be heard at calculate time. The route
-                // summary is plain queued speech that the first tactical callout
-                // (or guidance start) flushes, so a warning merely prepended to it
-                // shows in the box but is never spoken — confirmed in-sim
-                // 2026-06-13: the pilot saw it in the box and heard the lineup
-                // bailout (AnnounceImmediate) but NOT this one at calculate. Speak
-                // it via AnnounceImmediate, like the bailout; keep it in the box
-                // text but NOT in the queued summary (avoids double-speak).
+                // safety-critical and MUST be heard at calculate time. Speaking it
+                // here (even via AnnounceImmediate) doesn't work: the caller fires
+                // StartGuidance immediately after LoadRoute, whose first-taxiway
+                // callout stomps it — confirmed in-sim 2026-06-13 (the pilot saw it
+                // in the box and heard "calculating"/the taxiway, but never the
+                // warning). So we DON'T speak it here; we expose it via
+                // LastRouteReachWarning and let the form announce it AFTER
+                // StartGuidance, as the final standstill announcement. It's still
+                // prepended to the box text for re-reading.
                 string boxText = string.IsNullOrEmpty(runwayReachWarning)
                     ? summary
                     : runwayReachWarning + " " + summary;
                 LastRouteSummary = boxText;
+                LastRouteReachWarning = string.IsNullOrEmpty(runwayReachWarning)
+                    ? null : runwayReachWarning;
                 if (announceSummary)
-                {
-                    if (!string.IsNullOrEmpty(runwayReachWarning))
-                        _announcer.AnnounceImmediate(runwayReachWarning);
                     _announcer.Announce(summary);
-                }
             }
 
             return null;
@@ -1871,6 +1889,31 @@ public class TaxiGuidanceManager : IDisposable
         var (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
         double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
         double headingError = NormalizeAngle(bearingToTarget - headingTrue);
+
+        // Initial big-turn cue (one-shot, first taxiing frame). When guidance
+        // starts with the aircraft pointing well away from the route's first
+        // segment — the normal post-pushback case — a tone alone can't convey
+        // "turn around, which way." Speak a one-shot direction cue (sign matches
+        // the tone). Skipped when the route doesn't reach its runway
+        // (LastRouteReachWarning set): that warning is the priority — the form
+        // speaks it after StartGuidance, and a turn cue here would be moot (the
+        // pilot will reprogram) AND would stomp the warning.
+        if (!_initialTurnCueAnnounced)
+        {
+            _initialTurnCueAnnounced = true;
+            double absInitErr = Math.Abs(headingError);
+            if (absInitErr >= INITIAL_TURN_CUE_DEG && LastRouteReachWarning == null)
+            {
+                string dir = headingError < 0 ? "left" : "right";
+                bool hasTw = !string.IsNullOrEmpty(_lastAnnouncedTaxiway);
+                string cue = absInitErr >= 135
+                    ? (hasTw ? $"Taxiway {_lastAnnouncedTaxiway} is behind you. Turn {dir} to come around."
+                             : $"Make a U-turn to the {dir}.")
+                    : (hasTw ? $"Sharp turn {dir} onto taxiway {_lastAnnouncedTaxiway}."
+                             : $"Sharp turn {dir}.");
+                AnnounceInstruction(cue);
+            }
+        }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
         // tone stays active during the initial flat section of a shallow RET where
@@ -5182,6 +5225,7 @@ public class TaxiGuidanceManager : IDisposable
         _currentSegmentIndex = 0;
         _positionInitialized = false;
         _headingErrorInitialized = false;
+        _initialTurnCueAnnounced = false;
         // Reset the tone slew-limiter baseline so a fresh guidance session snaps
         // to its first target instead of sweeping from a stale value. (Recalcs
         // do NOT reset it — they swap the route in place without StopGuidance —

@@ -1603,6 +1603,14 @@ public class TaxiAssistForm : Form
 
         _guidanceManager.StartGuidance(settings);
 
+        // Speak the unreachable-runway warning LAST — after StartGuidance, whose
+        // first-taxiway callout would otherwise stomp it. The warning was showing
+        // in the box but never heard at Calculate (in-sim 2026-06-13) because it
+        // was spoken before StartGuidance. As the final standstill announcement
+        // it's heard in full; the box (route summary) still shows it too.
+        if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
+            _announcer.AnnounceImmediate(_guidanceManager.LastRouteReachWarning);
+
         // GSX gate auto-select: fire-and-forget when heading to a gate and
         // the feature is enabled. Conditions:
         //   - destination is a gate (not runway, not cross-runway, not deice area)
