@@ -110,6 +110,7 @@ Raw "perpendicular cross-track >50 m for >3 s" alone caused a cascade during the
 1. **Post-turn grace period (`POST_TURN_OFFROUTE_GRACE_SEC = 4.0 s`).** Every time a segment is advanced (`AdvanceSegment` and `AdvanceToNearestSegment`) the manager stamps `_lastSegmentAdvanceTime`. Off-route detection is suppressed for 4 s after any advance, giving the aircraft time to settle onto the new segment's geometry before the cross-track check re-arms.
 2. **Turn-imminent suppression.** If the aircraft is already within the speed-scaled "turn now" window of the current segment's endpoint, off-route is suppressed — the cross-track to the current segment will legitimately spike as the aircraft carves the corner.
 3. **Width outlier cap (`OFF_ROUTE_PERP_WIDTH_CAP_FT = 300.0 ft`).** When the current segment's `PathWidth` looks corrupt (e.g. a stray 999 ft value from bad DB data on an apron taxilane), it is capped at 300 ft before being used to derive the off-route tolerance. Prevents a single bad row from effectively disabling the off-route check for that leg.
+4. **Route-joined latch (`_hasJoinedRoute`).** Off-route detection is suppressed entirely until the aircraft has reached the route line at least once (`perp <= perpTolerance` on any frame). The post-pushback taxi from the gate ONTO the first taxiway is legitimately off the route's first segment — the route starts on the taxiway, often 100 m+ from the gate — so without this the slow taxi-out (gs ≥ 2 kt but not yet on the route) reads as off-route and recalcs fire, silently trimming the entered clearance before the pilot has joined it. PHNL 2026-06-13: 4–5 recalcs at 3–6 kt while still on segment 0 cut `Z A L N Z D` down to `Z D`. The `gs ≥ 2 kt` gate alone didn't help (pushback exceeds it). Latch resets on `LoadRoute` / `StopGuidance`; once joined, normal off-route detection applies for the rest of the taxi.
 
 ### Recalculation hardening (remaining sequence + diversion guard)
 
@@ -117,6 +118,7 @@ When a recalc does fire, two additional safeguards keep the new route honest to 
 
 1. **Position-aware sequence trimming (`FindRemainingSequenceByPosition`).** The ATC taxiway sequence is stored in `_originalTaxiwaySequence`. On recalc the manager walks the sequence from **last to first**, asking the graph "is there a node on this taxiway within 50 m of the aircraft?" The first hit is the latest taxiway the aircraft is physically on; everything before it is dropped before passing to `FindConstrainedPath`. Driving the trim from aircraft position (rather than from the recorded `_currentSegmentIndex`) handles the case where a previous recalc reset the segment index to 0 even though the aircraft is far along the route — observed at LEPA where a recalc near the H2 hold-short produced a route that physically started back at LE, sending the aircraft on a big loop. Aircraft drifted entirely off the cleared route → no sequence-taxiway hit → caller falls back to `FindNearestNodeInDirection` + shortest path.
 2. **Diversion guard.** If the router fell back to unconstrained shortest path (`ConstrainedFallbackReason` is non-empty) and the new total distance exceeds `2 × oldRemaining + 500 m`, the manager **rejects the recalc** and announces: `"Off route. Could not follow clearance. <reason>. Continuing on original route."` This prevents a bad recalc from sending the aircraft across the field just because a single intersection node has no bridging edge on the expected taxiway.
+3. **The recalc callout names the new sequence.** When a recalc is accepted, it announces `"Route changed. Now via <taxiway list>. <dist> to <dest>."` (distinct named taxiways of the new route, in order) rather than a generic "Recalculating." A recalc can trim/replace the entered clearance (see the route-joined latch above, and the position-aware trim), and the old generic callout never told the pilot their taxiways had changed — at PHNL the clearance was silently cut from `Z A L N Z D` to `Z D` with no audible indication.
 
 ## Concurrency
 
@@ -214,7 +216,7 @@ The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**,
 | Runway lineup achieved | heading <1° AND cross <10 ft | `Lined up, runway 22 Left. Hold position.` Tone pauses. The *Hold position* directive is the LUAW stop cue (FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA: align with centerline and remain stationary awaiting further clearance). Convergence target matches what runway-teleport places you at (20 m back from the threshold, aligned with runway heading). |
 | Gate countdown | 50 / 20 / 10 ft **or** 15 / 10 / 5 m (per Distance units setting) | `15 metres to gate.` / `10 metres.` / `5 metres. Stop.` (the *Stop* suffix fires unconditionally — see Speed-aware directives). Unit-native spacing via `DistanceMilestones.ParkingArrival`. |
 | Arrived at gate | within 20 ft / ~6 m | `Gate Alpha 25 reached.` |
-| Off route | >50 m for >3 s | `Off route. Recalculating.` |
+| Off route (recalc accepted) | >50 m for >3 s, after the route is joined | `Route changed. Now via <taxiways>. <dist> to <dest>.` |
 | Speed warning | >30 kt straight / >12 kt turn | `Slow down.` (8 s cooldown) |
 | Runway incursion | non-route hold-short within 40 m | `Runway crossing ahead. Hold short.` (10 s cooldown) |
 | Exit approach (landing rollout) | 1500 / 900 / 500 ft **or** 500 / 300 / 150 m (per Distance units setting) | `Approaching high-speed exit Sierra 5, 500 metres.` / `Sierra 5, 300 metres.` / `Sierra 5, 150 metres. Slow down.` Unit-native spacing via `DistanceMilestones.ExitApproach`. |
@@ -1114,6 +1116,58 @@ The navdatareader schema exposes a few fields this feature currently ignores. No
 - **Safe defaults**: hold-short = silence (stop moving). Deviation = auto-reroute. Unknown state = bearing + distance fallback.
 - **User always in control**: hotkeys for status, repeat, continue, stop available at any time.
 
+## Unreachable-runway safety net, tone slew limiter & start cues
+
+Three related behaviors added after an OMDB/PHNL 04L user session where a taxi
+clearance ended on a taxiway that only *parallels* the destination runway (no
+connector taxiway to the runway itself), so guidance silently held short ~450 m
+off the centerline and the lineup tone panned forever.
+
+- **Unreachable-runway warning (route load).** For a runway destination,
+  `LoadRoute` measures the perpendicular distance from the route's final point to
+  the runway centerline (`AbsLateralFromRunwayMeters`). Beyond
+  `RUNWAY_REACH_MAX_CROSS_M` the route doesn't reach the runway. The full detail
+  ("ends about N to the side of Runway X … missing the connecting taxiway …") is
+  put in the route-summary **box** (`LastRouteSummary`); a **short** spoken form
+  is exposed via `LastRouteReachWarning`. The route still loads — ATC routings and
+  odd navdata exist; the pilot decides.
+- **Warning is spoken AFTER `StartGuidance`, by the form.** Announcing it inside
+  `LoadRoute` (even `AnnounceImmediate`) doesn't work — `OnCalculateClicked` calls
+  `StartGuidance` immediately after, and its first-taxiway callout stomps it
+  (confirmed in-sim: pilot saw it in the box, heard the taxiway, never the
+  warning). `TaxiAssistForm` speaks `LastRouteReachWarning` via `AnnounceImmediate`
+  *after* `StartGuidance`. The spoken summary is **skipped** when a reach warning
+  is present (still in the box), and an 8 s `REACH_WARNING_CHATTER_GRACE_SEC`
+  window holds the informational taxiway-crossing callout so the warning isn't cut
+  by "Crossing taxiway G". Hold-shorts / runway crossings / the lineup bailout are
+  never gated.
+- **Lineup bailout (during lineup).** If the runway-lineup phase sits beyond
+  `LINEUP_UNREACHABLE_CROSS_FEET` for `LINEUP_UNREACHABLE_SEC` without converging,
+  a one-shot bailout speaks ("This route does not reach Runway X. Reprogram …").
+  This catches recalc-built routes too (which bypass `LoadRoute`). Both latches
+  reset on `LoadRoute` / `StopGuidance`.
+
+**Tone slew limiter (`SlewLimitToneError`).** The Taxiing tone's heading error is
+slew-rate-limited to `TAXI_TONE_MAX_SLEW_DEG_PER_SEC`. Two events move the tone's
+target discontinuously and used to slam the pan hard left↔right: a multi-segment
+index skip when a large aircraft (A380 ~50 m+ turn radius) swings wide through a
+sharp corner (`AdvanceToNearestSegment` jumps the index), and an in-place route
+recalc (resets the heading smoother). The limiter stretches such a jump into a
+smooth ~1–1.5 s sweep; genuine turns (≈ yaw rate) pass untouched. Wrap-safe
+(shortest-path step). Baseline persists across recalcs (so a recalc snap is
+softened) and resets only on `StopGuidance` (so a fresh session snaps on frame
+one). Applied **after** the rate-lead projection, so it also bounds lead-driven
+swings. Taxiing only — lineup/docking keep their own precision profiles.
+
+**Initial big-turn cue.** At guidance start the aircraft often points well away
+from the route's first segment (post-pushback the tug leaves it facing one way,
+the route leaves the gate another). A tone alone starts at full pan and can't
+convey "turn around, which way." On the first taxiing frame, if the heading error
+exceeds `INITIAL_TURN_CUE_DEG`, a one-shot cue speaks ("Taxiway A is behind you.
+Turn left to come around." / "Sharp turn left onto taxiway A."), direction sign
+matching the tone. One-shot, reset on `LoadRoute` / `StopGuidance` (not on
+recalc). Skipped when a reach warning is present (that warning is the priority).
+
 ## Tuning & Constants Reference
 
 Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`. Change carefully and re-test in sim.
@@ -1151,6 +1205,12 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `INCURSION_WARN_DISTANCE_M` | 40.0 | Off-route hold-short proximity warning |
 | `OFF_ROUTE_PERP_WIDTH_CAP_FT` | 300.0 | Upper cap on segment width used for off-route tolerance (rejects bad DB width rows) |
 | `POST_TURN_OFFROUTE_GRACE_SEC` | 4.0 | Off-route detection suppressed for this many seconds after every segment advance |
+| `RUNWAY_REACH_MAX_CROSS_M` | 120.0 | Unreachable-runway warning: if a runway-destination route's final point is more than this perpendicular distance off the runway centerline, the route doesn't reach the runway. Above the ~90 m ICAO Annex 14 max hold-short offset, below real misroutes (PHNL 04L: ~456 m) |
+| `LINEUP_UNREACHABLE_CROSS_FEET` | 400.0 | During lineup, cross-track beyond this (~122 m) for `LINEUP_UNREACHABLE_SEC` with no convergence ⇒ the route never reached the runway → one-shot spoken bailout |
+| `LINEUP_UNREACHABLE_SEC` | 12.0 | Sustain time for the lineup unreachable-runway bailout |
+| `TAXI_TONE_MAX_SLEW_DEG_PER_SEC` | 60.0 | Slew-rate cap on the Taxiing tone's heading error. A genuine turn changes the error gradually (≈ yaw rate, well under the cap) and passes through; a one-frame target discontinuity (segment-index skip on a sharp corner, or a route recalc) is stretched into a smooth ~1–1.5 s sweep instead of a hard L↔R pan slam. Applied after the rate-lead projection, Taxiing only |
+| `INITIAL_TURN_CUE_DEG` | 100.0 | At guidance start, if the heading error to the first segment exceeds this, speak a one-shot turn-direction cue (matches the tone) so the pilot knows which way to come around — the normal post-pushback case. Skipped when a reach warning is present |
+| `REACH_WARNING_CHATTER_GRACE_SEC` | 8.0 | After a reach warning, hold the informational taxiway-crossing / taxiway-change callouts this long so they don't stomp the (longer, safety-critical) warning at guidance start. Hold-shorts, runway-crossing callouts, and the lineup bailout are NOT gated |
 
 ### TaxiSteeringTone
 
