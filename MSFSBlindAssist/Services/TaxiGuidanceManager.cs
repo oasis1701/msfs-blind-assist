@@ -4201,6 +4201,10 @@ public class TaxiGuidanceManager : IDisposable
         if (_route == null || _route.Segments.Count == 0)
         {
             RolloutDiag("TryEarlyExitHandoff: route empty after LoadRoute");
+            // LoadRoute reported success but produced no usable route; it may already
+            // have set state to RouteLoaded. Restore LandingRollout so the rollout
+            // frame loop keeps running (see the sanity-reject path below).
+            SetState(TaxiGuidanceState.LandingRollout);
             return false;
         }
 
@@ -4241,6 +4245,13 @@ public class TaxiGuidanceManager : IDisposable
             // current position.
             _route = null;
             _destinationNodeId = 0;
+            // LoadRoute above set state to RouteLoaded. Restore LandingRollout so the
+            // next UpdatePosition frame re-runs UpdateLandingRollout (bearing-to-junction
+            // fallback tone + the normal turnBegun / exitedLaterally / overshoot handoff).
+            // Without this the state machine is stranded in RouteLoaded — no tone, and
+            // "Where am I" reports no active route — until the pilot manually intervenes.
+            // Mirrors RetargetLandingExit's post-LoadRoute SetState(LandingRollout).
+            SetState(TaxiGuidanceState.LandingRollout);
             return false;
         }
 
