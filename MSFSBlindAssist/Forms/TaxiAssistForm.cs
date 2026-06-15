@@ -378,7 +378,6 @@ public class TaxiAssistForm : Form
         };
         cmbCrossAt.Items.Add(NO_RUNWAY_HOLDSHORT);
         cmbCrossAt.SelectedIndex = 0;
-        this.Controls.Add(lblCrossAt);
         y += 30;
 
         // First taxiway
@@ -546,6 +545,7 @@ public class TaxiAssistForm : Form
         this.Controls.Add(lblGateSearch);
         this.Controls.Add(txtGateSearch);
         this.Controls.Add(cmbDestination);
+        this.Controls.Add(lblCrossAt);
         this.Controls.Add(cmbCrossAt);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
