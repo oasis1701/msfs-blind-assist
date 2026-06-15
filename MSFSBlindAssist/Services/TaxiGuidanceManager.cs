@@ -273,6 +273,10 @@ public class TaxiGuidanceManager : IDisposable
     // so the pilot knows which way to come around. One-shot, reset on LoadRoute /
     // StopGuidance (NOT on recalc — mid-taxi recalcs use the normal turn cues).
     private const double INITIAL_TURN_CUE_DEG = 100.0;
+    // Above this heading error the initial cue is phrased as a U-turn / "behind
+    // you" rather than a "sharp turn" — the boundary between "come around" and
+    // "turn hard onto the first taxiway".
+    private const double INITIAL_TURN_UTURN_DEG = 135.0;
     private bool _initialTurnCueAnnounced = false;
     // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
     // and taxiway-change callouts so they don't stomp that (longer, safety-
@@ -1258,6 +1262,13 @@ public class TaxiGuidanceManager : IDisposable
             _lastAnnouncedTaxiway = "";
             _headingErrorInitialized = false;
             _initialTurnCueAnnounced = false;
+            // Reset the tone slew-limiter baseline too. LoadRoute is only ever a
+            // FRESH route (the form's Calculate path doesn't call StopGuidance
+            // first, and recalcs swap the route in place via TryRecalculateRoute
+            // WITHOUT going through LoadRoute) — so a fresh route must snap to its
+            // first target on frame one rather than sweep from the prior route's
+            // stale value. Recalc-softening is unaffected: recalcs never reach here.
+            _toneErrorInitialized = false;
             _smoothedHeadingError = 0;
             _lastIncursionWarnedNodeId = -1;
             _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
@@ -1942,7 +1953,7 @@ public class TaxiGuidanceManager : IDisposable
             {
                 string dir = headingError < 0 ? "left" : "right";
                 bool hasTw = !string.IsNullOrEmpty(_lastAnnouncedTaxiway);
-                string cue = absInitErr >= 135
+                string cue = absInitErr >= INITIAL_TURN_UTURN_DEG
                     ? (hasTw ? $"Taxiway {_lastAnnouncedTaxiway} is behind you. Turn {dir} to come around."
                              : $"Make a U-turn to the {dir}.")
                     : (hasTw ? $"Sharp turn {dir} onto taxiway {_lastAnnouncedTaxiway}."
@@ -5326,8 +5337,9 @@ public class TaxiGuidanceManager : IDisposable
         _initialTurnCueAnnounced = false;
         _startChatterSuppressUntil = DateTime.MinValue;
         // Reset the tone slew-limiter baseline so a fresh guidance session snaps
-        // to its first target instead of sweeping from a stale value. (Recalcs
-        // do NOT reset it — they swap the route in place without StopGuidance —
+        // to its first target instead of sweeping from a stale value. (LoadRoute
+        // resets it too, for the same reason. Recalcs do NOT — they swap the
+        // route in place via TryRecalculateRoute without StopGuidance/LoadRoute —
         // so a recalc pan-snap is intentionally softened by the limiter.)
         _toneErrorInitialized = false;
         _lastGroundSpeedKts = 0;
@@ -5895,9 +5907,10 @@ public class TaxiGuidanceManager : IDisposable
     /// it passes through untouched; only one-frame artifacts get stretched.
     ///
     /// Baseline is established on the first call and persists across in-place
-    /// route recalcs (so a recalc snap is softened too); it is reset only by
-    /// StopGuidance, so a genuinely fresh guidance session still snaps to its
-    /// first target on frame one rather than sweeping from a stale value.
+    /// route recalcs (so a recalc snap is softened too); it is reset by
+    /// StopGuidance and LoadRoute, so a genuinely fresh guidance session still
+    /// snaps to its first target on frame one rather than sweeping from a stale
+    /// value (recalcs bypass both, so their softening is preserved).
     /// Wrap-safe: the step is taken along the shortest angular path and the
     /// result is re-normalized to [-180, 180]. A stale/huge dt (paused sim,
     /// reconnect) re-baselines rather than allowing an unbounded jump.
