@@ -32,6 +32,7 @@ Set the initial climb altitude in the FCU altitude window, input mode then contr
 [Before Pushback]
 Boarding complete and all doors closed, check the flyPad ground operations page
 Verify fuel on board with output mode then F for pounds or shift F for kilograms
+All eight feed tank fuel pumps on, main and standby; leave the crossfeeds and transfer tank pumps off, in the Fuel panel
 External power 1 to 4 off
 APU running with APU bleed on, needed for engine start
 Beacon light on
@@ -71,6 +72,7 @@ Takeoff config test, press the TO CONFIG button in the ECAM Control Panel, no wa
 
 [Before Takeoff]
 Departure clearance received
+Cabin crew advised and cabin secure for takeoff
 TCAS to TA RA on the SURV controls page, reachable from the MCDU window page list, input mode then shift M
 Landing lights on and nose light to takeoff, in the Exterior Lighting panel
 Packs as required for takeoff
@@ -118,6 +120,7 @@ BTV step two, set the autobrake combo in the Autobrake panel to BTV, the window 
 If not using BTV, set the autobrake to low, L2, L3 or high instead
 At top of descent set a lower altitude in the FCU altitude window and push the knob for managed descent
 Seat belts sign on
+Cabin crew advised and cabin secure for landing
 
 [Approach]
 Landing lights on passing ten thousand feet
@@ -164,6 +167,7 @@ Verify remaining fuel with output mode then F
 
 [Securing the Aircraft]
 Crew oxygen supply off
+EFB tablets and flyPad stowed
 ADIRS, all three IR mode selectors off
 Emergency exit lights off
 No smoking selector off
