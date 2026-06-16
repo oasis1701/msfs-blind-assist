@@ -233,5 +233,48 @@ Check(Math.Abs(GuidanceGeometry.ProjectHeadingError(12.0, 0.0, 1.5, 30.0) - 12.0
 Check(Math.Abs(GuidanceGeometry.ProjectHeadingError(0.0, 100.0, 1.5, 30.0) - (-30.0)) < 0.01,
       "rate-lead: clamped against rate spikes");
 
+// ---------------------------------------------------------------------------
+// Case 7 — unreachable-runway reach check measures the DESTINATION node, not
+// the truncated hold-short (LPPT 02 false-positive, 2026-06-16).
+//
+// AbsLateralFromRunwayMeters replica (matches TaxiGuidanceManager): perpendicular
+// distance from a point to the runway centerline through (refLat,refLon) at
+// runwayHeadingTrue. RUNWAY_REACH_MAX_CROSS_M = 120 m is the warn threshold.
+// ---------------------------------------------------------------------------
+double AbsLateralFromRunwayMeters(double pLat, double pLon, double refLat, double refLon, double hdgTrueDeg)
+{
+    const double mpdLat = 111132.0;
+    double metersPerDegLon = mpdLat * Math.Cos((pLat + refLat) * 0.5 * Math.PI / 180.0);
+    double dN = (pLat - refLat) * mpdLat;
+    double dE = (pLon - refLon) * metersPerDegLon;
+    double h = hdgTrueDeg * Math.PI / 180.0;
+    return Math.Abs(dE * Math.Cos(h) - dN * Math.Sin(h));
+}
+
+const double REACH_MAX = 120.0;
+// Runway 02 lineup point (start table) and true heading, from the fs2024 DB.
+double r02Lat = 38.766670227, r02Lon = -9.1438179016, r02Hdg = 22.77223;
+
+// The route was truncated to the rwy-02 ILS hold (IHSND) node. Measuring THAT
+// node (the old behaviour) read ~500 ft off → false "does not reach runway".
+double ihsCross = AbsLateralFromRunwayMeters(38.7659264, -9.1423216, r02Lat, r02Lon, r02Hdg);
+Check(ihsCross > REACH_MAX && Math.Abs(ihsCross - 151.6) < 2.0,
+      $"LPPT 02: ILS hold-short node is {ihsCross:F0} m off centerline (>120 m) — measuring it false-fired the warning");
+
+// The route's DESTINATION node (node 695, the runway entrance — what the fixed
+// check measures) is ~7 m off → reachable, no warning. THIS is the fix.
+double destCross = AbsLateralFromRunwayMeters(38.766712, -9.143710, r02Lat, r02Lon, r02Hdg);
+Check(destCross <= REACH_MAX && destCross < 10.0,
+      $"LPPT 02: destination node is {destCross:F1} m off centerline (<=120 m) — fixed check does NOT warn");
+
+// Genuine PHNL-style failure: destination node itself is ~150 m off on a
+// parallel taxiway → the fixed check STILL warns (protection preserved).
+double parallelCross = AbsLateralFromRunwayMeters(
+    r02Lat + 150.0 * Math.Cos((r02Hdg + 90) * Math.PI / 180.0) / 111132.0,
+    r02Lon + 150.0 * Math.Sin((r02Hdg + 90) * Math.PI / 180.0) / (111132.0 * Math.Cos(r02Lat * Math.PI / 180.0)),
+    r02Lat, r02Lon, r02Hdg);
+Check(parallelCross > REACH_MAX,
+      $"unreachable case: destination 150 m off ({parallelCross:F0} m) still warns — protection preserved");
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);
