@@ -65,6 +65,34 @@
         btns[key] = label;
         act[key] = txt.indexOf('*') !== -1;
         entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: label, btn: side, slot: slot });
+      } else if (cls.indexOf('message-content') !== -1) {
+        // The CPDLC message body is ONE <text> whose word <tspan>s WRAP into the
+        // unit's display lines. getBoundingClientRect collapses them — every word
+        // tspan reports the SAME top in this headless view — so the generic
+        // rect-based row clustering folded the whole clearance (and the header)
+        // onto one line. Detect the unit's OWN line breaks from the SVG markers
+        // instead: a tspan that resets x (has an 'x' attr) or steps the baseline
+        // (has a 'dy' attr) starts a new visual line (FBW MessageVisualization
+        // emits a leading x+dy tspan per wrapped line). Emit each line as its own
+        // row with a synthetic increasing y so the rows keep order between the
+        // header above and the soft keys below — so the message reads line-by-line
+        // exactly as a sighted pilot sees it, one braille line per display line.
+        var mspans = t.querySelectorAll('tspan');
+        var msgBaseY = r.top;
+        var li = -1, lineBuf = '';
+        for (var m = 0; m < mspans.length; m++) {
+          var wtxt = (mspans[m].textContent || '').replace(/\s+/g, ' ').trim();
+          if (!wtxt) continue;
+          var newLine = mspans[m].getAttribute('x') !== null || mspans[m].getAttribute('dy') !== null;
+          if (newLine || li < 0) {
+            if (lineBuf) entries.push({ x: r.left, y: msgBaseY + li * 200, h: 50, txt: lineBuf, btn: '' });
+            li++;
+            lineBuf = wtxt;
+          } else {
+            lineBuf = lineBuf + ' ' + wtxt;
+          }
+        }
+        if (lineBuf) entries.push({ x: r.left, y: msgBaseY + li * 200, h: 50, txt: lineBuf, btn: '' });
       } else {
         var spans2 = t.querySelectorAll('tspan');
         if (spans2.length > 1) {

@@ -37,11 +37,17 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 /// </summary>
 public class FlyByWireDcduForm : Form
 {
-    private const int LineWidth = 30;
+    // Match the MCDU window's positional width (FbwMcduFormat.PositionLine default
+    // = 24 cols). The wider 30-col field right-aligned a lone right key (e.g.
+    // "RECALL>") six columns further from its leading key number than the MCDU,
+    // so the number and its label read as disconnected on a braille display. 24
+    // keeps the whole line — number at column 0, label right-aligned with its
+    // ">" side marker — within one 40-cell braille line, exactly like the MCDU.
+    private const int LineWidth = 24;
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnect.SimConnectManager _simConnect;
-    private readonly TextBox _display;
+    private readonly ListBox _display;
     private readonly System.Windows.Forms.Timer _pollTimer;
     private readonly System.Windows.Forms.Timer _postActionTimer;
     private string _lastText = "";
@@ -62,15 +68,20 @@ public class FlyByWireDcduForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
 
-        _display = new TextBox
+        // ListBox (not a multiline TextBox) so each display line is its OWN
+        // accessible row — a screen reader / braille display presents one line per
+        // item cleanly, matching the MCDU window (FlyByWireMCDUForm), which uses a
+        // ListBox and reads correctly on braille. The multiline TextBox presented
+        // the rows so that a right-aligned key label (e.g. "RECALL>") read on a
+        // separate braille line from its leading key number; one discrete row per
+        // line keeps the whole line — number + right-aligned label — together.
+        _display = new ListBox
         {
-            Multiline = true,
-            ReadOnly = true,
             Dock = DockStyle.Fill,
             Font = new Font("Consolas", 12f),
-            ScrollBars = ScrollBars.Vertical,
             AccessibleName = "DCDU display",
-            TabStop = true
+            TabStop = true,
+            IntegralHeight = false,
         };
         Controls.Add(_display);
 
@@ -203,14 +214,30 @@ public class FlyByWireDcduForm : Form
         }
     }
 
-    /// <summary>Change-only, caret-preserving write so the 2 s poll never yanks the reading cursor.</summary>
+    /// <summary>
+    /// Change-only, selection-preserving update so the 1 s poll never yanks the
+    /// braille reading position. Each line becomes its own ListBox item (one
+    /// discrete accessible row), reconciled item-by-item so an unchanged poll is a
+    /// no-op and a changed poll keeps the user's selected line where possible.
+    /// </summary>
     private void SetText(string text)
     {
         if (text == _lastText) return;
         _lastText = text;
-        int caret = _display.SelectionStart;
-        _display.Text = text;
-        _display.SelectionStart = Math.Min(caret, _display.TextLength);
+        string[] newItems = text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+        int saved = _display.SelectedIndex;
+        _display.BeginUpdate();
+        while (_display.Items.Count > newItems.Length) { _display.Items.RemoveAt(_display.Items.Count - 1); }
+        while (_display.Items.Count < newItems.Length) { _display.Items.Add(""); }
+        for (int i = 0; i < newItems.Length; i++)
+        {
+            if (_display.Items[i]?.ToString() != newItems[i]) { _display.Items[i] = newItems[i]; }
+        }
+        _display.EndUpdate();
+        // First populate (saved == -1): anchor on line 1 so a focused display
+        // reads immediately; later updates keep the user's selected line.
+        if (saved < 0 && _display.Items.Count > 0) { _display.SelectedIndex = 0; }
+        else if (saved >= 0 && saved < _display.Items.Count) { _display.SelectedIndex = saved; }
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
