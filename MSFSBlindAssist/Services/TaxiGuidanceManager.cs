@@ -2920,7 +2920,10 @@ public class TaxiGuidanceManager : IDisposable
         // the same _destinationNodeId, so this measures the destination node, not
         // the new hold-short). Keeps the during-lineup bailout correct after an
         // auto-recalc, which was the bailout's original reason for existing.
-        _routeReachesRunway =
+        // Only meaningful for a runway lineup (matching the TruncateToHoldShort
+        // guard above); gate destinations leave _routeReachesRunway true so the
+        // runway-only safety net stays disarmed.
+        _routeReachesRunway = !_isRunwayLineup ||
             DestinationCrossTrackMeters(_destinationNodeId) <= RUNWAY_REACH_MAX_CROSS_M;
 
         _route = newRoute;
@@ -6001,13 +6004,6 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Absolute lateral (cross-runway) offset in meters of <paramref name="pointLat/Lon"/>
-    /// from the runway centerline. The centerline passes through
-    /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.
-    /// Companion to <see cref="SignedAlongRunwayMeters"/> — uses the perpendicular
-    /// component of the same equirectangular projection.
-    /// </summary>
-    /// <summary>
     /// Perpendicular (cross-track) distance in metres from the route's DESTINATION
     /// node to the runway centerline (lineup point + runway heading). This is the
     /// reachability probe for the unreachable-runway safety net: the destination
@@ -6029,6 +6025,13 @@ public class TaxiGuidanceManager : IDisposable
             _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
     }
 
+    /// <summary>
+    /// Absolute lateral (cross-runway) offset in meters of <paramref name="pointLat/Lon"/>
+    /// from the runway centerline. The centerline passes through
+    /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.
+    /// Companion to <see cref="SignedAlongRunwayMeters"/> — uses the perpendicular
+    /// component of the same equirectangular projection.
+    /// </summary>
     private static double AbsLateralFromRunwayMeters(
         double pointLat, double pointLon,
         double refLat, double refLon,
