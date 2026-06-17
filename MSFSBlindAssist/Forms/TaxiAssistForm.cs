@@ -64,17 +64,25 @@ public class TaxiAssistForm : Form
     private CheckBox chkFirstHoldShort = null!;
     private ComboBox cmbFirstHoldShortRunway = null!;
     private Button btnAddTaxiway = null!;
-    // Progressive Taxi terminator controls. These two combos are form-level (not
-    // per-row): RefreshTerminatorRow() repositions and shows them on whichever
-    // taxiway row is CURRENTLY last, and only when the destination type is
-    // Progressive Taxi (index 2). The chosen terminator therefore "travels with
-    // the last row" as the spec requires. The runway TARGET reuses that last
-    // row's existing "Hold short of runway" combo; cmbTerminatorTaxiway is the
-    // separate target picker for the hold-short-of-taxiway case.
+    // Progressive Taxi terminator controls. These are form-level (not per-row):
+    // RefreshTerminatorRow() repositions and shows them on whichever taxiway row
+    // is CURRENTLY last, and only when the destination type is Progressive Taxi
+    // (index 2). The chosen terminator therefore "travels with the last row" as
+    // the spec requires. The terminator block is SELF-CONTAINED: it carries its
+    // own target pickers — cmbTerminatorRunway for the runway terminators (Hold
+    // short of runway / After crossing runway) and cmbTerminatorTaxiway for the
+    // taxiway terminator (and the optional cross-at taxiway). The per-row "Hold
+    // short of runway" combos are NOT reused for the terminator target; they keep
+    // their single meaning of an intermediate hold-short on any row.
     private Label lblTerminatorType = null!;
     private ComboBox cmbTerminatorType = null!;
+    private Label lblTerminatorRunway = null!;
+    private ComboBox cmbTerminatorRunway = null!;
     private Label lblTerminatorTaxiway = null!;
     private ComboBox cmbTerminatorTaxiway = null!;
+    // Computed height of the terminator block (1-3 visible lines depending on
+    // type), read by UpdateLayout in place of the fixed TERMINATOR_BLOCK_HEIGHT_PX.
+    private int _terminatorBlockHeightPx = TERMINATOR_BLOCK_HEIGHT_PX;
     // Display strings for the terminator type combo, index-aligned with the
     // ProgressiveTerminatorType resolution switch in OnCalculateClicked.
     private static readonly string[] TerminatorTypeItems =
@@ -247,6 +255,8 @@ public class TaxiAssistForm : Form
         //   Alt+O  Hold short &of runway combo (first row + dynamic — all cycle on Alt+O)
         //   Alt+D  Add (D)taxiway button
         //   Alt+N  Progressive-taxi termi&nator type combo (last row only, index 2)
+        //   Alt+U  Progressive-taxi terminator R&unway target combo (last row only,
+        //          types "Hold short of runway" / "After crossing runway")
         //   Alt+W  Progressive-taxi terminator taxi&way target combo (last row only,
         //          type "Hold short of taxiway"); the SAME combo becomes the optional
         //          "Cross at ta&xiway" picker (Alt+X) for type "After crossing runway"
@@ -469,11 +479,41 @@ public class TaxiAssistForm : Form
             DropDownStyle = ComboBoxStyle.DropDownList,
             Visible = false,
             AccessibleName = "Progressive taxi terminator",
-            AccessibleDescription = "Choose how this progressive taxi leg ends: hold short of a runway, hold short of a taxiway, after crossing a runway, or at the end of the last taxiway. Pick the target runway in the Hold short of runway combo, or the target taxiway in the terminator taxiway combo."
+            AccessibleDescription = "Choose how this progressive taxi leg ends: hold short of a runway, hold short of a taxiway, after crossing a runway, or at the end of the last taxiway. Pick the target runway or taxiway in the combo that appears just below."
         };
         cmbTerminatorType.Items.AddRange(TerminatorTypeItems);
         cmbTerminatorType.SelectedIndex = 0;
         cmbTerminatorType.SelectedIndexChanged += (s, ev) => RefreshTerminatorRow();
+        // Runway TARGET for the two runway terminators (Hold short of runway /
+        // After crossing runway). The label text + accessibility strings are set
+        // per-type in RefreshTerminatorRow ("Runway to hold short of:" vs "Runway
+        // to cross:"). Populated from _airportRunwayIds (same source + sentinel as
+        // the per-row hold-short combos) via RebuildHoldShortRunwayCombo.
+        lblTerminatorRunway = new Label
+        {
+            Text = "R&unway to hold short of:",
+            AutoSize = true,
+            Visible = false,
+            AccessibleName = "Progressive taxi terminator runway label"
+        };
+        cmbTerminatorRunway = new ComboBox
+        {
+            Width = 190,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Visible = false,
+            AccessibleName = "Progressive taxi terminator runway",
+            AccessibleDescription = "Pick the runway this progressive leg holds short of."
+        };
+        cmbTerminatorRunway.Items.Add(NO_RUNWAY_HOLDSHORT);
+        cmbTerminatorRunway.SelectedIndex = 0;
+        // When the target runway changes, refresh the optional cross-at taxiway
+        // list (it is filtered to taxiways that cross the chosen runway for the
+        // After-crossing terminator).
+        cmbTerminatorRunway.SelectedIndexChanged += (s, ev) =>
+        {
+            if (cmbTerminatorType.SelectedIndex == 2)
+                PopulateTerminatorTaxiwayList();
+        };
         lblTerminatorTaxiway = new Label
         {
             Text = "Hold short of taxi&way:",
@@ -599,6 +639,8 @@ public class TaxiAssistForm : Form
         // empty they go in now and RefreshTerminatorRow positions/shows them.
         pnlTaxiways.Controls.Add(lblTerminatorType);
         pnlTaxiways.Controls.Add(cmbTerminatorType);
+        pnlTaxiways.Controls.Add(lblTerminatorRunway);
+        pnlTaxiways.Controls.Add(cmbTerminatorRunway);
         pnlTaxiways.Controls.Add(lblTerminatorTaxiway);
         pnlTaxiways.Controls.Add(cmbTerminatorTaxiway);
         // The terminator block belongs to the LAST taxiway row, so it should tab
@@ -612,8 +654,10 @@ public class TaxiAssistForm : Form
         // taxiway row (which get sequential low indices as rows are added).
         lblTerminatorType.TabIndex = 8998;
         cmbTerminatorType.TabIndex = 8999;
-        lblTerminatorTaxiway.TabIndex = 9000;
-        cmbTerminatorTaxiway.TabIndex = 9001;
+        lblTerminatorRunway.TabIndex = 9000;
+        cmbTerminatorRunway.TabIndex = 9001;
+        lblTerminatorTaxiway.TabIndex = 9002;
+        cmbTerminatorTaxiway.TabIndex = 9003;
         this.Controls.Add(pnlTaxiways);
         this.Controls.Add(btnCalculate);
         this.Controls.Add(btnStop);
