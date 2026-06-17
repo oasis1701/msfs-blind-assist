@@ -23,16 +23,24 @@ public static class TaxiLeadIn
     /// </summary>
     public const double TriggerMeters = 75.0;
 
-    /// <summary>Lead-in is rejected if its distance exceeds gap * Ratio + Pad
-    /// (dead-end / loop guard — mirrors RECALC_LENGTH_BLOWUP_*).</summary>
+    /// <summary>
+    /// Lead-in is rejected if its distance exceeds gap * <see cref="MaxRatio"/> +
+    /// <see cref="MaxPadMeters"/> (dead-end / loop guard). Analogous in intent to
+    /// RECALC_LENGTH_BLOWUP_* in TaxiGuidanceManager, but deliberately calibrated
+    /// for short apron lead-in distances rather than full-route recalcs.
+    /// </summary>
     public const double MaxRatio = 2.5;
     public const double MaxPadMeters = 300.0;
 
     public readonly struct LeadInInfo
     {
         public bool HasLeadIn { get; init; }
-        public IReadOnlyList<string> Taxiways { get; init; }
+        public IReadOnlyList<string> Taxiways { get; init; } = Array.Empty<string>();
         public double DistanceMeters { get; init; }
+
+        // Explicit parameterless constructor required by C# when a readonly struct
+        // has field/property initializers.
+        public LeadInInfo() { }
     }
 
     /// <summary>

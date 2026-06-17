@@ -93,6 +93,14 @@ Check(!TaxiLeadIn.IsAcceptable(330, 297, "fell back to shortest path"),
 
 Check(TaxiLeadIn.Clause(info, "A") == " First taxi via 4 and AJ to reach A.",
       $"Clause: two named lead-in taxiways (got '{TaxiLeadIn.Clause(info, "A")}')");
+var threeNames = new TaxiLeadIn.LeadInInfo
+{
+    HasLeadIn = true,
+    Taxiways = new[] { "4", "AJ", "NP" },
+    DistanceMeters = 330
+};
+Check(TaxiLeadIn.Clause(threeNames, "A") == " First taxi via 4, AJ and NP to reach A.",
+      "Clause: three named lead-in taxiways");
 var oneName = new TaxiLeadIn.LeadInInfo { HasLeadIn = true, Taxiways = new[] { "4" }, DistanceMeters = 90 };
 Check(TaxiLeadIn.Clause(oneName, "A") == " First taxi via 4 to reach A.",
       "Clause: single named lead-in taxiway");
