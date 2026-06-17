@@ -81,8 +81,10 @@ public class TaxiAssistForm : Form
     private Label lblTerminatorTaxiway = null!;
     private ComboBox cmbTerminatorTaxiway = null!;
     // Computed height of the terminator block (1-3 visible lines depending on
-    // type), read by UpdateLayout in place of the fixed TERMINATOR_BLOCK_HEIGHT_PX.
-    private int _terminatorBlockHeightPx = TERMINATOR_BLOCK_HEIGHT_PX;
+    // terminator type), read by UpdateLayout. Always set by RefreshTerminatorRow
+    // before UpdateLayout consumes it (and UpdateLayout only reads it while the
+    // block is visible), so the initial 0 is never observed.
+    private int _terminatorBlockHeightPx;
     // Display strings for the terminator type combo, index-aligned with the
     // ProgressiveTerminatorType resolution switch in OnCalculateClicked.
     private static readonly string[] TerminatorTypeItems =
@@ -121,11 +123,6 @@ public class TaxiAssistForm : Form
     // Two-line layout: line 1 holds the taxiway combo + Hold-short checkbox +
     // Remove button; line 2 holds the "Hold short of runway" combo.
     private const int DYNAMIC_ROW_HEIGHT_PX = 80;
-
-    // Vertical pixel height of the Progressive Taxi terminator block (type combo
-    // on line 1, taxiway-target combo on line 2) shown below the last taxiway
-    // row inside pnlTaxiways when in Progressive Taxi mode.
-    private const int TERMINATOR_BLOCK_HEIGHT_PX = 55;
 
     // Cached runway designators for the current airport (e.g. ["09L","09R","27L","27R"]).
     // Populated on airport load; consumed when constructing every Hold-short-of-runway
