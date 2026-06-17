@@ -113,11 +113,29 @@ public class TaxiAssistForm : Form
     // and reads cleanly: "Hold short OF runway".
     private const string HOLD_SHORT_RUNWAY_LABEL = "Hold short &of runway:";
 
-    // Dynamic taxiway controls. Tuple now carries the runway-hold-short combo
-    // alongside the existing combo / hold-short checkbox / remove button so
-    // OnCalculateClicked can iterate them all in one pass.
     private Panel pnlTaxiways = null!;
-    private List<(Label label, ComboBox combo, CheckBox holdShort, ComboBox holdShortRunway, Button removeBtn)> _additionalTaxiways = new();
+
+    /// <summary>
+    /// One dynamically-added taxiway row in the planner. Holds a direct reference
+    /// to every control the row owns — including the second-line
+    /// "Hold short of runway:" label — so the row can be removed and its per-row
+    /// controls toggled without scanning the panel by pixel position or label text.
+    /// </summary>
+    private sealed class TaxiwayRow
+    {
+        public Label Label = null!;                 // line 1: "Taxiway N:" label
+        public ComboBox Combo = null!;              // line 1: taxiway selector
+        public CheckBox HoldShort = null!;          // line 1: "Hold short" checkbox
+        public Label HoldShortRunwayLabel = null!;  // line 2: "Hold short of runway:" label
+        public ComboBox HoldShortRunway = null!;    // line 2: runway combo
+        public Button RemoveBtn = null!;            // line 1: "Remove" button
+
+        /// <summary>Every control this row owns — used to remove/dispose the row in one pass.</summary>
+        public IEnumerable<Control> Controls =>
+            new Control[] { Label, Combo, HoldShort, HoldShortRunwayLabel, HoldShortRunway, RemoveBtn };
+    }
+
+    private List<TaxiwayRow> _additionalTaxiways = new();
     private const int MAX_ADDITIONAL_TAXIWAYS = 20;
 
     // Vertical pixel height of one dynamic taxiway row inside pnlTaxiways.
@@ -1186,7 +1204,7 @@ public class TaxiAssistForm : Form
         }
         else
         {
-            previousTaxiway = _additionalTaxiways[^1].combo.SelectedItem?.ToString();
+            previousTaxiway = _additionalTaxiways[^1].Combo.SelectedItem?.ToString();
         }
 
         if (string.IsNullOrEmpty(previousTaxiway) || previousTaxiway.StartsWith("(None"))
@@ -1233,10 +1251,10 @@ public class TaxiAssistForm : Form
         }
         else
         {
-            var (_, _, hsChk, hsRwy, _) = _additionalTaxiways[^1];
-            string? rwy = hsRwy.SelectedItem?.ToString();
+            var last = _additionalTaxiways[^1];
+            string? rwy = last.HoldShortRunway.SelectedItem?.ToString();
             prevHasHoldShort =
-                hsChk.Checked ||
+                last.HoldShort.Checked ||
                 (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT);
         }
 
@@ -1381,7 +1399,15 @@ public class TaxiAssistForm : Form
         pnlTaxiways.Controls.Add(lblRunwayHs);
         pnlTaxiways.Controls.Add(holdShortRunwayCmb);
 
-        _additionalTaxiways.Add((label, combo, holdShortChk, holdShortRunwayCmb, removeBtn));
+        _additionalTaxiways.Add(new TaxiwayRow
+        {
+            Label = label,
+            Combo = combo,
+            HoldShort = holdShortChk,
+            HoldShortRunwayLabel = lblRunwayHs,
+            HoldShortRunway = holdShortRunwayCmb,
+            RemoveBtn = removeBtn
+        });
 
         // A row added while already in Progressive Taxi mode must start with its
         // per-row "Hold short of runway" control hidden (the terminator owns the
@@ -1411,44 +1437,17 @@ public class TaxiAssistForm : Form
 
     private void RemoveTaxiwaysFrom(int fromIndex)
     {
-        // Remove this taxiway and all after it. The 5-tuple gained the
-        // hold-short-of-runway combo; we also need to find and remove the
-        // small "Hold short of runway:" label that accompanies it (it's not
-        // tracked in the tuple to keep the destructuring tidier; we look it
-        // up by Y-coordinate in the panel below). Both the combo and that
-        // label live on line 2 of the row.
+        // Remove this taxiway row and all after it. Each row owns its controls
+        // (including the second-line "Hold short of runway:" label), so removal is
+        // a single pass over row.Controls — no panel scanning by pixel position.
         while (_additionalTaxiways.Count > fromIndex)
         {
-            var (label, combo, holdShortChk, holdShortRunwayCmb, removeBtn) = _additionalTaxiways[^1];
-            int rowIdx = _additionalTaxiways.Count - 1;
-            int line2Y = rowIdx * DYNAMIC_ROW_HEIGHT_PX + 45;
-
-            // The companion "Hold short of runway:" label sits at Y == line2Y
-            // and is the only Label in the panel at that Y other than the
-            // taxiway-row label (which is at Y == row's panelY, not panelY+45).
-            Label? companionLabel = null;
-            foreach (Control c in pnlTaxiways.Controls)
+            var row = _additionalTaxiways[^1];
+            foreach (var c in row.Controls)
             {
-                if (c is Label l && l.Location.Y == line2Y)
-                {
-                    companionLabel = l;
-                    break;
-                }
+                pnlTaxiways.Controls.Remove(c);
+                c.Dispose();
             }
-
-            pnlTaxiways.Controls.Remove(label);
-            pnlTaxiways.Controls.Remove(combo);
-            pnlTaxiways.Controls.Remove(holdShortChk);
-            pnlTaxiways.Controls.Remove(removeBtn);
-            pnlTaxiways.Controls.Remove(holdShortRunwayCmb);
-            if (companionLabel != null) pnlTaxiways.Controls.Remove(companionLabel);
-
-            label.Dispose();
-            combo.Dispose();
-            holdShortChk.Dispose();
-            removeBtn.Dispose();
-            holdShortRunwayCmb.Dispose();
-            companionLabel?.Dispose();
             _additionalTaxiways.RemoveAt(_additionalTaxiways.Count - 1);
         }
 
@@ -1484,7 +1483,7 @@ public class TaxiAssistForm : Form
         }
         else
         {
-            lastSelected = _additionalTaxiways[^1].combo.SelectedItem?.ToString();
+            lastSelected = _additionalTaxiways[^1].Combo.SelectedItem?.ToString();
         }
 
         btnAddTaxiway.Enabled = !string.IsNullOrEmpty(lastSelected) && !lastSelected.StartsWith("(None");
@@ -1498,9 +1497,9 @@ public class TaxiAssistForm : Form
         if (!string.IsNullOrEmpty(first) && !first.StartsWith("(None"))
             names.Add(first);
 
-        foreach (var (_, combo, _, _, _) in _additionalTaxiways)
+        foreach (var row in _additionalTaxiways)
         {
-            string? sel = combo.SelectedItem?.ToString();
+            string? sel = row.Combo.SelectedItem?.ToString();
             if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
                 names.Add(sel);
         }
@@ -1523,12 +1522,12 @@ public class TaxiAssistForm : Form
 
         // Check additional taxiway hold-shorts
         int seqIndex = 1;
-        foreach (var (_, combo, holdShortChk, _, _) in _additionalTaxiways)
+        foreach (var row in _additionalTaxiways)
         {
-            string? sel = combo.SelectedItem?.ToString();
+            string? sel = row.Combo.SelectedItem?.ToString();
             if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
             {
-                if (holdShortChk.Checked)
+                if (row.HoldShort.Checked)
                     indices.Add(seqIndex);
                 seqIndex++;
             }
@@ -1562,12 +1561,12 @@ public class TaxiAssistForm : Form
 
         // Dynamic taxiway rows.
         int seqIndex = 1;
-        foreach (var (_, combo, _, holdShortRunwayCmb, _) in _additionalTaxiways)
+        foreach (var row in _additionalTaxiways)
         {
-            string? sel = combo.SelectedItem?.ToString();
+            string? sel = row.Combo.SelectedItem?.ToString();
             if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
             {
-                string? rwy = holdShortRunwayCmb.SelectedItem?.ToString();
+                string? rwy = row.HoldShortRunway.SelectedItem?.ToString();
                 if (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT)
                     result[seqIndex] = rwy;
                 seqIndex++;
@@ -1595,24 +1594,15 @@ public class TaxiAssistForm : Form
         if (!visible && cmbFirstHoldShortRunway.SelectedIndex != 0)
             cmbFirstHoldShortRunway.SelectedIndex = 0;
 
-        foreach (var (_, _, _, holdShortRunwayCmb, _) in _additionalTaxiways)
+        // Each dynamic row owns both its second-line label and combo, so toggle
+        // them directly. (The first-row label/combo above live on this.Controls
+        // and are handled by field reference.)
+        foreach (var row in _additionalTaxiways)
         {
-            holdShortRunwayCmb.Visible = visible;
-            if (!visible && holdShortRunwayCmb.SelectedIndex != 0)
-                holdShortRunwayCmb.SelectedIndex = 0;
-        }
-
-        // The first-row label/combo above live on this.Controls and are handled by
-        // field reference. The dynamic-row hold-short labels in pnlTaxiways are not
-        // tracked in the row tuple; they are the ONLY panel labels carrying the
-        // HOLD_SHORT_RUNWAY_LABEL text
-        // (taxiway labels read "Taxiway N:"; the terminator runway label reads
-        // "R&unway to hold short of:"), so matching on that exact text finds
-        // exactly the per-row hold-short labels.
-        foreach (Control ctrl in pnlTaxiways.Controls)
-        {
-            if (ctrl is Label lbl && lbl.Text == HOLD_SHORT_RUNWAY_LABEL)
-                lbl.Visible = visible;
+            row.HoldShortRunwayLabel.Visible = visible;
+            row.HoldShortRunway.Visible = visible;
+            if (!visible && row.HoldShortRunway.SelectedIndex != 0)
+                row.HoldShortRunway.SelectedIndex = 0;
         }
     }
 
