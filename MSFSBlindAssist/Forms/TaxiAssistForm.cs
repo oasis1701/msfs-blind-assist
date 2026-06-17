@@ -1605,8 +1605,11 @@ public class TaxiAssistForm : Form
         {
             lblTerminatorType.Visible = false;
             cmbTerminatorType.Visible = false;
+            lblTerminatorRunway.Visible = false;
+            cmbTerminatorRunway.Visible = false;
             lblTerminatorTaxiway.Visible = false;
             cmbTerminatorTaxiway.Visible = false;
+            _terminatorBlockHeightPx = 0;
             UpdateLayout();
             return;
         }
@@ -1614,35 +1617,68 @@ public class TaxiAssistForm : Form
         // The terminator block sits just below the current last taxiway row,
         // inside pnlTaxiways. When no additional rows exist, the "last row" is
         // the first-taxiway slot (outside the panel) and the block sits at the
-        // top of the panel (panelY 0).
+        // top of the panel (blockY 0). Each visible line is LINE_PX tall.
+        const int LINE_PX = 28;
         int blockY = _additionalTaxiways.Count * DYNAMIC_ROW_HEIGHT_PX;
+        int Line(int n) => blockY + n * LINE_PX;
 
-        lblTerminatorType.Location = new System.Drawing.Point(0, blockY + 2);
-        cmbTerminatorType.Location = new System.Drawing.Point(140, blockY);
+        // Line 0: terminator type (always shown in progressive mode).
+        lblTerminatorType.Location = new System.Drawing.Point(0, Line(0) + 2);
+        cmbTerminatorType.Location = new System.Drawing.Point(140, Line(0));
         lblTerminatorType.Visible = true;
         cmbTerminatorType.Visible = true;
 
-        // The taxiway combo serves two terminator types:
-        //   index 1 (Hold short of taxiway) — REQUIRED target taxiway.
-        //   index 2 (After crossing runway) — OPTIONAL "cross at" taxiway that
-        //     pins the crossing point ("(none)" = nearest crossing automatically).
         int tType = cmbTerminatorType.SelectedIndex;
-        bool needTaxiwayTarget = tType == 1 || tType == 2;
-        lblTerminatorTaxiway.Text = tType == 2
-            ? "Cross at ta&xiway (optional):"
-            : "Hold short of taxi&way:";
-        lblTerminatorTaxiway.AccessibleName = tType == 2
-            ? "Cross at taxiway, optional"
-            : "Progressive taxi terminator taxiway label";
-        cmbTerminatorTaxiway.AccessibleDescription = tType == 2
-            ? "Optional: pick the taxiway at which to cross the runway, when ATC names a crossing point. Lists only taxiways that cross the chosen runway. Leave at \"(none)\" to cross at the nearest point automatically. The runway is the one selected in the last row's Hold short of runway combo."
-            : "Pick the taxiway to hold short of where it meets the last taxiway in your route.";
-        lblTerminatorTaxiway.Location = new System.Drawing.Point(0, blockY + 30);
-        cmbTerminatorTaxiway.Location = new System.Drawing.Point(180, blockY + 28);
+        bool needRunwayTarget = tType == 0 || tType == 2;          // hold short / cross
+        bool needTaxiwayTarget = tType == 1 || tType == 2;          // hold short taxiway / cross-at
+
+        // Pack visible target combos on consecutive lines beneath the type combo.
+        int nextLine = 1;
+
+        // Runway target (line 1 when shown). Label + accessibility match the type.
+        if (needRunwayTarget)
+        {
+            lblTerminatorRunway.Text = tType == 2
+                ? "R&unway to cross:"
+                : "R&unway to hold short of:";
+            lblTerminatorRunway.AccessibleName = tType == 2
+                ? "Runway to cross"
+                : "Runway to hold short of";
+            lblTerminatorRunway.AccessibleDescription = tType == 2
+                ? "Pick the runway ATC cleared you to cross. Guidance ends just past this runway."
+                : "Pick the runway this progressive leg holds short of. Guidance ends at the hold line.";
+            cmbTerminatorRunway.AccessibleDescription = lblTerminatorRunway.AccessibleDescription;
+            lblTerminatorRunway.Location = new System.Drawing.Point(0, Line(nextLine) + 2);
+            cmbTerminatorRunway.Location = new System.Drawing.Point(180, Line(nextLine));
+            nextLine++;
+        }
+        lblTerminatorRunway.Visible = needRunwayTarget;
+        cmbTerminatorRunway.Visible = needRunwayTarget;
+
+        // Taxiway target (next line). For type 1 it is the REQUIRED hold-short
+        // taxiway; for type 2 it is the OPTIONAL cross-at taxiway.
+        if (needTaxiwayTarget)
+        {
+            lblTerminatorTaxiway.Text = tType == 2
+                ? "Cross at ta&xiway (optional):"
+                : "Hold short of taxi&way:";
+            lblTerminatorTaxiway.AccessibleName = tType == 2
+                ? "Cross at taxiway, optional"
+                : "Progressive taxi terminator taxiway label";
+            cmbTerminatorTaxiway.AccessibleDescription = tType == 2
+                ? "Optional: pick the taxiway at which to cross the runway, when ATC names a crossing point. Lists only taxiways that cross the runway picked above. Leave at \"(none)\" to cross at the nearest point automatically."
+                : "Pick the taxiway to hold short of where it meets the last taxiway in your route.";
+            lblTerminatorTaxiway.Location = new System.Drawing.Point(0, Line(nextLine) + 2);
+            cmbTerminatorTaxiway.Location = new System.Drawing.Point(180, Line(nextLine));
+            nextLine++;
+        }
         lblTerminatorTaxiway.Visible = needTaxiwayTarget;
         cmbTerminatorTaxiway.Visible = needTaxiwayTarget;
         if (needTaxiwayTarget)
             PopulateTerminatorTaxiwayList();
+
+        // Block height = number of visible lines (type + however many targets).
+        _terminatorBlockHeightPx = nextLine * LINE_PX;
 
         UpdateLayout();
     }
@@ -1697,10 +1733,10 @@ public class TaxiAssistForm : Form
         // top, runway-hold-short combo on bottom).
         int panelHeight = _additionalTaxiways.Count * DYNAMIC_ROW_HEIGHT_PX;
         // Reserve space for the Progressive Taxi terminator block when it is
-        // shown below the last row (cmbTerminatorType.Visible is set by
-        // RefreshTerminatorRow before this runs).
+        // shown below the last row (cmbTerminatorType.Visible + the per-type
+        // _terminatorBlockHeightPx are set by RefreshTerminatorRow before this runs).
         if (cmbTerminatorType.Visible)
-            panelHeight += TERMINATOR_BLOCK_HEIGHT_PX;
+            panelHeight += _terminatorBlockHeightPx;
         pnlTaxiways.Height = panelHeight;
 
         // Reposition buttons and status below the panel
