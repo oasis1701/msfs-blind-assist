@@ -130,8 +130,9 @@ public class TaxiAssistForm : Form
         public ComboBox HoldShortRunway = null!;    // line 2: runway combo
         public Button RemoveBtn = null!;            // line 1: "Remove" button
 
-        /// <summary>Every control this row owns — used to remove/dispose the row in one pass.</summary>
-        public IEnumerable<Control> Controls =>
+        /// <summary>Every control this row owns — used to remove/dispose the row in one pass.
+        /// Named OwnedControls (not Controls) to avoid confusion with WinForms' Control.Controls.</summary>
+        public IEnumerable<Control> OwnedControls =>
             new Control[] { Label, Combo, HoldShort, HoldShortRunwayLabel, HoldShortRunway, RemoveBtn };
     }
 
@@ -1443,7 +1444,7 @@ public class TaxiAssistForm : Form
         while (_additionalTaxiways.Count > fromIndex)
         {
             var row = _additionalTaxiways[^1];
-            foreach (var c in row.Controls)
+            foreach (var c in row.OwnedControls)
             {
                 pnlTaxiways.Controls.Remove(c);
                 c.Dispose();
