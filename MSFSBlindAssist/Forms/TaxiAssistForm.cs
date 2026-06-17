@@ -1590,16 +1590,22 @@ public class TaxiAssistForm : Form
     {
         lblFirstHoldShortRunway.Visible = visible;
         cmbFirstHoldShortRunway.Visible = visible;
-        if (!visible) cmbFirstHoldShortRunway.SelectedIndex = 0;
+        // Guard the reset so it never fires SelectedIndexChanged on an already-(none)
+        // combo (harmless today — no handler is wired — but a trap for future ones).
+        if (!visible && cmbFirstHoldShortRunway.SelectedIndex != 0)
+            cmbFirstHoldShortRunway.SelectedIndex = 0;
 
         foreach (var (_, _, _, holdShortRunwayCmb, _) in _additionalTaxiways)
         {
             holdShortRunwayCmb.Visible = visible;
-            if (!visible) holdShortRunwayCmb.SelectedIndex = 0;
+            if (!visible && holdShortRunwayCmb.SelectedIndex != 0)
+                holdShortRunwayCmb.SelectedIndex = 0;
         }
 
-        // The dynamic-row hold-short labels are not tracked in the row tuple. They
-        // are the ONLY panel labels carrying the HOLD_SHORT_RUNWAY_LABEL text
+        // The first-row label/combo above live on this.Controls and are handled by
+        // field reference. The dynamic-row hold-short labels in pnlTaxiways are not
+        // tracked in the row tuple; they are the ONLY panel labels carrying the
+        // HOLD_SHORT_RUNWAY_LABEL text
         // (taxiway labels read "Taxiway N:"; the terminator runway label reads
         // "R&unway to hold short of:"), so matching on that exact text finds
         // exactly the per-row hold-short labels.
