@@ -148,7 +148,7 @@ var rwy = new List<TaxiGraph.RunwayCenterline>
 string? midName = TaxiGraph.MatchHoldShortRunwayName(42.3750, -71.00927, rwy, MATCH_M);
 Check(midName == "15R", $"mid-runway hold-short names 15R (got '{midName ?? "null"}')");
 
-// Node ~800 m east of the centerline (e.g. a real taxiway-only hold) — no match.
+// Node ~1.6 km east of the centerline (e.g. a real taxiway-only hold) — no match.
 string? farName = TaxiGraph.MatchHoldShortRunwayName(42.3650, -70.9900, rwy, MATCH_M);
 Check(farName == null, $"far node does not match a runway (got '{farName ?? "null"}')");
 
