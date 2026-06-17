@@ -531,9 +531,9 @@ public class TaxiAssistForm : Form
         };
         // For the "After crossing runway" terminator this combo doubles as the
         // optional "Cross at taxiway" picker, whose list depends on the runway
-        // chosen in the last row's "Hold short of runway" combo. Refresh it just
-        // before the dropdown opens so the cross-at options reflect the current
-        // runway pick regardless of the order the user filled the controls in.
+        // chosen in cmbTerminatorRunway. Refresh it just before the dropdown opens
+        // so the cross-at options reflect the current runway pick regardless of the
+        // order the user filled the controls in.
         cmbTerminatorTaxiway.DropDown += (s, ev) => PopulateTerminatorTaxiwayList();
 
         // Dynamic taxiway panel (for additional taxiway combos)
@@ -739,6 +739,7 @@ public class TaxiAssistForm : Form
         ClearAllAdditionalTaxiways();
         _airportRunwayIds = new List<string>();
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
+        RebuildHoldShortRunwayCombo(cmbTerminatorRunway);
 
         cmbDestination.Items.Clear();
 
@@ -790,6 +791,7 @@ public class TaxiAssistForm : Form
             .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
             .ToList();
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
+        RebuildHoldShortRunwayCombo(cmbTerminatorRunway);
 
         // Populate first taxiway combobox sorted by distance, closest first
         PopulateFirstTaxiway();
@@ -1701,7 +1703,7 @@ public class TaxiAssistForm : Form
         {
             // After crossing: optional cross-at picker. "(none)" = nearest crossing.
             cmbTerminatorTaxiway.Items.Add(NO_RUNWAY_HOLDSHORT);
-            string rwy = LastRowHoldShortRunway();
+            string rwy = TerminatorRunwayTarget();
             if (!string.IsNullOrEmpty(rwy) &&
                 _crossRunwayMap.TryGetValue($"Runway {rwy}", out var crossRwy))
             {
@@ -2099,6 +2101,18 @@ public class TaxiAssistForm : Form
         // StartGuidance, which announces the (long) route summary. A queued
         // gate warning would be drowned out behind it.
         _announcer.AnnounceImmediate($"Warning: {who} is at the destination gate.");
+    }
+
+    /// <summary>
+    /// The runway designator chosen as the Progressive Taxi terminator target
+    /// (Hold short of runway / After crossing runway), read from the terminator
+    /// block's own runway combo. Returns "" when unset ("(none)").
+    /// </summary>
+    private string TerminatorRunwayTarget()
+    {
+        string? sel = cmbTerminatorRunway.SelectedItem?.ToString();
+        if (string.IsNullOrEmpty(sel) || sel == NO_RUNWAY_HOLDSHORT) return "";
+        return sel;
     }
 
     /// <summary>
