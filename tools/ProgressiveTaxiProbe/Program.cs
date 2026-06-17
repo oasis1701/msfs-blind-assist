@@ -124,5 +124,38 @@ int endBadNode = g.FindTaxiwayEndNode(999, "A");
 Check(endBadNode == -1,
       $"FindTaxiwayEndNode with nonexistent fromNodeId == -1 (got {endBadNode})");
 
+// ---------------------------------------------------------------------------
+// Hold-short runway association (TaxiGraph.MatchHoldShortRunwayName)
+//
+// Synthetic runway 15R/33L: a straight N-S centerline along lon -71.0100 from
+// lat 42.3500 (33L threshold) to lat 42.3800 (15R threshold) — ~3.3 km long,
+// half-width 30 m. This mirrors the KBOS case: a hold-short where a taxiway
+// crosses the runway far from BOTH thresholds.
+// ---------------------------------------------------------------------------
+const double MATCH_M = 150.0; // mirror TaxiGraph.HOLDSHORT_RUNWAY_MATCH_M
+var rwy = new List<TaxiGraph.RunwayCenterline>
+{
+    new TaxiGraph.RunwayCenterline
+    {
+        Lat1 = 42.3800, Lon1 = -71.0100, Name1 = "15R", // primary end (north)
+        Lat2 = 42.3500, Lon2 = -71.0100, Name2 = "33L", // opposite end (south)
+        HalfWidthMeters = 30.0
+    }
+};
+
+// Mid-runway node, ~60 m east of centerline, nearer the 15R (north) end.
+// Far from both thresholds (would FAIL the old <500 m threshold test).
+string? midName = TaxiGraph.MatchHoldShortRunwayName(42.3750, -71.00927, rwy, MATCH_M);
+Check(midName == "15R", $"mid-runway hold-short names 15R (got '{midName ?? "null"}')");
+
+// Node ~800 m east of the centerline (e.g. a real taxiway-only hold) — no match.
+string? farName = TaxiGraph.MatchHoldShortRunwayName(42.3650, -70.9900, rwy, MATCH_M);
+Check(farName == null, $"far node does not match a runway (got '{farName ?? "null"}')");
+
+// Node ~2 km north of the 15R threshold (beyond the runway end). The clamped
+// perpendicular distance measures to the endpoint, so it must NOT match.
+string? beyondName = TaxiGraph.MatchHoldShortRunwayName(42.4000, -71.0100, rwy, MATCH_M);
+Check(beyondName == null, $"node beyond runway end does not match (got '{beyondName ?? "null"}')");
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);
