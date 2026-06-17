@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.cs"             Link="Linked\TaxiGraph.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiRouter.cs"            Link="Linked\TaxiRouter.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiLeadIn.cs"            Link="Linked\TaxiLeadIn.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\NavigationCalculator.cs"  Link="Linked\NavigationCalculator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExit.cs"           Link="Linked\LandingExit.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiRoute.cs"        Link="Linked\TaxiRoute.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs"      Link="Linked\ParkingSpot.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs"       Link="Linked\GateSource.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\StartPosition.cs"    Link="Linked\StartPosition.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\Runway.cs"           Link="Linked\Runway.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                    Link="Linked\AppLogs.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\DistanceFormatter.cs"       Link="Linked\DistanceFormatter.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Settings\DistanceUnit.cs"            Link="Linked\DistanceUnit.cs" />
+  </ItemGroup>
+</Project>
