@@ -1797,22 +1797,6 @@ public class TaxiAssistForm : Form
                 return;
             }
 
-            // Guard: if the last UI row has no taxiway selected, the "Hold short
-            // of runway" combo on that row belongs to an incomplete entry — the
-            // effective last taxiway (progSeq[^1]) and the UI last row diverge,
-            // which would cause LastRowHoldShortRunway() to read the wrong combo.
-            // Reject with a clear message so the user fixes the entry before
-            // proceeding.
-            if (_additionalTaxiways.Count > 0)
-            {
-                string? lastRowSel = _additionalTaxiways[^1].combo.SelectedItem?.ToString();
-                if (string.IsNullOrEmpty(lastRowSel) || lastRowSel.StartsWith("(None"))
-                {
-                    _announcer.Announce("The last taxiway row has no taxiway selected. Select a taxiway or remove that row.");
-                    return;
-                }
-            }
-
             // Component + start node for the graph-distance terminator helpers,
             // mirroring FindFarSideRunwayNode's aircraft-component restriction so
             // the resolved node is actually reachable from the aircraft.
@@ -1824,9 +1808,11 @@ public class TaxiAssistForm : Form
             }
             int destComponentId = startNode.ComponentId;
 
-            // The runway TARGET is the last row's "Hold short of runway" combo;
-            // the taxiway TARGET is cmbTerminatorTaxiway.
-            string runwayTarget = LastRowHoldShortRunway();   // bare designator, "" if none
+            // The runway TARGET is the terminator block's own runway combo; the
+            // taxiway TARGET is cmbTerminatorTaxiway. Per-row "Hold short of runway"
+            // combos are NOT consulted here — they remain plain intermediate
+            // hold-shorts (carried in progRwyHoldShorts as on every other row).
+            string runwayTarget = TerminatorRunwayTarget();   // bare designator, "" if none
             string taxiwayTarget = cmbTerminatorTaxiway.SelectedItem?.ToString() ?? "";
 
             int terminatorTypeIndex = cmbTerminatorType.SelectedIndex;
@@ -1834,23 +1820,13 @@ public class TaxiAssistForm : Form
             ProgressiveTerminator term;
             var progRwyHoldShorts = GetUserRunwayHoldShorts();
 
-            // For the runway-type terminators (Hold short of runway / After
-            // crossing runway), the LAST row's "Hold short of runway" combo IS
-            // the terminator target — not an intermediate hold-short. Drop it
-            // from the per-row hold-short map so the terminator owns it (avoids a
-            // redundant tag and a spurious "not on route" mismatch warning). For
-            // the taxiway/end terminators the last-row runway combo is a genuine
-            // intermediate hold-short and is kept.
-            if (terminatorTypeIndex == 0 || terminatorTypeIndex == 2)
-                progRwyHoldShorts.Remove(progSeq.Count - 1);
-
             switch (terminatorTypeIndex)
             {
                 case 0: // Hold short of runway
                 {
                     if (string.IsNullOrEmpty(runwayTarget))
                     {
-                        _announcer.Announce("Pick the runway to hold short of in the Hold short of runway combo on the last taxiway row.");
+                        _announcer.Announce("Pick the runway to hold short of in the terminator runway combo.");
                         return;
                     }
                     // Route to the near-side hold-short node so guidance ENDS at
@@ -1879,7 +1855,7 @@ public class TaxiAssistForm : Form
                 {
                     if (string.IsNullOrEmpty(runwayTarget))
                     {
-                        _announcer.Announce("Pick the runway to cross in the Hold short of runway combo on the last taxiway row.");
+                        _announcer.Announce("Pick the runway to cross in the terminator runway combo.");
                         return;
                     }
                     // Optional "cross at" taxiway pins the crossing point when ATC
@@ -2111,24 +2087,6 @@ public class TaxiAssistForm : Form
     private string TerminatorRunwayTarget()
     {
         string? sel = cmbTerminatorRunway.SelectedItem?.ToString();
-        if (string.IsNullOrEmpty(sel) || sel == NO_RUNWAY_HOLDSHORT) return "";
-        return sel;
-    }
-
-    /// <summary>
-    /// Reads the CURRENT last taxiway row's "Hold short of runway" combo and
-    /// returns the bare runway designator selected there (e.g. "09L"), or "" when
-    /// none is picked. The last row is the last additional row, or the first
-    /// taxiway slot when there are no additional rows. Used by the Progressive
-    /// Taxi terminator to resolve the runway target (the runway-case terminators
-    /// reuse this per-row combo rather than a separate picker).
-    /// </summary>
-    private string LastRowHoldShortRunway()
-    {
-        ComboBox combo = _additionalTaxiways.Count > 0
-            ? _additionalTaxiways[^1].holdShortRunway
-            : cmbFirstHoldShortRunway;
-        string? sel = combo.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(sel) || sel == NO_RUNWAY_HOLDSHORT) return "";
         return sel;
     }
