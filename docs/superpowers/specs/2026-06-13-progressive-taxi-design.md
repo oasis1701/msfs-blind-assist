@@ -194,3 +194,26 @@ the **same `LoadRoute` + constrained router** path the normal dialog uses
 
 None blocking. Terminator target-list filtering (edge cases above) to be refined
 during implementation.
+
+## Addendum (2026-06-16): cross-at-named-taxiway for the after-crossing terminator
+
+After this branch was implemented, `main` gained a "cross at named taxiway"
+refinement to the (now-removed) Cross Runway destination type — letting ATC's
+*"cross runway 27 at Tango"* pin the crossing point rather than auto-picking the
+nearest. On merging `main` into this branch, that capability was ported into the
+**After crossing runway** terminator:
+
+- The terminator row's taxiway combo (previously used only by *Hold short of
+  taxiway*) doubles as an **optional "Cross at taxiway"** picker when the type is
+  *After crossing runway*. `"(none)"` = nearest crossing automatically (the
+  original §2 behaviour); any taxiway pins the crossing to that taxiway.
+- The list is filtered to taxiways that physically cross the chosen runway
+  (`TaxiAssistForm.GetTaxiwaysCrossingRunway`, ported from `main`), refreshed from
+  the last row's runway pick on the combo's `DropDown` event so it tracks the
+  runway regardless of fill order.
+- Resolution reuses `FindFarSideRunwayNode(runway, crossAtTaxiway)`; a pinned
+  taxiway that doesn't actually cross the runway yields the existing
+  "Could not find taxiway X crossing runway Y … Check your entry." message.
+
+This is purely additive: the default (`"(none)"`) leaves §2's auto-nearest
+behaviour unchanged.

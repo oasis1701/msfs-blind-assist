@@ -247,7 +247,9 @@ public class TaxiAssistForm : Form
         //   Alt+O  Hold short &of runway combo (first row + dynamic — all cycle on Alt+O)
         //   Alt+D  Add (D)taxiway button
         //   Alt+N  Progressive-taxi termi&nator type combo (last row only, index 2)
-        //   Alt+W  Progressive-taxi terminator taxi&way target combo (last row only)
+        //   Alt+W  Progressive-taxi terminator taxi&way target combo (last row only,
+        //          type "Hold short of taxiway"); the SAME combo becomes the optional
+        //          "Cross at ta&xiway" picker (Alt+X) for type "After crossing runway"
         //   Alt+C  Calculate Route
         //   Alt+S  Stop Guidance
         //   Alt+R  Remove (dynamic) — shared across all Remove buttons (cycle)
@@ -487,6 +489,12 @@ public class TaxiAssistForm : Form
             AccessibleName = "Progressive taxi terminator taxiway",
             AccessibleDescription = "Pick the taxiway to hold short of where it meets the last taxiway in your route."
         };
+        // For the "After crossing runway" terminator this combo doubles as the
+        // optional "Cross at taxiway" picker, whose list depends on the runway
+        // chosen in the last row's "Hold short of runway" combo. Refresh it just
+        // before the dropdown opens so the cross-at options reflect the current
+        // runway pick regardless of the order the user filled the controls in.
+        cmbTerminatorTaxiway.DropDown += (s, ev) => PopulateTerminatorTaxiwayList();
 
         // Dynamic taxiway panel (for additional taxiway combos)
         pnlTaxiways = new Panel
@@ -1038,12 +1046,9 @@ public class TaxiAssistForm : Form
                     _crossRunwayMap[label] = rwy;
             }
 
-            // Taxiway target list for the "Hold short of taxiway" terminator.
-            cmbTerminatorTaxiway.Items.Clear();
-            foreach (var name in _graph.GetAllTaxiwayNames())
-                cmbTerminatorTaxiway.Items.Add(name);
-            if (cmbTerminatorTaxiway.Items.Count > 0)
-                cmbTerminatorTaxiway.SelectedIndex = 0;
+            // Taxiway target list — type-aware (hold-short-of-taxiway = all
+            // taxiways; after-crossing = only taxiways crossing the chosen runway).
+            PopulateTerminatorTaxiwayList();
         }
 
         if (cmbDestination.Items.Count > 0)
@@ -1573,14 +1578,72 @@ public class TaxiAssistForm : Form
         lblTerminatorType.Visible = true;
         cmbTerminatorType.Visible = true;
 
-        // Taxiway target only applies to "Hold short of taxiway" (index 1).
-        bool needTaxiwayTarget = cmbTerminatorType.SelectedIndex == 1;
+        // The taxiway combo serves two terminator types:
+        //   index 1 (Hold short of taxiway) — REQUIRED target taxiway.
+        //   index 2 (After crossing runway) — OPTIONAL "cross at" taxiway that
+        //     pins the crossing point ("(none)" = nearest crossing automatically).
+        int tType = cmbTerminatorType.SelectedIndex;
+        bool needTaxiwayTarget = tType == 1 || tType == 2;
+        lblTerminatorTaxiway.Text = tType == 2
+            ? "Cross at ta&xiway (optional):"
+            : "Hold short of taxi&way:";
+        lblTerminatorTaxiway.AccessibleName = tType == 2
+            ? "Cross at taxiway, optional"
+            : "Progressive taxi terminator taxiway label";
+        cmbTerminatorTaxiway.AccessibleDescription = tType == 2
+            ? "Optional: pick the taxiway at which to cross the runway, when ATC names a crossing point. Lists only taxiways that cross the chosen runway. Leave at \"(none)\" to cross at the nearest point automatically. The runway is the one selected in the last row's Hold short of runway combo."
+            : "Pick the taxiway to hold short of where it meets the last taxiway in your route.";
         lblTerminatorTaxiway.Location = new System.Drawing.Point(0, blockY + 30);
         cmbTerminatorTaxiway.Location = new System.Drawing.Point(180, blockY + 28);
         lblTerminatorTaxiway.Visible = needTaxiwayTarget;
         cmbTerminatorTaxiway.Visible = needTaxiwayTarget;
+        if (needTaxiwayTarget)
+            PopulateTerminatorTaxiwayList();
 
         UpdateLayout();
+    }
+
+    /// <summary>
+    /// Fills cmbTerminatorTaxiway for the current terminator type, preserving the
+    /// user's selection by name when possible:
+    ///   index 2 (After crossing runway) — "(none)" + only the taxiways that
+    ///     physically cross the runway picked in the last row's hold-short combo.
+    ///   index 1 (Hold short of taxiway) — every airport taxiway.
+    /// Safe to call repeatedly (RefreshTerminatorRow + the combo's DropDown event).
+    /// </summary>
+    private void PopulateTerminatorTaxiwayList()
+    {
+        if (_graph == null) return;
+        string? prev = cmbTerminatorTaxiway.SelectedItem?.ToString();
+        cmbTerminatorTaxiway.Items.Clear();
+
+        if (cmbTerminatorType.SelectedIndex == 2)
+        {
+            // After crossing: optional cross-at picker. "(none)" = nearest crossing.
+            cmbTerminatorTaxiway.Items.Add(NO_RUNWAY_HOLDSHORT);
+            string rwy = LastRowHoldShortRunway();
+            if (!string.IsNullOrEmpty(rwy) &&
+                _crossRunwayMap.TryGetValue($"Runway {rwy}", out var crossRwy))
+            {
+                foreach (string tw in GetTaxiwaysCrossingRunway(crossRwy))
+                    cmbTerminatorTaxiway.Items.Add(tw);
+            }
+        }
+        else
+        {
+            // Hold short of taxiway: every airport taxiway.
+            foreach (string name in _graph.GetAllTaxiwayNames())
+                cmbTerminatorTaxiway.Items.Add(name);
+        }
+
+        int idx = 0;
+        if (!string.IsNullOrEmpty(prev))
+        {
+            int found = cmbTerminatorTaxiway.Items.IndexOf(prev);
+            if (found >= 0) idx = found;
+        }
+        if (cmbTerminatorTaxiway.Items.Count > 0)
+            cmbTerminatorTaxiway.SelectedIndex = idx;
     }
 
     private void UpdateLayout()
@@ -1737,9 +1800,15 @@ public class TaxiAssistForm : Form
                         _announcer.Announce("Pick the runway to cross in the Hold short of runway combo on the last taxiway row.");
                         return;
                     }
+                    // Optional "cross at" taxiway pins the crossing point when ATC
+                    // names one ("cross runway 27 at Tango"); "(none)" or unset =
+                    // nearest crossing automatically.
+                    string? crossAt = (!string.IsNullOrEmpty(taxiwayTarget) && taxiwayTarget != NO_RUNWAY_HOLDSHORT)
+                        ? taxiwayTarget
+                        : null;
                     if (_crossRunwayMap.TryGetValue($"Runway {runwayTarget}", out var crossRwy))
                     {
-                        var farNode = FindFarSideRunwayNode(crossRwy);
+                        var farNode = FindFarSideRunwayNode(crossRwy, crossAt);
                         if (farNode != null) destNode = farNode.NodeId;
                     }
                     term = new ProgressiveTerminator(ProgressiveTerminatorType.AfterCrossingRunway, runwayTarget);
@@ -1755,8 +1824,11 @@ public class TaxiAssistForm : Form
 
             if (destNode < 0)
             {
+                bool pinnedCross = terminatorTypeIndex == 2
+                    && !string.IsNullOrEmpty(taxiwayTarget) && taxiwayTarget != NO_RUNWAY_HOLDSHORT;
                 string what = terminatorTypeIndex == 1 ? $"taxiway {taxiwayTarget}"
                     : terminatorTypeIndex == 3 ? $"the end of taxiway {lastTaxiway}"
+                    : pinnedCross ? $"taxiway {taxiwayTarget} crossing runway {runwayTarget}"
                     : $"runway {runwayTarget}";
                 string msg = $"Could not find {what} from {lastTaxiway}. Check your entry.";
                 _announcer.Announce(msg);
@@ -2068,8 +2140,13 @@ public class TaxiAssistForm : Form
     ///
     /// If the aircraft is ON the runway (within half-width of the centerline), the
     /// aircraft's heading is used to determine the intended exit side.
+    ///
+    /// When <paramref name="crossAtTaxiway"/> is non-null, only far-side nodes lying
+    /// on that taxiway are considered — used when ATC names the crossing point
+    /// ("cross runway 27 at Tango"). Null restores the default behaviour (nearest
+    /// reachable far-side node).
     /// </summary>
-    private TaxiNode? FindFarSideRunwayNode(Runway runway)
+    private TaxiNode? FindFarSideRunwayNode(Runway runway, string? crossAtTaxiway = null)
     {
         if (_graph == null) return null;
 
@@ -2150,6 +2227,9 @@ public class TaxiAssistForm : Form
         {
             if (aircraftComponentId.HasValue && node.ComponentId != aircraftComponentId.Value) continue;
 
+            // Pin the crossing to an ATC-named taxiway when requested.
+            if (crossAtTaxiway != null && !node.TaxiwayNames.Contains(crossAtTaxiway)) continue;
+
             double nodeSignedCT = NodeSignedCT(node);
 
             if (Math.Sign(nodeSignedCT) != targetSign) continue;
@@ -2173,6 +2253,76 @@ public class TaxiAssistForm : Form
         }
 
         return bestNode;
+    }
+
+    /// <summary>
+    /// Returns the distinct named taxiways that physically cross
+    /// <paramref name="runway"/> — i.e. have a graph edge whose endpoints sit on
+    /// opposite sides of the runway centerline, with the crossing falling within
+    /// the runway's length. Used to populate the Progressive Taxi "After crossing
+    /// runway" terminator's optional "Cross at" picker so the pilot can only choose
+    /// a crossing point that actually exists. Sorted alphanumerically. Mirrors the
+    /// cross-track / along-track geometry used by FindFarSideRunwayNode.
+    /// </summary>
+    private List<string> GetTaxiwaysCrossingRunway(Runway runway)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_graph == null) return new List<string>();
+
+        double hdgRad = runway.Heading * Math.PI / 180.0;
+        double rwEast = Math.Sin(hdgRad);
+        double rwNorth = Math.Cos(hdgRad);
+        const double DEG_TO_M_LAT = 111320.0;
+        double degToMLon = DEG_TO_M_LAT * Math.Cos(runway.StartLat * Math.PI / 180.0);
+
+        double SignedCT(double lat, double lon)
+        {
+            double pDy = (lat - runway.StartLat) * DEG_TO_M_LAT;
+            double pDx = (lon - runway.StartLon) * degToMLon;
+            return rwEast * pDy - rwNorth * pDx;
+        }
+        double Along(double lat, double lon)
+        {
+            double pDx = (lon - runway.StartLon) * degToMLon;
+            double pDy = (lat - runway.StartLat) * DEG_TO_M_LAT;
+            return rwEast * pDx + rwNorth * pDy;
+        }
+
+        double runwayLengthM = runway.Length > 0
+            ? runway.Length * 0.3048
+            : TaxiGraph.CalculateDistanceMeters(
+                runway.StartLat, runway.StartLon, runway.EndLat, runway.EndLon);
+        const double ALONG_BUFFER_M = 50.0;
+
+        foreach (var edges in _graph.Adjacency.Values)
+        {
+            foreach (var edge in edges)
+            {
+                if (string.IsNullOrEmpty(edge.TaxiwayName)) continue;
+                if (names.Contains(edge.TaxiwayName)) continue;
+                if (!_graph.Nodes.TryGetValue(edge.FromNodeId, out var a)) continue;
+                if (!_graph.Nodes.TryGetValue(edge.ToNodeId, out var b)) continue;
+
+                double ctA = SignedCT(a.Latitude, a.Longitude);
+                double ctB = SignedCT(b.Latitude, b.Longitude);
+
+                // Edge spans the centerline iff its endpoints are on opposite
+                // sides (sign change). Require the crossing to fall within the
+                // runway's length so a parallel taxiway that merely touches the
+                // centerline beyond a threshold isn't counted.
+                if (Math.Sign(ctA) == Math.Sign(ctB)) continue;
+
+                double alongMid = (Along(a.Latitude, a.Longitude) + Along(b.Latitude, b.Longitude)) / 2.0;
+                if (alongMid < -ALONG_BUFFER_M) continue;
+                if (alongMid > runwayLengthM + ALONG_BUFFER_M) continue;
+
+                names.Add(edge.TaxiwayName);
+            }
+        }
+
+        var list = names.ToList();
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list;
     }
 
     /// <summary>
