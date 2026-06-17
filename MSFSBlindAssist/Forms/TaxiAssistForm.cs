@@ -1083,7 +1083,7 @@ public class TaxiAssistForm : Form
             // GetRunways returns BOTH ends as separate entries (e.g. "10R" and
             // "28L"); listing both lets the pilot match whichever designator ATC
             // named without converting to the reciprocal. The runway TARGET is
-            // picked in the last row's "Hold short of runway" combo (populated
+            // picked in the terminator block's own cmbTerminatorRunway (populated
             // from _airportRunwayIds); the taxiway TARGET is cmbTerminatorTaxiway.
             foreach (var rwy in _dataProvider.GetRunways(_currentIcao).Where(r => !r.IsClosed))
             {
@@ -1689,7 +1689,7 @@ public class TaxiAssistForm : Form
     /// Fills cmbTerminatorTaxiway for the current terminator type, preserving the
     /// user's selection by name when possible:
     ///   index 2 (After crossing runway) — "(none)" + only the taxiways that
-    ///     physically cross the runway picked in the last row's hold-short combo.
+    ///     physically cross the runway picked in cmbTerminatorRunway.
     ///   index 1 (Hold short of taxiway) — every airport taxiway.
     /// Safe to call repeatedly (RefreshTerminatorRow + the combo's DropDown event).
     /// </summary>
