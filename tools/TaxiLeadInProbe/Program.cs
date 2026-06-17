@@ -118,5 +118,27 @@ Check(g.FindNearestNode(acLat, acLon)!.NodeId == 99,
 Check(g.FindNearestNode(acLat, acLon, requiredComponentId: 0)!.NodeId == 1,
       "FindNearestNode (component 0): skips the closer out-of-component decoy, returns N1");
 
+// === Task 3 — router builds a lead-in only when started OFF the taxiway =====
+var router = new TaxiRouter(g);
+
+// Started from the aircraft's nearest node (N1, on the apron): the router routes
+// the pavement lead-in 4 -> AJ -> connector onto A.
+var routeFromApron = router.FindConstrainedPath(1, 7, new List<string> { "A" });
+Check(routeFromApron != null && routeFromApron.Segments.Count > 0,
+      "router: constrained path from apron node N1 builds");
+var li = TaxiLeadIn.Extract(routeFromApron!, "A");
+Check(li.HasLeadIn && li.Taxiways.SequenceEqual(new[] { "4", "AJ" }),
+      $"router: lead-in from N1 follows [4, AJ] (got [{string.Join(",", li.Taxiways)}])");
+// First segment starts AT the aircraft's node, not ~345 m away.
+double firstSegFromAcM = TaxiGraph.FastDistanceMeters(
+    acLat, acLon, routeFromApron!.Segments[0].FromNode.Latitude, routeFromApron.Segments[0].FromNode.Longitude);
+Check(firstSegFromAcM < 20.0,
+      $"router: first segment starts at the aircraft (got {firstSegFromAcM:F0} m, beeline would be ~345 m)");
+
+// Started ON taxiway A (today's pre-snap, N5): no lead-in.
+var routeFromA = router.FindConstrainedPath(5, 7, new List<string> { "A" });
+Check(routeFromA != null && !TaxiLeadIn.Extract(routeFromA!, "A").HasLeadIn,
+      "router: constrained path started on A has no lead-in (the bug's pre-snap path)");
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);
