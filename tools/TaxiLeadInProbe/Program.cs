@@ -110,5 +110,13 @@ Check(TaxiLeadIn.Clause(unnamed, "A") == " First taxi onto A.",
 Check(TaxiLeadIn.Clause(default, "A") == "",
       "Clause: no lead-in -> empty string");
 
+// === Task 2 — FindNearestNode component filter ============================
+// Unfiltered: the comp-1 decoy (node 99) is physically closest to the aircraft.
+Check(g.FindNearestNode(acLat, acLon)!.NodeId == 99,
+      "FindNearestNode (no filter): returns the closest node regardless of component");
+// Filtered to component 0: must skip the decoy and return N1.
+Check(g.FindNearestNode(acLat, acLon, requiredComponentId: 0)!.NodeId == 1,
+      "FindNearestNode (component 0): skips the closer out-of-component decoy, returns N1");
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);

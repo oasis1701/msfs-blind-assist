@@ -454,13 +454,13 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Finds the nearest graph node to a given position.
-    /// Uses the spatial hash for fast local lookup (expanding ring if needed),
-    /// falling back to a full scan only if no node is found within ~1km.
-    /// Component-unaware: callers needing component filtering must inspect
-    /// the result's <see cref="TaxiNode.ComponentId"/> themselves.
+    /// Finds the nearest graph node to a given position. When
+    /// <paramref name="requiredComponentId"/> is set, only nodes in that
+    /// connected component are considered (the spatial-hash ring and the
+    /// full-scan fallback both honour it) — used to keep an aircraft's start
+    /// node in the destination's component.
     /// </summary>
-    public TaxiNode? FindNearestNode(double lat, double lon)
+    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null)
     {
         // Fast path: search the spatial hash with an expanding ring of cells.
         // Precision 5 = ~1.1m cells at equator. Rings 1, 3, 10, 30 cover up to ~330m cheaply.
@@ -480,6 +480,8 @@ public class TaxiGraph
                         foreach (int nodeId in nodeIds)
                         {
                             var node = Nodes[nodeId];
+                            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                                continue;
                             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
                             if (dist < bestDist)
                             {
@@ -498,6 +500,8 @@ public class TaxiGraph
         double fallbackDist = double.MaxValue;
         foreach (var node in Nodes.Values)
         {
+            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < fallbackDist)
             {
