@@ -62,6 +62,7 @@ public class TaxiAssistForm : Form
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
     private CheckBox chkFirstHoldShort = null!;
+    private Label lblFirstHoldShortRunway = null!;
     private ComboBox cmbFirstHoldShortRunway = null!;
     private Button btnAddTaxiway = null!;
     // Progressive Taxi terminator controls. These are form-level (not per-row):
@@ -422,7 +423,7 @@ public class TaxiAssistForm : Form
         // -suspenders cue — useful when the pilot wants confirmation that
         // the system flagged the SPECIFIC runway ATC named, and as the
         // mechanism for the rare case where auto-detect didn't fire.
-        Label lblFirstHoldShortRunway = new Label
+        lblFirstHoldShortRunway = new Label
         {
             Text = HOLD_SHORT_RUNWAY_LABEL,
             Location = new System.Drawing.Point(labelX, y),
@@ -1146,6 +1147,11 @@ public class TaxiAssistForm : Form
         lblDestination.Visible = !isProgressive;
         cmbDestination.Visible = !isProgressive;
 
+        // Progressive Taxi mode hides the per-row "Hold short of runway" combos so
+        // the terminator block is the single runway-hold-short control; other modes
+        // show them. (Resets hidden combos to "(none)" so routing is unaffected.)
+        SetRowRunwayHoldShortVisible(!isProgressive);
+
         PopulateDestinations();
         RefreshTerminatorRow();
 
@@ -1377,6 +1383,11 @@ public class TaxiAssistForm : Form
 
         _additionalTaxiways.Add((label, combo, holdShortChk, holdShortRunwayCmb, removeBtn));
 
+        // A row added while already in Progressive Taxi mode must start with its
+        // per-row "Hold short of runway" control hidden (the terminator owns the
+        // runway hold-short). Applies current-mode visibility to all rows.
+        SetRowRunwayHoldShortVisible(cmbDestType.SelectedIndex != 2);
+
         // Update panel height and reposition controls below. RefreshTerminatorRow
         // relocates the Progressive Taxi terminator block onto this new last row
         // (and calls UpdateLayout to resize).
@@ -1564,6 +1575,39 @@ public class TaxiAssistForm : Form
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Show or hide the per-row "Hold short of runway" label + combo across the
+    /// first taxiway slot and every dynamic row. In Progressive Taxi mode these
+    /// are hidden (the terminator block is the single runway-hold-short control);
+    /// in all other destination modes they are shown. On hide, each combo is reset
+    /// to "(none)" so a stale selection cannot leak into the route via
+    /// GetUserRunwayHoldShorts / OnAddTaxiwayClicked. The "Hold short" checkbox is
+    /// intentionally NOT touched (it is a separate concept and stays visible).
+    /// </summary>
+    private void SetRowRunwayHoldShortVisible(bool visible)
+    {
+        lblFirstHoldShortRunway.Visible = visible;
+        cmbFirstHoldShortRunway.Visible = visible;
+        if (!visible) cmbFirstHoldShortRunway.SelectedIndex = 0;
+
+        foreach (var (_, _, _, holdShortRunwayCmb, _) in _additionalTaxiways)
+        {
+            holdShortRunwayCmb.Visible = visible;
+            if (!visible) holdShortRunwayCmb.SelectedIndex = 0;
+        }
+
+        // The dynamic-row hold-short labels are not tracked in the row tuple. They
+        // are the ONLY panel labels carrying the HOLD_SHORT_RUNWAY_LABEL text
+        // (taxiway labels read "Taxiway N:"; the terminator runway label reads
+        // "R&unway to hold short of:"), so matching on that exact text finds
+        // exactly the per-row hold-short labels.
+        foreach (Control ctrl in pnlTaxiways.Controls)
+        {
+            if (ctrl is Label lbl && lbl.Text == HOLD_SHORT_RUNWAY_LABEL)
+                lbl.Visible = visible;
+        }
     }
 
     private List<string> SortTaxiwaysByDistance(List<string> taxiwayNames)
