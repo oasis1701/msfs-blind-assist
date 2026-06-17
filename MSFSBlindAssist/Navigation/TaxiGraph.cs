@@ -921,17 +921,6 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
-    /// Uses equirectangular projection — accurate for taxiway-scale distances.
-    /// Returns the distance to the nearest point on the segment (not the infinite line),
-    /// so endpoints count when the foot of the perpendicular falls outside.
-    /// </summary>
-    /// <summary>
-    /// Public wrapper for the internal perpendicular-distance calculation, so
-    /// other components (e.g. TaxiGuidanceManager.WhichRunwayContains) can do
-    /// runway-pavement membership tests without duplicating the projection math.
-    /// </summary>
-    /// <summary>
     /// Runway designator a hold-short node holds short of, found by the NEAREST
     /// runway centerline (full length, perpendicular distance clamped to the
     /// threshold endpoints). Length-invariant: a hold-short where a taxiway
@@ -968,12 +957,23 @@ public class TaxiGraph
         return best;
     }
 
+    /// <summary>
+    /// Public wrapper for the internal perpendicular-distance calculation, so
+    /// other components (e.g. TaxiGuidanceManager.WhichRunwayContains) can do
+    /// runway-pavement membership tests without duplicating the projection math.
+    /// </summary>
     public static double PerpendicularDistanceMetersStatic(
         double plat, double plon,
         double alat, double alon,
         double blat, double blon)
         => PerpendicularDistanceMeters(plat, plon, alat, alon, blat, blon);
 
+    /// <summary>
+    /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
+    /// Uses equirectangular projection — accurate for taxiway-scale distances.
+    /// Returns the distance to the nearest point on the segment (not the infinite line),
+    /// so endpoints count when the foot of the perpendicular falls outside.
+    /// </summary>
     private static double PerpendicularDistanceMeters(
         double plat, double plon,
         double alat, double alon,
