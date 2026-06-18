@@ -1231,15 +1231,18 @@ public class TaxiGuidanceManager : IDisposable
             bool leadInFallback = false;
             if (attemptLeadIn)
             {
-                if (route is { Segments.Count: > 0 } &&
-                    TaxiLeadIn.IsAcceptable(
-                        (leadIn = TaxiLeadIn.Extract(route, firstCleared!)).DistanceMeters,
-                        leadInGap, route.ConstrainedFallbackReason))
+                bool accepted = false;
+                if (route is { Segments.Count: > 0 })
                 {
-                    // accepted — leadIn is set
+                    leadIn = TaxiLeadIn.Extract(route, firstCleared!);
+                    accepted = TaxiLeadIn.IsAcceptable(
+                        leadIn.DistanceMeters, leadInGap, route.ConstrainedFallbackReason);
                 }
-                else
+                if (!accepted)
                 {
+                    // Couldn't build a sensible lead-in (route empty, router fell back,
+                    // or the lead-in was a dead-end detour) — start on the cleared
+                    // taxiway like before and note it in the summary.
                     route = router.FindConstrainedPath(
                         firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!);
                     leadIn = default;
@@ -1362,8 +1365,12 @@ public class TaxiGuidanceManager : IDisposable
                     route.TotalDistanceMeters >
                         direct.TotalDistanceMeters * CONSTRAINED_WARN_RATIO + CONSTRAINED_WARN_PAD_M)
                 {
+                    // Measure to the first cleared taxiway itself (firstTwNode), not
+                    // to startNode — in the lead-in path startNode is the nearby apron
+                    // node, which would wrongly read as "0 m" here.
                     double firstTwDist = TaxiGraph.FastDistanceMeters(
-                        aircraftLat, aircraftLon, startNode.Latitude, startNode.Longitude);
+                        aircraftLat, aircraftLon,
+                        (firstTwNode ?? startNode).Latitude, (firstTwNode ?? startNode).Longitude);
                     string firstTwNote = firstTwDist > CONSTRAINED_WARN_FIRST_TW_M
                         ? $" Taxiway {taxiwaySequence[0]} is {FormatDistance(firstTwDist)} from your position."
                         : "";
