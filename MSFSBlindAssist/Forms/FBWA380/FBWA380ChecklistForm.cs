@@ -41,7 +41,8 @@ public sealed class FBWA380ChecklistForm : Form
     // zero checked", silencing the FIRST item to tick on a fresh checklist (and
     // again after every RESET / navigation into an all-unchecked checklist).
     private bool _baselineApplied;
-    private string _lastAppliedHash = "";   // last row-set rendered — skip identical re-applies
+    private string _lastContentHash = "";   // last row CONTENT rendered (text+checked, NOT selection)
+    private int _lastSelIdx = -1;            // last FWS cursor row — a pure cursor move skips the list rebuild
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
     private bool _busy;           // guard against overlapping ECP pulses
@@ -165,8 +166,14 @@ public sealed class FBWA380ChecklistForm : Form
         _ = DrainPulses(lvar, say);
     }
 
-    // Pulse the given ECP button, re-scrape, then keep draining any presses that
-    // queued up while we were busy — preserving order and count.
+    // Pulse the given ECP button, then keep draining any presses that queued up while we
+    // were busy — preserving order and count. KEY ANTI-LAG RULE: a Coherent scrape is a
+    // round-trip (~tens to hundreds of ms), so we scrape ONCE per BURST, not once per
+    // press. When more presses are already queued we fire them back-to-back with only the
+    // short FWS-register gap and skip the scrape; only the LAST press in the burst scrapes
+    // + reads. So tapping Down five times quickly lands on the final line and reads it
+    // once, instead of crawling through five scrape+announce cycles a quarter-second apart
+    // (the "laggy as heck" symptom). Spaced-out single presses still each scrape + read.
     private async Task DrainPulses(string lvar, string say)
     {
         _busy = true;
@@ -174,18 +181,35 @@ public sealed class FBWA380ChecklistForm : Form
         {
             while (true)
             {
+                bool moreQueued = _pending.Count > 0;
+
+                // Pulse the momentary ECP button (1 -> 0). The FWS latches the press from a
+                // high-frequency input buffer, so a short high time is plenty.
                 _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-                await Task.Delay(60);
+                await Task.Delay(45);
                 _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
-                await Task.Delay(95);
+
+                if (moreQueued)
+                {
+                    // Intermediate press in a burst: just give the FWS time to consume this
+                    // press (and reset its input buffer) before the next one, then fire the
+                    // next without a scrape. No read here — we only read where we land.
+                    await Task.Delay(85);
+                    (lvar, say) = _pending.Dequeue();
+                    continue;
+                }
+
+                // Last press in the burst: let the E/WD re-render, then scrape once and read
+                // the now-selected line. Apply moves the selection to the FWS cursor line,
+                // which the screen reader reads on its own — so we don't also announce here
+                // (that produced a duplicate read); only fall back to a generic confirmation
+                // if the scrape came back empty.
+                await Task.Delay(85);
                 var rows = await ScrapeEcl();
-                // Apply rebuilds the list and moves the selection to the FWS cursor line,
-                // which the screen reader reads on its own — so we do NOT also announce it
-                // here (that produced the duplicate read). Only fall back to a generic
-                // confirmation if the scrape came back empty (nothing to read).
                 Apply(rows, announceChecks: true);
                 if (_rows.Count == 0) _announcer?.Announce(say);
 
+                // A press may have queued during the render-wait + scrape — keep draining.
                 if (_pending.Count == 0) break;
                 (lvar, say) = _pending.Dequeue();
             }
@@ -299,9 +323,13 @@ public sealed class FBWA380ChecklistForm : Form
         // ECP pulse also applies them. If nothing actually changed, do NOT rebuild the
         // list (a rebuild moves the selection and makes the screen reader re-read the
         // current line) — only re-apply when the content or cursor genuinely moved.
-        string hash = string.Join("", rows.Select(r => (r.Checked ? "1" : "0") + (r.selected ? "S" : "") + r.text));
-        if (!force && hash == _lastAppliedHash) return;
-        _lastAppliedHash = hash;
+        string hash = string.Join("", rows.Select(r => (r.Checked ? "1" : "0") + r.text));
+        int selIdx = rows.FindIndex(r => r.selected);
+        bool contentChanged = force || hash != _lastContentHash;
+        bool cursorChanged = selIdx != _lastSelIdx;
+        if (!contentChanged && !cursorChanged) return;
+        _lastContentHash = hash;
+        _lastSelIdx = selIdx;
         _haveRows = true;
         _cursorActive = rows.Any(r => r.selected);
         _status.Text =
@@ -332,14 +360,20 @@ public sealed class FBWA380ChecklistForm : Form
 
         _rows = rows;
         int keep = _list.SelectedIndex;
-        _list.BeginUpdate();
-        _list.Items.Clear();
-        foreach (var r in rows) _list.Items.Add(Format(r));
-        _list.EndUpdate();
+        // Rebuild the ListBox items ONLY when the content actually changed. A pure cursor
+        // move (Up/Down with identical content) skips the Clear/re-add entirely — just the
+        // SelectedIndex moves below — so the screen reader follows the cursor smoothly
+        // instead of the whole list being torn down and rebuilt under it on every arrow.
+        if (contentChanged)
+        {
+            _list.BeginUpdate();
+            _list.Items.Clear();
+            foreach (var r in rows) _list.Items.Add(Format(r));
+            _list.EndUpdate();
+        }
 
         // Mirror the FWS cursor: land the list selection on the selected line so the
         // screen reader follows the real ECL cursor; else preserve the prior row.
-        int selIdx = rows.FindIndex(r => r.selected);
         if (selIdx >= 0) _list.SelectedIndex = selIdx;
         else if (keep >= 0 && keep < _list.Items.Count) _list.SelectedIndex = keep;
         else if (_list.Items.Count > 0) _list.SelectedIndex = 0;
