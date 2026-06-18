@@ -1163,14 +1163,48 @@ public class TaxiGuidanceManager : IDisposable
             // would snap to the island and A* would fail with no path.
             int destComponentId = _graph.Nodes[destinationNodeId].ComponentId;
 
-            TaxiNode? startNode = null;
-            if (taxiwaySequence != null && taxiwaySequence.Count > 0)
+            // Start-node selection. With a constrained taxiway sequence we prefer
+            // a node ON the first cleared taxiway (heading-irrelevant) so the route
+            // anchors on the clearance regardless of post-pushback orientation
+            // (the LEPA fix). BUT when that taxiway is FAR from the aircraft
+            // (a gate across an apron from a main parallel — CYYZ GB/GC -> A was
+            // 297 m), pre-snapping onto it makes the guidance beeline across the
+            // apron/grass. In that case start from the aircraft's nearest
+            // in-component graph node so FindConstrainedPath builds a
+            // pavement-following lead-in onto the taxiway (its Step-1 AStarSearch).
+            string? firstCleared = (taxiwaySequence is { Count: > 0 }) ? taxiwaySequence[0] : null;
+            TaxiNode? firstTwNode = firstCleared != null
+                ? _graph.FindNearestNodeOnTaxiway(
+                    aircraftLat, aircraftLon, firstCleared, requiredComponentId: destComponentId)
+                : null;
+
+            bool attemptLeadIn = false;
+            double leadInGap = 0;
+            TaxiNode? startNode;
+            if (firstTwNode != null)
             {
-                startNode = _graph.FindNearestNodeOnTaxiway(
-                    aircraftLat, aircraftLon, taxiwaySequence[0],
-                    requiredComponentId: destComponentId);
+                leadInGap = TaxiGraph.FastDistanceMeters(
+                    aircraftLat, aircraftLon, firstTwNode.Latitude, firstTwNode.Longitude);
+                if (leadInGap > TaxiLeadIn.TriggerMeters)
+                {
+                    var entryNode = _graph.FindNearestNode(
+                        aircraftLat, aircraftLon, requiredComponentId: destComponentId);
+                    if (entryNode != null && entryNode.NodeId != firstTwNode.NodeId)
+                    {
+                        startNode = entryNode;
+                        attemptLeadIn = true;
+                    }
+                    else
+                    {
+                        startNode = firstTwNode;
+                    }
+                }
+                else
+                {
+                    startNode = firstTwNode;  // common case: gate on/near its taxiway
+                }
             }
-            if (startNode == null)
+            else
             {
                 startNode = _graph.FindNearestNodeInDirection(
                     aircraftLat, aircraftLon, aircraftHeading,
@@ -1187,6 +1221,31 @@ public class TaxiGuidanceManager : IDisposable
                 route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence);
             else
                 route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
+
+            // Lead-in acceptance. If we started from the aircraft's nearest node to
+            // get a pavement lead-in, accept it only when the router honoured the
+            // clearance AND the lead-in is not a dead-end detour. Otherwise rebuild
+            // from the on-taxiway node (today's behaviour) and note it in the
+            // summary so the pilot knows the lead-in wasn't computed.
+            TaxiLeadIn.LeadInInfo leadIn = default;
+            bool leadInFallback = false;
+            if (attemptLeadIn)
+            {
+                if (route is { Segments.Count: > 0 } &&
+                    TaxiLeadIn.IsAcceptable(
+                        (leadIn = TaxiLeadIn.Extract(route, firstCleared!)).DistanceMeters,
+                        leadInGap, route.ConstrainedFallbackReason))
+                {
+                    // accepted — leadIn is set
+                }
+                else
+                {
+                    route = router.FindConstrainedPath(
+                        firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!);
+                    leadIn = default;
+                    leadInFallback = true;
+                }
+            }
 
             if (route == null || route.Segments.Count == 0)
                 return "Could not calculate a route to the destination.";
