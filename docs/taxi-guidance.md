@@ -1255,6 +1255,29 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `ROLLOUT_OVERSHOOT_FT` | 100.0 | Along-runway distance past the chosen exit at which an overshoot is declared, triggering retarget to the next downfield exit (or graceful end if none remain) |
 | `ROLLOUT_NO_EXIT_STOPPED_GS_KTS` | 3.0 | Ground-speed threshold at which the runway-end countdown mode considers the aircraft effectively stopped and hands off to plain `Taxiing`. Lower than `ROLLOUT_TAXI_GS_KTS` (30) because the countdown has no more useful callouts to make once the pilot is at a crawl |
 
+## Pavement lead-in onto the first cleared taxiway
+
+When a pilot enters a clearance like "taxi to runway 23 via A, H" while parked at gate GB/GC at CYYZ, the nearest graph node *on* taxiway A can be 200–300 m away across open apron. Without a lead-in the old code pre-snapped the route start to that distant A node, and `FindConstrainedPath`'s Step-1 A* would draw a straight beeline from the aircraft across the apron — cutting through grass, crossing taxiway AJ at an angle, and demanding a 180° pivot before the pilot had even moved.
+
+The fix is a **pavement-following lead-in** that only activates when the gap is large (> `TaxiLeadIn.TriggerMeters` = 75 m). In that case `LoadRoute` sets the constrained route's start node to the aircraft's nearest *in-component* graph node — whatever apron taxilane or connector it is sitting on — and lets `FindConstrainedPath`'s Step-1 A\* plan a proper ground-path from there onto the first cleared taxiway. The router walks the apron network (e.g. ramp taxilane 4 → AJ) and arrives at taxiway A in the correct direction, with hold-shorts and crossings intact.
+
+The lead-in is **accepted** only when two conditions hold:
+
+1. The router honoured the full clearance (`ConstrainedFallbackReason == null`) — a fallback to shortest path means the lead-in segment is suspect.
+2. The lead-in distance is within `gap × 2.5 + 300 m` (`TaxiLeadIn.IsAcceptable`) — this dead-end guard rejects a route that had to backtrack through a graph dead-end, which would inflate the lead-in far beyond the straight-line gap.
+
+If either condition fails, `LoadRoute` falls back to the pre-snap behaviour (start on the taxiway) and prepends *"Could not compute a path onto taxiway A along the apron; route starts on A."* to the spoken summary. The pilot knows the route may not begin on pavement.
+
+On success the summary names the lead-in explicitly — *"Route to Runway 23 via A, H. First taxi via 4 and AJ to reach A. …"* — using `TaxiLeadIn.Clause`, so a screen reader announces it before the constrained sequence.
+
+**Unchanged cases:**
+
+- Gap ≤ 75 m: the pre-snap (`FindNearestNodeOnTaxiway`) runs exactly as before — the lead-in path is never computed.
+- Unconstrained routes (no user taxiway sequence): `FindNearestNodeInDirection` is still used; lead-in logic is bypassed entirely.
+- `TryRecalculateRoute`: always uses the heading-aware `FindNearestNodeInDirection`; the lead-in is a `LoadRoute`-only feature.
+
+**Coverage:** `tools/TaxiLeadInProbe` exercises the pure logic without a live sim — CYYZ-geometry cases confirming that a 297 m gap triggers the lead-in and a 40 m gap does not, that an overly-long lead-in is rejected, and that the Clause text formats correctly. Build and run with `dotnet run --project tools/TaxiLeadInProbe -p:Platform=x64`; it must print `ALL CHECKS PASSED` and exit 0.
+
 ## Related Documentation
 
 - [Architecture](architecture.md) — overall system design
