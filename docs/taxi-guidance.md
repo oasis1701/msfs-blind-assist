@@ -1276,7 +1276,7 @@ On success the summary names the lead-in explicitly — *"Route to Runway 23 via
 - Unconstrained routes (no user taxiway sequence): `FindNearestNodeInDirection` is still used; lead-in logic is bypassed entirely.
 - `TryRecalculateRoute`: always uses the heading-aware `FindNearestNodeInDirection`; the lead-in is a `LoadRoute`-only feature.
 
-**Coverage:** `tools/TaxiLeadInProbe` exercises the pure logic without a live sim — CYYZ-geometry cases confirming that a 297 m gap triggers the lead-in and a 40 m gap does not, that an overly-long lead-in is rejected, and that the Clause text formats correctly. Build and run with `dotnet run --project tools/TaxiLeadInProbe -p:Platform=x64`; it must print `ALL CHECKS PASSED` and exit 0.
+**Coverage:** `tools/TaxiLeadInProbe` exercises the pure logic and the router behaviour without a live sim, on a CYYZ-like synthetic graph: that `TaxiRouter.FindConstrainedPath` builds the apron lead-in when started off the first taxiway and none when started on it (the contrast the fix relies on), that `TaxiLeadIn.IsAcceptable` accepts a sane lead-in (330 m for a 297 m gap) and rejects an overly-long one (2000 m, the dead-end cap), that the component filter on `FindNearestNode` skips out-of-component nodes, and that the `Clause` text formats correctly. The `> 75 m` gap trigger itself and the accept/fallback wiring live in `LoadRoute`, which pulls in audio/SimConnect and cannot be probe-linked — those are verified by the in-sim test plan. Build and run with `dotnet run --project tools/TaxiLeadInProbe -p:Platform=x64`; it must print `ALL CHECKS PASSED` and exit 0.
 
 ## Related Documentation
 
