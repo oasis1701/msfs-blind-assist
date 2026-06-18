@@ -45,6 +45,18 @@ public sealed class FBWA380ChecklistForm : Form
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
     private bool _busy;           // guard against overlapping ECP pulses
+    // True while the ECL overlay is actually showing rows. The FWS AUTO-HIDES the
+    // overlay when a checklist is completed (checking "C/L COMPLETE" fires
+    // showChecklistRequested.set(false) — on the real A380 finishing a checklist
+    // closes the ECL). When that happens the scrape goes empty, the frozen
+    // "C/L COMPLETE" stays on screen, AND a Backspace (CLR) becomes a no-op because
+    // the FWS only honours CLR while checklistShown is true. We detect the hide
+    // (was-shown → empty) and re-show the overlay via C/L so the user lands back on
+    // the live checklist MENU instead of being stuck. Bounded: only fires on the
+    // was-shown→empty edge, so an unpowered/never-connected display never loops.
+    private bool _overlayShown;
+    private bool _reshowing;      // guard against overlapping re-show attempts
+    private bool _closing;        // set on close so a late empty push doesn't re-show
     // Pending ECP presses that arrived while a pulse+scrape was still running. We
     // QUEUE them (in order, capped) and drain them when the current pulse finishes,
     // instead of silently dropping them — that silent drop was why Backspace (Clear)
@@ -214,6 +226,34 @@ public sealed class FBWA380ChecklistForm : Form
         try { _sim?.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); _sim?.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
     }
 
+    // The ECL overlay was auto-hidden by the FWS (a checklist completed). Pulse C/L —
+    // which always navigateToChecklist(0) + re-shows — so the user returns to the live
+    // checklist menu, then re-scrape so the menu reads. Without this the form is stuck
+    // on a frozen "C/L COMPLETE" and Backspace can't escape it (CLR is a no-op once the
+    // FWS has hidden the overlay).
+    private async Task ReShowChecklistMenu()
+    {
+        _reshowing = true;
+        try
+        {
+            // Was the last thing on screen a completed checklist? (heuristic for the
+            // announce wording — completion vs the user simply backing out of the menu.)
+            bool wasComplete = _rows.Any(r => !string.IsNullOrEmpty(r.text) && r.text.IndexOf("COMPLETE", StringComparison.OrdinalIgnoreCase) >= 0);
+            _weShowedOverlay = true;
+            await PulseClRaw();          // C/L → navigateToChecklist(0) + show → the menu
+            await Task.Delay(450);
+            var rows = await ScrapeEcl();
+            if (IsDisposed || _closing) return;
+            if (rows.Count > 0)
+            {
+                _announcer?.Announce(wasComplete ? "Checklist complete. Back to the checklist menu." : "Checklist menu.");
+                Apply(rows, announceChecks: false, force: true);
+            }
+        }
+        catch { }
+        finally { _reshowing = false; }
+    }
+
     private async Task RefreshNow()
     {
         // Explicit refresh: force a re-render even if the rows are unchanged, so the
@@ -240,9 +280,21 @@ public sealed class FBWA380ChecklistForm : Form
         if (IsDisposed) return;
         if (rows == null || rows.Count == 0)
         {
-            if (!_haveRows) _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
+            if (!_haveRows)
+            {
+                _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
+            }
+            else if (_overlayShown && !_closing && !_busy && !_reshowing)
+            {
+                // We had checklist rows and now the scrape is empty — the FWS auto-hid
+                // the overlay (a checklist was completed). Re-show it so the user goes
+                // back to the live menu instead of a frozen "C/L COMPLETE".
+                _overlayShown = false;   // edge-trigger: don't re-show again until rows return
+                _ = ReShowChecklistMenu();
+            }
             return;
         }
+        _overlayShown = true;
         // The shared E/WD monitor polls ~1 Hz and re-delivers the same rows; a manual
         // ECP pulse also applies them. If nothing actually changed, do NOT rebuild the
         // list (a rebuild moves the selection and makes the screen reader re-read the
@@ -316,6 +368,7 @@ public sealed class FBWA380ChecklistForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _closing = true;   // a late empty push must not trigger a re-show now
         // If we turned the checklist overlay on when opening, turn it back off so the
         // E/WD returns to what it was showing before (engine parameters / memos).
         if (_weShowedOverlay && _sim != null)
