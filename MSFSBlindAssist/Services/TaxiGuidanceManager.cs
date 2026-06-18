@@ -1450,7 +1450,7 @@ public class TaxiGuidanceManager : IDisposable
             // avoid stepping on rollout instructions, but the form still
             // wants the text).
             {
-                string summary = BuildRouteSummary(route, isRunwayDestination);
+                string summary = BuildRouteSummary(route, isRunwayDestination, leadIn, firstCleared);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
                 // The length advisory goes FIRST, not last. The summary is plain
@@ -1461,6 +1461,13 @@ public class TaxiGuidanceManager : IDisposable
                 // warning almost certainly cut off before it played.
                 if (!string.IsNullOrEmpty(constrainedLengthWarning))
                     summary = constrainedLengthWarning + " " + summary;
+                // If a pavement lead-in onto the first cleared taxiway was attempted
+                // but couldn't be built (out-of-component / dead-end), the route fell
+                // back to starting on that taxiway. Prepend a notice so it is heard
+                // before the first tactical callout can interrupt the queued summary.
+                if (leadInFallback && firstCleared != null)
+                    summary = $"Could not compute a path onto taxiway {firstCleared} " +
+                              $"along the apron; route starts on {firstCleared}. " + summary;
                 // The runway-reach warning ("route does not reach Runway X") is
                 // safety-critical and MUST be heard at calculate time. Speaking it
                 // here (even via AnnounceImmediate) doesn't work: the caller fires
@@ -5928,7 +5935,9 @@ public class TaxiGuidanceManager : IDisposable
         return DistanceFormatter.FromMetres(meters);
     }
 
-    private string BuildRouteSummary(TaxiRoute route, bool isRunwayDestination)
+    private string BuildRouteSummary(
+        TaxiRoute route, bool isRunwayDestination,
+        TaxiLeadIn.LeadInInfo leadIn, string? firstClearedTaxiway)
     {
         string distStr = FormatDistance(route.TotalDistanceMeters);
 
@@ -5977,7 +5986,11 @@ public class TaxiGuidanceManager : IDisposable
             fallbackStr = $" Warning: could not follow specified taxiways. Using shortest path. Reason: {route.ConstrainedFallbackReason}";
         }
 
-        return $"Route to {route.DestinationName}{taxiwayStr}. {distStr}{holdStr}.{fallbackStr}";
+        string leadInStr = (firstClearedTaxiway != null)
+            ? TaxiLeadIn.Clause(leadIn, firstClearedTaxiway)
+            : "";
+
+        return $"Route to {route.DestinationName}{taxiwayStr}.{leadInStr} {distStr}{holdStr}.{fallbackStr}";
     }
 
     private void SetState(TaxiGuidanceState newState)
