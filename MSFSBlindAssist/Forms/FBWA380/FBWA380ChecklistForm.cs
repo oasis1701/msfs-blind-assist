@@ -158,7 +158,11 @@ public sealed class FBWA380ChecklistForm : Form
     // drain loop. This keeps Backspace/Up/Down responsive even when tapped quickly.
     private void PulseEcp(string lvar, string say)
     {
-        if (_busy)
+        // _reshowing is an exclusive ECP-channel-busy window too: ReShowChecklistMenu
+        // pulses C/L (PulseClRaw), so starting a DrainPulses here would interleave two
+        // calc sequences on one FWS. Enqueue instead — ReShowChecklistMenu drains the
+        // queue when it finishes (see its finally), so the press isn't stranded.
+        if (_busy || _reshowing)
         {
             if (_pending.Count < MaxPending) _pending.Enqueue((lvar, say));
             return;
@@ -275,7 +279,17 @@ public sealed class FBWA380ChecklistForm : Form
             }
         }
         catch { }
-        finally { _reshowing = false; }
+        finally
+        {
+            _reshowing = false;
+            // Drain any presses the user queued during the re-show window (PulseEcp
+            // enqueued them rather than interleave). DrainPulses' loop drains the rest.
+            if (!_busy && _pending.Count > 0)
+            {
+                var (lv, sy) = _pending.Dequeue();
+                _ = DrainPulses(lv, sy);
+            }
+        }
     }
 
     private async Task RefreshNow()
