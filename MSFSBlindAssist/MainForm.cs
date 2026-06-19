@@ -3191,14 +3191,9 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
-        {
-            announcer.Announce("EFB bridge server is not running. Please install the mod package and restart the flight.");
-            return;
-        }
-
+        // The EFB reads + drives over the Coherent debugger (HSB789_EFB) — no HTTP bridge.
         if (hs787EFBForm == null || hs787EFBForm.IsDisposed)
-            hs787EFBForm = new HS787EFBForm(hs787BridgeServer, announcer);
+            hs787EFBForm = new HS787EFBForm(announcer);
 
         hs787EFBForm.ShowForm();
     }

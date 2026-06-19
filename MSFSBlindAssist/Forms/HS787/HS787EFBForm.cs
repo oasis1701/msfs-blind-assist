@@ -19,7 +19,7 @@ public partial class HS787EFBForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private readonly EFBBridgeServer _bridgeServer;
+    private readonly CoherentHS787EfbClient _efb;
     private readonly ScreenReaderAnnouncer _announcer;
 
     private string _previousTitle = "";
@@ -27,15 +27,25 @@ public partial class HS787EFBForm : Form
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _disposed;
 
-    public HS787EFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
+    public HS787EFBForm(ScreenReaderAnnouncer announcer)
     {
-        _bridgeServer = bridgeServer;
+        // The EFB is now read + driven over the Coherent debugger (HSB789_EFB) — no HTTP
+        // bridge, no injected hs787-efb-bridge.js, no HTML patching. The form owns the client.
+        _efb = new CoherentHS787EfbClient();
+        _efb.Start();
         _announcer = announcer;
 
         InitializeComponent();
         SetupEventHandlers();
 
-        _bridgeServer.StateUpdated += BridgeServer_StateUpdated;
+        _efb.StateUpdated += BridgeServer_StateUpdated;
+    }
+
+    // Only poll while the window is visible (socket + agent stay warm while hidden).
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!_disposed) _efb.SetActive(Visible);
     }
 
     // ------------------------------------------------------------------
@@ -55,13 +65,13 @@ public partial class HS787EFBForm : Form
         };
 
         this.KeyDown += Form_KeyDown;
-        refreshButton.Click += (_, _) => _bridgeServer.EnqueueCommand("read_screen");
+        refreshButton.Click += (_, _) => _efb.EnqueueCommand("read_screen");
         groundServicesButton.Click += (_, _) => NavigateGroundServices();
     }
 
     private void NavigateGroundServices()
     {
-        _bridgeServer.EnqueueCommand("navigate_ground_services");
+        _efb.EnqueueCommand("navigate_ground_services");
         // Force a fresh screen read after navigation so the form updates
         Task.Delay(900).ContinueWith(_ =>
         {
@@ -70,7 +80,7 @@ public partial class HS787EFBForm : Form
             try
             {
                 if (IsHandleCreated)
-                    BeginInvoke(() => _bridgeServer.EnqueueCommand("read_screen"));
+                    BeginInvoke(() => _efb.EnqueueCommand("read_screen"));
             }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { }
@@ -103,7 +113,7 @@ public partial class HS787EFBForm : Form
 
     private void UpdateDisplay(string title, string text, string[] buttons)
     {
-        bool connected = _bridgeServer.IsBridgeConnected;
+        bool connected = _efb.IsBridgeConnected;
 
         statusLabel.Text = connected
             ? "EFB Connected"
@@ -212,7 +222,7 @@ public partial class HS787EFBForm : Form
     private void ClickButton(int index)
     {
         if (index < 0 || index >= _currentButtons.Length) return;
-        _bridgeServer.EnqueueCommand($"click_btn_{index}");
+        _efb.EnqueueCommand($"click_btn_{index}");
     }
 
     // ------------------------------------------------------------------
@@ -251,7 +261,7 @@ public partial class HS787EFBForm : Form
         // Alt+R: refresh
         if (e.Alt && !e.Control && !e.Shift && e.KeyCode == Keys.R)
         {
-            _bridgeServer.EnqueueCommand("read_screen");
+            _efb.EnqueueCommand("read_screen");
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }
@@ -290,7 +300,8 @@ public partial class HS787EFBForm : Form
         if (!_disposed && disposing)
         {
             _disposed = true;
-            _bridgeServer.StateUpdated -= BridgeServer_StateUpdated;
+            _efb.StateUpdated -= BridgeServer_StateUpdated;
+            _efb.Dispose();
         }
         base.Dispose(disposing);
     }
