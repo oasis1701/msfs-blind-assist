@@ -39,8 +39,15 @@
       return 'button';
     };
 
-    // Returns the current page title + the interactive elements (each stamped with a stable
-    // idx via a data attribute so click()/setValue() can resolve it after re-scrapes).
+    // Returns the current page title + the visible interactive elements (each stamped with a
+    // stable idx via a data attribute so click()/setValue() can resolve it after re-scrapes).
+    // NOTE on navigation: the Boeing EFB's only way back to the menu from a sub-page is the
+    // hardware "MENU" bezel key (a 3D-cockpit interaction the EFB receives internally — it is
+    // NOT exposed as a DOM button, an L-var, or a bus/onInteractionEvent we can drive from the
+    // debugger; verified that clicking the hidden page-switch buttons does not navigate out of a
+    // modal sub-page like DOORS). So from the MAIN MENU every page is reachable by clicking its
+    // tile; returning from a sub-page currently needs the cockpit MENU key. (TODO: find the
+    // bezel-key mechanism — likely an airframe interaction.)
     A.scrape = function () {
       // Title: the EFB keeps a hidden title node per page in the DOM, so pick the VISIBLE one.
       var title = '';
@@ -49,7 +56,7 @@
 
       var sel = '.boeing-efb-button, .boeing-efb-dropdown-button, .boeing-efb-textfield-button';
       var nodes = document.querySelectorAll(sel);
-      var els = [], idx = 0, seen = {};
+      var els = [], idx = 0;
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i];
         if (!vis(el)) continue;
@@ -77,9 +84,13 @@
 
     A.clickElement = function (el) {
       if (!el) return false;
-      var o = { bubbles: true, cancelable: true };
+      var o = { bubbles: true, cancelable: true, view: window };
+      // Dispatch the full mouse sequence (some Boeing-EFB buttons react to mousedown, not
+      // click alone — same as the CDU page keys).
       try { el.dispatchEvent(new PointerEvent('pointerdown', o)); } catch (e) {}
+      try { el.dispatchEvent(new MouseEvent('mousedown', o)); } catch (e) {}
       try { el.dispatchEvent(new PointerEvent('pointerup', o)); } catch (e) {}
+      try { el.dispatchEvent(new MouseEvent('mouseup', o)); } catch (e) {}
       try { el.dispatchEvent(new MouseEvent('click', o)); } catch (e) {}
       return true;
     };

@@ -52,9 +52,14 @@
 
     A.clickElement = function (el) {
       if (!el) return;
-      var o = { bubbles: true, cancelable: true };
+      var o = { bubbles: true, cancelable: true, view: window };
+      // The WT boeing-mfd-button component (LSKs AND the page-key buttons) reacts to MOUSE
+      // events, not pointer/click alone — the page keys (INIT REF / RTE / LEGS / DEP ARR / …)
+      // only navigate on mousedown+mouseup. Dispatch the full sequence so every CDU button works.
       try { el.dispatchEvent(new PointerEvent('pointerdown', o)); } catch (e) {}
+      try { el.dispatchEvent(new MouseEvent('mousedown', o)); } catch (e) {}
       try { el.dispatchEvent(new PointerEvent('pointerup', o)); } catch (e) {}
+      try { el.dispatchEvent(new MouseEvent('mouseup', o)); } catch (e) {}
       try { el.dispatchEvent(new MouseEvent('click', o)); } catch (e) {}
     };
 
