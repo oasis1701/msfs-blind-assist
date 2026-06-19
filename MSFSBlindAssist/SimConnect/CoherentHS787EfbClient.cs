@@ -263,6 +263,11 @@ namespace MSFSBlindAssist.SimConnect
 
         private static string RenderLabel(EfbElement e)
         {
+            // Page-switch buttons read as "Go to <page>" (they're always listed first on a
+            // sub-page, driving the EFB's visiblePage Subject — the reliable navigation path).
+            if (e.kind == "nav")
+                return "Go to " + (e.label ?? "");
+
             string s = e.label ?? "";
             if (!string.IsNullOrEmpty(e.value)) s += ": " + e.value;
             else if (e.kind == "input") s += ": (enter value)";
