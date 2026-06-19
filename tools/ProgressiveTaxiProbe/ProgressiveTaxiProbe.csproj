@@ -11,6 +11,10 @@
     <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.cs"             Link="Linked\TaxiGraph.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\NavigationCalculator.cs"  Link="Linked\NavigationCalculator.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExit.cs"           Link="Linked\LandingExit.cs" />
+    <!-- TaxiLeadIn is pure (Database.Models only); it does NOT link TaxiRouter, so
+         pinning it here does not touch the shared taxi_router.log (the reason the
+         old TaxiLeadInProbe was removed). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiLeadIn.cs"            Link="Linked\TaxiLeadIn.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
@@ -18,6 +22,7 @@
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs"       Link="Linked\GateSource.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\StartPosition.cs"    Link="Linked\StartPosition.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\Runway.cs"           Link="Linked\Runway.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiRoute.cs"        Link="Linked\TaxiRoute.cs" />
     <!-- Services -->
     <Compile Include="..\..\MSFSBlindAssist\Services\DistanceFormatter.cs"       Link="Linked\DistanceFormatter.cs" />
     <!-- Settings -->

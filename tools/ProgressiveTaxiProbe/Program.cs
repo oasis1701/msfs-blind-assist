@@ -157,5 +157,53 @@ Check(farName == null, $"far node does not match a runway (got '{farName ?? "nul
 string? beyondName = TaxiGraph.MatchHoldShortRunwayName(42.4000, -71.0100, rwy, MATCH_M);
 Check(beyondName == null, $"node beyond runway end does not match (got '{beyondName ?? "null"}')");
 
+// ---------------------------------------------------------------------------
+// Apron lead-in onto the first cleared taxiway (TaxiLeadIn).
+//
+// Pure helper math only — TaxiLeadIn links Database.Models, NOT TaxiRouter, so
+// these tests do not touch the shared taxi_router.log (the reason the old
+// TaxiLeadInProbe was removed). They pin Extract / IsAcceptable / Clause.
+// ---------------------------------------------------------------------------
+static TaxiRoute Route(params (string tw, double m)[] segs)
+{
+    var r = new TaxiRoute();
+    foreach (var (tw, m) in segs)
+        r.Segments.Add(new TaxiRouteSegment { TaxiwayName = tw, DistanceMeters = m });
+    return r;
+}
+
+// Lead-in = the run of segments before the first segment named after the first
+// cleared taxiway. GA + GB apron lanes precede taxiway A.
+var li = TaxiLeadIn.Extract(Route(("GA", 100), ("GB", 50), ("A", 200), ("A", 80)), "A");
+Check(li.HasLeadIn && Math.Abs(li.DistanceMeters - 150) < 0.01
+      && li.Taxiways.Count == 2 && li.Taxiways[0] == "GA" && li.Taxiways[1] == "GB",
+      $"Extract: GA,GB lead-in before A (dist={li.DistanceMeters})");
+
+// Route already starts on A → no lead-in.
+var li2 = TaxiLeadIn.Extract(Route(("A", 200), ("B", 100)), "A");
+Check(!li2.HasLeadIn && li2.DistanceMeters == 0 && li2.Taxiways.Count == 0,
+      "Extract: starts on A → no lead-in");
+
+// Unnamed apron connectors before A → distance counts, no taxiway names.
+var li3 = TaxiLeadIn.Extract(Route(("", 60), ("", 40), ("A", 200)), "A");
+Check(li3.HasLeadIn && Math.Abs(li3.DistanceMeters - 100) < 0.01 && li3.Taxiways.Count == 0,
+      "Extract: unnamed connectors → distance but no names");
+
+// Acceptance: reject on router fallback, accept within gap*2.5+300, reject beyond.
+Check(!TaxiLeadIn.IsAcceptable(900, 297, "fell back to shortest path"),
+      "IsAcceptable: router fallback reason → reject");
+Check(TaxiLeadIn.IsAcceptable(900, 297, null),
+      "IsAcceptable: 900 <= 297*2.5+300 → accept");
+Check(!TaxiLeadIn.IsAcceptable(1100, 297, null),
+      "IsAcceptable: 1100 > 1042 → reject (dead-end guard)");
+
+// Spoken clause.
+Check(TaxiLeadIn.Clause(li, "A") == " First taxi via GA and GB to reach A.",
+      "Clause: two named taxiways");
+Check(TaxiLeadIn.Clause(li3, "A") == " First taxi onto A.",
+      "Clause: unnamed connectors only");
+Check(TaxiLeadIn.Clause(li2, "A") == "",
+      "Clause: no lead-in → empty");
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);
