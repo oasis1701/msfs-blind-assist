@@ -73,12 +73,16 @@ Traffic and Weather:
   Ctrl+R     Open TCAS Traffic Window
   Shift+R    Open Weather Radar Window
 
-AI Display Reading (requires Gemini API key in File > Gemini Settings):
-  Alt+P      Read PFD (use Ctrl+2 cockpit view first)
-  Alt+N      Read Navigation Display (use Ctrl+2 cockpit view first)
-  Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)
-  Alt+E      Read EICAS/SYNOPTIC display (use Ctrl+2 cockpit view first)
-  Alt+D      Describe outside scene
+Cockpit Display Read-outs:
+  Alt+N      Navigation + Engine Display - opens a live, navigable text window
+             (read with arrow keys, F5 refreshes, Escape closes). No API key needed.
+  Alt+E      EICAS / System Synoptic Display (HYD, ELEC, FUEL, AIR, APU, OXYGEN,
+             status messages) - live navigable text window. No API key needed.
+  Alt+P      Read PFD via AI vision (requires a Gemini API key in File > Gemini
+             Settings; use the Ctrl+2 cockpit view first). The PFD's airspeed,
+             altitude, heading and baro are also on B / Shift+S / Shift+H / A / Q.
+  Alt+I      Read the standby instrument via AI vision (Gemini key + Ctrl+2 view).
+  Alt+D      Describe outside scene (AI vision)
 
 Displays and Windows:
   Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)

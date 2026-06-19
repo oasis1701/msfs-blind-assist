@@ -41,6 +41,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousEngState2   = -1;
     // Cached autopilot window — created on first FCUSetAutopilot press, focused on subsequent presses.
     private Forms.HS787.HS787AutopilotWindow? _autopilotWindow;
+    // Single live-display read-out window (ND / Synoptic-System / Standby). Only one open at a
+    // time so it never runs more than one extra Coherent socket; replaced when another is opened.
+    private Forms.HS787.HS787DisplayForm? _displayWindow;
     private int  _previousPackL       = -1;
     private int  _previousPackR       = -1;
     private int  _previousHydDemandL  = -1;
@@ -4981,6 +4984,30 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // Cockpit display read-outs, on the standard MSFSBA display keys. The text-readable
+            // displays (the inboard ND with its engine strip, and the lower-MFD system synoptic)
+            // scrape cleanly over the Coherent debugger — no API key — so they open a live window
+            // (the generic row-reconstruction the A380 SD/EWD use).
+            case HotkeyAction.ReadDisplayND:               // Alt+N — inboard ND (with the engine strip)
+                ShowHs787Display("787 Navigation and Engine Display", "HSB789_MFD_1", announcer, hotkeyManager);
+                return true;
+
+            case HotkeyAction.ReadDisplayUpperECAM:        // Alt+E — lower-MFD EICAS / system synoptic
+                ShowHs787Display("787 EICAS and System Synoptic Display", "HSB789_MFD_2", announcer, hotkeyManager);
+                return true;
+
+            // The PFD + standby are positional (a flat scrape returns scale ticks), so read them with
+            // the AI-vision path (needs a Gemini key + the Ctrl+2 cockpit view). Their flight data is
+            // also already on the SimVar read-outs (B / Shift+S / Shift+H / A / Q). NOTE: the always-on
+            // IRS reader owns the PFD Coherent view, which is another reason not to scrape it here.
+            case HotkeyAction.ReadDisplayPFD:              // Alt+P
+                ReadDisplay(Services.GeminiService.DisplayType.PFD, "PFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayISIS:             // Alt+I — standby instrument
+                ReadDisplay(Services.GeminiService.DisplayType.ISIS, "Standby Instrument", announcer, parentForm);
+                return true;
+
             // FMC keyboard not available in Phase 1 (requires JS bridge)
             // MainForm will handle ShowFenixMCDU for other aircraft; return false here
             case HotkeyAction.ShowFenixMCDU:
@@ -5010,6 +5037,22 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }
+    }
+
+    // Open (or replace) the single live-display read-out window for a 787 Coherent display view.
+    // Only one is kept open at a time so we never run more than one extra display socket.
+    private void ShowHs787Display(string title, string viewNeedle, ScreenReaderAnnouncer announcer,
+        HotkeyManager hotkeyManager)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        var old = _displayWindow;
+        _displayWindow = null;
+        if (old != null && !old.IsDisposed) old.Close();
+
+        var w = new Forms.HS787.HS787DisplayForm(title, viewNeedle, announcer);
+        w.FormClosed += (_, _) => { if (ReferenceEquals(_displayWindow, w)) _displayWindow = null; };
+        _displayWindow = w;
+        w.Show();
     }
 
     // =========================================================================
