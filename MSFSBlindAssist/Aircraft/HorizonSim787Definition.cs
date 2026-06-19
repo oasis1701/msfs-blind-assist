@@ -3214,6 +3214,32 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 IsAnnounced = true
             },
 
+            // Transponder IDENT — momentary action button. Fires XPNDR_IDENT_ON via SendEvent
+            // (the A380 def uses the same event; MSFSBA's SendEvent maps it by raw name even
+            // though the MCP event registry doesn't list it). Lives in the Transponder panel.
+            ["HS787_XpndrIdent"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_787_XPNDR_IDENT",   // synthetic marker — action only, never read
+                DisplayName = "Transponder Ident",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                IsAnnounced = false
+            },
+
+            // Flight Director (combined L+R) — live-verified settable: TOGGLE_FLIGHT_DIRECTOR
+            // flips AUTOPILOT FLIGHT DIRECTOR ACTIVE 0<->1. Off/On combo in the MCP panel
+            // (the FD had no control before).
+            ["HS787_FlightDirector"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AUTOPILOT FLIGHT DIRECTOR ACTIVE",
+                DisplayName = "Flight Director",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+
             // Warnings panel — momentary reset buttons for Master Caution / Master Warning.
             // K:MASTER_CAUTION_ACKNOWLEDGE drives L:Generic_Master_Caution_Active to 0;
             // K:MASTER_WARNING_ACKNOWLEDGE does the same for the warning. Name is a synthetic
@@ -4553,6 +4579,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["MCP"] = new List<string>
             {
                 "HS787_APMaster",
+                "HS787_FlightDirector",
                 "HS787_ATStatus",
                 "HS787_YawDamper",
                 "HS787_FPAMode",
@@ -4601,7 +4628,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Transponder"] = new List<string>
             {
                 "HS787_TransponderMode",
-                "TRANSPONDER_CODE_SET"
+                "TRANSPONDER_CODE_SET",
+                "HS787_XpndrIdent"
             },
             ["Landing"] = new List<string>
             {
@@ -5084,6 +5112,27 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (varKey == "HS787_APMaster")
         {
             simConnect.SendEvent("AP_MASTER");
+            return true;
+        }
+
+        // Flight Director — TOGGLE_FLIGHT_DIRECTOR flips AUTOPILOT FLIGHT DIRECTOR ACTIVE; only
+        // fire when the desired Off/On state differs from the live state (so the combo is a true set).
+        if (varKey == "HS787_FlightDirector")
+        {
+            int desired = value > 0.5 ? 1 : 0;
+            int current = (simConnect.GetCachedVariableValue("HS787_FlightDirector") ?? 0) > 0.5 ? 1 : 0;
+            if (desired != current) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR");
+            return true;
+        }
+
+        // Transponder IDENT — momentary button; fire XPNDR_IDENT_ON on press.
+        if (varKey == "HS787_XpndrIdent")
+        {
+            if (value > 0.5)
+            {
+                simConnect.SendEvent("XPNDR_IDENT_ON");
+                announcer.Announce("Ident");
+            }
             return true;
         }
 
