@@ -6,7 +6,7 @@ namespace MSFSBlindAssist.Forms.HS787;
 
 /// <summary>
 /// Accessible EFB tablet display for the HorizonSim 787-9.
-/// Content is pushed by the JS bridge (hs787-efb-bridge.js) via EFBBridgeServer on port 19778.
+/// Content is read from the Boeing EFB over the Coherent debugger by CoherentHS787EfbClient.
 /// The page title is displayed in a dedicated bold label and announced on navigation.
 /// Page content is shown in a ListBox so screen readers can navigate line-by-line.
 /// Buttons are dynamically generated and numbered 1-9 for Alt+N keyboard shortcuts.

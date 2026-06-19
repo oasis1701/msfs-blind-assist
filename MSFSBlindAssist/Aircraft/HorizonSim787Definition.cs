@@ -14,13 +14,6 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 public class HorizonSim787Definition : BaseAircraftDefinition
 {
-    // Bridge server reference — set by MainForm after the HS787 bridge starts.
-    // Used to fire alt INTV from inside Coherent GT when the FMC bridge is connected.
-    public EFBBridgeServer? BridgeServer { get; set; }
-
-    // SimVar diagnostic: 0=unknown, 1=script loaded, 2=fetch failed, 3=connected.
-    // Written by L:MSFSBA_787_STAGE from hs787-mfd-bridge.js; read here via SimConnect.
-    public int BridgeStage { get; private set; } = 0;
 
     // Tri-state init (-1 = unset, suppresses first-poll announcement so MSFSBA
     // doesn't speak the entire panel state when it connects to a powered-up sim).
@@ -310,12 +303,11 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Pressurization"] = new List<string> { "HS787_PressLdgAlt", "HS787_CabinAltitude", "HS787_CabinPressureLevel" },
             ["Landing"]       = new List<string> { "HS787_ReverseNozzle1", "HS787_ReverseNozzle2" },
             ["EFIS"]          = new List<string> { "HS787_BaroSetting" },
-            // IRS: read-only indicators. HS787_IRS_Align is the true,
-            // Realistic-respecting alignment state (bridge-sourced); the
-            // Position vars are the WT_IRS_POS_SET "position accepted" flags.
+            // IRS: read-only indicators — the WT_IRS_POS_SET "position accepted" flags.
+            // (The realistic "TIME TO ALIGN" countdown lives only on the WT Coherent bus,
+            // not on any L-var; a Coherent ND reader for it is a verification-flight TODO.)
             ["IRS"]           = new List<string>
             {
-                "HS787_IRS_Align", "HS787_IRS_AlignMinutes",
                 "HS787_IRS_Aligned1", "HS787_IRS_Aligned2"
             },
             ["FMC Status"]    = new List<string>
@@ -803,9 +795,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // of the Realistic align-time setting. True alignment (operating mode
             // Navigation / the "TIME TO ALIGN" countdown) lives only on the WT
             // internal Coherent bus and is NOT exposed as any L-var. So this var
-            // is honestly a "position accepted" flag, not "aligned". Real
-            // realistic-alignment status is sourced via the MFD bridge instead
-            // (see HS787_IRS_Align below / hs787-mfd-bridge.js irs_align scrape).
+            // is honestly a "position accepted" flag, not "aligned". The realistic
+            // "TIME TO ALIGN" countdown is not on any L-var (only the WT Coherent bus);
+            // reading it over the Coherent ND view is a verification-flight TODO.
             // These are read-only (the IRS system owns them) — exposed via
             // GetPanelDisplayVariables, NOT BuildPanelControls, so they render as
             // a read-only status field, not an editable combo.
@@ -844,43 +836,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
-            // True IRS alignment status, sourced from the MFD bridge scraping the
-            // WT "TIME TO ALIGN" element (the only place real, Realistic-respecting
-            // alignment state is exposed). Read-only display. Values:
-            //   0 = Off / unknown   1 = Aligning   2 = Aligned (Navigation)
-            // The minutes-remaining detail is carried separately for the hotkey
-            // readout; this var drives the panel field + the completion announce.
-            ["HS787_IRS_Align"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MSFSBA_IRS_ALIGN_STATE",   // synthetic L-var written by the bridge feed
-                DisplayName = "IRS Alignment",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ExcludeFromBatch = true,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0] = "Off",
-                    [1] = "Aligning",
-                    [2] = "Aligned"
-                }
-            },
-
-            // Minutes remaining in the WT "TIME TO ALIGN" countdown (bridge feed).
-            // -1 = not aligning / unknown. Cache-only (silent) — surfaced in the
-            // read-only IRS display field so the pilot can check time remaining on
-            // demand without a noisy per-minute callout. The completion is
-            // announced by HS787_IRS_Align transitioning to Aligned.
-            ["HS787_IRS_AlignMinutes"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MSFSBA_IRS_ALIGN_MINUTES",
-                DisplayName = "IRS Time To Align (min)",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ExcludeFromBatch = true,
-                ValueDescriptions = new Dictionary<double, string> { [-1] = "n/a" }
-            },
+            // (The true IRS "TIME TO ALIGN" countdown was previously sourced from the
+            // HTTP MFD bridge scraping the WT "TIME TO ALIGN" element. With the bridge
+            // retired, those synthetic L-vars [MSFSBA_IRS_ALIGN_STATE / _MINUTES] are gone;
+            // re-port the countdown via a Coherent ND reader during the verification flight.)
 
             // -----------------------------------------------------------------
             // OVERHEAD — Hydraulics
@@ -3245,17 +3204,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 StateVariable = "HS787_MasterWarning"
             },
 
-            // Bridge diagnostic: written by L:MSFSBA_787_STAGE in hs787-mfd-bridge.js.
-            // IsAnnounced = true puts it in the continuous batch; ProcessSimVarUpdate handles it silently.
-            ["HS787_BridgeStage"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MSFSBA_787_STAGE",
-                DisplayName = "Bridge Stage",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-
             // =====================================================================
             // Batch 8 — Fuel pumps, crossfeeds, bleed air, fire test, cargo fire,
             // engine/APU fire handles, standby power. Standard MSFS SimVars are
@@ -5556,13 +5504,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (base.ProcessSimVarUpdate(variableKey, value, announcer))
             return true;
 
-        // Bridge diagnostic L-var — store silently, no announcement.
-        if (variableKey == "HS787_BridgeStage")
-        {
-            BridgeStage = (int)value;
-            return true;
-        }
-
         // =====================================================================
         // BridgeVersion 18+ — new annunciators / status. All use the same pattern:
         // track previous value (-1 = unset → suppresses first-poll), announce only
@@ -6322,8 +6263,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
 
         // IRS position accepted (WT_IRS_POS_SET_N) — NOT alignment complete.
-        // Announce the honest position semantics; true alignment completion is
-        // owned by HS787_IRS_Align (bridge-sourced). Suppress first poll.
+        // Announce the honest position semantics. (The true "TIME TO ALIGN" countdown
+        // is not on any L-var; see the IRS section in GetVariables.) Suppress first poll.
         if (variableKey == "HS787_IRS_Aligned1")
         {
             int now = value > 0.5 ? 1 : 0;
@@ -7109,10 +7050,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // user-facing announcement, so suppress here to avoid duplicate speech.
             case "HS787_ExtPwr1":
             case "HS787_ExtPwr2":
-            // IRS time-to-align: cached for the read-only display field only.
-            // The Aligned transition is announced via HS787_IRS_Align; a
-            // per-minute spoken countdown would be noise.
-            case "HS787_IRS_AlignMinutes":
                 return true; // cached — no announcement
         }
 
@@ -7288,15 +7225,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             }, () => simConnect.SendEvent("AP_ALT_HOLD")),
 
             new("Alt &INTV", () => "Momentary", () =>
-            {
-                // Fire from inside Coherent GT via bridge when available — more reliable for
-                // WT Boeing H events that are internal to the sim's JS runtime. Fall back to
-                // MobiFlight WASM if the bridge is not connected.
-                if (BridgeServer != null && BridgeServer.IsBridgeConnected)
-                    BridgeServer.EnqueueMfdCommand("fcu_key:ALTITUDE_INTERVENTION");
-                else
-                    simConnect.SendHVar("AS01B_FMC_1_ALTITUDE_INTERVENTION");
-            })
+                // Fire the WT Boeing altitude-intervention H event via MobiFlight WASM. (The
+                // CDU/EFB no longer run an HTTP bridge, so there is no Coherent command path here.)
+                simConnect.SendHVar("AS01B_FMC_1_ALTITUDE_INTERVENTION"))
         };
 
         var dialog = new ValueInputForm(

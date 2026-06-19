@@ -151,12 +151,6 @@
     <None Update="Resources\coherent-ecl-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Resources\hs787-mfd-bridge.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Resources\hs787-efb-bridge.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Resources\flypad-shell.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

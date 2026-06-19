@@ -8,9 +8,8 @@ namespace MSFSBlindAssist.Forms.HS787;
 
 /// <summary>
 /// Accessible FMC display for the HorizonSim 787-9.
-/// Screen data is pushed by the JS bridge running inside MSFS (via EFBBridgeServer on port 19778).
-/// LSK and page commands are sent back to the sim via the same bridge server.
-/// Text input is sent as individual H-event key presses (H:AS01B_FMC_1_BTN_*).
+/// Screen data is read from the WT Boeing CDU over the Coherent debugger by
+/// CoherentHS787CduClient (HSB789_MFD_3); LSK / page / key commands are driven back the same way.
 /// </summary>
 public partial class HS787FMCForm : Form
 {
@@ -333,19 +332,6 @@ public partial class HS787FMCForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
-        // Ctrl+Shift+R — hot-reload the MFD bridge JavaScript from disk without
-        // restarting the sim. Reads the current hs787-mfd-bridge.js from the
-        // output Resources folder, tears down the previous instance's timers and
-        // the double-load guard, then evals the fresh script inside the running
-        // MFD. Mirrors PMDG777EFBForm's hot-reload. Checked first so it never
-        // collides with the LSK/page chords below.
-        if (e.Control && e.Shift && e.KeyCode == Keys.R)
-        {
-            HotReloadBridgeJs();
-            e.Handled = true; e.SuppressKeyPress = true;
-            return;
-        }
-
         // Line-select keys — two layouts, switchable in FMC Settings:
         //   Default: Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
         //   Alternate: F1..F6 = L1..L6, F7..F12 = R1..R6
@@ -493,68 +479,6 @@ public partial class HS787FMCForm : Form
         }
     }
 
-    // ------------------------------------------------------------------
-    // Hot-reload — re-eval the MFD bridge JS without a sim restart
-    // ------------------------------------------------------------------
-
-    private void HotReloadBridgeJs()
-    {
-        string path = System.IO.Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Resources", "hs787-mfd-bridge.js");
-        if (!System.IO.File.Exists(path))
-        {
-            _announcer.Announce($"Hot-reload failed: bridge script not found at {path}");
-            return;
-        }
-        string js;
-        try
-        {
-            js = System.IO.File.ReadAllText(path);
-        }
-        catch (Exception ex)
-        {
-            _announcer.Announce($"Hot-reload failed: {ex.Message}");
-            return;
-        }
-
-        // Tear down the previous instance before re-evaluating:
-        //  - clear all four timers (command/screen/heartbeat/reconnect) so the
-        //    old loops don't run alongside the freshly-eval'd ones;
-        //  - reset window._mfd_bridge_loaded = false. CRITICAL: the bridge wraps
-        //    everything in `if (window._mfd_bridge_loaded) { skip } else { ... }`
-        //    (double-load guard for the FS2024 dual script-tag injection). Without
-        //    resetting the flag the re-eval'd script would no-op entirely.
-        const string teardown =
-            "try {" +
-            "  if (typeof _mfd !== 'undefined' && _mfd) {" +
-            "    if (_mfd.commandPollTimer) clearInterval(_mfd.commandPollTimer);" +
-            "    if (_mfd.screenPollTimer) clearInterval(_mfd.screenPollTimer);" +
-            "    if (_mfd.heartbeatTimer) clearInterval(_mfd.heartbeatTimer);" +
-            "    if (_mfd.reconnectTimer) clearInterval(_mfd.reconnectTimer);" +
-            "    console.log('[MFD Bridge] Hot-reload: previous instance torn down');" +
-            "  }" +
-            "  window._mfd_bridge_loaded = false;" +
-            "} catch (e) { console.error('[MFD Bridge] Hot-reload teardown failed:', e); }\n";
-
-        string fullScript = teardown + js;
-
-        // Wrap in indirect eval `(0, eval)("…")` so the script runs in GLOBAL
-        // scope. Direct eval inside handleCommand would create a local `var _mfd`
-        // that never replaces the global one (same rationale as PMDG bridge).
-        // The script is JSON-encoded into a JS string literal for the argument.
-        string jsLiteral = System.Text.Json.JsonSerializer.Serialize(fullScript);
-        string indirectEvalCode = "(0, eval)(" + jsLiteral + ");";
-
-        _cdu.EnqueueMfdCommand("eval_js", new Dictionary<string, string> { ["code"] = indirectEvalCode });
-
-        string versionFromSource = "?";
-        var match = System.Text.RegularExpressions.Regex.Match(
-            js, @"BRIDGE_JS_VERSION:\s*([A-Za-z0-9._\-]+)");
-        if (match.Success) versionFromSource = match.Groups[1].Value;
-
-        _announcer.Announce($"MFD bridge hot-reloaded, {js.Length / 1024} KB, source version {versionFromSource}. " +
-                            "Switch the MFD to a CDU page so it polls commands.");
-    }
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)
     {
