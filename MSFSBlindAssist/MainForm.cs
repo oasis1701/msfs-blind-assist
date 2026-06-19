@@ -74,6 +74,9 @@ public partial class MainForm : Form
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
     private HS787EFBForm? hs787EFBForm;
+    // Background Coherent reader for the WT IRS "TIME TO ALIGN" state — writes the synthetic
+    // MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the HS787 def reads. Runs while the HS787 is loaded.
+    private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -340,8 +343,11 @@ public partial class MainForm : Form
 
         // FBW flyPad: the EFB form owns its CDP client; nothing to pre-start here.
 
-        // The HS787 CDU + EFB now read/drive over the Coherent debugger on demand (opened by
-        // their forms), so there's no HTTP bridge to install or start on aircraft load.
+        // The HS787 CDU + EFB open their own Coherent connections on demand (from their forms).
+        // The IRS-alignment monitor must run continuously from load so it catches the alignment
+        // countdown, so start it here.
+        if (currentAircraft?.AircraftCode == "HS_787")
+            StartHS787IrsMonitor();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -3205,8 +3211,17 @@ public partial class MainForm : Form
         hs787FMCForm.ShowForm();
     }
 
-    // Dispose the HS787 CDU / SimBrief / EFB windows (e.g. on aircraft swap) so their
-    // Coherent debugger clients disconnect. There is no HTTP bridge to stop.
+    // Start the background IRS-alignment monitor (idempotent). It connects to the HS787
+    // ND/PFD Coherent view and writes the MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the def reads.
+    private void StartHS787IrsMonitor()
+    {
+        if (hs787IrsClient != null) return;
+        hs787IrsClient = new SimConnect.CoherentHS787IrsClient();
+        hs787IrsClient.Start();
+    }
+
+    // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
+    // so their Coherent debugger connections close. There is no HTTP bridge to stop.
     private void DisposeHS787Forms()
     {
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
@@ -3226,6 +3241,9 @@ public partial class MainForm : Form
             hs787EFBForm.Dispose();
             hs787EFBForm = null;
         }
+
+        hs787IrsClient?.Dispose();
+        hs787IrsClient = null;
     }
 
     private void CheckAndOfferEFBModPackage()
@@ -4870,9 +4888,12 @@ public partial class MainForm : Form
         }
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from
-        // their forms) — no HTTP bridge to start. When leaving the HS787, dispose its forms so
-        // their Coherent clients disconnect.
-        if (newAircraft.AircraftCode != "HS_787")
+        // their forms) — no HTTP bridge to start. The IRS-alignment monitor runs continuously
+        // (so it catches the alignment countdown). When leaving the HS787, dispose its forms +
+        // the IRS monitor so their Coherent connections close.
+        if (newAircraft.AircraftCode == "HS_787")
+            StartHS787IrsMonitor();
+        else
             DisposeHS787Forms();
 
         // Rebuild sections from new aircraft structure
@@ -6841,10 +6862,12 @@ public partial class MainForm : Form
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
 
-        // Clean up 787 forms (their Coherent clients dispose with them)
+        // Clean up 787 forms (their Coherent clients dispose with them) + the IRS monitor
         hs787FMCForm?.Dispose();
         hs787SimBriefForm?.Dispose();
         hs787EFBForm?.Dispose();
+        hs787IrsClient?.Dispose();
+        hs787IrsClient = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

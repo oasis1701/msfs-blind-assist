@@ -303,11 +303,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Pressurization"] = new List<string> { "HS787_PressLdgAlt", "HS787_CabinAltitude", "HS787_CabinPressureLevel" },
             ["Landing"]       = new List<string> { "HS787_ReverseNozzle1", "HS787_ReverseNozzle2" },
             ["EFIS"]          = new List<string> { "HS787_BaroSetting" },
-            // IRS: read-only indicators — the WT_IRS_POS_SET "position accepted" flags.
-            // (The realistic "TIME TO ALIGN" countdown lives only on the WT Coherent bus,
-            // not on any L-var; a Coherent ND reader for it is a verification-flight TODO.)
+            // IRS: read-only indicators. HS787_IRS_Align is the true, Realistic-respecting
+            // alignment state (Coherent-sourced: CoherentHS787IrsClient reads the WT
+            // .time-to-align element); the Position vars are the WT_IRS_POS_SET flags.
             ["IRS"]           = new List<string>
             {
+                "HS787_IRS_Align", "HS787_IRS_AlignMinutes",
                 "HS787_IRS_Aligned1", "HS787_IRS_Aligned2"
             },
             ["FMC Status"]    = new List<string>
@@ -836,10 +837,42 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
-            // (The true IRS "TIME TO ALIGN" countdown was previously sourced from the
-            // HTTP MFD bridge scraping the WT "TIME TO ALIGN" element. With the bridge
-            // retired, those synthetic L-vars [MSFSBA_IRS_ALIGN_STATE / _MINUTES] are gone;
-            // re-port the countdown via a Coherent ND reader during the verification flight.)
+            // True IRS alignment status. The WT "TIME TO ALIGN" countdown is exposed only on
+            // the ND/PFD .time-to-align DOM element (the one IRS L-var WT sets, WT_IRS_POS_SET_N,
+            // is "position accepted", NOT alignment complete). CoherentHS787IrsClient reads that
+            // element over the Coherent debugger and writes these synthetic L-vars; we read them
+            // here through the normal SimVar path. Read-only display. Values:
+            //   0 = Off   1 = Aligning   2 = Aligned (Navigation)
+            ["HS787_IRS_Align"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_IRS_ALIGN_STATE",   // synthetic L-var written by the Coherent IRS client
+                DisplayName = "IRS Alignment",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Aligning",
+                    [2] = "Aligned"
+                }
+            },
+
+            // Minutes remaining in the WT "TIME TO ALIGN" countdown (Coherent IRS client feed).
+            // -1 = not aligning / unknown. Cache-only (silent) — surfaced in the read-only IRS
+            // display field so the pilot can check time remaining on demand without a noisy
+            // per-minute callout. The completion is announced by HS787_IRS_Align -> Aligned.
+            ["HS787_IRS_AlignMinutes"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_IRS_ALIGN_MINUTES",
+                DisplayName = "IRS Time To Align (min)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                ValueDescriptions = new Dictionary<double, string> { [-1] = "n/a" }
+            },
 
             // -----------------------------------------------------------------
             // OVERHEAD — Hydraulics
@@ -7050,6 +7083,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // user-facing announcement, so suppress here to avoid duplicate speech.
             case "HS787_ExtPwr1":
             case "HS787_ExtPwr2":
+            // IRS time-to-align minutes: cached for the read-only display field only.
+            // The Aligning->Aligned transition is announced via HS787_IRS_Align's
+            // ValueDescriptions; a per-minute spoken countdown would be noise.
+            case "HS787_IRS_AlignMinutes":
                 return true; // cached — no announcement
         }
 
