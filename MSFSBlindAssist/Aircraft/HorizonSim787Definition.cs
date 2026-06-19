@@ -4984,22 +4984,27 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Cockpit display read-outs, on the standard MSFSBA display keys. The text-readable
-            // displays (the inboard ND with its engine strip, and the lower-MFD system synoptic)
-            // scrape cleanly over the Coherent debugger — no API key — so they open a live window
-            // (the generic row-reconstruction the A380 SD/EWD use).
-            case HotkeyAction.ReadDisplayND:               // Alt+N — inboard ND (with the engine strip)
-                ShowHs787Display("787 Navigation and Engine Display", "HSB789_MFD_1", announcer, hotkeyManager);
+            // EICAS (Alt+E) reads back every active Crew-Alerting-System message (warnings /
+            // cautions / advisories) from the always-on CAS monitor (which also AUTO-announces each
+            // new alert as it posts). The monitor owns the MFD_1 Coherent view.
+            case HotkeyAction.ReadDisplayUpperECAM:        // Alt+E — EICAS crew alerts
+                (parentForm as MainForm)?.AnnounceHs787CasAlerts();
                 return true;
 
-            case HotkeyAction.ReadDisplayUpperECAM:        // Alt+E — lower-MFD EICAS / system synoptic
-                ShowHs787Display("787 EICAS and System Synoptic Display", "HSB789_MFD_2", announcer, hotkeyManager);
+            // The lower-MFD system synoptic (HYD / ELEC / FUEL / AIR / APU / OXYGEN / status) scrapes
+            // cleanly as text over the Coherent debugger (MFD_2) — open a live read-out window. No key.
+            case HotkeyAction.ReadDisplayLowerECAM:        // Alt+S — system synoptic
+                ShowHs787Display("787 System Synoptic Display", "HSB789_MFD_2", announcer, hotkeyManager);
                 return true;
 
-            // The PFD + standby are positional (a flat scrape returns scale ticks), so read them with
-            // the AI-vision path (needs a Gemini key + the Ctrl+2 cockpit view). Their flight data is
-            // also already on the SimVar read-outs (B / Shift+S / Shift+H / A / Q). NOTE: the always-on
-            // IRS reader owns the PFD Coherent view, which is another reason not to scrape it here.
+            // The ND / PFD / standby are positional (a flat scrape returns scale ticks), so read them
+            // with the AI-vision path (needs a Gemini key + the Ctrl+2 cockpit view). Their data is
+            // also on the SimVar read-outs (B / Shift+S / Shift+H / A / Q, D / Shift+D, waypoint info).
+            // The CAS monitor owns MFD_1 and the IRS reader owns the PFD view, so neither is scraped.
+            case HotkeyAction.ReadDisplayND:               // Alt+N
+                ReadDisplay(Services.GeminiService.DisplayType.ND, "Navigation Display", announcer, parentForm);
+                return true;
+
             case HotkeyAction.ReadDisplayPFD:              // Alt+P
                 ReadDisplay(Services.GeminiService.DisplayType.PFD, "PFD", announcer, parentForm);
                 return true;

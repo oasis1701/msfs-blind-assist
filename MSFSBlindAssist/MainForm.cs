@@ -77,6 +77,8 @@ public partial class MainForm : Form
     // Background Coherent reader for the WT IRS "TIME TO ALIGN" state — writes the synthetic
     // MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the HS787 def reads. Runs while the HS787 is loaded.
     private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
+    // Always-on EICAS Crew-Alerting-System monitor — announces new cautions/warnings as they post.
+    private SimConnect.CoherentHS787CasClient? hs787CasClient;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -3211,14 +3213,25 @@ public partial class MainForm : Form
         hs787FMCForm.ShowForm();
     }
 
-    // Start the background IRS-alignment monitor (idempotent). It connects to the HS787
-    // ND/PFD Coherent view and writes the MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the def reads.
+    // Start the always-on HS787 Coherent monitors (idempotent): the IRS-alignment reader (writes
+    // MSFSBA_IRS_ALIGN_STATE/_MINUTES from the PFD view) and the EICAS CAS alert monitor (announces
+    // new cautions/warnings from the MFD_1 view).
     private void StartHS787IrsMonitor()
     {
-        if (hs787IrsClient != null) return;
-        hs787IrsClient = new SimConnect.CoherentHS787IrsClient();
-        hs787IrsClient.Start();
+        if (hs787IrsClient == null)
+        {
+            hs787IrsClient = new SimConnect.CoherentHS787IrsClient();
+            hs787IrsClient.Start();
+        }
+        if (hs787CasClient == null)
+        {
+            hs787CasClient = new SimConnect.CoherentHS787CasClient(announcer);
+            hs787CasClient.Start();
+        }
     }
+
+    // Read back every active EICAS CAS alert on demand (the HS787 Alt+E key).
+    public void AnnounceHs787CasAlerts() => hs787CasClient?.AnnounceCurrentAlerts();
 
     // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
     // so their Coherent debugger connections close. There is no HTTP bridge to stop.
@@ -3244,6 +3257,8 @@ public partial class MainForm : Form
 
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
+        hs787CasClient?.Dispose();
+        hs787CasClient = null;
     }
 
     private void CheckAndOfferEFBModPackage()
@@ -6862,12 +6877,14 @@ public partial class MainForm : Form
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
 
-        // Clean up 787 forms (their Coherent clients dispose with them) + the IRS monitor
+        // Clean up 787 forms (their Coherent clients dispose with them) + the IRS / CAS monitors
         hs787FMCForm?.Dispose();
         hs787SimBriefForm?.Dispose();
         hs787EFBForm?.Dispose();
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
+        hs787CasClient?.Dispose();
+        hs787CasClient = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
