@@ -7,12 +7,13 @@ using MSFSBlindAssist.Accessibility;
 namespace MSFSBlindAssist.SimConnect
 {
     /// <summary>
-    /// Always-on EICAS Crew-Alerting-System monitor for the HorizonSim 787. Connects to the
-    /// MFD_1 / EICAS Coherent view, installs <c>coherent-hs787-cas-agent.js</c>, polls the
-    /// <c>.cas-warning</c> / <c>.cas-caution</c> / <c>.cas-advisory</c> messages, and ANNOUNCES
-    /// each NEW alert by severity as it posts (baseline-silent on the first scrape) — so a blind
-    /// pilot hears cautions and warnings the moment they appear. <see cref="AnnounceCurrentAlerts"/>
-    /// reads back every active alert on demand (the EICAS key).
+    /// EICAS Crew-Alerting-System reader for the HorizonSim 787. Connects to the MFD_1 / EICAS
+    /// Coherent view, installs <c>coherent-hs787-cas-agent.js</c>, and keeps the active
+    /// <c>.cas-warning</c> / <c>.cas-caution</c> / <c>.cas-advisory</c> message lists current so
+    /// <see cref="AnnounceCurrentAlerts"/> can read them all back ON DEMAND (the EICAS key, Alt+E).
+    /// It does NOT auto-announce per message: the def already auto-announces Master Caution /
+    /// Master Warning, so the pilot is told the moment something posts and checks the specifics
+    /// with Alt+E — no redundant chatter.
     ///
     /// Mirrors the A380 CoherentEWDClient role. Owns the MFD_1 socket; no other client uses
     /// MFD_1 (the ND read-out key was repointed to AI-vision precisely so this monitor can own it),
@@ -35,11 +36,9 @@ namespace MSFSBlindAssist.SimConnect
         private readonly SemaphoreSlim _sendLock = new(1, 1);
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
-        // Current active alerts (lock-guarded snapshots) + the "seen" sets for edge-detection.
+        // Current active alerts (lock-guarded snapshots) for the on-demand read-back.
         private readonly object _lock = new();
         private List<string> _warnings = new(), _cautions = new(), _advisories = new();
-        private readonly HashSet<string> _seenW = new(), _seenC = new(), _seenA = new();
-        private bool _baselined;   // first scrape seeds "seen" silently
 
         private CancellationTokenSource? _cts;
         private ClientWebSocket? _ws;
@@ -115,48 +114,21 @@ namespace MSFSBlindAssist.SimConnect
             }
         }
 
+        // Keep the active-alert lists current for the on-demand Alt+E read-back. We do NOT
+        // auto-announce per message: the def already auto-announces Master Caution / Master Warning
+        // (Generic_Master_Caution_Active / _Warning_Active), so the pilot is told the moment
+        // something posts and reads the specifics on demand with Alt+E — no redundant chatter.
         private void ProcessScrape(string raw)
         {
             CasScrape? s;
             try { s = JsonSerializer.Deserialize<CasScrape>(raw); } catch { return; }
             if (s == null || !s.ok) return;
-
-            var w = s.warnings ?? new(); var c = s.cautions ?? new(); var a = s.advisories ?? new();
-            lock (_lock) { _warnings = w; _cautions = c; _advisories = a; }
-
-            if (!_baselined)
+            lock (_lock)
             {
-                // First good scrape — seed the seen-sets so pre-existing alerts aren't read out.
-                foreach (var x in w) _seenW.Add(x);
-                foreach (var x in c) _seenC.Add(x);
-                foreach (var x in a) _seenA.Add(x);
-                _baselined = true;
-                return;
+                _warnings = s.warnings ?? new();
+                _cautions = s.cautions ?? new();
+                _advisories = s.advisories ?? new();
             }
-
-            // Announce NEW alerts (most-severe first), and forget cleared ones so they re-announce
-            // if they recur.
-            AnnounceNew(w, _seenW, "Warning");
-            AnnounceNew(c, _seenC, "Caution");
-            AnnounceNew(a, _seenA, "Advisory");
-            Prune(w, _seenW); Prune(c, _seenC); Prune(a, _seenA);
-        }
-
-        private void AnnounceNew(List<string> current, HashSet<string> seen, string severity)
-        {
-            foreach (var msg in current)
-            {
-                if (seen.Contains(msg)) continue;
-                seen.Add(msg);
-                // Warnings/cautions interrupt; advisories queue.
-                if (severity == "Advisory") _announcer.Announce($"{severity}, {msg}");
-                else _announcer.AnnounceImmediate($"{severity}, {msg}");
-            }
-        }
-
-        private static void Prune(List<string> current, HashSet<string> seen)
-        {
-            seen.RemoveWhere(m => !current.Contains(m));
         }
 
         // ---- connection plumbing (mirrors the other HS787 Coherent clients) ----

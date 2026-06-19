@@ -25,12 +25,28 @@
     }
 
     A.label = function (el) {
-      // prefer the inner .button-name; else aria-label/title; else own text
+      // prefer the inner .button-name (buttons/dropdowns carry it inside)
       var nm = el.querySelector ? el.querySelector('.button-name, [class*="button-name"]') : null;
       var t = nm ? txt(nm) : '';
+      // textfields ONLY carry their label as a SIBLING .button-name in the parent
+      // (.boeing-efb-top-textfield) — NOT inside the field — so a plain inner query missed it and
+      // the inputs came out unlabeled. Fall back to the parent's .button-name for textfields.
+      // (Buttons/dropdowns keep falling to their own textContent below, so a parent sibling never
+      // steals their label.)
+      if (!t && clsContains(el, 'textfield') && el.parentElement) {
+        var pnm = el.parentElement.querySelector('.button-name, [class*="button-name"]');
+        if (pnm && pnm !== el && !el.contains(pnm)) t = txt(pnm);
+      }
       if (!t) t = (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title'))) || '';
       if (!t) t = txt(el);
       return t.replace(/\s+/g, ' ').slice(0, 60);
+    };
+
+    // Own (direct) text of an element — its label/value text, not its descendants'.
+    A.ownText = function (el) {
+      var t = '';
+      for (var i = 0; i < el.childNodes.length; i++) { var n = el.childNodes[i]; if (n.nodeType === 3) t += n.nodeValue; }
+      return t.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
     };
 
     A.kindOf = function (el) {
@@ -67,6 +83,11 @@
       return out.map(function (n) { return { id: n, label: labels[n] || ('Page ' + n) }; });
     };
 
+    // True for the always-present main-menu page tiles (they live in an efb-main-menu* container
+    // and stay hidden in the DOM on sub-pages); we surface those as the kind 'nav' page-switch
+    // list instead, so they're skipped from the page-content + static-text scrape.
+    A.isMenuNav = function (el) { return !!(el.closest && el.closest('[class*="efb-main-menu"]')); };
+
     // Returns the current page title + the interactive elements (each stamped with a stable idx).
     // When NOT on the main menu, the functional EFB pages (Main Menu / Performance / Doors / Video /
     // Data Load) are prepended as kind 'nav' so the user can jump to any of them — including BACK
@@ -94,27 +115,62 @@
         }
       }
 
+      // Build the page in READING ORDER: every interactive control (button / dropdown / labelled
+      // input) PLUS standalone static text (read-only info + field values), so the page is fully
+      // readable, not just operable. Items are positioned and sorted top-to-bottom, left-to-right.
       var sel = '.boeing-efb-button, .boeing-efb-dropdown-button, .boeing-efb-textfield-button';
-      var nodes = document.querySelectorAll(sel);
-      for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i];
+      var items = [];
+
+      var ctrlNodes = document.querySelectorAll(sel);
+      for (var i = 0; i < ctrlNodes.length; i++) {
+        var el = ctrlNodes[i];
         if (!vis(el)) continue;
+        if (!onMainMenu && A.isMenuNav(el)) continue;
         var label = A.label(el);
         if (!label) continue;
-        el.setAttribute('data-msfsba-efb-idx', idx);
         var value = '';
         if (clsContains(el, 'textfield')) {
           var inp = el.querySelector('input,textarea');
           value = inp ? (inp.value || '') : '';
         }
-        els.push({
-          idx: idx,
-          kind: A.kindOf(el),
-          label: label,
-          value: value,
-          disabled: clsContains(el, 'disabled')
-        });
-        idx++;
+        var rc = el.getBoundingClientRect();
+        items.push({ ctrl: true, el: el, kind: A.kindOf(el), label: label, value: value,
+                     disabled: clsContains(el, 'disabled'), y: rc.top, x: rc.left });
+      }
+
+      // Standalone readable text — visible own-text leaves that are NOT inside a control, NOT a
+      // control's .button-name label (already shown on the control), NOT the title, NOT the menu.
+      var allv = document.querySelectorAll('body *');
+      for (var j = 0; j < allv.length; j++) {
+        var e = allv[j];
+        if (!vis(e)) continue;
+        if (e.closest(sel)) continue;
+        if (clsContains(e, 'button-name') || (e.closest && e.closest('.button-name'))) continue;
+        if (e.closest('[class*="efb-title"]')) continue;
+        if (!onMainMenu && A.isMenuNav(e)) continue;
+        var ot = A.ownText(e);
+        if (!ot || ot.length > 45) continue;
+        if (/^[\s:.,\-/]+$/.test(ot)) continue;   // pure punctuation / separators
+        var rt = e.getBoundingClientRect();
+        items.push({ ctrl: false, text: ot, y: rt.top, x: rt.left });
+      }
+
+      items.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+
+      var seenText = {};
+      for (var k = 0; k < items.length; k++) {
+        var it = items[k];
+        if (it.ctrl) {
+          it.el.setAttribute('data-msfsba-efb-idx', idx);
+          els.push({ idx: idx, kind: it.kind, label: it.label, value: it.value, disabled: it.disabled });
+          idx++;
+        } else {
+          var tkey = Math.round(it.y) + '|' + it.text;
+          if (seenText[tkey]) continue;
+          seenText[tkey] = 1;
+          els.push({ idx: idx, kind: 'text', label: it.text, value: '', disabled: false });
+          idx++;
+        }
       }
       return { ok: true, title: title, elements: els };
     };

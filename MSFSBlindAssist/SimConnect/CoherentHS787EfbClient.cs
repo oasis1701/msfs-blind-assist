@@ -268,6 +268,11 @@ namespace MSFSBlindAssist.SimConnect
             if (e.kind == "nav")
                 return "Go to " + (e.label ?? "");
 
+            // Standalone static text / read-only info — surface it verbatim so the page is fully
+            // readable (it isn't a control; clicking it is a harmless no-op).
+            if (e.kind == "text")
+                return e.label ?? "";
+
             string s = e.label ?? "";
             if (!string.IsNullOrEmpty(e.value)) s += ": " + e.value;
             else if (e.kind == "input") s += ": (enter value)";
