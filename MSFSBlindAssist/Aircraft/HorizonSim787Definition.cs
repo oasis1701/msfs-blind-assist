@@ -342,6 +342,134 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // (active freq button label, standby textbox, swap button) is its own
             // control row; announcements fire from ProcessSimVarUpdate on change.
             // The ReadSquawkCode hotkey handles on-demand squawk readback.
+            ["VNAV"] = new List<string>
+            {
+                "HS787_LV_WTAP_Boeing_VNav_Desired_State",
+                "HS787_LV_WTAP_Boeing_VNav_RNP",
+                "HS787_LV_WTAP_VNAV_Required_VS",
+                "HS787_LV_WTAP_VNav_Alt_Capture_Type",
+                "HS787_LV_WTAP_VNav_BOC_Leg_Index",
+                "HS787_LV_WTAP_VNav_BOD_Leg_Index",
+                "HS787_LV_WTAP_VNav_Constraint_Altitude",
+                "HS787_LV_WTAP_VNav_Constraint_Leg_Index",
+                "HS787_LV_WTAP_VNav_Distance_To_BOC",
+                "HS787_LV_WTAP_VNav_Distance_To_BOD",
+                "HS787_LV_WTAP_VNav_Distance_To_Performance_TOD",
+                "HS787_LV_WTAP_VNav_Distance_To_TOC",
+                "HS787_LV_WTAP_VNav_FPA",
+                "HS787_LV_WTAP_VNav_Next_Constraint_Altitude",
+                "HS787_LV_WTAP_VNav_Path_Available",
+                "HS787_LV_WTAP_VNav_Path_Mode",
+                "HS787_LV_WTAP_VNav_Performance_TOD_Distance_In_Leg",
+                "HS787_LV_WTAP_VNav_Performance_TOD_Leg_Index",
+                "HS787_LV_WTAP_VNav_State",
+                "HS787_LV_WTAP_VNav_TOC_Distance_In_Leg",
+                "HS787_LV_WTAP_VNav_TOC_Leg_Index",
+                "HS787_LV_WTAP_VNav_TOD_Distance_In_Leg",
+                "HS787_LV_WTAP_VNav_TOD_Leg_Index",
+                "HS787_LV_WTAP_VNav_Target_Altitude",
+                "HS787_LV_WTAP_VNav_Vertical_Deviation",
+            },
+            ["LNAV and Progress"] = new List<string>
+            {
+                "HS787_LV_WTAP_LNav_Along_Track_Speed",
+                "HS787_LV_WTAP_LNav_CDI_Scale",
+                "HS787_LV_WTAP_LNav_CDI_Scale_Label",
+                "HS787_LV_WTAP_LNav_Course_To_Steer",
+                "HS787_LV_WTAP_LNav_DIS",
+                "HS787_LV_WTAP_LNav_DTK",
+                "HS787_LV_WTAP_LNav_DTK_Mag",
+                "HS787_LV_WTAP_LNav_Is_Suspended",
+                "HS787_LV_WTAP_LNav_Is_Tracking",
+                "HS787_LV_WTAP_LNav_Leg_Distance_Along",
+                "HS787_LV_WTAP_LNav_Leg_Distance_Remaining",
+                "HS787_LV_WTAP_LNav_Tracked_Leg_Index",
+                "HS787_LV_WTAP_LNav_Tracked_Vector_Index",
+                "HS787_LV_WTAP_LNav_Transition_Mode",
+                "HS787_LV_WTAP_LNav_Vector_Anticipation_Distance",
+                "HS787_LV_WTAP_LNav_Vector_Distance_Along",
+                "HS787_LV_WTAP_LNav_Vector_Distance_Remaining",
+                "HS787_LV_WTAP_LNav_XTK",
+                "HS787_LV_WTAP_LPV_Vertical_Deviation",
+                "HS787_LV_WTBoeing_LNavData_CDI_Scale_Label",
+                "HS787_LV_WTBoeing_LNavData_Destination_Distance_Direct",
+                "HS787_LV_WTBoeing_LNavData_Destination_Runway_Distance_Direct",
+                "HS787_LV_WTBoeing_LNavData_Faf_Distance",
+                "HS787_LV_WTBoeing_LNavData_Map_Distance",
+                "HS787_LV_WTBoeing_LNavData_Nominal_Leg_Index",
+                "HS787_LV_WTBoeing_LNavData_RNP",
+                "HS787_LV_WTBoeing_LNavData_Total_Distance_Direct",
+                "HS787_LV_WTBoeing_LNavData_Tracked_Leg_End_Distance",
+                "HS787_LV_WT_LNavData_CDI_Scale",
+                "HS787_LV_WT_LNavData_DTK_Mag",
+                "HS787_LV_WT_LNavData_DTK_True",
+                "HS787_LV_WT_LNavData_Destination_Distance",
+                "HS787_LV_WT_LNavData_Waypoint_Bearing_Mag",
+                "HS787_LV_WT_LNavData_Waypoint_Bearing_True",
+                "HS787_LV_WT_LNavData_Waypoint_Distance",
+                "HS787_LV_WT_LNavData_XTK",
+            },
+            ["Glidepath"] = new List<string>
+            {
+                "HS787_LV_WTAP_GP_Approach_Mode",
+                "HS787_LV_WTAP_GP_Distance",
+                "HS787_LV_WTAP_GP_FPA",
+                "HS787_LV_WTAP_GP_Required_VS",
+                "HS787_LV_WTAP_GP_Service_Level",
+                "HS787_LV_WTAP_GP_Vertical_Deviation",
+            },
+            ["Engine Data"] = new List<string>
+            {
+                "HS787_LV_WT_FADEC_CLB_N1",
+                "HS787_LV_WT_FADEC_CRU_N1",
+                "HS787_LV_WT_FADEC_EGT_AMBER",
+                "HS787_LV_WT_FADEC_EGT_RED",
+                "HS787_LV_WT_FADEC_EGT_START_LIMIT",
+                "HS787_LV_WT_FADEC_IDLE_N1",
+                "HS787_LV_WT_FADEC_IDLE_N2",
+                "HS787_LV_WT_FADEC_N1_AMBER",
+                "HS787_LV_WT_FADEC_N1_RED",
+                "HS787_LV_WT_FADEC_N2_AMBER",
+                "HS787_LV_WT_FADEC_N2_RED",
+                "HS787_LV_WT_FADEC_OIL_TEMP_HIGH_AMBER",
+                "HS787_LV_WT_FADEC_OIL_TEMP_LOW_AMBER",
+                "HS787_LV_WT_FADEC_OIL_TEMP_LOW_RED",
+                "HS787_LV_WT_FADEC_REF_N1",
+                "HS787_LV_WT_FADEC_REF_TPR",
+                "HS787_LV_WT_FADEC_TGT_N1",
+                "HS787_LV_WT_FADEC_TGT_TPR",
+            },
+            ["Flight Control Inputs"] = new List<string>
+            {
+                "HS787_LV_WT_78_AILERON_INPUT",
+                "HS787_LV_WT_78_ELEVATOR_INPUT",
+                "HS787_LV_WT_78_RUDDER_INPUT",
+                "HS787_LV_WT_78_STABILIZER_TRIM_INPUT",
+            },
+            ["Timers"] = new List<string>
+            {
+                "HS787_LV_WTFltTimer_Initial_Value",
+                "HS787_LV_WTFltTimer_Reference_Time",
+                "HS787_LV_WTFltTimer_Reference_Value",
+            },
+            ["Other Data"] = new List<string>
+            {
+                "HS787_LV_AIRLINER_V1_SPEED",
+                "HS787_LV_AP_VNAV_ARMED",
+                "HS787_LV_B787_10_Hud_Brightness_Level",
+                "HS787_LV_B787_10_Hud_Brightness_Mode",
+                "HS787_LV_HUD_AP_SELECTED_ALTITUDE",
+                "HS787_LV_VHF_ACTIVE_INDEX",
+                "HS787_LV_WT_BOEING_MINIMUMS_MODE",
+                "HS787_LV_WT_Boeing_Autothrottle_Status",
+                "HS787_LV_WT_MFD_1_CONTRAST",
+                "HS787_LV_WT_MFD_2_CONTRAST",
+                "HS787_LV_WT_MINIMUMS_MODE",
+                "HS787_LV_WT_PFD_1_CONTRAST",
+                "HS787_LV_WT_Virtual_Throttle_Lever_Pos_",
+                "HS787_LV_XMLVAR_MFD_Side_",
+                "HS787_LV_XMLVAR_ThrottlePosition_",
+            },
         };
 
     // =========================================================================
@@ -391,6 +519,16 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             {
                 "Doors",
                 "Services"
+            },
+            ["Flight Data"] = new List<string>
+            {
+                "VNAV",
+                "LNAV and Progress",
+                "Glidepath",
+                "Engine Data",
+                "Flight Control Inputs",
+                "Timers",
+                "Other Data",
             }
         };
     }
@@ -3386,7 +3524,881 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Cutoff", [1] = "Run" }
-            }
+            },
+
+            // ===================================================================
+            // FLIGHT DATA — read-only L:var telemetry auto-extracted from the WT/HS787
+            // instrument JS var surface (VNAV / LNAV / glidepath / FADEC / timers / etc.).
+            // Numeric readouts; exact units + enum decode pending an in-flight pass.
+            // ===================================================================
+            ["HS787_LV_AIRLINER_V1_SPEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIRLINER_V1_SPEED",
+                DisplayName = "AIRLINER V1 SPEED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_AP_VNAV_ARMED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AP_VNAV_ARMED",
+                DisplayName = "AP VNAV ARMED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_B787_10_Hud_Brightness_Level"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_10_Hud_Brightness_Level",
+                DisplayName = "Hud Brightness Level",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_B787_10_Hud_Brightness_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_10_Hud_Brightness_Mode",
+                DisplayName = "Hud Brightness Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_HUD_AP_SELECTED_ALTITUDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HUD_AP_SELECTED_ALTITUDE",
+                DisplayName = "HUD AP SELECTED ALTITUDE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_VHF_ACTIVE_INDEX"] = new SimConnect.SimVarDefinition
+            {
+                Name = "VHF_ACTIVE_INDEX",
+                DisplayName = "VHF ACTIVE INDEX",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_Boeing_VNav_Desired_State"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_Boeing_VNav_Desired_State",
+                DisplayName = "VNAV Desired State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_Boeing_VNav_RNP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_Boeing_VNav_RNP",
+                DisplayName = "VNAV RNP",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Approach_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Approach_Mode",
+                DisplayName = "GP Approach Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Distance",
+                DisplayName = "GP Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_FPA",
+                DisplayName = "GP FPA",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Required_VS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Required_VS",
+                DisplayName = "GP Required VS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Service_Level"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Service_Level",
+                DisplayName = "GP Service Level",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Vertical_Deviation"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Vertical_Deviation",
+                DisplayName = "GP Vertical Deviation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Along_Track_Speed"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Along_Track_Speed",
+                DisplayName = "LNAV Along Track Speed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_CDI_Scale"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_CDI_Scale",
+                DisplayName = "LNAV CDI Scale",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_CDI_Scale_Label"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_CDI_Scale_Label",
+                DisplayName = "LNAV CDI Scale Label",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Course_To_Steer"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Course_To_Steer",
+                DisplayName = "LNAV Course To Steer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_DIS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_DIS",
+                DisplayName = "LNAV DIS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_DTK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_DTK",
+                DisplayName = "LNAV DTK",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_DTK_Mag"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_DTK_Mag",
+                DisplayName = "LNAV DTK Mag",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Is_Suspended"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Is_Suspended",
+                DisplayName = "LNAV Is Suspended",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not suspended", [1] = "Suspended" }
+            },
+            ["HS787_LV_WTAP_LNav_Is_Tracking"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Is_Tracking",
+                DisplayName = "LNAV Is Tracking",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not tracking", [1] = "Tracking" }
+            },
+            ["HS787_LV_WTAP_LNav_Leg_Distance_Along"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Leg_Distance_Along",
+                DisplayName = "LNAV Leg Distance Along",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Leg_Distance_Remaining"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Leg_Distance_Remaining",
+                DisplayName = "LNAV Leg Distance Remaining",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Tracked_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Tracked_Leg_Index",
+                DisplayName = "LNAV Tracked Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Tracked_Vector_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Tracked_Vector_Index",
+                DisplayName = "LNAV Tracked Vector Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Transition_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Transition_Mode",
+                DisplayName = "LNAV Transition Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Vector_Anticipation_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Vector_Anticipation_Distance",
+                DisplayName = "LNAV Vector Anticipation Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Vector_Distance_Along"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Vector_Distance_Along",
+                DisplayName = "LNAV Vector Distance Along",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Vector_Distance_Remaining"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Vector_Distance_Remaining",
+                DisplayName = "LNAV Vector Distance Remaining",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_XTK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_XTK",
+                DisplayName = "LNAV XTK",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LPV_Vertical_Deviation"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LPV_Vertical_Deviation",
+                DisplayName = "LPV Vertical Deviation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNAV_Required_VS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNAV_Required_VS",
+                DisplayName = "VNAV Required VS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Alt_Capture_Type"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Alt_Capture_Type",
+                DisplayName = "VNAV Alt Capture Type",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_BOC_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_BOC_Leg_Index",
+                DisplayName = "VNAV BOC Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_BOD_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_BOD_Leg_Index",
+                DisplayName = "VNAV BOD Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Constraint_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Constraint_Altitude",
+                DisplayName = "VNAV Constraint Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Constraint_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Constraint_Leg_Index",
+                DisplayName = "VNAV Constraint Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_BOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_BOC",
+                DisplayName = "VNAV Distance To BOC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_BOD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_BOD",
+                DisplayName = "VNAV Distance To BOD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_Performance_TOD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_Performance_TOD",
+                DisplayName = "VNAV Distance To Performance TOD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_TOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_TOC",
+                DisplayName = "VNAV Distance To TOC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_FPA",
+                DisplayName = "VNAV FPA",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Next_Constraint_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Next_Constraint_Altitude",
+                DisplayName = "VNAV Next Constraint Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Path_Available"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Path_Available",
+                DisplayName = "VNAV Path Available",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not available", [1] = "Available" }
+            },
+            ["HS787_LV_WTAP_VNav_Path_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Path_Mode",
+                DisplayName = "VNAV Path Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Performance_TOD_Distance_In_Leg"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Performance_TOD_Distance_In_Leg",
+                DisplayName = "VNAV Performance TOD Distance In Leg",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Performance_TOD_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Performance_TOD_Leg_Index",
+                DisplayName = "VNAV Performance TOD Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_State"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_State",
+                DisplayName = "VNAV State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOC_Distance_In_Leg"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOC_Distance_In_Leg",
+                DisplayName = "VNAV TOC Distance In Leg",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOC_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOC_Leg_Index",
+                DisplayName = "VNAV TOC Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOD_Distance_In_Leg"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOD_Distance_In_Leg",
+                DisplayName = "VNAV TOD Distance In Leg",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOD_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOD_Leg_Index",
+                DisplayName = "VNAV TOD Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Target_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Target_Altitude",
+                DisplayName = "VNAV Target Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Vertical_Deviation"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Vertical_Deviation",
+                DisplayName = "VNAV Vertical Deviation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_CDI_Scale_Label"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_CDI_Scale_Label",
+                DisplayName = "LNavData CDI Scale Label",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Destination_Distance_Direct"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Destination_Distance_Direct",
+                DisplayName = "LNavData Destination Distance Direct",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Destination_Runway_Distance_Direct"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Destination_Runway_Distance_Direct",
+                DisplayName = "LNavData Destination Runway Distance Direct",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Faf_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Faf_Distance",
+                DisplayName = "LNavData FAF Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Map_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Map_Distance",
+                DisplayName = "LNavData Map Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Nominal_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Nominal_Leg_Index",
+                DisplayName = "LNavData Nominal Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_RNP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_RNP",
+                DisplayName = "LNavData RNP",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Total_Distance_Direct"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Total_Distance_Direct",
+                DisplayName = "LNavData Total Distance Direct",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Tracked_Leg_End_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Tracked_Leg_End_Distance",
+                DisplayName = "LNavData Tracked Leg End Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTFltTimer_Initial_Value"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTFltTimer_Initial_Value",
+                DisplayName = "Initial Value",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTFltTimer_Reference_Time"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTFltTimer_Reference_Time",
+                DisplayName = "Reference Time",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTFltTimer_Reference_Value"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTFltTimer_Reference_Value",
+                DisplayName = "Reference Value",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_AILERON_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_AILERON_INPUT",
+                DisplayName = "AILERON INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_ELEVATOR_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_ELEVATOR_INPUT",
+                DisplayName = "ELEVATOR INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_RUDDER_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_RUDDER_INPUT",
+                DisplayName = "RUDDER INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_STABILIZER_TRIM_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_STABILIZER_TRIM_INPUT",
+                DisplayName = "STABILIZER TRIM INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_BOEING_MINIMUMS_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_BOEING_MINIMUMS_MODE",
+                DisplayName = "BOEING MINIMUMS MODE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_Boeing_Autothrottle_Status"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_Boeing_Autothrottle_Status",
+                DisplayName = "Autothrottle Status",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_CLB_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_CLB_N1",
+                DisplayName = "CLB N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_CRU_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_CRU_N1",
+                DisplayName = "CRU N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_EGT_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_EGT_AMBER",
+                DisplayName = "EGT AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_EGT_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_EGT_RED",
+                DisplayName = "EGT RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_EGT_START_LIMIT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_EGT_START_LIMIT",
+                DisplayName = "EGT START LIMIT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_IDLE_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_IDLE_N1",
+                DisplayName = "IDLE N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_IDLE_N2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_IDLE_N2",
+                DisplayName = "IDLE N2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_N1_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N1_AMBER",
+                DisplayName = "N1 AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_N1_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N1_RED",
+                DisplayName = "N1 RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_N2_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N2_AMBER",
+                DisplayName = "N2 AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_N2_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N2_RED",
+                DisplayName = "N2 RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_OIL_TEMP_HIGH_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_OIL_TEMP_HIGH_AMBER",
+                DisplayName = "OIL TEMP HIGH AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_OIL_TEMP_LOW_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_OIL_TEMP_LOW_AMBER",
+                DisplayName = "OIL TEMP LOW AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_OIL_TEMP_LOW_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_OIL_TEMP_LOW_RED",
+                DisplayName = "OIL TEMP LOW RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_REF_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_REF_N1",
+                DisplayName = "REF N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_REF_TPR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_REF_TPR",
+                DisplayName = "REF TPR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_TGT_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_TGT_N1",
+                DisplayName = "TGT N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_TGT_TPR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_TGT_TPR",
+                DisplayName = "TGT TPR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_CDI_Scale"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_CDI_Scale",
+                DisplayName = "CDI Scale",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_DTK_Mag"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_DTK_Mag",
+                DisplayName = "DTK Mag",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_DTK_True"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_DTK_True",
+                DisplayName = "DTK True",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Destination_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Destination_Distance",
+                DisplayName = "Destination Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Waypoint_Bearing_Mag"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Waypoint_Bearing_Mag",
+                DisplayName = "Waypoint Bearing Mag",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Waypoint_Bearing_True"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Waypoint_Bearing_True",
+                DisplayName = "Waypoint Bearing True",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Waypoint_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Waypoint_Distance",
+                DisplayName = "Waypoint Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_XTK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_XTK",
+                DisplayName = "XTK",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_MFD_1_CONTRAST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_MFD_1_CONTRAST",
+                DisplayName = "MFD 1 CONTRAST",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_MFD_2_CONTRAST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_MFD_2_CONTRAST",
+                DisplayName = "MFD 2 CONTRAST",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_MINIMUMS_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_MINIMUMS_MODE",
+                DisplayName = "MINIMUMS MODE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_PFD_1_CONTRAST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_PFD_1_CONTRAST",
+                DisplayName = "PFD 1 CONTRAST",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_Virtual_Throttle_Lever_Pos_"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_Virtual_Throttle_Lever_Pos_",
+                DisplayName = "Virtual Throttle Lever Pos",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_XMLVAR_MFD_Side_"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_MFD_Side_",
+                DisplayName = "XMLVAR MFD Side",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_XMLVAR_ThrottlePosition_"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_ThrottlePosition_",
+                DisplayName = "XMLVAR ThrottlePosition",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
         };
 
         var variables = GetBaseVariables();
