@@ -21,7 +21,7 @@ namespace MSFSBlindAssist.SimConnect
     /// label so the screen reader hears e.g. "THRUST RTG: TO" / "ARPTINFO (unavailable)".
     /// (Modeled on CoherentHS787CduClient; one inspector socket per page, resolved by title.)
     /// </summary>
-    public sealed class CoherentHS787EfbClient : IDisposable
+    public sealed class CoherentHS787EfbClient : IMcduBridge, IDisposable
     {
         private const string DebuggerBase = "http://127.0.0.1:19999";
         private const string EfbTitleNeedle = "HSB789_EFB";
@@ -100,36 +100,27 @@ namespace MSFSBlindAssist.SimConnect
 
         private string? BuildCommandExpression(string command, Dictionary<string, string>? payload)
         {
-            // click_btn_{n}
-            var m = System.Text.RegularExpressions.Regex.Match(command, "^click_btn_(\\d+)$");
-            if (m.Success)
-            {
-                _lastHash = "";
-                return $"window.__MSFSBA_HS787_EFB && __MSFSBA_HS787_EFB.click({m.Groups[1].Value})";
-            }
-            // set_field_{n}  (text in payload["text"])
-            var ms = System.Text.RegularExpressions.Regex.Match(command, "^set_field_(\\d+)$");
-            if (ms.Success)
-            {
-                string text = payload != null && payload.TryGetValue("text", out var tt) ? tt : "";
-                _lastHash = "";
-                return $"window.__MSFSBA_HS787_EFB && __MSFSBA_HS787_EFB.setValue({ms.Groups[1].Value},{JsStr(text)})";
-            }
+            string Idx() => payload != null && payload.TryGetValue("index", out var i) ? i : "0";
+            string Val() => payload != null && payload.TryGetValue("value", out var v) ? v : "";
+
             switch (command)
             {
-                case "read_screen":
+                // The WebView2 EFB form (FbwEfbForm) speaks this vocabulary.
+                case "get_display_elements":
                     _lastHash = "";   // force a re-push of the current page
                     return null;
-                case "navigate_ground_services":
-                    // The HS787 EFB opens on the main menu; the form auto-fires this on open.
-                    // There's no dedicated "ground services" page — DOORS is the closest — but
-                    // we let the user navigate, so this is a no-op (re-push the current page).
+                case "click_display_element":
                     _lastHash = "";
-                    return null;
+                    return $"window.__MSFSBA_HS787_EFB && __MSFSBA_HS787_EFB.click({JsInt(Idx())})";
+                case "set_element_value":
+                    _lastHash = "";
+                    return $"window.__MSFSBA_HS787_EFB && __MSFSBA_HS787_EFB.setValue({JsInt(Idx())},{JsStr(Val())})";
                 default:
                     return null;
             }
         }
+
+        private static string JsInt(string s) => int.TryParse(s, out var n) ? n.ToString() : "0";
 
         private static string JsStr(string s) => JsonSerializer.Serialize(s);
 
@@ -239,50 +230,47 @@ namespace MSFSBlindAssist.SimConnect
             _lastGoodScrapeUtc = DateTime.UtcNow;
             var elements = result.elements ?? new List<EfbElement>();
 
-            // Build a change hash over title + each element's rendered label.
+            // Push the page as the generic fbw_efb_elements model the WebView2 form (FbwEfbForm)
+            // renders as a semantic HTML document — so the HS787 EFB is a real accessible webpage
+            // (headings, buttons, inputs) with native screen-reader browse mode, not a flat list.
             var sb = new StringBuilder(result.title ?? "");
-            var labels = new string[elements.Count];
-            for (int i = 0; i < elements.Count; i++)
-            {
-                labels[i] = RenderLabel(elements[i]);
-                sb.Append('|').Append(labels[i]);
-            }
+            foreach (var e in elements)
+                sb.Append('|').Append(e.idx).Append(':').Append(DisplayText(e))
+                  .Append('/').Append(e.value).Append('/').Append(e.kind).Append('/').Append(e.disabled ? '1' : '0');
             string hash = sb.ToString();
             if (hash == _lastHash) return;
             _lastHash = hash;
 
             var data = new Dictionary<string, string>
             {
-                ["pageTitle"] = result.title ?? "",
-                ["text"] = "",
-                ["buttonCount"] = elements.Count.ToString()
+                ["count"] = elements.Count.ToString(),
+                ["page"] = result.title ?? ""
             };
-            for (int i = 0; i < elements.Count; i++) data[$"btn{i}"] = labels[i];
-            Raise("efb_screen", data);
+            for (int i = 0; i < elements.Count; i++)
+            {
+                var e = elements[i];
+                bool isInput = e.kind == "input";
+                bool clickable = e.kind == "button" || e.kind == "nav" || e.kind == "dropdown" || e.kind == "option";
+                data[$"items.{i}.aidx"] = e.idx.ToString();          // agent stamped idx for click/set
+                data[$"items.{i}.text"] = DisplayText(e);
+                data[$"items.{i}.value"] = e.value ?? "";
+                data[$"items.{i}.type"] = isInput ? "text" : "";     // controlType: text -> HTML <input>
+                data[$"items.{i}.clickable"] = clickable ? "true" : "false";
+                data[$"items.{i}.kind"] = isInput ? "input" : (clickable ? "button" : "text");
+                data[$"items.{i}.level"] = "0";
+                data[$"items.{i}.disabled"] = e.disabled ? "true" : "false";
+            }
+            Raise("fbw_efb_elements", data);
         }
 
-        private static string RenderLabel(EfbElement e)
+        // The visible label/button text for an element (the value is carried separately so an
+        // input renders as a real field). Page-switch buttons read "Go to <page>"; an expanded
+        // dropdown's choices read "<value> (option)".
+        private static string DisplayText(EfbElement e)
         {
-            // Page-switch buttons read as "Go to <page>" (they're always listed first on a
-            // sub-page, driving the EFB's visiblePage Subject — the reliable navigation path).
-            if (e.kind == "nav")
-                return "Go to " + (e.label ?? "");
-
-            // Standalone static text / read-only info — surface it verbatim so the page is fully
-            // readable (it isn't a control; clicking it is a harmless no-op).
-            if (e.kind == "text")
-                return e.label ?? "";
-
-            // A choice in an expanded dropdown's option list.
-            if (e.kind == "option")
-                return (e.label ?? "") + " (option)" + (e.disabled ? " (unavailable)" : "");
-
-            string s = e.label ?? "";
-            if (!string.IsNullOrEmpty(e.value)) s += ": " + e.value;
-            else if (e.kind == "input") s += ": (enter value)";
-            else if (e.kind == "dropdown") s += " (menu)";
-            if (e.disabled) s += " (unavailable)";
-            return s;
+            if (e.kind == "nav") return "Go to " + (e.label ?? "");
+            if (e.kind == "option") return (e.label ?? "") + " (option)";
+            return e.label ?? "";
         }
 
         // ---- Runtime.evaluate over the inspector socket -----------------

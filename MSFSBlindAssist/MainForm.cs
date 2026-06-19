@@ -73,7 +73,10 @@ public partial class MainForm : Form
     private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
-    private HS787EFBForm? hs787EFBForm;
+    // The HS787 EFB uses the SAME generic WebView2 browser-mode form as the FBW flyPad (a real
+    // accessible HTML document), fed by CoherentHS787EfbClient (IMcduBridge).
+    private Forms.FBWA380.FbwEfbForm? hs787EfbForm;
+    private SimConnect.CoherentHS787EfbClient? hs787EfbClient;
     // Background Coherent reader for the WT IRS "TIME TO ALIGN" state — writes the synthetic
     // MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the HS787 def reads. Runs while the HS787 is loaded.
     private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
@@ -3192,11 +3195,18 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        // The EFB reads + drives over the Coherent debugger (HSB789_EFB) — no HTTP bridge.
-        if (hs787EFBForm == null || hs787EFBForm.IsDisposed)
-            hs787EFBForm = new HS787EFBForm(announcer);
-
-        hs787EFBForm.ShowForm();
+        // The EFB reads + drives over the Coherent debugger (HSB789_EFB) and renders in the SAME
+        // generic WebView2 browser-mode form as the FBW flyPad — a real accessible HTML document.
+        if (hs787EfbClient == null) { hs787EfbClient = new SimConnect.CoherentHS787EfbClient(); hs787EfbClient.Start(); }
+        if (hs787EfbForm == null || hs787EfbForm.IsDisposed)
+        {
+            hs787EfbForm = new Forms.FBWA380.FbwEfbForm(hs787EfbClient, announcer, "787 EFB", "EFB");
+            var form = hs787EfbForm;
+            // Idle-gate the scrape poll to the window's visibility (connection stays warm).
+            form.VisibleChanged += (_, _) => hs787EfbClient?.SetActive(!form.IsDisposed && form.Visible);
+        }
+        hs787EfbClient.SetActive(true);
+        hs787EfbForm.ShowForm();
     }
 
     private void ShowHS787FMCDialog()
@@ -3249,11 +3259,13 @@ public partial class MainForm : Form
             hs787SimBriefForm = null;
         }
 
-        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
+        if (hs787EfbForm != null && !hs787EfbForm.IsDisposed)
         {
-            hs787EFBForm.Dispose();
-            hs787EFBForm = null;
+            hs787EfbForm.Dispose();
+            hs787EfbForm = null;
         }
+        hs787EfbClient?.Dispose();
+        hs787EfbClient = null;
 
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
@@ -4841,11 +4853,13 @@ public partial class MainForm : Form
             hs787SimBriefForm = null;
         }
 
-        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
+        if (hs787EfbForm != null && !hs787EfbForm.IsDisposed)
         {
-            hs787EFBForm.Dispose();
-            hs787EFBForm = null;
+            hs787EfbForm.Dispose();
+            hs787EfbForm = null;
         }
+        hs787EfbClient?.Dispose();
+        hs787EfbClient = null;
 
         // PMDG data manager lifecycle
         if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
@@ -6877,10 +6891,12 @@ public partial class MainForm : Form
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
 
-        // Clean up 787 forms (their Coherent clients dispose with them) + the IRS / CAS monitors
+        // Clean up 787 forms + the EFB / IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();
         hs787SimBriefForm?.Dispose();
-        hs787EFBForm?.Dispose();
+        hs787EfbForm?.Dispose();
+        hs787EfbClient?.Dispose();
+        hs787EfbClient = null;
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
         hs787CasClient?.Dispose();
