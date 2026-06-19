@@ -273,6 +273,10 @@ namespace MSFSBlindAssist.SimConnect
             if (e.kind == "text")
                 return e.label ?? "";
 
+            // A choice in an expanded dropdown's option list.
+            if (e.kind == "option")
+                return (e.label ?? "") + " (option)" + (e.disabled ? " (unavailable)" : "");
+
             string s = e.label ?? "";
             if (!string.IsNullOrEmpty(e.value)) s += ": " + e.value;
             else if (e.kind == "input") s += ": (enter value)";

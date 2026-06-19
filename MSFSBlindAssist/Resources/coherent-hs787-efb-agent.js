@@ -50,6 +50,9 @@
     };
 
     A.kindOf = function (el) {
+      // A choice inside an OPEN dropdown's option list (.dropdown-items) — read it as an option,
+      // not as another setting dropdown, so an expanded dropdown reads "PICK ONE: a, b, c".
+      if (el.closest && el.closest('[class*="dropdown-items"]')) return 'option';
       if (clsContains(el, 'dropdown')) return 'dropdown';
       if (clsContains(el, 'textfield')) return 'input';
       return 'button';
