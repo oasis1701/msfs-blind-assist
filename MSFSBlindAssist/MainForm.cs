@@ -3207,15 +3207,11 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
-        {
-            announcer.Announce("FMC bridge server is not running. Please install the mod package and restart the flight.");
-            return;
-        }
-
+        // The CDU now reads + drives over the Coherent debugger (HSB789_MFD_3) — no HTTP
+        // bridge server, no injected JS, no mod-package HTML patching required.
         if (hs787FMCForm == null || hs787FMCForm.IsDisposed)
         {
-            hs787FMCForm = new HS787FMCForm(hs787BridgeServer, simConnectManager, announcer);
+            hs787FMCForm = new HS787FMCForm(simConnectManager, announcer);
         }
 
         hs787FMCForm.ShowForm();

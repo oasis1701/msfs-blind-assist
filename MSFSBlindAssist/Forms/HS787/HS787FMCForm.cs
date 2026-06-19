@@ -20,7 +20,7 @@ public partial class HS787FMCForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private readonly EFBBridgeServer _bridgeServer;
+    private readonly CoherentHS787CduClient _cdu;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
 
@@ -38,9 +38,12 @@ public partial class HS787FMCForm : Form
     private IntPtr _previousWindow = IntPtr.Zero;
     private System.Windows.Forms.Timer _statusTimer = null!;
 
-    public HS787FMCForm(EFBBridgeServer bridgeServer, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    public HS787FMCForm(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        _bridgeServer = bridgeServer;
+        // The CDU is now read + driven over the Coherent debugger (HSB789_MFD_3) — no HTTP
+        // bridge, no injected hs787-mfd-bridge.js, no HTML patching. The form owns the client.
+        _cdu = new CoherentHS787CduClient();
+        _cdu.Start();
         _simConnect = simConnect;
         _announcer = announcer;
 
@@ -56,7 +59,7 @@ public partial class HS787FMCForm : Form
 
         // Subscribe once for the form's lifetime — never unsubscribe on hide.
         // Only unsubscribe in Dispose() so the display stays live across hide/show cycles.
-        _bridgeServer.StateUpdated += BridgeServer_StateUpdated;
+        _cdu.StateUpdated += BridgeServer_StateUpdated;
     }
 
     // ------------------------------------------------------------------
@@ -164,22 +167,14 @@ public partial class HS787FMCForm : Form
 
     private void UpdateConnectionStatus()
     {
+        // Drive the status from the live Coherent-debugger connection (the client keeps
+        // IsBridgeConnected current via its scrape window) — no more HTTP-bridge stage var.
+        _mfdConnected = _cdu.IsBridgeConnected;
         string desired;
         if (!_mfdConnected)
-        {
-            int stage = (_simConnect.CurrentAircraft as HorizonSim787Definition)?.BridgeStage ?? 0;
-            string stageInfo = stage switch
-            {
-                0 => "Script: not executing",
-                1 => "Script: loaded, connecting...",
-                2 => "Script: loaded, fetch blocked",
-                3 => "Script: connected (race?)",
-                _ => $"Script: stage {stage}"
-            };
-            desired = $"FMC Bridge Not Connected [{stageInfo}]";
-        }
+            desired = "FMC not connected — load the HorizonSim 787 and power its displays.";
         else if (!_cduVisible)
-            desired = "FMC Bridge Connected — open CDU view on an MFD screen";
+            desired = "FMC connected — show the CDU on an MFD screen (it renders on MFD 3 by default).";
         else
             desired = "FMC Connected";
 
@@ -303,13 +298,13 @@ public partial class HS787FMCForm : Form
     // ------------------------------------------------------------------
 
     private void SendBridgeCommand(string command) =>
-        _bridgeServer.EnqueueMfdCommand(command);
+        _cdu.EnqueueMfdCommand(command);
 
     private void SendLskLeft(int n) =>
-        _bridgeServer.EnqueueMfdCommand($"lsk_L{n}");
+        _cdu.EnqueueMfdCommand($"lsk_L{n}");
 
     private void SendLskRight(int n) =>
-        _bridgeServer.EnqueueMfdCommand($"lsk_R{n}");
+        _cdu.EnqueueMfdCommand($"lsk_R{n}");
 
     private void ClearOrDelete()
     {
@@ -329,7 +324,7 @@ public partial class HS787FMCForm : Form
     // via the MFD bridge. Routes to /commands/mfd so the EFB bridge doesn't consume it.
     private void SendHKey(string key)
     {
-        _bridgeServer.EnqueueMfdCommand($"type_key:{key}");
+        _cdu.EnqueueMfdCommand($"type_key:{key}");
     }
 
     // ------------------------------------------------------------------
@@ -550,7 +545,7 @@ public partial class HS787FMCForm : Form
         string jsLiteral = System.Text.Json.JsonSerializer.Serialize(fullScript);
         string indirectEvalCode = "(0, eval)(" + jsLiteral + ");";
 
-        _bridgeServer.EnqueueMfdCommand("eval_js", new Dictionary<string, string> { ["code"] = indirectEvalCode });
+        _cdu.EnqueueMfdCommand("eval_js", new Dictionary<string, string> { ["code"] = indirectEvalCode });
 
         string versionFromSource = "?";
         var match = System.Text.RegularExpressions.Regex.Match(
@@ -638,12 +633,20 @@ public partial class HS787FMCForm : Form
         TopMost = false;
         fmcDisplay.Focus();
         // Re-request screen so the display is populated immediately on each open.
-        _bridgeServer.EnqueueMfdCommand("read_screen");
+        _cdu.EnqueueMfdCommand("read_screen");
     }
 
     // ------------------------------------------------------------------
     // Dispose
     // ------------------------------------------------------------------
+
+    // Only run the CDU scrape poll while the window is visible (the socket + agent stay
+    // warm while hidden, so reopening is instant and commands still work).
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!_disposed) _cdu.SetActive(Visible);
+    }
 
     private bool _disposed;
 
@@ -654,7 +657,8 @@ public partial class HS787FMCForm : Form
             _disposed = true;
             _statusTimer.Stop();
             _statusTimer.Dispose();
-            _bridgeServer.StateUpdated -= BridgeServer_StateUpdated;
+            _cdu.StateUpdated -= BridgeServer_StateUpdated;
+            _cdu.Dispose();
         }
         base.Dispose(disposing);
     }
