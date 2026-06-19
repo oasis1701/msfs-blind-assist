@@ -41,10 +41,23 @@ public sealed class FBWA380ChecklistForm : Form
     // zero checked", silencing the FIRST item to tick on a fresh checklist (and
     // again after every RESET / navigation into an all-unchecked checklist).
     private bool _baselineApplied;
-    private string _lastAppliedHash = "";   // last row-set rendered — skip identical re-applies
+    private string _lastContentHash = "";   // last row CONTENT rendered (text+checked, NOT selection)
+    private int _lastSelIdx = -1;            // last FWS cursor row — a pure cursor move skips the list rebuild
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
     private bool _busy;           // guard against overlapping ECP pulses
+    // True while the ECL overlay is actually showing rows. The FWS AUTO-HIDES the
+    // overlay when a checklist is completed (checking "C/L COMPLETE" fires
+    // showChecklistRequested.set(false) — on the real A380 finishing a checklist
+    // closes the ECL). When that happens the scrape goes empty, the frozen
+    // "C/L COMPLETE" stays on screen, AND a Backspace (CLR) becomes a no-op because
+    // the FWS only honours CLR while checklistShown is true. We detect the hide
+    // (was-shown → empty) and re-show the overlay via C/L so the user lands back on
+    // the live checklist MENU instead of being stuck. Bounded: only fires on the
+    // was-shown→empty edge, so an unpowered/never-connected display never loops.
+    private bool _overlayShown;
+    private bool _reshowing;      // guard against overlapping re-show attempts
+    private bool _closing;        // set on close so a late empty push doesn't re-show
     // Pending ECP presses that arrived while a pulse+scrape was still running. We
     // QUEUE them (in order, capped) and drain them when the current pulse finishes,
     // instead of silently dropping them — that silent drop was why Backspace (Clear)
@@ -145,7 +158,11 @@ public sealed class FBWA380ChecklistForm : Form
     // drain loop. This keeps Backspace/Up/Down responsive even when tapped quickly.
     private void PulseEcp(string lvar, string say)
     {
-        if (_busy)
+        // _reshowing is an exclusive ECP-channel-busy window too: ReShowChecklistMenu
+        // pulses C/L (PulseClRaw), so starting a DrainPulses here would interleave two
+        // calc sequences on one FWS. Enqueue instead — ReShowChecklistMenu drains the
+        // queue when it finishes (see its finally), so the press isn't stranded.
+        if (_busy || _reshowing)
         {
             if (_pending.Count < MaxPending) _pending.Enqueue((lvar, say));
             return;
@@ -153,8 +170,14 @@ public sealed class FBWA380ChecklistForm : Form
         _ = DrainPulses(lvar, say);
     }
 
-    // Pulse the given ECP button, re-scrape, then keep draining any presses that
-    // queued up while we were busy — preserving order and count.
+    // Pulse the given ECP button, then keep draining any presses that queued up while we
+    // were busy — preserving order and count. KEY ANTI-LAG RULE: a Coherent scrape is a
+    // round-trip (~tens to hundreds of ms), so we scrape ONCE per BURST, not once per
+    // press. When more presses are already queued we fire them back-to-back with only the
+    // short FWS-register gap and skip the scrape; only the LAST press in the burst scrapes
+    // + reads. So tapping Down five times quickly lands on the final line and reads it
+    // once, instead of crawling through five scrape+announce cycles a quarter-second apart
+    // (the "laggy as heck" symptom). Spaced-out single presses still each scrape + read.
     private async Task DrainPulses(string lvar, string say)
     {
         _busy = true;
@@ -162,18 +185,35 @@ public sealed class FBWA380ChecklistForm : Form
         {
             while (true)
             {
+                bool moreQueued = _pending.Count > 0;
+
+                // Pulse the momentary ECP button (1 -> 0). The FWS latches the press from a
+                // high-frequency input buffer, so a short high time is plenty.
                 _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-                await Task.Delay(60);
+                await Task.Delay(45);
                 _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
-                await Task.Delay(95);
+
+                if (moreQueued)
+                {
+                    // Intermediate press in a burst: just give the FWS time to consume this
+                    // press (and reset its input buffer) before the next one, then fire the
+                    // next without a scrape. No read here — we only read where we land.
+                    await Task.Delay(85);
+                    (lvar, say) = _pending.Dequeue();
+                    continue;
+                }
+
+                // Last press in the burst: let the E/WD re-render, then scrape once and read
+                // the now-selected line. Apply moves the selection to the FWS cursor line,
+                // which the screen reader reads on its own — so we don't also announce here
+                // (that produced a duplicate read); only fall back to a generic confirmation
+                // if the scrape came back empty.
+                await Task.Delay(85);
                 var rows = await ScrapeEcl();
-                // Apply rebuilds the list and moves the selection to the FWS cursor line,
-                // which the screen reader reads on its own — so we do NOT also announce it
-                // here (that produced the duplicate read). Only fall back to a generic
-                // confirmation if the scrape came back empty (nothing to read).
                 Apply(rows, announceChecks: true);
                 if (_rows.Count == 0) _announcer?.Announce(say);
 
+                // A press may have queued during the render-wait + scrape — keep draining.
                 if (_pending.Count == 0) break;
                 (lvar, say) = _pending.Dequeue();
             }
@@ -214,6 +254,44 @@ public sealed class FBWA380ChecklistForm : Form
         try { _sim?.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); _sim?.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
     }
 
+    // The ECL overlay was auto-hidden by the FWS (a checklist completed). Pulse C/L —
+    // which always navigateToChecklist(0) + re-shows — so the user returns to the live
+    // checklist menu, then re-scrape so the menu reads. Without this the form is stuck
+    // on a frozen "C/L COMPLETE" and Backspace can't escape it (CLR is a no-op once the
+    // FWS has hidden the overlay).
+    private async Task ReShowChecklistMenu()
+    {
+        _reshowing = true;
+        try
+        {
+            // Was the last thing on screen a completed checklist? (heuristic for the
+            // announce wording — completion vs the user simply backing out of the menu.)
+            bool wasComplete = _rows.Any(r => !string.IsNullOrEmpty(r.text) && r.text.IndexOf("COMPLETE", StringComparison.OrdinalIgnoreCase) >= 0);
+            _weShowedOverlay = true;
+            await PulseClRaw();          // C/L → navigateToChecklist(0) + show → the menu
+            await Task.Delay(450);
+            var rows = await ScrapeEcl();
+            if (IsDisposed || _closing) return;
+            if (rows.Count > 0)
+            {
+                _announcer?.Announce(wasComplete ? "Checklist complete. Back to the checklist menu." : "Checklist menu.");
+                Apply(rows, announceChecks: false, force: true);
+            }
+        }
+        catch { }
+        finally
+        {
+            _reshowing = false;
+            // Drain any presses the user queued during the re-show window (PulseEcp
+            // enqueued them rather than interleave). DrainPulses' loop drains the rest.
+            if (!_busy && _pending.Count > 0)
+            {
+                var (lv, sy) = _pending.Dequeue();
+                _ = DrainPulses(lv, sy);
+            }
+        }
+    }
+
     private async Task RefreshNow()
     {
         // Explicit refresh: force a re-render even if the rows are unchanged, so the
@@ -240,16 +318,32 @@ public sealed class FBWA380ChecklistForm : Form
         if (IsDisposed) return;
         if (rows == null || rows.Count == 0)
         {
-            if (!_haveRows) _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
+            if (!_haveRows)
+            {
+                _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
+            }
+            else if (_overlayShown && !_closing && !_busy && !_reshowing)
+            {
+                // We had checklist rows and now the scrape is empty — the FWS auto-hid
+                // the overlay (a checklist was completed). Re-show it so the user goes
+                // back to the live menu instead of a frozen "C/L COMPLETE".
+                _overlayShown = false;   // edge-trigger: don't re-show again until rows return
+                _ = ReShowChecklistMenu();
+            }
             return;
         }
+        _overlayShown = true;
         // The shared E/WD monitor polls ~1 Hz and re-delivers the same rows; a manual
         // ECP pulse also applies them. If nothing actually changed, do NOT rebuild the
         // list (a rebuild moves the selection and makes the screen reader re-read the
         // current line) — only re-apply when the content or cursor genuinely moved.
-        string hash = string.Join("", rows.Select(r => (r.Checked ? "1" : "0") + (r.selected ? "S" : "") + r.text));
-        if (!force && hash == _lastAppliedHash) return;
-        _lastAppliedHash = hash;
+        string hash = string.Join("", rows.Select(r => (r.Checked ? "1" : "0") + r.text));
+        int selIdx = rows.FindIndex(r => r.selected);
+        bool contentChanged = force || hash != _lastContentHash;
+        bool cursorChanged = selIdx != _lastSelIdx;
+        if (!contentChanged && !cursorChanged) return;
+        _lastContentHash = hash;
+        _lastSelIdx = selIdx;
         _haveRows = true;
         _cursorActive = rows.Any(r => r.selected);
         _status.Text =
@@ -280,14 +374,20 @@ public sealed class FBWA380ChecklistForm : Form
 
         _rows = rows;
         int keep = _list.SelectedIndex;
-        _list.BeginUpdate();
-        _list.Items.Clear();
-        foreach (var r in rows) _list.Items.Add(Format(r));
-        _list.EndUpdate();
+        // Rebuild the ListBox items ONLY when the content actually changed. A pure cursor
+        // move (Up/Down with identical content) skips the Clear/re-add entirely — just the
+        // SelectedIndex moves below — so the screen reader follows the cursor smoothly
+        // instead of the whole list being torn down and rebuilt under it on every arrow.
+        if (contentChanged)
+        {
+            _list.BeginUpdate();
+            _list.Items.Clear();
+            foreach (var r in rows) _list.Items.Add(Format(r));
+            _list.EndUpdate();
+        }
 
         // Mirror the FWS cursor: land the list selection on the selected line so the
         // screen reader follows the real ECL cursor; else preserve the prior row.
-        int selIdx = rows.FindIndex(r => r.selected);
         if (selIdx >= 0) _list.SelectedIndex = selIdx;
         else if (keep >= 0 && keep < _list.Items.Count) _list.SelectedIndex = keep;
         else if (_list.Items.Count > 0) _list.SelectedIndex = 0;
@@ -316,6 +416,7 @@ public sealed class FBWA380ChecklistForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _closing = true;   // a late empty push must not trigger a re-show now
         // If we turned the checklist overlay on when opening, turn it back off so the
         // E/WD returns to what it was showing before (engine parameters / memos).
         if (_weShowedOverlay && _sim != null)

@@ -2458,11 +2458,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // (held during the rudder flight-control check so the nose wheel doesn't
         // scrub). #107 transcript gaps. Settable via the calculator catch-all.
         // Rudder Trim Reset: the cockpit fires the stock K-event RUDDER_TRIM_RESET on
-        // press (NOT an L:var — pulsing A32NX_RUDDER_TRIM_RESET drove nothing). Render
-        // as an Idle/Reset action combo; the Reset option fires the K-event (verified).
-        Act("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset",
-            new Dictionary<double, string> { [0] = "Idle", [1] = "Reset" });
-        Btn("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
+        // press (NOT an L:var — pulsing A32NX_RUDDER_TRIM_RESET drove nothing). Render as a
+        // BUTTON (user request — it's a momentary action, not a state). The press fires the
+        // K-event via the dedicated HandleUIVariableSet branch. NOT added to _momentaryButtons
+        // (that path would pulse the dead L:var) — RenderAsButton + the K-event branch own it.
+        vars["A32NX_RUDDER_TRIM_RESET"] = new SimVarDefinition
+        {
+            Name = "A32NX_RUDDER_TRIM_RESET", DisplayName = "Rudder Trim Reset", Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Reset" },
+            RenderAsButton = true, SuppressRestingButtonState = true
+        };
+        // Nosewheel-steering PEDAL DISCONNECT is a HELD control (the FBW A380 reads
+        // A32NX_TILLER_PEDAL_DISCONNECT every frame and cuts pedal steering while it's 1 —
+        // hydraulic/mod.rs:4567/4664), so it's an On/Off TOGGLE, not a momentary button: set
+        // On to disconnect for the rudder flight-control check, Off to reconnect. The L:var IS
+        // the actuator (live-verified it latches); writes go via the HandleUIVariableSet branch.
+        OnOff("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
         // Rudder trim ADJUST — the A380 has no working "set to value" (stock RUDDER_TRIM_SET
         // is a no-op in the FBW WASM); the cockpit knob fires RUDDER_TRIM_LEFT/RIGHT. Expose
         // them as nudge BUTTONS (Evt = stock K-event; not monitored, so no batch/connection
@@ -4538,19 +4550,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             return true;
         }
-        // Nosewheel-steering PEDAL DISCONNECT. The public L:var A32NX_TILLER_PEDAL_DISCONNECT
-        // is NOT consumed by the FBW NWS systems (live-verified: writing 1 sticks and is
-        // never read/reset), so the old momentary-button pulse on it did nothing. FBW maps
-        // the disconnect to the otherwise-unused stock event TOGGLE_WATER_RUDDER -> internal
-        // aspect (nose_wheel_steering.rs). Fire that instead. (Held in the real cockpit; a
-        // single momentary fire is the accessible equivalent — confirm effect on a taxi test.)
+        // Nosewheel-steering PEDAL DISCONNECT. The FBW A380 systems READ the public L:var
+        // A32NX_TILLER_PEDAL_DISCONNECT directly every frame (hydraulic/mod.rs:4664) and cut
+        // pedal-commanded nose-wheel steering while it is 1 (mod.rs:4567). So WRITE the L:var
+        // (live-verified it latches) — the old TOGGLE_WATER_RUDDER fire was wrong (the A380
+        // has no water rudder; that event is ignored). It's a HELD toggle (On = disconnected
+        // for the rudder check, Off = reconnected), so honour both 0 and 1.
         if (varKey == "A32NX_TILLER_PEDAL_DISCONNECT")
         {
-            if (value > 0.5)
-            {
-                simConnect.ExecuteCalculatorCode("(>K:TOGGLE_WATER_RUDDER)");
-                announcer.Announce("Nosewheel steering pedal disconnect");
-            }
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TILLER_PEDAL_DISCONNECT)");
             return true;
         }
         // Flaps lever: the handle index is a computed output; the stock FLAPS_SET
