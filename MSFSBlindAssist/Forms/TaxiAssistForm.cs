@@ -1873,7 +1873,7 @@ public class TaxiAssistForm : Form
                     // hold-short; it does not truncate the route, so routing to the
                     // far-side node would carry the leg across the runway before the
                     // terminal announcement. The near-side node is correct.)
-                    var hsNode = ResolveHoldShortRunwayNode(runwayTarget);
+                    var hsNode = ResolveHoldShortRunwayNode(runwayTarget, lastTaxiway);
                     if (hsNode != null) destNode = hsNode.NodeId;
                     term = new ProgressiveTerminator(ProgressiveTerminatorType.HoldShortRunway, runwayTarget);
                     break;
@@ -2138,11 +2138,19 @@ public class TaxiAssistForm : Form
     /// past the runway. Returns null if no near-side node is found (caller treats
     /// that as the "could not find" mismatch).
     ///
+    /// A node that actually lies on <paramref name="lastTaxiway"/> (the last cleared
+    /// taxiway, where "via …, hold short of RWY" should end) is PREFERRED over the
+    /// global nearest-centerline node: without this, a complex/parallel airport can
+    /// pin the hold to a node on a DIFFERENT taxiway far down the runway, forcing the
+    /// constrained router to detour off the cleared sequence. The global nearest is
+    /// kept as a fallback when the cleared taxiway has no qualifying node, so this is
+    /// never worse than the prior unanchored scan.
+    ///
     /// Geometry mirrors <see cref="FindFarSideRunwayNode"/> but selects the
     /// aircraft's side and minimises lateral distance to the centerline so the
     /// chosen node sits just before the runway.
     /// </summary>
-    private TaxiNode? ResolveHoldShortRunwayNode(string runwayDesignator)
+    private TaxiNode? ResolveHoldShortRunwayNode(string runwayDesignator, string lastTaxiway)
     {
         if (_graph == null) return null;
         if (!_crossRunwayMap.TryGetValue($"Runway {runwayDesignator}", out var runway))
@@ -2191,8 +2199,15 @@ public class TaxiAssistForm : Form
 
         int? aircraftComponentId = _graph.FindNearestNode(_aircraftLat, _aircraftLon)?.ComponentId;
 
-        TaxiNode? bestNode = null;
-        double bestLateral = double.MaxValue;
+        // Prefer a candidate that actually lies on the last cleared taxiway (where
+        // the clearance ends); fall back to the global nearest-centerline node when
+        // none qualifies, so this is never worse than the prior unanchored scan.
+        bool OnLastTaxiway(int nodeId) =>
+            _graph.Adjacency.TryGetValue(nodeId, out var es) &&
+            es.Any(e => e.TaxiwayName.Equals(lastTaxiway, StringComparison.OrdinalIgnoreCase));
+
+        TaxiNode? bestNode = null;   double bestLateral = double.MaxValue;     // any taxiway (fallback)
+        TaxiNode? bestOnTw = null;   double bestLateralTw = double.MaxValue;   // on lastTaxiway (preferred)
 
         foreach (var node in _graph.Nodes.Values)
         {
@@ -2211,14 +2226,15 @@ public class TaxiAssistForm : Form
             if (along > runwayLengthM + MAX_ALONG_PAST_END_M) continue;
 
             // Closest to the centerline on the near side = the hold-short point.
-            if (lateralAbs < bestLateral)
+            if (lateralAbs < bestLateral) { bestLateral = lateralAbs; bestNode = node; }
+            if (lateralAbs < bestLateralTw && OnLastTaxiway(node.NodeId))
             {
-                bestLateral = lateralAbs;
-                bestNode = node;
+                bestLateralTw = lateralAbs;
+                bestOnTw = node;
             }
         }
 
-        return bestNode;
+        return bestOnTw ?? bestNode;
     }
 
     /// <summary>
