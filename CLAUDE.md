@@ -696,16 +696,45 @@ maps the scrape into the `efb_screen` (`pageTitle` + `buttonCount` + `btn{i}`) s
 expects, folding kind/value/disabled into each label ("THRUST RTG: TO" / "ARPTINFO (unavailable)").
 Opened with the shared EFB hotkey.
 
-Both clients are modeled on `CoherentDebuggerClient` (one inspector socket per page, resolve by
-title every reconnect, agent auto-reinstall on a 5-s eval timeout — the one-socket-per-page rule
-applies). **CSPROJ gotcha: each `Resources\coherent-hs787-*-agent.js` needs its OWN explicit
-`<None Update=… CopyToOutputDirectory>` entry — the build does NOT wildcard-copy `Resources\`.**
-The alt-intervention fires the `AS01B_FMC_1_ALTITUDE_INTERVENTION` H-event via MobiFlight (no
-Coherent path). Driver: `tools/hs787-cdu.ps1`.
+**IRS alignment — `SimConnect/CoherentHS787IrsClient.cs` + `coherent-hs787-irs-agent.js`.** The
+realistic "TIME TO ALIGN" state is exposed by the WT 787 ONLY on the ND/PFD `.time-to-align` DOM
+element (`hidden` class while not aligning, last child div = minutes "--"/"NN"/"7+"); the one IRS
+L-var WT sets (WT_IRS_POS_SET_N) is "position accepted", NOT alignment complete. The client
+connects to `HSB789_PFD` (the element is on MFD_1/2 + PFD; PFD = stable identity), installs the
+agent (`window.__MSFSBA_HS787_IRS`), and calls `poll()` every 500 ms; the agent scrapes the element
++ the IRS knob/pos L-vars and WRITES the synthetic L-vars `MSFSBA_IRS_ALIGN_STATE` (0 Off / 1
+Aligning / 2 Aligned) + `_MINUTES`, which the def reads via the normal SimVar path (so
+`HS787_IRS_Align` / `_AlignMinutes` surface in the IRS panel + announce on completion). **A Coherent
+`Runtime.evaluate` CAN write L-vars** (verified: read back as 2.0 via SimConnect/MobiFlight). The
+state machine is latch-free (`visible→Aligning`, `!knobOn→Off`, `posSet→Aligned` since the panel
+hides on completion, else `Aligning`) and handles a ready-to-fly already-aligned start. The monitor
+runs continuously while the HS787 is loaded (started in InitializeUI + on swap-to-HS787) so it
+catches the alignment transition. Live-verified the full Off→Aligning→countdown→Aligned cycle.
 
-**Known follow-up:** the realistic IRS "TIME TO ALIGN" countdown used to be a synthetic L-var the
-HTTP bridge wrote from an ND scrape; it is gone with the bridge. The WT_IRS_POS_SET position flags
-still read (real L-vars). Re-port the countdown via a Coherent ND reader during a verification flight.
+**CDU navigation gotcha (the bug that hid for a while):** the WT `boeing-mfd-button` component (LSK
+buttons AND the page-key buttons) reacts to MOUSE events, so `clickElement` must dispatch the full
+`pointerdown/mousedown/pointerup/mouseup/click` sequence — pointer+click alone fires LSKs but does
+NOT navigate the page keys (INIT REF / RTE / LEGS / DEP ARR / …), so the CDU was stuck on one page.
+All ~12 CDU pages now navigate + scrape clean (live-verified). Same mouse sequence on the EFB agent.
+
+**EFB navigation limitation:** from the MAIN MENU every page is reachable by clicking its tile, but
+returning from a modal sub-page (e.g. DOORS) needs the cockpit **MENU bezel key** — a 3D-cockpit
+interaction the EFB receives internally, NOT exposed as a DOM button, an L-var, or a drivable
+`bus.pub('hEvent')` / `onInteractionEvent` (all verified to fail; clicking the hidden page-switch
+buttons does not navigate out of a modal sub-page). Finding the bezel mechanism (likely an airframe
+interaction) is an open TODO.
+
+All clients are modeled on `CoherentDebuggerClient` (one inspector socket per page, resolve by title
+every reconnect, agent auto-reinstall on a dropped connection). The three HS787 clients use DISTINCT
+views — CDU `HSB789_MFD_3`, EFB `HSB789_EFB`, IRS `HSB789_PFD` — so the one-socket-per-page rule is
+never violated. **CSPROJ gotcha: each `Resources\coherent-hs787-*-agent.js` needs its OWN explicit
+`<None Update=… CopyToOutputDirectory>` entry — the build does NOT wildcard-copy `Resources\`.** The
+alt-intervention fires `AS01B_FMC_1_ALTITUDE_INTERVENTION` via MobiFlight. Driver: `tools/hs787-cdu.ps1`.
+
+**Community-folder bridge fully removed (2026-06-19):** the FS2024 in-place patch (4 patched HTML +
+their `.msfsba_backup`, the 2 injected bridge JS, `layout.json` + backup, `msfsba-bridge-version.txt`)
+and the FS2020 `zzz-hs787-accessibility` override package are gone — `horizonsim-aircraft-787-9` is
+restored to pristine. The Coherent transport needs NO Community mod on either sim and no sim restart.
 
 ### FlyByWire Accessible flyPad EFB (A320 + A380 — ONE shared flyPad)
 
