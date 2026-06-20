@@ -195,6 +195,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousSATCOM           = -1;
     private int  _previousVBar             = -1;
     private int  _previousAutobrake        = -1;
+    private int  _autobrakeSettleTarget    = -1;   // while MSFSBA steps the selector, suppress intermediate-detent callouts
     private int  _previousLightTaxi        = -1;
     private int  _previousLightLogo        = -1;
     private int  _previousLightWing        = -1;
@@ -5333,6 +5334,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         {
             int target = Math.Max(0, Math.Min(6, (int)Math.Round(value)));
             int current = (int)Math.Round(simConnect.GetCachedVariableValue("HS787_Autobrake") ?? 0);
+            if (target != current) _autobrakeSettleTarget = target;   // suppress intermediate-detent callouts
             string ev = target > current ? "INCREASE_AUTOBRAKE_CONTROL" : "DECREASE_AUTOBRAKE_CONTROL";
             for (int i = 0; i < Math.Abs(target - current); i++) simConnect.SendEvent(ev);
             return true;
@@ -6898,6 +6900,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (variableKey == "HS787_Autobrake")
         {
             int now = (int)value;
+            // While MSFSBA steps the selector to a target, swallow the intermediate detents (the
+            // combo's own value is read by the screen reader; the final value is echo-suppressed).
+            if (_autobrakeSettleTarget >= 0)
+            {
+                _previousAutobrake = now;
+                if (now == _autobrakeSettleTarget) _autobrakeSettleTarget = -1;
+                return true;
+            }
             if (_previousAutobrake >= 0 && now != _previousAutobrake)
             {
                 // Positions MUST match HS787_Autobrake.ValueDescriptions and the INCREASE/DECREASE
