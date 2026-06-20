@@ -1280,6 +1280,18 @@ public class TaxiGuidanceManager : IDisposable
                     route, taxiwaySequence, userRunwayHoldShorts);
             }
 
+            // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
+            // trims the tail. The length advisory below must judge the clearance on
+            // the full route, not the truncated one: a clearance that doubles back —
+            // cleared taxiways that lead AWAY from the destination, forcing the route
+            // to loop back (EHAM 18L via A12, B, N2, cross 27, E6, 2026-06-20: N2/E6
+            // sit north of runway 27, the 18L lineup is south, so the route went over
+            // 27 and reversed) — has that backtrack TRIMMED off by truncation, which
+            // previously hid the detour from the advisory and routed the pilot in a
+            // silent loop. Truncation only ever SHORTENS, so the full length is the
+            // honest "is this clearance sane?" measure.
+            double fullRouteMeters = route.TotalDistanceMeters;
+
             // Critical safety fix: when the destination is a runway, the route MUST
             // end at the hold-short line — not at the threshold itself. Otherwise
             // HandleArrival fires only when the aircraft is within the 30 m arrival
@@ -1350,10 +1362,15 @@ public class TaxiGuidanceManager : IDisposable
             // unconstrained shortest path from the aircraft's natural start
             // node. Fires only for user-sequenced routes that built fully
             // (a fallback route is already announced via its fallback reason).
-            // Computed AFTER TruncateToHoldShort so the spoken warning quotes
-            // the same total the route summary speaks (the direct comparison
-            // is untruncated either way — 500 m pad dwarfs the ~60 m
-            // hold-short trim).
+            // Uses fullRouteMeters (the PRE-truncation length): a doubling-back
+            // clearance has its backtrack trimmed by TruncateToHoldShort, so
+            // comparing the truncated total let an obvious detour slip under the
+            // 2x+500 m trigger (the EHAM 18L loop above — the truncated 852 m sat
+            // below the threshold while the full backtrack was ~1.6 km). The
+            // advisory quotes the same fullRouteMeters so the warning is internally
+            // consistent; for a normal route fullRouteMeters is within ~60 m of the
+            // summary total (the hold-short trim), far inside the 500 m pad, so this
+            // never adds a false positive — it only catches genuine backtracks.
             if (taxiwaySequence is { Count: > 0 } &&
                 string.IsNullOrEmpty(route.ConstrainedFallbackReason))
             {
@@ -1362,7 +1379,7 @@ public class TaxiGuidanceManager : IDisposable
                     requiredComponentId: destComponentId) ?? startNode;
                 var direct = router.FindShortestPath(directStart.NodeId, destinationNodeId);
                 if (direct != null && direct.Segments.Count > 0 &&
-                    route.TotalDistanceMeters >
+                    fullRouteMeters >
                         direct.TotalDistanceMeters * CONSTRAINED_WARN_RATIO + CONSTRAINED_WARN_PAD_M)
                 {
                     // Measure to the first cleared taxiway itself (firstTwNode), not
@@ -1376,7 +1393,7 @@ public class TaxiGuidanceManager : IDisposable
                         : "";
                     constrainedLengthWarning =
                         $"Warning: route via {string.Join(", ", taxiwaySequence)} is " +
-                        $"{FormatDistance(route.TotalDistanceMeters)}; direct route is " +
+                        $"{FormatDistance(fullRouteMeters)}; direct route is " +
                         $"{FormatDistance(direct.TotalDistanceMeters)}.{firstTwNote} Check taxiway selection.";
                 }
             }
