@@ -66,6 +66,15 @@ test('colliding icon-only buttons read clean id names (no "X Button: Refresh" cl
   assert.ok(!btns.some(t => /:|button/i.test(t)), 'no colon or "Button" word');
 });
 
+test('performance output panel: calculated results read as "Name: value unit"; empty rows skipped', () => {
+  const els = scrape('perfout');
+  const statics = els.filter(e => e.kind === 'static').map(e => e.text);
+  assert.ok(statics.includes('V1: 155 kt'), 'V1 result with unit');
+  assert.ok(statics.includes('Flaps: 5'), 'Flaps result (no unit)');
+  // an uncalculated (empty, zero-size) output row must not surface
+  assert.ok(!statics.some(t => /VRef/.test(t)), 'empty VRef row skipped');
+});
+
 test('duplicate-text buttons disambiguated by id', () => {
   const els = scrape('wb');
   const texts = els.filter(e => e.kind === 'button').map(e => e.text).sort();

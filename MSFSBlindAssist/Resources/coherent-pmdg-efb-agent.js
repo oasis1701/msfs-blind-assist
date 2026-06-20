@@ -374,6 +374,26 @@
       if (type === 'button' && !item.label && !item.pair) continue;
       out.push(item);
     }
+    // Performance OUTPUT panel (Take Off / Landing): the computed results (V1/VR/V2/VRef, Flaps,
+    // %N1, RTG, Trim, Sel Temp, Accel Height, Weight) render as <label class="opt-output">value
+    // cells — skipped by the generic <label> text-skip, so the whole results panel was invisible
+    // after Calculate. Emit each as a readable "Name: value unit" line (the name comes from the
+    // row's .opt-output-label, the unit from the sibling .output-unit). Only the visible perf
+    // sub-page is captured (the hidden Take Off / Landing panels are display:none → isVisible false).
+    var outs = document.querySelectorAll('.opt-output');
+    for (var oi = 0; oi < outs.length; oi++) {
+      var ov = outs[oi];
+      if (!A.isVisible(ov)) continue;
+      var oval = A.txt(ov);
+      var rowc = ov.closest ? ov.closest('.row') : null;
+      var nameEl = rowc && rowc.querySelector ? rowc.querySelector('.opt-output-label') : null;
+      var onm = nameEl ? A.txt(nameEl).replace(/:\s*$/, '') : (ov.id ? A.idToLabel(ov.id) : '');
+      if (!onm) continue;
+      var unitEl = ov.parentElement && ov.parentElement.querySelector ? ov.parentElement.querySelector('.output-unit') : null;
+      var ounit = unitEl ? A.txt(unitEl) : '';
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: oval ? (onm + ': ' + oval + (ounit ? ' ' + ounit : '')) : onm, src: 'output-row' });
+    }
     // Drop standalone text that duplicates a control's label, and UPGRADE a weak id-derived
     // control label to a fuller standalone text that contains it ("Brightness" -> "Tablet
     // Brightness"). Both remove redundant text lines next to their control.
