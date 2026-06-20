@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.Utils;
 
 namespace MSFSBlindAssist;
@@ -37,6 +38,11 @@ static class Program
                 // place to find logs even after running older builds.
                 AppLogs.MigrateLegacyLogs();
                 StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
+
+                // One-time, idempotent cleanup of the retired EFB Community-folder injection
+                // packages (PMDG + HS787). EFB accessibility moved to the Coherent debugger
+                // transport; the old HTTP-bridge packages are removed automatically. No-op if absent.
+                LegacyEfbBridgeCleanup.RemoveAll();
 
                 // Allocate a console for NVDA to monitor (do this early for logging)
                 StartupLogger.Log("Allocating console window...");

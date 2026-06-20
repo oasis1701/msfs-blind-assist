@@ -447,6 +447,15 @@ namespace MSFSBlindAssist.Patching
             }
         }
 
+        // Delete a named override package from the Community folder (idempotent; no-op if absent).
+        public static ModPackageResult RemoveNamed(string communityFolderPath, string packageFolderName)
+        {
+            string packagePath = Path.Combine(communityFolderPath, packageFolderName);
+            if (!Directory.Exists(packagePath)) return ModPackageResult.CommunityFolderNotFound;
+            try { Directory.Delete(packagePath, recursive: true); return ModPackageResult.Removed; }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"RemoveNamed failed: {ex.Message}"); return ModPackageResult.InstallFailed; }
+        }
+
         /// <summary>
         /// Returns true when a PMDG variant whose original tablet HTML is present in this
         /// Community folder does NOT yet have a corresponding override folder in our package.

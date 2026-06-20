@@ -6,10 +6,21 @@ using System.Text.Json;
 namespace MSFSBlindAssist.SimConnect
 {
     /// <summary>
-    /// The surface the FBW A380X MCDU window depends on. Both the legacy
-    /// injection server (EFBBridgeServer) and the new no-injection
-    /// CoherentDebuggerClient implement it, so the form is agnostic to which
-    /// transport is wired underneath.
+    /// State push raised by every MCDU/EFB bridge transport (Coherent debugger
+    /// clients, the flyPad/OANS clients, the HS787 CDU client). Carries a typed
+    /// state message + its string-keyed payload. (Originally colocated with the
+    /// retired HTTP-bridge server; re-homed here next to <see cref="IMcduBridge"/>.)
+    /// </summary>
+    public class EFBStateUpdateEventArgs : EventArgs
+    {
+        public string Type { get; set; } = "";
+        public Dictionary<string, string> Data { get; set; } = new();
+    }
+
+    /// <summary>
+    /// The surface the FBW A380X MCDU window depends on. The no-injection
+    /// CoherentDebuggerClient (and the other Coherent transports) implement it,
+    /// so the form is agnostic to which transport is wired underneath.
     /// </summary>
     public interface IMcduBridge
     {

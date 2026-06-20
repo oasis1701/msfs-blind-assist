@@ -115,9 +115,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <!-- Bridge Scripts -->
-    <None Update="Resources\pmdg-efb-accessibility-bridge.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Resources\coherent-a380-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
