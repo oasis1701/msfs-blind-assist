@@ -234,6 +234,40 @@
 
       items.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
 
+      // Regroup expanded-dropdown options directly UNDER the dropdown that opened them. The WT EFB
+      // renders an open dropdown's options in a `.dropdown-items` div that is the dropdown button's
+      // next sibling, but they overlay at scattered Y positions, so the pure top-to-bottom sort
+      // interleaves them with unrelated controls. Pull each option to sit right after its owner
+      // dropdown so the list reads "THRUST RTG (expanded): OPTIMUM, TO, TO 1 -10, TO 2 -20".
+      var hasOpt = false;
+      for (var oz = 0; oz < items.length; oz++) { if (items[oz].ctrl && items[oz].kind === 'option') { hasOpt = true; break; } }
+      if (hasOpt) {
+        var opts = [], others = [];
+        for (var rz = 0; rz < items.length; rz++) {
+          var rit = items[rz];
+          if (rit.ctrl && rit.kind === 'option') {
+            var cont = rit.el.closest ? rit.el.closest('[class*="dropdown-items"]') : null;
+            var owner = null;
+            if (cont) {
+              var ps = cont.previousElementSibling;
+              if (ps && clsContains(ps, 'dropdown-button')) owner = ps;
+              else if (cont.parentElement) owner = cont.parentElement.querySelector('.boeing-efb-dropdown-button');
+            }
+            rit.owner = owner;
+            opts.push(rit);
+          } else others.push(rit);
+        }
+        var ordered = [];
+        for (var pz = 0; pz < others.length; pz++) {
+          ordered.push(others[pz]);
+          if (others[pz].ctrl && others[pz].kind === 'dropdown') {
+            for (var qz = 0; qz < opts.length; qz++) { if (opts[qz].owner === others[pz].el) ordered.push(opts[qz]); }
+          }
+        }
+        for (var uz = 0; uz < opts.length; uz++) { if (ordered.indexOf(opts[uz]) < 0) ordered.push(opts[uz]); }
+        items = ordered;
+      }
+
       var seenText = {};
       for (var k = 0; k < items.length; k++) {
         var it = items[k];
