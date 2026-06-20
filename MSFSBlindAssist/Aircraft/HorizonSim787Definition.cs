@@ -5046,6 +5046,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case HotkeyAction.ShowFenixMCDU:
                 return false;
 
+            // Ctrl+M — per-aircraft monitor manager (mute/unmute the auto-announced vars).
+            case HotkeyAction.MonitorManager:
+                hotkeyManager.ExitOutputHotkeyMode();
+                (parentForm as MainForm)?.ShowHS787MonitorManagerDialog();
+                return true;
+
             case HotkeyAction.FCUSetAutopilot:
             {
                 hotkeyManager.ExitInputHotkeyMode();

@@ -33,6 +33,7 @@ public partial class MainForm : Form
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
     private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
+    private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
@@ -963,6 +964,13 @@ public partial class MainForm : Form
                 // Check if disabled in the A32NX Monitor Manager.
                 if (currentAircraft.AircraftCode == "A320" &&
                     Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the HS787 Monitor Manager.
+                if (currentAircraft.AircraftCode == "HS_787" &&
+                    Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -2749,6 +2757,16 @@ public partial class MainForm : Form
                 announcer, currentAircraft.GetVariables());
         }
         fbwA320MonitorManagerForm.ShowForm();
+    }
+
+    public void ShowHS787MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (hs787MonitorManagerForm == null || hs787MonitorManagerForm.IsDisposed)
+        {
+            hs787MonitorManagerForm = new Forms.HS787.HS787MonitorManagerForm(currentAircraft.GetVariables());
+        }
+        hs787MonitorManagerForm.ShowForm();
     }
 
     /// <summary>
@@ -4837,6 +4855,11 @@ public partial class MainForm : Form
         {
             fbwA320MonitorManagerForm.Dispose();
             fbwA320MonitorManagerForm = null;
+        }
+        if (hs787MonitorManagerForm != null && !hs787MonitorManagerForm.IsDisposed)
+        {
+            hs787MonitorManagerForm.Dispose();
+            hs787MonitorManagerForm = null;
         }
         StopA380EWDMonitor(oldAircraft);
 
