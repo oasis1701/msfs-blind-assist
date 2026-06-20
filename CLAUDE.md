@@ -668,9 +668,9 @@ Other #60 findings:
 - Transponder IDENT, VHF SWAP → Off/Idle action combos via the new `Act()` helper (a combo with NO real backing var whose set is fully handled in `HandleUIVariableSet`; OnRequest so a non-existent L-var isn't monitored).
 **Enabler:** MainForm's SimVar-combo set path now calls `currentAircraft.HandleUIVariableSet(...)` FIRST (mirroring the LVar-combo path) — so a combo whose STATE is a SimVar but whose CONTROL is a K-event works; the A320 light cases return false and fall through unchanged. **KEPT as buttons:** the FCU/AP push-pull (`A32NX.FCU_*_PUSH/PULL`, Event type, hit the final button branch). **EDIT FIELDS:** any `_SET` key (squawk `TRANSPONDER_CODE_SET`, COM `COM_STANDBY_FREQUENCY_SET:n`, temps, manual pressurization) renders a numeric/text input via MainForm's `varKey.Contains("_SET")` branch. All conversions live-verified (engine valve 1, crossfeed 46 actuated; door controls have since been removed — see the DEFERRED door note).
 
-### HorizonSim 787-9 CDU + EFB (Coherent debugger — the HTTP bridge was RETIRED 2026-06-19)
+### HorizonSim 787-9 CDU (Coherent debugger — the HTTP bridge was RETIRED 2026-06-19; the EFB was REMOVED 2026-06)
 
-The WT Boeing FMC (CDU) and the Boeing EFB are read AND driven over the MSFS Coherent GT remote
+The WT Boeing FMC (CDU) is read AND driven over the MSFS Coherent GT remote
 debugger (`http://127.0.0.1:19999`), exactly like the A380 MFD/flyPad. **There is NO HTTP bridge,
 NO injected JS in the aircraft package, and NO `HS787ModPackageManager` HTML patching anymore** —
 all of that (`EFBBridgeServer` :19778, `hs787-mfd-bridge.js`, `hs787-efb-bridge.js`, the FS2020
@@ -687,14 +687,16 @@ client raises the SAME `StateUpdated` events (`cdu_visible` / `cdu_not_visible` 
 `EnqueueMfdCommand` surface `HS787FMCForm` already consumed, so the form was a near-drop-in swap;
 its status is driven by the live Coherent connection. Opened with Shift+M.
 
-**EFB — `SimConnect/CoherentHS787EfbClient.cs` + `Resources/coherent-hs787-efb-agent.js`.** The
-client resolves `HSB789_EFB`, installs the agent (`window.__MSFSBA_HS787_EFB`), and polls
-`scrape()` → `{title, elements[]}` over the Boeing-EFB DOM hooks (`.boeing-efb-button` /
-`-dropdown-button` / `-textfield-button`, `.button-name` labels, `boeing-efb-button-disabled`
-state, visible `[class*="efb-title"]`); `click(idx)` / `setValue(idx,text)` drive it. The client
-maps the scrape into the `efb_screen` (`pageTitle` + `buttonCount` + `btn{i}`) shape `HS787EFBForm`
-expects, folding kind/value/disabled into each label ("THRUST RTG: TO" / "ARPTINFO (unavailable)").
-Opened with the shared EFB hotkey.
+**EFB — REMOVED entirely (2026-06).** The HS787 EFB (`CoherentHS787EfbClient` + `coherent-hs787-efb-agent.js`
++ the FbwEfbForm window) was deleted at the user's request. The WT/HorizonSim 787 EFB's only functional
+pages were Takeoff Performance + Doors (Charts/Data-Load are stubs, no Landing tab), and its perf-page
+**inputs cannot be driven externally**: the `.boeing-efb-text-field-keyboard-input` fields are a custom
+MSFS keyboard mechanism that rejects programmatic value-set AND synthetic keyboard events (live-verified —
+both leave the field empty), and the EFB instance (`document.querySelector('wtb78x-efb').fsInstrument`)
+exposes only computed outputs (`takeoffCalculator.vSpeedData`, runway corrections), not settable wind/OAT
+inputs. COPY FMC DATA / INITIALIZE FLIGHT likewise don't respond to agent clicks. So the EFB couldn't be
+made fully usable and was removed; **Shift+T on the 787 now announces "787 EFB not available."** (FbwEfbForm
+itself stays — it's shared with the FBW A320/A380 flyPad.)
 
 **IRS alignment — `SimConnect/CoherentHS787IrsClient.cs` + `coherent-hs787-irs-agent.js`.** The
 realistic "TIME TO ALIGN" state is exposed by the WT 787 ONLY on the ND/PFD `.time-to-align` DOM
@@ -715,19 +717,13 @@ catches the alignment transition. Live-verified the full Off→Aligning→countd
 buttons AND the page-key buttons) reacts to MOUSE events, so `clickElement` must dispatch the full
 `pointerdown/mousedown/pointerup/mouseup/click` sequence — pointer+click alone fires LSKs but does
 NOT navigate the page keys (INIT REF / RTE / LEGS / DEP ARR / …), so the CDU was stuck on one page.
-All ~12 CDU pages now navigate + scrape clean (live-verified). Same mouse sequence on the EFB agent.
-
-**EFB navigation limitation:** from the MAIN MENU every page is reachable by clicking its tile, but
-returning from a modal sub-page (e.g. DOORS) needs the cockpit **MENU bezel key** — a 3D-cockpit
-interaction the EFB receives internally, NOT exposed as a DOM button, an L-var, or a drivable
-`bus.pub('hEvent')` / `onInteractionEvent` (all verified to fail; clicking the hidden page-switch
-buttons does not navigate out of a modal sub-page). Finding the bezel mechanism (likely an airframe
-interaction) is an open TODO.
+All ~12 CDU pages now navigate + scrape clean (live-verified).
 
 All clients are modeled on `CoherentDebuggerClient` (one inspector socket per page, resolve by title
-every reconnect, agent auto-reinstall on a dropped connection). The three HS787 clients use DISTINCT
-views — CDU `HSB789_MFD_3`, EFB `HSB789_EFB`, IRS `HSB789_PFD` — so the one-socket-per-page rule is
-never violated. **CSPROJ gotcha: each `Resources\coherent-hs787-*-agent.js` needs its OWN explicit
+every reconnect, agent auto-reinstall on a dropped connection). The live HS787 clients use DISTINCT
+views — CDU `HSB789_MFD_3`, IRS `HSB789_PFD`, CAS/EICAS `HSB789_MFD_1` (the synoptic display window
+uses `HSB789_MFD_2`, transient) — so the one-socket-per-page rule is never violated. **CSPROJ gotcha:
+each `Resources\coherent-hs787-*-agent.js` needs its OWN explicit
 `<None Update=… CopyToOutputDirectory>` entry — the build does NOT wildcard-copy `Resources\`.** The
 alt-intervention fires `AS01B_FMC_1_ALTITUDE_INTERVENTION` via MobiFlight. Driver: `tools/hs787-cdu.ps1`.
 
@@ -764,6 +760,32 @@ plain button in the Ctrl+P Autopilot window) fires `AUTOPILOT_OFF` (distinct fro
 which would re-engage). Squawk stays settable via `TRANSPONDER_CODE_SET` (`TRANSPONDER CODE:1`,
 Bco16) on the existing MainForm `_SET` path. The IDENT event is unknown to the MCP `trigger_event`
 but MSFSBA's `SendEvent` maps it by raw name (the A380 IDENT precedent).
+
+**EICAS window (Alt+E) = a full EICAS, not just alerts (2026-06).** Alt+E opens `HS787EicasForm` (a
+navigable read-only window, arrow keys + Escape, 1 s caret-preserving refresh) showing what the real
+EICAS shows: per-engine N1 / EGT / N2 / oil pressure+temp, total fuel, gross weight, TAT, then the
+live crew alerts (warnings/cautions/advisories). Engine values come from cache-only `HS787_Eicas*`
+SimVars (`TURB ENG CORRECTED N1/N2:n` ratios, `ENG EXHAUST GAS TEMPERATURE:n` celsius, oil, fuel kg,
+`TOTAL WEIGHT` kg) — registered Continuous+IsAnnounced but listed in the cache-only suppress switch so
+they never auto-announce; `MainForm.BuildHs787EicasText` reads them via `GetCachedVariableValue` + the
+CAS monitor's `GetAlertsText()`. The same vars feed the **"Engine Data"** Flight Data sub-panel, which
+previously listed the entire `WT_FADEC_*` family — **all of which are DEAD on the HS787 (every one
+reads 0 live, climb + cruise, with cost index entered)**, so that family was dropped from the panel.
+
+**Empty Flight Data panels + EFIS "Baro 0" + external-knob announce (2026-06 fixes).** (1) The 7 Flight
+Data sub-panels (VNAV / LNAV and Progress / Glidepath / Engine Data / Flight Control Inputs / Timers /
+Other Data) rendered COMPLETELY EMPTY because they were in `GetPanelStructure` + `GetPanelDisplayVariables`
+but NOT in `BuildPanelControls` — MainForm's panel-build `return`s early for any panel not in
+`GetPanelControls()` (MainForm.cs ~5538). Added them as empty control lists (the FMC-Status pattern) so
+they render their display vars. **When adding a display-only panel, it MUST have a `BuildPanelControls`
+entry (even empty) or it renders nothing.** (2) The EFIS "Baro Setting" read the dead L:var `XMLVAR_Baro`
+(constant 0); re-pointed to `KOHLSMAN SETTING HG` + a `TryGetDisplayOverride` formats it `"1013 hPa (29.92
+inHg)"` (both units). (3) MCP selected-value changes (heading/altitude/V-S/speed) were cache-only/silent;
+now `ProcessSimVarUpdate` announces them on change (silent first-value baseline, deadbands; speed gated to
+manual mode) so an EXTERNAL hardware-knob turn is spoken — MSFSBA's own set dialogs fire the value
+silently via events, so this is the single confirmation for both. (4) Combo-box changes no longer
+double-announce on the 787: the `_uiSetEcho` suppression (and the Ctrl+M mute) now also apply at the
+Step-2.5 `ProcessSimVarUpdate` wrap, since the 787 announces from there (bypassing the generic gates).
 
 ### FlyByWire Accessible flyPad EFB (A320 + A380 — ONE shared flyPad)
 
