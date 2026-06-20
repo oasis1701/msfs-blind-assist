@@ -5379,62 +5379,78 @@ public class TaxiGuidanceManager : IDisposable
         // don't tag every consecutive segment that's on the same runway pavement.
         string lastTaggedRunway = "";
 
-        for (int i = 0; i < route.Segments.Count - 1; i++)
-        {
-            var seg = route.Segments[i];
-            var nextSeg = route.Segments[i + 1];
-            if (nextSeg.ToNode == null || seg.ToNode == null) continue;
+        // The destination name arrives prefixed ("Runway 33L"), but the crossed
+        // runway is a bare designator ("33L"). Normalise so the destination
+        // exclusion below actually matches — TruncateToHoldShort owns the
+        // destination's hold-short, and tagging it here too would double-announce.
+        string destBare = destinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? destinationName.Substring("Runway ".Length).Trim()
+            : destinationName.Trim();
 
-            // Check if the NEXT segment ends ON a runway (i.e., this segment is
-            // the last one BEFORE the runway crossing).
-            string crossedRwy = WhichRunwayContains(nextSeg.ToNode.Latitude, nextSeg.ToNode.Longitude);
+        // Detect a crossing by EDGE intersection, not point-on-pavement. A
+        // taxiway crosses a runway via an edge that SPANS the pavement, with its
+        // endpoint nodes sitting off the runway on either side — so the old
+        // "is the next node ON the runway?" test silently missed every crossing
+        // where the flanking nodes are more than half-width+5 m from the
+        // centerline (KBOS taxiway C over 04L / 27: nearest C node is 35 m / 86 m
+        // from the centerline, so no node landed on pavement and no hold-short
+        // was inserted, even though C plainly crosses the runways).
+        for (int i = 1; i < route.Segments.Count; i++)
+        {
+            var crossingSeg = route.Segments[i];
+            if (crossingSeg.FromNode == null || crossingSeg.ToNode == null) continue;
+
+            string crossedRwy = WhichRunwayCrossedByEdge(
+                crossingSeg.FromNode.Latitude, crossingSeg.FromNode.Longitude,
+                crossingSeg.ToNode.Latitude, crossingSeg.ToNode.Longitude);
             if (string.IsNullOrEmpty(crossedRwy)) continue;
 
             // Skip the destination runway (TruncateToHoldShort owns it).
-            if (!string.IsNullOrEmpty(destinationName) &&
-                crossedRwy.Equals(destinationName, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(destBare) &&
+                crossedRwy.Equals(destBare, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Skip if we've just tagged this runway already (consecutive segments).
+            // Skip if we've just tagged this runway already (a wide runway whose
+            // entry and exit edges both cross the centerline, or consecutive
+            // pavement segments).
             if (crossedRwy.Equals(lastTaggedRunway, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Skip if the CURRENT segment's end is ALREADY on the same runway —
-            // means we're already on it; we should have tagged the segment before.
-            string currentEndOnRwy = WhichRunwayContains(seg.ToNode.Latitude, seg.ToNode.Longitude);
-            if (currentEndOnRwy.Equals(crossedRwy, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // Tag this segment as the hold-short for the upcoming runway.
-            seg.IsHoldShortPoint = true;
+            // The crossing edge is segment i; hold short at the node BEFORE the
+            // runway, which is the end of segment i-1.
+            var holdSeg = route.Segments[i - 1];
+            holdSeg.IsHoldShortPoint = true;
             // Don't overwrite an existing HoldShortRunway label (a user-configured
             // taxiway hold-short or DB-derived hold-short name).
-            if (string.IsNullOrEmpty(seg.HoldShortRunway))
-                seg.HoldShortRunway = $"runway {crossedRwy}";
+            if (string.IsNullOrEmpty(holdSeg.HoldShortRunway))
+                holdSeg.HoldShortRunway = $"runway {crossedRwy}";
             lastTaggedRunway = crossedRwy;
         }
     }
 
     /// <summary>
-    /// Returns the name of the runway whose pavement contains the given lat/lon
-    /// (within half-width + 5 m tolerance), or "" if not on any runway. Picks
-    /// the closer threshold's designator (the takeoff direction from where the
-    /// aircraft is) — same convention as `TaxiGraph.DescribeLocation`.
+    /// Returns the name of the runway crossed by the taxi edge (a→b), or "" if
+    /// the edge crosses no runway. Uses edge-vs-centerline intersection
+    /// (<see cref="TaxiGraph.EdgeCrossesRunwayStatic"/>) so a crossing is found
+    /// regardless of how far the edge's endpoint nodes sit from the centerline.
+    /// Names the runway after the threshold closer to the edge midpoint — same
+    /// convention as TaxiGraph.DescribeLocation.
     /// </summary>
-    private string WhichRunwayContains(double lat, double lon)
+    private string WhichRunwayCrossedByEdge(double aLat, double aLon, double bLat, double bLon)
     {
         if (_graph == null) return "";
 
         foreach (var rwy in _graph.RunwayCenterlines)
         {
-            // Perpendicular distance to centerline segment.
-            double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
-                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
-            if (perp > rwy.HalfWidthMeters + 5.0) continue;
+            if (!TaxiGraph.EdgeCrossesRunwayStatic(
+                    aLat, aLon, bLat, bLon,
+                    rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2))
+                continue;
 
-            // Pick the closer threshold's name.
-            double d1 = TaxiGraph.FastDistanceMeters(lat, lon, rwy.Lat1, rwy.Lon1);
-            double d2 = TaxiGraph.FastDistanceMeters(lat, lon, rwy.Lat2, rwy.Lon2);
+            double mLat = (aLat + bLat) * 0.5;
+            double mLon = (aLon + bLon) * 0.5;
+            double d1 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.Lat1, rwy.Lon1);
+            double d2 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.Lat2, rwy.Lon2);
             string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
             if (string.IsNullOrEmpty(name)) name = rwy.Name1;
             return name;
@@ -5478,10 +5494,10 @@ public class TaxiGuidanceManager : IDisposable
             // Pre-resolve the RunwayCenterline whose designators include the
             // user's runwayId. The user types ONE of two reciprocal designators
             // (e.g. "10R" / "28L") but both name the same physical pavement.
-            // Testing point-on-runway against this centerline's geometry
-            // directly avoids the WhichRunwayContains pitfall where a crossing
-            // closer to the OTHER threshold would return the reciprocal name
-            // and silently miss the user's pick.
+            // Testing the edge-crossing against this centerline's geometry
+            // directly avoids the closer-threshold pitfall where naming a
+            // crossing by the nearer reciprocal designator would return the
+            // OTHER end's name and silently miss the user's pick.
             TaxiGraph.RunwayCenterline? targetRwy = null;
             foreach (var rwy in _graph.RunwayCenterlines)
             {
@@ -5546,33 +5562,39 @@ public class TaxiGuidanceManager : IDisposable
                 continue;
             }
 
-            // Forward scan from the run start for the first segment whose
-            // endpoint lies within the target runway's half-width tolerance
-            // (+5 m, matching WhichRunwayContains).
-            int matchSeg = -1;
+            // Forward scan from the run start for the first segment whose EDGE
+            // crosses the target runway (edge-vs-centerline intersection, not
+            // node-on-pavement). A taxiway crosses a runway via an edge that
+            // spans the pavement with both endpoint nodes OFF the runway, so the
+            // old "is a node within half-width of the centerline?" test silently
+            // rejected the user's correct pick whenever the flanking nodes were
+            // more than half-width+5 m out (KBOS "hold short 04L" on taxiway C:
+            // nearest C node is 35 m from the 04L centerline → falsely reported
+            // "route does not cross 04L after taxiway C").
+            int crossingSeg = -1;
             for (int i = runStart; i < route.Segments.Count; i++)
             {
                 var seg = route.Segments[i];
-                if (seg.ToNode == null) continue;
-                double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
-                    seg.ToNode.Latitude, seg.ToNode.Longitude,
-                    targetRwy.Lat1, targetRwy.Lon1, targetRwy.Lat2, targetRwy.Lon2);
-                if (perp <= targetRwy.HalfWidthMeters + 5.0)
+                if (seg.FromNode == null || seg.ToNode == null) continue;
+                if (TaxiGraph.EdgeCrossesRunwayStatic(
+                        seg.FromNode.Latitude, seg.FromNode.Longitude,
+                        seg.ToNode.Latitude, seg.ToNode.Longitude,
+                        targetRwy.Lat1, targetRwy.Lon1, targetRwy.Lat2, targetRwy.Lon2))
                 {
-                    matchSeg = i;
+                    crossingSeg = i;
                     break;
                 }
             }
 
-            if (matchSeg < 0)
+            if (crossingSeg < 0)
             {
                 unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");
                 continue;
             }
 
-            // Tag the segment immediately BEFORE the runway pavement (so the
+            // Tag the segment immediately BEFORE the crossing edge (so the
             // aircraft stops at the hold-short line, not on the runway).
-            int holdSegIdx = Math.Max(matchSeg - 1, runStart);
+            int holdSegIdx = Math.Max(crossingSeg - 1, 0);
             var holdSeg = route.Segments[holdSegIdx];
             holdSeg.IsHoldShortPoint = true;
             // User intent wins on the label.
