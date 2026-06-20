@@ -16,13 +16,20 @@ namespace MSFSBlindAssist.Patching
         {
             try
             {
-                string? community = EFBModPackageManager.FindCommunityFolderPath();
-                if (string.IsNullOrEmpty(community)) return;
-                foreach (var pkg in LegacyPackages)
+                // Sweep EVERY sim's Community folder (FS2020 AND FS2024) — at startup no sim is
+                // running, so FindCommunityFolderPath() would only clean the default sim and leave
+                // the package behind in the other one. FindAllCommunityFolders() covers both.
+                var folders = EFBModPackageManager.FindAllCommunityFolders();
+                if (folders == null) return;
+                foreach (var (_, folder) in folders)
                 {
-                    var result = EFBModPackageManager.RemoveNamed(community, pkg);
-                    if (result == ModPackageResult.Removed)
-                        System.Diagnostics.Debug.WriteLine($"LegacyEfbBridgeCleanup: removed {pkg}");
+                    if (string.IsNullOrEmpty(folder)) continue;
+                    foreach (var pkg in LegacyPackages)
+                    {
+                        var result = EFBModPackageManager.RemoveNamed(folder, pkg);
+                        if (result == ModPackageResult.Removed)
+                            System.Diagnostics.Debug.WriteLine($"LegacyEfbBridgeCleanup: removed {pkg} from {folder}");
+                    }
                 }
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"LegacyEfbBridgeCleanup: {ex.Message}"); }

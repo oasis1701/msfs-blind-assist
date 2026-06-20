@@ -417,7 +417,11 @@
         break;
       case 'checkbox': case 'radio':
         o.controlType = 'checkbox';
-        o.value = (it.value !== undefined && it.value !== '') ? String(it.value) : (it.checked ? 'true' : 'false');
+        // value MUST stay boolean — the form renders the checked state from value==='true'.
+        o.value = it.checked ? 'true' : 'false';
+        // a unit toggle exposes its ACTIVE unit (e.g. "kg") in it.value; surface it in the LABEL
+        // (not the checkbox value), so "Weight Unit" reads "Weight Unit: kg" and stays checkable.
+        if (it.value && it.value !== 'true' && it.value !== 'false') o.text = (o.text || '') + ': ' + it.value;
         break;
       case 'select': o.controlType = 'select'; o.value = String(it.value || ''); o.options = it.options || []; break;
       case 'pre': o.kind = 'static'; o.controlType = 'pre'; break;

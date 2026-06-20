@@ -269,7 +269,13 @@ namespace MSFSBlindAssist.SimConnect
                 foreach (var id in candidates)
                 {
                     string side = await EvalSideAsync(id, ct);
-                    if (string.Equals(side, _side, StringComparison.OrdinalIgnoreCase)) return id;
+                    if (string.Equals(side, _side, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Let the probe socket's close fully release the page before the main
+                        // socket connects to the SAME id (Coherent allows ONE inspector per page).
+                        try { await Task.Delay(200, ct); } catch (OperationCanceledException) { }
+                        return id;
+                    }
                 }
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"ResolvePmdgTablet: {ex.Message}"); }
@@ -277,9 +283,11 @@ namespace MSFSBlindAssist.SimConnect
         }
 
         // One-shot WS eval of getTabletSide() on a candidate page (separate from the main socket).
+        // Accumulates each CDP frame to EndOfMessage and reads the id==1 reply (robust to
+        // fragmentation / interleaved frames); gracefully closes so Coherent releases the page.
         private async Task<string> EvalSideAsync(int pageId, CancellationToken ct)
         {
-            using var ws = new System.Net.WebSockets.ClientWebSocket();
+            var ws = new System.Net.WebSockets.ClientWebSocket();
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -288,13 +296,38 @@ namespace MSFSBlindAssist.SimConnect
                 var msg = JsonSerializer.Serialize(new { id = 1, method = "Runtime.evaluate", @params = new { expression = "(typeof getTabletSide==='function')?getTabletSide():''", returnByValue = true } });
                 await ws.SendAsync(System.Text.Encoding.UTF8.GetBytes(msg), System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
                 var buf = new byte[8192];
-                var res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), cts.Token);
-                using var d = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buf, 0, res.Count));
-                if (d.RootElement.TryGetProperty("result", out var outer) && outer.TryGetProperty("result", out var inner) && inner.TryGetProperty("value", out var val))
-                    return val.GetString() ?? "";
+                using var ms = new System.IO.MemoryStream();
+                for (int frame = 0; frame < 20; frame++)
+                {
+                    ms.SetLength(0);
+                    System.Net.WebSockets.WebSocketReceiveResult res;
+                    do
+                    {
+                        res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), cts.Token);
+                        if (res.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) return "";
+                        ms.Write(buf, 0, res.Count);
+                    } while (!res.EndOfMessage);
+                    try
+                    {
+                        using var d = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
+                        var root = d.RootElement;
+                        if (root.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var rid) && rid == 1)
+                        {
+                            if (root.TryGetProperty("result", out var outer) && outer.TryGetProperty("result", out var inner) && inner.TryGetProperty("value", out var val))
+                                return val.GetString() ?? "";
+                            return "";
+                        }
+                    }
+                    catch { /* not our frame yet — keep reading */ }
+                }
             }
             catch { }
-            finally { try { ws.Abort(); } catch { } }
+            finally
+            {
+                try { await ws.CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, null, CancellationToken.None); } catch { }
+                try { ws.Abort(); } catch { }
+                try { ws.Dispose(); } catch { }
+            }
             return "";
         }
 

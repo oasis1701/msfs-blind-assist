@@ -14,8 +14,10 @@ test('two-column form: real text label + value; checkbox active unit from Settin
   const els = scrape('prefs', { settings: { weight_unit: 'kg' } });
   const sb = els.find(e => e.controlType === 'text' && e.text === 'SimBrief Alias');
   assert.strictEqual(sb.value, 'ABC123');
-  const w = els.find(e => e.controlType === 'checkbox' && e.text === 'Weight Unit');
-  assert.strictEqual(w.value, 'kg');
+  // unit toggle: active unit folded into the LABEL; value stays boolean (rendered checked state)
+  const w = els.find(e => e.controlType === 'checkbox' && e.text === 'Weight Unit: kg');
+  assert.ok(w, 'Weight Unit checkbox shows active unit in label');
+  assert.ok(w.value === 'true' || w.value === 'false', 'checkbox value is boolean');
 });
 
 test('dashboard: CALLSIGN merges with value; leaflet markers dropped', () => {
