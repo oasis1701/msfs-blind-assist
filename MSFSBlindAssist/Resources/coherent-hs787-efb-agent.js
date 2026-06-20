@@ -38,7 +38,7 @@
         if (pnm && pnm !== el && !el.contains(pnm)) t = txt(pnm);
       }
       if (!t) t = (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title'))) || '';
-      if (!t) t = txt(el);
+      if (!t) t = A.spacedText(el);   // multi-span buttons: space-join leaves ("WT AND BALANCE")
       return t.replace(/\s+/g, ' ').slice(0, 60);
     };
 
@@ -47,6 +47,57 @@
       var t = '';
       for (var i = 0; i < el.childNodes.length; i++) { var n = el.childNodes[i]; if (n.nodeType === 3) t += n.nodeValue; }
       return t.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+    };
+
+    // Space-join the text of every leaf element under el. Boeing-EFB multi-word buttons render
+    // each word as its OWN <span> with NO whitespace between them (e.g.
+    // "<span>WT AND</span><span>BALANCE</span>"), so plain textContent squished them into
+    // "WT ANDBALANCE". Joining the leaves with a space restores "WT AND BALANCE". Falls back to
+    // own textContent when el has no child elements (a single-span label is unchanged).
+    A.spacedText = function (el) {
+      if (!el.querySelectorAll) return txt(el);
+      var leaves = el.querySelectorAll('*'), parts = [];
+      for (var i = 0; i < leaves.length; i++) {
+        if (leaves[i].children.length === 0) { var t = txt(leaves[i]); if (t) parts.push(t); }
+      }
+      if (!parts.length) return txt(el);
+      return parts.join(' ').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+    };
+
+    // --- DOORS page: read each door's open/closed/manual state from its CSS classes ---
+    // The WT 787 doors page encodes state on `doors-page-<id>` divs (NOT the action buttons):
+    //   entry-door-unlocked / -open  -> the door is OPEN (verified: INTERACTIVE POINT OPEN:0 == 1)
+    //   entry-door-closed / other-door-closed -> CLOSED
+    //   entry-door-manual            -> manual mode (renders the stray "M" badge the scrape saw)
+    //   door-refuel-unlocked/-locked -> the refuel panel cover
+    A.DOOR_NAMES = {
+      'entry-1l': 'Entry 1 Left', 'entry-1r': 'Entry 1 Right',
+      'entry-2l': 'Entry 2 Left', 'entry-2r': 'Entry 2 Right',
+      'entry-3l': 'Entry 3 Left', 'entry-3r': 'Entry 3 Right',
+      'entry-4l': 'Entry 4 Left', 'entry-4r': 'Entry 4 Right',
+      'fwd-cargo': 'Forward Cargo', 'aft-cargo': 'Aft Cargo', 'bulk-cargo': 'Bulk Cargo',
+      'fd-ovhd': 'Flight Deck Overhead', 'fwd-ee-access': 'Forward E E Access',
+      'refuel-panel': 'Refuel Panel'
+    };
+    A.collectDoorStates = function () {
+      var map = {}, divs = document.querySelectorAll('[class*="doors-page-"]');
+      for (var i = 0; i < divs.length; i++) {
+        var d = divs[i], cls = d.className || '';
+        var m = cls.match(/doors-page-([a-z0-9\-]+)/i);
+        if (!m) continue;
+        var id = m[1].toLowerCase();
+        if (!A.DOOR_NAMES[id] || !vis(d)) continue;
+        var state;
+        if (id === 'refuel-panel') state = cls.indexOf('-unlocked') >= 0 ? 'unlocked' : 'locked';
+        else {
+          var open = cls.indexOf('-unlocked') >= 0 || cls.indexOf('door-open') >= 0;
+          state = open ? 'open' : (cls.indexOf('-closed') >= 0 ? 'closed' : 'unknown');
+          if (cls.indexOf('-manual') >= 0) state += ', manual';
+        }
+        var r = d.getBoundingClientRect();
+        map[id] = { name: A.DOOR_NAMES[id], state: state, y: r.top, x: r.left, used: false };
+      }
+      return map;
     };
 
     A.kindOf = function (el) {
@@ -108,6 +159,11 @@
 
       var curPage = A.currentPageId();
       var onMainMenu = (curPage === 0) || title === 'MAIN MENU';
+      // DOORS page: read each door's open/closed/manual state from the doors-page-* divs and fold
+      // it into the action buttons (+ status lines for status-only doors); the raw door divs +
+      // their "M" badges are suppressed from the static-text scrape below.
+      var onDoors = (title === 'DOORS');
+      var doorStates = onDoors ? A.collectDoorStates() : null;
       if (!onMainMenu) {
         var pages = A.navPages();
         for (var p = 0; p < pages.length; p++) {
@@ -131,6 +187,12 @@
         if (!onMainMenu && A.isMenuNav(el)) continue;
         var label = A.label(el);
         if (!label) continue;
+        // On the DOORS page fold the matching door's state into its action button label, e.g.
+        // "ENTRY 1L" -> "Entry 1 Left: open" (still clickable to toggle the door).
+        if (onDoors && doorStates) {
+          var did = label.toLowerCase().replace(/\s+/g, '-');
+          if (doorStates[did]) { doorStates[did].used = true; label = doorStates[did].name + ': ' + doorStates[did].state; }
+        }
         var value = '';
         if (clsContains(el, 'textfield')) {
           var inp = el.querySelector('input,textarea');
@@ -139,6 +201,17 @@
         var rc = el.getBoundingClientRect();
         items.push({ ctrl: true, el: el, kind: A.kindOf(el), label: label, value: value,
                      disabled: clsContains(el, 'disabled'), y: rc.top, x: rc.left });
+      }
+
+      // Status-only doors (no action button — flight-deck overhead, E/E access, bulk cargo, refuel
+      // panel) get a read-only status line at their on-screen position so they sort in naturally.
+      if (onDoors && doorStates) {
+        for (var dk in doorStates) {
+          if (doorStates.hasOwnProperty(dk) && !doorStates[dk].used) {
+            items.push({ ctrl: false, text: doorStates[dk].name + ': ' + doorStates[dk].state,
+                         y: doorStates[dk].y, x: doorStates[dk].x });
+          }
+        }
       }
 
       // Standalone readable text — visible own-text leaves that are NOT inside a control, NOT a
@@ -151,6 +224,7 @@
         if (clsContains(e, 'button-name') || (e.closest && e.closest('.button-name'))) continue;
         if (e.closest('[class*="efb-title"]')) continue;
         if (!onMainMenu && A.isMenuNav(e)) continue;
+        if (onDoors && clsContains(e, 'doors-page-')) continue;  // door state presented via buttons/lines
         var ot = A.ownText(e);
         if (!ot || ot.length > 45) continue;
         if (/^[\s:.,\-/]+$/.test(ot)) continue;   // pure punctuation / separators
