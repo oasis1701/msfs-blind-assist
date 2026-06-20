@@ -557,6 +557,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         };
     }
 
+    // Panel display-value formatting hook. Renders the baro setting (read as inHg) as hPa for the
+    // EFIS panel, instead of a raw "29.92".
+    public override bool TryGetDisplayOverride(string varKey, double value, out string text)
+    {
+        if (varKey == "HS787_BaroSetting")
+        {
+            int hpa = (int)Math.Round(value * 33.8639);
+            text = $"{hpa} hPa ({value:0.00} inHg)";
+            return true;
+        }
+        text = "";
+        return false;
+    }
+
     // =========================================================================
     // Variables
     // =========================================================================
@@ -3075,9 +3089,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // --- Baro setting raw value (in current display unit, hPa or inHg) ---
             ["HS787_BaroSetting"] = new SimConnect.SimVarDefinition
             {
-                Name = "XMLVAR_Baro",
+                // Was the dead L:var XMLVAR_Baro (read a constant 0 -> "Baro 0"). The real captain
+                // baro is the stock KOHLSMAN SETTING (same source the working altimeter hotkey uses);
+                // TryGetDisplayOverride formats it as hPa / Standard.
+                Name = "KOHLSMAN SETTING HG",
                 DisplayName = "Baro Setting",
-                Type = SimConnect.SimVarType.LVar,
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "inHg",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
 
