@@ -741,6 +741,7 @@ public class FbwEfbForm : Form
   h3 { font-size: 15px; margin: 10px 0 4px 0; color: #cfe3ff; }
   h4, h5, h6 { font-size: 14px; margin: 8px 0 4px 0; color: #cfe3ff; }
   p.txt { margin: 3px 0; color: #ddd; }
+  .pre { font-family: Consolas, 'Courier New', monospace; white-space: pre; margin: 0; }
   a.lnk { display: inline-block; margin: 4px 0; color: #7fbfff; }
   a.lnk:focus, button.btn:focus, input:focus, select:focus { outline: 3px solid #FFD700; }
   button.btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin: 4px 0; border: 1px solid #445; border-radius: 6px; cursor: pointer; font-size: 14px; background: #0e4d92; color: #fff; font-family: inherit; }
@@ -774,6 +775,7 @@ public class FbwEfbForm : Form
   // Classify an element to its rendered node TYPE — used to build AND to key.
   function rk(it) {
     var ct = it.controlType || '';
+    if (ct === 'pre') return 'pre';
     if (ct === 'range') return 'rng';
     if (ct === 'checkbox') return 'cb';
     if (ct === 'select' && it.options && it.options.length) return 'sel';
@@ -874,6 +876,10 @@ public class FbwEfbForm : Form
       if (it.disabled) { a.setAttribute('data-disabled', 'true'); a.textContent += ', dimmed'; }
       a.addEventListener('click', function (e) { e.preventDefault(); onActivate.call(this, e); });
       return a;
+    }
+    if (type === 'pre') {
+      var preEl = document.createElement('div'); preEl.className = 'pre'; preEl.textContent = text; preEl.setAttribute('data-idx', String(it.idx));
+      return preEl;
     }
     var p = document.createElement('p'); p.className = 'txt'; p.textContent = text; p.setAttribute('data-idx', String(it.idx));
     if (it.live === 'assertive' || it.live === 'polite') p.setAttribute('aria-live', it.live);
