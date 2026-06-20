@@ -803,7 +803,9 @@ settable control write-tested against the running aircraft.
   ext-light precedent). **Autobrake** — `SET_AUTOBRAKE_CONTROL` is a no-op AND `AUTOBRAKE CONTROL SWITCH
   POSITION` is stuck at 0; the real read var is `AUTO BRAKE SWITCH CB` (0..6 = Off/RTO/1/2/3/**4**/MAX,
   7 detents) and the write is stepping `INCREASE/DECREASE_AUTOBRAKE_CONTROL` to target (a
-  `_autobrakeSettleTarget` swallows the intermediate-detent callouts). **Logo** — wasn't broken;
+  self-draining `_autobrakeSuppressCount` = |target−current| swallows the intermediate-detent
+  callouts — a COUNT, not an exact-value latch, so it can't permanently mute future callouts if the
+  selector never lands exactly on target). **Logo** — wasn't broken;
   `TOGGLE_LOGO_LIGHTS` works but `LIGHT LOGO` lags a frame, so the read var is now `LIGHT LOGO ON`.
 - **Not actually broken (don't "fix"):** Generators / engine+APU bleed / refuel+GPU "revert" only because
   the **engines are running** (a running engine forces its gen/bleed on; refuel won't connect) — correct
