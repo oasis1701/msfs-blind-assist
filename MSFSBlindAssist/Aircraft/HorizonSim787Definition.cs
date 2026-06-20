@@ -1882,7 +1882,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // AUTOBRAKE CONTROL SWITCH POSITION: 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX
             ["HS787_Autobrake"] = new SimConnect.SimVarDefinition
             {
-                Name = "AUTOBRAKE CONTROL SWITCH POSITION",
+                // The WT 787 tracks the selector on AUTO BRAKE SWITCH CB (0..6), NOT
+                // AUTOBRAKE CONTROL SWITCH POSITION (which is stuck at 0). Live-verified 7 detents.
+                Name = "AUTO BRAKE SWITCH CB",
                 DisplayName = "Autobrakes",
                 Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1894,7 +1896,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                     [2] = "1",
                     [3] = "2",
                     [4] = "3",
-                    [5] = "MAX"
+                    [5] = "4",
+                    [6] = "MAX"
                 }
             },
 
@@ -2159,7 +2162,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_LightLogo"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT LOGO",
+                // LIGHT LOGO lags the toggle by one frame (read it right after TOGGLE_LOGO_LIGHTS and
+                // it's stale); LIGHT LOGO ON updates immediately — use it for a correct read-back.
+                Name = "LIGHT LOGO ON",
                 DisplayName = "Logo Light",
                 Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -5321,10 +5326,15 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Autobrakes — SET_AUTOBRAKE_CONTROL with position 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX
+        // Autobrakes (0 Off .. 6 MAX). SET_AUTOBRAKE_CONTROL is a no-op on the WT 787; the working
+        // path is the relative rotary events INCREASE/DECREASE_AUTOBRAKE_CONTROL stepped to the
+        // target (they clamp at the ends, so over-stepping is safe). Live-verified.
         if (varKey == "HS787_Autobrake")
         {
-            simConnect.SendEvent("SET_AUTOBRAKE_CONTROL", (uint)(int)value);
+            int target = Math.Max(0, Math.Min(6, (int)Math.Round(value)));
+            int current = (int)Math.Round(simConnect.GetCachedVariableValue("HS787_Autobrake") ?? 0);
+            string ev = target > current ? "INCREASE_AUTOBRAKE_CONTROL" : "DECREASE_AUTOBRAKE_CONTROL";
+            for (int i = 0; i < Math.Abs(target - current); i++) simConnect.SendEvent(ev);
             return true;
         }
 
@@ -5527,7 +5537,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
         if (varKey == "HS787_LightLogo")
         {
-            simConnect.ExecuteCalculatorCode($"(A:LIGHT LOGO,Bool) {(int)value} != if{{ (>K:TOGGLE_LOGO_LIGHTS) }}");
+            // Guard on LIGHT LOGO ON (immediate), not LIGHT LOGO (lags a frame) — a rapid set-after-set
+            // could otherwise mis-decide off the stale value and double-toggle.
+            simConnect.ExecuteCalculatorCode($"(A:LIGHT LOGO ON,Bool) {(int)value} != if{{ (>K:TOGGLE_LOGO_LIGHTS) }}");
             return true;
         }
         if (varKey == "HS787_LightWing")
@@ -6888,11 +6900,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             int now = (int)value;
             if (_previousAutobrake >= 0 && now != _previousAutobrake)
             {
-                // Positions MUST match HS787_Autobrake.ValueDescriptions (~line 1700) and the
-                // SET_AUTOBRAKE_CONTROL write in HandleUIVariableSet, which both use
-                // 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX. This switch previously used a different
-                // mapping (0=RTO, 1=Disarmed), so the spoken callout contradicted the panel combo
-                // label and the value actually commanded. Keep all three in sync.
+                // Positions MUST match HS787_Autobrake.ValueDescriptions and the INCREASE/DECREASE
+                // step-write in HandleUIVariableSet: the AUTO BRAKE SWITCH CB scale is 0..6 =
+                // Off / RTO / 1 / 2 / 3 / 4 / MAX (live-verified 7 detents). Keep all three in sync.
                 string msg = now switch
                 {
                     0 => "Autobrakes Off",
@@ -6900,7 +6910,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                     2 => "Autobrakes 1",
                     3 => "Autobrakes 2",
                     4 => "Autobrakes 3",
-                    5 => "Autobrakes Max",
+                    5 => "Autobrakes 4",
+                    6 => "Autobrakes Max",
                     _ => $"Autobrakes {now}"
                 };
                 announcer.Announce(msg);
