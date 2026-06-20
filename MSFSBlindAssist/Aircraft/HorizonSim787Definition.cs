@@ -75,6 +75,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousIrsKnob2    = -1;
     private int  _previousIrsAligned1 = -1;
     private int  _previousIrsAligned2 = -1;
+    private int  _previousIrsAlignState = -1;
 
     // Anti-ice, signs, lights, landing — -1 suppresses first-poll announcement
     private int  _previousAntiIceEng1  = -1;
@@ -868,7 +869,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["HS787_IRS_Align"] = new SimConnect.SimVarDefinition
             {
                 Name = "MSFSBA_IRS_ALIGN_STATE",   // synthetic L-var written by the Coherent IRS client
-                DisplayName = "IRS Alignment",
+                DisplayName = "IRS",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6426,6 +6427,19 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         // IRS position accepted (WT_IRS_POS_SET_N) — NOT alignment complete.
         // Announce the honest position semantics. (The true "TIME TO ALIGN" countdown
         // is not on any L-var; see the IRS section in GetVariables.) Suppress first poll.
+        // IRS alignment state (synthetic L-var from the Coherent IRS client): 0 Off / 1 Aligning /
+        // 2 Aligned. Announce as a clean phrase ("IRS aligned", not the generic "IRS: Aligned" which
+        // read as "IRS alignment aligned" before the rename). First value is the silent baseline so
+        // the client's connect-time write doesn't blurt "IRS off".
+        if (variableKey == "HS787_IRS_Align")
+        {
+            int now = (int)Math.Round(value);
+            if (_previousIrsAlignState >= 0 && now != _previousIrsAlignState)
+                announcer.Announce(now == 2 ? "IRS aligned" : now == 1 ? "IRS aligning" : "IRS off");
+            _previousIrsAlignState = now;
+            return true;
+        }
+
         if (variableKey == "HS787_IRS_Aligned1")
         {
             int now = value > 0.5 ? 1 : 0;

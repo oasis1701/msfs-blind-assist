@@ -875,16 +875,27 @@ public partial class MainForm : Form
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
         // This lets each aircraft handle complex variables before generic processing.
         //
-        // HS787 monitor-manager mute: the HS787 auto-announces ~100 of its vars from inside
-        // ProcessSimVarUpdate (which returns true and bypasses the generic disabled-monitor gate
-        // below), so a plain gate would never mute them. ProcessSimVarUpdate uses only the
-        // suppressible announcer.Announce(...) for those (its AnnounceImmediate calls are all
-        // hotkey readouts), so suppress the announcer just for the muted var's processing — the
-        // per-branch state/baseline updates still run, only the speech is dropped.
-        bool hs787Muted = currentAircraft!.AircraftCode == "HS_787" &&
+        // The HS787 auto-announces ~100 of its vars from INSIDE ProcessSimVarUpdate, which returns
+        // true and exits this method (line below) BEFORE reaching either the generic disabled-monitor
+        // gate OR the generic _uiSetEcho gate further down. So two suppressions that work for every
+        // other aircraft (which announce on the generic path) silently never fire on the 787:
+        //   (1) monitor-manager mute (Ctrl+M),
+        //   (2) UI-set echo — don't re-announce a value the user JUST set via a combo (the screen
+        //       reader already spoke the combo selection).
+        // Both are fixed here the same way: ProcessSimVarUpdate auto-announces ONLY via the
+        // suppressible announcer.Announce(...) (its AnnounceImmediate calls are all hotkey readouts),
+        // so suppress the announcer just for this var's processing — the per-branch state/baseline
+        // updates still run, only the speech is dropped.
+        bool hs787 = currentAircraft!.AircraftCode == "HS_787";
+        bool hs787Muted = hs787 &&
             Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+        bool hs787UiEcho = hs787
+            && _uiSetEcho.TryGetValue(e.VarName, out var uiEcho)
+            && Math.Abs(uiEcho.value - e.Value) < 0.001
+            && Environment.TickCount64 - uiEcho.tick < UiSetEchoSuppressMs;
+        bool suppress787 = hs787Muted || hs787UiEcho;
         bool prevSuppressed = announcer.Suppressed;
-        if (hs787Muted) announcer.Suppressed = true;
+        if (suppress787) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
         try
         {
@@ -892,10 +903,14 @@ public partial class MainForm : Form
         }
         finally
         {
-            if (hs787Muted) announcer.Suppressed = prevSuppressed;
+            if (suppress787) announcer.Suppressed = prevSuppressed;
         }
         if (wasProcessedByAircraft)
         {
+            // The def announced (suppressed) and updated its own baseline — consume the echo so a
+            // later change from any source still announces. (If the def did NOT handle it, the echo
+            // is left intact for the generic _uiSetEcho gate further down.)
+            if (hs787UiEcho) _uiSetEcho.Remove(e.VarName);
             // Update window title if flight phase changed (for aircraft that track flight phases)
             if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
             {
