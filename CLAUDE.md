@@ -324,29 +324,13 @@ Details: [docs/visual-guidance.md](docs/visual-guidance.md).
 
 Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, the 737 EFB has full parity with the 777 (Dashboard / Preferences / Navdata / Performance / Ground Ops / W&B / Manuals) via the shared `PMDGEFBForm`, opened with Shift+T — the EFB app is byte-identical across all four 737 variants and the 777, so one shared bridge JS + `zzz-pmdg-efb-accessibility` Community package serves them all.
 
-### PMDG EFB Bridge
+### PMDG EFB (Coherent debugger)
 
-The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridge injected through an MSFS mod package override.
+The PMDG EFB tablet is read and driven over the MSFS Coherent GT remote debugger (`http://127.0.0.1:19999`), like the FBW A380 flyPad. NO Community mod package, NO HTTP bridge, NO HTML patching, and NO sim restart are required.
 
-**Architecture:** A standalone MSFS Community package (`zzz-pmdg-efb-accessibility`) overrides the EFB's `PMDGTabletCA.html` to load an additional JS script. The `zzz-` prefix ensures it loads after the PMDG package alphabetically, so our HTML takes precedence. The JS bridge communicates with the C# app via HTTP on `localhost:19777`.
+**Architecture:** `SimConnect/CoherentPmdgEfbClient.cs` (implements `IMcduBridge`) connects to the `PMDGTablet` Coherent view, installs the generic in-page agent `Resources/coherent-pmdg-efb-agent.js` (ES5: resolves controls by TYPE not element id, so new PMDG pages read automatically), and polls `scrape()` — capturing readable document TEXT (linearizing the SimBrief OFP `<pre>` briefing + NOTAMs), two-column label↔control pairing, checkbox active-unit from the EFB `Settings` object, fa-icon labeling, leaflet-marker skip, and duplicate-button id disambiguation. Transport: `CoherentPmdgEfbClient` exposes `click_mcdu_element(idx)` / `set_element_value(idx, text)` commands (same shape as FBW A320/A380). UI: reuses `Forms/FBWA380/FbwEfbForm.cs` WebView2 browse view (the same form the FBW flyPad uses), with a monospace `<pre>` render branch for the OFP. On startup, `Patching/LegacyEfbBridgeCleanup.cs` removes the retired Community packages (`zzz-pmdg-efb-accessibility`, `zzz-hs787-accessibility`) automatically.
 
-**Key components:**
-- **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — HttpListener with `/ping`, `/state` (POST), `/commands` (GET) endpoints. JS pushes state, C# queues commands. Command queue capped at 50 entries; `HasPendingCommand()` enables deduplication. Auto-restarts listener on unexpected failures (5 retries, 2s delay). Start/Stop protected by lock. Fires `Error` event on server failures.
-- **`EFBModPackageManager`** (`Patching/EFBModPackageManager.cs`) — Installs/updates/removes the mod package. Reads original PMDG HTML at install time (no PMDG IP in repo), appends bridge script tag with double-patch guard (checks for existing script tag before appending). Auto-updates bridge JS on app startup via `BridgeVersion` constant.
-- **`pmdg-efb-accessibility-bridge.js`** (`Resources/`) — Runs inside MSFS Coherent GT. Hooks into EFB's `MessageService.messaging_bus` EventBus. Must be Coherent GT compatible (no `AbortSignal.timeout`, top-level try-catch, `var` not `let/const`, no arrow functions, `.indexOf()` not `.includes()`). Critical state types are queued on POST failure and flushed on reconnection (max 20 pending, 3 retries per entry). `tryConnect` has a connecting guard to prevent concurrent attempts; `navigraphStateSent` flag prevents duplicate Navigraph state posts. **`click_by_id` accepts an optional `fallbackText` payload field** — when `getElementById` misses (PMDG renamed a DOM id), the bridge searches button-like elements (`button, .button, [role="button"], div[onclick], span[onclick]`) for one whose `textContent` contains the fallback string (case-insensitive). The `click_result` state reports `matchedBy: "id"` or `"text"`. Use this for any button whose human-visible label is stable across PMDG releases even if the id might drift.
-- **`PMDGEFBForm`** (`Forms/PMDGEFB/`) — Accessible form shared across all PMDG 737 and 777 variants, hosting Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance, Manuals, and a Display debug tab. Opened via Shift+T in input mode. Form title (`"PMDG 737 EFB"` / `"PMDG 777 EFB"`) and AccessibleName are set in the constructor from `currentAircraft.AircraftCode`. Shows connection status (always visible above tabs, announced on transitions). Buttons disable on click and re-enable on response or timeout. SimBrief fetch: 30s timeout. Navigraph auth: 60s timeout.
-
-**JS bridge constraints (Coherent GT):**
-- No `AbortSignal.timeout()` — use manual Promise-based timeout
-- Top-level try-catch wrapping entire script — errors must never break the EFB
-- `layout.json` in the mod package must have exact file sizes — MSFS validates these
-- Sim must be restarted after mod package install/update for MSFS to load new files
-- The JS file is copied while the sim is closed (sim locks files while running)
-
-**Communication flow:**
-- JS → C#: `POST /state` with `{type, data}` JSON (state updates, auth codes, SimBrief data). Failed POSTs for critical state types are queued and retried on reconnection.
-- C# → JS: `GET /commands` polled every 500ms, returns JSON array of `{command, payload}`. Commands expire after 30s if not polled.
-- Bridge connects on startup, retries every 5s if server unavailable. On reconnection, flushes pending states and re-sends Navigraph auth status.
+**Hotkeys:** **Shift+T = Captain tablet**, **Ctrl+Shift+T = First Officer tablet** (input mode, Shift+T output mode shows the EFB; Shift+T input mode on the PMDG 737/777 opens the EFB form). Shared across 737 + 777 (the EFB app is identical). Opened with Shift+T.
 
 ### FlyByWire A380X Specific Patterns
 
