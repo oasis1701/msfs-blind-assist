@@ -1,5 +1,9 @@
-// PMDG EFB recon agent v2 — ES5 / Coherent-GT safe. Seed of coherent-pmdg-efb-agent.js.
-// Generic: classifies by control TYPE, never by element id. Emits label + provenance.
+// PMDG EFB in-page agent — installed at runtime into the PMDG tablet's Coherent GT view
+// (window.__MSFSBA_PMDG_EFB). ES5 only (Coherent GT = Chromium 49: var, no arrow funcs,
+// no String.includes; use .indexOf). Generic: classifies controls by TYPE (never by element id)
+// so new PMDG pages / installed EFB apps read with no code change. scrape() returns the element
+// contract FbwEfbForm consumes (controlType/kind/clickable/level/value/options); clickElement(idx)
+// and setValue(idx,text) drive the tablet by the stamped data-pmdg-efb-idx.
 (function () {
   var A = {};
   A.INSTALLED = 'MSFSBA_PMDG_EFB_INSTALLED';
@@ -399,7 +403,7 @@
     return merged;
   };
 
-  // Map a recon item (internal {type,label,value,pair,captions,level,options,checked,disabled})
+  // Map an internal collect() item ({type,label,value,pair,captions,level,options,checked,disabled})
   // to the FbwEfbForm element contract (controlType/kind/clickable/level/value/options/...).
   A._toContract = function (it) {
     var o = { idx: it.idx, text: it.label || '', value: '', controlType: '', kind: '', clickable: false, level: 0, live: '', disabled: !!it.disabled, options: null };
