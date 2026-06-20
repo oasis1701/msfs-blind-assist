@@ -736,6 +736,35 @@ their `.msfsba_backup`, the 2 injected bridge JS, `layout.json` + backup, `msfsb
 and the FS2020 `zzz-hs787-accessibility` override package are gone — `horizonsim-aircraft-787-9` is
 restored to pristine. The Coherent transport needs NO Community mod on either sim and no sim restart.
 
+**Ctrl+M Monitor Manager — and the mute-architecture GOTCHA (2026-06).** `HS787MonitorManagerForm`
+mirrors the Fenix/A380 managers: a CheckedListBox of every `Continuous+IsAnnounced` var from the
+def, persisting unchecked keys to `UserSettings.HS787DisabledMonitorVariables`; the def's
+`HandleHotkeyAction` routes `HotkeyAction.MonitorManager` → `MainForm.ShowHS787MonitorManagerDialog`,
+and the form is disposed on aircraft swap like the others. **⚠️ The gotcha (a real trap for any
+custom-announce aircraft): the Fenix/A380 managers rely on the generic disabled-set gate in
+`MainForm.OnSimVarUpdated`, but that gate only runs when `ProcessSimVarUpdate` returns FALSE. The
+HS787 auto-announces ~100 of its ~107 vars from INSIDE `ProcessSimVarUpdate` (which returns true and
+RETURNS from OnSimVarUpdated before the gate), so a plain gate mutes almost nothing.** The working
+fix: in `OnSimVarUpdated`, when the updating var is in `HS787DisabledMonitorVariables`, wrap the
+`ProcessSimVarUpdate` call in `announcer.Suppressed` (try/finally restore). The def's
+`ProcessSimVarUpdate` auto-announces ONLY via the suppressible `announcer.Announce(...)` (its
+`AnnounceImmediate` calls are all hotkey readouts, which stay audible on demand), so the per-branch
+state/baseline updates still run and only the speech is dropped — no change to the ~100 announce
+sites. The generic gate is kept too, for the handful of vars that fall through (`HS787_FlightDirector`,
+`HS787_IRS_Align`). **If you ever add a monitor manager to another custom-`ProcessSimVarUpdate`
+aircraft, you MUST do the same Suppressed-wrap — the gate alone is a silent no-op for it.**
+
+**Writable controls beyond the panels (live-verified, 2026-06).** Three controls the 787 provides
+that MSFSBA now drives: **Flight Director** (`HS787_FlightDirector`, SimVar `AUTOPILOT FLIGHT
+DIRECTOR ACTIVE`, Off/On combo) fires the relative `TOGGLE_FLIGHT_DIRECTOR` only when desired≠current
+— with a 700 ms intent-tracking guard (`_lastFdSetTicks`/`_lastFdDesired`) so a rapid combo
+re-select inside the monitor-batch cache lag can't double-fire / land inverted; **Transponder IDENT**
+(`HS787_XpndrIdent`, momentary RenderAsButton) fires `XPNDR_IDENT_ON` on press; **A/P Disconnect** (a
+plain button in the Ctrl+P Autopilot window) fires `AUTOPILOT_OFF` (distinct from the A/P toggle,
+which would re-engage). Squawk stays settable via `TRANSPONDER_CODE_SET` (`TRANSPONDER CODE:1`,
+Bco16) on the existing MainForm `_SET` path. The IDENT event is unknown to the MCP `trigger_event`
+but MSFSBA's `SendEvent` maps it by raw name (the A380 IDENT precedent).
+
 ### FlyByWire Accessible flyPad EFB (A320 + A380 — ONE shared flyPad)
 
 **Feature:** Screen-reader-accessible Electronic Flight Bag (flyPad) for **both** FlyByWire aircraft. The **same** form, client, and in-page agent serve the A32NX flyPad and the A380X flyPad — only the window title differs. Opened via the shared `HotkeyAction.ShowPMDGEFB` dispatch, branched by `AircraftCode` (`"A320"` and `"FBW_A380"` both call `ShowFBWA380EFBDialog`). It renders **whatever flyPad page is currently open** as a browsable document; there are no curated per-feature tabs.

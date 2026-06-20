@@ -101,9 +101,11 @@ Full accessibility support for the PMDG 737, covering the 737-600, -700, -800 an
 ### HorizonSim Boeing 787-9
 
 Full accessibility support for the HorizonSim 787-9, including Microsoft Flight Simulator 2024.
-- Accessible FMC / CDU through a built-in bridge, working in both MSFS2020 and MSFS2024, with an alternate LSK key layout (F1–F12).
-- Accessible panels for IRS (with alignment-status readout), anti-ice, signs, lights, landing, pressurization, cooling, annunciators, APU, external power and ground services.
-- Autopilot and autothrottle controls, ALT INTV, mach input, baro/altimeter set and announcements, and TCAS gate lookup.
+- Accessible FMC / CDU read live with no add-on or Community-folder mod required, working in both MSFS2020 and MSFS2024, with an alternate LSK key layout (F1–F12).
+- Accessible panels for IRS (with live alignment status and minutes-to-align), anti-ice, signs, lights, landing, pressurization, cooling, annunciators, APU, external power and ground services.
+- EICAS crew alerts read back on demand (Alt+E) and a live system synoptic display window (Alt+S, HYD/ELEC/FUEL/AIR/APU/OXYGEN). Optional AI-vision read-outs for the ND, PFD and standby instrument.
+- A 787 Monitor Manager (Ctrl+M) to silence any automatic announcement you don't want.
+- Autopilot and autothrottle controls (including Flight Director, autopilot disconnect and transponder ident), ALT INTV, mach input, baro/altimeter set and announcements, and TCAS gate lookup.
 - Accessible EFB (Electronic Flight Bag), opened with Shift+T.
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 

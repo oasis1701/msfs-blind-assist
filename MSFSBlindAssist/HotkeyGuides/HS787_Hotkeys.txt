@@ -75,8 +75,9 @@ Traffic and Weather:
 
 Cockpit Display Read-outs:
   Alt+E      EICAS crew alerts - reads back every active warning, caution and
-             advisory. New alerts are ALSO announced automatically as they post
-             (always-on monitor). No API key needed.
+             advisory on demand. (Per-alert auto-chatter is intentionally off; the
+             Master Caution / Master Warning still auto-announce the moment something
+             posts, so you know to press Alt+E for the specifics.) No API key needed.
   Alt+S      System Synoptic Display (HYD, ELEC, FUEL, AIR, APU, OXYGEN, status
              messages) - opens a live, navigable text window (arrow keys to read,
              F5 refreshes, Escape closes). No API key needed.
@@ -95,6 +96,12 @@ Displays and Windows:
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
+
+Background Announcements:
+  Ctrl+M     787 Monitor Manager - a checklist of every variable the 787 announces
+             automatically as it changes (master caution/warning, AP modes, hydraulics,
+             anti-ice, IRS, etc.). Uncheck any you don't want spoken; the choice is
+             saved. On-demand read-out hotkeys are unaffected.
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode
@@ -141,12 +148,13 @@ MCP Set Values:
   Ctrl+V     Set Vertical Speed (opens dialog with V/S Engage, V/S/FPA Mode, Approach toggles)
 
 Autopilot Panel:
-  Ctrl+P     Open Autopilot Panel (A/P 1, A/P 2, A/T, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S)
+  Ctrl+P     Open Autopilot Panel (A/P, A/T, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S, A/P Disconnect)
              Approach button shows: GS Active / LOC Active / Armed / OFF
+             A/P Disconnect always disconnects (distinct from the A/P toggle)
              Auto-announces: "Approach armed", "Approach disengaged"
 
 FMC / CDU Windows:
-  Shift+M    Open 787 FMC Window (requires bridge mod installed)
+  Shift+M    Open 787 FMC Window (no mod required; reads the FMC live)
 
 General:
   Escape     Exit active hotkey mode
