@@ -787,6 +787,31 @@ silently via events, so this is the single confirmation for both. (4) Combo-box 
 double-announce on the 787: the `_uiSetEcho` suppression (and the Ctrl+M mute) now also apply at the
 Step-2.5 `ProcessSimVarUpdate` wrap, since the 787 announces from there (bypassing the generic gates).
 
+**Full panel-by-panel READ + WRITE audit (2026-06, live).** Every HS787 var was read live and every
+settable control write-tested against the running aircraft.
+- **READ verdict: the stock SimVars WORK.** An earlier audit run flagged ~18 "dead" engine/hydraulic/
+  pressurization readouts, but that was a **fuel-exhaustion FAILURE state** (the EICAS showed ENG FAIL /
+  HYD PRESS / FUEL PRESS / AC-BUS cautions + FUEL QTY 00). On a HEALTHY jet they all read real values
+  (N1 20% idle, EGT 494 C, oil 78 psi / 108 C, **HYDRAULIC PRESSURE:1 = 4372 psi**, fuel 12.3 t, GW
+  181 t) — so the EICAS window + Engine Data / Hydraulics / Pressurization panels are correct off the
+  SimVars; **do NOT rip them out for a DOM scrape.** The only genuinely-wrong stock var found is
+  `ENG FUEL FLOW PPH` (reads ~0.15, unused). Lesson: before concluding a 787 readout is "dead", confirm
+  the aircraft isn't in a failure state — the WT 787 reflects failures faithfully in the SimVars.
+- **WRITE fixes (live-verified):** **APU generators** — the per-index `APU_GEN1/2_SWITCH_SET` are no-ops;
+  the un-indexed `APU_GENERATOR_SWITCH_SET` drives BOTH ganged gens (`APU GENERATOR SWITCH:1` AND `:2`).
+  **Strobe** — `STROBE_LIGHTS_SET` is a no-op on the Asobo-template lighting; `STROBES_SET` works (A380
+  ext-light precedent). **Autobrake** — `SET_AUTOBRAKE_CONTROL` is a no-op AND `AUTOBRAKE CONTROL SWITCH
+  POSITION` is stuck at 0; the real read var is `AUTO BRAKE SWITCH CB` (0..6 = Off/RTO/1/2/3/**4**/MAX,
+  7 detents) and the write is stepping `INCREASE/DECREASE_AUTOBRAKE_CONTROL` to target (a
+  `_autobrakeSettleTarget` swallows the intermediate-detent callouts). **Logo** — wasn't broken;
+  `TOGGLE_LOGO_LIGHTS` works but `LIGHT LOGO` lags a frame, so the read var is now `LIGHT LOGO ON`.
+- **Not actually broken (don't "fix"):** Generators / engine+APU bleed / refuel+GPU "revert" only because
+  the **engines are running** (a running engine forces its gen/bleed on; refuel won't connect) — correct
+  behaviour, like A380 probe-heat; re-test engine-off. Light Master / Fwd-cooling / HUD-auto-brightness
+  are forced-auto computed outputs (announce reflects the true state). Fuel cutoffs / engine start / ext
+  power / AP-engage ride on **B: InputEvents** the SimConnect MCP can't fire (so untestable from outside)
+  — MSFSBA drives them via its InputEvent map; verify in the cockpit (AP modes need flight).
+
 ### FlyByWire Accessible flyPad EFB (A320 + A380 — ONE shared flyPad)
 
 **Feature:** Screen-reader-accessible Electronic Flight Bag (flyPad) for **both** FlyByWire aircraft. The **same** form, client, and in-page agent serve the A32NX flyPad and the A380X flyPad — only the window title differs. Opened via the shared `HotkeyAction.ShowPMDGEFB` dispatch, branched by `AircraftCode` (`"A320"` and `"FBW_A380"` both call `ShowFBWA380EFBDialog`). It renders **whatever flyPad page is currently open** as a browsable document; there are no curated per-feature tabs.
