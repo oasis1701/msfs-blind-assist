@@ -76,6 +76,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousIrsAligned1 = -1;
     private int  _previousIrsAligned2 = -1;
     private int  _previousIrsAlignState = -1;
+    // MCP selected-value announce baselines (first value silent, then speak external knob turns).
+    private int    _prevMcpHeading = -1;
+    private int    _prevMcpAlt     = -1;
+    private int    _prevMcpVs      = int.MinValue;
+    private int    _prevMcpIas     = -1;
+    private double _prevMcpMach    = -1;
+    private bool   _mcpIsMach      = false;   // cached from HS787_MCP_IsMach (ProcessSimVarUpdate has no simConnect)
+    private bool   _mcpSpdManual   = false;   // cached from HS787_MCP_SpdManual
 
     // Anti-ice, signs, lights, landing — -1 suppresses first-poll announcement
     private int  _previousAntiIceEng1  = -1;
@@ -4629,6 +4637,18 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // section visible in the section nav.
             ["Annunciators"] = new List<string>(),
             ["Fire"] = new List<string>(),
+            // Flight Data sub-panels: pure read-only nav/engine/timer readouts whose values
+            // come from GetPanelDisplayVariables. They were listed in GetPanelStructure +
+            // GetPanelDisplayVariables but NOT here, so MainForm's panel-build hit its
+            // "not in GetPanelControls -> return" guard and rendered them completely EMPTY.
+            // The empty control list is what makes a display-only panel render (FMC Status pattern).
+            ["VNAV"] = new List<string>(),
+            ["LNAV and Progress"] = new List<string>(),
+            ["Glidepath"] = new List<string>(),
+            ["Engine Data"] = new List<string>(),
+            ["Flight Control Inputs"] = new List<string>(),
+            ["Timers"] = new List<string>(),
+            ["Other Data"] = new List<string>(),
             // Warnings: momentary reset buttons for the Master Caution / Master Warning.
             // Each button's label is suffixed with the current state (On / Off) so the
             // user can tell at a glance whether there is anything to acknowledge.
@@ -7191,6 +7211,51 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 int hpa = (int)Math.Round(inHg * 33.8639);
                 announcer.Announce($"Altimeter {hpa}");
             }
+            return true;
+        }
+
+        // MCP selected-value CHANGES are announced so an external hardware-knob turn is spoken
+        // (the user's request). MSFSBA's own set dialogs fire the value SILENTLY via events
+        // (ShowHeadingDialog etc. send HEADING_BUG_SET with no announce), so this auto-announce
+        // is the single confirmation for both paths — no double-speak. First value is the silent
+        // baseline; deadbands kill jitter. Speed is gated on MANUAL mode so the FMC's managed-speed
+        // drift in VNAV/climb doesn't chatter (the user wants knob turns, not managed targets).
+        if (variableKey == "HS787_MCP_Heading")
+        {
+            int hdg = ((int)Math.Round(value) % 360 + 360) % 360;
+            if (_prevMcpHeading >= 0 && Math.Abs(hdg - _prevMcpHeading) >= 1) announcer.Announce($"Heading {hdg:000}");
+            _prevMcpHeading = hdg;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_Altitude")
+        {
+            int alt = (int)Math.Round(value);
+            if (_prevMcpAlt >= 0 && Math.Abs(alt - _prevMcpAlt) >= 10) announcer.Announce($"Altitude {alt}");
+            _prevMcpAlt = alt;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_VS")
+        {
+            int vs = (int)Math.Round(value);
+            if (_prevMcpVs != int.MinValue && Math.Abs(vs - _prevMcpVs) >= 50)
+                announcer.Announce(vs == 0 ? "Vertical speed zero" : $"Vertical speed {(vs > 0 ? "plus " : "minus ")}{Math.Abs(vs)}");
+            _prevMcpVs = vs;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_IsMach")   { _mcpIsMach = value > 0.5; return true; }
+        if (variableKey == "HS787_MCP_SpdManual") { _mcpSpdManual = value > 0.5; return true; }
+        if (variableKey == "HS787_MCP_IAS")
+        {
+            int ias = (int)Math.Round(value);
+            if (_prevMcpIas >= 0 && Math.Abs(ias - _prevMcpIas) >= 1 && _mcpSpdManual && !_mcpIsMach) announcer.Announce($"Speed {ias}");
+            _prevMcpIas = ias;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_Mach")
+        {
+            if (_prevMcpMach >= 0 && Math.Abs(value - _prevMcpMach) >= 0.005 && _mcpSpdManual && _mcpIsMach)
+                announcer.Announce($"Mach {value:0.00}");
+            _prevMcpMach = value;
             return true;
         }
 
