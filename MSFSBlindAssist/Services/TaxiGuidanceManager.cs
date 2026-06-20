@@ -2187,7 +2187,23 @@ public class TaxiGuidanceManager : IDisposable
             double exitSide = NormalizeAngle(_postHighSpeedExitMinBearing - _rolloutRunwayHeadingTrue);
             bool turnComplete = (exitSide > 0.0 && minError <= 0.0)
                              || (exitSide < 0.0 && minError >= 0.0);
-            if (turnComplete)
+
+            // Release the floor when the LIVE route is steering clearly the OPPOSITE
+            // way from ExitBearingTrue. ExitBearingTrue is the exit's first runway-edge
+            // bearing; at some airports it points to the opposite side from where the
+            // taxiway actually routes to the apron (CYVR M1 off 26R: first edge heads
+            // NW ~305°, but the M1 taxiway curves SOUTH). Holding the floor there steered
+            // the aircraft the WRONG way (right toward 305°), then snapped ~115° left the
+            // instant the floor released at turnComplete — a violent L/R reversal on
+            // rollout. The constructed route is authoritative; once it commits the other
+            // way by more than a noise margin, drop the floor for good. The opposite-SIGN
+            // test (not magnitude vs. the floor) is what distinguishes this from the
+            // shallow-RET case the floor exists for, where the live route runs ~parallel
+            // to the runway ON the exit side (same sign as the floor, so never released).
+            const double FLOOR_OPPOSITE_RELEASE_DEG = 10.0;
+            bool routeOpposesFloor = Math.Sign(headingError) == -Math.Sign(minError)
+                                     && Math.Abs(headingError) >= FLOOR_OPPOSITE_RELEASE_DEG;
+            if (turnComplete || routeOpposesFloor)
             {
                 _postHighSpeedExitMinBearing = 0.0;
             }
