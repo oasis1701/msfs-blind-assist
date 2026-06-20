@@ -169,6 +169,10 @@ needed, and NO sim restart is required.
 - On startup, `Patching/LegacyEfbBridgeCleanup.cs` removes the retired Community packages
   (`zzz-pmdg-efb-accessibility`, `zzz-hs787-accessibility`) automatically. The old HTTP bridge
   (`EFBBridgeServer`) was deleted; Coherent transport is the only mechanism (shared with FBW A380).
+- The agent's `collect()` carries live-validated noise-suppression rules (drop anonymous buttons +
+  single-character runway-diagram glyphs; reject value-display labels so the METAR temperature can't
+  bleed into the Toggle Weather / Weather Icao fields; clean icon-button collision names) — see the
+  "PMDG EFB (Coherent debugger)" section of `CLAUDE.md`. All locked by `tools/pmdg-efb-test` (jsdom).
 
 ## Interior section
 

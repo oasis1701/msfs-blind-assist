@@ -67,6 +67,9 @@
     var s = id.replace(/^efb_preferences_/, '').replace(/^efb_dashboard_/, '')
              .replace(/^efb_general_/, '').replace(/^opt_/, '').replace(/^groundops_/, '')
              .replace(/^efb_/, '').replace(/^wb_/, '').replace(/_/g, ' ').trim();
+    // The screen reader already announces the "button" role — a trailing "Button"/"Btn"
+    // word in the id (e.g. "weather search button") is redundant clutter, so drop it.
+    s = s.replace(/\s*\b(button|btn)\b\s*$/i, '').trim();
     if (!s) return '';
     return s.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   };
@@ -135,8 +138,19 @@
   A._rowLabel = function (el) {
     var p = el.parentElement, hops = 0;
     while (p && hops < 4) {
-      var lblEl = p.querySelector ? p.querySelector('.opt-label, .opt-output-label, .groundops_ui_label, .field-label, .input-label, label') : null;
-      if (lblEl && lblEl !== el && !lblEl.contains(el)) { var lt = A.txt(lblEl); if (lt && lt.length < 60) return lt; }
+      var cands = p.querySelectorAll ? p.querySelectorAll('.opt-label, .opt-output-label, .groundops_ui_label, .field-label, .input-label, label') : [];
+      for (var i = 0; i < cands.length; i++) {
+        var lblEl = cands[i];
+        if (lblEl === el || lblEl.contains(el)) continue;
+        // Skip value-DISPLAY labels: the weather widget renders Temp/Wind/Dewpoint/QNH as
+        // <label class="pmdg_measurement ...">28</label> (a value, not a field label). Without
+        // this the "Toggle Weather" checkbox + "Weather Icao" field borrowed the temperature.
+        var lc = (typeof lblEl.className === 'string') ? lblEl.className : '';
+        if (lc.indexOf('pmdg_measurement') >= 0 || lc.indexOf('output-unit') >= 0) continue;
+        var lt = A.txt(lblEl);
+        // A real field label contains letters; a bare number ("28" / "1021" / "020/4") is a value.
+        if (lt && lt.length < 60 && /[A-Za-z]/.test(lt)) return lt;
+      }
       p = p.parentElement; hops++;
     }
     return '';
@@ -251,6 +265,11 @@
         // text in children never double-counts; the leaf bearing the text emits once.
         var own = A.ownText(el);
         if (!own || own.length === 0 || own.length > 400) continue;
+        // Single-character standalone text is a decorative graphic glyph, never real EFB content
+        // (e.g. the Take-Off page runway-designator diagram renders "35R"/"17L" as per-character
+        // nodes "3","5","R","1","7","L"). Skip them BEFORE the same-row merge so "R" + "1" can't
+        // merge into "R 1". Real values/units live in labeled fields or .input-unit spans.
+        if (own.replace(/\s+/g, '').length <= 1) continue;
         if (el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
         // unit adornment spans (.input-unit "ft"/"kg", .output-unit "kt") belong WITH their
         // field, not as standalone text — skip them here (append-to-field is a polish item).
@@ -303,6 +322,7 @@
             for (var t = 0; t < textItems.length; t++) {
               var ti = textItems[t];
               if (ti._consumed || ti._top === null || ti._left === null) continue;
+              if (!/[A-Za-z]/.test(ti.label || '')) continue;    // a field label has letters, not a bare value
               if (Math.abs(ti._top - ctop) > 14) continue;       // same row
               if (ti._left > cleft + 4) continue;                // label is to the left
               var dx = cleft - ti._left;
@@ -314,6 +334,7 @@
               for (var t2 = 0; t2 < textItems.length; t2++) {
                 var ai = textItems[t2];
                 if (ai._consumed || ai._top === null || ai._left === null) continue;
+                if (!/[A-Za-z]/.test(ai.label || '')) continue;  // a field label has letters, not a bare value
                 var dy = ctop - ai._top;
                 if (dy <= 0 || dy > 40) continue;                // just above
                 if (Math.abs(ai._left - cleft) > 30) continue;   // left-aligned
@@ -346,6 +367,11 @@
       }
       if (type === 'progressbar') item.value = el.getAttribute('aria-valuenow') || A.txt(el);
       if (el.disabled || (el.getAttribute && el.getAttribute('aria-disabled') === 'true')) item.disabled = true;
+      // Drop a button with NO discernible name (no text, no fa-icon, no title/id/aria, no row-pair).
+      // After a route/weather load the Dashboard map sprouts unlabeled overlay/control buttons that
+      // the leaflet-marker-icon skip misses; an unnamed button reads as "(button)" and is useless to
+      // a screen reader. A genuinely useful control resolves a label via one of the above sources.
+      if (type === 'button' && !item.label && !item.pair) continue;
       out.push(item);
     }
     // Drop standalone text that duplicates a control's label, and UPGRADE a weak id-derived
@@ -382,6 +408,12 @@
       if ((btnCount[norm(bb.label)] || 0) < 2) continue;
       var q = A.idToLabel(bb._id);
       if (!q) continue;
+      // Two icon-only buttons collide on a generic glyph word (e.g. after a weather load BOTH the
+      // status-bar refresh and the weather-search button show fa "Refresh"). The id-derived name is
+      // self-descriptive, so USE IT as the label ("Weather Search" / "Statusbar Restart") rather than
+      // the clunky "Weather Search Button: Refresh". A button with real visible TEXT keeps the
+      // qualifier prefix instead (W&B "Pax Level: Randomize" stays distinct + meaningful).
+      if (bb.src === 'fa-icon') { if (norm(q) !== norm(bb.label)) { bb.label = q; bb.src = 'id'; } continue; }
       q = q.replace(new RegExp('\\b' + bb.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i'), '').replace(/\s+/g, ' ').trim();
       if (q && norm(q) !== norm(bb.label)) bb.pair = q;
     }
