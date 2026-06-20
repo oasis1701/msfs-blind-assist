@@ -873,8 +873,27 @@ public partial class MainForm : Form
         }
 
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
-        // This lets each aircraft handle complex variables before generic processing
-        bool wasProcessedByAircraft = currentAircraft!.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        // This lets each aircraft handle complex variables before generic processing.
+        //
+        // HS787 monitor-manager mute: the HS787 auto-announces ~100 of its vars from inside
+        // ProcessSimVarUpdate (which returns true and bypasses the generic disabled-monitor gate
+        // below), so a plain gate would never mute them. ProcessSimVarUpdate uses only the
+        // suppressible announcer.Announce(...) for those (its AnnounceImmediate calls are all
+        // hotkey readouts), so suppress the announcer just for the muted var's processing — the
+        // per-branch state/baseline updates still run, only the speech is dropped.
+        bool hs787Muted = currentAircraft!.AircraftCode == "HS_787" &&
+            Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+        bool prevSuppressed = announcer.Suppressed;
+        if (hs787Muted) announcer.Suppressed = true;
+        bool wasProcessedByAircraft;
+        try
+        {
+            wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        }
+        finally
+        {
+            if (hs787Muted) announcer.Suppressed = prevSuppressed;
+        }
         if (wasProcessedByAircraft)
         {
             // Update window title if flight phase changed (for aircraft that track flight phases)
