@@ -8,9 +8,8 @@ namespace MSFSBlindAssist.Forms.HS787;
 
 /// <summary>
 /// Accessible FMC display for the HorizonSim 787-9.
-/// Screen data is pushed by the JS bridge running inside MSFS (via EFBBridgeServer on port 19778).
-/// LSK and page commands are sent back to the sim via the same bridge server.
-/// Text input is sent as individual H-event key presses (H:AS01B_FMC_1_BTN_*).
+/// Screen data is read from the WT Boeing CDU over the Coherent debugger by
+/// CoherentHS787CduClient (HSB789_MFD_3); LSK / page / key commands are driven back the same way.
 /// </summary>
 public partial class HS787FMCForm : Form
 {
@@ -20,7 +19,7 @@ public partial class HS787FMCForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private readonly EFBBridgeServer _bridgeServer;
+    private readonly CoherentHS787CduClient _cdu;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
 
@@ -38,9 +37,12 @@ public partial class HS787FMCForm : Form
     private IntPtr _previousWindow = IntPtr.Zero;
     private System.Windows.Forms.Timer _statusTimer = null!;
 
-    public HS787FMCForm(EFBBridgeServer bridgeServer, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    public HS787FMCForm(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        _bridgeServer = bridgeServer;
+        // The CDU is now read + driven over the Coherent debugger (HSB789_MFD_3) — no HTTP
+        // bridge, no injected hs787-mfd-bridge.js, no HTML patching. The form owns the client.
+        _cdu = new CoherentHS787CduClient();
+        _cdu.Start();
         _simConnect = simConnect;
         _announcer = announcer;
 
@@ -56,7 +58,7 @@ public partial class HS787FMCForm : Form
 
         // Subscribe once for the form's lifetime — never unsubscribe on hide.
         // Only unsubscribe in Dispose() so the display stays live across hide/show cycles.
-        _bridgeServer.StateUpdated += BridgeServer_StateUpdated;
+        _cdu.StateUpdated += BridgeServer_StateUpdated;
     }
 
     // ------------------------------------------------------------------
@@ -102,41 +104,19 @@ public partial class HS787FMCForm : Form
 
     private void BridgeServer_StateUpdated(object? sender, EFBStateUpdateEventArgs e)
     {
-        if (e.Type == "mfd_connected" || e.Type == "heartbeat")
-        {
-            _mfdConnected = true;
-            if (IsHandleCreated)
-                BeginInvoke(UpdateConnectionStatus);
-            return;
-        }
-
+        // CoherentHS787CduClient raises only cdu_visible / cdu_not_visible / fmc_screen.
+        // (Connection state is driven by _cdu.IsBridgeConnected in UpdateConnectionStatus.)
         if (e.Type == "cdu_visible")
         {
             _cduVisible = true;
-            if (IsHandleCreated)
-                BeginInvoke(UpdateConnectionStatus);
+            SafeBeginInvoke(UpdateConnectionStatus);
             return;
         }
 
         if (e.Type == "cdu_not_visible")
         {
             _cduVisible = false;
-            if (IsHandleCreated)
-                BeginInvoke(UpdateConnectionStatus);
-            return;
-        }
-
-        if (e.Type == "eval_result")
-        {
-            string evalOut = e.Data.TryGetValue("result", out string? r) ? r
-                           : e.Data.TryGetValue("error", out string? err) ? "ERROR: " + err
-                           : "(no result)";
-            System.Diagnostics.Debug.WriteLine($"[HS787 MFD] eval_result: {evalOut}");
-            // Announce so the user can relay live DOM-probe output during
-            // bridge debugging. Truncated — full text is also retrievable via
-            // the bridge server's /mfd-eval-result endpoint.
-            string shown = evalOut.Length > 300 ? evalOut.Substring(0, 300) + "…" : evalOut;
-            _announcer.Announce($"Eval result: {shown}");
+            SafeBeginInvoke(UpdateConnectionStatus);
             return;
         }
 
@@ -154,8 +134,16 @@ public partial class HS787FMCForm : Form
 
         _rows = newRows;
 
-        if (IsHandleCreated)
-            BeginInvoke(UpdateDisplay);
+        SafeBeginInvoke(UpdateDisplay);
+    }
+
+    // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
+    // The bare IsHandleCreated check alone races a concurrent handle-destroy (aircraft swap /
+    // window close); without the guard the throw would be unobserved on the marshalling thread.
+    private void SafeBeginInvoke(Action action)
+    {
+        try { if (IsHandleCreated) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
     }
 
     // ------------------------------------------------------------------
@@ -164,22 +152,14 @@ public partial class HS787FMCForm : Form
 
     private void UpdateConnectionStatus()
     {
+        // Drive the status from the live Coherent-debugger connection (the client keeps
+        // IsBridgeConnected current via its scrape window) — no more HTTP-bridge stage var.
+        _mfdConnected = _cdu.IsBridgeConnected;
         string desired;
         if (!_mfdConnected)
-        {
-            int stage = (_simConnect.CurrentAircraft as HorizonSim787Definition)?.BridgeStage ?? 0;
-            string stageInfo = stage switch
-            {
-                0 => "Script: not executing",
-                1 => "Script: loaded, connecting...",
-                2 => "Script: loaded, fetch blocked",
-                3 => "Script: connected (race?)",
-                _ => $"Script: stage {stage}"
-            };
-            desired = $"FMC Bridge Not Connected [{stageInfo}]";
-        }
+            desired = "FMC not connected — load the HorizonSim 787 and power its displays.";
         else if (!_cduVisible)
-            desired = "FMC Bridge Connected — open CDU view on an MFD screen";
+            desired = "FMC connected — show the CDU on an MFD screen (it renders on MFD 3 by default).";
         else
             desired = "FMC Connected";
 
@@ -303,13 +283,13 @@ public partial class HS787FMCForm : Form
     // ------------------------------------------------------------------
 
     private void SendBridgeCommand(string command) =>
-        _bridgeServer.EnqueueMfdCommand(command);
+        _cdu.EnqueueMfdCommand(command);
 
     private void SendLskLeft(int n) =>
-        _bridgeServer.EnqueueMfdCommand($"lsk_L{n}");
+        _cdu.EnqueueMfdCommand($"lsk_L{n}");
 
     private void SendLskRight(int n) =>
-        _bridgeServer.EnqueueMfdCommand($"lsk_R{n}");
+        _cdu.EnqueueMfdCommand($"lsk_R{n}");
 
     private void ClearOrDelete()
     {
@@ -329,7 +309,7 @@ public partial class HS787FMCForm : Form
     // via the MFD bridge. Routes to /commands/mfd so the EFB bridge doesn't consume it.
     private void SendHKey(string key)
     {
-        _bridgeServer.EnqueueMfdCommand($"type_key:{key}");
+        _cdu.EnqueueMfdCommand($"type_key:{key}");
     }
 
     // ------------------------------------------------------------------
@@ -338,19 +318,6 @@ public partial class HS787FMCForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
-        // Ctrl+Shift+R — hot-reload the MFD bridge JavaScript from disk without
-        // restarting the sim. Reads the current hs787-mfd-bridge.js from the
-        // output Resources folder, tears down the previous instance's timers and
-        // the double-load guard, then evals the fresh script inside the running
-        // MFD. Mirrors PMDG777EFBForm's hot-reload. Checked first so it never
-        // collides with the LSK/page chords below.
-        if (e.Control && e.Shift && e.KeyCode == Keys.R)
-        {
-            HotReloadBridgeJs();
-            e.Handled = true; e.SuppressKeyPress = true;
-            return;
-        }
-
         // Line-select keys — two layouts, switchable in FMC Settings:
         //   Default: Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
         //   Alternate: F1..F6 = L1..L6, F7..F12 = R1..R6
@@ -498,68 +465,6 @@ public partial class HS787FMCForm : Form
         }
     }
 
-    // ------------------------------------------------------------------
-    // Hot-reload — re-eval the MFD bridge JS without a sim restart
-    // ------------------------------------------------------------------
-
-    private void HotReloadBridgeJs()
-    {
-        string path = System.IO.Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Resources", "hs787-mfd-bridge.js");
-        if (!System.IO.File.Exists(path))
-        {
-            _announcer.Announce($"Hot-reload failed: bridge script not found at {path}");
-            return;
-        }
-        string js;
-        try
-        {
-            js = System.IO.File.ReadAllText(path);
-        }
-        catch (Exception ex)
-        {
-            _announcer.Announce($"Hot-reload failed: {ex.Message}");
-            return;
-        }
-
-        // Tear down the previous instance before re-evaluating:
-        //  - clear all four timers (command/screen/heartbeat/reconnect) so the
-        //    old loops don't run alongside the freshly-eval'd ones;
-        //  - reset window._mfd_bridge_loaded = false. CRITICAL: the bridge wraps
-        //    everything in `if (window._mfd_bridge_loaded) { skip } else { ... }`
-        //    (double-load guard for the FS2024 dual script-tag injection). Without
-        //    resetting the flag the re-eval'd script would no-op entirely.
-        const string teardown =
-            "try {" +
-            "  if (typeof _mfd !== 'undefined' && _mfd) {" +
-            "    if (_mfd.commandPollTimer) clearInterval(_mfd.commandPollTimer);" +
-            "    if (_mfd.screenPollTimer) clearInterval(_mfd.screenPollTimer);" +
-            "    if (_mfd.heartbeatTimer) clearInterval(_mfd.heartbeatTimer);" +
-            "    if (_mfd.reconnectTimer) clearInterval(_mfd.reconnectTimer);" +
-            "    console.log('[MFD Bridge] Hot-reload: previous instance torn down');" +
-            "  }" +
-            "  window._mfd_bridge_loaded = false;" +
-            "} catch (e) { console.error('[MFD Bridge] Hot-reload teardown failed:', e); }\n";
-
-        string fullScript = teardown + js;
-
-        // Wrap in indirect eval `(0, eval)("…")` so the script runs in GLOBAL
-        // scope. Direct eval inside handleCommand would create a local `var _mfd`
-        // that never replaces the global one (same rationale as PMDG bridge).
-        // The script is JSON-encoded into a JS string literal for the argument.
-        string jsLiteral = System.Text.Json.JsonSerializer.Serialize(fullScript);
-        string indirectEvalCode = "(0, eval)(" + jsLiteral + ");";
-
-        _bridgeServer.EnqueueMfdCommand("eval_js", new Dictionary<string, string> { ["code"] = indirectEvalCode });
-
-        string versionFromSource = "?";
-        var match = System.Text.RegularExpressions.Regex.Match(
-            js, @"BRIDGE_JS_VERSION:\s*([A-Za-z0-9._\-]+)");
-        if (match.Success) versionFromSource = match.Groups[1].Value;
-
-        _announcer.Announce($"MFD bridge hot-reloaded, {js.Length / 1024} KB, source version {versionFromSource}. " +
-                            "Switch the MFD to a CDU page so it polls commands.");
-    }
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -611,8 +516,7 @@ public partial class HS787FMCForm : Form
 
         // Clear the typing flag and announce on the UI thread so UpdateDisplay can't
         // race between _typingInProgress going false and _previousScratchpad being updated.
-        if (!IsHandleCreated) return;
-        BeginInvoke(() =>
+        SafeBeginInvoke(() =>
         {
             _typingInProgress = false;
             if (!string.IsNullOrWhiteSpace(text))
@@ -638,12 +542,20 @@ public partial class HS787FMCForm : Form
         TopMost = false;
         fmcDisplay.Focus();
         // Re-request screen so the display is populated immediately on each open.
-        _bridgeServer.EnqueueMfdCommand("read_screen");
+        _cdu.EnqueueMfdCommand("read_screen");
     }
 
     // ------------------------------------------------------------------
     // Dispose
     // ------------------------------------------------------------------
+
+    // Only run the CDU scrape poll while the window is visible (the socket + agent stay
+    // warm while hidden, so reopening is instant and commands still work).
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!_disposed) _cdu.SetActive(Visible);
+    }
 
     private bool _disposed;
 
@@ -654,7 +566,8 @@ public partial class HS787FMCForm : Form
             _disposed = true;
             _statusTimer.Stop();
             _statusTimer.Dispose();
-            _bridgeServer.StateUpdated -= BridgeServer_StateUpdated;
+            _cdu.StateUpdated -= BridgeServer_StateUpdated;
+            _cdu.Dispose();
         }
         base.Dispose(disposing);
     }

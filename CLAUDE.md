@@ -672,74 +672,151 @@ Other #60 findings:
 - Transponder IDENT, VHF SWAP → Off/Idle action combos via the new `Act()` helper (a combo with NO real backing var whose set is fully handled in `HandleUIVariableSet`; OnRequest so a non-existent L-var isn't monitored).
 **Enabler:** MainForm's SimVar-combo set path now calls `currentAircraft.HandleUIVariableSet(...)` FIRST (mirroring the LVar-combo path) — so a combo whose STATE is a SimVar but whose CONTROL is a K-event works; the A320 light cases return false and fall through unchanged. **KEPT as buttons:** the FCU/AP push-pull (`A32NX.FCU_*_PUSH/PULL`, Event type, hit the final button branch). **EDIT FIELDS:** any `_SET` key (squawk `TRANSPONDER_CODE_SET`, COM `COM_STANDBY_FREQUENCY_SET:n`, temps, manual pressurization) renders a numeric/text input via MainForm's `varKey.Contains("_SET")` branch. All conversions live-verified (engine valve 1, crossfeed 46 actuated; door controls have since been removed — see the DEFERRED door note).
 
-### HorizonSim 787-9 FMC Bridge
+### HorizonSim 787-9 CDU (Coherent debugger — the HTTP bridge was RETIRED 2026-06-19; the EFB was REMOVED 2026-06)
 
-The WT Boeing FMC (CDU screen) is made accessible via a JavaScript bridge injected into the HS787 MFD and EFB HTML. Port 19778. **Status: working in both FS2020 and FS2024** as of BridgeVersion 18 — but the two sims use different installation architectures (see below). Both MFD and EFB bridges share the same HTTP server with namespaced command channels (`/commands/mfd`, `/commands/efb`).
+The WT Boeing FMC (CDU) is read AND driven over the MSFS Coherent GT remote
+debugger (`http://127.0.0.1:19999`), exactly like the A380 MFD/flyPad. **There is NO HTTP bridge,
+NO injected JS in the aircraft package, and NO `HS787ModPackageManager` HTML patching anymore** —
+all of that (`EFBBridgeServer` :19778, `hs787-mfd-bridge.js`, `hs787-efb-bridge.js`, the FS2020
+override package / FS2024 in-place patching, `HS787CommunityFolderForm`) was deleted. The user no
+longer installs a Community-folder mod for the 787; nothing needs a sim restart.
 
-**Two installation architectures — picked at runtime by `HS787ModPackageManager.IsFs2024()`:**
+**CDU — `SimConnect/CoherentHS787CduClient.cs` + `Resources/coherent-hs787-cdu-agent.js`.** The
+client resolves the `HSB789_MFD_3` view by title, installs the agent (`window.__MSFSBA_HS787`,
+ES5), and polls `scrape()` → `{ok, visible, rows[14], scratchpad}`; commands `clickLsk(side,n)` /
+`clickPage(key)` / `typeKey` / `fcuKey` drive it. DOM contract (the legacy bridge's, repackaged):
+`.wt787-cdu` root → `.fmc-row` of `.fmc-letter`; LSKs `.wt787-cdu-lsk-column-{left,right}`; page
+buttons the 16 non-LSK `.wt787-cdu-button` in DOM order; type/FCU keys via `H:AS01B_FMC_1_*`. The
+client raises the SAME `StateUpdated` events (`cdu_visible` / `cdu_not_visible` / `fmc_screen`) and
+`EnqueueMfdCommand` surface `HS787FMCForm` already consumed, so the form was a near-drop-in swap;
+its status is driven by the live Coherent connection. Opened with Shift+M.
 
-| | FS2020 | FS2024 |
-|---|---|---|
-| Approach | Override package | **In-place patching** of `horizonsim-aircraft-787-9` |
-| Package created | `zzz-hs787-accessibility/` in Community | None (the directory is deleted if found, leftover from older versions) |
-| Script tag style | `<script src="hs787-mfd-bridge.js">` | `<script type="text/html" import-script="/Pages/.../hs787-mfd-bridge.js">` (matches original instrument's loader style) |
-| Originals safe-keeping | N/A (originals never modified) | `*.msfsba_backup` files saved alongside originals |
-| Version tracking | `bridge-version.txt` inside override package | `msfsba-bridge-version.txt` inside `horizonsim-aircraft-787-9/` |
-| Layout.json | Generated for override package | `horizonsim-aircraft-787-9/layout.json` patched in place (sizes updated for 4 HTMLs, 2 new entries for bridge JS); `layout.json.msfsba_backup` saved |
-| Detection (`IsFs2024`) | delegates to `EFBModPackageManager.IsPathFromFs2024()` → returns false | delegates to `EFBModPackageManager.IsPathFromFs2024()` → returns true |
+**EFB — REMOVED entirely (2026-06).** The HS787 EFB (`CoherentHS787EfbClient` + `coherent-hs787-efb-agent.js`
++ the FbwEfbForm window) was deleted at the user's request. The WT/HorizonSim 787 EFB's only functional
+pages were Takeoff Performance + Doors (Charts/Data-Load are stubs, no Landing tab), and its perf-page
+**inputs cannot be driven externally**: the `.boeing-efb-text-field-keyboard-input` fields are a custom
+MSFS keyboard mechanism that rejects programmatic value-set AND synthetic keyboard events (live-verified —
+both leave the field empty), and the EFB instance (`document.querySelector('wtb78x-efb').fsInstrument`)
+exposes only computed outputs (`takeoffCalculator.vSpeedData`, runway corrections), not settable wind/OAT
+inputs. COPY FMC DATA / INITIALIZE FLIGHT likewise don't respond to agent clicks. So the EFB couldn't be
+made fully usable and was removed; **Shift+T on the 787 now announces "787 EFB not available."** (FbwEfbForm
+itself stays — it's shared with the FBW A320/A380 flyPad.)
 
-**`EFBModPackageManager.IsPathFromFs2024(path)` — 3-tier detection chain:**
-1. **UserCfg.opt lookup (primary):** reads `%AppData%\Microsoft Flight Simulator 2024\UserCfg.opt` (Steam/standalone) and `%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\UserCfg.opt` (MS Store), parses `InstalledPackagesPath`, compares `InstalledPackagesPath\Community` to the given path (`Path.GetFullPath` + `OrdinalIgnoreCase`). Covers all users who have run the sim at least once, including external-drive installs.
-2. **"Limitless" substring fallback:** catches the MS Store default path when UserCfg.opt doesn't exist yet (sim installed but never launched).
-3. **"Microsoft Flight Simulator 2024" substring fallback:** catches Steam default path (`%AppData%\Microsoft Flight Simulator 2024\Packages\Community`) before UserCfg.opt exists. Safe: FS2020 Steam folder is "Microsoft Flight Simulator" with no year.
+**IRS alignment — `SimConnect/CoherentHS787IrsClient.cs` + `coherent-hs787-irs-agent.js`.** The
+realistic "TIME TO ALIGN" state is exposed by the WT 787 ONLY on the ND/PFD `.time-to-align` DOM
+element (`hidden` class while not aligning, last child div = minutes "--"/"NN"/"7+"); the one IRS
+L-var WT sets (WT_IRS_POS_SET_N) is "position accepted", NOT alignment complete. The client
+connects to `HSB789_PFD` (the element is on MFD_1/2 + PFD; PFD = stable identity), installs the
+agent (`window.__MSFSBA_HS787_IRS`), and calls `poll()` every 500 ms; the agent scrapes the element
++ the IRS knob/pos L-vars and WRITES the synthetic L-vars `MSFSBA_IRS_ALIGN_STATE` (0 Off / 1
+Aligning / 2 Aligned) + `_MINUTES`, which the def reads via the normal SimVar path (so
+`HS787_IRS_Align` / `_AlignMinutes` surface in the IRS panel + announce on completion). **A Coherent
+`Runtime.evaluate` CAN write L-vars** (verified: read back as 2.0 via SimConnect/MobiFlight). The
+state machine is latch-free (`visible→Aligning`, `!knobOn→Off`, `posSet→Aligned` since the panel
+hides on completion, else `Aligning`) and handles a ready-to-fly already-aligned start. The monitor
+runs continuously while the HS787 is loaded (started in InitializeUI + on swap-to-HS787) so it
+catches the alignment transition. Live-verified the full Off→Aligning→countdown→Aligned cycle.
 
-`HS787ModPackageManager.IsFs2024()` delegates to this helper. `GetManifestJson()` delegates to `IsFs2024()`. `FindAllCommunityFolders()` and `FindCommunityFolderPath()` also include the Steam FS2024 default path as a discovery fallback — this benefits both the HS787 bridge and the PMDG EFB bridge. When auto-detection finds no community folders at all, `CheckAndOfferHS787ModPackage()` shows `HS787CommunityFolderForm` (Browse + sim-version combo) and persists the result to `UserSettings.Hs787CommunityFolderOverride` / `Hs787SimVersionOverride`.
+**CDU navigation gotcha (the bug that hid for a while):** the WT `boeing-mfd-button` component (LSK
+buttons AND the page-key buttons) reacts to MOUSE events, so `clickElement` must dispatch the full
+`pointerdown/mousedown/pointerup/mouseup/click` sequence — pointer+click alone fires LSKs but does
+NOT navigate the page keys (INIT REF / RTE / LEGS / DEP ARR / …), so the CDU was stuck on one page.
+All ~12 CDU pages now navigate + scrape clean (live-verified).
 
-**Adding a bridge for a new aircraft — what's shared vs. per-aircraft:**
+All clients are modeled on `CoherentDebuggerClient` (one inspector socket per page, resolve by title
+every reconnect, agent auto-reinstall on a dropped connection). The live HS787 clients use DISTINCT
+views — CDU `HSB789_MFD_3`, IRS `HSB789_PFD`, CAS/EICAS `HSB789_MFD_1` (the synoptic display window
+uses `HSB789_MFD_2`, transient) — so the one-socket-per-page rule is never violated. **CSPROJ gotcha:
+each `Resources\coherent-hs787-*-agent.js` needs its OWN explicit
+`<None Update=… CopyToOutputDirectory>` entry — the build does NOT wildcard-copy `Resources\`.** The
+alt-intervention fires `AS01B_FMC_1_ALTITUDE_INTERVENTION` via MobiFlight. Driver: `tools/hs787-cdu.ps1`.
 
-The community folder detection layer in `EFBModPackageManager` is shared infrastructure. A new aircraft mod manager gets the following for free just by delegating to it:
-- `EFBModPackageManager.IsPathFromFs2024(communityFolderPath)` — correct FS2024 detection for MS Store, Steam, and external-drive installs
-- `EFBModPackageManager.FindAllCommunityFolders()` — discovers community folders for both sims via UserCfg.opt + hardcoded fallbacks (already includes Steam FS2024)
-- `EFBModPackageManager.FindCommunityFolderPath()` — single-path variant, same coverage
+**Community-folder bridge fully removed (2026-06-19):** the FS2024 in-place patch (4 patched HTML +
+their `.msfsba_backup`, the 2 injected bridge JS, `layout.json` + backup, `msfsba-bridge-version.txt`)
+and the FS2020 `zzz-hs787-accessibility` override package are gone — `horizonsim-aircraft-787-9` is
+restored to pristine. The Coherent transport needs NO Community mod on either sim and no sim restart.
 
-The manual fallback layer is **per-aircraft** and must be added separately for each new aircraft:
-- `UserSettings` needs its own override fields (e.g. `Xyz123CommunityFolderOverride` / `Xyz123SimVersionOverride`)
-- A new dialog (copy-adapt `HS787CommunityFolderForm`) or generalize it into a shared `CommunityFolderPickerForm` if three or more aircraft need it
-- `MainForm` needs its own `BuildXyz123FolderList()` / `SaveXyz123FolderOverride()` helpers and an updated `CheckAndOfferXyz123ModPackage()` that uses them
+**Ctrl+M Monitor Manager — and the mute-architecture GOTCHA (2026-06).** `HS787MonitorManagerForm`
+mirrors the Fenix/A380 managers: a CheckedListBox of every `Continuous+IsAnnounced` var from the
+def, persisting unchecked keys to `UserSettings.HS787DisabledMonitorVariables`; the def's
+`HandleHotkeyAction` routes `HotkeyAction.MonitorManager` → `MainForm.ShowHS787MonitorManagerDialog`,
+and the form is disposed on aircraft swap like the others. **⚠️ The gotcha (a real trap for any
+custom-announce aircraft): the Fenix/A380 managers rely on the generic disabled-set gate in
+`MainForm.OnSimVarUpdated`, but that gate only runs when `ProcessSimVarUpdate` returns FALSE. The
+HS787 auto-announces ~100 of its ~107 vars from INSIDE `ProcessSimVarUpdate` (which returns true and
+RETURNS from OnSimVarUpdated before the gate), so a plain gate mutes almost nothing.** The working
+fix: in `OnSimVarUpdated`, when the updating var is in `HS787DisabledMonitorVariables`, wrap the
+`ProcessSimVarUpdate` call in `announcer.Suppressed` (try/finally restore). The def's
+`ProcessSimVarUpdate` auto-announces ONLY via the suppressible `announcer.Announce(...)` (its
+`AnnounceImmediate` calls are all hotkey readouts, which stay audible on demand), so the per-branch
+state/baseline updates still run and only the speech is dropped — no change to the ~100 announce
+sites. The generic gate is kept too, for the handful of vars that fall through (`HS787_FlightDirector`,
+`HS787_IRS_Align`). **If you ever add a monitor manager to another custom-`ProcessSimVarUpdate`
+aircraft, you MUST do the same Suppressed-wrap — the gate alone is a silent no-op for it.**
 
-**When to generalize:** Two aircraft needed this pattern → YAGNI says duplicate. If a third aircraft needs the same treatment, that's the right moment to extract a shared `CommunityFolderPickerForm` and a generic `UserSettings` override mechanism.
+**Writable controls beyond the panels (live-verified, 2026-06).** Three controls the 787 provides
+that MSFSBA now drives: **Flight Director** (`HS787_FlightDirector`, SimVar `AUTOPILOT FLIGHT
+DIRECTOR ACTIVE`, Off/On combo) fires the relative `TOGGLE_FLIGHT_DIRECTOR` only when desired≠current
+— with a 700 ms intent-tracking guard (`_lastFdSetTicks`/`_lastFdDesired`) so a rapid combo
+re-select inside the monitor-batch cache lag can't double-fire / land inverted; **Transponder IDENT**
+(`HS787_XpndrIdent`, momentary RenderAsButton) fires `XPNDR_IDENT_ON` on press; **A/P Disconnect** (a
+plain button in the Ctrl+P Autopilot window) fires `AUTOPILOT_OFF` (distinct from the A/P toggle,
+which would re-engage). Squawk stays settable via `TRANSPONDER_CODE_SET` (`TRANSPONDER CODE:1`,
+Bco16) on the existing MainForm `_SET` path. The IDENT event is unknown to the MCP `trigger_event`
+but MSFSBA's `SendEvent` maps it by raw name (the A380 IDENT precedent).
 
-**Why FS2024 needs a different approach (do NOT revert to override-package on FS2024):**
-1. **FS2024 VFS doesn't honor community-on-community overrides under `html_ui/Pages/VCockpit/Instruments/Airliners/`** — the Airliners namespace is protected. Modified HTML in an override package is silently dropped (verified: `document.documentElement.outerHTML.indexOf('hs787-mfd-bridge')` returns `-1` in the loaded MFD webview). PMDG EFB's same-architecture mod (`zzz-pmdg-efb-accessibility`) DOES work on FS2024 because it targets `PMDGTablet/`, a non-Airliners path. The `globally_overriden_base_sim_files` manifest field (panel-raas-style) is base-sim-files-only and won't accept community-package paths.
-2. **`<script src>` doesn't execute inside template-loaded HTML on Coherent GT 2.x.** The original HSB789_MFD.RR.html loads MFD789.RR.js via `<script type="text/html" import-script="...">`, and FS2024's Coherent only honors that style inside templates. FS2020's Coherent GT 1.x was lenient and ran both. Our injection must match the original style.
+**EICAS window (Alt+E) = a full EICAS, not just alerts (2026-06).** Alt+E opens `HS787EicasForm` (a
+navigable read-only window, arrow keys + Escape, 1 s caret-preserving refresh) showing what the real
+EICAS shows: per-engine N1 / EGT / N2 / oil pressure+temp, total fuel, gross weight, TAT, then the
+live crew alerts (warnings/cautions/advisories). Engine values come from cache-only `HS787_Eicas*`
+SimVars (`TURB ENG CORRECTED N1/N2:n` ratios, `ENG EXHAUST GAS TEMPERATURE:n` celsius, oil, fuel kg,
+`TOTAL WEIGHT` kg) — registered Continuous+IsAnnounced but listed in the cache-only suppress switch so
+they never auto-announce; `MainForm.BuildHs787EicasText` reads them via `GetCachedVariableValue` + the
+CAS monitor's `GetAlertsText()`. The same vars feed the **"Engine Data"** Flight Data sub-panel, which
+previously listed the entire `WT_FADEC_*` family — **all of which are DEAD on the HS787 (every one
+reads 0 live, climb + cruise, with cost index entered)**, so that family was dropped from the panel.
 
-**Key components:**
-- **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — shared HttpListener (port 19778 for 787, 19777 for PMDG). `/ping`, `/state` (POST), `/commands/mfd`, `/commands/efb` (GET). `IsBridgeConnected` checks heartbeat within 15s.
-- **`HS787ModPackageManager`** (`Patching/HS787ModPackageManager.cs`) — installs/updates/removes. Branches `IsFs2024()` → `InstallFs2024` / FS2020 path. Reads original HS787 HTML from `horizonsim-aircraft-787-9` (never hardcoded). Auto-updates on app start via `BridgeVersion` constant. Bump `BridgeVersion` whenever bridge JS or script tags change.
-  - FS2024-specific helpers: `InstallFs2024`, `RemoveFs2024`, `IsInstalledFs2024` (patch-marker check on HSB789_MFD.RR.html), `PatchHtmlInPlace` (re-derives from backup so re-patches don't stack), `UpdateHorizonsimLayoutJson` (slash-agnostic match — important: horizonsim's layout.json uses forward slashes but auto-detection from the first entry can misfire on top-level files like locPaks; `Canonical()` matches regardless of separator).
-- **`hs787-mfd-bridge.js`** (`Resources/`) — reads WT Boeing FMC CDU rows from DOM (`.fmc-row`, `.fmc-letter`), pushes screen state, polls commands. Double-load guard (`window._mfd_bridge_loaded`).
-- **`hs787-efb-bridge.js`** (`Resources/`) — reads Boeing EFB buttons and page text. Same guard, same server, same port.
-- **`HS787FMCForm`** (`Forms/HS787/HS787FMCForm.cs`) — displays CDU rows, scratchpad input, page buttons. `_statusTimer` (1.5s) drives `UpdateConnectionStatus`. Status label shows bridge diagnostic stage when not connected.
-- **`HorizonSim787Definition`** (`Aircraft/HorizonSim787Definition.cs`) — registers `HS787_BridgeStage` (`L:MSFSBA_787_STAGE`, Continuous, IsAnnounced=true). `BridgeStage` property updated silently in `ProcessSimVarUpdate`.
+**Empty Flight Data panels + EFIS "Baro 0" + external-knob announce (2026-06 fixes).** (1) The 7 Flight
+Data sub-panels (VNAV / LNAV and Progress / Glidepath / Engine Data / Flight Control Inputs / Timers /
+Other Data) rendered COMPLETELY EMPTY because they were in `GetPanelStructure` + `GetPanelDisplayVariables`
+but NOT in `BuildPanelControls` — MainForm's panel-build `return`s early for any panel not in
+`GetPanelControls()` (MainForm.cs ~5538). Added them as empty control lists (the FMC-Status pattern) so
+they render their display vars. **When adding a display-only panel, it MUST have a `BuildPanelControls`
+entry (even empty) or it renders nothing.** (2) The EFIS "Baro Setting" read the dead L:var `XMLVAR_Baro`
+(constant 0); re-pointed to `KOHLSMAN SETTING HG` + a `TryGetDisplayOverride` formats it `"1013 hPa (29.92
+inHg)"` (both units). (3) MCP selected-value changes (heading/altitude/V-S/speed) were cache-only/silent;
+now `ProcessSimVarUpdate` announces them on change (silent first-value baseline, deadbands; speed gated to
+manual mode) so an EXTERNAL hardware-knob turn is spoken — MSFSBA's own set dialogs fire the value
+silently via events, so this is the single confirmation for both. (4) Combo-box changes no longer
+double-announce on the 787: the `_uiSetEcho` suppression (and the Ctrl+M mute) now also apply at the
+Step-2.5 `ProcessSimVarUpdate` wrap, since the 787 announces from there (bypassing the generic gates).
 
-**SimVar diagnostic (`L:MSFSBA_787_STAGE`):**
-Written by `hs787-mfd-bridge.js` via `SimVar.SetSimVarValue`; read by C# via SimConnect continuous monitoring. Displayed in `HS787FMCForm` status label when bridge is not connected.
-- **0** — L-var never written: script did not execute. Most commonly means the patched HTML wasn't actually loaded by the sim (not the script being sandboxed — verify by inspecting the DOM via Coherent debugger at `http://127.0.0.1:19999`).
-- **1** — Script executed: `window._mfd_bridge_loaded = true` ran and `SimVar` is available.
-- **2** — Fetch failed: `tryConnect` threw (very rare; HTTP to localhost works in both Coherent versions).
-- **3** — Connected: HTTP fetch to `127.0.0.1:19778` succeeded (should match `IsBridgeConnected = true`).
-
-**Caveats for maintainers:**
-- A HorizonSim update to `horizonsim-aircraft-787-9` overwrites our in-place patches and backup files. On the next MSFSBA startup the patch marker is gone → MSFSBA re-runs the FS2024 install path, takes fresh backups from the new originals, re-applies the patch. Idempotent.
-- Do not run MSFSBA while MSFS is running — file locks prevent patching.
-- The FS2020 override-package path works because Coherent GT 1.x runs `<script src>` and FS2020's VFS uses alphabetical priority (`zzz-` prefix wins). Do not "modernize" the FS2020 path to in-place patching — pointless invasion of the user's HS787 install when the override mechanism works there.
-- The `BackupSuffix = ".msfsba_backup"` constant is used for HTML files AND `layout.json`. The horizonsim package may also contain a `layout.json.bak` from other tools — don't conflate; use our suffix specifically.
-- Injection paths in import-script tags are absolute from html_ui root (`/Pages/VCockpit/Instruments/Airliners/HSB787_9/MFD/hs787-mfd-bridge.js`) — relative paths don't resolve inside template-loaded HTML.
-
-**Communication flow:**
-- JS → C#: `POST /state` with `{type, data}` — types: `mfd_connected`, `heartbeat`, `fmc_screen`, `cdu_visible`, `cdu_not_visible`, `efb_connected`, `efb_screen`
-- C# → JS: `GET /commands/mfd` or `/commands/efb` polled every 400ms, returns JSON array of `{command, payload}`
-- Bridge retries every 5s on failure; heartbeat every 5s when connected
+**Full panel-by-panel READ + WRITE audit (2026-06, live).** Every HS787 var was read live and every
+settable control write-tested against the running aircraft.
+- **READ verdict: the stock SimVars WORK.** An earlier audit run flagged ~18 "dead" engine/hydraulic/
+  pressurization readouts, but that was a **fuel-exhaustion FAILURE state** (the EICAS showed ENG FAIL /
+  HYD PRESS / FUEL PRESS / AC-BUS cautions + FUEL QTY 00). On a HEALTHY jet they all read real values
+  (N1 20% idle, EGT 494 C, oil 78 psi / 108 C, **HYDRAULIC PRESSURE:1 = 4372 psi**, fuel 12.3 t, GW
+  181 t) — so the EICAS window + Engine Data / Hydraulics / Pressurization panels are correct off the
+  SimVars; **do NOT rip them out for a DOM scrape.** The only genuinely-wrong stock var found is
+  `ENG FUEL FLOW PPH` (reads ~0.15, unused). Lesson: before concluding a 787 readout is "dead", confirm
+  the aircraft isn't in a failure state — the WT 787 reflects failures faithfully in the SimVars.
+- **WRITE fixes (live-verified):** **APU generators** — the per-index `APU_GEN1/2_SWITCH_SET` are no-ops;
+  the un-indexed `APU_GENERATOR_SWITCH_SET` drives BOTH ganged gens (`APU GENERATOR SWITCH:1` AND `:2`).
+  **Strobe** — `STROBE_LIGHTS_SET` is a no-op on the Asobo-template lighting; `STROBES_SET` works (A380
+  ext-light precedent). **Autobrake** — `SET_AUTOBRAKE_CONTROL` is a no-op AND `AUTOBRAKE CONTROL SWITCH
+  POSITION` is stuck at 0; the real read var is `AUTO BRAKE SWITCH CB` (0..6 = Off/RTO/1/2/3/**4**/MAX,
+  7 detents) and the write is stepping `INCREASE/DECREASE_AUTOBRAKE_CONTROL` to target (a
+  self-draining `_autobrakeSuppressCount` = |target−current| swallows the intermediate-detent
+  callouts — a COUNT, not an exact-value latch, so it can't permanently mute future callouts if the
+  selector never lands exactly on target). **Logo** — wasn't broken;
+  `TOGGLE_LOGO_LIGHTS` works but `LIGHT LOGO` lags a frame, so the read var is now `LIGHT LOGO ON`.
+- **Not actually broken (don't "fix"):** Generators / engine+APU bleed / refuel+GPU "revert" only because
+  the **engines are running** (a running engine forces its gen/bleed on; refuel won't connect) — correct
+  behaviour, like A380 probe-heat; re-test engine-off. Light Master / Fwd-cooling / HUD-auto-brightness
+  are forced-auto computed outputs (announce reflects the true state). Fuel cutoffs / engine start / ext
+  power / AP-engage ride on **B: InputEvents** the SimConnect MCP can't fire (so untestable from outside)
+  — MSFSBA drives them via its InputEvent map; verify in the cockpit (AP modes need flight).
 
 ### FlyByWire Accessible flyPad EFB (A320 + A380 — ONE shared flyPad)
 
@@ -853,7 +930,6 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 
 **When to read detailed docs:**
 - **Debugging the A380/A32NX live (Coherent debugger, probes, scrapers, crash diagnosis)** → [Developer Tooling Guide](docs/tooling.md)
-- **Working on the HS787 FMC bridge (FS2024 compatibility)** → [HS787 Bridge Debugging](docs/hs787-bridge-debugging.md)
 - **Adding complex features or workflows** → [Adding Features](docs/adding-features.md), [Quick Reference](docs/QUICK-REFERENCE.md)
 - **Implementing new aircraft** → [Architecture](docs/architecture.md), [Adding Features](docs/adding-features.md)
 - **Working with FCU/MCP/display systems** → [Architecture](docs/architecture.md)
