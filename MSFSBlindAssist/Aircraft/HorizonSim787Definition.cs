@@ -442,26 +442,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "HS787_LV_WTAP_GP_Service_Level",
                 "HS787_LV_WTAP_GP_Vertical_Deviation",
             },
+            // The WT_FADEC_* family is DEAD on the HS787 (every one reads 0 — verified live in
+            // climb + cruise, with cost index entered), so it was replaced with the live engine
+            // indications (the same SimVars the Alt+E EICAS window uses).
             ["Engine Data"] = new List<string>
             {
-                "HS787_LV_WT_FADEC_CLB_N1",
-                "HS787_LV_WT_FADEC_CRU_N1",
-                "HS787_LV_WT_FADEC_EGT_AMBER",
-                "HS787_LV_WT_FADEC_EGT_RED",
-                "HS787_LV_WT_FADEC_EGT_START_LIMIT",
-                "HS787_LV_WT_FADEC_IDLE_N1",
-                "HS787_LV_WT_FADEC_IDLE_N2",
-                "HS787_LV_WT_FADEC_N1_AMBER",
-                "HS787_LV_WT_FADEC_N1_RED",
-                "HS787_LV_WT_FADEC_N2_AMBER",
-                "HS787_LV_WT_FADEC_N2_RED",
-                "HS787_LV_WT_FADEC_OIL_TEMP_HIGH_AMBER",
-                "HS787_LV_WT_FADEC_OIL_TEMP_LOW_AMBER",
-                "HS787_LV_WT_FADEC_OIL_TEMP_LOW_RED",
-                "HS787_LV_WT_FADEC_REF_N1",
-                "HS787_LV_WT_FADEC_REF_TPR",
-                "HS787_LV_WT_FADEC_TGT_N1",
-                "HS787_LV_WT_FADEC_TGT_TPR",
+                "HS787_EicasN1_1", "HS787_EicasN1_2",
+                "HS787_EicasEGT_1", "HS787_EicasEGT_2",
+                "HS787_EicasN2_1", "HS787_EicasN2_2",
+                "HS787_EicasOilP_1", "HS787_EicasOilP_2",
+                "HS787_EicasOilT_1", "HS787_EicasOilT_2",
+                "HS787_EicasFuelKg", "HS787_EicasGwKg", "HS787_EicasTat",
             },
             ["Flight Control Inputs"] = new List<string>
             {
@@ -565,6 +556,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         {
             int hpa = (int)Math.Round(value * 33.8639);
             text = $"{hpa} hPa ({value:0.00} inHg)";
+            return true;
+        }
+        // EICAS N1/N2 are 0..1 ratios -> percent; gross weight kg -> tonnes.
+        if (varKey is "HS787_EicasN1_1" or "HS787_EicasN1_2" or "HS787_EicasN2_1" or "HS787_EicasN2_2")
+        {
+            text = $"{value * 100:0.0} percent";
+            return true;
+        }
+        if (varKey == "HS787_EicasGwKg")
+        {
+            text = $"{value / 1000.0:0.0} tonnes";
             return true;
         }
         text = "";
@@ -1982,19 +1984,19 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // --- EICAS engine indications: cached for the Alt+E EICAS window (suppressed in
             // ProcessSimVarUpdate so they never auto-announce). N1/N2 are ratios (x100 in the
             // window), EGT in celsius, fuel in kg. ---
-            ["HS787_EicasN1_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasN1_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasN2_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasN2_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasEGT_1"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:1", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasEGT_2"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:2", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasFuelKg"] = new SimConnect.SimVarDefinition { Name = "FUEL TOTAL QUANTITY WEIGHT", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasGwKg"]   = new SimConnect.SimVarDefinition { Name = "TOTAL WEIGHT", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasOilP_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:1", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasOilP_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:2", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasOilT_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:1", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasOilT_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:2", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
-            ["HS787_EicasTat"]    = new SimConnect.SimVarDefinition { Name = "TOTAL AIR TEMPERATURE", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN1_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:1", DisplayName = "Engine 1 N1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN1_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:2", DisplayName = "Engine 2 N1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN2_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:1", DisplayName = "Engine 1 N2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN2_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:2", DisplayName = "Engine 2 N2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasEGT_1"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:1", DisplayName = "Engine 1 EGT", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasEGT_2"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:2", DisplayName = "Engine 2 EGT", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasFuelKg"] = new SimConnect.SimVarDefinition { Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Total Fuel", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasGwKg"]   = new SimConnect.SimVarDefinition { Name = "TOTAL WEIGHT", DisplayName = "Gross Weight", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilP_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:1", DisplayName = "Engine 1 Oil Pressure", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilP_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:2", DisplayName = "Engine 2 Oil Pressure", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilT_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:1", DisplayName = "Engine 1 Oil Temperature", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilT_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:2", DisplayName = "Engine 2 Oil Temperature", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasTat"]    = new SimConnect.SimVarDefinition { Name = "TOTAL AIR TEMPERATURE", DisplayName = "TAT", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
 
             ["HS787_FuelLH"] = new SimConnect.SimVarDefinition
             {
