@@ -137,6 +137,7 @@ public class HotkeyManager : IDisposable
 
         // PMDG EFB hotkey ID
         private const int HOTKEY_PMDG_EFB = 9094;
+        private const int HOTKEY_PMDG_EFB_FO = 9109; // Ctrl+Shift+T (PMDG EFB First Officer, input mode)
 
         // Nearest city announcement hotkey ID
         private const int HOTKEY_NEAREST_CITY = 9093;
@@ -582,6 +583,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_PMDG_EFB:
                             TriggerHotkey(HotkeyAction.ShowPMDGEFB);
                             break;
+                        case HOTKEY_PMDG_EFB_FO:
+                            TriggerHotkey(HotkeyAction.ShowPMDGEFBFirstOfficer);
+                            break;
                         case HOTKEY_SHOW_RMP:
                             TriggerHotkey(HotkeyAction.ShowRMP);
                             break;
@@ -896,6 +900,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO, MOD_CONTROL | MOD_SHIFT, 0x54); // Ctrl+Shift+T (PMDG EFB First Officer)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_RMP, MOD_CONTROL | MOD_SHIFT, 0x52);  // Ctrl+Shift+R (A380 Radio Management Panel)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_DCDU, MOD_CONTROL | MOD_SHIFT, 0x44); // Ctrl+Shift+D (A32NX DCDU / CPDLC window)
 
@@ -950,6 +955,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_RMP);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_DCDU);
 
@@ -1295,6 +1301,7 @@ public class HotkeyManager : IDisposable
         ReadTargetFPM,
         ShowFenixMCDU,
         ShowPMDGEFB,
+        ShowPMDGEFBFirstOfficer,
         ShowRMP,
         ShowDCDU,
         ShowOANS,

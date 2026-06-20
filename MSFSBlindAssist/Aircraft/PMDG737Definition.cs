@@ -5370,6 +5370,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return false;
 
             case HotkeyAction.ShowPMDGEFB:
+            case HotkeyAction.ShowPMDGEFBFirstOfficer:
                 return false;
 
             // ------------------------------------------------------------------

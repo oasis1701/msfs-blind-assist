@@ -53,6 +53,14 @@ public partial class MainForm : Form
     // same Coherent GT debugger, resolved to the flyPad view ("- EFB" title).
     // Replaces the injection bridge for the flyPad.
     private CoherentEFBClient? coherentEFBClient;
+    // No-injection PMDG EFB transport: reads/drives the PMDG 737/777 EFB tablet
+    // live through the Coherent GT debugger. One client per crew side (Captain /
+    // First Officer), each reusing the generic FbwEfbForm. Created lazily on
+    // Shift+T (CA) / Ctrl+Shift+T (FO); disposed on aircraft swap.
+    private CoherentPmdgEfbClient? coherentPmdgEfbCaptain;
+    private CoherentPmdgEfbClient? coherentPmdgEfbFirstOfficer;
+    private Forms.FBWA380.FbwEfbForm? pmdgCoherentEfbCaptainForm;
+    private Forms.FBWA380.FbwEfbForm? pmdgCoherentEfbFirstOfficerForm;
     // No-injection A380X ND OANS transport (BTV exit selection / airport map),
     // resolved to the Captain ND view ("A380X_ND_1"). Reuses FbwEfbForm.
     private CoherentNDClient? coherentNDClient;
@@ -2230,7 +2238,7 @@ public partial class MainForm : Form
             case HotkeyAction.ShowPMDGEFB:
                 if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
                 {
-                    ShowPMDGEFBDialog();
+                    ShowPmdgCoherentEfbDialog(firstOfficer: false);
                 }
                 else if (currentAircraft?.AircraftCode == "FBW_A380")
                 {
@@ -2247,6 +2255,10 @@ public partial class MainForm : Form
                     // coherent-flypad-agent.js over the "- EFB" Coherent view).
                     ShowFbwEfbDialog();
                 }
+                break;
+            case HotkeyAction.ShowPMDGEFBFirstOfficer:
+                if (currentAircraft is IPMDGAircraft pmdgEfbFo && pmdgEfbFo.HasEFBSupport)
+                    ShowPmdgCoherentEfbDialog(firstOfficer: true);
                 break;
             case HotkeyAction.ShowRMP:
                 if (currentAircraft is FlyByWireA380Definition)
@@ -3120,6 +3132,31 @@ public partial class MainForm : Form
         }
         coherentEFBClient.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
         fbwEfbForm.ShowForm();
+    }
+
+    // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
+    // crew side, reusing the generic FbwEfbForm. Mirrors ShowFbwEfbDialog's lazy
+    // client/form creation + non-modal ShowForm pattern.
+    private void ShowPmdgCoherentEfbDialog(bool firstOfficer)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        string side = firstOfficer ? "FO" : "CA";
+        string title = (currentAircraft?.AircraftCode == "PMDG_737" ? "PMDG 737 EFB" : "PMDG 777 EFB") + (firstOfficer ? " (First Officer)" : "");
+
+        if (firstOfficer)
+        {
+            if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = new CoherentPmdgEfbClient(side); coherentPmdgEfbFirstOfficer.Start(); }
+            if (pmdgCoherentEfbFirstOfficerForm == null || pmdgCoherentEfbFirstOfficerForm.IsDisposed)
+                pmdgCoherentEfbFirstOfficerForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbFirstOfficer, announcer, title, "EFB");
+            pmdgCoherentEfbFirstOfficerForm.ShowForm();
+        }
+        else
+        {
+            if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = new CoherentPmdgEfbClient(side); coherentPmdgEfbCaptain.Start(); }
+            if (pmdgCoherentEfbCaptainForm == null || pmdgCoherentEfbCaptainForm.IsDisposed)
+                pmdgCoherentEfbCaptainForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbCaptain, announcer, title, "EFB");
+            pmdgCoherentEfbCaptainForm.ShowForm();
+        }
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
@@ -4863,6 +4900,11 @@ public partial class MainForm : Form
             coherentEFBClient.Dispose();
             coherentEFBClient = null;
         }
+        // Tear down the PMDG EFB Coherent clients + windows on swap.
+        pmdgCoherentEfbCaptainForm?.Dispose(); pmdgCoherentEfbCaptainForm = null;
+        pmdgCoherentEfbFirstOfficerForm?.Dispose(); pmdgCoherentEfbFirstOfficerForm = null;
+        coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
+        coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
         if (coherentNDClient != null)
         {
             coherentNDClient.Dispose();

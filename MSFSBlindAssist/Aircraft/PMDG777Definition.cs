@@ -6769,6 +6769,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             case HotkeyAction.ShowFenixMCDU:
                 return false;
 
+            // EFB handled by MainForm.
+            case HotkeyAction.ShowPMDGEFB:
+            case HotkeyAction.ShowPMDGEFBFirstOfficer:
+                return false;
+
 
             case HotkeyAction.ReadDisplayPFD:
                 ReadDisplay(Services.GeminiService.DisplayType.PFD777, "PFD", announcer, parentForm);
