@@ -86,6 +86,19 @@ namespace MSFSBlindAssist.SimConnect
             _announcer.AnnounceImmediate("EICAS. " + string.Join(". ", parts) + ".");
         }
 
+        /// <summary>Formatted active-alert text for the EICAS window (one alert per line, grouped).</summary>
+        public string GetAlertsText()
+        {
+            List<string> w, c, a;
+            lock (_lock) { w = new(_warnings); c = new(_cautions); a = new(_advisories); }
+            if (w.Count == 0 && c.Count == 0 && a.Count == 0) return "No EICAS alerts.";
+            var sb = new StringBuilder();
+            if (w.Count > 0) { sb.AppendLine($"Warnings ({w.Count}):"); foreach (var x in w) sb.AppendLine("  " + x); }
+            if (c.Count > 0) { sb.AppendLine($"Cautions ({c.Count}):"); foreach (var x in c) sb.AppendLine("  " + x); }
+            if (a.Count > 0) { sb.AppendLine($"Advisories ({a.Count}):"); foreach (var x in a) sb.AppendLine("  " + x); }
+            return sb.ToString().TrimEnd();
+        }
+
         // ---- poll loop -------------------------------------------------
 
         private async Task RunLoop(CancellationToken ct)

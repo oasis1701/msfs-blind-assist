@@ -83,6 +83,8 @@ public partial class MainForm : Form
     private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
     // Always-on EICAS Crew-Alerting-System monitor — announces new cautions/warnings as they post.
     private SimConnect.CoherentHS787CasClient? hs787CasClient;
+    // On-demand EICAS alert window (Alt+E), fed by hs787CasClient.GetAlertsText().
+    private Forms.HS787.HS787EicasForm? hs787EicasForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -3292,8 +3294,17 @@ public partial class MainForm : Form
         }
     }
 
-    // Read back every active EICAS CAS alert on demand (the HS787 Alt+E key).
-    public void AnnounceHs787CasAlerts() => hs787CasClient?.AnnounceCurrentAlerts();
+    // Open the EICAS alert window on demand (the HS787 Alt+E key). A navigable read-only window
+    // (arrow keys to read every active warning/caution/advisory, Escape to close), refreshed live —
+    // not a one-shot spoken read-back.
+    public void AnnounceHs787CasAlerts()
+    {
+        if (hs787CasClient == null) return;
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (hs787EicasForm == null || hs787EicasForm.IsDisposed)
+            hs787EicasForm = new Forms.HS787.HS787EicasForm(() => hs787CasClient.GetAlertsText());
+        hs787EicasForm.ShowForm();
+    }
 
     // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
     // so their Coherent debugger connections close. There is no HTTP bridge to stop.
@@ -3321,6 +3332,8 @@ public partial class MainForm : Form
 
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
+        if (hs787EicasForm != null && !hs787EicasForm.IsDisposed) hs787EicasForm.Dispose();
+        hs787EicasForm = null;
         hs787CasClient?.Dispose();
         hs787CasClient = null;
     }

@@ -74,10 +74,11 @@ Traffic and Weather:
   Shift+R    Open Weather Radar Window
 
 Cockpit Display Read-outs:
-  Alt+E      EICAS crew alerts - reads back every active warning, caution and
-             advisory on demand. (Per-alert auto-chatter is intentionally off; the
-             Master Caution / Master Warning still auto-announce the moment something
-             posts, so you know to press Alt+E for the specifics.) No API key needed.
+  Alt+E      EICAS crew alerts - opens a navigable window listing every active warning,
+             caution and advisory (arrow keys to read, Escape to close; refreshes live).
+             (Per-alert auto-chatter is intentionally off; the Master Caution / Master
+             Warning still auto-announce the moment something posts, so you know to press
+             Alt+E for the specifics.) No API key needed.
   Alt+S      System Synoptic Display (HYD, ELEC, FUEL, AIR, APU, OXYGEN, status
              messages) - opens a live, navigable text window (arrow keys to read,
              F5 refreshes, Escape closes). No API key needed.
