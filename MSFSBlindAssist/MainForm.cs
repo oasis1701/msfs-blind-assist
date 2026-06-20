@@ -4644,6 +4644,9 @@ public partial class MainForm : Form
         // any tracked hotkey windows (FCU/Baro/E/WD) the old def instance created.
         (oldAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (oldAircraft as FlyByWireA320Definition)?.StopAllMotion();
+        // The HS787 def owns its synoptic-display window (a live MFD_2 Coherent socket) + the
+        // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
+        (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
 
         // Update the aircraft instance
         currentAircraft = newAircraft;

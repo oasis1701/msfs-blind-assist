@@ -44,6 +44,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     // Single live-display read-out window (ND / Synoptic-System / Standby). Only one open at a
     // time so it never runs more than one extra Coherent socket; replaced when another is opened.
     private Forms.HS787.HS787DisplayForm? _displayWindow;
+
+    // Dispose the aux windows this def instance owns (the synoptic-display window holds a live
+    // MFD_2 Coherent socket; the autopilot window holds a refresh timer). MUST be called on
+    // aircraft swap so the socket/timer don't outlive the def instance (see SwitchAircraft).
+    public void CloseAuxWindows()
+    {
+        if (_displayWindow != null && !_displayWindow.IsDisposed) _displayWindow.Dispose();
+        _displayWindow = null;
+        if (_autopilotWindow != null && !_autopilotWindow.IsDisposed) _autopilotWindow.Dispose();
+        _autopilotWindow = null;
+    }
     private int  _previousPackL       = -1;
     private int  _previousPackR       = -1;
     private int  _previousHydDemandL  = -1;

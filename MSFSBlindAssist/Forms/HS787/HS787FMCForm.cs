@@ -104,14 +104,8 @@ public partial class HS787FMCForm : Form
 
     private void BridgeServer_StateUpdated(object? sender, EFBStateUpdateEventArgs e)
     {
-        if (e.Type == "mfd_connected" || e.Type == "heartbeat")
-        {
-            _mfdConnected = true;
-            if (IsHandleCreated)
-                BeginInvoke(UpdateConnectionStatus);
-            return;
-        }
-
+        // CoherentHS787CduClient raises only cdu_visible / cdu_not_visible / fmc_screen.
+        // (Connection state is driven by _cdu.IsBridgeConnected in UpdateConnectionStatus.)
         if (e.Type == "cdu_visible")
         {
             _cduVisible = true;
@@ -125,20 +119,6 @@ public partial class HS787FMCForm : Form
             _cduVisible = false;
             if (IsHandleCreated)
                 BeginInvoke(UpdateConnectionStatus);
-            return;
-        }
-
-        if (e.Type == "eval_result")
-        {
-            string evalOut = e.Data.TryGetValue("result", out string? r) ? r
-                           : e.Data.TryGetValue("error", out string? err) ? "ERROR: " + err
-                           : "(no result)";
-            System.Diagnostics.Debug.WriteLine($"[HS787 MFD] eval_result: {evalOut}");
-            // Announce so the user can relay live DOM-probe output during
-            // bridge debugging. Truncated — full text is also retrievable via
-            // the bridge server's /mfd-eval-result endpoint.
-            string shown = evalOut.Length > 300 ? evalOut.Substring(0, 300) + "…" : evalOut;
-            _announcer.Announce($"Eval result: {shown}");
             return;
         }
 
