@@ -109,16 +109,14 @@ public partial class HS787FMCForm : Form
         if (e.Type == "cdu_visible")
         {
             _cduVisible = true;
-            if (IsHandleCreated)
-                BeginInvoke(UpdateConnectionStatus);
+            SafeBeginInvoke(UpdateConnectionStatus);
             return;
         }
 
         if (e.Type == "cdu_not_visible")
         {
             _cduVisible = false;
-            if (IsHandleCreated)
-                BeginInvoke(UpdateConnectionStatus);
+            SafeBeginInvoke(UpdateConnectionStatus);
             return;
         }
 
@@ -136,8 +134,16 @@ public partial class HS787FMCForm : Form
 
         _rows = newRows;
 
-        if (IsHandleCreated)
-            BeginInvoke(UpdateDisplay);
+        SafeBeginInvoke(UpdateDisplay);
+    }
+
+    // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
+    // The bare IsHandleCreated check alone races a concurrent handle-destroy (aircraft swap /
+    // window close); without the guard the throw would be unobserved on the marshalling thread.
+    private void SafeBeginInvoke(Action action)
+    {
+        try { if (IsHandleCreated) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
     }
 
     // ------------------------------------------------------------------
@@ -510,8 +516,7 @@ public partial class HS787FMCForm : Form
 
         // Clear the typing flag and announce on the UI thread so UpdateDisplay can't
         // race between _typingInProgress going false and _previousScratchpad being updated.
-        if (!IsHandleCreated) return;
-        BeginInvoke(() =>
+        SafeBeginInvoke(() =>
         {
             _typingInProgress = false;
             if (!string.IsNullOrWhiteSpace(text))

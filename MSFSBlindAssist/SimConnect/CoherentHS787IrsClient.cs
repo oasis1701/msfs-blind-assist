@@ -97,6 +97,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
+            if (_disposed) return false; // never resurrect a socket on a disposed client (swap race)
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
             if (_ws != null && _ws.State == WebSocketState.Open)

@@ -45,6 +45,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     // time so it never runs more than one extra Coherent socket; replaced when another is opened.
     private Forms.HS787.HS787DisplayForm? _displayWindow;
 
+    // FD combo intent-tracking. TOGGLE_FLIGHT_DIRECTOR is RELATIVE, and the HS787_FlightDirector
+    // cache lags a monitor batch after a toggle — so a rapid combo re-select (On->Off within that
+    // lag) would read a stale "current" and double-fire / land inverted. Within a short window we
+    // trust our own last-commanded intent instead of the stale cache; after it, the cache (which
+    // also reflects an external cockpit FD change) wins again.
+    private long _lastFdSetTicks;
+    private int  _lastFdDesired;
+
     // Dispose the aux windows this def instance owns (the synoptic-display window holds a live
     // MFD_2 Coherent socket; the autopilot window holds a refresh timer). MUST be called on
     // aircraft swap so the socket/timer don't outlive the def instance (see SwitchAircraft).
@@ -5137,8 +5145,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (varKey == "HS787_FlightDirector")
         {
             int desired = value > 0.5 ? 1 : 0;
-            int current = (simConnect.GetCachedVariableValue("HS787_FlightDirector") ?? 0) > 0.5 ? 1 : 0;
+            int current;
+            if (_lastFdSetTicks != 0 && (Environment.TickCount64 - _lastFdSetTicks) < 700)
+                current = _lastFdDesired;   // recent command — trust intent, the cache still lags
+            else
+                current = (simConnect.GetCachedVariableValue("HS787_FlightDirector") ?? 0) > 0.5 ? 1 : 0;
             if (desired != current) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR");
+            _lastFdDesired = desired;
+            _lastFdSetTicks = Environment.TickCount64;
             return true;
         }
 
