@@ -16,6 +16,9 @@
         if ((n[i].className || '').toString().indexOf('container') >= 0) continue;
         var t = (n[i].textContent || '').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
         if (!t || seen[t]) continue;
+        // Skip MSFS/OS overlay text that bleeds into the view (e.g. the borderless-fullscreen
+        // hint "To exit full screen, press and hold Esc") — it is not a 787 EICAS alert.
+        if (/full ?screen|press and hold/i.test(t)) continue;
         seen[t] = 1;
         out.push(t);
       }
