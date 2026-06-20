@@ -90,8 +90,9 @@
       var kids = p.children;
       for (var i = 0; i < kids.length; i++) {
         var c = kids[i]; if (c === el || c.contains(el)) continue;
-        var hit = (c.matches && c.matches('.groundops_ui_label, .opt-label, .opt-output-label, .field-label')) ? c
-          : (c.querySelector ? c.querySelector('.groundops_ui_label, .opt-label, .opt-output-label, .field-label') : null);
+        // direct-sibling label cell ONLY — a descendant scan reaches into adjacent rows
+        // (a top-level button grabbing a distant .opt-label).
+        var hit = (c.matches && c.matches('.groundops_ui_label, .opt-label, .opt-output-label, .field-label')) ? c : null;
         if (hit) { var t = A.txt(hit); if (t && t.length < 60) return t.replace(/:\s*$/, ''); }
       }
     }
@@ -102,9 +103,12 @@
   // keyed by the control id (efb_preferences_length_unit -> Settings.length_unit). Falls back ''.
   A.activeUnit = function (el) {
     try {
-      if (el.id && typeof Settings !== 'undefined' && Settings) {
+      var S = null;
+      try { if (typeof window !== 'undefined' && window.Settings) S = window.Settings; } catch (e1) {}
+      if (!S) { try { if (typeof Settings !== 'undefined') S = Settings; } catch (e2) {} }
+      if (el.id && S) {
         var key = el.id.replace(/^efb_preferences_/, '');
-        if (key !== el.id) { var v = Settings[key]; if (v !== undefined && v !== null && String(v) !== '') return String(v); }
+        if (key !== el.id) { var v = S[key]; if (v !== undefined && v !== null && String(v) !== '') return String(v); }
       }
     } catch (e) {}
     return '';
@@ -344,10 +348,12 @@
     // control label to a fuller standalone text that contains it ("Brightness" -> "Tablet
     // Brightness"). Both remove redundant text lines next to their control.
     var norm = function (s) { return String(s || '').trim().toLowerCase(); };
+    // Readable standalone text (NOT input fields, which are type 'text', and NOT 'pre' document lines).
+    var isReadable = function (t) { return t === 'text-content' || t === 'label-value'; };
     var ctrls = [];
-    for (var c1 = 0; c1 < out.length; c1++) if (out[c1].type !== 'text' && out[c1].label) ctrls.push(out[c1]);
+    for (var c1 = 0; c1 < out.length; c1++) if (!isReadable(out[c1].type) && out[c1].type !== 'pre' && out[c1].label) ctrls.push(out[c1]);
     for (var c2 = 0; c2 < out.length; c2++) {
-      if (out[c2].type !== 'text') continue;
+      if (!isReadable(out[c2].type)) continue;
       var tn = norm(out[c2].label);
       for (var c3 = 0; c3 < ctrls.length; c3++) {
         var c = ctrls[c3], cn = norm(c.label);
@@ -383,7 +389,7 @@
       var it = kept[m];
       if (it.type === 'heading' && /:\s*$/.test(it.label || '') && m + 1 < kept.length) {
         var nx = kept[m + 1];
-        if ((nx.type === 'heading' || nx.type === 'text') && nx.label && nx.label.length < 60 && !/:\s*$/.test(nx.label)) {
+        if ((nx.type === 'heading' || nx.type === 'text-content' || nx.type === 'label-value') && nx.label && nx.label.length < 60 && !/:\s*$/.test(nx.label)) {
           merged.push({ idx: it.idx, type: 'label-value', tag: it.tag, label: it.label.replace(/\s+$/, '') + ' ' + nx.label, src: 'label-value' });
           m++; continue;
         }
