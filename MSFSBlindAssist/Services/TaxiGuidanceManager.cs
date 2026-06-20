@@ -18,6 +18,13 @@ public enum TaxiGuidanceState
     LiningUp,
     Arrived,
     /// <summary>
+    /// A Progressive Taxi leg has reached its terminator (hold short of a
+    /// runway/taxiway, just past a cleared crossing, or end of taxiway). The
+    /// tone is off and the aircraft holds; the pilot sets the next leg. No
+    /// lineup, no Takeoff-Assist, no docking.
+    /// </summary>
+    ProgressiveHold,
+    /// <summary>
     /// Set immediately after a landing-exit auto-activation. The aircraft
     /// is still on the runway at high speed, decelerating; we don't want
     /// the steering tone firing on slight heading offsets that just mean
@@ -508,6 +515,11 @@ public class TaxiGuidanceManager : IDisposable
     private const double LINEUP_PULSE_MIN_CROSS_FEET = 10.0;
     private bool _isRunwayLineup = false;  // true = runway (use centerline), false = gate (heading only)
     private bool _hasLineupTarget = false; // explicit flag — safer than (_lineupTargetLat != 0)
+    // Non-null while a Progressive Taxi leg is active. Drives the terminal
+    // "progressive hold" end-state + announcement and suppresses the auto
+    // hold-short on a cleared crossing. Cleared on every LoadRoute (set fresh
+    // below) and StopGuidance.
+    private Navigation.ProgressiveTerminator? _progressiveTerminator;
 
     // Unreachable-runway safety net (PHNL 04L 2026-06-13). When the entered
     // taxiway clearance ends on a taxiway that merely PARALLELS the runway —
@@ -1062,7 +1074,12 @@ public class TaxiGuidanceManager : IDisposable
         // never need this; it's the explicit override for ATC clearances where
         // the pilot wants to confirm the SPECIFIC runway named, or where the
         // auto-detect didn't fire for some reason.
-        Dictionary<int, string>? userRunwayHoldShorts = null)
+        Dictionary<int, string>? userRunwayHoldShorts = null,
+        // Non-null for Progressive Taxi legs. Carries the terminal end-state
+        // type/target; drives the progressive-hold end announcement and (for
+        // AfterCrossingRunway) suppresses the auto hold-short on the cleared
+        // crossing. Task 4 consumes this for the terminal state machine.
+        Navigation.ProgressiveTerminator? progressiveTerminator = null)
     {
         lock (_stateLock)
         {
@@ -1077,6 +1094,7 @@ public class TaxiGuidanceManager : IDisposable
 
             // Store lineup target data (runway threshold or gate position) for lineup phase
             _isRunwayLineup = isRunwayDestination;
+            _progressiveTerminator = progressiveTerminator;
             if (destinationThresholdLat.HasValue && destinationThresholdLon.HasValue && destinationHeading.HasValue)
             {
                 _lineupTargetLat = destinationThresholdLat.Value;
@@ -1145,14 +1163,48 @@ public class TaxiGuidanceManager : IDisposable
             // would snap to the island and A* would fail with no path.
             int destComponentId = _graph.Nodes[destinationNodeId].ComponentId;
 
-            TaxiNode? startNode = null;
-            if (taxiwaySequence != null && taxiwaySequence.Count > 0)
+            // Start-node selection. With a constrained taxiway sequence we prefer
+            // a node ON the first cleared taxiway (heading-irrelevant) so the route
+            // anchors on the clearance regardless of post-pushback orientation
+            // (the LEPA fix). BUT when that taxiway is FAR from the aircraft
+            // (a gate across an apron from a main parallel — CYYZ GB/GC -> A was
+            // 297 m), pre-snapping onto it makes the guidance beeline across the
+            // apron/grass. In that case start from the aircraft's nearest
+            // in-component graph node so FindConstrainedPath builds a
+            // pavement-following lead-in onto the taxiway (its Step-1 AStarSearch).
+            string? firstCleared = (taxiwaySequence is { Count: > 0 }) ? taxiwaySequence[0] : null;
+            TaxiNode? firstTwNode = firstCleared != null
+                ? _graph.FindNearestNodeOnTaxiway(
+                    aircraftLat, aircraftLon, firstCleared, requiredComponentId: destComponentId)
+                : null;
+
+            bool attemptLeadIn = false;
+            double leadInGap = 0;
+            TaxiNode? startNode;
+            if (firstTwNode != null)
             {
-                startNode = _graph.FindNearestNodeOnTaxiway(
-                    aircraftLat, aircraftLon, taxiwaySequence[0],
-                    requiredComponentId: destComponentId);
+                leadInGap = TaxiGraph.FastDistanceMeters(
+                    aircraftLat, aircraftLon, firstTwNode.Latitude, firstTwNode.Longitude);
+                if (leadInGap > TaxiLeadIn.TriggerMeters)
+                {
+                    var entryNode = _graph.FindNearestNode(
+                        aircraftLat, aircraftLon, requiredComponentId: destComponentId);
+                    if (entryNode != null && entryNode.NodeId != firstTwNode.NodeId)
+                    {
+                        startNode = entryNode;
+                        attemptLeadIn = true;
+                    }
+                    else
+                    {
+                        startNode = firstTwNode;
+                    }
+                }
+                else
+                {
+                    startNode = firstTwNode;  // common case: gate on/near its taxiway
+                }
             }
-            if (startNode == null)
+            else
             {
                 startNode = _graph.FindNearestNodeInDirection(
                     aircraftLat, aircraftLon, aircraftHeading,
@@ -1169,6 +1221,34 @@ public class TaxiGuidanceManager : IDisposable
                 route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence);
             else
                 route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
+
+            // Lead-in acceptance. If we started from the aircraft's nearest node to
+            // get a pavement lead-in, accept it only when the router honoured the
+            // clearance AND the lead-in is not a dead-end detour. Otherwise rebuild
+            // from the on-taxiway node (today's behaviour) and note it in the
+            // summary so the pilot knows the lead-in wasn't computed.
+            TaxiLeadIn.LeadInInfo leadIn = default;
+            bool leadInFallback = false;
+            if (attemptLeadIn)
+            {
+                bool accepted = false;
+                if (route is { Segments.Count: > 0 })
+                {
+                    leadIn = TaxiLeadIn.Extract(route, firstCleared!);
+                    accepted = TaxiLeadIn.IsAcceptable(
+                        leadIn.DistanceMeters, leadInGap, route.ConstrainedFallbackReason);
+                }
+                if (!accepted)
+                {
+                    // Couldn't build a sensible lead-in (route empty, router fell back,
+                    // or the lead-in was a dead-end detour) — start on the cleared
+                    // taxiway like before and note it in the summary.
+                    route = router.FindConstrainedPath(
+                        firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!);
+                    leadIn = default;
+                    leadInFallback = true;
+                }
+            }
 
             if (route == null || route.Segments.Count == 0)
                 return "Could not calculate a route to the destination.";
@@ -1200,6 +1280,18 @@ public class TaxiGuidanceManager : IDisposable
                     route, taxiwaySequence, userRunwayHoldShorts);
             }
 
+            // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
+            // trims the tail. The length advisory below must judge the clearance on
+            // the full route, not the truncated one: a clearance that doubles back —
+            // cleared taxiways that lead AWAY from the destination, forcing the route
+            // to loop back (EHAM 18L via A12, B, N2, cross 27, E6, 2026-06-20: N2/E6
+            // sit north of runway 27, the 18L lineup is south, so the route went over
+            // 27 and reversed) — has that backtrack TRIMMED off by truncation, which
+            // previously hid the detour from the advisory and routed the pilot in a
+            // silent loop. Truncation only ever SHORTENS, so the full length is the
+            // honest "is this clearance sane?" measure.
+            double fullRouteMeters = route.TotalDistanceMeters;
+
             // Critical safety fix: when the destination is a runway, the route MUST
             // end at the hold-short line — not at the threshold itself. Otherwise
             // HandleArrival fires only when the aircraft is within the 30 m arrival
@@ -1219,6 +1311,22 @@ public class TaxiGuidanceManager : IDisposable
             // pattern as ATC-instructed hold-shorts.
             InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
 
+            // Progressive "after crossing" terminator: the pilot is cleared to
+            // cross the terminator runway, so strip the auto hold-short for it
+            // (other crossings keep their safety hold — spec Decision 2).
+            if (_progressiveTerminator?.ClearedCrossingRunway is string clearedRwy)
+            {
+                foreach (var seg in route.Segments)
+                {
+                    if (seg.IsHoldShortPoint && !string.IsNullOrEmpty(seg.HoldShortRunway) &&
+                        RunwayDesignatorsMatch(seg.HoldShortRunway, clearedRwy))
+                    {
+                        seg.IsHoldShortPoint = false;
+                        seg.HoldShortRunway = "";
+                    }
+                }
+            }
+
             // Runway-reach safety check. Probe the route's DESTINATION node — the
             // node nearest the runway lineup point that the route reaches — NOT
             // the truncated hold-short (route.Segments[^1].ToNode). A hold-short
@@ -1233,6 +1341,8 @@ public class TaxiGuidanceManager : IDisposable
             // on a runway it has no path to (PHNL 04L 2026-06-13: lineup tone
             // panned for 4 minutes). Warn the pilot up front so they reprogram.
             // The route still loads — ATC routings and odd navdata exist.
+            // Progressive routes pass isRunwayDestination:false + no lineup target,
+            // so this check is inert for them (they never line up on a runway).
             string? runwayReachWarning = null;
             _routeReachesRunway = true;
             if (isRunwayDestination && _hasLineupTarget)
@@ -1252,10 +1362,15 @@ public class TaxiGuidanceManager : IDisposable
             // unconstrained shortest path from the aircraft's natural start
             // node. Fires only for user-sequenced routes that built fully
             // (a fallback route is already announced via its fallback reason).
-            // Computed AFTER TruncateToHoldShort so the spoken warning quotes
-            // the same total the route summary speaks (the direct comparison
-            // is untruncated either way — 500 m pad dwarfs the ~60 m
-            // hold-short trim).
+            // Uses fullRouteMeters (the PRE-truncation length): a doubling-back
+            // clearance has its backtrack trimmed by TruncateToHoldShort, so
+            // comparing the truncated total let an obvious detour slip under the
+            // 2x+500 m trigger (the EHAM 18L loop above — the truncated 852 m sat
+            // below the threshold while the full backtrack was ~1.6 km). The
+            // advisory quotes the same fullRouteMeters so the warning is internally
+            // consistent; for a normal route fullRouteMeters is within ~60 m of the
+            // summary total (the hold-short trim), far inside the 500 m pad, so this
+            // never adds a false positive — it only catches genuine backtracks.
             if (taxiwaySequence is { Count: > 0 } &&
                 string.IsNullOrEmpty(route.ConstrainedFallbackReason))
             {
@@ -1264,17 +1379,21 @@ public class TaxiGuidanceManager : IDisposable
                     requiredComponentId: destComponentId) ?? startNode;
                 var direct = router.FindShortestPath(directStart.NodeId, destinationNodeId);
                 if (direct != null && direct.Segments.Count > 0 &&
-                    route.TotalDistanceMeters >
+                    fullRouteMeters >
                         direct.TotalDistanceMeters * CONSTRAINED_WARN_RATIO + CONSTRAINED_WARN_PAD_M)
                 {
+                    // Measure to the first cleared taxiway itself (firstTwNode), not
+                    // to startNode — in the lead-in path startNode is the nearby apron
+                    // node, which would wrongly read as "0 m" here.
                     double firstTwDist = TaxiGraph.FastDistanceMeters(
-                        aircraftLat, aircraftLon, startNode.Latitude, startNode.Longitude);
+                        aircraftLat, aircraftLon,
+                        (firstTwNode ?? startNode).Latitude, (firstTwNode ?? startNode).Longitude);
                     string firstTwNote = firstTwDist > CONSTRAINED_WARN_FIRST_TW_M
                         ? $" Taxiway {taxiwaySequence[0]} is {FormatDistance(firstTwDist)} from your position."
                         : "";
                     constrainedLengthWarning =
                         $"Warning: route via {string.Join(", ", taxiwaySequence)} is " +
-                        $"{FormatDistance(route.TotalDistanceMeters)}; direct route is " +
+                        $"{FormatDistance(fullRouteMeters)}; direct route is " +
                         $"{FormatDistance(direct.TotalDistanceMeters)}.{firstTwNote} Check taxiway selection.";
                 }
             }
@@ -1348,7 +1467,7 @@ public class TaxiGuidanceManager : IDisposable
             // avoid stepping on rollout instructions, but the form still
             // wants the text).
             {
-                string summary = BuildRouteSummary(route, isRunwayDestination);
+                string summary = BuildRouteSummary(route, isRunwayDestination, leadIn, firstCleared);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
                 // The length advisory goes FIRST, not last. The summary is plain
@@ -1359,6 +1478,13 @@ public class TaxiGuidanceManager : IDisposable
                 // warning almost certainly cut off before it played.
                 if (!string.IsNullOrEmpty(constrainedLengthWarning))
                     summary = constrainedLengthWarning + " " + summary;
+                // If a pavement lead-in onto the first cleared taxiway was attempted
+                // but couldn't be built (out-of-component / dead-end), the route fell
+                // back to starting on that taxiway. Prepend a notice so it is heard
+                // before the first tactical callout can interrupt the queued summary.
+                if (leadInFallback && firstCleared != null)
+                    summary = $"Could not compute a path onto taxiway {firstCleared} " +
+                              $"along the apron; route starts on {firstCleared}. " + summary;
                 // The runway-reach warning ("route does not reach Runway X") is
                 // safety-critical and MUST be heard at calculate time. Speaking it
                 // here (even via AnnounceImmediate) doesn't work: the caller fires
@@ -1809,6 +1935,10 @@ public class TaxiGuidanceManager : IDisposable
             // lies east of the S6 exit on the way to the terminal).
             if (_state == TaxiGuidanceState.Arrived && _graph != null)
                 CheckRunwayIncursion(lat, lon);
+            // ProgressiveHold is a terminal no-op: tone is off, the aircraft holds,
+            // the pilot sets the next leg. No tone, no recalc, no movement logic.
+            // (The unreachable-runway safety net and lineup path are gated on
+            // _isRunwayLineup / _hasLineupTarget, which progressive never sets.)
             return;
         }
 
@@ -2057,7 +2187,23 @@ public class TaxiGuidanceManager : IDisposable
             double exitSide = NormalizeAngle(_postHighSpeedExitMinBearing - _rolloutRunwayHeadingTrue);
             bool turnComplete = (exitSide > 0.0 && minError <= 0.0)
                              || (exitSide < 0.0 && minError >= 0.0);
-            if (turnComplete)
+
+            // Release the floor when the LIVE route is steering clearly the OPPOSITE
+            // way from ExitBearingTrue. ExitBearingTrue is the exit's first runway-edge
+            // bearing; at some airports it points to the opposite side from where the
+            // taxiway actually routes to the apron (CYVR M1 off 26R: first edge heads
+            // NW ~305°, but the M1 taxiway curves SOUTH). Holding the floor there steered
+            // the aircraft the WRONG way (right toward 305°), then snapped ~115° left the
+            // instant the floor released at turnComplete — a violent L/R reversal on
+            // rollout. The constructed route is authoritative; once it commits the other
+            // way by more than a noise margin, drop the floor for good. The opposite-SIGN
+            // test (not magnitude vs. the floor) is what distinguishes this from the
+            // shallow-RET case the floor exists for, where the live route runs ~parallel
+            // to the runway ON the exit side (same sign as the floor, so never released).
+            const double FLOOR_OPPOSITE_RELEASE_DEG = 10.0;
+            bool routeOpposesFloor = Math.Sign(headingError) == -Math.Sign(minError)
+                                     && Math.Abs(headingError) >= FLOOR_OPPOSITE_RELEASE_DEG;
+            if (turnComplete || routeOpposesFloor)
             {
                 _postHighSpeedExitMinBearing = 0.0;
             }
@@ -3379,6 +3525,19 @@ public class TaxiGuidanceManager : IDisposable
 
     private void HandleArrival()
     {
+        // Progressive Taxi leg: reached its terminator (hold short / after crossing /
+        // end of taxiway). Tone off, announce the end-of-leg callout, hold position.
+        // This intercept must run before the runway/gate/lineup branches so a
+        // progressive route never enters LiningUp, fires RequestTakeoffAssistAutoActivate,
+        // or triggers docking arrival.
+        if (_progressiveTerminator is { } term)
+        {
+            _steeringTone.Stop();
+            SetState(TaxiGuidanceState.ProgressiveHold);
+            AnnounceInstruction(term.EndAnnouncement());
+            return;
+        }
+
         // FAA AIM 4-3-18, ATC 7110.65 §3-7-2, and §3-7-2-h: an ATC taxi clearance
         // NEVER authorizes entering or crossing any runway — including the assigned
         // takeoff runway. Pilot must hold short until given "cleared to cross",
@@ -5476,6 +5635,7 @@ public class TaxiGuidanceManager : IDisposable
         _toneErrorInitialized = false;
         _lastGroundSpeedKts = 0;
         _hasLineupTarget = false;
+        _progressiveTerminator = null;
         _lineupAnnouncedAligned = false;
         _lineupHugeCrossTrackSince = DateTime.MinValue;
         _runwayLineupUnreachableWarned = false;
@@ -5624,6 +5784,10 @@ public class TaxiGuidanceManager : IDisposable
             }
             return $"Backtracking.{gsStr}";
         }
+
+        if (_state == TaxiGuidanceState.ProgressiveHold)
+            return _progressiveTerminator?.EndAnnouncement()
+                   ?? "Holding. Set a new route when cleared.";
 
         if (_route == null || _route.Segments.Count == 0)
             return "No route loaded.";
@@ -5804,7 +5968,9 @@ public class TaxiGuidanceManager : IDisposable
         return DistanceFormatter.FromMetres(meters);
     }
 
-    private string BuildRouteSummary(TaxiRoute route, bool isRunwayDestination)
+    private string BuildRouteSummary(
+        TaxiRoute route, bool isRunwayDestination,
+        TaxiLeadIn.LeadInInfo leadIn, string? firstClearedTaxiway)
     {
         string distStr = FormatDistance(route.TotalDistanceMeters);
 
@@ -5853,7 +6019,11 @@ public class TaxiGuidanceManager : IDisposable
             fallbackStr = $" Warning: could not follow specified taxiways. Using shortest path. Reason: {route.ConstrainedFallbackReason}";
         }
 
-        return $"Route to {route.DestinationName}{taxiwayStr}. {distStr}{holdStr}.{fallbackStr}";
+        string leadInStr = (firstClearedTaxiway != null)
+            ? TaxiLeadIn.Clause(leadIn, firstClearedTaxiway)
+            : "";
+
+        return $"Route to {route.DestinationName}{taxiwayStr}.{leadInStr} {distStr}{holdStr}.{fallbackStr}";
     }
 
     private void SetState(TaxiGuidanceState newState)
@@ -5974,6 +6144,43 @@ public class TaxiGuidanceManager : IDisposable
         double dE = (pointLon - refLon) * metersPerDegLon;
         double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
         return dE * Math.Sin(hdgRad) + dN * Math.Cos(hdgRad);
+    }
+
+    /// <summary>
+    /// Returns true when the tagged segment's HoldShortRunway designator (which
+    /// may include the "runway " prefix added by
+    /// <see cref="InsertRunwayCrossingHoldShorts"/>) names the same physical
+    /// pavement as <paramref name="target"/> — either as the same designator
+    /// or its reciprocal (e.g. "09" matches "27", "09L" matches "27R").
+    /// Used by the Progressive Taxi suppression pass to strip the cleared
+    /// crossing hold-short without touching other auto-inserted holds.
+    /// </summary>
+    private static bool RunwayDesignatorsMatch(string tagged, string target)
+    {
+        // Strip the "runway " prefix that InsertRunwayCrossingHoldShorts prepends.
+        string a = tagged.Replace("runway", "", StringComparison.OrdinalIgnoreCase).Trim();
+        string b = target.Trim();
+        if (a.Equals(b, StringComparison.OrdinalIgnoreCase)) return true;
+        return Reciprocal(a).Equals(b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns the reciprocal runway designator: adds 18 (mod 36, 1-based)
+    /// and swaps L↔R suffix (C stays C). "09" → "27", "27L" → "09R", "36" → "18".
+    /// Returns <paramref name="designator"/> unchanged if it is blank or does
+    /// not parse as a runway heading number.
+    /// </summary>
+    private static string Reciprocal(string designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return designator;
+        string d = designator.Trim().ToUpperInvariant();
+        string suffix = "";
+        if (d.EndsWith("L"))      { suffix = "R"; d = d[..^1]; }
+        else if (d.EndsWith("R")) { suffix = "L"; d = d[..^1]; }
+        else if (d.EndsWith("C")) { suffix = "C"; d = d[..^1]; }
+        if (!int.TryParse(d, out int num)) return designator;
+        int recip = ((num - 1 + 18) % 36) + 1;  // 1-based 1–36; +18 mod 36
+        return $"{recip:D2}{suffix}";
     }
 
     /// <summary>
