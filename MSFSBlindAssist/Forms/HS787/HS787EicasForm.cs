@@ -29,7 +29,7 @@ public class HS787EicasForm : Form
 
     private void Build()
     {
-        Text = "787 EICAS Alerts";
+        Text = "787 EICAS";
         Size = new Size(480, 360);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.SizableToolWindow;

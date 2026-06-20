@@ -1,0 +1,1 @@
+(function(){var a=window.__MSFSBA_HS787_EFB;var s=a.scrape();for(var i=0;i<s.elements.length;i++){if(s.elements[i].kind==='nav'&&s.elements[i].label==='Main Menu'){return 'click idx '+s.elements[i].idx+'='+a.click(s.elements[i].idx);}}return 'no main menu nav';})()

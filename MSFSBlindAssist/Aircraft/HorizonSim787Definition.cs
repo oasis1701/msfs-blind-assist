@@ -1979,6 +1979,23 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 IsAnnounced = true
             },
 
+            // --- EICAS engine indications: cached for the Alt+E EICAS window (suppressed in
+            // ProcessSimVarUpdate so they never auto-announce). N1/N2 are ratios (x100 in the
+            // window), EGT in celsius, fuel in kg. ---
+            ["HS787_EicasN1_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN1_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN2_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN2_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasEGT_1"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:1", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasEGT_2"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:2", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasFuelKg"] = new SimConnect.SimVarDefinition { Name = "FUEL TOTAL QUANTITY WEIGHT", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasGwKg"]   = new SimConnect.SimVarDefinition { Name = "TOTAL WEIGHT", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilP_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:1", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilP_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:2", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilT_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:1", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilT_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:2", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasTat"]    = new SimConnect.SimVarDefinition { Name = "TOTAL AIR TEMPERATURE", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+
             ["HS787_FuelLH"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL TANK LEFT MAIN QUANTITY",
@@ -7282,6 +7299,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         // hotkey readouts and dialog toggles read the cached values on demand.
         switch (variableKey)
         {
+            // EICAS engine indications — cached for the Alt+E window, never auto-announced.
+            case "HS787_EicasN1_1":
+            case "HS787_EicasN1_2":
+            case "HS787_EicasN2_1":
+            case "HS787_EicasN2_2":
+            case "HS787_EicasEGT_1":
+            case "HS787_EicasEGT_2":
+            case "HS787_EicasFuelKg":
+            case "HS787_EicasGwKg":
+            case "HS787_EicasOilP_1":
+            case "HS787_EicasOilP_2":
+            case "HS787_EicasOilT_1":
+            case "HS787_EicasOilT_2":
+            case "HS787_EicasTat":
             case "HS787_MCP_IAS":
             case "HS787_MCP_Mach":
             case "HS787_MCP_IsMach":
