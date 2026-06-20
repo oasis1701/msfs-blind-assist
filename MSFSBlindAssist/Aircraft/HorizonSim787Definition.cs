@@ -195,7 +195,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousSATCOM           = -1;
     private int  _previousVBar             = -1;
     private int  _previousAutobrake        = -1;
-    private int  _autobrakeSettleTarget    = -1;   // while MSFSBA steps the selector, suppress intermediate-detent callouts
+    private int  _autobrakeSuppressCount   = 0;    // # of autobrake updates to swallow while MSFSBA steps the selector
     private int  _previousLightTaxi        = -1;
     private int  _previousLightLogo        = -1;
     private int  _previousLightWing        = -1;
@@ -5334,7 +5334,11 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         {
             int target = Math.Max(0, Math.Min(6, (int)Math.Round(value)));
             int current = (int)Math.Round(simConnect.GetCachedVariableValue("HS787_Autobrake") ?? 0);
-            if (target != current) _autobrakeSettleTarget = target;   // suppress intermediate-detent callouts
+            // Swallow exactly the N detent-change callouts this step produces (a self-clearing COUNT,
+            // not an exact-value latch — if the selector never lands on the target the count still
+            // drains to 0, so it can't permanently mute future callouts). The combo's own value is
+            // read by the screen reader; the final value is also echo-suppressed.
+            _autobrakeSuppressCount = Math.Abs(target - current);
             string ev = target > current ? "INCREASE_AUTOBRAKE_CONTROL" : "DECREASE_AUTOBRAKE_CONTROL";
             for (int i = 0; i < Math.Abs(target - current); i++) simConnect.SendEvent(ev);
             return true;
@@ -6900,12 +6904,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (variableKey == "HS787_Autobrake")
         {
             int now = (int)value;
-            // While MSFSBA steps the selector to a target, swallow the intermediate detents (the
-            // combo's own value is read by the screen reader; the final value is echo-suppressed).
-            if (_autobrakeSettleTarget >= 0)
+            // While MSFSBA steps the selector, swallow the detent callouts it produces (count drains
+            // to 0 so it self-clears even if the value never lands exactly on the target). External
+            // cockpit-knob turns (count already 0) announce normally.
+            if (_autobrakeSuppressCount > 0)
             {
+                _autobrakeSuppressCount--;
                 _previousAutobrake = now;
-                if (now == _autobrakeSettleTarget) _autobrakeSettleTarget = -1;
                 return true;
             }
             if (_previousAutobrake >= 0 && now != _previousAutobrake)
