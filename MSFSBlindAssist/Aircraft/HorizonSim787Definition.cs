@@ -5311,15 +5311,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // APU Generator switches — toggle using K: events
-        if (varKey == "HS787_ApuGen1")
+        // APU Generators. The per-index APU_GEN1/2_SWITCH_SET events are no-ops on the WT 787
+        // (live-verified). The stock un-indexed APU_GENERATOR_SWITCH_SET works and drives BOTH
+        // APU GENERATOR SWITCH:1 AND :2 (the two gens are ganged on this model), so both combos
+        // fire it; their read-backs (:1 / :2) stay in sync.
+        if (varKey == "HS787_ApuGen1" || varKey == "HS787_ApuGen2")
         {
-            simConnect.ExecuteCalculatorCode($"{(int)value} (>K:APU_GEN1_SWITCH_SET)");
-            return true;
-        }
-        if (varKey == "HS787_ApuGen2")
-        {
-            simConnect.ExecuteCalculatorCode($"{(int)value} (>K:APU_GEN2_SWITCH_SET)");
+            simConnect.ExecuteCalculatorCode($"{(int)value} (>K:APU_GENERATOR_SWITCH_SET)");
             return true;
         }
 
@@ -5507,7 +5505,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
         if (varKey == "HS787_LightStrobe")
         {
-            simConnect.SendEvent("STROBE_LIGHTS_SET", (uint)(int)value);
+            // STROBE_LIGHTS_SET is a no-op on this Asobo-template lighting; the stock STROBES_SET
+            // drives LIGHT STROBE (live-verified 0->1), same as the A380 ext-lighting fix.
+            simConnect.SendEvent("STROBES_SET", value > 0.5 ? 1u : 0u);
             return true;
         }
         if (varKey == "HS787_LightNav")
