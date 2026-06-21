@@ -157,6 +157,12 @@ Ground Services:
 
 INPUT MODE - Press [ to activate
 
+EFB / Tablet:
+  Shift+T    Open Fenix EFB (tablet) window. Hosts the Fenix EFB website
+             (http://localhost:8083); the Fenix A320 must be loaded in the
+             sim. (Note: in OUTPUT mode, Shift+T toggles trim announcements —
+             this Shift+T is the INPUT-mode EFB window.)
+
 Teleport:
   Shift+R    Runway Teleport
   Shift+G    Gate Teleport
