@@ -46,13 +46,14 @@ test('unlabeled buttons dropped; single-char glyph fragments dropped; real conte
 
 test('weather widget value labels (Temp/QNH) never bleed into the toggle/icao field labels', () => {
   const els = scrape('weather');
-  // no control may borrow a bare numeric value ("28"/"1021") as its label
-  assert.ok(!els.some(e => (e.controlType === 'checkbox' || e.controlType === 'text') && /^(28|1021)$/.test(e.text)), 'no control labeled with a temp/QNH value');
-  // the toggle + icao field resolve their real id-derived labels
+  // No control may borrow a temp/QNH value as its label — bare ("28") OR unit-appended ("28 C")
+  // now that pmdg_measurement values are captured. Word-boundary match catches both forms.
+  assert.ok(!els.some(e => (e.controlType === 'checkbox' || e.controlType === 'text') && /\b(28|1021)\b/.test(e.text)), 'no control labeled with a temp/QNH value');
+  // the toggle + icao field resolve their exact id-derived labels (not a measurement)
   const tog = els.find(e => e.controlType === 'checkbox');
   const icao = els.find(e => e.controlType === 'text');
-  assert.match(tog.text, /[A-Za-z]/, 'toggle has a real (letter) label');
-  assert.match(icao.text, /[A-Za-z]/, 'icao field has a real (letter) label');
+  assert.strictEqual(tog.text, 'Toggle Weather');
+  assert.strictEqual(icao.text, 'Weather Icao');
   assert.strictEqual(icao.value, 'LIMC');
   // the METAR line still reads
   assert.ok(els.some(e => /LIMC 201950Z/.test(e.text)));

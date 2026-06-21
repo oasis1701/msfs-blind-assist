@@ -11,6 +11,14 @@ test('flight-details measurement values merge with their colon-heading (ZFW / RO
   assert.ok(!texts.some(t => t === 'ZFW:' || t === 'ROUTE DIST:'), 'no orphan colon labels');
 });
 
+test('captured measurement values never bleed onto a control as its label', () => {
+  const els = scrape('dashfull');
+  // C6 captures pmdg_measurement values (with units), so they carry letters — assert they are
+  // never adopted as a select/checkbox/text label (the _isValue tag must exclude them).
+  assert.ok(!els.some(e => (e.controlType === 'select' || e.controlType === 'checkbox' || e.controlType === 'text') && /\b(462,330|1,183)\b/.test(e.text)),
+    'no control labeled with a flight-details measurement value');
+});
+
 test('leaflet map overlay text (waypoint tooltips) is suppressed; map controls kept', () => {
   const els = scrape('dashfull');
   assert.ok(!els.some(e => e.text === 'HOLTZ'), 'leaflet tooltip waypoint dropped');

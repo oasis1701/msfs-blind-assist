@@ -161,14 +161,17 @@
   // Geometry pairing: nearest text item to the LEFT on the same row (by vertical CENTRE, so a
   // control vertically centred inside a taller label row still matches), else directly ABOVE
   // (label-on-top layouts). requireLabel restricts to label-class cells (_isLabel) — used for
-  // buttons so status-bar buttons never grab the clock/sim-rate text.
+  // buttons so status-bar buttons never grab the clock/sim-rate text. VALUE-display items
+  // (_isValue, e.g. a pmdg_measurement reading) are never eligible as a field label — this is
+  // what stops a measurement (which carries a unit, so it has letters) from bleeding onto a
+  // control regardless of layout; geometry alone is not relied upon.
   A._rowTextFor = function (el, textItems, requireLabel) {
     var cr = null; try { cr = el.getBoundingClientRect(); } catch (e) { return null; }
     if (!cr) return null;
     var cCy = cr.top + cr.height / 2, cLeft = Math.round(cr.left), best = null, bestDx = 1e9;
     for (var t = 0; t < textItems.length; t++) {
       var ti = textItems[t];
-      if (ti._consumed || ti._cy == null || ti._left == null) continue;
+      if (ti._consumed || ti._isValue || ti._cy == null || ti._left == null) continue;
       if (requireLabel && !ti._isLabel) continue;
       if (!/[A-Za-z]/.test(ti.label || '')) continue;
       if (Math.abs(ti._cy - cCy) > 24) continue;
@@ -179,7 +182,7 @@
     var bestDy = 1e9;
     for (var u = 0; u < textItems.length; u++) {
       var ai = textItems[u];
-      if (ai._consumed || ai._top == null || ai._left == null) continue;
+      if (ai._consumed || ai._isValue || ai._top == null || ai._left == null) continue;
       if (requireLabel && !ai._isLabel) continue;
       if (!/[A-Za-z]/.test(ai.label || '')) continue;
       var dy = cr.top - ai._top; if (dy <= 0 || dy > 40) continue;
@@ -327,6 +330,8 @@
         if (own.replace(/\s+/g, '').length <= 1) continue;
         // A pmdg_measurement <label> is a VALUE display (ZFW / Route Dist / weather temp), not a
         // form label — capture it (with its sibling unit) instead of skipping it as a <label>.
+        // It is tagged _isValue below so it can never be paired AS a control's label (the unit
+        // makes it letter-bearing, so the letter-guard alone would not exclude it).
         var isMeasure = (el.matches && el.matches('label.pmdg_measurement'));
         if (!isMeasure && el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
         if (isMeasure) {
@@ -349,7 +354,7 @@
         var tleft = null, tcy = null;
         try { var trc = el.getBoundingClientRect(); tleft = Math.round(trc.left); tcy = trc.top + trc.height / 2; } catch (e) {}
         var isLbl = false; try { isLbl = !!(el.closest && el.closest('.preflabel, .opt-label, .opt-output-label, .groundops_ui_label, .field-label, .input-label, .popup-label')); } catch (e2) {}
-        var titem = { idx: idx, type: 'text-content', tag: el.tagName, label: own, src: 'text-content', _top: ttop, _left: tleft, _cy: tcy, _isLabel: isLbl };
+        var titem = { idx: idx, type: 'text-content', tag: el.tagName, label: own, src: 'text-content', _top: ttop, _left: tleft, _cy: tcy, _isLabel: isLbl, _isValue: !!isMeasure };
         out.push(titem);
         textItems.push(titem);
         lastText = titem; lastTextTop = ttop;
@@ -509,6 +514,7 @@
       if (!p) return;
       var a = primaryFirst ? (p.label || '') : (o2 ? o2.label : '');
       var b = primaryFirst ? (o2 ? o2.label : '') : (p.label || '');
+      if (!a && !b) return;  // both codes empty — leave as-is (no dangling "Origin: ")
       p.label = prefix + ': ' + (a && b ? (a + ' / ' + b) : (a || b));
       if (o2) o2._consumed = true;
     };
