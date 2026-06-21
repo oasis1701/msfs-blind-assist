@@ -38,6 +38,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
+    private Forms.Fenix.FenixEFBForm? fenixEFBForm;
     private MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm? flyByWireMCDUForm;
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
     private System.Windows.Forms.Form? pmdgCDUForm;
@@ -2247,6 +2248,12 @@ public partial class MainForm : Form
                     // coherent-flypad-agent.js over the "- EFB" Coherent view).
                     ShowFbwEfbDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "FENIX_A320CEO")
+                {
+                    // The Fenix EFB web UI is already screen-reader accessible, so we
+                    // host the live site directly (no scraping/shim like the FBW flyPad).
+                    ShowFenixEFBDialog();
+                }
                 break;
             case HotkeyAction.ShowRMP:
                 if (currentAircraft is FlyByWireA380Definition)
@@ -2884,6 +2891,19 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve state)
         fenixMCDUForm.ShowForm();
+    }
+
+    private void ShowFenixEFBDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        // Reuse a single instance; recreate after it has been disposed (close / swap).
+        if (fenixEFBForm == null || fenixEFBForm.IsDisposed)
+        {
+            fenixEFBForm = new Forms.Fenix.FenixEFBForm(announcer);
+        }
+
+        fenixEFBForm.ShowForm();
     }
 
     private void ShowFlyByWireMCDUDialog()
@@ -4804,6 +4824,11 @@ public partial class MainForm : Form
         {
             fenixMCDUForm.Dispose();
             fenixMCDUForm = null;
+        }
+        if (fenixEFBForm != null && !fenixEFBForm.IsDisposed)
+        {
+            fenixEFBForm.Dispose();
+            fenixEFBForm = null;
         }
         if (fenixMCDUService != null)
         {
