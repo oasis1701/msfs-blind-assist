@@ -66,7 +66,9 @@
     if (!id) return '';
     var s = id.replace(/^efb_preferences_/, '').replace(/^efb_dashboard_/, '')
              .replace(/^efb_general_/, '').replace(/^opt_/, '').replace(/^groundops_/, '')
-             .replace(/^efb_/, '').replace(/^wb_/, '').replace(/^statusbar_/, '').replace(/_/g, ' ').trim();
+             .replace(/^efb_/, '').replace(/^wb_/, '').replace(/^statusbar_/, '').replace(/_/g, ' ')
+             // "leaflet" is the internal JS map-library name; never a user-facing word.
+             .replace(/\bleaflet\b/gi, ' ').replace(/\s+/g, ' ').trim();
     // The screen reader already announces the "button" role — a trailing "Button"/"Btn"
     // word in the id (e.g. "weather search button") is redundant clutter, so drop it.
     s = s.replace(/\s*\b(button|btn)\b\s*$/i, '').trim();
@@ -99,7 +101,7 @@
         var c = kids[i]; if (c === el || c.contains(el)) continue;
         // direct-sibling label cell ONLY — a descendant scan reaches into adjacent rows
         // (a top-level button grabbing a distant .opt-label).
-        var hit = (c.matches && c.matches('.groundops_ui_label, .opt-label, .opt-output-label, .field-label')) ? c : null;
+        var hit = (c.matches && c.matches('.groundops_ui_label, .opt-label, .opt-output-label, .field-label, .popup-label')) ? c : null;
         if (hit) { var t = A.txt(hit); if (t && t.length < 60) return t.replace(/:\s*$/, ''); }
       }
     }
@@ -346,7 +348,7 @@
         el.setAttribute('data-pmdg-efb-idx', String(idx));
         var tleft = null, tcy = null;
         try { var trc = el.getBoundingClientRect(); tleft = Math.round(trc.left); tcy = trc.top + trc.height / 2; } catch (e) {}
-        var isLbl = false; try { isLbl = !!(el.closest && el.closest('.preflabel, .opt-label, .opt-output-label, .groundops_ui_label, .field-label, .input-label')); } catch (e2) {}
+        var isLbl = false; try { isLbl = !!(el.closest && el.closest('.preflabel, .opt-label, .opt-output-label, .groundops_ui_label, .field-label, .input-label, .popup-label')); } catch (e2) {}
         var titem = { idx: idx, type: 'text-content', tag: el.tagName, label: own, src: 'text-content', _top: ttop, _left: tleft, _cy: tcy, _isLabel: isLbl };
         out.push(titem);
         textItems.push(titem);

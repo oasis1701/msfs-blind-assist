@@ -17,6 +17,15 @@ test('leaflet map overlay text (waypoint tooltips) is suppressed; map controls k
   assert.ok(els.some(e => e.kind === 'button' && e.text === 'Zoom In'), 'map control button kept');
 });
 
+test('map source select reads a clean label (no internal "Leaflet" library term) with its options', () => {
+  const els = scrape('dashfull');
+  const sel = els.find(e => e.controlType === 'select' && /Map Source/.test(e.text));
+  assert.ok(sel, 'map source select labeled "Map Source" (Leaflet stripped)');
+  assert.ok(!/Leaflet/i.test(sel.text), 'no "Leaflet" in the label');
+  assert.strictEqual(sel.value, 'IFR HIGH');
+  assert.deepStrictEqual(sel.options, ['WORLD', 'IFR HIGH', 'IFR LOW', 'VFR']);
+});
+
 test('route-header codes are labeled (Origin / Destination / STD / STA)', () => {
   const els = scrape('dashfull');
   const texts = els.map(e => e.text);
