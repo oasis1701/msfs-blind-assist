@@ -3779,6 +3779,7 @@ public partial class MainForm : Form
                 break;
             case TaxiGuidanceState.Arrived:
             case TaxiGuidanceState.Inactive:
+            case TaxiGuidanceState.ProgressiveHold:
                 simConnectManager.StopTaxiGuidanceMonitoring();
                 break;
         }

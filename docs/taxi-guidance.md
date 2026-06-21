@@ -275,11 +275,15 @@ Why also list non-connected taxiways: occasional ATC clearances skip a taxiway t
 
 FAA AIM 4-3-18 and ICAO Doc 4444 require that an aircraft hold short of *every* runway it crosses on the way to its destination, with explicit ATC clearance for each crossing — controllers issue them one at a time. `TaxiGuidanceManager.InsertRunwayCrossingHoldShorts(route, destinationName)` runs after `LoadRoute` builds the route and after `TruncateToHoldShort` (which owns the destination runway's hold-short separately):
 
-- For every consecutive segment pair, if the *next* segment's end is on a runway centerline (perpendicular distance ≤ `HalfWidth + 5 m` via `RunwayCenterline`-pair geometry from `TaxiGraph`), tag the *current* segment as `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`.
-- Skip the destination runway (already handled).
-- Skip duplicate consecutive same-runway tags (a multi-segment crossing pavement only fires one hold-short, not one per segment).
+- For each route segment whose **edge** (FromNode→ToNode) crosses a runway centerline — `TaxiGraph.EdgeCrossesRunwayStatic` (a proper segment-vs-centerline-between-thresholds intersection) via `WhichRunwayCrossedByEdge` — tag the segment immediately **before** that crossing edge as `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`.
+- Skip the destination runway (already handled; the prefixed `"Runway 33L"` is normalized to bare `"33L"` before comparing).
+- Skip duplicate consecutive same-runway tags (`lastTaggedRunway` — a wide runway's entry and exit edges both cross the centerline).
 
-Pilot then gets the standard 300/150/50 ft hold-short countdown approaching each crossed runway, the tone pauses at the line, and pressing `Y` (Continue) crosses. Same flow as ATC-instructed hold-shorts — no separate UI. Driven by the runway-centerline pairs already used by Where-Am-I, so it works on any DB that has enough `start` table rows to pair runway thresholds (vanilla MSFS, Navigraph, third-party scenery — all supported). `WhichRunwayContains(lat, lon)` is exposed as a private helper using the public `TaxiGraph.PerpendicularDistanceMetersStatic`.
+**Why edge intersection, not point-on-pavement.** A taxiway crosses a runway via an edge that *spans* the pavement, with both flanking nodes sitting *off* the runway. The original test ("is the next segment's endpoint within `HalfWidth + 5 m` of the centerline?") therefore silently missed every crossing whose nodes were more than ~half-width+5 m out. Motivating defect (2026-06-20): KBOS taxi to 33L via K/B/C — taxiway C crosses 04L (nearest C node 35 m from the centerline), 04R (26 m → caught), and 27 (86 m); the point test tagged only 04R, and `ApplyUserRunwayHoldShorts` falsely reported *"route does not cross 04L after taxiway C"* for the user's explicit "hold short 04L" pick. Meanwhile the runtime incursion guard (`CheckRunwayIncursion`, which keys on graph `HoldShort` node TYPE + `HoldShortName` — a separate, working path) correctly called out all three crossings, which is why the symptom was "it announced the crossings but never told me to hold short." The edge test catches a crossing regardless of node spacing.
+
+Pilot then gets the standard 300/150/50 ft hold-short countdown approaching each crossed runway, the tone pauses at the line, and pressing `Y` (Continue) crosses. Same flow as ATC-instructed hold-shorts — no separate UI. Driven by the runway-centerline pairs already used by Where-Am-I, so it works on any DB that has enough `start` table rows to pair runway thresholds (vanilla MSFS, Navigraph, third-party scenery — all supported). `TaxiGraph.EdgeCrossesRunwayStatic` is the public geometry primitive (probe-pinned in `tools/ProgressiveTaxiProbe`).
+
+**Runway-NAME association uses the centerline, not the threshold.** A hold-short node is named after its runway by `TaxiGraph.MatchHoldShortRunwayName(lat, lon, RunwayCenterlines, HOLDSHORT_RUNWAY_MATCH_M = 150 m)` — the nearest runway *centerline* by clamped perpendicular distance (closer-end designator), which is length-invariant. The previous heuristic (nearest runway *threshold* within 500 m) mislabeled a hold-short where a taxiway crosses a *long* runway far from either threshold with the taxiway name — e.g. KBOS 15R on taxiway N announced "Hold short of N" instead of "runway 15R". The 150 m tolerance sits above a CAT III / code-F holding-position setback (~107 m) yet below major-airport parallel-runway spacing, so a node binds to its own runway; a clamped perpendicular distance also means a node beyond a runway end is not falsely matched. The threshold method remains only as a fallback for navdata with no reciprocal centerline pairs. The matched name is `"runway X at <holdPoint>"` (e.g. `runway 15R at N`), so the crossing/arrival callout reads "Stop. Hold short of runway 15R at N." This must be correct at the source because `InsertRunwayCrossingHoldShorts` (above) does not overwrite a non-empty `HoldShortRunway`. Pure-geometry coverage: `tools/ProgressiveTaxiProbe` (mid-runway match, far-node reject, beyond-end reject).
 
 ### Ground-speed announcer (configurable interval)
 
@@ -1252,6 +1256,29 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `ROLLOUT_NEAR_EXIT_FT` | 500.0 | Proximity to the chosen exit at which the speed-based handoff is allowed to fire. Matches the existing "500 ft slow down" callout — by the time the pilot hears that, they're committed to the turn |
 | `ROLLOUT_OVERSHOOT_FT` | 100.0 | Along-runway distance past the chosen exit at which an overshoot is declared, triggering retarget to the next downfield exit (or graceful end if none remain) |
 | `ROLLOUT_NO_EXIT_STOPPED_GS_KTS` | 3.0 | Ground-speed threshold at which the runway-end countdown mode considers the aircraft effectively stopped and hands off to plain `Taxiing`. Lower than `ROLLOUT_TAXI_GS_KTS` (30) because the countdown has no more useful callouts to make once the pilot is at a crawl |
+
+## Pavement lead-in onto the first cleared taxiway
+
+When a pilot enters a clearance like "taxi to runway 23 via A, H" while parked at gate GB/GC at CYYZ, the nearest graph node *on* taxiway A can be 200–300 m away across open apron. Without a lead-in the old code pre-snapped the route start to that distant A node, and `FindConstrainedPath`'s Step-1 A* would draw a straight beeline from the aircraft across the apron — cutting through grass, crossing taxiway AJ at an angle, and demanding a 180° pivot before the pilot had even moved.
+
+The fix is a **pavement-following lead-in** that only activates when the gap is large (> `TaxiLeadIn.TriggerMeters` = 75 m). In that case `LoadRoute` sets the constrained route's start node to the aircraft's nearest *in-component* graph node — whatever apron taxilane or connector it is sitting on — and lets `FindConstrainedPath`'s Step-1 A\* plan a proper ground-path from there onto the first cleared taxiway. The router walks the apron network (e.g. ramp taxilane 4 → AJ) and arrives at taxiway A in the correct direction, with hold-shorts and crossings intact.
+
+The lead-in is **accepted** only when two conditions hold:
+
+1. The router honoured the full clearance (`ConstrainedFallbackReason == null`) — a fallback to shortest path means the lead-in segment is suspect.
+2. The lead-in distance is within `gap × 2.5 + 300 m` (`TaxiLeadIn.IsAcceptable`) — this dead-end guard rejects a route that had to backtrack through a graph dead-end, which would inflate the lead-in far beyond the straight-line gap.
+
+If either condition fails, `LoadRoute` falls back to the pre-snap behaviour (start on the taxiway) and prepends *"Could not compute a path onto taxiway A along the apron; route starts on A."* to the spoken summary. The pilot knows the route may not begin on pavement.
+
+On success the summary names the lead-in explicitly — *"Route to Runway 23 via A, H. First taxi via 4 and AJ to reach A. …"* — using `TaxiLeadIn.Clause`, so a screen reader announces it before the constrained sequence.
+
+**Unchanged cases:**
+
+- Gap ≤ 75 m: the pre-snap (`FindNearestNodeOnTaxiway`) runs exactly as before — the lead-in path is never computed.
+- Unconstrained routes (no user taxiway sequence): `FindNearestNodeInDirection` is still used; lead-in logic is bypassed entirely.
+- `TryRecalculateRoute`: always uses the heading-aware `FindNearestNodeInDirection`; the lead-in is a `LoadRoute`-only feature.
+
+**Verification:** verified in-sim — the CYYZ GB/GC stand → runway 23 via A, H departure (2026-06-17). The route now starts at the apron node nearest the aircraft, and the lead-in follows the AJ taxiway onto A — the steering-tone target tracks the AJ centreline within ~3 m — instead of the earlier ~64 m straight beeline across the grass north of AJ; the route summary names the lead-in. The pure helper math (`TaxiLeadIn.Extract` / `IsAcceptable` / `Clause`) is small and self-contained in `Navigation/TaxiLeadIn.cs`.
 
 ## Related Documentation
 
