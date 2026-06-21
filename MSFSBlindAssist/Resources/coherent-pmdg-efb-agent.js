@@ -7,11 +7,16 @@
 (function () {
   var A = {};
   A.INSTALLED = 'MSFSBA_PMDG_EFB_INSTALLED';
-  // Reserved (collision-free) idx for the synthesized "Weather Source" control. The tablet stores
-  // Settings.weather_source (Real World / Sim) but renders NO UI for it, so we add an accessible
-  // select on the Preferences page driven via Settings.updateSetting. Sequential scrape idx never
-  // reaches this value, so it stays stable across scrapes (setValue dispatches on it).
-  A.SYN_WEATHER_SOURCE = 990001;
+  // Synthesized Preferences controls for config-only settings the tablet STORES but renders no UI
+  // for. Reserved collision-free idx range (sequential scrape idx never reaches 990000+), so each
+  // stays stable across scrapes; setValue dispatches by idx. opts = [[displayText, settingValue]].
+  // weather_source/time_format set via Settings.updateSetting; selected_map (Map Provider) also
+  // drives the live Dashboard.dualMap.switchMap (auth-guarded). See _applySynthetic.
+  A.SYN_PREFS = [
+    { idx: 990001, key: 'weather_source', label: 'Weather Source', opts: [['Real World', 'REAL-WORLD'], ['Sim', 'SIM']] },
+    { idx: 990002, key: 'time_format', label: 'Time Format', opts: [['UTC', 'utc'], ['Local', 'local']] },
+    { idx: 990003, key: 'selected_map', label: 'Map Provider', opts: [['Navigraph', 'navigraph'], ['PMDG', 'pmdg']] }
+  ];
 
   // FontAwesome icon class -> human name (icon-only buttons / status bar).
   A.FA_MAP = {
@@ -69,6 +74,39 @@
       var cls = (typeof src.className === 'string') ? src.className : (src.className && src.className.baseVal) || '';
       var toks = cls.split(/\s+/);
       for (var k = 0; k < toks.length; k++) { if (A.FA_MAP[toks[k]]) return A.FA_MAP[toks[k]]; }
+    } catch (e) {}
+    return '';
+  };
+
+  // Current VALUE behind a status-bar icon indicator, so the readout says "Battery: Full,
+  // charging" / "Signal: Connected" instead of a bare "Battery"/"Signal". Battery level comes
+  // from the fa-battery-* class + charging from fa-bolt/fa-plug; Signal connectivity from colour
+  // (PMDG green = connected) or a slash icon (= no signal). Returns '' when nothing determinable.
+  A.statusbarValue = function (el, name) {
+    try {
+      var n = String(name || '').toLowerCase();
+      if (n.indexOf('battery') >= 0) {
+        var bi = el.querySelector ? el.querySelector('i[class*="fa-battery"]') : null;
+        var bc = bi ? ((typeof bi.className === 'string') ? bi.className : (bi.className && bi.className.baseVal) || '') : '';
+        var lvl = '';
+        if (/fa-battery-full/.test(bc)) lvl = 'Full';
+        else if (/fa-battery-three-quarters/.test(bc)) lvl = 'Three quarters';
+        else if (/fa-battery-half/.test(bc)) lvl = 'Half';
+        else if (/fa-battery-quarter/.test(bc)) lvl = 'Quarter';
+        else if (/fa-battery-empty/.test(bc)) lvl = 'Empty';
+        var charging = !!(el.querySelector && el.querySelector('i[class*="fa-bolt"], i[class*="fa-plug"]'));
+        var parts = [];
+        if (lvl) parts.push(lvl);
+        if (charging) parts.push('charging');
+        return parts.join(', ');
+      }
+      if (n.indexOf('signal') >= 0) {
+        if (el.querySelector && el.querySelector('i[class*="fa-signal-slash"], i[class*="fa-ban"]')) return 'No signal';
+        var col = ''; try { col = window.getComputedStyle(el).color || ''; } catch (e) {}
+        var m = col.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (m) { var r = +m[1], g = +m[2], b = +m[3]; if (g > r && g >= b) return 'Connected'; if (r > g && r > b) return 'No signal'; }
+        return 'Connected';  // icon present, no slash → connected
+      }
     } catch (e) {}
     return '';
   };
@@ -327,7 +365,12 @@
         if (el.id && /^statusbar_/.test(el.id) && el.closest && el.closest('#StatusBar') &&
             el.querySelector && el.querySelector('i[class*="fa-"]') && !A.txt(el)) {
           var snm = A.idToLabel(el.id);
-          if (snm) { idx++; el.setAttribute('data-pmdg-efb-idx', String(idx)); out.push({ idx: idx, type: 'text-content', tag: el.tagName, label: snm, src: 'statusbar-indicator' }); lastText = null; continue; }
+          if (snm) {
+            var sval = A.statusbarValue(el, snm);
+            idx++; el.setAttribute('data-pmdg-efb-idx', String(idx));
+            out.push({ idx: idx, type: 'text-content', tag: el.tagName, label: (sval ? (snm + ': ' + sval) : snm), src: 'statusbar-indicator' });
+            lastText = null; continue;
+          }
         }
         // READABLE TEXT capture — leaf own-text not part of any control/heading/label cell.
         // Surfaces document text (OFP briefing, Navdata, Manuals, Dashboard values) that the
@@ -537,22 +580,27 @@
     prefixOne('sta', 'STA');
     merged = merged.filter(function (x) { return !x._consumed; });
 
-    // Synthesize a "Weather Source" select on the Preferences page — the tablet stores
-    // Settings.weather_source (Real World = AWC / Sim) but renders no control for it. Gated on the
-    // Preferences page being shown; reads the active value, driven back via Settings.updateSetting
-    // (see setValue's SYN_WEATHER_SOURCE branch). Skipped if Settings is unavailable.
+    // Synthesize selects on the Preferences page for config-only settings the tablet renders no UI
+    // for (Weather Source / Time Format / Map Provider). Gated on the Preferences page being shown
+    // + Settings available; each reads its active value (driven back in setValue's synthetic branch).
     try {
       var prefsEl = document.querySelector('#efb_preferences');
       var Sx = A.settingsObj();
-      if (prefsEl && A.isVisible(prefsEl) && Sx && Sx.weather_source != null && typeof Sx.updateSetting === 'function') {
-        var isSim = /sim/i.test(String(Sx.weather_source));
-        var wsItem = { idx: A.SYN_WEATHER_SOURCE, type: 'select', tag: 'SELECT', label: 'Weather Source', value: (isSim ? 'Sim' : 'Real World'), options: ['Real World', 'Sim'], src: 'synthetic' };
-        // place it just before the first Preferences action button (Sign Out), else append.
-        var ins = -1;
-        for (var w = 0; w < merged.length; w++) {
-          if (merged[w].type === 'button' && merged[w]._id && merged[w]._id.indexOf('efb_preferences_') === 0) { ins = w; break; }
+      if (prefsEl && A.isVisible(prefsEl) && Sx && typeof Sx.updateSetting === 'function') {
+        var synItems = [];
+        for (var sp = 0; sp < A.SYN_PREFS.length; sp++) {
+          var def = A.SYN_PREFS[sp];
+          if (Sx[def.key] == null) continue;
+          var cur = String(Sx[def.key]).toLowerCase(), disp = def.opts[0][0], optTexts = [];
+          for (var oo = 0; oo < def.opts.length; oo++) { optTexts.push(def.opts[oo][0]); if (String(def.opts[oo][1]).toLowerCase() === cur) disp = def.opts[oo][0]; }
+          synItems.push({ idx: def.idx, type: 'select', tag: 'SELECT', label: def.label, value: disp, options: optTexts, src: 'synthetic' });
         }
-        if (ins >= 0) merged.splice(ins, 0, wsItem); else merged.push(wsItem);
+        if (synItems.length) {
+          // place them just before the first Preferences action button (Sign Out), else append.
+          var ins = -1;
+          for (var w = 0; w < merged.length; w++) { if (merged[w].type === 'button' && merged[w]._id && merged[w]._id.indexOf('efb_preferences_') === 0) { ins = w; break; } }
+          for (var si = 0; si < synItems.length; si++) { if (ins >= 0) merged.splice(ins + si, 0, synItems[si]); else merged.push(synItems[si]); }
+        }
       }
     } catch (eWs) {}
     return merged;
@@ -621,16 +669,43 @@
     return 'NO_MATCH:' + needle;
   };
 
+  // Apply a synthesized Preferences control (no DOM element). Resolves the chosen display text to
+  // the setting value, then drives the native setter(s). selected_map additionally switches the
+  // live map and skips persistence when an unauthenticated Navigraph switch would be blocked
+  // (so the shown value never desyncs from the actual map).
+  A._applySynthetic = function (idx, val) {
+    var S = A.settingsObj();
+    if (!S || typeof S.updateSetting !== 'function') return 'NO_SETTINGS';
+    var def = null;
+    for (var i = 0; i < A.SYN_PREFS.length; i++) if (A.SYN_PREFS[i].idx === idx) def = A.SYN_PREFS[i];
+    if (!def) return 'UNKNOWN_SYN';
+    var target = def.opts[0][1];
+    for (var o = 0; o < def.opts.length; o++) if (String(def.opts[o][0]).toLowerCase() === String(val).toLowerCase()) target = def.opts[o][1];
+    try {
+      if (def.key === 'weather_source') {
+        // use the live enum if present (guards against a future literal change; updateSetting validates).
+        var W = (typeof window !== 'undefined' && window.WeatherSource) ? window.WeatherSource : null;
+        if (W) target = /sim/i.test(String(val)) ? (W.SIM || target) : (W.AWC || target);
+      } else if (def.key === 'selected_map') {
+        var dm = (typeof window !== 'undefined' && window.DualMap) ? window.DualMap : (typeof DualMap !== 'undefined' ? DualMap : null);
+        var dash = (typeof window !== 'undefined' && window.Dashboard) ? window.Dashboard : (typeof Dashboard !== 'undefined' ? Dashboard : null);
+        var dmap = (dash && dash.dualMap) ? dash.dualMap : null;
+        if (target === 'navigraph' && dm && dm.isNGAuthed === false) {
+          if (dmap && typeof dmap.switchMap === 'function') dmap.switchMap('navigraph');  // shows the auth alert; no switch
+          return 'NOAUTH';
+        }
+        if (dmap && typeof dmap.switchMap === 'function') dmap.switchMap(target);
+        S.updateSetting('selected_map', target);
+        return 'OK:' + target;
+      }
+      S.updateSetting(def.key, target);
+      return 'OK:' + target;
+    } catch (e) { return 'ERR:' + e.message; }
+  };
+
   A.setValue = function (idx, val) {
-    // Synthesized "Weather Source" control (no DOM element): drive Settings.updateSetting with the
-    // exact WeatherSource enum value (updateSetting validates against it). "Sim" -> SIM, else AWC.
-    if (idx === A.SYN_WEATHER_SOURCE || String(idx) === String(A.SYN_WEATHER_SOURCE)) {
-      var Sw = A.settingsObj();
-      if (!Sw || typeof Sw.updateSetting !== 'function') return 'NO_SETTINGS';
-      var W = (typeof window !== 'undefined' && window.WeatherSource) ? window.WeatherSource : { SIM: 'SIM', AWC: 'REAL-WORLD' };
-      var v = /sim/i.test(String(val)) ? (W.SIM || 'SIM') : (W.AWC || 'REAL-WORLD');
-      try { Sw.updateSetting('weather_source', v); return 'OK:' + v; } catch (e) { return 'ERR:' + e.message; }
-    }
+    var ni = Number(idx);
+    if (ni >= 990000 && ni < 991000) return A._applySynthetic(ni, val);
     var el = A._byIdx(idx); if (!el) return 'NO_EL';
     val = String(val);
     try {

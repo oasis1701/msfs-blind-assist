@@ -21,8 +21,9 @@ test('status-bar tablet-restart reads "Restart" (not "Refresh"); AUTO CRUISE kee
   assert.ok(els.some(e => e.kind === 'button' && e.text === 'AUTO CRUISE'));
 });
 
-test('status-bar Signal + Battery indicators are surfaced as read-only statics', () => {
+test('status-bar Signal + Battery indicators are surfaced WITH their current value', () => {
   const els = scrape('chrome');
-  assert.ok(els.some(e => e.kind === 'static' && e.text === 'Signal'));
-  assert.ok(els.some(e => e.kind === 'static' && e.text === 'Battery'));
+  // Battery level from the fa-battery-* class + charging from fa-bolt; Signal state from colour.
+  assert.ok(els.some(e => e.kind === 'static' && e.text === 'Battery: Full, charging'), 'battery shows level + charging');
+  assert.ok(els.some(e => e.kind === 'static' && e.text === 'Signal: Connected'), 'signal shows connected (green)');
 });

@@ -25,7 +25,8 @@ function load(fixtureName, opts) {
       visibility: el.getAttribute('data-visibility') || 'visible',
       cursor: el.getAttribute('data-cursor') || 'auto',
       whiteSpace: el.getAttribute('data-ws') || 'normal',
-      position: el.getAttribute('data-position') || 'static'
+      position: el.getAttribute('data-position') || 'static',
+      color: el.getAttribute('data-color') || ''
     };
   };
   window.Element.prototype.getBoundingClientRect = function () {
