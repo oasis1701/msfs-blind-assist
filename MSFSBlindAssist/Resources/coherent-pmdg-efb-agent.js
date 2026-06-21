@@ -276,7 +276,12 @@
       // Leaflet map markers (aircraft/waypoint icons) are visual-only and flood the list as empty
       // clickable buttons after a route loads (31+). Skip the marker SUBTREE (inner icon divs also
       // classify as buttons). Waypoint name labels live in a separate pane, so they're unaffected.
-      if ((typeof el.className === 'string' ? el.className : '').indexOf('leaflet-marker-icon') >= 0) { skipUnder = el; continue; }
+      // Leaflet map is a graphic: tiles, markers, the route line and waypoint TOOLTIPS carry no
+      // readable content for a blind pilot (the route is read via the FMC/CDU + Flight Details).
+      // Skip the whole .leaflet-container subtree — its tooltip labels otherwise flood the list.
+      // Map control buttons + the source select are SIBLINGS of .leaflet-container, so kept.
+      var clsLeaf = (typeof el.className === 'string' ? el.className : '');
+      if (clsLeaf.indexOf('leaflet-container') >= 0 || clsLeaf.indexOf('leaflet-marker-icon') >= 0) { skipUnder = el; continue; }
       // Preformatted block (the SimBrief OFP is ONE <pre> of 800+ fragments). Emit its OWN
       // line breaks verbatim — that's the briefing exactly as a sighted pilot reads it
       // (aligned columns, fuel table, NOTAMs) — and skip its children so they don't fragment.
@@ -318,7 +323,15 @@
         // nodes "3","5","R","1","7","L"). Skip them BEFORE the same-row merge so "R" + "1" can't
         // merge into "R 1". Real values/units live in labeled fields or .input-unit spans.
         if (own.replace(/\s+/g, '').length <= 1) continue;
-        if (el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
+        // A pmdg_measurement <label> is a VALUE display (ZFW / Route Dist / weather temp), not a
+        // form label — capture it (with its sibling unit) instead of skipping it as a <label>.
+        var isMeasure = (el.matches && el.matches('label.pmdg_measurement'));
+        if (!isMeasure && el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
+        if (isMeasure) {
+          var mu = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.output-unit') : null;
+          var mut = mu ? A.txt(mu) : '';
+          if (mut) own = own + ' ' + mut;
+        }
         // unit adornment spans (.input-unit "ft"/"kg", .output-unit "kt") belong WITH their
         // field, not as standalone text — skip them here (append-to-field is a polish item).
         if (el.closest && el.closest('.input-unit, .output-unit')) continue;
@@ -485,6 +498,24 @@
       }
       merged.push(it);
     }
+    // Dashboard route header: the origin/destination/time h3s render as bare codes. Label them
+    // faithfully (sighted layout: IATA ICAO  ✈  ICAO IATA, with STD/STA below).
+    var byId = {};
+    for (var r0 = 0; r0 < merged.length; r0++) if (merged[r0]._id) byId[merged[r0]._id] = merged[r0];
+    var combine = function (primaryId, otherId, prefix, primaryFirst) {
+      var p = byId['efb_dashboard_' + primaryId], o2 = byId['efb_dashboard_' + otherId];
+      if (!p) return;
+      var a = primaryFirst ? (p.label || '') : (o2 ? o2.label : '');
+      var b = primaryFirst ? (o2 ? o2.label : '') : (p.label || '');
+      p.label = prefix + ': ' + (a && b ? (a + ' / ' + b) : (a || b));
+      if (o2) o2._consumed = true;
+    };
+    var prefixOne = function (id2, prefix) { var it2 = byId['efb_dashboard_' + id2]; if (it2 && !/^\s*$/.test(it2.label || '') && it2.label.indexOf(prefix + ':') !== 0) it2.label = prefix + ': ' + it2.label; };
+    combine('originiata', 'originicao', 'Origin', true);                 // "Origin: LAX / KLAX"
+    combine('destinationicao', 'destinationiata', 'Destination', true);  // "Destination: KDFW / DFW"
+    prefixOne('std', 'STD');
+    prefixOne('sta', 'STA');
+    merged = merged.filter(function (x) { return !x._consumed; });
     return merged;
   };
 
