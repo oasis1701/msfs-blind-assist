@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
@@ -22,6 +23,9 @@ public class FenixEFBForm : Form
 {
     private const string EfbUrl = "http://localhost:8083/#/efb";
 
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+
     private readonly ScreenReaderAnnouncer _announcer;
 
     private WebView2 _webView = null!;
@@ -29,17 +33,38 @@ public class FenixEFBForm : Form
     private Label _errorLabel = null!;
     private Button _retryButton = null!;
     private bool _webViewReady;
+    private IntPtr _previousWindow = IntPtr.Zero;
 
     public FenixEFBForm(ScreenReaderAnnouncer announcer)
     {
         _announcer = announcer;
 
-        Text = "Fenix A320 EFB";
-        AccessibleName = "Fenix A320 EFB";
+        Text = "Fenix EFB";
+        AccessibleName = "Fenix EFB";
         Width = 1000;
         Height = 760;
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
+
+        // Hide instead of dispose on close, so reopening returns the user to the
+        // EFB page they were on (and avoids re-initializing WebView2 every time).
+        // The form is disposed for real on aircraft swap (MainForm.SwitchAircraft,
+        // which calls Dispose() directly and bypasses this handler). Any
+        // user-initiated close — the X button / Alt+F4 (UserClosing) or our own
+        // Escape Close() (CloseReason.None) — just hides; only real app/OS shutdown
+        // is allowed to tear the window down.
+        FormClosing += (_, e) =>
+        {
+            if (e.CloseReason is CloseReason.ApplicationExitCall
+                or CloseReason.WindowsShutDown
+                or CloseReason.TaskManagerClosing)
+            {
+                return;
+            }
+            e.Cancel = true;
+            Hide();
+            if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
+        };
 
         BuildUi();
         _ = InitWebViewAsync();
@@ -90,8 +115,22 @@ public class FenixEFBForm : Form
         try
         {
             await _webView.EnsureCoreWebView2Async();
-            _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            var s = _webView.CoreWebView2.Settings;
+            s.AreDefaultContextMenusEnabled = false;
+            s.AreDevToolsEnabled = false;
+            s.IsZoomControlEnabled = false;
             _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            // Escape from INSIDE the web content never reaches ProcessCmdKey (the
+            // WebView2 browser process owns that focus), and the WinForms WebView2
+            // wrapper doesn't expose the controller's AcceleratorKeyPressed event.
+            // So a tiny injected listener posts a close message; capture-phase (true)
+            // guarantees it fires even if the page handles Escape itself.
+            // ProcessCmdKey still covers Escape on the error panel.
+            await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                "window.addEventListener('keydown',function(e){" +
+                "if(e.key==='Escape'){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
+                "true);");
             _webViewReady = true;
             Navigate();
         }
@@ -112,6 +151,15 @@ public class FenixEFBForm : Form
         // error panel if the load fails.
         ShowBrowser();
         _webView.CoreWebView2.Navigate(EfbUrl);
+    }
+
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        // Fired on the UI thread. Close() runs the hide-and-restore FormClosing path.
+        if (e.TryGetWebMessageAsString() == "msfsba-efb-close")
+        {
+            Close();
+        }
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -145,6 +193,8 @@ public class FenixEFBForm : Form
     /// <summary>Show (or re-show) and focus the window. Reused across opens.</summary>
     public void ShowForm()
     {
+        // Remember who had focus so we can restore it when the window is dismissed.
+        _previousWindow = GetForegroundWindow();
         if (!Visible) Show();
         BringToFront();
         Activate();
