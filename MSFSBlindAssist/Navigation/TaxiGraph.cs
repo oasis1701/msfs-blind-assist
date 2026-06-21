@@ -53,6 +53,12 @@ public class TaxiGraph
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
+    // Max perpendicular distance (metres) from a hold-short node to a runway
+    // centerline for the node to be named after that runway. Above a CAT III /
+    // code-F holding-position setback (~107 m) so real hold lines match, below
+    // major-airport parallel-runway spacing so a node binds to its OWN runway.
+    private const double HOLDSHORT_RUNWAY_MATCH_M = 150.0;
+
     // Start at 1 so node ID 0 is a permanent "not set" sentinel. TaxiGuidanceManager
     // uses _destinationNodeId = 0 to mark a cleared route (e.g. after
     // EnterRunwayEndCountdown). If _nextNodeId were 0, the first real node would
@@ -290,7 +296,22 @@ public class TaxiGraph
                     }
                 }
 
-                if (nearestRunway != null && nearestDist < 500)
+                // Primary: associate by nearest runway CENTERLINE (length-invariant),
+                // so a mid-runway crossing of a long runway is named after the runway,
+                // not the taxiway. Format leads with the runway (the safety cue),
+                // appending the holding-point/taxiway designator when present.
+                string? centerlineRwy = MatchHoldShortRunwayName(
+                    node.Latitude, node.Longitude, graph.RunwayCenterlines, HOLDSHORT_RUNWAY_MATCH_M);
+                if (centerlineRwy != null)
+                {
+                    node.HoldShortName = !string.IsNullOrEmpty(holdPointName)
+                        ? $"runway {centerlineRwy} at {holdPointName}"
+                        : $"runway {centerlineRwy}";
+                }
+                // Fallback (no centerlines built, or none within tolerance): the
+                // existing threshold-distance heuristic, unchanged — preserves
+                // today's output for sparse navdata without reciprocal pairs.
+                else if (nearestRunway != null && nearestDist < 500)
                 {
                     if (!string.IsNullOrEmpty(holdPointName))
                         node.HoldShortName = $"{holdPointName}, Runway {nearestRunway}";
@@ -433,13 +454,13 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Finds the nearest graph node to a given position.
-    /// Uses the spatial hash for fast local lookup (expanding ring if needed),
-    /// falling back to a full scan only if no node is found within ~1km.
-    /// Component-unaware: callers needing component filtering must inspect
-    /// the result's <see cref="TaxiNode.ComponentId"/> themselves.
+    /// Finds the nearest graph node to a given position. When
+    /// <paramref name="requiredComponentId"/> is set, only nodes in that
+    /// connected component are considered (the spatial-hash ring and the
+    /// full-scan fallback both honour it) — used to keep an aircraft's start
+    /// node in the destination's component.
     /// </summary>
-    public TaxiNode? FindNearestNode(double lat, double lon)
+    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null)
     {
         // Fast path: search the spatial hash with an expanding ring of cells.
         // Precision 5 = ~1.1m cells at equator. Rings 1, 3, 10, 30 cover up to ~330m cheaply.
@@ -459,6 +480,8 @@ public class TaxiGraph
                         foreach (int nodeId in nodeIds)
                         {
                             var node = Nodes[nodeId];
+                            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                                continue;
                             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
                             if (dist < bestDist)
                             {
@@ -477,6 +500,8 @@ public class TaxiGraph
         double fallbackDist = double.MaxValue;
         foreach (var node in Nodes.Values)
         {
+            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < fallbackDist)
             {
@@ -900,11 +925,42 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
-    /// Uses equirectangular projection — accurate for taxiway-scale distances.
-    /// Returns the distance to the nearest point on the segment (not the infinite line),
-    /// so endpoints count when the foot of the perpendicular falls outside.
+    /// Runway designator a hold-short node holds short of, found by the NEAREST
+    /// runway centerline (full length, perpendicular distance clamped to the
+    /// threshold endpoints). Length-invariant: a hold-short where a taxiway
+    /// crosses a long runway far from either threshold is still matched — unlike a
+    /// distance-to-threshold test. Returns the closer-end designator (same
+    /// convention as DescribeLocation / WhichRunwayContains), or null when no
+    /// centerline is within <paramref name="maxMatchMeters"/> (the caller then
+    /// falls back to the threshold heuristic). Public static for probe coverage.
     /// </summary>
+    public static string? MatchHoldShortRunwayName(
+        double lat, double lon,
+        IReadOnlyList<RunwayCenterline> centerlines,
+        double maxMatchMeters)
+    {
+        string? best = null;
+        double bestPerp = double.MaxValue;
+        foreach (var rwy in centerlines)
+        {
+            double perp = PerpendicularDistanceMeters(
+                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
+            if (perp > maxMatchMeters || perp >= bestPerp) continue;
+
+            // Closer-end designator (same convention as DescribeLocation): the end
+            // the aircraft is nearer is the one it would line up to depart from.
+            double d1 = FastDistanceMeters(lat, lon, rwy.Lat1, rwy.Lon1);
+            double d2 = FastDistanceMeters(lat, lon, rwy.Lat2, rwy.Lon2);
+            string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
+            if (string.IsNullOrEmpty(name)) name = rwy.Name1;
+            if (string.IsNullOrEmpty(name)) continue; // unnamed centerline — skip
+
+            best = name;
+            bestPerp = perp;
+        }
+        return best;
+    }
+
     /// <summary>
     /// Public wrapper for the internal perpendicular-distance calculation, so
     /// other components (e.g. TaxiGuidanceManager.WhichRunwayContains) can do
@@ -916,6 +972,12 @@ public class TaxiGraph
         double blat, double blon)
         => PerpendicularDistanceMeters(plat, plon, alat, alon, blat, blon);
 
+    /// <summary>
+    /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
+    /// Uses equirectangular projection — accurate for taxiway-scale distances.
+    /// Returns the distance to the nearest point on the segment (not the infinite line),
+    /// so endpoints count when the foot of the perpendicular falls outside.
+    /// </summary>
     private static double PerpendicularDistanceMeters(
         double plat, double plon,
         double alat, double alon,
@@ -946,6 +1008,54 @@ public class TaxiGraph
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
+    }
+
+    /// <summary>
+    /// True when the taxi edge (a→b) crosses the runway centerline (t1→t2)
+    /// between the thresholds — a proper segment-segment intersection.
+    ///
+    /// This is the CORRECT "does the route cross this runway" test. A taxiway
+    /// crosses a runway via an EDGE that spans the pavement, with its endpoint
+    /// NODES sitting OFF the runway on either side — so a "is a node ON the
+    /// pavement?" test (perpendicular distance ≤ half-width) silently misses the
+    /// crossing whenever the flanking nodes are more than ~half-width+5 m from
+    /// the centerline. KBOS taxiway C over runway 04L is the motivating case:
+    /// C plainly crosses 04L, but C's nearest node is 35 m from the 04L
+    /// centerline (half-width is 25 m), so the node test found nothing and no
+    /// hold-short was inserted — even though the route clearly traverses the
+    /// runway. The edge-intersection test catches it regardless of node spacing.
+    ///
+    /// "Proper" (strict opposite-sides) intersection by design: a taxiway that
+    /// merely touches a threshold endpoint or runs parallel alongside the runway
+    /// is NOT flagged, avoiding false hold-shorts.
+    /// </summary>
+    public static bool EdgeCrossesRunwayStatic(
+        double aLat, double aLon, double bLat, double bLon,
+        double t1Lat, double t1Lon, double t2Lat, double t2Lon)
+    {
+        // Project the four points to a local planar frame (origin = a, x=east,
+        // y=north, metres) — equirectangular, accurate at taxiway/runway scale.
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double metersPerDegLon =
+            METERS_PER_DEG_LAT * Math.Cos((aLat + bLat) * 0.5 * (Math.PI / 180.0));
+
+        double p1x = 0.0, p1y = 0.0;
+        double p2x = (bLon - aLon) * metersPerDegLon, p2y = (bLat - aLat) * METERS_PER_DEG_LAT;
+        double p3x = (t1Lon - aLon) * metersPerDegLon, p3y = (t1Lat - aLat) * METERS_PER_DEG_LAT;
+        double p4x = (t2Lon - aLon) * metersPerDegLon, p4y = (t2Lat - aLat) * METERS_PER_DEG_LAT;
+
+        // Orientation of (b)/(t1)/(t2) relative to the two directed lines.
+        double d1 = Orient(p3x, p3y, p4x, p4y, p1x, p1y); // p1 vs runway line
+        double d2 = Orient(p3x, p3y, p4x, p4y, p2x, p2y); // p2 vs runway line
+        double d3 = Orient(p1x, p1y, p2x, p2y, p3x, p3y); // t1 vs edge line
+        double d4 = Orient(p1x, p1y, p2x, p2y, p4x, p4y); // t2 vs edge line
+
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+            && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+
+        // Signed area (z of cross product) of (o→a)×(o→b): >0 left, <0 right.
+        static double Orient(double ox, double oy, double ax, double ay, double bx, double by)
+            => (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
     }
 
     /// <summary>
@@ -1143,6 +1253,56 @@ public class TaxiGraph
         }
 
         return collected.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Returns the node on <paramref name="fromTaxiway"/> that also has an outgoing edge on
+    /// <paramref name="toTaxiway"/> within the given connected component — i.e. the intersection
+    /// node where the two taxiways meet.  Used by the progressive-taxi terminator to locate
+    /// "hold short of taxiway Y while on taxiway X".
+    /// Returns -1 when no such node exists in the component.
+    /// </summary>
+    public int FindTaxiwayIntersectionNode(string fromTaxiway, string toTaxiway, int requiredComponentId)
+    {
+        foreach (var kvp in Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!Nodes.TryGetValue(nodeId, out var node) || node.ComponentId != requiredComponentId)
+                continue;
+            bool onFrom = false, onTo = false;
+            foreach (var e in kvp.Value)
+            {
+                if (e.TaxiwayName.Equals(fromTaxiway, StringComparison.OrdinalIgnoreCase)) onFrom = true;
+                else if (e.TaxiwayName.Equals(toTaxiway, StringComparison.OrdinalIgnoreCase)) onTo = true;
+            }
+            if (onFrom && onTo) return nodeId;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Returns the node on <paramref name="taxiway"/> (in the same connected component as
+    /// <paramref name="fromNodeId"/>) that is farthest — by straight-line distance — from
+    /// <paramref name="fromNodeId"/>.  Used by the progressive-taxi terminator to locate
+    /// the "end of taxiway" destination.
+    /// Returns -1 when <paramref name="fromNodeId"/> is not found or no node on
+    /// <paramref name="taxiway"/> exists in the component.
+    /// </summary>
+    public int FindTaxiwayEndNode(int fromNodeId, string taxiway)
+    {
+        if (!Nodes.TryGetValue(fromNodeId, out var from)) return -1;
+        int comp = from.ComponentId;
+        int best = -1;
+        double bestDist = -1;
+        foreach (var kvp in Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!Nodes.TryGetValue(nodeId, out var node) || node.ComponentId != comp) continue;
+            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiway, StringComparison.OrdinalIgnoreCase))) continue;
+            double d = FastDistanceMeters(from.Latitude, from.Longitude, node.Latitude, node.Longitude);
+            if (d > bestDist) { bestDist = d; best = nodeId; }
+        }
+        return best;
     }
 
     /// <summary>
