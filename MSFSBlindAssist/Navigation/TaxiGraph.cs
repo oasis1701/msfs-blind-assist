@@ -1011,6 +1011,54 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// True when the taxi edge (a→b) crosses the runway centerline (t1→t2)
+    /// between the thresholds — a proper segment-segment intersection.
+    ///
+    /// This is the CORRECT "does the route cross this runway" test. A taxiway
+    /// crosses a runway via an EDGE that spans the pavement, with its endpoint
+    /// NODES sitting OFF the runway on either side — so a "is a node ON the
+    /// pavement?" test (perpendicular distance ≤ half-width) silently misses the
+    /// crossing whenever the flanking nodes are more than ~half-width+5 m from
+    /// the centerline. KBOS taxiway C over runway 04L is the motivating case:
+    /// C plainly crosses 04L, but C's nearest node is 35 m from the 04L
+    /// centerline (half-width is 25 m), so the node test found nothing and no
+    /// hold-short was inserted — even though the route clearly traverses the
+    /// runway. The edge-intersection test catches it regardless of node spacing.
+    ///
+    /// "Proper" (strict opposite-sides) intersection by design: a taxiway that
+    /// merely touches a threshold endpoint or runs parallel alongside the runway
+    /// is NOT flagged, avoiding false hold-shorts.
+    /// </summary>
+    public static bool EdgeCrossesRunwayStatic(
+        double aLat, double aLon, double bLat, double bLon,
+        double t1Lat, double t1Lon, double t2Lat, double t2Lon)
+    {
+        // Project the four points to a local planar frame (origin = a, x=east,
+        // y=north, metres) — equirectangular, accurate at taxiway/runway scale.
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double metersPerDegLon =
+            METERS_PER_DEG_LAT * Math.Cos((aLat + bLat) * 0.5 * (Math.PI / 180.0));
+
+        double p1x = 0.0, p1y = 0.0;
+        double p2x = (bLon - aLon) * metersPerDegLon, p2y = (bLat - aLat) * METERS_PER_DEG_LAT;
+        double p3x = (t1Lon - aLon) * metersPerDegLon, p3y = (t1Lat - aLat) * METERS_PER_DEG_LAT;
+        double p4x = (t2Lon - aLon) * metersPerDegLon, p4y = (t2Lat - aLat) * METERS_PER_DEG_LAT;
+
+        // Orientation of (b)/(t1)/(t2) relative to the two directed lines.
+        double d1 = Orient(p3x, p3y, p4x, p4y, p1x, p1y); // p1 vs runway line
+        double d2 = Orient(p3x, p3y, p4x, p4y, p2x, p2y); // p2 vs runway line
+        double d3 = Orient(p1x, p1y, p2x, p2y, p3x, p3y); // t1 vs edge line
+        double d4 = Orient(p1x, p1y, p2x, p2y, p4x, p4y); // t2 vs edge line
+
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+            && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+
+        // Signed area (z of cross product) of (o→a)×(o→b): >0 left, <0 right.
+        static double Orient(double ox, double oy, double ax, double ay, double bx, double by)
+            => (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+    }
+
+    /// <summary>
     /// Gets all unique taxiway names in the graph, sorted.
     /// </summary>
     public List<string> GetAllTaxiwayNames()

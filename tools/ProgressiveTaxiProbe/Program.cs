@@ -205,5 +205,50 @@ Check(TaxiLeadIn.Clause(li3, "A") == " First taxi onto A.",
 Check(TaxiLeadIn.Clause(li2, "A") == "",
       "Clause: no lead-in → empty");
 
+// ---------------------------------------------------------------------------
+// Edge-vs-runway crossing detection (TaxiGraph.EdgeCrossesRunwayStatic).
+//
+// A taxiway crosses a runway via an EDGE that spans the pavement; the edge's
+// endpoint NODES sit OFF the runway on either side. A point-on-pavement test on
+// the nodes therefore misses the crossing — which is exactly the KBOS bug:
+// taxiway C plainly crosses runway 04L, but C's nearest node is 35 m from the
+// 04L centerline (beyond half-width 25 m + 5 m), so no node lands on pavement.
+//
+// Real KBOS geometry (from fs2024 navdata):
+//   04L/22R centerline: 04L (42.358017,-71.014366) → 22R (42.378273,-71.004539)
+//   crossing C edge:    (42.363224,-71.012863) → (42.362663,-71.011658)
+//                        both endpoints 79 m / 35 m off the centerline.
+// ---------------------------------------------------------------------------
+double rwy04Lat1 = 42.358017, rwy04Lon1 = -71.014366; // 04L threshold
+double rwy04Lat2 = 42.378273, rwy04Lon2 = -71.004539; // 22R threshold
+double cA_lat = 42.363224, cA_lon = -71.012863;       // C node, 79 m off centerline
+double cB_lat = 42.362663, cB_lon = -71.011658;       // C node, 35 m off centerline
+double rwy04HalfW = 164.0 * 0.3048 / 2.0;             // 25 m
+
+// The crossing edge IS detected.
+Check(TaxiGraph.EdgeCrossesRunwayStatic(cA_lat, cA_lon, cB_lat, cB_lon,
+        rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2),
+      "KBOS C edge crosses 04L (edge-intersection)");
+
+// And neither endpoint NODE lands on the pavement (the old point test fails),
+// proving the edge test catches a crossing the node test cannot.
+double perpA = TaxiGraph.PerpendicularDistanceMetersStatic(
+    cA_lat, cA_lon, rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2);
+double perpB = TaxiGraph.PerpendicularDistanceMetersStatic(
+    cB_lat, cB_lon, rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2);
+Check(perpA > rwy04HalfW + 5.0 && perpB > rwy04HalfW + 5.0,
+      $"KBOS C nodes are OFF 04L pavement (perpA={perpA:F1}, perpB={perpB:F1} > {rwy04HalfW + 5.0:F1}) — node test misses it");
+
+// A C edge running well clear of 04L does NOT register a crossing (no false positive).
+Check(!TaxiGraph.EdgeCrossesRunwayStatic(42.3700, -70.9950, 42.3690, -70.9940,
+        rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2),
+      "edge clear of 04L does not register a crossing");
+
+// An edge that runs PARALLEL alongside the runway (same side, never crossing the
+// centerline) does NOT register a crossing.
+Check(!TaxiGraph.EdgeCrossesRunwayStatic(42.3600, -71.0200, 42.3720, -71.0170,
+        rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2),
+      "edge parallel to 04L (same side, west of centerline) does not register a crossing");
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);
