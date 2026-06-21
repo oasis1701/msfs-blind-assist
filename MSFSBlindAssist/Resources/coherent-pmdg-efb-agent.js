@@ -156,6 +156,37 @@
     return '';
   };
 
+  // Geometry pairing: nearest text item to the LEFT on the same row (by vertical CENTRE, so a
+  // control vertically centred inside a taller label row still matches), else directly ABOVE
+  // (label-on-top layouts). requireLabel restricts to label-class cells (_isLabel) — used for
+  // buttons so status-bar buttons never grab the clock/sim-rate text.
+  A._rowTextFor = function (el, textItems, requireLabel) {
+    var cr = null; try { cr = el.getBoundingClientRect(); } catch (e) { return null; }
+    if (!cr) return null;
+    var cCy = cr.top + cr.height / 2, cLeft = Math.round(cr.left), best = null, bestDx = 1e9;
+    for (var t = 0; t < textItems.length; t++) {
+      var ti = textItems[t];
+      if (ti._consumed || ti._cy == null || ti._left == null) continue;
+      if (requireLabel && !ti._isLabel) continue;
+      if (!/[A-Za-z]/.test(ti.label || '')) continue;
+      if (Math.abs(ti._cy - cCy) > 24) continue;
+      if (ti._left > cLeft + 4) continue;
+      var dx = cLeft - ti._left; if (dx < bestDx) { bestDx = dx; best = ti; }
+    }
+    if (best) return best;
+    var bestDy = 1e9;
+    for (var u = 0; u < textItems.length; u++) {
+      var ai = textItems[u];
+      if (ai._consumed || ai._top == null || ai._left == null) continue;
+      if (requireLabel && !ai._isLabel) continue;
+      if (!/[A-Za-z]/.test(ai.label || '')) continue;
+      var dy = cr.top - ai._top; if (dy <= 0 || dy > 40) continue;
+      if (Math.abs(ai._left - cLeft) > 30) continue;
+      if (dy < bestDy) { bestDy = dy; best = ai; }
+    }
+    return best;
+  };
+
   // Returns {text, src}. Priority depends on control type:
   //  - form controls (text/select/checkbox/radio/range): aria -> label-for -> row-label -> id
   //  - buttons/status/links/headings: aria -> own-text -> fa-icon -> title -> id
@@ -283,8 +314,10 @@
         }
         idx++;
         el.setAttribute('data-pmdg-efb-idx', String(idx));
-        var tleft = null; try { tleft = Math.round(el.getBoundingClientRect().left); } catch (e) {}
-        var titem = { idx: idx, type: 'text-content', tag: el.tagName, label: own, src: 'text-content', _top: ttop, _left: tleft };
+        var tleft = null, tcy = null;
+        try { var trc = el.getBoundingClientRect(); tleft = Math.round(trc.left); tcy = trc.top + trc.height / 2; } catch (e) {}
+        var isLbl = false; try { isLbl = !!(el.closest && el.closest('.preflabel, .opt-label, .opt-output-label, .groundops_ui_label, .field-label, .input-label')); } catch (e2) {}
+        var titem = { idx: idx, type: 'text-content', tag: el.tagName, label: own, src: 'text-content', _top: ttop, _left: tleft, _cy: tcy, _isLabel: isLbl };
         out.push(titem);
         textItems.push(titem);
         lastText = titem; lastTextTop = ttop;
@@ -316,36 +349,19 @@
       // (Preferences etc. render labels in a separate column from the controls).
       if (type === 'text' || type === 'select' || type === 'checkbox' || type === 'radio' || type === 'range') {
         if (item.src === 'id' || item.src === 'none' || item.src === 'heading-bleed') {
-          var cr = null; try { cr = el.getBoundingClientRect(); } catch (e) {}
-          if (cr) {
-            var ctop = Math.round(cr.top), cleft = Math.round(cr.left), best = null, bestDx = 1e9;
-            for (var t = 0; t < textItems.length; t++) {
-              var ti = textItems[t];
-              if (ti._consumed || ti._top === null || ti._left === null) continue;
-              if (!/[A-Za-z]/.test(ti.label || '')) continue;    // a field label has letters, not a bare value
-              if (Math.abs(ti._top - ctop) > 14) continue;       // same row
-              if (ti._left > cleft + 4) continue;                // label is to the left
-              var dx = cleft - ti._left;
-              if (dx < bestDx) { bestDx = dx; best = ti; }
-            }
-            // fallback: a label directly ABOVE the control (label-on-top layouts, e.g. Brightness)
-            if (!best) {
-              var bestDy = 1e9;
-              for (var t2 = 0; t2 < textItems.length; t2++) {
-                var ai = textItems[t2];
-                if (ai._consumed || ai._top === null || ai._left === null) continue;
-                if (!/[A-Za-z]/.test(ai.label || '')) continue;  // a field label has letters, not a bare value
-                var dy = ctop - ai._top;
-                if (dy <= 0 || dy > 40) continue;                // just above
-                if (Math.abs(ai._left - cleft) > 30) continue;   // left-aligned
-                if (dy < bestDy) { bestDy = dy; best = ai; }
-              }
-            }
-            if (best) { item.label = best.label; item.src = 'row-text'; best._consumed = true; }
-          }
+          var best = A._rowTextFor(el, textItems, false);
+          if (best) { item.label = best.label; item.src = 'row-text'; best._consumed = true; }
         }
       }
-      if (type === 'button') { var pl = A._pairLabel(el); if (pl && pl !== item.label) item.pair = pl; if (el.id) item._id = el.id; }
+      if (type === 'button') { var pl = A._pairLabel(el); if (pl && pl !== item.label) item.pair = pl; }
+      // Buttons in a two-column layout (Preferences Sign Out / Factory Reset) keep their own
+      // text but gain the left label cell as context ("Navigraph Authentication: Sign Out").
+      // requireLabel=true so chrome buttons (Home etc.) never claim clock/sim-rate text.
+      if (type === 'button' && !item.pair) {
+        var bbest = A._rowTextFor(el, textItems, true);
+        if (bbest) { item.pair = bbest.label; bbest._consumed = true; }
+      }
+      if (el.id) item._id = el.id;
       if (type === 'heading') { var lv = el.getAttribute('aria-level'); item.level = lv ? Number(lv) : Number((el.tagName.match(/H([1-6])/) || [0, 0])[1]); }
       if (type === 'text' || type === 'range') {
         item.value = String(el.value || '');
