@@ -66,7 +66,7 @@
     if (!id) return '';
     var s = id.replace(/^efb_preferences_/, '').replace(/^efb_dashboard_/, '')
              .replace(/^efb_general_/, '').replace(/^opt_/, '').replace(/^groundops_/, '')
-             .replace(/^efb_/, '').replace(/^wb_/, '').replace(/_/g, ' ').trim();
+             .replace(/^efb_/, '').replace(/^wb_/, '').replace(/^statusbar_/, '').replace(/_/g, ' ').trim();
     // The screen reader already announces the "button" role — a trailing "Button"/"Btn"
     // word in the id (e.g. "weather search button") is redundant clutter, so drop it.
     s = s.replace(/\s*\b(button|btn)\b\s*$/i, '').trim();
@@ -206,6 +206,15 @@
         // Buttons stay short; headings/status/links may be a sentence (Manuals H2).
         var cap = (type === 'button') ? 48 : 140;
         var full = A.txt(el); if (full && full.length > 0 && full.length <= cap) return { text: full, src: 'text' };
+        // Persistent chrome (nav rail / status bar) icon-only buttons: the element id is the
+        // authoritative app/control name; the shared FA glyph is an unreliable guess (file-lines
+        // for Paperwork, arrows-rotate for Restart). Prefer id when there is no own text.
+        if (type === 'button' && !full) {
+          var cls0 = (typeof el.className === 'string') ? el.className : '';
+          if (cls0.indexOf('efb_main_menu_button') >= 0 || /^statusbar_/.test(el.id || '')) {
+            var idc = A.idToLabel(el.id); if (idc) return { text: idc, src: 'id' };
+          }
+        }
         var fa = A.faName(el); if (fa) return { text: fa, src: 'fa-icon' };
         var title = el.getAttribute && (el.getAttribute('title') || el.getAttribute('alt')); if (title) return { text: title, src: 'title' };
         var idl2 = A.idToLabel(el.id); if (idl2) return { text: idl2, src: 'id' };
@@ -290,6 +299,14 @@
       }
       var type = A.classify(el);
       if (!type) {
+        // Status-bar icon indicators (Signal/Battery): no text, not clickable, FA unmapped — the
+        // generic passes drop them. Surface as read-only statics, in DOM order, so the bar matches
+        // the sighted view. (Actionable status-bar items — restart/home/autocruise — classify above.)
+        if (el.id && /^statusbar_/.test(el.id) && el.closest && el.closest('#StatusBar') &&
+            el.querySelector && el.querySelector('i[class*="fa-"]') && !A.txt(el)) {
+          var snm = A.idToLabel(el.id);
+          if (snm) { idx++; el.setAttribute('data-pmdg-efb-idx', String(idx)); out.push({ idx: idx, type: 'text-content', tag: el.tagName, label: snm, src: 'statusbar-indicator' }); lastText = null; continue; }
+        }
         // READABLE TEXT capture — leaf own-text not part of any control/heading/label cell.
         // Surfaces document text (OFP briefing, Navdata, Manuals, Dashboard values) that the
         // control-only scrape misses. ownText = direct text nodes only, so a wrapper div with

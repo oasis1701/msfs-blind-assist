@@ -61,7 +61,7 @@ test('weather widget value labels (Temp/QNH) never bleed into the toggle/icao fi
 test('colliding icon-only buttons read clean id names (no "X Button: Refresh" clutter)', () => {
   const els = scrape('iconbtn');
   const btns = els.filter(e => e.kind === 'button').map(e => e.text).sort();
-  assert.deepStrictEqual(btns, ['Statusbar Restart', 'Weather Search']);
+  assert.deepStrictEqual(btns, ['Restart', 'Weather Search']);
   // no colon-prefixed clutter and no redundant "Button" word
   assert.ok(!btns.some(t => /:|button/i.test(t)), 'no colon or "Button" word');
 });
