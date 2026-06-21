@@ -7,6 +7,11 @@
 (function () {
   var A = {};
   A.INSTALLED = 'MSFSBA_PMDG_EFB_INSTALLED';
+  // Reserved (collision-free) idx for the synthesized "Weather Source" control. The tablet stores
+  // Settings.weather_source (Real World / Sim) but renders NO UI for it, so we add an accessible
+  // select on the Preferences page driven via Settings.updateSetting. Sequential scrape idx never
+  // reaches this value, so it stays stable across scrapes (setValue dispatches on it).
+  A.SYN_WEATHER_SOURCE = 990001;
 
   // FontAwesome icon class -> human name (icon-only buttons / status bar).
   A.FA_MAP = {
@@ -20,6 +25,13 @@
     'fa-chevron-left': 'Back', 'fa-chevron-right': 'Forward', 'fa-arrow-left': 'Back',
     'fa-print': 'Print', 'fa-trash': 'Delete', 'fa-download': 'Download', 'fa-upload': 'Upload',
     'fa-plane': 'Aircraft', 'fa-cloud': 'Weather', 'fa-clock': 'Clock'
+  };
+
+  // The EFB Settings singleton (config + updateSetting/getSetting). window first, then bare global.
+  A.settingsObj = function () {
+    try { if (typeof window !== 'undefined' && window.Settings) return window.Settings; } catch (e) {}
+    try { if (typeof Settings !== 'undefined') return Settings; } catch (e2) {}
+    return null;
   };
 
   A.side = function () { try { return (typeof getTabletSide === 'function') ? getTabletSide() : ''; } catch (e) { return ''; } };
@@ -524,6 +536,25 @@
     prefixOne('std', 'STD');
     prefixOne('sta', 'STA');
     merged = merged.filter(function (x) { return !x._consumed; });
+
+    // Synthesize a "Weather Source" select on the Preferences page — the tablet stores
+    // Settings.weather_source (Real World = AWC / Sim) but renders no control for it. Gated on the
+    // Preferences page being shown; reads the active value, driven back via Settings.updateSetting
+    // (see setValue's SYN_WEATHER_SOURCE branch). Skipped if Settings is unavailable.
+    try {
+      var prefsEl = document.querySelector('#efb_preferences');
+      var Sx = A.settingsObj();
+      if (prefsEl && A.isVisible(prefsEl) && Sx && Sx.weather_source != null && typeof Sx.updateSetting === 'function') {
+        var isSim = /sim/i.test(String(Sx.weather_source));
+        var wsItem = { idx: A.SYN_WEATHER_SOURCE, type: 'select', tag: 'SELECT', label: 'Weather Source', value: (isSim ? 'Sim' : 'Real World'), options: ['Real World', 'Sim'], src: 'synthetic' };
+        // place it just before the first Preferences action button (Sign Out), else append.
+        var ins = -1;
+        for (var w = 0; w < merged.length; w++) {
+          if (merged[w].type === 'button' && merged[w]._id && merged[w]._id.indexOf('efb_preferences_') === 0) { ins = w; break; }
+        }
+        if (ins >= 0) merged.splice(ins, 0, wsItem); else merged.push(wsItem);
+      }
+    } catch (eWs) {}
     return merged;
   };
 
@@ -591,6 +622,15 @@
   };
 
   A.setValue = function (idx, val) {
+    // Synthesized "Weather Source" control (no DOM element): drive Settings.updateSetting with the
+    // exact WeatherSource enum value (updateSetting validates against it). "Sim" -> SIM, else AWC.
+    if (idx === A.SYN_WEATHER_SOURCE || String(idx) === String(A.SYN_WEATHER_SOURCE)) {
+      var Sw = A.settingsObj();
+      if (!Sw || typeof Sw.updateSetting !== 'function') return 'NO_SETTINGS';
+      var W = (typeof window !== 'undefined' && window.WeatherSource) ? window.WeatherSource : { SIM: 'SIM', AWC: 'REAL-WORLD' };
+      var v = /sim/i.test(String(val)) ? (W.SIM || 'SIM') : (W.AWC || 'REAL-WORLD');
+      try { Sw.updateSetting('weather_source', v); return 'OK:' + v; } catch (e) { return 'ERR:' + e.message; }
+    }
     var el = A._byIdx(idx); if (!el) return 'NO_EL';
     val = String(val);
     try {
