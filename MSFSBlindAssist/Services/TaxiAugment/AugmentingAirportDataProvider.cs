@@ -84,11 +84,36 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     public List<string> GetNearbyAirportICAOs(double lat, double lon, double nm)  => _base.GetNearbyAirportICAOs(lat, lon, nm);
     public List<StartPosition> GetRunwayStarts(string icao)                       => _base.GetRunwayStarts(icao);
 
-    // TODO parking-fill (Phase follow-up)
-    // ParkingSpot has many fields with no sensible defaults for sourced data
-    // (AirportICAO, Name, Number, Type, Latitude, Longitude, Heading, Radius, Source,
-    // plus GSX-enrichment fields).  For now, delegate to base.
-    public List<ParkingSpot> GetParkingSpots(string icao) => _base.GetParkingSpots(icao);
+    /// <summary>
+    /// Returns parking spots for the airport, filling in EMPTY navdata gate/stand names from the
+    /// cached online sources (OSM parking_position ref, X-Plane ramp-start name). Navdata is
+    /// authoritative — a non-empty navdata name is never overwritten, and all other ParkingSpot
+    /// fields (position, heading, radius, GSX data) are untouched. Rides the same per-ICAO cache
+    /// GetTaxiPaths populates; never triggers its own fetch. No-op when disabled or uncached.
+    /// </summary>
+    public List<ParkingSpot> GetParkingSpots(string icao)
+    {
+        var nav = _base.GetParkingSpots(icao);
+        if (!Enabled || nav == null || nav.Count == 0) return nav;
+        if (!_cache.TryLoad(icao, out var sources) || sources == null) return nav;
+
+        const double maxMeters = 30.0; // a named online stand within 30 m is the same stand
+        foreach (var spot in nav)
+        {
+            if (!string.IsNullOrWhiteSpace(spot.Name)) continue; // navdata name wins
+            string? best = null;
+            double bestD = maxMeters;
+            foreach (var src in sources)
+                foreach (var (pName, pLat, pLon) in src.Parking)
+                {
+                    if (string.IsNullOrWhiteSpace(pName)) continue;
+                    double d = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, pLat, pLon);
+                    if (d < bestD) { bestD = d; best = pName; }
+                }
+            if (best != null) spot.Name = best.Trim();
+        }
+        return nav;
+    }
 
     // ── The enriching member ────────────────────────────────────────────────
     /// <summary>

@@ -27,6 +27,20 @@ public class FlightPlanManager
     }
 
     /// <summary>
+    /// Force-fresh the online taxiway-name augmentation for an origin/destination ICAO the moment
+    /// a flight plan names it — strengthens dep/dest detection (covers manual-plan entry before
+    /// the aircraft is near either field) and keeps the active flight's taxi data current (no
+    /// stale download). Fire-and-forget; no-op when augmentation is off or the provider isn't the
+    /// augmenting decorator.
+    /// </summary>
+    private void PrefetchTaxiData(string icao)
+    {
+        if (!string.IsNullOrWhiteSpace(icao) &&
+            _airportDatabase is MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider aug)
+            _ = aug.PrefetchAsync(icao, force: true);
+    }
+
+    /// <summary>
     /// Loads flight plan from SimBrief
     /// </summary>
     public void LoadFromSimBrief(string username)
@@ -57,6 +71,7 @@ public class FlightPlanManager
     {
         try
         {
+            PrefetchTaxiData(icao);   // origin known → force-fresh online taxiway names
             if (_airportDatabase == null)
                 throw new Exception("Airport database not available. Please build the database from File menu.");
 
@@ -116,6 +131,7 @@ public class FlightPlanManager
     {
         try
         {
+            PrefetchTaxiData(icao);   // destination known → force-fresh online taxiway names
             if (_airportDatabase == null)
                 throw new Exception("Airport database not available. Please build the database from File menu.");
 
