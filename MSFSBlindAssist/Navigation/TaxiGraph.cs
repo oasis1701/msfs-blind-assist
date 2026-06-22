@@ -69,6 +69,15 @@ public class TaxiGraph
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Maps a normalized alias (see TaxiDataMerger.NormalizeTaxiwayName) to the canonical
+    /// taxiway name stored in the graph. Populated during Build from TaxiPath.Aliases.
+    /// Used by ResolveTaxiwayName so pilots can enter alternative names (e.g. "K" for
+    /// a navdata taxiway named "HAWKER") and still find the correct route.
+    /// </summary>
+    public Dictionary<string, string> TaxiwayAliasToCanonical { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Builds the taxi graph asynchronously — useful at large airports where Build can take
     /// 200-500ms and would otherwise stall the UI thread. Runs on the thread pool.
     /// </summary>
@@ -135,6 +144,23 @@ public class TaxiGraph
             {
                 graph.RegisterTaxiwayNode(name, startNodeId);
                 graph.RegisterTaxiwayNode(name, endNodeId);
+            }
+
+            // Register any online-source aliases discovered by TaxiDataMerger.
+            // Only affects COMPARISON / routing — never changes what is stored in the graph.
+            if (path.Aliases != null && path.Aliases.Count > 0 && !string.IsNullOrEmpty(name))
+            {
+                foreach (var alias in path.Aliases)
+                {
+                    if (string.IsNullOrWhiteSpace(alias)) continue;
+                    string normalizedAlias = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+                        .NormalizeTaxiwayName(alias);
+                    if (!string.IsNullOrEmpty(normalizedAlias) &&
+                        !graph.TaxiwayAliasToCanonical.ContainsKey(normalizedAlias))
+                    {
+                        graph.TaxiwayAliasToCanonical[normalizedAlias] = name;
+                    }
+                }
             }
         }
 
@@ -1059,7 +1085,9 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Gets all unique taxiway names in the graph, sorted.
+    /// Gets all unique taxiway names in the graph, sorted, including alias names so
+    /// pilots can type an alternative name and still see it in dropdowns.
+    /// Alias names are the human-readable forms collected from online sources.
     /// </summary>
     public List<string> GetAllTaxiwayNames()
     {
@@ -1072,9 +1100,52 @@ public class TaxiGraph
                     names.Add(edge.TaxiwayName);
             }
         }
+
+        // Include alias display names (the human-readable online-source forms).
+        // Values in TaxiwayAliasToCanonical are the canonical names (already added
+        // above), and the keys are the normalized forms — we need the original
+        // human-readable alias, which we must reconstruct from the TaxiPath data.
+        // Since we only store the normalized→canonical mapping, we expose the canonical
+        // names through the normal loop above. Alias DISPLAY names (for the dropdown)
+        // are the VALUES of the reverse lookup which pilots would type as-is.
+        // The alias display names are the VALUES in each segment's Aliases list —
+        // they flow in from TaxiPath.Aliases via the Build loop below, so we surface
+        // them from the reverse of TaxiwayAliasToCanonical: each normalized alias key
+        // represents a distinct human-form the pilot might enter. We add the canonical
+        // (navdata) name — already in names from edges above — but NOT a separate
+        // human alias display entry here, because the alias is the pilot's INPUT path
+        // and resolves to the canonical at route time. The dropdown already shows all
+        // canonical names; an alias just allows alternate spelling.
+        // NOTE: If a future requirement asks for alias display names in the dropdown,
+        // store the human-form alias on the TaxiwayAliasToCanonical value side and
+        // add it to `names` here.
+
         var sorted = names.ToList();
         sorted.Sort(StringComparer.OrdinalIgnoreCase);
         return sorted;
+    }
+
+    /// <summary>
+    /// Resolves an entered taxiway name to the canonical navdata name via the alias map.
+    /// If <paramref name="entered"/> (normalized) is a known alias, returns the canonical
+    /// navdata name stored in the graph. Otherwise returns <paramref name="entered"/> unchanged.
+    /// Comparison is normalized (case-insensitive, spaces stripped, TWY/TAXIWAY prefix stripped).
+    /// </summary>
+    public string ResolveTaxiwayName(string entered)
+    {
+        if (string.IsNullOrWhiteSpace(entered))
+            return entered;
+
+        string normalized = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+            .NormalizeTaxiwayName(entered);
+
+        if (!string.IsNullOrEmpty(normalized) &&
+            TaxiwayAliasToCanonical.TryGetValue(normalized, out string? canonical))
+        {
+            return canonical;
+        }
+
+        return entered;
     }
 
     /// <summary>

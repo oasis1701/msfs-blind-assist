@@ -1172,6 +1172,17 @@ public class TaxiGuidanceManager : IDisposable
             // apron/grass. In that case start from the aircraft's nearest
             // in-component graph node so FindConstrainedPath builds a
             // pavement-following lead-in onto the taxiway (its Step-1 AStarSearch).
+
+            // Resolve any pilot-entered alias names to canonical navdata names BEFORE any
+            // routing or node-snapping. This is the single choke point — all callers benefit.
+            // Example: pilot enters "K" but navdata calls the taxiway "HAWKER" →
+            //          ResolveTaxiwayName maps "K" → "HAWKER" so routing finds the correct nodes.
+            if (taxiwaySequence != null)
+            {
+                for (int i = 0; i < taxiwaySequence.Count; i++)
+                    taxiwaySequence[i] = _graph.ResolveTaxiwayName(taxiwaySequence[i]);
+            }
+
             string? firstCleared = (taxiwaySequence is { Count: > 0 }) ? taxiwaySequence[0] : null;
             TaxiNode? firstTwNode = firstCleared != null
                 ? _graph.FindNearestNodeOnTaxiway(
