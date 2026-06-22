@@ -888,13 +888,22 @@ public partial class MainForm : Form
         bool hs787 = currentAircraft!.AircraftCode == "HS_787";
         bool hs787Muted = hs787 &&
             Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
-        bool hs787UiEcho = hs787
-            && _uiSetEcho.TryGetValue(e.VarName, out var uiEcho)
-            && Math.Abs(uiEcho.value - e.Value) < 0.001
-            && Environment.TickCount64 - uiEcho.tick < UiSetEchoSuppressMs;
-        bool suppress787 = hs787Muted || hs787UiEcho;
+        // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
+        // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
+        // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
+        // this method BEFORE the generic _uiSetEcho gate further down ever runs, so without
+        // suppressing right here the value the user JUST set via a combo is spoken TWICE: once by
+        // the screen reader (the combo selection) and again by the def. Match on the time window
+        // ONLY (not the value): a combo set can write a different encoding than the SDK reads back
+        // (event position vs struct field, 0/1 vs 0/100), so a value compare silently misses and
+        // the double-announce survives. The user just touched THIS control, so any change to it
+        // inside the short echo window IS the echo. The generic value-matched gate below still
+        // guards the non-def-handled announce path and its own baseline accuracy.
+        bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
+            && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
+        bool suppressDefAnnounce = hs787Muted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
-        if (suppress787) announcer.Suppressed = true;
+        if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
         try
         {
@@ -902,14 +911,14 @@ public partial class MainForm : Form
         }
         finally
         {
-            if (suppress787) announcer.Suppressed = prevSuppressed;
+            if (suppressDefAnnounce) announcer.Suppressed = prevSuppressed;
         }
         if (wasProcessedByAircraft)
         {
             // The def announced (suppressed) and updated its own baseline — consume the echo so a
             // later change from any source still announces. (If the def did NOT handle it, the echo
             // is left intact for the generic _uiSetEcho gate further down.)
-            if (hs787UiEcho) _uiSetEcho.Remove(e.VarName);
+            if (uiEcho) _uiSetEcho.Remove(e.VarName);
             // Update window title if flight phase changed (for aircraft that track flight phases)
             if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
             {
