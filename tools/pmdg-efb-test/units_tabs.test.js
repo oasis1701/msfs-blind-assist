@@ -13,6 +13,14 @@ test('unit toggles read the LIVE active unit (::after) in full words', () => {
   assert.ok(!cb.some(t => /: (kg|nm|C)\b/.test(t)), 'no abbreviated unit leaks');
 });
 
+test('Ground Operations active sub-tab marked "(selected)" via *_highlighted', () => {
+  const els = scrape('groundtabs');
+  const b = els.filter(e => e.kind === 'button').map(e => e.text);
+  assert.ok(b.includes('Ground Maintenance (selected)'), 'highlighted ground-ops tab -> (selected)');
+  assert.ok(b.includes('Ground Connections'), 'inactive ground-ops tab present');
+  assert.ok(!b.some(t => /^Ground Connections \(/.test(t)), 'inactive ground-ops tab unmarked');
+});
+
 test('duplicate buttons with junk id qualifiers disambiguate by section heading', () => {
   const els = scrape('dupsection');
   const btns = els.filter(e => e.kind === 'button').map(e => e.text).sort();

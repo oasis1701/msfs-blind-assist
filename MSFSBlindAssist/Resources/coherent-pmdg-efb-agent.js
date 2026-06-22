@@ -147,7 +147,15 @@
   A.activeMarker = function (el) {
     try {
       var cls = (typeof el.className === 'string') ? el.className : '';
+      // A dropdown's chosen .selected-option is a COMBO VALUE (already surfaced as the select's
+      // value), not a tab — never mark it. Likewise the map-layer "_inactive" toggles aren't tabs.
+      if (/(^|\s)selected-option(\s|$)/.test(cls)) return '';
+      // The EFB uses several active-state conventions across its pages: `active_button` (nav pages +
+      // Performance / Charts / Navdata tabs) and a `*_highlighted` suffix (Ground Operations
+      // sub-tabs: groundops_menu_button_highlighted). Cover them all so the "(selected)" marker
+      // works EVERYWHERE in the EFB, not just Performance.
       var active = /(^|\s)(active_button|active|is-active|selected)(\s|$)/.test(cls)
+        || /(^|\s|_)highlighted(\s|$)/.test(cls)
         || el.getAttribute('aria-selected') === 'true'
         || !!el.getAttribute('aria-current');
       if (!active) return '';
