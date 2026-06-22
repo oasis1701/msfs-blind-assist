@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using MSFSBlindAssist.Settings;
@@ -11,7 +12,12 @@ namespace MSFSBlindAssist.Services;
 public class GeminiService
 {
     private static readonly HttpClient httpClient = new HttpClient();
-    private const string API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
+    // Rolling "latest flash" alias — always resolves to Google's current GA Gemini Flash model,
+    // so it NEVER breaks when a specific model is sunset (the old pinned "gemini-3-flash-preview"
+    // was a PREVIEW model — previews get deprecated, which is why AI reading stopped working).
+    // Flash = fast, vision-capable, near-Pro accuracy. Verified live (vision + text) 2026-06.
+    private const string MODEL = "gemini-flash-latest";
+    private const string API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/" + MODEL + ":generateContent";
     private readonly string apiKey;
 
     static GeminiService()
@@ -390,7 +396,11 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                         }
                     }
                 }
-            }
+            },
+            // Disable model "thinking" for display reading: it's an extractive task (read values
+            // off an instrument), not a reasoning one, so thinking only adds latency + token cost.
+            // thinkingBudget 0 made the live test return with 0 thought tokens (fast). Verified 2026-06.
+            generationConfig = new { thinkingConfig = new { thinkingBudget = 0 } }
         };
 
         return await SendRequestAsync(requestBody);
@@ -476,7 +486,13 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
-        return candidateContent.Parts[0].Text ?? "No description available.";
+        // Join EVERY text part. Thinking-capable Gemini models can return multiple parts (e.g. a
+        // thought part before the answer), so reading Parts[0] alone could yield empty text and look
+        // "broken". Concatenating all non-empty text parts is robust across model/response shapes.
+        string combined = string.Concat(candidateContent.Parts
+            .Where(p => !string.IsNullOrEmpty(p.Text))
+            .Select(p => p.Text));
+        return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
     }
 
     private static int GetRetryDelay(HttpResponseMessage response, int attempt)
