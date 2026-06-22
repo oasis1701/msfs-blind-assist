@@ -33,6 +33,19 @@ public class ParkingSpot
     /// </summary>
     public double? GateDistanceThreshold { get; set; }
 
+    /// <summary>
+    /// Alternative names for this parking spot discovered from online sources (OSM / X-Plane
+    /// apt.dat) when those sources use a different label than the navdata <see cref="Name"/>.
+    /// For example, navdata might use "GN 3" while ATC/OSM uses "47" — both refer to the
+    /// same physical stand.
+    /// <para>
+    /// In-memory only — never persisted to the database. Empty list when no alias is known.
+    /// Navdata <see cref="Name"/> is always authoritative; aliases only ADD extra selectable
+    /// entries to the UI.
+    /// </para>
+    /// </summary>
+    public List<string> Aliases { get; set; } = new();
+
     public ParkingSpot()
     {
         AirportICAO = string.Empty;
@@ -153,6 +166,12 @@ public class ParkingSpot
         string vdgs = FriendlyVdgs(VdgsType);
         if (!string.IsNullOrEmpty(vdgs))
             baseDescription += $" [{vdgs}]";
+
+        // Surface online aliases so the gate-teleport listbox shows them without
+        // any model change (SelectedParkingSpot resolution is via object identity,
+        // unaffected by the display string).
+        if (Aliases.Count > 0)
+            baseDescription += " (also " + string.Join(", ", Aliases) + ")";
 
         return baseDescription;
     }

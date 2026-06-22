@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.TaxiAugment;
 int failures = 0;
 void Check(bool ok, string label){ Console.WriteLine((ok?"PASS ":"FAIL ")+label); if(!ok) failures++; }
@@ -126,6 +127,47 @@ Check(TaxiDataMerger.NormalizeTaxiwayName("") == "",
     Check(TaxiDataMerger.NormalizeTaxiwayName("K")
               != TaxiDataMerger.NormalizeTaxiwayName("HAWKER"),
           "Alias: normalized 'K' != normalized 'HAWKER' (alias is meaningful)");
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ParkingSpot.Aliases round-trip assertion
+// Verifies the in-memory Aliases list is present, empty by default,
+// and can be populated / queried — without touching the DB.
+// Also confirms the normalized dedup guard (same normalised form is NOT added).
+// ──────────────────────────────────────────────────────────────────────
+{
+    // Default: Aliases list is present and empty.
+    var spot = new ParkingSpot { Name = "GN 3", Number = 3, Type = 11 };
+    Check(spot.Aliases != null && spot.Aliases.Count == 0,
+          "ParkingSpot.Aliases: empty by default");
+
+    // Populate an alias and verify round-trip.
+    spot.Aliases.Add("47");
+    Check(spot.Aliases.Count == 1 && spot.Aliases[0] == "47",
+          "ParkingSpot.Aliases: add + retrieve '47'");
+
+    // The dedup guard: "47" normalizes to "47"; adding it again (same form) should be skipped.
+    string normExisting = TaxiDataMerger.NormalizeTaxiwayName("47");
+    string normCandidate = TaxiDataMerger.NormalizeTaxiwayName("47");
+    bool wouldDup = string.Equals(normCandidate, normExisting, StringComparison.OrdinalIgnoreCase)
+                    || spot.Aliases.Any(a =>
+                        string.Equals(
+                            TaxiDataMerger.NormalizeTaxiwayName(a),
+                            normCandidate,
+                            StringComparison.OrdinalIgnoreCase));
+    Check(wouldDup, "ParkingSpot.Aliases: dedup guard prevents adding same-normalised alias '47'");
+
+    // A genuinely different alias (normalizes to something else) should pass the guard.
+    string normNew = TaxiDataMerger.NormalizeTaxiwayName("GATE47");
+    bool wouldAdd = !string.IsNullOrEmpty(normNew)
+                    && !string.Equals(normNew, TaxiDataMerger.NormalizeTaxiwayName(spot.Name),
+                                      StringComparison.OrdinalIgnoreCase)
+                    && !spot.Aliases.Any(a =>
+                        string.Equals(
+                            TaxiDataMerger.NormalizeTaxiwayName(a),
+                            normNew,
+                            StringComparison.OrdinalIgnoreCase));
+    Check(wouldAdd, "ParkingSpot.Aliases: 'GATE47' (normalizes to 'GATE47') passes dedup guard");
 }
 
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");

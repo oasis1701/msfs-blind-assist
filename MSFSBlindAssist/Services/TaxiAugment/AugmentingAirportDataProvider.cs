@@ -100,17 +100,60 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         const double maxMeters = 30.0; // a named online stand within 30 m is the same stand
         foreach (var spot in nav)
         {
-            if (!string.IsNullOrWhiteSpace(spot.Name)) continue; // navdata name wins
-            string? best = null;
-            double bestD = maxMeters;
-            foreach (var src in sources)
-                foreach (var (pName, pLat, pLon) in src.Parking)
+            if (string.IsNullOrWhiteSpace(spot.Name))
+            {
+                // ── Empty-name fill (original behaviour) ──────────────────────
+                // Navdata has no name; adopt the nearest online name as the spot name.
+                string? best = null;
+                double bestD = maxMeters;
+                foreach (var src in sources)
+                    foreach (var (pName, pLat, pLon) in src.Parking)
+                    {
+                        if (string.IsNullOrWhiteSpace(pName)) continue;
+                        double d = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, pLat, pLon);
+                        if (d < bestD) { bestD = d; best = pName; }
+                    }
+                if (best != null) spot.Name = best.Trim();
+            }
+            else
+            {
+                // ── Alias discovery (new) ──────────────────────────────────────
+                // Navdata has a name; if an online source names the same stand
+                // differently (after normalization), record the online name as an
+                // alias so it becomes a selectable entry in the gate dropdown.
+                string spotNorm = TaxiDataMerger.NormalizeTaxiwayName(spot.Name);
+
+                string? bestAlias = null;
+                double bestD = maxMeters;
+                foreach (var src in sources)
+                    foreach (var (pName, pLat, pLon) in src.Parking)
+                    {
+                        if (string.IsNullOrWhiteSpace(pName)) continue;
+                        double d = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, pLat, pLon);
+                        if (d < bestD)
+                        {
+                            bestD = d;
+                            bestAlias = pName.Trim();
+                        }
+                    }
+
+                if (bestAlias != null)
                 {
-                    if (string.IsNullOrWhiteSpace(pName)) continue;
-                    double d = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, pLat, pLon);
-                    if (d < bestD) { bestD = d; best = pName; }
+                    string aliasNorm = TaxiDataMerger.NormalizeTaxiwayName(bestAlias);
+                    // Only add when the normalized forms differ (otherwise it's the
+                    // same name, just formatted differently — not a meaningful alias).
+                    if (!string.IsNullOrEmpty(aliasNorm)
+                        && !string.Equals(aliasNorm, spotNorm, StringComparison.OrdinalIgnoreCase)
+                        && !spot.Aliases.Any(a =>
+                            string.Equals(
+                                TaxiDataMerger.NormalizeTaxiwayName(a),
+                                aliasNorm,
+                                StringComparison.OrdinalIgnoreCase)))
+                    {
+                        spot.Aliases.Add(bestAlias);
+                    }
                 }
-            if (best != null) spot.Name = best.Trim();
+            }
         }
         return nav;
     }

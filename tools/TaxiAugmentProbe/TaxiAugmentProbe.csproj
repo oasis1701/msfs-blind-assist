@@ -14,6 +14,9 @@
     -->
     <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\*.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Remove="..\..\MSFSBlindAssist\Services\TaxiAugment\AugmentingAirportDataProvider.cs" />
+    <!-- ParkingSpot model (for the Aliases round-trip assertion). GateSource is its only dep. -->
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs" Link="Linked\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />

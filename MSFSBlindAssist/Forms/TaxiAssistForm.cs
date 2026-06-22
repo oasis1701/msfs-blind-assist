@@ -980,6 +980,19 @@ public class TaxiAssistForm : Form
                 _destinationThresholdMap[label] = (targetLat, targetLon);
                 _destinationSpotMap[label] = spot;
                 cmbDestination.Items.Add(label);
+                // Surface any online aliases as additional selectable entries that
+                // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
+                foreach (var alias in spot.Aliases)
+                {
+                    string aliasLabel = $"{alias} ({label})";
+                    if (_destinationSpotMap.ContainsKey(aliasLabel)) continue;
+                    _destinationNodeMap[aliasLabel] = nearNode.NodeId;
+                    _destinationHeadingMap[aliasLabel] = stopHeading;
+                    _destinationHeadingTrueMap[aliasLabel] = stopHeading;
+                    _destinationThresholdMap[aliasLabel] = (targetLat, targetLon);
+                    _destinationSpotMap[aliasLabel] = spot;
+                    cmbDestination.Items.Add(aliasLabel);
+                }
             }
         }
         else
@@ -1086,6 +1099,19 @@ public class TaxiAssistForm : Form
                 _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
                 _destinationSpotMap[label] = spot;
                 cmbDestination.Items.Add(label);
+                // Surface any online aliases as additional selectable entries that
+                // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
+                foreach (var alias in spot.Aliases)
+                {
+                    string aliasLabel = $"{alias} ({label})";
+                    if (_destinationSpotMap.ContainsKey(aliasLabel)) continue;
+                    _destinationNodeMap[aliasLabel] = nodeId;
+                    _destinationHeadingMap[aliasLabel] = spot.Heading;
+                    _destinationHeadingTrueMap[aliasLabel] = spot.Heading;
+                    _destinationThresholdMap[aliasLabel] = (spot.Latitude, spot.Longitude);
+                    _destinationSpotMap[aliasLabel] = spot;
+                    cmbDestination.Items.Add(aliasLabel);
+                }
             }
         }
 

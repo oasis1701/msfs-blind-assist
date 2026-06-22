@@ -569,6 +569,7 @@ See [Taxi Guidance](taxi-guidance.md) for the full reference.
 
 - **Decorator pattern** on `IAirportDataProvider`: `AugmentingAirportDataProvider` wraps the `LittleNavMapProvider` returned by `DatabaseSelector.SelectProvider()` and is transparent to all downstream consumers (`TaxiGraph`, `TaxiGuidanceManager`, etc.)
 - `GetTaxiPaths(icao)` enriches unnamed navdata segments with real-world taxiway names from OSM (Overpass API) and the X-Plane apt.dat gateway via geometric midpoint + bearing matching
+- `GetParkingSpots(icao)` fills empty navdata gate names from online sources (≤30 m proximity match); for named spots it collects **parking aliases** (`ParkingSpot.Aliases`) when the online source uses a different name (e.g. navdata `"GN 3"` / online `"47"`). Aliases surface as extra dropdown entries in `TaxiAssistForm` and as `" (also N)"` suffixes in `GateTeleportForm` — navdata name is always authoritative
 - Cache is per-ICAO JSON under `%APPDATA%\MSFSBlindAssist\taxi-cache` (30-day TTL), resolved via `DatabasePathResolver.CanonicalFolderName`
 - Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
 - Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
