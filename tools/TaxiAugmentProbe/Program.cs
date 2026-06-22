@@ -59,16 +59,15 @@ Check(notFilled == null && pf2 == 0,
       "Merger: parking NOT filled when navdata already has spots");
 
 // ──────────────────────────────────────────────────────────────────────
-// Task 4.1: TaxiDataCache — per-ICAO JSON cache + TTL
+// Task 4.1: TaxiDataCache — IN-MEMORY per-ICAO cache + TTL
 // ──────────────────────────────────────────────────────────────────────
 {
-    var cacheDir = Path.Combine(Path.GetTempPath(), "taxiaug_test_" + Guid.NewGuid());
-    var cache = new TaxiDataCache(cacheDir, ttlDays: 30);
+    var cache = new TaxiDataCache(ttlDays: 30);
 
-    // Miss on empty cache (dir doesn't exist yet).
+    // Miss on empty cache.
     Check(cache.TryLoad("OMDB", out _) == false, "Cache: miss on empty cache");
 
-    // Save [osm] then load — must round-trip taxiway count.
+    // Save [osm] then load — must round-trip taxiway count (in memory, no disk).
     var toSave = new List<AirportTaxiData> { osm };
     cache.Save("OMDB", toSave);
     Check(cache.TryLoad("OMDB", out var got) == true
@@ -78,14 +77,9 @@ Check(notFilled == null && pf2 == 0,
           $"Cache: round-trips taxiway count (expected {osm.Taxiways.Count}, got {got?[0].Taxiways.Count})");
 
     // TTL=0 should produce a miss (everything is already stale).
-    var cacheDir2 = Path.Combine(Path.GetTempPath(), "taxiaug_test_" + Guid.NewGuid());
-    var cacheExpired = new TaxiDataCache(cacheDir2, ttlDays: 0);
+    var cacheExpired = new TaxiDataCache(ttlDays: 0);
     cacheExpired.Save("OMDB", toSave);
     Check(cacheExpired.TryLoad("OMDB", out _) == false, "Cache: expired TTL (0 days) produces miss");
-
-    // Clean up temp dirs.
-    try { Directory.Delete(cacheDir, recursive: true); } catch { }
-    try { Directory.Delete(cacheDir2, recursive: true); } catch { }
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -1,85 +1,58 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
 
 namespace MSFSBlindAssist.Services.TaxiAugment;
 
 /// <summary>
-/// Per-ICAO JSON cache for online taxi data (OSM + apt.dat sources).
-/// Stores ALL fetched <see cref="AirportTaxiData"/> objects so the decorator can
-/// re-merge with current navdata without refetching.
+/// IN-MEMORY per-ICAO cache for online taxi data (OSM + apt.dat sources).
+///
+/// <para>It is deliberately NOT persisted to disk. Internet is assumed available (MSFS 2024),
+/// per-airport fetches are quick, and the active flight's departure + destination are always
+/// force-refreshed — so there is no value in hogging the user's disk with cached data, and no
+/// risk of serving a stale download. This store exists only so that an ASYNC background fetch's
+/// result is available to the route build that follows (the fetch can't block GetTaxiPaths), and
+/// so the same airport isn't re-fetched repeatedly within one session. It is cleared on exit.</para>
+///
+/// <para>Thread-safe: a background fetch's <see cref="Save"/> can race a UI-thread
+/// <see cref="TryLoad"/> from GetTaxiPaths.</para>
 /// </summary>
 public sealed class TaxiDataCache
 {
-    private readonly string _dir;
-    private readonly int _ttlDays;
+    private readonly int _ttlMinutes;
+    private readonly ConcurrentDictionary<string, Entry> _store =
+        new(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly JsonSerializerOptions _jsonOptions = new()
+    private sealed class Entry
     {
-        WriteIndented = false,
-        IncludeFields = false,
-        // Required so init-only properties and getter-only collections deserialize.
-        PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate,
-    };
-
-    public TaxiDataCache(string dir, int ttlDays)
-    {
-        _dir = dir;
-        _ttlDays = ttlDays;
+        public DateTime FetchedUtc;
+        public IReadOnlyList<AirportTaxiData> Sources = System.Array.Empty<AirportTaxiData>();
     }
 
-    /// <summary>
-    /// Saves all source results for one ICAO to <c>&lt;dir&gt;/&lt;ICAO&gt;.json</c>.
-    /// </summary>
+    /// <param name="ttlDays">Reuse window for an in-memory entry; older entries read as a miss.
+    /// In-memory only, so entries never outlive the app session regardless of this value.</param>
+    public TaxiDataCache(int ttlDays)
+    {
+        _ttlMinutes = ttlDays * 24 * 60;
+    }
+
+    /// <summary>Stores all source results for one ICAO (overwrites any prior entry).</summary>
     public void Save(string icao, IReadOnlyList<AirportTaxiData> sources)
     {
-        Directory.CreateDirectory(_dir);
-        var envelope = new CacheEnvelope
-        {
-            FetchedUtcTicks = DateTime.UtcNow.Ticks,
-            Sources = sources.ToList(),
-        };
-        var path = FilePath(icao);
-        var json = JsonSerializer.Serialize(envelope, _jsonOptions);
-        File.WriteAllText(path, json);
+        if (string.IsNullOrWhiteSpace(icao) || sources == null) return;
+        _store[icao] = new Entry { FetchedUtc = DateTime.UtcNow, Sources = sources };
     }
 
     /// <summary>
-    /// Tries to load cached data for <paramref name="icao"/>.
-    /// Returns <c>false</c> when the file is missing or the entry is older than <c>ttlDays</c>.
+    /// Returns the cached sources for <paramref name="icao"/>, or <c>false</c> when absent or
+    /// older than the TTL.
     /// </summary>
     public bool TryLoad(string icao, out IReadOnlyList<AirportTaxiData>? sources)
     {
         sources = null;
-        var path = FilePath(icao);
-        if (!File.Exists(path)) return false;
-
-        try
-        {
-            var json = File.ReadAllText(path);
-            var envelope = JsonSerializer.Deserialize<CacheEnvelope>(json, _jsonOptions);
-            if (envelope == null) return false;
-
-            var fetched = new DateTime(envelope.FetchedUtcTicks, DateTimeKind.Utc);
-            if (_ttlDays >= 0 && (DateTime.UtcNow - fetched).TotalDays > _ttlDays)
-                return false;
-
-            sources = envelope.Sources;
-            return sources != null && sources.Count > 0;
-        }
-        catch
-        {
+        if (string.IsNullOrWhiteSpace(icao)) return false;
+        if (!_store.TryGetValue(icao, out var e)) return false;
+        if (_ttlMinutes >= 0 && (DateTime.UtcNow - e.FetchedUtc).TotalMinutes > _ttlMinutes)
             return false;
-        }
-    }
-
-    private string FilePath(string icao) =>
-        Path.Combine(_dir, icao.ToUpperInvariant() + ".json");
-
-    // ── Internal envelope ──────────────────────────────────────────────────
-
-    private sealed class CacheEnvelope
-    {
-        public long FetchedUtcTicks { get; set; }
-        public List<AirportTaxiData> Sources { get; set; } = new();
+        sources = e.Sources;
+        return sources != null && sources.Count > 0;
     }
 }

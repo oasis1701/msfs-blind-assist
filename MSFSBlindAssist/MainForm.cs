@@ -497,12 +497,6 @@ public partial class MainForm : Form
         // Only wrap when a base provider is available — no DB means no decoration needed.
         if (airportDataProvider != null)
         {
-            // Cache directory lives in the canonical APPDATA folder, never hardcoded.
-            string appBase = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                MSFSBlindAssist.Database.DatabasePathResolver.CanonicalFolderName);
-            string cacheDir = Path.Combine(appBase, "taxi-cache");
-
             var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
             var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
             {
@@ -511,10 +505,11 @@ public partial class MainForm : Form
             };
             var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
 
-            // 7-day TTL: cache is the OFFLINE fallback. The active flight's departure + destination
-            // are always force-refreshed at flight setup (see PrefetchAsync(..., force: true) below),
-            // so the data the pilot actually taxis on is current, never a stale download.
-            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(cacheDir, ttlDays: 7);
+            // IN-MEMORY cache only — nothing written to the user's disk. It just holds an async
+            // fetch's result for the route build that follows + avoids re-fetching one airport
+            // repeatedly in a session. Everything is real-time: the active flight's dep/dest are
+            // force-refreshed, and the cache is gone on exit. (7-day TTL is moot in-session.)
+            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(ttlDays: 7);
             var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
                 airportDataProvider, augCache, sources, mergeOpt);
 
