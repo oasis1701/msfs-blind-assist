@@ -128,6 +128,13 @@ public partial class MainForm : Form
     private bool _lastOnGround = true;
     private LandingExitForm? landingExitForm;
 
+    // Per-session set of ICAOs already prefetched by AugmentingAirportDataProvider.
+    // Guards automatic departure/destination/geofence prefetches so each airport
+    // is fetched at most once per app session. Manual refresh (force:true) bypasses it.
+    private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
+    // Tick counter used to throttle geofence-radius prefetch checks (one check every ~30 s).
+    private int _augmentGeofenceTick;
+
     // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
     private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
 
@@ -1103,6 +1110,41 @@ public partial class MainForm : Form
         if (e.VarName == "GROUND_VELOCITY")
         {
             groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround, takeoffAssistManager.IsActive);
+
+            // Task 3 — Geofence prefetch: once every ~30 s (GROUND_VELOCITY fires at ~1 Hz),
+            // scan for airports within 50 NM of the current position and prefetch any not yet
+            // cached this session. SILENT (fire-and-forget, debounced via _augmentPrefetched).
+            if (++_augmentGeofenceTick >= 30 && _augmentingProvider != null)
+            {
+                _augmentGeofenceTick = 0;
+                var lastPos = simConnectManager.LastKnownPosition;
+                if (lastPos != null && airportDataProvider != null)
+                {
+                    // Capture locals before the Task.Run closure so the lambda doesn't
+                    // capture `this` in a way that could race with disposal.
+                    var provider = _augmentingProvider;
+                    var dataProvider = airportDataProvider;
+                    var prefetched = _augmentPrefetched;
+                    double lat = lastPos.Value.Latitude;
+                    double lon = lastPos.Value.Longitude;
+                    _ = Task.Run(() =>
+                    {
+                        try
+                        {
+                            var nearby = dataProvider.GetNearbyAirportICAOs(lat, lon, 50.0)
+                                .Where(c => c != null && c.Length == 4)
+                                .ToList();
+                            foreach (var icao in nearby)
+                            {
+                                if (prefetched.Add(icao))
+                                    _ = provider.PrefetchAsync(icao);
+                            }
+                        }
+                        catch { }
+                    });
+                }
+            }
+
             return true;
         }
 
@@ -3786,6 +3828,12 @@ public partial class MainForm : Form
         if (nearbyAirports.Count > 0)
             nearestIcao = nearbyAirports[0];
 
+        // Task 2 — Departure prefetch: when on the ground and we've resolved a nearest
+        // airport, prefetch once per session so taxiway names are cached before taxi starts.
+        // SILENT (fire-and-forget, debounced via _augmentPrefetched).
+        if (_lastOnGround && !string.IsNullOrEmpty(nearestIcao) && _augmentPrefetched.Add(nearestIcao))
+            _ = _augmentingProvider?.PrefetchAsync(nearestIcao);
+
         taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
 
         // (StateChanged is subscribed once in InitializeManagers. We deliberately do NOT
@@ -3824,6 +3872,9 @@ public partial class MainForm : Form
             presetRunway = simConnectManager.GetDestinationRunway();
             var destAp = simConnectManager.GetDestinationAirport();
             presetIcao = destAp?.ICAO;
+            // Task 1 — Destination prefetch (silent, fire-and-forget)
+            if (!string.IsNullOrEmpty(presetIcao) && _augmentPrefetched.Add(presetIcao))
+                _ = _augmentingProvider?.PrefetchAsync(presetIcao);
         }
 
         // Always rebuild the form so the preset (ICAO + runway from the current
@@ -4001,6 +4052,10 @@ public partial class MainForm : Form
             return;
         }
 
+        // Task 1 — Destination prefetch (silent, fire-and-forget)
+        if (_augmentPrefetched.Add(airport.ICAO))
+            _ = _augmentingProvider?.PrefetchAsync(airport.ICAO);
+
         // Query ILS data from database
         var ilsData = airportDataProvider.GetILSForRunway(airport.ICAO, runway.RunwayID);
 
@@ -4122,6 +4177,10 @@ public partial class MainForm : Form
             if (simConnectManager.HasDestinationRunway())
             {
                 var destinationAirport = simConnectManager.GetDestinationAirport();
+
+                // Task 1 — Destination prefetch (silent, fire-and-forget)
+                if (destinationAirport != null && _augmentPrefetched.Add(destinationAirport.ICAO))
+                    _ = _augmentingProvider?.PrefetchAsync(destinationAirport.ICAO);
 
                 // Get destination wind from VATSIM API
                 var destinationWindData = await VATSIMService.GetAirportWindAsync(destinationAirport?.ICAO ?? "");
@@ -4389,6 +4448,10 @@ public partial class MainForm : Form
                 visualGuidanceManager.Stop(announce: false);
                 return;
             }
+
+            // Task 1 — Destination prefetch (silent, fire-and-forget)
+            if (_augmentPrefetched.Add(airport.ICAO))
+                _ = _augmentingProvider?.PrefetchAsync(airport.ICAO);
 
             // Get user preferences from settings
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -4658,6 +4721,36 @@ public partial class MainForm : Form
     private void TaxiGuidanceOptionsMenuItem_Click(object? sender, EventArgs e)
     {
         var currentSettings = SettingsManager.Current;
+        // Task 4 — Manual taxiway-name refresh callback.
+        // Only wired when the augmenting provider is available; null otherwise
+        // (the button in the dialog disables itself when the callback is null).
+        // The callback runs on a thread-pool thread and marshals the announce
+        // back to the UI thread via BeginInvoke so it is always SILENT unless
+        // the user explicitly pressed the button.
+        Func<Task>? refreshCallback = null;
+        if (_augmentingProvider != null && airportDataProvider != null)
+        {
+            var provider = _augmentingProvider;
+            var dataProvider = airportDataProvider;
+            refreshCallback = async () =>
+            {
+                var pos = simConnectManager.LastKnownPosition;
+                if (pos == null) return;
+
+                string? icao = await Task.Run(() =>
+                    dataProvider.GetNearbyAirportICAOs(pos.Value.Latitude, pos.Value.Longitude, 50.0)
+                        .Where(c => c != null && c.Length == 4)
+                        .FirstOrDefault());
+
+                if (icao == null) return;
+
+                await provider.PrefetchAsync(icao, force: true);
+
+                if (IsHandleCreated && !IsDisposed)
+                    BeginInvoke(() => announcer.AnnounceImmediate($"Taxiway names refreshed for {icao}."));
+            };
+        }
+
         using (var settingsForm = new Forms.TaxiGuidanceOptionsForm(
             currentSettings.TaxiGuidanceToneWaveform,
             currentSettings.TaxiGuidanceToneVolume,
@@ -4670,7 +4763,8 @@ public partial class MainForm : Form
             currentSettings.GsxAutoSelectGateOnRoute,
             currentSettings.DockingGuidanceEnabled,
             currentSettings.DockingBeepWaveform,
-            currentSettings.DockingBeepVolume))
+            currentSettings.DockingBeepVolume,
+            onRefreshTaxiwayNames: refreshCallback))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {

@@ -34,8 +34,14 @@ public class TaxiGuidanceOptionsForm : Form
     private Label dockingBeepVolumeValueLabel = null!;
     private Button dockingBeepTestButton = null!;
 
+    private Button refreshTaxiwayNamesButton = null!;
+
     private Button okButton = null!;
     private Button cancelButton = null!;
+
+    // Optional callback for the manual taxiway-names refresh (Task 4).
+    // Null when the caller doesn't supply augmenting-provider support.
+    private readonly Func<Task>? _onRefreshTaxiwayNames;
 
     private AudioToneGenerator? testToneGenerator;
 
@@ -66,7 +72,8 @@ public class TaxiGuidanceOptionsForm : Form
         bool gsxAutoSelectGateOnRoute = true,
         bool dockingGuidanceEnabled = true,
         HandFlyWaveType dockingBeepWaveform = HandFlyWaveType.Sine,
-        double dockingBeepVolume = 0.05)
+        double dockingBeepVolume = 0.05,
+        Func<Task>? onRefreshTaxiwayNames = null)
     {
         SelectedToneWaveform = currentWaveform;
         SelectedVolume = currentVolume;
@@ -80,6 +87,7 @@ public class TaxiGuidanceOptionsForm : Form
         DockingGuidanceEnabled = dockingGuidanceEnabled;
         DockingBeepWaveform = dockingBeepWaveform;
         DockingBeepVolume = dockingBeepVolume;
+        _onRefreshTaxiwayNames = onRefreshTaxiwayNames;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -87,7 +95,7 @@ public class TaxiGuidanceOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Taxi Guidance Options";
-        Size = new Size(500, 730);
+        Size = new Size(500, 780);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -473,11 +481,38 @@ public class TaxiGuidanceOptionsForm : Form
             }
         };
 
+        // Refresh Taxiway Names Button (Task 4 — manual refresh, only wired when callback is provided)
+        refreshTaxiwayNamesButton = new Button
+        {
+            Text = "Refresh Taxiway Names",
+            Location = new Point(20, 625),
+            Size = new Size(200, 35),
+            Enabled = _onRefreshTaxiwayNames != null,
+            AccessibleName = "Refresh Taxiway Names",
+            AccessibleDescription = "Download fresh taxiway-name data for the nearest airport and announce when complete"
+        };
+        refreshTaxiwayNamesButton.Click += async (s, e) =>
+        {
+            if (_onRefreshTaxiwayNames != null)
+            {
+                refreshTaxiwayNamesButton.Enabled = false;
+                try
+                {
+                    await _onRefreshTaxiwayNames();
+                }
+                finally
+                {
+                    if (!IsDisposed)
+                        refreshTaxiwayNamesButton.Enabled = true;
+                }
+            }
+        };
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 640),
+            Location = new Point(310, 670),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -494,7 +529,7 @@ public class TaxiGuidanceOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 640),
+            Location = new Point(395, 670),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -518,6 +553,7 @@ public class TaxiGuidanceOptionsForm : Form
             dockingBeepTypeLabel, dockingBeepTypeCombo,
             dockingBeepVolumeLabel, dockingBeepVolumeTrackBar, dockingBeepVolumeValueLabel,
             dockingBeepTestButton,
+            refreshTaxiwayNamesButton,
             okButton, cancelButton
         });
 
@@ -543,6 +579,7 @@ public class TaxiGuidanceOptionsForm : Form
         dockingBeepTypeCombo.TabIndex = tabIdx++;
         dockingBeepVolumeTrackBar.TabIndex = tabIdx++;
         dockingBeepTestButton.TabIndex = tabIdx++;
+        refreshTaxiwayNamesButton.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
 
