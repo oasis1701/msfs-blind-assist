@@ -126,6 +126,35 @@
     return s.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   };
 
+  // Expand a unit abbreviation to a full word so a unit toggle reads clearly
+  // ("Weight Unit: kilograms" not "...: kg"). Unmapped abbreviations pass through unchanged.
+  A.UNIT_WORDS = {
+    kg: 'kilograms', kgs: 'kilograms', lb: 'pounds', lbs: 'pounds',
+    nm: 'nautical miles', km: 'kilometers', m: 'meters', ft: 'feet',
+    mps: 'meters per second', 'm/s': 'meters per second', 'm/sec': 'meters per second',
+    kt: 'knots', kts: 'knots', kn: 'knots', mph: 'miles per hour',
+    c: 'Celsius', f: 'Fahrenheit', hpa: 'hectopascals', inhg: 'inches of mercury', 'in': 'inches'
+  };
+  A.unitWord = function (u) {
+    var k = String(u || '').trim();
+    return A.UNIT_WORDS[k.toLowerCase()] || k;
+  };
+
+  // Active-tab / current-page marker (flypad convention). PMDG marks the selected tab/nav with
+  // the class `active_button`; the EFB sub-nav pages additionally carry `efb_main_menu_button`.
+  // Returns " (current page)" for an active nav page, " (selected)" for an active in-page tab,
+  // else "". (Detection is gated by isVisible at the call site so hidden pages aren't marked.)
+  A.activeMarker = function (el) {
+    try {
+      var cls = (typeof el.className === 'string') ? el.className : '';
+      var active = /(^|\s)(active_button|active|is-active|selected)(\s|$)/.test(cls)
+        || el.getAttribute('aria-selected') === 'true'
+        || !!el.getAttribute('aria-current');
+      if (!active) return '';
+      return /efb_main_menu_button|efb_nav_button|main_menu_button/.test(cls) ? ' (current page)' : ' (selected)';
+    } catch (e) { return ''; }
+  };
+
   // pseudo-element captions on a toggle (PMDG renders unit text via ::before / ::after content).
   A.toggleCaptions = function (el) {
     try {
@@ -155,6 +184,21 @@
         if (hit) { var t = A.txt(hit); if (t && t.length < 60) return t.replace(/:\s*$/, ''); }
       }
     }
+    return '';
+  };
+
+  // Nearest enclosing SECTION heading for an element — used to disambiguate duplicate buttons
+  // by the section a sighted user sees them under (e.g. the two "Import From OFP" buttons read
+  // "Airport: Import From OFP" / "Aircraft: Import From OFP" instead of an ugly id qualifier).
+  A._sectionHeading = function (el) {
+    try {
+      var p = el.parentElement, hops = 0;
+      while (p && hops < 5) {
+        var h = p.querySelector ? p.querySelector('h1,h2,h3,h4,h5,h6,[role=heading]') : null;
+        if (h && !h.contains(el)) { var t = A.txt(h); if (t && t.length > 0 && t.length < 40) return t; }
+        p = p.parentElement; hops++;
+      }
+    } catch (e) {}
     return '';
   };
 
@@ -445,7 +489,7 @@
           if (best) { item.label = best.label; item.src = 'row-text'; best._consumed = true; }
         }
       }
-      if (type === 'button') { var pl = A._pairLabel(el); if (pl && pl !== item.label) item.pair = pl; }
+      if (type === 'button') { var pl = A._pairLabel(el); if (pl && pl !== item.label) item.pair = pl; item.active = A.activeMarker(el); item._el = el; }
       // Buttons in a two-column layout (Preferences Sign Out / Factory Reset) keep their own
       // text but gain the left label cell as context ("Navigraph Authentication: Sign Out").
       // requireLabel=true so chrome buttons (Home etc.) never claim clock/sim-rate text.
@@ -463,7 +507,16 @@
       if (type === 'checkbox' || type === 'radio') {
         item.checked = !!el.checked;
         var caps = A.toggleCaptions(el); if (caps.length) item.captions = caps;
-        var au = A.activeUnit(el); if (au) item.value = au;  // unit toggles: show the active unit
+        // UNIT toggles (id ...*_unit) render the two units as ::before / ::after; the ::after
+        // caption is the LIVE active unit (it flips on toggle), so read THAT — NOT the saved
+        // Settings, which only commits on Save Preferences and so made the displayed unit look
+        // stuck. Expand to a full word. caps = [before, after]; active = caps[1] (fallbacks below).
+        // Scoped to unit toggles so a non-unit on/off toggle (e.g. Toggle Weather) is untouched.
+        if (el.id && /unit/i.test(el.id)) {
+          var active = caps.length >= 2 ? caps[1] : (caps.length === 1 ? caps[0] : '');
+          if (active) item.value = A.unitWord(active);
+          else { var au = A.activeUnit(el); if (au) item.value = A.unitWord(au); }
+        } else { var au2 = A.activeUnit(el); if (au2) item.value = A.unitWord(au2); }
       }
       if (type === 'range') { item.min = el.getAttribute('min'); item.max = el.getAttribute('max'); item.step = el.getAttribute('step'); }
       if (type === 'select') {
@@ -542,8 +595,21 @@
       // the clunky "Weather Search Button: Refresh". A button with real visible TEXT keeps the
       // qualifier prefix instead (W&B "Pax Level: Randomize" stays distinct + meaningful).
       if (bb.src === 'fa-icon') { if (norm(q) !== norm(bb.label)) { bb.label = q; bb.src = 'id'; } continue; }
-      q = q.replace(new RegExp('\\b' + bb.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i'), '').replace(/\s+/g, ' ').trim();
-      if (q && norm(q) !== norm(bb.label)) bb.pair = q;
+      // Strip every word of the button label out of the id qualifier (e.g. "Import Ofp To Wt"
+      // for two "Import From OFP" buttons -> "To Wt"); "Pax Level Randomize" -> "Pax Level".
+      var lw = norm(bb.label).split(/\s+/);
+      for (var w = 0; w < lw.length; w++) { if (lw[w].length > 1) q = q.replace(new RegExp('\\b' + lw[w].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'ig'), ''); }
+      q = q.replace(/\s+/g, ' ').trim();
+      // If what's left is junk (empty / only tiny noise words), pair by the SECTION heading the
+      // sighted user reads them under; otherwise keep the meaningful id qualifier (W&B "Pax Level").
+      var NOISE = { to: 1, of: 1, the: 1, wt: 1, a: 1, 'in': 1, 'for': 1, on: 1 };
+      var meaningful = q && q.split(/\s+/).some(function (x) { return x.length > 2 && !NOISE[x.toLowerCase()]; });
+      if (!meaningful) {
+        var sect = bb._el ? A._sectionHeading(bb._el) : '';
+        if (sect && norm(sect) !== norm(bb.label)) bb.pair = sect;
+        continue;
+      }
+      if (norm(q) !== norm(bb.label)) bb.pair = q;
     }
     var kept = out.filter(function (x) { return !x._consumed; });
     // Merge a colon-ending label heading with its immediately-following value
@@ -613,7 +679,7 @@
     // fold the row-action pair ("Air Start Unit") into the visible text
     if (it.pair) o.text = it.pair + ': ' + (it.label || '');
     switch (it.type) {
-      case 'button': o.kind = 'button'; o.clickable = true; break;
+      case 'button': o.kind = 'button'; o.clickable = true; if (it.active) o.text = (o.text || '') + it.active; break;
       case 'link': o.kind = 'link'; break;
       case 'heading': o.kind = 'heading'; o.level = it.level || 0; break;
       case 'status': o.kind = 'static'; o.live = 'polite'; break;

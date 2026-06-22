@@ -20,5 +20,5 @@ test('unit toggle pairs to its label by vertical centre (faithful "AirSpeed" cas
   const els = scrape('settings', { settings: { airspeed_unit: 'kt' } });
   const t = els.find(e => e.controlType === 'checkbox' && /AirSpeed Unit/.test(e.text));
   assert.ok(t, 'toggle keeps the source "AirSpeed" casing (not id-derived "Airspeed")');
-  assert.strictEqual(t.text, 'AirSpeed Unit: kt');
+  assert.strictEqual(t.text, 'AirSpeed Unit: knots');
 });
