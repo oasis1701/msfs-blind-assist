@@ -948,7 +948,7 @@ public class TaxiAssistForm : Form
 
             foreach (var spot in deiceAreas.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
-                string label = spot.ToString();
+                string label = spot.Describe();  // clean base; aliases added as separate entries below
                 if (_destinationNodeMap.ContainsKey(label)) continue;
 
                 // Prefer the GSX stop position (the docking target) for routing;
@@ -1090,7 +1090,7 @@ public class TaxiAssistForm : Form
             foreach (var (spot, nodeId) in parkingSpots)
             {
                 // ParkingSpot.ToString() format matches the gate-teleport dialog.
-                string label = spot.ToString();
+                string label = spot.Describe();  // clean base; aliases added as separate entries below
                 if (_destinationNodeMap.ContainsKey(label)) continue;
 
                 _destinationNodeMap[label] = nodeId;

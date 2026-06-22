@@ -144,7 +144,13 @@ public class ParkingSpot
         return string.Empty; // "Dummy", "1", or anything not a recognized VDGS -> no suffix
     }
 
-    public override string ToString()
+    /// <summary>
+    /// Base human description WITHOUT online aliases. Dropdowns that list aliases as their OWN
+    /// separate entries (e.g. TaxiAssistForm) use this as the clean base label, then add a
+    /// "{alias} ({Describe()})" entry per alias — so the base never carries a redundant or nested
+    /// "(also …)" suffix.
+    /// </summary>
+    public string Describe()
     {
         string baseDescription;
         string numberPart = Number > 0
@@ -167,12 +173,18 @@ public class ParkingSpot
         if (!string.IsNullOrEmpty(vdgs))
             baseDescription += $" [{vdgs}]";
 
-        // Surface online aliases so the gate-teleport listbox shows them without
-        // any model change (SelectedParkingSpot resolution is via object identity,
-        // unaffected by the display string).
-        if (Aliases.Count > 0)
-            baseDescription += " (also " + string.Join(", ", Aliases) + ")";
-
         return baseDescription;
+    }
+
+    public override string ToString()
+    {
+        string d = Describe();
+        // Full description APPENDS online aliases — used by listboxes that show ONE entry per
+        // spot (e.g. the gate-teleport listbox, whose SelectedParkingSpot resolves by object
+        // identity, unaffected by the display string). Dropdowns that list aliases as their own
+        // entries call Describe() instead to avoid a redundant/nested suffix.
+        if (Aliases.Count > 0)
+            d += " (also " + string.Join(", ", Aliases) + ")";
+        return d;
     }
 }
