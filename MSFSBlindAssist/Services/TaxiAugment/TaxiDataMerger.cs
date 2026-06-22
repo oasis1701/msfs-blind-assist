@@ -78,7 +78,7 @@ public static class TaxiDataMerger
         out CoverageReport coverage)
     {
         int navNamed = nav.Count(p => !string.IsNullOrWhiteSpace(p.Name));
-        int adoptOsm = 0, adoptApt = 0, disagree = 0, unnamed = 0;
+        int adoptOsm = 0, adoptApt = 0, disagree = 0, unnamed = 0, aliasesAdded = 0;
 
         var osm    = sources.FirstOrDefault(s => s.Source == "osm");
         var aptdat = sources.FirstOrDefault(s => s.Source == "aptdat");
@@ -115,7 +115,10 @@ public static class TaxiDataMerger
                                       StringComparison.OrdinalIgnoreCase))
                         continue;  // same effective name — not a useful alias
                     if (aliasSet.Add(candidate))
+                    {
                         p.Aliases.Add(candidate);
+                        aliasesAdded++;
+                    }
                 }
 
                 result.Add(p);
@@ -179,6 +182,7 @@ public static class TaxiDataMerger
             NamesAdoptedFromOsm   = adoptOsm,
             NamesAdoptedFromAptDat = adoptApt,
             OsmAptDatDisagreements = disagree,
+            AliasesAdded          = aliasesAdded,
         };
 
         return result;

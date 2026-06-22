@@ -25,10 +25,15 @@ public sealed class CoverageReport
     public int NamesAdoptedFromAptDat { get; init; }
     public int OsmAptDatDisagreements { get; init; }
     public int ParkingFilled { get; init; }
+    /// <summary>
+    /// Number of alias entries added to already-named navdata segments whose
+    /// normalized online name differs from the segment's canonical navdata name.
+    /// </summary>
+    public int AliasesAdded { get; init; }
     public override string ToString() =>
         $"{Icao} navNamed={NavNamedTaxiways} navUnnamed={NavUnnamedSegments} " +
         $"+osm={NamesAdoptedFromOsm} +aptdat={NamesAdoptedFromAptDat} " +
-        $"disagree={OsmAptDatDisagreements} parkFill={ParkingFilled}";
+        $"aliases={AliasesAdded} disagree={OsmAptDatDisagreements} parkFill={ParkingFilled}";
 }
 
 public sealed class MergeOptions

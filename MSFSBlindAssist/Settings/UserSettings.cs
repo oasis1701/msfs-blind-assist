@@ -248,6 +248,14 @@ public class UserSettings
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
         /// <summary>
+        /// When true (default), the augmenting provider fetches taxiway names from
+        /// OpenStreetMap and the X-Plane Scenery Gateway to enrich unnamed navdata
+        /// segments. Disabling this reverts to pure-navdata names only, with no
+        /// online requests. Requires app restart to take effect.
+        /// </summary>
+        public bool TaxiAugmentEnabled { get; set; } = true;
+
+        /// <summary>
         /// Ground-speed announcement cadence used WHILE TAKEOFF ASSIST IS ACTIVE,
         /// applied by the global <see cref="Services.GroundSpeedAnnouncer"/> (NOT a
         /// separate announcer). Sentinel-encoded:
@@ -388,6 +396,7 @@ public class UserSettings
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
+            TaxiAugmentEnabled = TaxiAugmentEnabled,
             TakeoffAssistGroundSpeedAnnounceInterval = TakeoffAssistGroundSpeedAnnounceInterval,
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
             Hs787SimVersionOverride = Hs787SimVersionOverride,

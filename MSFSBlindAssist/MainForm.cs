@@ -518,6 +518,9 @@ public partial class MainForm : Form
             var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
                 airportDataProvider, augCache, sources, mergeOpt);
 
+            // Phase 8: honour the user's on/off setting.
+            decorator.Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
+
             decorator.AirportDataUpdated += icao =>
             {
                 string logLine = $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}  taxi-augment: data updated for {icao}{System.Environment.NewLine}";
