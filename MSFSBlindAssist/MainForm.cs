@@ -511,7 +511,10 @@ public partial class MainForm : Form
             };
             var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
 
-            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(cacheDir, ttlDays: 30);
+            // 7-day TTL: cache is the OFFLINE fallback. The active flight's departure + destination
+            // are always force-refreshed at flight setup (see PrefetchAsync(..., force: true) below),
+            // so the data the pilot actually taxis on is current, never a stale download.
+            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(cacheDir, ttlDays: 7);
             var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
                 airportDataProvider, augCache, sources, mergeOpt);
 
@@ -3832,7 +3835,7 @@ public partial class MainForm : Form
         // airport, prefetch once per session so taxiway names are cached before taxi starts.
         // SILENT (fire-and-forget, debounced via _augmentPrefetched).
         if (_lastOnGround && !string.IsNullOrEmpty(nearestIcao) && _augmentPrefetched.Add(nearestIcao))
-            _ = _augmentingProvider?.PrefetchAsync(nearestIcao);
+            _ = _augmentingProvider?.PrefetchAsync(nearestIcao, force: true);
 
         taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
 
@@ -3874,7 +3877,7 @@ public partial class MainForm : Form
             presetIcao = destAp?.ICAO;
             // Task 1 — Destination prefetch (silent, fire-and-forget)
             if (!string.IsNullOrEmpty(presetIcao) && _augmentPrefetched.Add(presetIcao))
-                _ = _augmentingProvider?.PrefetchAsync(presetIcao);
+                _ = _augmentingProvider?.PrefetchAsync(presetIcao, force: true);
         }
 
         // Always rebuild the form so the preset (ICAO + runway from the current
@@ -4054,7 +4057,7 @@ public partial class MainForm : Form
 
         // Task 1 — Destination prefetch (silent, fire-and-forget)
         if (_augmentPrefetched.Add(airport.ICAO))
-            _ = _augmentingProvider?.PrefetchAsync(airport.ICAO);
+            _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
         // Query ILS data from database
         var ilsData = airportDataProvider.GetILSForRunway(airport.ICAO, runway.RunwayID);
@@ -4180,7 +4183,7 @@ public partial class MainForm : Form
 
                 // Task 1 — Destination prefetch (silent, fire-and-forget)
                 if (destinationAirport != null && _augmentPrefetched.Add(destinationAirport.ICAO))
-                    _ = _augmentingProvider?.PrefetchAsync(destinationAirport.ICAO);
+                    _ = _augmentingProvider?.PrefetchAsync(destinationAirport.ICAO, force: true);
 
                 // Get destination wind from VATSIM API
                 var destinationWindData = await VATSIMService.GetAirportWindAsync(destinationAirport?.ICAO ?? "");
@@ -4451,7 +4454,7 @@ public partial class MainForm : Form
 
             // Task 1 — Destination prefetch (silent, fire-and-forget)
             if (_augmentPrefetched.Add(airport.ICAO))
-                _ = _augmentingProvider?.PrefetchAsync(airport.ICAO);
+                _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
             // Get user preferences from settings
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
