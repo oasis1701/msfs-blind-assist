@@ -250,5 +250,33 @@ Check(!TaxiGraph.EdgeCrossesRunwayStatic(42.3600, -71.0200, 42.3720, -71.0170,
         rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2),
       "edge parallel to 04L (same side, west of centerline) does not register a crossing");
 
+// ---------------------------------------------------------------------------
+// Taxiway ALIAS resolution — the "test data port" for online-source names.
+// Build a graph from ONE named taxiway "HAWKER" that an online source (OSM/apt.dat)
+// also calls "B". Verifies the dropdown shows BOTH the canonical and the labeled alias,
+// and that selecting/entering either routes to the canonical pavement.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- taxiway alias resolution --");
+{
+    var hawker = new TaxiPath
+    {
+        Type = "T", Name = "HAWKER", Width = 75,
+        StartLat = 40.0, StartLon = -74.0, EndLat = 40.0, EndLon = -73.999,
+        Aliases = new List<string> { "B" },
+    };
+    var ag = TaxiGraph.Build(
+        new List<TaxiPath> { hawker },
+        new List<ParkingSpot>(),
+        new List<StartPosition>());
+
+    var names = ag.GetAllTaxiwayNames();
+    Check(names.Contains("HAWKER"), "alias: canonical 'HAWKER' is in the dropdown");
+    Check(names.Contains("B (HAWKER)"), "alias: labeled alias 'B (HAWKER)' is in the dropdown");
+    Check(ag.ResolveTaxiwayName("B (HAWKER)") == "HAWKER", "alias: picking 'B (HAWKER)' routes to HAWKER");
+    Check(ag.ResolveTaxiwayName("B") == "HAWKER", "alias: bare 'B' (ATC clearance) routes to HAWKER");
+    Check(ag.ResolveTaxiwayName("HAWKER") == "HAWKER", "alias: canonical 'HAWKER' unchanged");
+    Check(ag.ResolveTaxiwayName("ZZ") == "ZZ", "alias: unknown name passes through unchanged");
+}
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);
