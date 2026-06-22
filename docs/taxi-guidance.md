@@ -1335,6 +1335,28 @@ Augmentation event log: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` (via `
 - Name writeback is **by index** — iterates `nav[i]` and `merged[i]` together; copies `merged[i].Name` onto `nav[i].Name` only when `nav[i].Name` is blank and `merged[i].Name` is not. All other `TaxiPath` fields (`Width`, `Type`, `Surface`, `StartType`, `EndType`, `StartDir`, `EndDir`) are preserved because the original objects are mutated in place, never rebuilt.
 - `TaxiDataMerger.MergeNamesOntoNavData` never overwrites an existing non-whitespace name; the navdata name is always authoritative.
 
+### Name normalization
+
+`TaxiDataMerger.NormalizeTaxiwayName(string)` converts a taxiway name to a canonical comparison form: uppercase, trim, remove all spaces, strip a leading `TAXIWAY` or `TWY` token. Examples: `"twy k 2"` → `"K2"`, `"TAXIWAY K2"` → `"K2"`, `"K 2"` → `"K2"`. Used **only for comparing names**, never for storing or announcing them. The stored name is always the original human-readable form from the authoritative source.
+
+### Alias resolution
+
+Some airports have a mismatch between navdata taxiway names and OSM/apt.dat names (e.g. navdata calls a taxiway `"HAWKER"` while OSM labels it `"K"`). Without alias resolution, a pilot entering `"K"` as their cleared taxiway would get no match.
+
+**How aliases are collected (in `TaxiDataMerger.MergeNamesOntoNavData`):** For every navdata segment that already has a name, the merger runs the geometry match against OSM and apt.dat to find what the online sources call that same pavement. If the normalized online name differs from the normalized navdata name, the raw online name is appended to `NavSegment.Aliases` (deduped, case-insensitive). The navdata name is never overwritten.
+
+**How aliases propagate:**
+1. `TaxiDataMerger` stores them in `NavSegment.Aliases`.
+2. `AugmentingAirportDataProvider.MergeOnto` copies them to `TaxiPath.Aliases` (in-memory only; not persisted to the DB).
+3. `TaxiGraph.Build` reads every `TaxiPath.Aliases` list and populates `TaxiwayAliasToCanonical` (normalized alias → canonical navdata name, case-insensitive dictionary).
+4. `TaxiGraph.ResolveTaxiwayName(string entered)` normalizes the entered name, looks it up in `TaxiwayAliasToCanonical`, and returns the canonical name if found — otherwise the original input unchanged.
+5. `TaxiGuidanceManager.LoadRoute` passes every pilot-entered taxiway name through `_graph.ResolveTaxiwayName(...)` **before** any routing or node-snapping. This is the single choke point; all callers benefit.
+
+**Safety invariants:**
+- Aliases only affect name lookup, never geometry or steering.
+- Airports with no online data behave exactly as before (empty alias lists → `TaxiwayAliasToCanonical` is empty → `ResolveTaxiwayName` is a no-op).
+- The navdata name is always the canonical form stored in the graph and spoken to the pilot.
+
 ### Background fetch / deduplication
 
 - `BackgroundFetch` uses a `HashSet<string> _inFlight` + `lock` so at most one fetch per ICAO is in flight at a time.

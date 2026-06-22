@@ -7,7 +7,13 @@
     <Platforms>x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
+    <!--
+      Include all TaxiAugment source files EXCEPT AugmentingAirportDataProvider.cs, which
+      depends on IAirportDataProvider / TaxiPath / Database.Models types not available in the
+      probe's stripped compilation unit.
+    -->
     <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\*.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Remove="..\..\MSFSBlindAssist\Services\TaxiAugment\AugmentingAirportDataProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />

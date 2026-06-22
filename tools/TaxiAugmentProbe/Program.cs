@@ -88,5 +88,51 @@ Check(notFilled == null && pf2 == 0,
     try { Directory.Delete(cacheDir2, recursive: true); } catch { }
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// NormalizeTaxiwayName assertions (Feature A)
+// ──────────────────────────────────────────────────────────────────────
+Check(TaxiDataMerger.NormalizeTaxiwayName("TWY K2") == "K2",
+      "Normalize: 'TWY K2' → 'K2'");
+Check(TaxiDataMerger.NormalizeTaxiwayName("k 2") == "K2",
+      "Normalize: 'k 2' → 'K2'");
+Check(TaxiDataMerger.NormalizeTaxiwayName("TAXIWAY K2") == "K2",
+      "Normalize: 'TAXIWAY K2' → 'K2'");
+Check(TaxiDataMerger.NormalizeTaxiwayName("K2") == "K2",
+      "Normalize: 'K2' → 'K2' (no change)");
+Check(TaxiDataMerger.NormalizeTaxiwayName("") == "",
+      "Normalize: empty → empty");
+
+// ──────────────────────────────────────────────────────────────────────
+// Alias resolution assertions (Feature B, merger layer)
+// Synthetic: navdata segment named "HAWKER" at OMDB K-taxiway coords.
+// OSM and apt.dat both name the same geometry "K".
+// Expected: "K" lands in Aliases; navdata name "HAWKER" is not overwritten.
+// ──────────────────────────────────────────────────────────────────────
+{
+    var hawkerNav = new List<NavSegment>
+    {
+        // Named navdata segment at the real OMDB K-taxiway coordinates.
+        // Navdata calls it "HAWKER"; OSM/apt.dat call it "K".
+        new NavSegment("HAWKER", 25.2354034, 55.3921787, 25.2352965, 55.3923703),
+    };
+
+    var hawkerOpt = new MergeOptions(); // defaults: 30 m / 25°
+    var hawkerSources = new List<AirportTaxiData> { osm, apt };
+    var hawkerMerged = TaxiDataMerger.MergeNamesOntoNavData(
+        hawkerNav, hawkerSources, hawkerOpt, "OMDB-HAWKER", out _);
+
+    Check(hawkerMerged.Count == 1,
+          "Alias: merged output has 1 segment");
+    Check(hawkerMerged[0].Name == "HAWKER",
+          $"Alias: navdata name 'HAWKER' is not overwritten (got '{hawkerMerged[0].Name}')");
+    Check(hawkerMerged[0].Aliases.Contains("K"),
+          $"Alias: 'K' is in Aliases (got [{string.Join(", ", hawkerMerged[0].Aliases)}])");
+    // The normalized alias "K" differs from the normalized canonical "HAWKER"
+    // — that is why it qualifies as an alias at all.
+    Check(TaxiDataMerger.NormalizeTaxiwayName("K")
+              != TaxiDataMerger.NormalizeTaxiwayName("HAWKER"),
+          "Alias: normalized 'K' != normalized 'HAWKER' (alias is meaningful)");
+}
+
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;

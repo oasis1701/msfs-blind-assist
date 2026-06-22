@@ -25,6 +25,15 @@
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiRoute.cs"        Link="Linked\TaxiRoute.cs" />
     <!-- Services -->
     <Compile Include="..\..\MSFSBlindAssist\Services\DistanceFormatter.cs"       Link="Linked\DistanceFormatter.cs" />
+    <!--
+      TaxiDataMerger.NormalizeTaxiwayName is called from TaxiGraph (alias resolution).
+      Include the three self-contained TaxiAugment files it depends on; exclude
+      AugmentingAirportDataProvider.cs (which pulls in IAirportDataProvider and other
+      types not available in this probe's stripped compilation unit).
+    -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\AirportTaxiData.cs"  Link="Linked\AirportTaxiData.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiGeo.cs"          Link="Linked\TaxiGeo.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiDataMerger.cs"   Link="Linked\TaxiDataMerger.cs" />
     <!-- Settings -->
     <Compile Include="..\..\MSFSBlindAssist\Settings\DistanceUnit.cs"            Link="Linked\DistanceUnit.cs" />
   </ItemGroup>
