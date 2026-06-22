@@ -4765,7 +4765,8 @@ public partial class MainForm : Form
             currentSettings.DockingGuidanceEnabled,
             currentSettings.DockingBeepWaveform,
             currentSettings.DockingBeepVolume,
-            onRefreshTaxiwayNames: refreshCallback))
+            onRefreshTaxiwayNames: refreshCallback,
+            taxiAugmentEnabled: currentSettings.TaxiAugmentEnabled))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -4782,6 +4783,10 @@ public partial class MainForm : Form
                 currentSettings.DockingGuidanceEnabled = settingsForm.DockingGuidanceEnabled;
                 currentSettings.DockingBeepWaveform = settingsForm.DockingBeepWaveform;
                 currentSettings.DockingBeepVolume = settingsForm.DockingBeepVolume;
+                currentSettings.TaxiAugmentEnabled = settingsForm.TaxiAugmentEnabled;
+                // Apply live (next route build) — no restart needed.
+                if (_augmentingProvider != null)
+                    _augmentingProvider.Enabled = settingsForm.TaxiAugmentEnabled;
                 SettingsManager.Save();
 
                 statusLabel.Text = "Taxi guidance options saved successfully";
