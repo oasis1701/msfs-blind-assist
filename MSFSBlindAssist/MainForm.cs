@@ -29,6 +29,8 @@ public partial class MainForm : Form
     private ScreenReaderAnnouncer announcer = null!;
     private HotkeyManager hotkeyManager = null!;
     private IAirportDataProvider? airportDataProvider;
+    // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
+    private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
     private ChecklistForm? checklistForm;
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
@@ -481,6 +483,41 @@ public partial class MainForm : Form
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
+
+        // Wrap with the taxi-data augmentation decorator (Phase 5).
+        // The decorator is transparent: all IAirportDataProvider calls delegate to the base
+        // except GetTaxiPaths, which enriches unnamed segments from OSM / X-Plane apt.dat.
+        // Only wrap when a base provider is available — no DB means no decoration needed.
+        if (airportDataProvider != null)
+        {
+            // Cache directory lives in the canonical APPDATA folder, never hardcoded.
+            string appBase = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                MSFSBlindAssist.Database.DatabasePathResolver.CanonicalFolderName);
+            string cacheDir = Path.Combine(appBase, "taxi-cache");
+
+            var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
+            var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
+            {
+                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(http),
+                new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
+            };
+            var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
+
+            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(cacheDir, ttlDays: 30);
+            var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
+                airportDataProvider, augCache, sources, mergeOpt);
+
+            decorator.AirportDataUpdated += icao =>
+            {
+                string logLine = $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}  taxi-augment: data updated for {icao}{System.Environment.NewLine}";
+                try { System.IO.File.AppendAllText(MSFSBlindAssist.Utils.AppLogs.PathFor("taxi-augment.log"), logLine); }
+                catch { /* log failure must never surface */ }
+            };
+
+            _augmentingProvider = decorator;
+            airportDataProvider = decorator;
+        }
 
         // Initialize flight plan manager with navigation database
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;

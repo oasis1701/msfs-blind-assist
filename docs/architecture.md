@@ -564,6 +564,20 @@ See [Access GSX](gsx.md) for the full reference.
 
 See [Taxi Guidance](taxi-guidance.md) for the full reference.
 
+### TaxiAugment subsystem (Phase 5)
+**Files:** `Services/TaxiAugment/AugmentingAirportDataProvider.cs`, `OsmTaxiSource.cs`, `XplaneAptDatSource.cs`, `TaxiDataMerger.cs`, `TaxiDataCache.cs`, `AirportTaxiData.cs`
+
+- **Decorator pattern** on `IAirportDataProvider`: `AugmentingAirportDataProvider` wraps the `LittleNavMapProvider` returned by `DatabaseSelector.SelectProvider()` and is transparent to all downstream consumers (`TaxiGraph`, `TaxiGuidanceManager`, etc.)
+- `GetTaxiPaths(icao)` enriches unnamed navdata segments with real-world taxiway names from OSM (Overpass API) and the X-Plane apt.dat gateway via geometric midpoint + bearing matching
+- Cache is per-ICAO JSON under `%APPDATA%\MSFSBlindAssist\taxi-cache` (30-day TTL), resolved via `DatabasePathResolver.CanonicalFolderName`
+- Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
+- Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
+- Wired in `MainForm` immediately after `DatabaseSelector.SelectProvider()`, guarded by `if (airportDataProvider != null)`
+- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` via `AppLogs.PathFor`
+- `Enabled` property (default `true`) will be wired to `UserSettings.TaxiAugmentEnabled` in Phase 8
+
+See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-data-augmentation-pipeline-phase-5) for the full reference.
+
 ## Key Design Patterns
 
 1. **Individual Variable System**: All 220+ variables are registered individually

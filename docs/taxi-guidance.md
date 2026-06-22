@@ -1280,6 +1280,72 @@ On success the summary names the lead-in explicitly — *"Route to Runway 23 via
 
 **Verification:** verified in-sim — the CYYZ GB/GC stand → runway 23 via A, H departure (2026-06-17). The route now starts at the apron node nearest the aircraft, and the lead-in follows the AJ taxiway onto A — the steering-tone target tracks the AJ centreline within ~3 m — instead of the earlier ~64 m straight beeline across the grass north of AJ; the route summary names the lead-in. The pure helper math (`TaxiLeadIn.Extract` / `IsAcceptable` / `Clause`) is small and self-contained in `Navigation/TaxiLeadIn.cs`.
 
+## Taxi-Data Augmentation Pipeline (Phase 5)
+
+**Goal:** silently fill in unnamed navdata taxi-path segments with real-world taxiway names sourced from OpenStreetMap (OSM) and the X-Plane apt.dat gateway, so ATC-clearance routing and spoken announcements work correctly at airports where the navdatareader database has unnamed segments.
+
+### Architecture
+
+```
+IAirportDataProvider  (base — navdata SQLite)
+        │
+        ▼
+AugmentingAirportDataProvider   (decorator — transparent to all consumers)
+        │  GetTaxiPaths()
+        │    ├─ cache hit  →  MergeOnto()  →  return enriched list
+        │    └─ cache miss →  return navdata now
+        │                      BackgroundFetch()  (fire-and-forget)
+        │                           │
+        │                    OsmTaxiSource  +  XplaneAptDatSource
+        │                           │  FetchAsync()
+        │                    TaxiDataCache  (per-ICAO JSON, 30-day TTL)
+        │                           │  Save()
+        │                    AirportDataUpdated event
+        │
+        ▼
+TaxiDataMerger.MergeNamesOntoNavData()   (pure geometry — bearing + midpoint match)
+        │
+        ▼
+List<TaxiPath>  (names written back BY INDEX — no object rebuild, no field loss)
+```
+
+### Key files
+
+| File | Role |
+|------|------|
+| `Services/TaxiAugment/AugmentingAirportDataProvider.cs` | Decorator; the main deliverable |
+| `Services/TaxiAugment/OsmTaxiSource.cs` | OSM Overpass fetch → `AirportTaxiData` |
+| `Services/TaxiAugment/XplaneAptDatSource.cs` | X-Plane Gateway apt.dat fetch |
+| `Services/TaxiAugment/TaxiDataMerger.cs` | Geometric name-overlay (pure) |
+| `Services/TaxiAugment/TaxiDataCache.cs` | Per-ICAO JSON file cache |
+| `Services/TaxiAugment/AirportTaxiData.cs` | DTOs: `AirportTaxiData`, `MergeOptions`, `CoverageReport` |
+| `MainForm.cs` | Wiring: wraps `DatabaseSelector.SelectProvider()` in the decorator |
+
+### Wiring in MainForm
+
+The decorator is constructed immediately after `DatabaseSelector.SelectProvider()` returns. Only constructed when a base provider is available (no DB = no decoration). The typed `_augmentingProvider` field is kept for Phase 6's `PrefetchAsync` calls.
+
+Cache directory: `%APPDATA%\MSFSBlindAssist\taxi-cache` (resolved via `DatabasePathResolver.CanonicalFolderName` — never hardcoded).
+
+Augmentation event log: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` (via `AppLogs.PathFor`).
+
+### Merge strategy
+
+- Segment matching uses midpoint proximity (`MatchMaxMidpointMeters = 30 m`) and bearing agreement (`MatchMaxBearingDeg = 25°`).
+- Name writeback is **by index** — iterates `nav[i]` and `merged[i]` together; copies `merged[i].Name` onto `nav[i].Name` only when `nav[i].Name` is blank and `merged[i].Name` is not. All other `TaxiPath` fields (`Width`, `Type`, `Surface`, `StartType`, `EndType`, `StartDir`, `EndDir`) are preserved because the original objects are mutated in place, never rebuilt.
+- `TaxiDataMerger.MergeNamesOntoNavData` never overwrites an existing non-whitespace name; the navdata name is always authoritative.
+
+### Background fetch / deduplication
+
+- `BackgroundFetch` uses a `HashSet<string> _inFlight` + `lock` so at most one fetch per ICAO is in flight at a time.
+- `FetchCoreAsync` wraps both sources in `Task.WhenAll` with a 60-second `CancellationTokenSource`.
+- Any exception is swallowed — background fetches must never propagate into callers.
+- `PrefetchAsync(icao, force)` is the awaitable variant for Phase 6.
+
+### Phase toggle
+
+`AugmentingAirportDataProvider.Enabled` (default `true`) will be wired to `UserSettings.TaxiAugmentEnabled` in Phase 8.
+
 ## Related Documentation
 
 - [Architecture](architecture.md) — overall system design
