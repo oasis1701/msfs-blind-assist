@@ -85,8 +85,11 @@ public partial class PMDG777Definition
         string V(double v) => $"{v:0} volts";
         string Psi(double v) => $"{v:0} psi";
         string Cdeg(double v) => $"{v:0} degrees C";
-        string Lbs(double v) => $"{v:0} pounds";
-        string Pph(double v) => $"{v:0} pounds per hour";
+        // Show weight/fuel in BOTH pounds and kilograms (1 lb = 0.45359237 kg). Applies to every
+        // pounds field across all System Display pages (Fuel Flow, Fuel Used, Gross Weight, Total
+        // Fuel, per-tank quantities) since they all route through these two formatters.
+        string Lbs(double v) => $"{v:0} pounds ({v * 0.45359237:0} kg)";
+        string Pph(double v) => $"{v:0} pounds per hour ({v * 0.45359237:0} kg per hour)";
         string GearPos(double v) => v >= 99 ? "down" : v <= 1 ? "up" : $"in transit {v:0} percent";
         string DoorState(double v) => (int)Math.Round(v) switch
         {
