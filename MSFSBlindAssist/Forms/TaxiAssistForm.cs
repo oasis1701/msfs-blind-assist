@@ -1030,6 +1030,12 @@ public class TaxiAssistForm : Form
                 || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
             {
                 var sourceSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
+                // Apply online gate aliases to the GSX-sourced list too (GSX bypasses GetParkingSpots,
+                // but GSX stands carry spot codes that don't match real gate numbers — the online alias
+                // is what lets the pilot pick the ATC gate). No-op for the navdata list (already aliased)
+                // and when augmentation is off/uncached.
+                (_dataProvider as MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider)
+                    ?.AugmentParking(_currentIcao, sourceSpots);
                 var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
                 foreach (var spot in sourceSpots)
                 {

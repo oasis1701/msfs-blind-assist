@@ -94,11 +94,27 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     public List<ParkingSpot> GetParkingSpots(string icao)
     {
         var nav = _base.GetParkingSpots(icao);
-        if (!Enabled || nav == null || nav.Count == 0) return nav;
-        if (!_cache.TryLoad(icao, out var sources) || sources == null) return nav;
+        AugmentParking(icao, nav);
+        return nav;
+    }
+
+    /// <summary>
+    /// Enriches a parking/gate list (from navdata OR GSX) IN PLACE with online names: fills an
+    /// EMPTY name from the nearest online stand (≤30 m) and records a DIFFERING online name as an
+    /// alias (which becomes a selectable dropdown entry). Navdata/GSX is authoritative — a non-empty
+    /// name is never overwritten; all other fields are untouched. Rides the per-ICAO online cache
+    /// (no fetch); idempotent. PUBLIC so the GSX gate path — which bypasses GetParkingSpots because
+    /// GSX is the gate SOURCE — gets the SAME aliases: GSX stands also carry spot codes that don't
+    /// match the real gate numbers, so the online alias is what lets the pilot pick the ATC gate.
+    /// No-op when disabled, uncached, or empty.
+    /// </summary>
+    public void AugmentParking(string icao, IList<ParkingSpot>? spots)
+    {
+        if (!Enabled || spots == null || spots.Count == 0) return;
+        if (!_cache.TryLoad(icao, out var sources) || sources == null) return;
 
         const double maxMeters = 30.0; // a named online stand within 30 m is the same stand
-        foreach (var spot in nav)
+        foreach (var spot in spots)
         {
             if (string.IsNullOrWhiteSpace(spot.Name))
             {
@@ -155,7 +171,6 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
                 }
             }
         }
-        return nav;
     }
 
     // ── The enriching member ────────────────────────────────────────────────
