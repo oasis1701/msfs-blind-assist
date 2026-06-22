@@ -78,6 +78,21 @@ public class TaxiGraph
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Human-readable alias names (online-source forms, e.g. "B" when navdata calls it "HAWKER").
+    /// Surfaced in the taxiway dropdowns so a pilot can SELECT the ATC/real name; selecting one
+    /// resolves to the canonical navdata name at route time via ResolveTaxiwayName. Excludes any
+    /// alias whose normalized form collides with a real taxiway name (see GetAllTaxiwayNames).
+    /// </summary>
+    public HashSet<string> AliasDisplayNames { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Normalized forms of every REAL navdata taxiway name. An alias is never allowed to remap a
+    /// name that is itself a real taxiway (that would misroute a legitimate clearance), so
+    /// ResolveTaxiwayName / GetAllTaxiwayNames consult this set as a guard.
+    /// </summary>
+    private readonly HashSet<string> _normalizedRealNames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Builds the taxi graph asynchronously — useful at large airports where Build can take
     /// 200-500ms and would otherwise stall the UI thread. Runs on the thread pool.
     /// </summary>
@@ -144,6 +159,9 @@ public class TaxiGraph
             {
                 graph.RegisterTaxiwayNode(name, startNodeId);
                 graph.RegisterTaxiwayNode(name, endNodeId);
+                // Track the normalized real name so an alias can never remap a genuine taxiway.
+                graph._normalizedRealNames.Add(
+                    MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger.NormalizeTaxiwayName(name));
             }
 
             // Register any online-source aliases discovered by TaxiDataMerger.
@@ -159,6 +177,9 @@ public class TaxiGraph
                         !graph.TaxiwayAliasToCanonical.ContainsKey(normalizedAlias))
                     {
                         graph.TaxiwayAliasToCanonical[normalizedAlias] = name;
+                        // Keep the human-readable form for the dropdown (collision with a real
+                        // taxiway name is filtered at read time in GetAllTaxiwayNames).
+                        graph.AliasDisplayNames.Add(alias.Trim());
                     }
                 }
             }
@@ -1101,24 +1122,19 @@ public class TaxiGraph
             }
         }
 
-        // Include alias display names (the human-readable online-source forms).
-        // Values in TaxiwayAliasToCanonical are the canonical names (already added
-        // above), and the keys are the normalized forms — we need the original
-        // human-readable alias, which we must reconstruct from the TaxiPath data.
-        // Since we only store the normalized→canonical mapping, we expose the canonical
-        // names through the normal loop above. Alias DISPLAY names (for the dropdown)
-        // are the VALUES of the reverse lookup which pilots would type as-is.
-        // The alias display names are the VALUES in each segment's Aliases list —
-        // they flow in from TaxiPath.Aliases via the Build loop below, so we surface
-        // them from the reverse of TaxiwayAliasToCanonical: each normalized alias key
-        // represents a distinct human-form the pilot might enter. We add the canonical
-        // (navdata) name — already in names from edges above — but NOT a separate
-        // human alias display entry here, because the alias is the pilot's INPUT path
-        // and resolves to the canonical at route time. The dropdown already shows all
-        // canonical names; an alias just allows alternate spelling.
-        // NOTE: If a future requirement asks for alias display names in the dropdown,
-        // store the human-form alias on the TaxiwayAliasToCanonical value side and
-        // add it to `names` here.
+        // Include alias display names (the human-readable online-source forms, e.g. "B" for a
+        // navdata "HAWKER") so a pilot can SELECT the ATC/real name from the dropdown — the combo
+        // is DropDownList (no free text), so an alias the pilot can't select would be useless.
+        // Selecting an alias resolves to the canonical name at route time (ResolveTaxiwayName).
+        // Skip any alias whose normalized form collides with a real taxiway name: it's already in
+        // the list, and it must resolve to the REAL taxiway (the collision guard in
+        // ResolveTaxiwayName ensures that), not to the alias's canonical.
+        foreach (var alias in AliasDisplayNames)
+        {
+            string norm = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger.NormalizeTaxiwayName(alias);
+            if (!_normalizedRealNames.Contains(norm))
+                names.Add(alias);
+        }
 
         var sorted = names.ToList();
         sorted.Sort(StringComparer.OrdinalIgnoreCase);
@@ -1139,7 +1155,10 @@ public class TaxiGraph
         string normalized = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
             .NormalizeTaxiwayName(entered);
 
-        if (!string.IsNullOrEmpty(normalized) &&
+        // Collision guard: if the entered name IS a real taxiway, never remap it to an alias
+        // canonical — a legitimate "B" clearance must route to the real "B", not to whatever
+        // online source happened to also call "B" by another name.
+        if (!string.IsNullOrEmpty(normalized) && !_normalizedRealNames.Contains(normalized) &&
             TaxiwayAliasToCanonical.TryGetValue(normalized, out string? canonical))
         {
             return canonical;
