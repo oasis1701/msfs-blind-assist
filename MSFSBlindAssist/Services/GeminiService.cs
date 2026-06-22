@@ -358,6 +358,11 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             }
         };
 
+        // Balanced thinking ENABLED for the route briefing (Shift+E). Unlike display reading —
+        // an extractive task where thinking is disabled for speed — the route narrative is a
+        // reasoning task (geography, SID/STAR routing, NOTAM synthesis), so thinking improves
+        // quality. Budget 8192 caps latency/cost so it stays balanced rather than unbounded.
+        var thinking = new { thinkingConfig = new { thinkingBudget = 8192 } };
         object requestBody = enableSearch
             ? new
             {
@@ -365,9 +370,10 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 tools = new object[]
                 {
                     new { google_search = new { } }
-                }
+                },
+                generationConfig = thinking
             }
-            : new { contents };
+            : new { contents, generationConfig = thinking };
 
         return await SendRequestAsync(requestBody);
     }
