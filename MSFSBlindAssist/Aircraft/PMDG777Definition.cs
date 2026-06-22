@@ -4688,27 +4688,14 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
             },
-            // PMDGVar combos must be Continuous: RequestVariable can't reach
-            // them (no data definition — they ride the SDK broadcast), so an
-            // OnRequest PMDGVar would never populate its panel combo.
-            ["AIR_FootHeater_CA"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AIR_FootHeaterSelector_0",
-                DisplayName = "Captain Foot Heater",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
-            },
-            ["AIR_FootHeater_FO"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AIR_FootHeaterSelector_1",
-                DisplayName = "First Officer Foot Heater",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
-            },
+            // Captain / First Officer Foot Heater controls REMOVED (2026-06). The xBAW
+            // "Boris Audio Works" soundpack repurposes the CAPTAIN FOOT HEATER knob
+            // (SDK switch 319) as its hydraulic-pump-model gate, so the foot-heater combo
+            // and the Boris "Hydraulic Pump Model" combo (switch_319_a) drove the SAME
+            // physical knob — selecting a Vickers model moved the foot heater and vice
+            // versa (the reported cross-wiring). They are one control, so only the Boris
+            // hydraulic-pump combo is exposed now; the FO foot heater was removed too for
+            // symmetry. (Shoulder heaters below are independent and stay.)
             // Shoulder heaters are continuous 0-100 knobs; the named L:var IS
             // the input (write 60 -> SDK AIR_ShoulderHeaterKnob reads 60,
             // live-verified) — the old "continuous knobs cannot be controlled
@@ -5260,14 +5247,14 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Captain Seat"] = new List<string>
             {
                 "switch_1006_a", "switch_1007_a",
-                "AIR_FootHeater_CA", "SHOULDER_HEATER_CA",
+                "SHOULDER_HEATER_CA",
                 "VISOR_CA_FRONT", "VISOR_CA_FRONT_SLIDE",
                 "VISOR_CA_SIDE", "VISOR_CA_SIDE_SLIDE"
             },
             ["First Officer Seat"] = new List<string>
             {
                 "switch_1008_a", "switch_1009_a",
-                "AIR_FootHeater_FO", "SHOULDER_HEATER_FO",
+                "SHOULDER_HEATER_FO",
                 "VISOR_FO_FRONT", "VISOR_FO_FRONT_SLIDE",
                 "VISOR_FO_SIDE", "VISOR_FO_SIDE_SLIDE"
             },
@@ -5518,12 +5505,11 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["SIGNS_NoSmoking"]         = "EVT_OH_NO_SMOKING_LIGHT_SWITCH",
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
 
-            // --- Cockpit furniture (foot heaters: 3-position selectors,
-            //     direct-position CDA verified live; armrests are handled
-            //     by the dedicated branch in HandleUIVariableSet because
-            //     their varKey is the anim L:var, not the SDK field) ---
-            ["AIR_FootHeater_CA"]       = "EVT_FWD_LEFT_FOOT_HEATER",
-            ["AIR_FootHeater_FO"]       = "EVT_FWD_RIGHT_FOOT_HEATER",
+            // --- Cockpit furniture (foot-heater event maps REMOVED 2026-06: the
+            //     captain foot heater is the same SDK switch 319 the Boris soundpack
+            //     uses for its hydraulic-pump model, so the controls were unified onto
+            //     the Boris combo — see the def-removal note. Armrests are handled by
+            //     the dedicated branch in HandleUIVariableSet.) ---
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
             ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
@@ -6162,14 +6148,15 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // Hydraulic pump model (switch_319_a / HYD_OPTION). The xBAW soundset
         // repurposes the CAPTAIN FOOT HEATER knob (SDK switch 319) as its
-        // hydraulic-pump-model gate, so this L:var changes on EVERY captain
-        // foot heater move. The auto-announce is intentionally SILENT: the
-        // foot heater's own announce (AIR_FootHeaterSelector_0 — "Captain
-        // Foot Heater: Low/High") already covers each knob change with the
-        // right wording, and hearing "Hydraulic Pump Model: Vickers 2" while
-        // warming your feet is nonsense. The Boris panel combo still shows
-        // the Vickers state on demand. Return true so the generic exact-key
-        // path can't speak a raw "50.0" at the mid-detent either.
+        // hydraulic-pump-model gate — they are ONE physical knob. The separate
+        // foot-heater combos were removed (2026-06) because exposing both drove
+        // the same knob from two controls (the reported cross-wiring), so this
+        // is now the single control for switch 319. Auto-announce stays SILENT:
+        // the screen reader speaks the combo selection on change (and the global
+        // UI-set-echo suppression keeps that from double-speaking), while a
+        // background nudge of a niche soundpack gate isn't worth a callout. The
+        // Boris panel combo shows the Vickers state on demand. Return true so
+        // the generic exact-key path can't speak a raw "50.0" at the mid-detent.
         if (varName == "switch_319_a")
         {
             _prevHydVickers2 = value <= 0 ? 0 : 1;
