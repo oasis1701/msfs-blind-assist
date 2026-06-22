@@ -15,6 +15,13 @@ public sealed class NavSegment
     public double EndLat { get; set; }
     public double EndLon { get; set; }
 
+    /// <summary>
+    /// Alternative names for this segment observed in online sources (OSM / apt.dat)
+    /// whose normalized form differs from the segment's own Name. Stored in human form
+    /// (not normalized). Never overrides the authoritative navdata Name.
+    /// </summary>
+    public List<string> Aliases { get; set; } = new();
+
     public NavSegment() { }
 
     public NavSegment(string name, double startLat, double startLon, double endLat, double endLon)
@@ -35,6 +42,28 @@ public sealed class NavSegment
 /// </summary>
 public static class TaxiDataMerger
 {
+    /// <summary>
+    /// Normalizes a taxiway name for COMPARISON purposes only.
+    /// Uppercase, trim, remove all spaces, strip a leading "TAXIWAY" or "TWY" token.
+    /// For example: "twy k 2" → "K2", "TAXIWAY K2" → "K2", "K 2" → "K2".
+    /// Never store the normalized form; always store the original human-readable name.
+    /// </summary>
+    public static string NormalizeTaxiwayName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "";
+
+        // Uppercase and remove all spaces
+        string s = name.Trim().ToUpperInvariant().Replace(" ", "");
+
+        // Strip a leading TAXIWAY or TWY prefix
+        if (s.StartsWith("TAXIWAY", StringComparison.Ordinal))
+            s = s.Substring(7);
+        else if (s.StartsWith("TWY", StringComparison.Ordinal))
+            s = s.Substring(3);
+
+        return s;
+    }
     /// <summary>
     /// Returns a NEW list of NavSegments where unnamed navdata segments adopt an online name
     /// when geometry matches within <paramref name="opt"/> tolerances. Navdata names are NEVER
@@ -58,8 +87,37 @@ public static class TaxiDataMerger
         foreach (var p in nav)
         {
             // NEVER overwrite a navdata name — navdata is authoritative.
+            // However, collect any online names whose normalized form differs from the
+            // navdata name as aliases (deduped). These allow the pilot to enter an
+            // alternative name (e.g. "K" when navdata calls it "HAWKER") and still
+            // find the correct segment.
             if (!string.IsNullOrWhiteSpace(p.Name))
             {
+                string canonicalNorm = NormalizeTaxiwayName(p.Name);
+
+                // Find all midpoint / bearing info for this named segment.
+                double mLatN = (p.StartLat + p.EndLat) / 2.0;
+                double mLonN = (p.StartLon + p.EndLon) / 2.0;
+                double navBrgN = TaxiGeo.BearingDeg(p.StartLat, p.StartLon, p.EndLat, p.EndLon);
+
+                string? osmAlias  = BestMatchName(osm,    mLatN, mLonN, navBrgN, opt);
+                string? aptAlias  = BestMatchName(aptdat, mLatN, mLonN, navBrgN, opt);
+
+                // Collect any online names whose normalized form differs from the
+                // canonical navdata name (use a local set for dedup within this segment).
+                var aliasSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var alias in p.Aliases) aliasSet.Add(alias);
+
+                foreach (var candidate in new[] { osmAlias, aptAlias })
+                {
+                    if (candidate == null) continue;
+                    if (string.Equals(NormalizeTaxiwayName(candidate), canonicalNorm,
+                                      StringComparison.OrdinalIgnoreCase))
+                        continue;  // same effective name — not a useful alias
+                    if (aliasSet.Add(candidate))
+                        p.Aliases.Add(candidate);
+                }
+
                 result.Add(p);
                 continue;
             }

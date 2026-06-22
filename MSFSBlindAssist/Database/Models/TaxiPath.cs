@@ -21,6 +21,14 @@ public class TaxiPath
     /// <summary>Taxiway name/designator (e.g., "A", "B", "K2"). Empty for unnamed paths.</summary>
     public string Name { get; set; } = "";
 
+    /// <summary>
+    /// Alternative names for this segment observed in online sources whose normalized
+    /// form differs from Name. Populated by TaxiDataMerger during augmentation and
+    /// copied by AugmentingAirportDataProvider.MergeOnto. Not persisted to the DB —
+    /// in-memory only. Defaults to empty list so non-augmented airports are unaffected.
+    /// </summary>
+    public List<string> Aliases { get; set; } = new();
+
     // Start point
     public string StartType { get; set; } = "";
     public string StartDir { get; set; } = "";

@@ -143,7 +143,7 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
 
         var merged = TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out _);
 
-        // Write adopted names BACK by index — do NOT rebuild TaxiPath objects.
+        // Write adopted names AND aliases BACK by index — do NOT rebuild TaxiPath objects.
         // Rebuilding would lose Width, Type, Surface, StartType, EndType, etc.
         for (int i = 0; i < nav.Count && i < merged.Count; i++)
         {
@@ -152,6 +152,11 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
             {
                 nav[i].Name = merged[i].Name;
             }
+
+            // Copy aliases discovered for this segment (applies to both named and
+            // newly-named segments; the list is empty when no alias was found).
+            if (merged[i].Aliases.Count > 0)
+                nav[i].Aliases = merged[i].Aliases;
         }
 
         return nav;
