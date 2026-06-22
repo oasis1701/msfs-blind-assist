@@ -80,11 +80,13 @@ public partial class PMDG777Definition
     /// <summary>Decoded rows for one synoptic page: (label, registration-key/var-name, formatter).</summary>
     private List<(string label, string var, Func<double, string> fmt)> PMDG777SdRows(int page)
     {
-        string Pct(double v) => $"{v:0} percent";
+        // One decimal place on the continuous readouts so a SUB-UNIT change is visible — integer
+        // rounding hid live movement (a reservoir at 96.9% read a static "97", looking stuck).
+        string Pct(double v) => $"{v:0.0} percent";
         string Pct1(double v) => $"{v:0.0} percent";
-        string V(double v) => $"{v:0} volts";
-        string Psi(double v) => $"{v:0} psi";
-        string Cdeg(double v) => $"{v:0} degrees C";
+        string V(double v) => $"{v:0.0} volts";
+        string Psi(double v) => $"{v:0.0} psi";
+        string Cdeg(double v) => $"{v:0.0} degrees C";
         // Show weight/fuel in BOTH pounds and kilograms (1 lb = 0.45359237 kg). Applies to every
         // pounds field across all System Display pages (Fuel Flow, Fuel Used, Gross Weight, Total
         // Fuel, per-tank quantities) since they all route through these two formatters.
