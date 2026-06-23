@@ -1,5 +1,19 @@
 namespace MSFSBlindAssist.Services.TaxiAugment;
 
+/// <summary>
+/// Self-contained geometry for the taxi-data augmentation/merger pipeline.
+///
+/// <para>This intentionally does NOT delegate to <c>NavigationCalculator</c> or
+/// <c>TaxiGraph</c>'s geometry helpers, for two reasons. (1) Isolation: <c>TaxiDataMerger</c>
+/// is a pure, dependency-light module exercised standalone by <c>tools/TaxiAugmentProbe</c>;
+/// keeping its geometry here avoids dragging routing/UI types into the probe. (2) Correctness:
+/// <see cref="MidpointLon"/>, <see cref="WrapDeltaDeg"/>, and the longitude-wrapping inside
+/// <see cref="PointToSegmentMeters"/> are antimeridian-safe, whereas
+/// <c>TaxiGraph.PerpendicularDistanceMetersStatic</c> uses a raw <c>(lon - lon)</c> equirectangular
+/// projection that breaks across ±180°. Consolidating onto that helper would REGRESS the
+/// antimeridian behavior the probe asserts (the "DATELINE" case). If these are ever unified,
+/// the antimeridian-safe math must move INTO the shared helper, not the other way around.</para>
+/// </summary>
 public static class TaxiGeo
 {
     public static double HaversineMeters(double lat1, double lon1, double lat2, double lon2)

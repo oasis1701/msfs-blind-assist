@@ -219,6 +219,14 @@ public static class TaxiDataMerger
         foreach (var seg in source.Taxiways)
         {
             // Bearing gate (undirected — taxiway lines have no preferred direction).
+            // This compares the navdata segment's end-to-end bearing against each online
+            // sub-segment's bearing. It is INTENTIONALLY conservative: where a navdata segment's
+            // direction diverges >MatchMaxBearingDeg from the online line at the match point, we
+            // refuse the name rather than risk adopting a crossing/parallel taxiway's name. A
+            // missed name is safe (the segment stays unnamed); a wrong name would misroute an ATC
+            // clearance. In practice navdata splits taxiways into short, near-straight segments, so
+            // the "long navdata segment spanning an online curve" case that this would reject is
+            // rare. Do NOT loosen this gate without re-checking the parallel-taxiway probe cases.
             double segBrg = TaxiGeo.BearingDeg(seg.Lat1, seg.Lon1, seg.Lat2, seg.Lon2);
             if (TaxiGeo.BearingDiffMod180(navBrg, segBrg) > opt.MatchMaxBearingDeg)
                 continue;

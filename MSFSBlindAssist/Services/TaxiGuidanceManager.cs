@@ -853,33 +853,43 @@ public class TaxiGuidanceManager : IDisposable
         if (string.IsNullOrWhiteSpace(icao))
             return "No airport nearby.";
 
-        TaxiGraph? graph = null;
+        TaxiGraph? graph;
 
-        // Prefer the active guidance graph if it's for this airport
-        if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
-            graph = _graph;
-        else if (_whereAmICachedGraph != null &&
-                 string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
-            graph = _whereAmICachedGraph;
-
-        if (graph == null)
+        // _stateLock serializes the cache read + build + write against the background-thread
+        // OnAirportDataUpdated (which nulls the cache) and the locked GetStatusAnnouncement
+        // overload — without it, OnAirportDataUpdated could null _whereAmICachedGraph between
+        // the read here and a later use, or tear the (graph, icao) pair. DescribeLocation runs
+        // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
+        lock (_stateLock)
         {
-            try
-            {
-                var paths = dataProvider.GetTaxiPaths(icao);
-                if (paths == null || paths.Count == 0)
-                    return $"No taxi data available for {icao}.";
+            // Prefer the active guidance graph if it's for this airport
+            if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
+                graph = _graph;
+            else if (_whereAmICachedGraph != null &&
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                graph = _whereAmICachedGraph;
+            else
+                graph = null;
 
-                var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
-                var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
-
-                graph = TaxiGraph.Build(paths, parking, runwayStarts);
-                _whereAmICachedGraph = graph;
-                _whereAmICachedIcao = icao;
-            }
-            catch (Exception ex)
+            if (graph == null)
             {
-                return $"Could not load airport data for {icao}. {ex.Message}";
+                try
+                {
+                    var paths = dataProvider.GetTaxiPaths(icao);
+                    if (paths == null || paths.Count == 0)
+                        return $"No taxi data available for {icao}.";
+
+                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    _whereAmICachedGraph = graph;
+                    _whereAmICachedIcao = icao;
+                }
+                catch (Exception ex)
+                {
+                    return $"Could not load airport data for {icao}. {ex.Message}";
+                }
             }
         }
 
@@ -903,16 +913,21 @@ public class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched. Drop any
     /// cached Where-Am-I graph built from the OLDER (pre-augmentation) data so the next query rebuilds
-    /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Reference
-    /// assignment is atomic, so this is safe to call from the background fetch thread.
+    /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Invoked from the
+    /// background fetch thread, so it MUST take _stateLock to serialize against the UI-thread
+    /// Where-Am-I reader/writer (DescribeCurrentLocation) and the locked GetStatusAnnouncement
+    /// overload — both touch the same _whereAmICachedGraph/_whereAmICachedIcao pair.
     /// </summary>
     public void OnAirportDataUpdated(string icao)
     {
-        if (!string.IsNullOrEmpty(icao) &&
-            string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(icao)) return;
+        lock (_stateLock)
         {
-            _whereAmICachedGraph = null;
-            _whereAmICachedIcao = "";
+            if (string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+            {
+                _whereAmICachedGraph = null;
+                _whereAmICachedIcao = "";
+            }
         }
     }
 

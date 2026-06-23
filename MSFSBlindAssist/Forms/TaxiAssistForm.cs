@@ -777,7 +777,19 @@ public class TaxiAssistForm : Form
             && augProvider.Enabled)
         {
             lblStatus.Text = $"{icao}: fetching taxiway names…";
-            try { await augProvider.PrefetchAsync(icao); }
+            // BOUND the wait. A cache hit (dep/dest already prefetched by the flight triggers)
+            // completes instantly. A never-fetched airport — typically only an ad-hoc typed ICAO —
+            // would otherwise block the form open on a network round-trip up to the HttpClient's
+            // 60 s timeout if an Overpass mirror is slow. Wait at most a few seconds; if the fetch
+            // hasn't landed, build from navdata NOW. The fetch keeps running in the background
+            // (shared in-flight task) and populates the cache, so augmented names appear the next
+            // time this airport's taxi form is opened.
+            const int prefetchWaitMs = 8000;
+            try
+            {
+                var prefetch = augProvider.PrefetchAsync(icao);
+                await Task.WhenAny(prefetch, Task.Delay(prefetchWaitMs));
+            }
             catch { /* offline / fetch failed — fall back to navdata names */ }
         }
 
@@ -963,7 +975,11 @@ public class TaxiAssistForm : Form
             foreach (var spot in deiceAreas.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
                 string label = spot.Describe();  // clean base; aliases added as separate entries below
-                if (_destinationNodeMap.ContainsKey(label)) continue;
+                // A duplicate base label is skipped — but only when this spot adds NOTHING new.
+                // If it carries online aliases (distinct "{alias} ({label})" entries), fall through
+                // so those alias entries are still surfaced; only the redundant base add is skipped.
+                bool basePresent = _destinationNodeMap.ContainsKey(label);
+                if (basePresent && spot.Aliases.Count == 0) continue;
 
                 // Prefer the GSX stop position (the docking target) for routing;
                 // fall back to the spot's base lat/lon when stop position is absent.
@@ -986,14 +1002,17 @@ public class TaxiAssistForm : Form
                     nearNode.Latitude, nearNode.Longitude, targetLat, targetLon);
                 if (dist > MAX_DEICE_TO_GRAPH_M) continue;
 
-                _destinationNodeMap[label] = nearNode.NodeId;
                 double stopHeading = spot.StopHeading.HasValue
                     ? spot.StopHeading.Value : spot.Heading;
-                _destinationHeadingMap[label] = stopHeading;
-                _destinationHeadingTrueMap[label] = stopHeading;
-                _destinationThresholdMap[label] = (targetLat, targetLon);
-                _destinationSpotMap[label] = spot;
-                cmbDestination.Items.Add(label);
+                if (!basePresent)
+                {
+                    _destinationNodeMap[label] = nearNode.NodeId;
+                    _destinationHeadingMap[label] = stopHeading;
+                    _destinationHeadingTrueMap[label] = stopHeading;
+                    _destinationThresholdMap[label] = (targetLat, targetLon);
+                    _destinationSpotMap[label] = spot;
+                    cmbDestination.Items.Add(label);
+                }
                 // Surface any online aliases as additional selectable entries that
                 // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
                 foreach (var alias in spot.Aliases)
@@ -1111,14 +1130,21 @@ public class TaxiAssistForm : Form
             {
                 // ParkingSpot.ToString() format matches the gate-teleport dialog.
                 string label = spot.Describe();  // clean base; aliases added as separate entries below
-                if (_destinationNodeMap.ContainsKey(label)) continue;
+                // Skip a duplicate base label only when this spot adds nothing new; if it carries
+                // online aliases (distinct "{alias} ({label})" entries), still surface those even
+                // though its base label collides with an earlier spot's.
+                bool basePresent = _destinationNodeMap.ContainsKey(label);
+                if (basePresent && spot.Aliases.Count == 0) continue;
 
-                _destinationNodeMap[label] = nodeId;
-                _destinationHeadingMap[label] = spot.Heading;
-                _destinationHeadingTrueMap[label] = spot.Heading; // parking heading is true heading
-                _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
-                _destinationSpotMap[label] = spot;
-                cmbDestination.Items.Add(label);
+                if (!basePresent)
+                {
+                    _destinationNodeMap[label] = nodeId;
+                    _destinationHeadingMap[label] = spot.Heading;
+                    _destinationHeadingTrueMap[label] = spot.Heading; // parking heading is true heading
+                    _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
+                    _destinationSpotMap[label] = spot;
+                    cmbDestination.Items.Add(label);
+                }
                 // Surface any online aliases as additional selectable entries that
                 // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
                 foreach (var alias in spot.Aliases)
@@ -1880,6 +1906,12 @@ public class TaxiAssistForm : Form
                 _announcer.Announce("Select at least one taxiway for progressive taxi.");
                 return;
             }
+            // Resolve any online-source alias label (e.g. "B (HAWKER)") to the canonical
+            // navdata name BEFORE the graph-distance terminator helpers run — they match
+            // taxiway names exactly, and LoadRoute's alias resolution only covers the route
+            // SEQUENCE, not these pre-route terminator lookups. Without this, picking an alias
+            // label from the terminator dropdown fails with "Could not find taxiway B (HAWKER)".
+            lastTaxiway = _graph.ResolveTaxiwayName(lastTaxiway);
 
             // Component + start node for the graph-distance terminator helpers,
             // mirroring FindFarSideRunwayNode's aircraft-component restriction so
@@ -1897,7 +1929,10 @@ public class TaxiAssistForm : Form
             // combos are NOT consulted here — they remain plain intermediate
             // hold-shorts (carried in progRwyHoldShorts as on every other row).
             string runwayTarget = TerminatorRunwayTarget();   // bare designator, "" if none
-            string taxiwayTarget = cmbTerminatorTaxiway.SelectedItem?.ToString() ?? "";
+            // Resolve an alias label ("B (HAWKER)") to its canonical navdata name; harmless no-op
+            // for real names and the "(none)" sentinel. The Hold-short-of-taxiway list is filled
+            // from GetAllTaxiwayNames() (which surfaces alias labels), so the selection can be one.
+            string taxiwayTarget = _graph.ResolveTaxiwayName(cmbTerminatorTaxiway.SelectedItem?.ToString() ?? "");
 
             int terminatorTypeIndex = cmbTerminatorType.SelectedIndex;
             int destNode = -1;

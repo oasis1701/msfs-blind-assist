@@ -73,7 +73,10 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         _lastCoverage.TryGetValue(icao, out var c) ? c : null;
 
     // ── In-flight de-duplication ─────────────────────────────────────────────
-    private readonly HashSet<string> _inFlight = new(StringComparer.OrdinalIgnoreCase);
+    // Maps an ICAO to its single in-flight fetch Task. BOTH the fire-and-forget background
+    // fetch (cache-miss GetTaxiPaths) AND the awaitable PrefetchAsync route through this map,
+    // so concurrent requests for the same airport share ONE fetch instead of racing two.
+    private readonly Dictionary<string, Task> _inFlightTasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _inFlightLock = new();
 
     // ── IAirportDataProvider pass-throughs ──────────────────────────────────
@@ -202,7 +205,8 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         if (!force && _cache.TryLoad(icao, out _))
             return;           // cache is fresh, nothing to do
 
-        await FetchCoreAsync(icao).ConfigureAwait(false);
+        // Share the in-flight fetch (if any) instead of starting a duplicate — see FetchSharedAsync.
+        await FetchSharedAsync(icao).ConfigureAwait(false);
     }
 
     // ── Merge implementation ─────────────────────────────────────────────────
@@ -254,13 +258,32 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     /// </summary>
     private void BackgroundFetch(string icao)
     {
+        _ = FetchSharedAsync(icao);
+    }
+
+    /// <summary>
+    /// Returns the single in-flight fetch Task for <paramref name="icao"/>, starting one if none
+    /// is running. Both the fire-and-forget background path and the awaitable PrefetchAsync call
+    /// this, so they DEDUPLICATE: a forced prefetch arriving while a cache-miss background fetch is
+    /// already running awaits that same fetch instead of spawning a second set of network requests
+    /// (which also fired a duplicate AirportDataUpdated and prematurely cleared the in-flight marker
+    /// the old HashSet path Add'd, since PrefetchAsync bypassed it entirely). The fetch runs on the
+    /// thread pool (Task.Run) so the synchronous prefix — incl. the base GetAirport DB lookup — never
+    /// runs under _inFlightLock or on the UI thread. FetchCoreAsync's finally removes its own entry;
+    /// because that removal also takes _inFlightLock, it cannot run before this method stores the
+    /// task, so there is no remove-before-store race.
+    /// </summary>
+    private Task FetchSharedAsync(string icao)
+    {
         lock (_inFlightLock)
         {
-            if (!_inFlight.Add(icao))
-                return;   // already in-flight for this ICAO
-        }
+            if (_inFlightTasks.TryGetValue(icao, out var existing))
+                return existing;
 
-        _ = Task.Run(() => FetchCoreAsync(icao));
+            var task = Task.Run(() => FetchCoreAsync(icao));
+            _inFlightTasks[icao] = task;
+            return task;
+        }
     }
 
     // ── Telemetry ────────────────────────────────────────────────────────────
@@ -301,7 +324,7 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
 
     /// <summary>
     /// Performs the actual fetch, saves results to the cache, and raises the update event.
-    /// Always removes <paramref name="icao"/> from the in-flight set on exit.
+    /// Always removes <paramref name="icao"/> from the in-flight map on exit.
     /// </summary>
     private async Task FetchCoreAsync(string icao)
     {
@@ -335,7 +358,7 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         finally
         {
             lock (_inFlightLock)
-                _inFlight.Remove(icao);
+                _inFlightTasks.Remove(icao);
         }
     }
 }
