@@ -97,7 +97,7 @@ public static class TaxiDataMerger
 
                 // Find all midpoint / bearing info for this named segment.
                 double mLatN = (p.StartLat + p.EndLat) / 2.0;
-                double mLonN = (p.StartLon + p.EndLon) / 2.0;
+                double mLonN = TaxiGeo.MidpointLon(p.StartLon, p.EndLon);
                 double navBrgN = TaxiGeo.BearingDeg(p.StartLat, p.StartLon, p.EndLat, p.EndLon);
 
                 string? osmAlias  = BestMatchName(osm,    mLatN, mLonN, navBrgN, opt);
@@ -129,7 +129,7 @@ public static class TaxiDataMerger
 
             // Midpoint of this navdata segment.
             double mLat = (p.StartLat + p.EndLat) / 2.0;
-            double mLon = (p.StartLon + p.EndLon) / 2.0;
+            double mLon = TaxiGeo.MidpointLon(p.StartLon, p.EndLon);
             double navBrg = TaxiGeo.BearingDeg(p.StartLat, p.StartLon, p.EndLat, p.EndLon);
 
             string? osmName = BestMatchName(osm, mLat, mLon, navBrg, opt);
@@ -211,6 +211,8 @@ public static class TaxiDataMerger
 
         string? bestName = null;
         double bestDist = double.MaxValue;
+        // Closest distance of an in-tolerance segment whose NAME differs from the current best.
+        double secondDistinctDist = double.MaxValue;
 
         foreach (var seg in source.Taxiways)
         {
@@ -221,12 +223,34 @@ public static class TaxiDataMerger
 
             // Perpendicular distance from navdata midpoint to this online segment.
             double dist = TaxiGeo.PointToSegmentMeters(mLat, mLon, seg.Lat1, seg.Lon1, seg.Lat2, seg.Lon2);
-            if (dist < opt.MatchMaxMidpointMeters && dist < bestDist)
+            if (dist >= opt.MatchMaxMidpointMeters)
+                continue;
+
+            if (dist < bestDist)
             {
+                // The displaced best, if it had a DIFFERENT name, becomes a competing distinct candidate.
+                if (bestName != null
+                    && !string.Equals(NormalizeTaxiwayName(bestName), NormalizeTaxiwayName(seg.Name), StringComparison.OrdinalIgnoreCase)
+                    && bestDist < secondDistinctDist)
+                    secondDistinctDist = bestDist;
                 bestDist = dist;
                 bestName = seg.Name;
             }
+            else if (bestName != null
+                     && !string.Equals(NormalizeTaxiwayName(bestName), NormalizeTaxiwayName(seg.Name), StringComparison.OrdinalIgnoreCase)
+                     && dist < secondDistinctDist)
+            {
+                secondDistinctDist = dist;
+            }
         }
+
+        if (bestName == null)
+            return null;
+
+        // Ambiguity guard: if a DIFFERENT-named segment sits within factor× the best distance,
+        // refuse to guess (parallel-taxiway mis-name protection) — a miss is safer than a wrong name.
+        if (secondDistinctDist < bestDist * opt.MatchAmbiguityFactor)
+            return null;
 
         return bestName;
     }

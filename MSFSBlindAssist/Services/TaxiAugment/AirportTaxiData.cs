@@ -40,4 +40,11 @@ public sealed class MergeOptions
 {
     public double MatchMaxMidpointMeters { get; init; } = 30.0;
     public double MatchMaxBearingDeg { get; init; } = 25.0;
+
+    /// <summary>
+    /// Ambiguity guard: if a second online segment with a DIFFERENT (normalized) name sits within
+    /// this factor × the best match's distance, the match is treated as ambiguous and NO name is
+    /// adopted. Protects against mis-naming where two parallel taxiways are both within tolerance.
+    /// </summary>
+    public double MatchAmbiguityFactor { get; init; } = 1.5;
 }

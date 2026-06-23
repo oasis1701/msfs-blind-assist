@@ -51,6 +51,47 @@ Check(cov.NavNamedTaxiways == 1,   $"Merger: 1 already-named segment counted (go
 // + aliasing against the live gate list; the old MergeParking dump helper was removed.)
 
 // ──────────────────────────────────────────────────────────────────────
+// Geometry edge cases (hardening pass): bearing wrap/reciprocal, reversed
+// segment match, parallel-taxiway ambiguity guard, antimeridian.
+// ──────────────────────────────────────────────────────────────────────
+{
+    // 1. Bearing diff is wrap-safe AND undirected (a reciprocal reads as 0°).
+    Check(Math.Abs(TaxiGeo.BearingDiffMod180(359, 1) - 2) < 0.01, "Geom: bearing wrap 359 vs 1 = 2°");
+    Check(TaxiGeo.BearingDiffMod180(10, 190) < 0.01, "Geom: reciprocal 10 vs 190 = 0° (undirected)");
+
+    var gopt = new MergeOptions();
+
+    // 2. A reversed online segment (digitized opposite direction) still matches.
+    var revSrc = new AirportTaxiData { Source = "osm" };
+    revSrc.Taxiways.Add(new NamedTaxiSegment { Name = "REVTWY", Lat1 = 50.0010, Lon1 = 8.0000, Lat2 = 50.0000, Lon2 = 8.0000 });
+    var revNav = new List<NavSegment> { new NavSegment("", 50.0000, 8.0000, 50.0010, 8.0000) };
+    var revMerged = TaxiDataMerger.MergeNamesOntoNavData(revNav, new List<AirportTaxiData> { revSrc }, gopt, "TEST", out _);
+    Check(revMerged[0].Name == "REVTWY", $"Geom: reversed-direction online segment matches (got '{revMerged[0].Name}')");
+
+    // 3. Ambiguity guard: nav midpoint ~equidistant from two DIFFERENT parallel names → NO name.
+    var ambSrc = new AirportTaxiData { Source = "osm" };
+    ambSrc.Taxiways.Add(new NamedTaxiSegment { Name = "P1", Lat1 = 50.0000, Lon1 = 8.0000, Lat2 = 50.0010, Lon2 = 8.0000 });
+    ambSrc.Taxiways.Add(new NamedTaxiSegment { Name = "P2", Lat1 = 50.0000, Lon1 = 8.0002, Lat2 = 50.0010, Lon2 = 8.0002 });
+    var ambNav = new List<NavSegment> { new NavSegment("", 50.0000, 8.0001, 50.0010, 8.0001) };
+    var ambMerged = TaxiDataMerger.MergeNamesOntoNavData(ambNav, new List<AirportTaxiData> { ambSrc }, gopt, "TEST", out _);
+    Check(string.IsNullOrEmpty(ambMerged[0].Name), $"Geom: two equidistant parallels → ambiguous → no name (got '{ambMerged[0].Name}')");
+
+    // Contrast: with only ONE nearby parallel, it adopts (the guard doesn't over-fire).
+    var oneSrc = new AirportTaxiData { Source = "osm" };
+    oneSrc.Taxiways.Add(new NamedTaxiSegment { Name = "P1", Lat1 = 50.0000, Lon1 = 8.0000, Lat2 = 50.0010, Lon2 = 8.0000 });
+    var oneNav = new List<NavSegment> { new NavSegment("", 50.0000, 8.0001, 50.0010, 8.0001) };
+    var oneMerged = TaxiDataMerger.MergeNamesOntoNavData(oneNav, new List<AirportTaxiData> { oneSrc }, gopt, "TEST", out _);
+    Check(oneMerged[0].Name == "P1", $"Geom: single nearby parallel adopts (guard not over-firing) (got '{oneMerged[0].Name}')");
+
+    // 4. Antimeridian: a segment straddling ±180° matches without blowing up.
+    var amSrc = new AirportTaxiData { Source = "osm" };
+    amSrc.Taxiways.Add(new NamedTaxiSegment { Name = "DATELINE", Lat1 = 0.0000, Lon1 = 179.99995, Lat2 = 0.0010, Lon2 = -179.99995 });
+    var amNav = new List<NavSegment> { new NavSegment("", 0.0000, 179.9999, 0.0010, -179.9999) };
+    var amMerged = TaxiDataMerger.MergeNamesOntoNavData(amNav, new List<AirportTaxiData> { amSrc }, gopt, "TEST", out _);
+    Check(amMerged[0].Name == "DATELINE", $"Geom: antimeridian-straddling segment matches (got '{amMerged[0].Name}')");
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Task 4.1: TaxiDataCache — IN-MEMORY per-ICAO cache + TTL
 // ──────────────────────────────────────────────────────────────────────
 {
