@@ -4747,8 +4747,15 @@ public partial class MainForm : Form
 
                 await provider.PrefetchAsync(icao, force: true);
 
+                // Tell the pilot HOW MANY names the online sources added (new feature).
+                var cov = provider.GetLastCoverage(icao);
+                int added = cov == null ? 0
+                    : cov.NamesAdoptedFromOsm + cov.NamesAdoptedFromAptDat + cov.AliasesAdded;
+                string msg = added > 0
+                    ? $"Taxiway names refreshed for {icao}: {added} added."
+                    : $"Taxiway names refreshed for {icao}. No new names found.";
                 if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(() => announcer.AnnounceImmediate($"Taxiway names refreshed for {icao}."));
+                    BeginInvoke(() => announcer.AnnounceImmediate(msg));
             };
         }
 

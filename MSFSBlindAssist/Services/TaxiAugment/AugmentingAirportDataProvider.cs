@@ -60,9 +60,17 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     /// </summary>
     public event Action<string>? AirportDataUpdated;
 
-    // ── Last merge coverage report (written by MergeOnto, read by telemetry) ─
-    // Volatile: MergeOnto can be called from any thread that calls GetTaxiPaths.
-    private volatile CoverageReport? _coverage;
+    // ── Per-ICAO coverage from the most recent fetch (manual-refresh feedback) ─
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CoverageReport> _lastCoverage
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Coverage stats (taxiway names adopted + aliases added) from the most recent fetch of this
+    /// ICAO, or null if it hasn't been fetched. Used by the manual "Refresh Taxiway Names" action
+    /// to tell the pilot HOW MANY names were added.
+    /// </summary>
+    public CoverageReport? GetLastCoverage(string icao) =>
+        _lastCoverage.TryGetValue(icao, out var c) ? c : null;
 
     // ── In-flight de-duplication ─────────────────────────────────────────────
     private readonly HashSet<string> _inFlight = new(StringComparer.OrdinalIgnoreCase);
@@ -113,7 +121,11 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         if (!Enabled || spots == null || spots.Count == 0) return;
         if (!_cache.TryLoad(icao, out var sources) || sources == null) return;
 
-        const double maxMeters = 30.0; // a named online stand within 30 m is the same stand
+        // 50 m (widened from 30 m): tolerates gate-position offsets between the online dataset
+        // (e.g. X-Plane Gateway scenery) and the user's INSTALLED MSFS scenery, which may place
+        // the same gate tens of metres apart. Nearest-match still picks the closest online stand,
+        // so adjacent gates aren't mis-tagged even at the wider radius.
+        const double maxMeters = 50.0;
         foreach (var spot in spots)
         {
             if (string.IsNullOrWhiteSpace(spot.Name))
@@ -228,7 +240,7 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
             .Select(tp => new NavSegment(tp.Name, tp.StartLat, tp.StartLon, tp.EndLat, tp.EndLon))
             .ToList();
 
-        var merged = TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out _coverage);
+        var merged = TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out _);
 
         // Write adopted names AND aliases BACK by index — do NOT rebuild TaxiPath objects.
         // Rebuilding would lose Width, Type, Surface, StartType, EndType, etc.
@@ -284,6 +296,7 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
                 .ToList();
 
             TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out var cov);
+            _lastCoverage[icao] = cov;   // feed the manual-refresh "N names added" feedback
 
             string line = $"{System.DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}  {icao}  " +
                           $"navNamed={cov.NavNamedTaxiways} navUnnamed={cov.NavUnnamedSegments} " +
