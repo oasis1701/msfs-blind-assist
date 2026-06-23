@@ -974,12 +974,11 @@ public class TaxiAssistForm : Form
 
             foreach (var spot in deiceAreas.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
-                string label = spot.Describe();  // clean base; aliases added as separate entries below
-                // A duplicate base label is skipped — but only when this spot adds NOTHING new.
-                // If it carries online aliases (distinct "{alias} ({label})" entries), fall through
-                // so those alias entries are still surfaced; only the redundant base add is skipped.
-                bool basePresent = _destinationNodeMap.ContainsKey(label);
-                if (basePresent && spot.Aliases.Count == 0) continue;
+                // ONE entry per spot — same rule as the gate path: ToString() shows any online
+                // alias as a "(also X)" hint, and a separate per-alias dropdown entry is NOT added
+                // (it doubled the list at airports whose online names differ from the scenery names).
+                string label = spot.ToString();
+                if (_destinationNodeMap.ContainsKey(label)) continue;
 
                 // Prefer the GSX stop position (the docking target) for routing;
                 // fall back to the spot's base lat/lon when stop position is absent.
@@ -1004,28 +1003,12 @@ public class TaxiAssistForm : Form
 
                 double stopHeading = spot.StopHeading.HasValue
                     ? spot.StopHeading.Value : spot.Heading;
-                if (!basePresent)
-                {
-                    _destinationNodeMap[label] = nearNode.NodeId;
-                    _destinationHeadingMap[label] = stopHeading;
-                    _destinationHeadingTrueMap[label] = stopHeading;
-                    _destinationThresholdMap[label] = (targetLat, targetLon);
-                    _destinationSpotMap[label] = spot;
-                    cmbDestination.Items.Add(label);
-                }
-                // Surface any online aliases as additional selectable entries that
-                // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
-                foreach (var alias in spot.Aliases)
-                {
-                    string aliasLabel = $"{alias} ({label})";
-                    if (_destinationSpotMap.ContainsKey(aliasLabel)) continue;
-                    _destinationNodeMap[aliasLabel] = nearNode.NodeId;
-                    _destinationHeadingMap[aliasLabel] = stopHeading;
-                    _destinationHeadingTrueMap[aliasLabel] = stopHeading;
-                    _destinationThresholdMap[aliasLabel] = (targetLat, targetLon);
-                    _destinationSpotMap[aliasLabel] = spot;
-                    cmbDestination.Items.Add(aliasLabel);
-                }
+                _destinationNodeMap[label] = nearNode.NodeId;
+                _destinationHeadingMap[label] = stopHeading;
+                _destinationHeadingTrueMap[label] = stopHeading;
+                _destinationThresholdMap[label] = (targetLat, targetLon);
+                _destinationSpotMap[label] = spot;
+                cmbDestination.Items.Add(label);
             }
         }
         else
@@ -1128,36 +1111,21 @@ public class TaxiAssistForm : Form
 
             foreach (var (spot, nodeId) in parkingSpots)
             {
-                // ParkingSpot.ToString() format matches the gate-teleport dialog.
-                string label = spot.Describe();  // clean base; aliases added as separate entries below
-                // Skip a duplicate base label only when this spot adds nothing new; if it carries
-                // online aliases (distinct "{alias} ({label})" entries), still surface those even
-                // though its base label collides with an earlier spot's.
-                bool basePresent = _destinationNodeMap.ContainsKey(label);
-                if (basePresent && spot.Aliases.Count == 0) continue;
+                // ONE entry per spot — matches the gate-teleport dialog (GateTeleportForm). ToString()
+                // appends any online alias as a "(also X)" hint, and the alias-aware gate search box
+                // above (GateSearchFilter, which matches ParkingSpot.Aliases) lets the pilot type the
+                // ATC name to find it. We deliberately do NOT add a separate dropdown entry per alias:
+                // at airports whose online names differ from the scenery names (e.g. LIMC) that doubled
+                // the gate list with a near-identical "online" duplicate of every "scenery" gate.
+                string label = spot.ToString();
+                if (_destinationNodeMap.ContainsKey(label)) continue;
 
-                if (!basePresent)
-                {
-                    _destinationNodeMap[label] = nodeId;
-                    _destinationHeadingMap[label] = spot.Heading;
-                    _destinationHeadingTrueMap[label] = spot.Heading; // parking heading is true heading
-                    _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
-                    _destinationSpotMap[label] = spot;
-                    cmbDestination.Items.Add(label);
-                }
-                // Surface any online aliases as additional selectable entries that
-                // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
-                foreach (var alias in spot.Aliases)
-                {
-                    string aliasLabel = $"{alias} ({label})";
-                    if (_destinationSpotMap.ContainsKey(aliasLabel)) continue;
-                    _destinationNodeMap[aliasLabel] = nodeId;
-                    _destinationHeadingMap[aliasLabel] = spot.Heading;
-                    _destinationHeadingTrueMap[aliasLabel] = spot.Heading;
-                    _destinationThresholdMap[aliasLabel] = (spot.Latitude, spot.Longitude);
-                    _destinationSpotMap[aliasLabel] = spot;
-                    cmbDestination.Items.Add(aliasLabel);
-                }
+                _destinationNodeMap[label] = nodeId;
+                _destinationHeadingMap[label] = spot.Heading;
+                _destinationHeadingTrueMap[label] = spot.Heading; // parking heading is true heading
+                _destinationThresholdMap[label] = (spot.Latitude, spot.Longitude);
+                _destinationSpotMap[label] = spot;
+                cmbDestination.Items.Add(label);
             }
         }
 
