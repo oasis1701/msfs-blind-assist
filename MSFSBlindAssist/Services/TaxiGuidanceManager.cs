@@ -3099,6 +3099,40 @@ public class TaxiGuidanceManager : IDisposable
         _routeReachesRunway = !_isRunwayLineup ||
             DestinationCrossTrackMeters(_destinationNodeId) <= RUNWAY_REACH_MAX_CROSS_M;
 
+        // Distinct consecutive named taxiways of the recalculated route, in order.
+        var viaNames = new List<string>();
+        foreach (var s in newRoute.Segments)
+        {
+            if (!string.IsNullOrEmpty(s.TaxiwayName) &&
+                (viaNames.Count == 0 || !viaNames[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
+                viaNames.Add(s.TaxiwayName);
+        }
+
+        // No-op recalc guard: if the recalculated route reproduces the SAME remaining
+        // taxiway sequence we're already on, leave the current route + guidance untouched.
+        // The usual trigger is the off-route detector tripping while the aircraft cuts the
+        // corner ONTO a taxiway it is correctly turning onto (the route's next segment is
+        // laterally offset mid-turn) — the recalc then re-plans the identical tail. Swapping
+        // it in would bark "Route changed", reset the safety-critical countdown latches, and
+        // re-slew the steering tone, all for a route the pilot is already correctly on
+        // (reported as a spurious "Route changed … super sharp right" while turning onto N).
+        // The recalc cooldown was already stamped by the caller, so this won't re-fire each
+        // frame. A genuine reroute (different taxiways) has a different sequence and proceeds.
+        var oldRemainingVia = new List<string>();
+        if (_route != null)
+        {
+            for (int i = Math.Max(0, _currentSegmentIndex); i < _route.Segments.Count; i++)
+            {
+                var nm = _route.Segments[i].TaxiwayName;
+                if (!string.IsNullOrEmpty(nm) &&
+                    (oldRemainingVia.Count == 0 || !oldRemainingVia[^1].Equals(nm, StringComparison.OrdinalIgnoreCase)))
+                    oldRemainingVia.Add(nm);
+            }
+        }
+        if (oldRemainingVia.Count > 0 &&
+            oldRemainingVia.SequenceEqual(viaNames, StringComparer.OrdinalIgnoreCase))
+            return;
+
         _route = newRoute;
         _currentSegmentIndex = 0;
         _approachAnnounced = false;
@@ -3121,14 +3155,6 @@ public class TaxiGuidanceManager : IDisposable
         // route changed — a recalc can trim/replace the entered clearance (PHNL
         // 2026-06-13: "Z A L N Z D" silently became "Z D", and the old generic
         // "Recalculating. … Taxiway Z." never said the sequence had changed).
-        // Distinct consecutive named taxiways of the new route, in order.
-        var viaNames = new List<string>();
-        foreach (var s in newRoute.Segments)
-        {
-            if (!string.IsNullOrEmpty(s.TaxiwayName) &&
-                (viaNames.Count == 0 || !viaNames[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
-                viaNames.Add(s.TaxiwayName);
-        }
         string callout = viaNames.Count > 0
             ? $"Route changed. Now via {string.Join(", ", viaNames)}. {distStr} to {_destinationName}."
             : $"Route changed. {distStr} to {_destinationName}.";
