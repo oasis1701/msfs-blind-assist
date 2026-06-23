@@ -45,10 +45,16 @@ public sealed class OsmTaxiSource : ITaxiDataSource
 
             if (el.GetProperty("type").GetString() == "way" && aeroway == "taxiway")
             {
-                // Skip ways with no ref — unnamed adds nothing
+                // Designator is the OSM "ref" (A, B, K2…). Fall back to "name" when ref is absent —
+                // that's where proper-named taxiways (e.g. "Neptune") and exit names ("Exit 1") live,
+                // and discarding them silently hid those aliases. Skip only when BOTH are empty.
                 string name = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("ref", out var r)
                     ? (r.GetString() ?? "") : "";
+                if (string.IsNullOrWhiteSpace(name)
+                    && tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("name", out var nm))
+                    name = nm.GetString() ?? "";
                 if (string.IsNullOrWhiteSpace(name)) continue;
+                name = name.Trim();
 
                 if (!el.TryGetProperty("geometry", out var geom)) continue;
 

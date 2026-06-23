@@ -66,6 +66,7 @@ public static class AptDatParser
                 if (!double.TryParse(p[1], System.Globalization.CultureInfo.InvariantCulture, out var la)) continue;
                 if (!double.TryParse(p[2], System.Globalization.CultureInfo.InvariantCulture, out var lo)) continue;
                 var spotName = string.Join(" ", p, 6, p.Length - 6);
+                if (string.IsNullOrWhiteSpace(spotName)) continue;  // mirror taxiway/OSM empty-name skip
                 data.Parking.Add((spotName, la, lo));
             }
         }

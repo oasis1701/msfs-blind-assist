@@ -92,6 +92,47 @@ Check(cov.NavNamedTaxiways == 1,   $"Merger: 1 already-named segment counted (go
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Bug-check pass fixes: TWY/TAXIWAY normalize, ambiguity epsilon at bestDist≈0,
+// OSM name fallback (proper-name aliases), AssignParking 1:1.
+// ──────────────────────────────────────────────────────────────────────
+{
+    // A1: "TWY"/"TAXIWAY" must NOT normalize to empty (would collapse distinct names → mis-name).
+    Check(TaxiDataMerger.NormalizeTaxiwayName("TWY") == "TWY", "Norm: 'TWY' alone stays 'TWY' (not empty)");
+    Check(TaxiDataMerger.NormalizeTaxiwayName("TAXIWAY") == "TAXIWAY", "Norm: 'TAXIWAY' alone stays (not empty)");
+    Check(TaxiDataMerger.NormalizeTaxiwayName("TWY K2") == "K2", "Norm: 'TWY K2' -> 'K2'");
+    Check(TaxiDataMerger.NormalizeTaxiwayName("Taxiway A") == "A", "Norm: 'Taxiway A' -> 'A'");
+
+    var gopt2 = new MergeOptions();
+
+    // A2: ambiguity guard must fire even when bestDist ≈ 0 (midpoint exactly on an online endpoint).
+    var ambZ = new AirportTaxiData { Source = "osm" };
+    ambZ.Taxiways.Add(new NamedTaxiSegment { Name = "X1", Lat1 = 50.0005, Lon1 = 8.0000,    Lat2 = 50.0015, Lon2 = 8.0000    }); // starts ON the midpoint → dist 0
+    ambZ.Taxiways.Add(new NamedTaxiSegment { Name = "X2", Lat1 = 50.0005, Lon1 = 8.0000140, Lat2 = 50.0015, Lon2 = 8.0000140 }); // ~1 m away, different name
+    var ambZNav = new List<NavSegment> { new NavSegment("", 50.0000, 8.0000, 50.0010, 8.0000) };
+    var ambZM = TaxiDataMerger.MergeNamesOntoNavData(ambZNav, new List<AirportTaxiData> { ambZ }, gopt2, "TEST", out _);
+    Check(string.IsNullOrEmpty(ambZM[0].Name), $"Guard: ambiguity fires at bestDist≈0 (~1 m competitor) → no name (got '{ambZM[0].Name}')");
+
+    // P6: OSM taxiway with NO ref but a name → captured (enables proper-name aliases); ref still wins.
+    var onName = OsmTaxiSource.Parse("{\"elements\":[{\"type\":\"way\",\"tags\":{\"aeroway\":\"taxiway\",\"name\":\"Neptune\"},\"geometry\":[{\"lat\":1.0,\"lon\":2.0},{\"lat\":1.001,\"lon\":2.0}]}]}");
+    Check(onName.Taxiways.Any(t => t.Name == "Neptune"), "OSM: name-only taxiway 'Neptune' captured (name fallback)");
+    var onRef = OsmTaxiSource.Parse("{\"elements\":[{\"type\":\"way\",\"tags\":{\"aeroway\":\"taxiway\",\"ref\":\"K\",\"name\":\"Kilo\"},\"geometry\":[{\"lat\":1.0,\"lon\":2.0},{\"lat\":1.001,\"lon\":2.0}]}]}");
+    Check(onRef.Taxiways.All(t => t.Name == "K"), "OSM: ref wins over name when both present");
+
+    // P4: AssignParking 1:1 nearest-pair (the AugmentParking core, now pure + testable).
+    var sp = new List<(double, double)> { (0, 0), (0, 0.001) };
+    var stands = new List<(string, double, double)> { ("S1", 0, 0), ("S2", 0, 0.001) };
+    var asg = TaxiDataMerger.AssignParking(sp, stands, 50);
+    Check(asg.Count == 2 && asg.Any(a => a.spotIndex == 0 && a.onlineName == "S1") && asg.Any(a => a.spotIndex == 1 && a.onlineName == "S2"),
+          "AssignParking: 2 spots / 2 stands → correct 1:1");
+    var sp2 = new List<(double, double)> { (0, 0), (0, 0.0003) };   // ~0 m and ~33 m from G
+    var one = new List<(string, double, double)> { ("G", 0, 0) };
+    var asg2 = TaxiDataMerger.AssignParking(sp2, one, 50);
+    Check(asg2.Count == 1 && asg2[0].spotIndex == 0 && asg2[0].onlineName == "G",
+          "AssignParking: one stand → only the nearest spot claims it (no double-name)");
+    Check(TaxiDataMerger.AssignParking(new List<(double, double)>(), one, 50).Count == 0, "AssignParking: empty spots → empty");
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Task 4.1: TaxiDataCache — IN-MEMORY per-ICAO cache + TTL
 // ──────────────────────────────────────────────────────────────────────
 {

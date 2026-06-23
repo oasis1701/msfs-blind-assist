@@ -56,10 +56,12 @@ public static class TaxiDataMerger
         // Uppercase and remove all spaces
         string s = name.Trim().ToUpperInvariant().Replace(" ", "");
 
-        // Strip a leading TAXIWAY or TWY prefix
-        if (s.StartsWith("TAXIWAY", StringComparison.Ordinal))
+        // Strip a leading TAXIWAY or TWY prefix — but ONLY when something follows, so a taxiway
+        // literally named "TWY" or "TAXIWAY" doesn't collapse to "" (which would make it compare
+        // equal to every other empty/prefix-only name and defeat the ambiguity guard).
+        if (s.StartsWith("TAXIWAY", StringComparison.Ordinal) && s.Length > 7)
             s = s.Substring(7);
-        else if (s.StartsWith("TWY", StringComparison.Ordinal))
+        else if (s.StartsWith("TWY", StringComparison.Ordinal) && s.Length > 3)
             s = s.Substring(3);
 
         return s;
@@ -247,11 +249,54 @@ public static class TaxiDataMerger
         if (bestName == null)
             return null;
 
-        // Ambiguity guard: if a DIFFERENT-named segment sits within factor× the best distance,
-        // refuse to guess (parallel-taxiway mis-name protection) — a miss is safer than a wrong name.
-        if (secondDistinctDist < bestDist * opt.MatchAmbiguityFactor)
+        // Ambiguity guard: if a DIFFERENT-named segment sits within factor× (+ an additive epsilon)
+        // of the best distance, refuse to guess (parallel-taxiway mis-name protection) — a miss is
+        // safer than a wrong name. The epsilon keeps the guard effective when bestDist ≈ 0 (the
+        // navdata midpoint sits exactly on an online endpoint), where factor× alone would be ~0.
+        if (secondDistinctDist < bestDist * opt.MatchAmbiguityFactor + opt.MatchAmbiguityEpsilonMeters)
             return null;
 
         return bestName;
+    }
+
+    /// <summary>
+    /// 1:1 nearest-pair assignment of online stands to navdata spots within <paramref name="maxMeters"/>.
+    /// Each online stand is used at most once and each spot enriched at most once; closest pairs win first.
+    /// Pure + deterministic (stable tie-break) so it's directly probe-testable. Returns (spotIndex, onlineName).
+    /// </summary>
+    public static List<(int spotIndex, string onlineName)> AssignParking(
+        IReadOnlyList<(double lat, double lon)> spots,
+        IReadOnlyList<(string name, double lat, double lon)> online,
+        double maxMeters)
+    {
+        var result = new List<(int, string)>();
+        if (spots.Count == 0 || online.Count == 0) return result;
+
+        var pairs = new List<(int s, int o, double d)>();
+        for (int s = 0; s < spots.Count; s++)
+            for (int o = 0; o < online.Count; o++)
+            {
+                double d = TaxiGeo.HaversineMeters(spots[s].lat, spots[s].lon, online[o].lat, online[o].lon);
+                if (d < maxMeters) pairs.Add((s, o, d));
+            }
+        // Closest first; deterministic tie-break (spot, then stand) so output is reproducible.
+        pairs.Sort((a, b) =>
+        {
+            int c = a.d.CompareTo(b.d);
+            if (c != 0) return c;
+            c = a.s.CompareTo(b.s);
+            return c != 0 ? c : a.o.CompareTo(b.o);
+        });
+
+        var spotTaken = new bool[spots.Count];
+        var standTaken = new bool[online.Count];
+        foreach (var (s, o, _) in pairs)
+        {
+            if (spotTaken[s] || standTaken[o]) continue;
+            spotTaken[s] = true;
+            standTaken[o] = true;
+            result.Add((s, online[o].name));
+        }
+        return result;
     }
 }

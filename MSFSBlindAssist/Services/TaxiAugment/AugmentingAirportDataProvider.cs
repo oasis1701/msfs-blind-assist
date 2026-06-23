@@ -123,14 +123,11 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
 
         // 50 m (widened from 30 m): tolerates gate-position offsets between the online dataset
         // (e.g. X-Plane Gateway scenery) and the user's INSTALLED MSFS scenery, which may place
-        // the same gate tens of metres apart. Nearest-match still picks the closest online stand,
-        // so adjacent gates aren't mis-tagged even at the wider radius.
+        // the same gate tens of metres apart. Nearest-pair-first 1:1 matching still picks the
+        // closest online stand, so adjacent gates aren't mis-tagged even at the wider radius.
         const double maxMeters = 50.0;
 
-        // Flatten online stands once, then assign them 1:1 to navdata spots, NEAREST PAIR FIRST.
-        // This prevents a single online stand from being adopted by two navdata spots (which would
-        // name two different gates "A12") and stops one spot grabbing a stand that clearly belongs
-        // to another — each online stand is used at most once, each navdata spot enriched at most once.
+        // Flatten online stands once (skip unnamed).
         var online = new List<(string name, double lat, double lon)>();
         foreach (var src in sources)
             foreach (var (pName, pLat, pLon) in src.Parking)
@@ -138,27 +135,14 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
                     online.Add((pName.Trim(), pLat, pLon));
         if (online.Count == 0) return;
 
-        var pairs = new List<(int spot, int stand, double d)>();
-        for (int s = 0; s < spots.Count; s++)
-            for (int i = 0; i < online.Count; i++)
-            {
-                double d = TaxiGeo.HaversineMeters(
-                    spots[s].Latitude, spots[s].Longitude, online[i].lat, online[i].lon);
-                if (d < maxMeters) pairs.Add((s, i, d));
-            }
-        pairs.Sort((a, b) => a.d.CompareTo(b.d));
+        // 1:1 nearest-pair assignment (pure, probe-tested in TaxiDataMerger.AssignParking):
+        // each online stand used at most once, each spot enriched at most once, closest pairs first.
+        var spotCoords = new List<(double lat, double lon)>(spots.Count);
+        foreach (var sp in spots) spotCoords.Add((sp.Latitude, sp.Longitude));
 
-        var spotTaken = new bool[spots.Count];
-        var standTaken = new bool[online.Count];
-        foreach (var (s, i, _) in pairs)
+        foreach (var (spotIdx, onName) in TaxiDataMerger.AssignParking(spotCoords, online, maxMeters))
         {
-            if (spotTaken[s] || standTaken[i]) continue;
-            spotTaken[s] = true;
-            standTaken[i] = true;
-
-            var spot = spots[s];
-            string onName = online[i].name;
-
+            var spot = spots[spotIdx];
             if (string.IsNullOrWhiteSpace(spot.Name))
             {
                 // Empty navdata/GSX name → adopt the online name.

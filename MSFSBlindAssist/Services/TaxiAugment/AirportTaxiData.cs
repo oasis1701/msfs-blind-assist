@@ -47,4 +47,11 @@ public sealed class MergeOptions
     /// adopted. Protects against mis-naming where two parallel taxiways are both within tolerance.
     /// </summary>
     public double MatchAmbiguityFactor { get; init; } = 1.5;
+
+    /// <summary>
+    /// Additive companion to <see cref="MatchAmbiguityFactor"/> (metres). Ensures the ambiguity
+    /// guard still fires when the best match is essentially ON the segment (bestDist ≈ 0), where a
+    /// purely multiplicative threshold (bestDist × factor) would collapse to ~0 and never trip.
+    /// </summary>
+    public double MatchAmbiguityEpsilonMeters { get; init; } = 2.0;
 }
