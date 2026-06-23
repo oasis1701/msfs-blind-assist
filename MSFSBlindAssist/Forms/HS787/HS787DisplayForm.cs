@@ -57,7 +57,7 @@ public sealed class HS787DisplayForm : Form
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
         var refreshButton = new Button { Text = "&Refresh (F5)", Location = new Point(560, 8), Size = new Size(90, 30), TabIndex = 1, AccessibleName = "Refresh" };
-        refreshButton.Click += (s, e) => _ = _client.ScrapeNowAsync();
+        refreshButton.Click += (s, e) => _ = _client?.ScrapeNowAsync();
         var closeButton = new Button { Text = "&Close", Location = new Point(655, 8), Size = new Size(85, 30), TabIndex = 2, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
         bottom.Controls.AddRange(new Control[] { refreshButton, closeButton });
