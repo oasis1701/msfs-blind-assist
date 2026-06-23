@@ -516,6 +516,10 @@ public partial class MainForm : Form
 
             decorator.AirportDataUpdated += icao =>
             {
+                // Real-time: drop any cached graph built from the older (pre-augmentation) data so
+                // Where-Am-I and friends pick up the fresh names on next use — no manual refresh.
+                taxiGuidanceManager?.OnAirportDataUpdated(icao);
+
                 string logLine = $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}  taxi-augment: data updated for {icao}{System.Environment.NewLine}";
                 try { System.IO.File.AppendAllText(MSFSBlindAssist.Utils.AppLogs.PathFor("taxi-augment.log"), logLine); }
                 catch { /* log failure must never surface */ }

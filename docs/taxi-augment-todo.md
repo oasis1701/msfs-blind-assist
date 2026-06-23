@@ -25,18 +25,14 @@ enhancements are DONE on this branch (see CLAUDE.md "Taxi-data augmentation" + `
   verified. No Critical issues; all safety invariants (navdata authoritative, online-only geometry
   ignored, alias never remaps a real name) confirmed holding.
 
-## REMAINING
-### OSM holding_position → sharpen hold-shorts (the one risky item)
-- OSM `node[aeroway=holding_position]` carries real hold-short positions (+ often the runway in
-  `ref`). Plan: fetch them in `OsmTaxiSource`, then feed as a navdata-AUTHORITATIVE fill into the
-  hold-short derivation (`TaxiGuidanceManager.InsertRunwayCrossingHoldShorts` / the
-  `MatchHoldShortRunwayName` association).
-- **Why deferred:** the hold-short pipeline is heavily tuned (see the many hold-short bullets in
-  CLAUDE.md — KBOS/OMDB/EHAM edge cases). A fill that interferes with the geometric derivation could
-  regress those. Needs a careful design + IN-SIM verification (a real airport where navdata
-  hold-shorts are sparse but OSM has them) before shipping. Do as a focused session, not blind.
-- Same safety rule as the rest: navdata authoritative; names/positions only attach to navdata
-  geometry; never steer on an offset online line.
+## DROPPED
+### OSM holding_position → sharpen hold-shorts — NOT PURSUED (user decision 2026-06)
+- Considered: feed OSM `node[aeroway=holding_position]` into the hold-short derivation
+  (`InsertRunwayCrossingHoldShorts` / `MatchHoldShortRunwayName`).
+- **Decision: not necessary.** The existing geometry-derived hold-shorts are heavily tuned and work;
+  injecting OSM hold points risks regressing them (KBOS/OMDB/EHAM edge cases) for little gain, and it
+  isn't additive-safe like name overlays. The augmentation stays NAME-only (taxiway + gate names),
+  never touching hold-short placement. Do NOT implement without an explicit, sim-verified ask.
 
 ### GateTeleportnote
 - Gate aliases there are shown via `ParkingSpot.ToString()` "(also 47)" (single entry). If a

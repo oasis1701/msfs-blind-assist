@@ -901,6 +901,22 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched. Drop any
+    /// cached Where-Am-I graph built from the OLDER (pre-augmentation) data so the next query rebuilds
+    /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Reference
+    /// assignment is atomic, so this is safe to call from the background fetch thread.
+    /// </summary>
+    public void OnAirportDataUpdated(string icao)
+    {
+        if (!string.IsNullOrEmpty(icao) &&
+            string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+        {
+            _whereAmICachedGraph = null;
+            _whereAmICachedIcao = "";
+        }
+    }
+
+    /// <summary>
     /// Attempts to get a runway lineup reference from the current taxi guidance state.
     /// Returns true if the taxi is actively lining up to a runway (LiningUp state, runway target
     /// available), AND the aircraft has arrived at the runway (_hasLineupTarget set with valid
