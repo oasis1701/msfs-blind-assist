@@ -1129,11 +1129,23 @@ public class TaxiGraph
         // navdata "HAWKER") so a pilot can SELECT the ATC/real name from the dropdown — the combo
         // is DropDownList (no free text), so an alias the pilot can't select would be useless.
         // Selecting an alias resolves to the canonical name at route time (ResolveTaxiwayName).
-        // Skip any alias whose normalized form collides with a real taxiway name: it's already in
-        // the list, and it must resolve to the REAL taxiway (the collision guard in
-        // ResolveTaxiwayName ensures that), not to the alias's canonical.
+        // Skip any alias whose normalized form collides with a real taxiway name: that real name
+        // is ALREADY in the list and ResolveTaxiwayName routes the bare name to the REAL taxiway
+        // (collision guard), so surfacing e.g. "Z (K)" would be a mislabeled duplicate of the real
+        // taxiway Z that, if selected, mis-routes to K. These collisions are common at rich,
+        // junction-dense airports (OMDB: ~130 such labels) where a navdata segment's midpoint
+        // matches a DIFFERENT-named crossing online segment. The label is "{alias} ({canonical})",
+        // so the alias is the text before the last " (".
         foreach (var display in AliasDisplayToCanonical.Keys)
+        {
+            int paren = display.LastIndexOf(" (", StringComparison.Ordinal);
+            string aliasPart = paren > 0 ? display.Substring(0, paren) : display;
+            string normAlias = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+                .NormalizeTaxiwayName(aliasPart);
+            if (!string.IsNullOrEmpty(normAlias) && _normalizedRealNames.Contains(normAlias))
+                continue;
             names.Add(display);
+        }
 
         var sorted = names.ToList();
         sorted.Sort(StringComparer.OrdinalIgnoreCase);
