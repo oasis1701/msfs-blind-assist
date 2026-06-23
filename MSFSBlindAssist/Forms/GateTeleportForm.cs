@@ -22,6 +22,9 @@ public partial class GateTeleportForm : Form
     private Label statusLabel = null!;
 
     private List<ParkingSpot> _allParkingSpots = new();
+    // ICAOs already prefetched for online gate aliases this session — prevents re-fetching on every
+    // keystroke and stops the post-fetch reload from recursing.
+    private readonly HashSet<string> _prefetchedIcaos = new(StringComparer.OrdinalIgnoreCase);
     private readonly double _aircraftWingspan;
 
     private readonly IAirportDataProvider _database;
@@ -285,12 +288,47 @@ public partial class GateTeleportForm : Form
             _allParkingSpots = parkingSpots;
             PopulateFilterOptions();
             ApplyFilter();
+
+            // Arbitrary airports typed here aren't covered by the departure/destination augmentation
+            // triggers, so kick a one-shot background fetch of online gate names and reload once it
+            // lands — making real ATC gate numbers searchable for ANY airport, not just the active
+            // flight's ends. No-op when augmentation is off or already fetched this session.
+            TryPrefetchGateAliases(icao);
         }
         catch (Exception ex)
         {
             statusLabel.Text = $"Error loading gates and parking: {ex.Message}";
             ClearGatesAndParking();
         }
+    }
+
+    /// <summary>
+    /// One-shot background fetch of online gate-name aliases for an arbitrary typed ICAO, then a
+    /// reload so the aliases (e.g. real "Gate 131" against navdata "GH 5") become searchable.
+    /// Never throws into the UI; silently keeps navdata names if the fetch fails (offline, etc.).
+    /// </summary>
+    private async void TryPrefetchGateAliases(string icao)
+    {
+        var aug = _database as MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider;
+        if (aug == null || !aug.Enabled) return;
+        if (!_prefetchedIcaos.Add(icao)) return;   // already fetched this airport this session
+
+        try
+        {
+            await aug.PrefetchAsync(icao);
+        }
+        catch
+        {
+            return;   // offline / fetch failed — keep the navdata names, no harm
+        }
+
+        // Resumes on the UI thread. Reload only if the dialog is still open on this same ICAO.
+        if (IsDisposed || !IsHandleCreated) return;
+        if (!icaoTextBox.Text.Trim().Equals(icao, StringComparison.OrdinalIgnoreCase)) return;
+
+        // Re-runs AugmentParking against the now-populated cache; won't re-fetch because the ICAO
+        // is already in _prefetchedIcaos, so this cannot recurse.
+        LoadGatesAndParking(icao);
     }
 
     private void PopulateFilterOptions()
