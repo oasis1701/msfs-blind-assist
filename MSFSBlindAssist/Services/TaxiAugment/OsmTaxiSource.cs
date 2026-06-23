@@ -71,6 +71,7 @@ public sealed class OsmTaxiSource : ITaxiDataSource
             {
                 string pn = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("ref", out var pr)
                     ? (pr.GetString() ?? "") : "";
+                if (string.IsNullOrWhiteSpace(pn)) continue;   // skip unnamed apron nodes (mirror taxiways)
                 if (el.TryGetProperty("lat", out var la) && el.TryGetProperty("lon", out var lo))
                     data.Parking.Add((pn, la.GetDouble(), lo.GetDouble()));
             }

@@ -188,35 +188,9 @@ public static class TaxiDataMerger
         return result;
     }
 
-    /// <summary>
-    /// Fills parking spots ONLY when the navdata has ZERO parking (navdata parking wins
-    /// when present). Projects online source parking into a list of (Name, Lat, Lon) tuples.
-    /// Returns null (no fill) when navdata already has parking.
-    /// </summary>
-    public static List<(string Name, double Lat, double Lon)>? MergeParking(
-        int navParkingCount,
-        IReadOnlyList<AirportTaxiData> sources,
-        out int parkingFilled)
-    {
-        parkingFilled = 0;
-
-        // Navdata parking is authoritative — only fill when there is none.
-        if (navParkingCount > 0)
-            return null;
-
-        // Collect from all sources; deduplicate by name+position.
-        var filled = new List<(string Name, double Lat, double Lon)>();
-        foreach (var src in sources)
-        {
-            foreach (var (name, lat, lon) in src.Parking)
-            {
-                filled.Add((name, lat, lon));
-            }
-        }
-
-        parkingFilled = filled.Count;
-        return filled.Count > 0 ? filled : null;
-    }
+    // (Removed the old MergeParking helper — parking enrichment is done by
+    // AugmentingAirportDataProvider.AugmentParking, which does nearest 1:1 name-fill + aliasing
+    // against the live gate list. MergeParking was an unused, different-semantics duplicate.)
 
     // ──────────────────────────────────────────────────────────────────────
     // Internal helpers

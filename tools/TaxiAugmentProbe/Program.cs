@@ -47,17 +47,8 @@ Check(cov.NamesAdoptedFromOsm + cov.NamesAdoptedFromAptDat >= 1,
       $"Merger: coverage counts ≥1 adoption (osm={cov.NamesAdoptedFromOsm} apt={cov.NamesAdoptedFromAptDat})");
 Check(cov.NavUnnamedSegments == 1, $"Merger: 1 unnamed segment counted (got {cov.NavUnnamedSegments})");
 Check(cov.NavNamedTaxiways == 1,   $"Merger: 1 already-named segment counted (got {cov.NavNamedTaxiways})");
-
-// Parking fill: zero navdata parking → should fill from sources
-int parkFilled;
-var filledParking = TaxiDataMerger.MergeParking(navParkingCount: 0, sources, out parkFilled);
-Check(filledParking != null && filledParking.Count > 0,
-      $"Merger: parking filled when navdata has zero spots (filled {parkFilled})");
-
-// With navdata parking → should NOT fill
-var notFilled = TaxiDataMerger.MergeParking(navParkingCount: 5, sources, out int pf2);
-Check(notFilled == null && pf2 == 0,
-      "Merger: parking NOT filled when navdata already has spots");
+// (Parking enrichment is now AugmentingAirportDataProvider.AugmentParking — nearest 1:1 name-fill
+// + aliasing against the live gate list; the old MergeParking dump helper was removed.)
 
 // ──────────────────────────────────────────────────────────────────────
 // Task 4.1: TaxiDataCache — IN-MEMORY per-ICAO cache + TTL
