@@ -878,6 +878,12 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **[Development](docs/development.md)** - Dependencies, key files, development notes
 - **[Developer Tooling Guide](docs/tooling.md)** - Coherent debugger (`:19999`) probes/scrapers/drivers in `tools/`, how to run each, and crash diagnosis
 
+## Gemini AI (display reading + scene/route description)
+
+`Services/GeminiService.cs` powers the AI features (on-demand cockpit-display reading, scene description, and the Shift+E route briefing). Two settings matter:
+- **Model = `gemini-flash-latest`** — the ROLLING alias, NOT a pinned preview (`gemini-3-flash-preview` etc.). Pinned preview models get sunset and silently break every AI feature; the rolling alias never does. The `API_BASE_URL` is built from the `MODEL` constant.
+- **Model "thinking" is ENABLED on BOTH paths** (`thinkingConfig.thinkingBudget = 8192`): the text/route briefing AND the image/display-reading path. Display reading is accuracy-critical for a blind pilot (reading exact airspeed/altitude/FMA/ECAM values) — a WRONG number is far worse than a slightly slower readout, so thinking stays on. Do NOT set `thinkingBudget = 0` for display reading "for speed" — that was tried and reverted; accuracy wins.
+
 ## Technology Stack
 
 .NET 9 (C# 13), Windows Forms, SimConnect SDK (MSFS), SQLite, NVDA/Tolk (screen readers)

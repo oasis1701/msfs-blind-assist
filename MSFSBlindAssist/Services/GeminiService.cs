@@ -403,10 +403,11 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                     }
                 }
             },
-            // Disable model "thinking" for display reading: it's an extractive task (read values
-            // off an instrument), not a reasoning one, so thinking only adds latency + token cost.
-            // thinkingBudget 0 made the live test return with 0 thought tokens (fast). Verified 2026-06.
-            generationConfig = new { thinkingConfig = new { thinkingBudget = 0 } }
+            // Enable model "thinking" for display reading too: reading exact instrument values
+            // (airspeed, altitude, FMA modes, ECAM messages) is accuracy-critical for a blind pilot,
+            // and a WRONG number is far worse than a slightly slower readout. Use the same balanced
+            // budget as the text/route path. (Was 0/disabled for speed; enabled per user 2026-06.)
+            generationConfig = new { thinkingConfig = new { thinkingBudget = 8192 } }
         };
 
         return await SendRequestAsync(requestBody);
