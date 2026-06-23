@@ -64,3 +64,19 @@ test('all three synthetic controls coexist and are off-Preferences absent', () =
   const labels = JSON.parse(A.scrape()).elements.filter(e => e.controlType === 'select').map(e => e.text);
   assert.ok(labels.includes('Weather Source') && labels.includes('Time Format') && labels.includes('Map Provider'));
 });
+
+test('synthetics land in the settings list (after the last pref control, before Sign Out) — NOT in the nav rail', () => {
+  // synthpos.html has a NAV RAIL whose Preferences button id is also "efb_preferences_*";
+  // the splice must not anchor on it.
+  const ctx = load('synthpos', { settings: { weather_source: 'REAL-WORLD', time_format: 'utc', selected_map: 'navigraph' } });
+  ctx.window.Settings.updateSetting = function (k, v) { ctx.window.Settings[k] = v; };
+  const els = JSON.parse(ctx.A.scrape()).elements;
+  const at = (pred) => els.findIndex(pred);
+  const mapZoom = at(e => e.controlType === 'select' && e.text === 'Map Zoom Step');
+  const signOut = at(e => e.kind === 'button' && /Sign Out/.test(e.text));
+  assert.ok(mapZoom >= 0 && signOut > mapZoom, 'anchors present in order');
+  ['Weather Source', 'Time Format', 'Map Provider'].forEach(function (label) {
+    const i = at(e => e.controlType === 'select' && e.text === label);
+    assert.ok(i > mapZoom && i < signOut, label + ' must sit between Map Zoom Step and Sign Out (got idx ' + i + ', mapZoom ' + mapZoom + ', signOut ' + signOut + ')');
+  });
+});

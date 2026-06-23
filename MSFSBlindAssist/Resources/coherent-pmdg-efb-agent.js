@@ -670,10 +670,18 @@
           synItems.push({ idx: def.idx, type: 'select', tag: 'SELECT', label: def.label, value: disp, options: optTexts, src: 'synthetic' });
         }
         if (synItems.length) {
-          // place them just before the first Preferences action button (Sign Out), else append.
-          var ins = -1;
-          for (var w = 0; w < merged.length; w++) { if (merged[w].type === 'button' && merged[w]._id && merged[w]._id.indexOf('efb_preferences_') === 0) { ins = w; break; } }
-          for (var si = 0; si < synItems.length; si++) { if (ins >= 0) merged.splice(ins + si, 0, synItems[si]); else merged.push(synItems[si]); }
+          // Place them right AFTER the last Preferences FORM CONTROL (e.g. Map Zoom Step), so they
+          // join the settings list before the action buttons. Anchor on a non-button control, NOT
+          // "first efb_preferences_ button" — the nav rail's own #efb_preferences_button matches
+          // that id too and would jam the synthetics into the middle of the nav rail.
+          var insAfter = -1;
+          for (var w = 0; w < merged.length; w++) {
+            var mw = merged[w];
+            if (mw.type !== 'button' && mw._id && mw._id.indexOf('efb_preferences_') === 0) insAfter = w;
+          }
+          for (var si = 0; si < synItems.length; si++) {
+            if (insAfter >= 0) merged.splice(insAfter + 1 + si, 0, synItems[si]); else merged.push(synItems[si]);
+          }
         }
       }
     } catch (eWs) {}
