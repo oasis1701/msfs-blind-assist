@@ -150,14 +150,20 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
             }
             else
             {
-                // Named already → record the online name as an ALIAS when it differs (after
-                // normalization), so the real ATC name becomes a selectable dropdown entry.
-                string spotNorm = TaxiDataMerger.NormalizeTaxiwayName(spot.Name);
-                string aliasNorm = TaxiDataMerger.NormalizeTaxiwayName(onName);
+                // Named already → record the online name as an ALIAS only when it names a DIFFERENT
+                // stand identity, so the real ATC name becomes a selectable dropdown entry. Compare
+                // the FULL navdata identity (concourse + number + suffix, e.g. "H2") against a
+                // gate-aware normalization of the online name that strips stand-type words and spaces
+                // (so "Ramp H2"/"H 2" → "H2"). The old check compared only spot.Name ("H", missing
+                // the number) with the bare taxiway normalizer (no type-word strip), so it logged a
+                // redundant "(also Ramp H2)" alias on essentially every stand at airports whose
+                // online names carry a "Ramp"/"Gate" qualifier (CYYZ).
+                string spotNorm = MSFSBlindAssist.Services.GateSearchFilter.NormalizeIdentity(spot);
+                string aliasNorm = MSFSBlindAssist.Services.GateSearchFilter.NormalizeGateName(onName);
                 if (!string.IsNullOrEmpty(aliasNorm)
-                    && !string.Equals(aliasNorm, spotNorm, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(aliasNorm, spotNorm, StringComparison.Ordinal)
                     && !spot.Aliases.Any(a => string.Equals(
-                        TaxiDataMerger.NormalizeTaxiwayName(a), aliasNorm, StringComparison.OrdinalIgnoreCase)))
+                        MSFSBlindAssist.Services.GateSearchFilter.NormalizeGateName(a), aliasNorm, StringComparison.Ordinal)))
                 {
                     spot.Aliases.Add(onName);
                 }

@@ -144,6 +144,25 @@ Check(cov.NavNamedTaxiways == 1,   $"Merger: 1 already-named segment counted (go
           "GateSearch: Filter() returns the spot when searching its alias");
 }
 
+// NormalizeGateName: strip stand-type words so a redundant online name is NOT aliased (CYYZ).
+{
+    var ng = (System.Func<string, string>)MSFSBlindAssist.Services.GateSearchFilter.NormalizeGateName;
+    Check(ng("Ramp H2") == "H2",      "GateName: 'Ramp H2' -> 'H2' (type word stripped)");
+    Check(ng("Gate 5")  == "5",       "GateName: 'Gate 5' -> '5'");
+    Check(ng("Stand 12 Apron") == "12", "GateName: 'Stand 12 Apron' -> '12' (multiple type words)");
+    Check(ng("Ramp") == "",           "GateName: bare 'Ramp' -> '' (never aliased)");
+    Check(ng("47") == "47",           "GateName: pure number passes through");
+    Check(ng("GA 3") == "GA3",        "GateName: 'GA' concourse NOT stripped (GA3)");
+    // The CYYZ bug: navdata "H 2" (identity H2) vs online "Ramp H2" must compare EQUAL → no alias.
+    var hSpot = new ParkingSpot { Name = "H", Number = 2 };
+    Check(MSFSBlindAssist.Services.GateSearchFilter.NormalizeIdentity(hSpot) == ng("Ramp H2"),
+          "GateName: navdata 'H 2' identity == online 'Ramp H2' → redundant alias suppressed");
+    // A genuinely different online name (e.g. "47" for navdata "GN 3") must still differ → kept.
+    var gnSpot = new ParkingSpot { Name = "GN", Number = 3 };
+    Check(MSFSBlindAssist.Services.GateSearchFilter.NormalizeIdentity(gnSpot) != ng("47"),
+          "GateName: genuine alias '47' for 'GN 3' still differs → kept");
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Task 4.1: TaxiDataCache — IN-MEMORY per-ICAO cache + TTL
 // ──────────────────────────────────────────────────────────────────────
