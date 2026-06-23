@@ -2702,6 +2702,11 @@ public partial class MainForm : Form
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
             {
                 simConnectManager.SetDestinationRunway(dialog.SelectedRunway, dialog.SelectedAirport);
+                // Destination just set → force-fresh the online taxiway names + gate aliases NOW, so
+                // they're ready well before the approach (instead of waiting until ILS guidance or the
+                // landing-exit planner is opened).
+                if (_augmentPrefetched.Add(dialog.SelectedAirport.ICAO))
+                    _ = _augmentingProvider?.PrefetchAsync(dialog.SelectedAirport.ICAO, force: true);
                 announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
             }
         }
