@@ -48,14 +48,13 @@ public class SimBriefService
             string xmlContent = DownloadXML(url);
             return ParseSimBriefXML(xmlContent, username);
         }
-        catch (WebException ex)
+        catch (HttpRequestException ex)
         {
-            if (ex.Response is HttpWebResponse response)
+            // HttpClient throws HttpRequestException (with StatusCode set by EnsureSuccessStatusCode);
+            // SimBrief returns 400 for an unknown username — keep the original friendly message.
+            if (ex.StatusCode == HttpStatusCode.BadRequest)
             {
-                if (response.StatusCode == HttpStatusCode.BadRequest)
-                {
-                    throw new Exception($"Invalid SimBrief username or no flight plan found for user: {username}", ex);
-                }
+                throw new Exception($"Invalid SimBrief username or no flight plan found for user: {username}", ex);
             }
             throw new Exception($"Failed to download flight plan from SimBrief: {ex.Message}", ex);
         }
