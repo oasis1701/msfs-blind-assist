@@ -569,13 +569,13 @@ See [Taxi Guidance](taxi-guidance.md) for the full reference.
 
 - **Decorator pattern** on `IAirportDataProvider`: `AugmentingAirportDataProvider` wraps the `LittleNavMapProvider` returned by `DatabaseSelector.SelectProvider()` and is transparent to all downstream consumers (`TaxiGraph`, `TaxiGuidanceManager`, etc.)
 - `GetTaxiPaths(icao)` enriches unnamed navdata segments with real-world taxiway names from OSM (Overpass API) and the X-Plane apt.dat gateway via geometric midpoint + bearing matching
-- `GetParkingSpots(icao)` fills empty navdata gate names from online sources (≤30 m proximity match); for named spots it collects **parking aliases** (`ParkingSpot.Aliases`) when the online source uses a different name (e.g. navdata `"GN 3"` / online `"47"`). Aliases surface as extra dropdown entries in `TaxiAssistForm` and as `" (also N)"` suffixes in `GateTeleportForm` — navdata name is always authoritative
-- Cache is per-ICAO JSON under `%APPDATA%\MSFSBlindAssist\taxi-cache` (30-day TTL), resolved via `DatabasePathResolver.CanonicalFolderName`
+- `GetParkingSpots(icao)` calls the public `AugmentParking(icao, spots)`, which assigns online stands to navdata spots **1:1, nearest-pair-first, within 50 m** (each online stand used at most once — no two gates get the same name): an empty navdata name adopts the online name; a named spot whose name differs collects a **parking alias** (`ParkingSpot.Aliases`, e.g. navdata `"GN 3"` / online `"47"`; X-Plane apt.dat supplies real gate numbers many navdata sets lack, e.g. CYYZ "Gate 131"). `AugmentParking` is **public** so the GSX gate path (which bypasses `GetParkingSpots`) gets the same aliases. Aliases surface as separate labeled dropdown entries — navdata name is always authoritative
+- Cache is **in-memory only** (`ConcurrentDictionary` + TTL, no disk) — fresh every session; departure/destination force-fresh, geofenced nearby airports ride the in-session cache
 - Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
 - Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
 - Wired in `MainForm` immediately after `DatabaseSelector.SelectProvider()`, guarded by `if (airportDataProvider != null)`
 - Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` via `AppLogs.PathFor`
-- `Enabled` property (default `true`) will be wired to `UserSettings.TaxiAugmentEnabled` in Phase 8
+- `Enabled` property (default `true`) wired to `UserSettings.TaxiAugmentEnabled` (in-dialog checkbox + ODbL / X-Plane attribution in Taxi Guidance Options); a "Refresh Taxiway Names" button force-fetches the nearby airport and announces the names-added count (`GetLastCoverage`)
 
 See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-data-augmentation-pipeline-phase-5) for the full reference.
 

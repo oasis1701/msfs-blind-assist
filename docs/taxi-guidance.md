@@ -1317,7 +1317,7 @@ List<TaxiPath>  (names written back BY INDEX — no object rebuild, no field los
 | `Services/TaxiAugment/OsmTaxiSource.cs` | OSM Overpass fetch → `AirportTaxiData` |
 | `Services/TaxiAugment/XplaneAptDatSource.cs` | X-Plane Gateway apt.dat fetch |
 | `Services/TaxiAugment/TaxiDataMerger.cs` | Geometric name-overlay (pure) |
-| `Services/TaxiAugment/TaxiDataCache.cs` | Per-ICAO JSON file cache |
+| `Services/TaxiAugment/TaxiDataCache.cs` | In-memory per-ICAO cache (`ConcurrentDictionary`, TTL, no disk) |
 | `Services/TaxiAugment/AirportTaxiData.cs` | DTOs: `AirportTaxiData`, `MergeOptions`, `CoverageReport` |
 | `MainForm.cs` | Wiring: wraps `DatabaseSelector.SelectProvider()` in the decorator |
 
@@ -1325,7 +1325,7 @@ List<TaxiPath>  (names written back BY INDEX — no object rebuild, no field los
 
 The decorator is constructed immediately after `DatabaseSelector.SelectProvider()` returns. Only constructed when a base provider is available (no DB = no decoration). The typed `_augmentingProvider` field is kept for Phase 6's `PrefetchAsync` calls.
 
-Cache directory: `%APPDATA%\MSFSBlindAssist\taxi-cache` (resolved via `DatabasePathResolver.CanonicalFolderName` — never hardcoded).
+Cache: **in-memory only** (`TaxiDataCache` = a `ConcurrentDictionary` with a TTL). There is no disk cache — every session fetches fresh, so data is never stale (the user explicitly did not want a disk cache). The active flight's departure + destination are fetched force-fresh; geofenced nearby airports ride the in-session cache.
 
 Augmentation event log: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` (via `AppLogs.PathFor`).
 
@@ -1361,11 +1361,12 @@ Some airports have a mismatch between navdata taxiway names and OSM/apt.dat name
 
 Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
 
-**How parking aliases are collected (in `AugmentingAirportDataProvider.GetParkingSpots`):** For every navdata spot that already has a name, the provider runs the same 30 m Haversine proximity match against OSM and apt.dat to find what online sources call the nearest parking at that location. If the nearest online name's normalized form differs from the spot's normalized navdata name, the raw online name is appended to `ParkingSpot.Aliases` (deduped, case-insensitive). The navdata name is never overwritten.
+**How parking aliases are collected (in the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)`):** the online stands (from OSM + apt.dat) are flattened once and assigned to the navdata spots **1:1, nearest pair first**, within a **50 m** Haversine radius. Each online stand is used at most once and each navdata spot enriched at most once — so a single online stand can never name two different gates "A12", and one spot can't claim a stand that clearly belongs to another. For a matched pair: an **empty** navdata name adopts the online name directly; a **named** spot whose normalized name differs gets the online name appended to `ParkingSpot.Aliases`. The navdata name is never overwritten.
 
-- Empty-name spots: behavior unchanged — the best online name within 30 m fills `ParkingSpot.Name` directly (existing behavior).
-- Named spots: online name whose normalized form differs from the navdata name → appended to `ParkingSpot.Aliases`.
-- Dedup guard: `TaxiDataMerger.NormalizeTaxiwayName` is applied to both existing aliases and the candidate before adding, so `"47"` and `"GATE 47"` do not both appear when they normalize to the same string.
+- 50 m radius (widened from 30 m): tolerates gate-position offset between the online dataset (e.g. X-Plane Gateway scenery) and the user's installed MSFS scenery. Nearest-match still picks the closest, so adjacent gates aren't mis-tagged.
+- **X-Plane apt.dat is the key gate source.** Many airports have *real* gate numbers in apt.dat that navdata lacks (e.g. CYYZ "Gate 131", KATL "A12"/"B7"/…) — these surface as gate aliases against navdata's generic spot codes.
+- `AugmentParking` is **public** and called on the GSX gate list too (GSX is the gate SOURCE and bypasses `GetParkingSpots`), so GSX stands get the same aliases. Called in both `TaxiAssistForm` and `GateTeleportForm` after building the GSX list.
+- Dedup guard: `TaxiDataMerger.NormalizeTaxiwayName` is applied to both existing aliases and the candidate before adding, so `"47"` and `"GATE 47"` do not both appear.
 - `ParkingSpot.Aliases` is in-memory only — never persisted to the database.
 
 **How parking aliases are surfaced:**
@@ -1386,9 +1387,13 @@ Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-
 - Any exception is swallowed — background fetches must never propagate into callers.
 - `PrefetchAsync(icao, force)` is the awaitable variant for Phase 6.
 
-### Phase toggle
+### Settings toggle + manual refresh
 
-`AugmentingAirportDataProvider.Enabled` (default `true`) will be wired to `UserSettings.TaxiAugmentEnabled` in Phase 8.
+`AugmentingAirportDataProvider.Enabled` (default `true`) is wired to `UserSettings.TaxiAugmentEnabled`, exposed as an in-dialog checkbox in the Taxi Guidance Options form (with visible "© OpenStreetMap contributors (ODbL) + X-Plane Scenery Gateway" attribution). The same dialog has a **"Refresh Taxiway Names"** button that force-fetches the nearby airport and announces how many names were added (`GetLastCoverage(icao)` → "Taxiway names refreshed for X: N added" / "No new names found").
+
+### Dropdown presentation (taxiway + gate aliases)
+
+Aliases are **separate, self-labeled dropdown items** — not merged into one. A taxiway navdata calls "HAWKER" but ATC calls "B" shows as TWO entries: `HAWKER` and `B (HAWKER)` (the latter at the "B" position). Gates likewise: `Gate 131 (GH 5 - …)` sits separately from `GH 5 - …`. Either resolves to the same canonical pavement/spot. This lets a pilot scroll to the name ATC actually used while still seeing what the scenery calls it.
 
 ## Related Documentation
 
