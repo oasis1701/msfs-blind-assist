@@ -79,6 +79,30 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     private readonly Dictionary<string, Task> _inFlightTasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _inFlightLock = new();
 
+    // ── Merged-name cache (perf: compute the geometry overlay ONCE per ICAO) ──
+    // The geometric merge (MergeNamesOntoNavData → BestMatchName per segment) is
+    // O(navSegments × onlineSegments) and was previously re-run on EVERY GetTaxiPaths call
+    // (each route build, each recalc, each Where-Am-I) and a SECOND time for telemetry. We now
+    // run it ONCE per fetch and cache its per-segment output (adopted name + aliases, aligned to
+    // the base navdata index) plus the coverage report. GetTaxiPaths then applies the cached names
+    // onto a FRESH base list by index — no geometry — and telemetry/GetLastCoverage read the cached
+    // report. Populated only right after a successful fetch (FetchCoreAsync), so it never diverges
+    // from the source cache; a fresh fetch overwrites it.
+    private sealed class MergedNames
+    {
+        // PerIndex[i] corresponds to base GetTaxiPaths()[i]. Name is the merged name (adopted for
+        // an unnamed segment, or the unchanged navdata name); Aliases is its online-alias list.
+        public List<(string? Name, List<string> Aliases)> PerIndex { get; }
+        public CoverageReport Coverage { get; }
+        public MergedNames(List<(string?, List<string>)> perIndex, CoverageReport cov)
+        {
+            PerIndex = perIndex;
+            Coverage = cov;
+        }
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MergedNames> _mergedCache
+        = new(StringComparer.OrdinalIgnoreCase);
+
     // ── IAirportDataProvider pass-throughs ──────────────────────────────────
     public bool DatabaseExists   => _base.DatabaseExists;
     public string DatabaseType   => _base.DatabaseType;
@@ -186,9 +210,24 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         if (!Enabled)
             return nav;
 
-        // Cache hit → merge synchronously (pure geometry, cheap).
+        // Fast path: the geometry overlay was already computed for this ICAO (by the last fetch) —
+        // apply the cached per-index names onto this fresh base list. NO geometry, just an O(n) copy.
+        if (_mergedCache.TryGetValue(icao, out var cachedMerged))
+        {
+            ApplyMergedNames(nav, cachedMerged);
+            return nav;
+        }
+
+        // Source data is cached but the merged result isn't yet (rare — e.g. first call before
+        // FetchCoreAsync stored it). Compute the overlay ONCE, cache it, and apply.
         if (_cache.TryLoad(icao, out var cached) && cached != null)
-            return MergeOnto(nav, cached, icao);
+        {
+            var merged = BuildMergedNames(nav, cached, icao);
+            _mergedCache[icao] = merged;
+            _lastCoverage[icao] = merged.Coverage;
+            ApplyMergedNames(nav, merged);
+            return nav;
+        }
 
         // Cache miss → return navdata now and enrich in background.
         BackgroundFetch(icao);
@@ -211,44 +250,55 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
 
     // ── Merge implementation ─────────────────────────────────────────────────
     /// <summary>
-    /// Runs the name-merger on the <paramref name="nav"/> list in place.
-    /// Only writes back names for segments that are currently unnamed —
-    /// existing navdata names are never overwritten.
-    /// All other <see cref="TaxiPath"/> fields (Width, Type, Surface, StartType, etc.)
-    /// are preserved because we operate on the ORIGINAL objects by index.
+    /// Runs the pure-geometry name-merger ONCE and captures its per-segment output (adopted name +
+    /// aliases, aligned to the base navdata index) plus the coverage report. This is the expensive
+    /// O(navSegments × onlineSegments) pass; its result is cached in <see cref="_mergedCache"/> so
+    /// it runs once per fetch, not once per GetTaxiPaths call.
     /// </summary>
-    private List<TaxiPath> MergeOnto(
+    private MergedNames BuildMergedNames(
         List<TaxiPath> nav,
         IReadOnlyList<AirportTaxiData> sources,
         string icao)
     {
-        if (nav.Count == 0)
-            return nav;
-
         // Convert TaxiPath → NavSegment for the pure-geometry merger.
         var segs = nav
             .Select(tp => new NavSegment(tp.Name, tp.StartLat, tp.StartLon, tp.EndLat, tp.EndLon))
             .ToList();
 
-        var merged = TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out _);
+        var merged = TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out var cov);
 
-        // Write adopted names AND aliases BACK by index — do NOT rebuild TaxiPath objects.
-        // Rebuilding would lose Width, Type, Surface, StartType, EndType, etc.
-        for (int i = 0; i < nav.Count && i < merged.Count; i++)
+        var perIndex = new List<(string?, List<string>)>(merged.Count);
+        foreach (var ms in merged)
+            perIndex.Add((ms.Name, ms.Aliases));
+
+        return new MergedNames(perIndex, cov);
+    }
+
+    /// <summary>
+    /// Applies the cached merged names onto a FRESH base <paramref name="nav"/> list, by index.
+    /// Only fills a name for a segment that is currently unnamed — existing navdata names are never
+    /// overwritten — and all other <see cref="TaxiPath"/> fields are preserved (we mutate the
+    /// original objects, never rebuild). The alias list is COPIED (not shared) so that mutating the
+    /// returned list can never corrupt the cached per-segment alias list reused by the next call.
+    /// Index alignment relies on the base provider returning segments in a stable order across
+    /// calls within a session — the same assumption the in-place by-index merger already made; the
+    /// Math.Min bound keeps it safe if a count ever differs.
+    /// </summary>
+    private static void ApplyMergedNames(List<TaxiPath> nav, MergedNames merged)
+    {
+        var per = merged.PerIndex;
+        int n = Math.Min(nav.Count, per.Count);
+        for (int i = 0; i < n; i++)
         {
             if (string.IsNullOrWhiteSpace(nav[i].Name) &&
-                !string.IsNullOrWhiteSpace(merged[i].Name))
+                !string.IsNullOrWhiteSpace(per[i].Name))
             {
-                nav[i].Name = merged[i].Name;
+                nav[i].Name = per[i].Name!;
             }
 
-            // Copy aliases discovered for this segment (applies to both named and
-            // newly-named segments; the list is empty when no alias was found).
-            if (merged[i].Aliases.Count > 0)
-                nav[i].Aliases = merged[i].Aliases;
+            if (per[i].Aliases.Count > 0)
+                nav[i].Aliases = new List<string>(per[i].Aliases);
         }
-
-        return nav;
     }
 
     // ── Background fetch (fire-and-forget) ──────────────────────────────────
@@ -288,25 +338,15 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
 
     // ── Telemetry ────────────────────────────────────────────────────────────
     /// <summary>
-    /// Logs one coverage line to taxi-augment.log after a successful fetch.
-    /// Runs a lightweight merge pass against the base navdata to produce stats.
-    /// Never throws — a logging failure must not surface to callers.
+    /// Logs one coverage line to taxi-augment.log after a successful fetch, using the coverage
+    /// report ALREADY computed by the single post-fetch merge (no second merge pass — the prior
+    /// implementation re-fetched the navdata and re-ran the full O(n×m) overlay just for this log
+    /// line). Never throws — a logging failure must not surface to callers.
     /// </summary>
-    private void WriteTelemetryLog(string icao, IReadOnlyList<AirportTaxiData> sources)
+    private static void WriteTelemetryLog(string icao, CoverageReport cov)
     {
         try
         {
-            var navPaths = _base.GetTaxiPaths(icao);
-            if (navPaths == null || navPaths.Count == 0)
-                return;
-
-            var segs = navPaths
-                .Select(tp => new NavSegment(tp.Name, tp.StartLat, tp.StartLon, tp.EndLat, tp.EndLon))
-                .ToList();
-
-            TaxiDataMerger.MergeNamesOntoNavData(segs, sources, _opt, icao, out var cov);
-            _lastCoverage[icao] = cov;   // feed the manual-refresh "N names added" feedback
-
             string line = $"{System.DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}  {icao}  " +
                           $"navNamed={cov.NavNamedTaxiways} navUnnamed={cov.NavUnnamedSegments} " +
                           $"+osm={cov.NamesAdoptedFromOsm} +aptdat={cov.NamesAdoptedFromAptDat} " +
@@ -347,7 +387,19 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
             if (valid.Count > 0)
             {
                 _cache.Save(icao, valid);
-                WriteTelemetryLog(icao, valid);
+
+                // Run the geometry overlay ONCE here and cache its result, so GetTaxiPaths applies
+                // names without re-merging and telemetry reuses the same coverage report (no second
+                // O(n×m) pass). Skip silently when the base has no navdata for this ICAO.
+                var navPaths = _base.GetTaxiPaths(icao);
+                if (navPaths != null && navPaths.Count > 0)
+                {
+                    var merged = BuildMergedNames(navPaths, valid, icao);
+                    _mergedCache[icao] = merged;
+                    _lastCoverage[icao] = merged.Coverage;   // feeds the manual-refresh "N added" feedback
+                    WriteTelemetryLog(icao, merged.Coverage);
+                }
+
                 AirportDataUpdated?.Invoke(icao);
             }
         }
