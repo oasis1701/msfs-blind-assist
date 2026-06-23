@@ -29,6 +29,13 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
 
+    <!-- WebView2 ships a WPF wrapper (Microsoft.Web.WebView2.Wpf) that this WinForms-only app never
+         loads, but it transitively references WindowsBase 5.0.0.0, conflicting with the net9 ref
+         assembly (4.0.0.0). MSBuild resolves it CORRECTLY to the net9 WindowsBase — the WPF control
+         is never instantiated — so this is a benign third-party packaging conflict. Demote the
+         MSB3277 reference-conflict warning to a build message. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+
     <!-- Build Settings -->
     <Deterministic>true</Deterministic>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

@@ -25,7 +25,7 @@ public interface IPMDGDataManager : IDisposable
 
     void Initialize(
         Microsoft.FlightSimulator.SimConnect.SimConnect simConnect,
-        MobiFlightWasmModule mobiFlightWasm);
+        MobiFlightWasmModule? mobiFlightWasm);
 
     void ProcessClientData(SIMCONNECT_RECV_CLIENT_DATA data);
 

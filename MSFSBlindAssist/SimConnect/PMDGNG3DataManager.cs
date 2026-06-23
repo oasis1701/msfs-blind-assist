@@ -97,7 +97,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
     /// </summary>
     public void Initialize(
         Microsoft.FlightSimulator.SimConnect.SimConnect simConnect,
-        MobiFlightWasmModule mobiFlightWasm)
+        MobiFlightWasmModule? mobiFlightWasm)
     {
         _simConnect     = simConnect;
 

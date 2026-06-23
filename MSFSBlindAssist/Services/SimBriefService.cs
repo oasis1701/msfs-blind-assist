@@ -70,18 +70,15 @@ public class SimBriefService
     /// </summary>
     private string DownloadXML(string url)
     {
-        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
-
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-        request.Timeout = TIMEOUT_SECONDS * 1000;
-        request.UserAgent = "FBWBA-EFB/1.0";
-
-        using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-        using (Stream stream = response.GetResponseStream())
-        using (StreamReader reader = new StreamReader(stream))
-        {
-            return reader.ReadToEnd();
-        }
+        // Reuses the shared _httpClient (30 s timeout). TLS 1.2+ is the .NET 9 default — no
+        // ServicePointManager configuration needed (replaces the obsolete WebRequest path).
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("FBWBA-EFB/1.0");
+        using var response = _httpClient.Send(request);
+        response.EnsureSuccessStatusCode();
+        using var stream = response.Content.ReadAsStream();
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     /// <summary>
