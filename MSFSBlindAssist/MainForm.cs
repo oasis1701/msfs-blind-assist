@@ -129,11 +129,9 @@ public partial class MainForm : Form
     private LandingExitForm? landingExitForm;
 
     // Per-session set of ICAOs already prefetched by AugmentingAirportDataProvider.
-    // Guards automatic departure/destination/geofence prefetches so each airport
-    // is fetched at most once per app session. Manual refresh (force:true) bypasses it.
+    // Guards automatic departure/destination prefetches so each airport is fetched at most once
+    // per app session. Manual refresh (force:true) bypasses it.
     private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
-    // Tick counter used to throttle geofence-radius prefetch checks (one check every ~30 s).
-    private int _augmentGeofenceTick;
 
     // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
     private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
@@ -1111,41 +1109,10 @@ public partial class MainForm : Form
         if (e.VarName == "GROUND_VELOCITY")
         {
             groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround, takeoffAssistManager.IsActive);
-
-            // Task 3 — Geofence prefetch: once every ~30 s (GROUND_VELOCITY fires at ~1 Hz),
-            // scan for airports within 50 NM of the current position and prefetch any not yet
-            // cached this session. SILENT (fire-and-forget, debounced via _augmentPrefetched).
-            if (++_augmentGeofenceTick >= 30 && _augmentingProvider != null)
-            {
-                _augmentGeofenceTick = 0;
-                var lastPos = simConnectManager.LastKnownPosition;
-                if (lastPos != null && airportDataProvider != null)
-                {
-                    // Capture locals before the Task.Run closure so the lambda doesn't
-                    // capture `this` in a way that could race with disposal.
-                    var provider = _augmentingProvider;
-                    var dataProvider = airportDataProvider;
-                    var prefetched = _augmentPrefetched;
-                    double lat = lastPos.Value.Latitude;
-                    double lon = lastPos.Value.Longitude;
-                    _ = Task.Run(() =>
-                    {
-                        try
-                        {
-                            var nearby = dataProvider.GetNearbyAirportICAOs(lat, lon, 50.0)
-                                .Where(c => c != null && c.Length == 4)
-                                .ToList();
-                            foreach (var icao in nearby)
-                            {
-                                if (prefetched.Add(icao))
-                                    _ = provider.PrefetchAsync(icao);
-                            }
-                        }
-                        catch { }
-                    });
-                }
-            }
-
+            // Taxiway-name augmentation is fetched ONLY for the active flight's departure and
+            // destination (the airports you actually taxi at, both force-fresh) plus on demand when
+            // you type an ICAO into the gate-teleport dialog. The old 50 NM geofence scan was removed
+            // — it added background fetching for airports you never taxi at, with no benefit.
             return true;
         }
 
