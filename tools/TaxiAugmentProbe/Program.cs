@@ -132,6 +132,18 @@ Check(cov.NavNamedTaxiways == 1,   $"Merger: 1 already-named segment counted (go
     Check(TaxiDataMerger.AssignParking(new List<(double, double)>(), one, 50).Count == 0, "AssignParking: empty spots → empty");
 }
 
+// Gate search must match BOTH the navdata identity AND the online alias — type EITHER name.
+{
+    var spot = new ParkingSpot { Name = "B", Number = 6, Aliases = new List<string> { "B04" } };
+    Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(spot, "B04"), "GateSearch: real-gate alias 'B04' matches");
+    Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(spot, "B 04"), "GateSearch: alias with space 'B 04' matches");
+    Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(spot, "B6"),  "GateSearch: navdata identity 'B6' matches");
+    Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(spot, "B"),   "GateSearch: concourse 'B' matches");
+    Check(!MSFSBlindAssist.Services.GateSearchFilter.Matches(spot, "Z9"), "GateSearch: unrelated 'Z9' does NOT match");
+    Check(MSFSBlindAssist.Services.GateSearchFilter.Filter(new List<ParkingSpot> { spot }, "B04").Count == 1,
+          "GateSearch: Filter() returns the spot when searching its alias");
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Task 4.1: TaxiDataCache — IN-MEMORY per-ICAO cache + TTL
 // ──────────────────────────────────────────────────────────────────────
