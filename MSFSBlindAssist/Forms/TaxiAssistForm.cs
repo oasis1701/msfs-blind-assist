@@ -767,6 +767,20 @@ public class TaxiAssistForm : Form
             return;
         }
 
+        // Fetch online taxiway-name augmentation BEFORE building the graph, so the taxiway list
+        // includes the augmented names on first open. Without this, a cache-miss here returns
+        // navdata-only and the graph (which never rebuilds for the same airport — see the early
+        // return above) would never pick up the names even after the background fetch lands. A cache
+        // hit (departure/destination already prefetched) returns instantly; only a never-fetched
+        // airport actually waits, and the status line shows why.
+        if (_dataProvider is MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider augProvider
+            && augProvider.Enabled)
+        {
+            lblStatus.Text = $"{icao}: fetching taxiway names…";
+            try { await augProvider.PrefetchAsync(icao); }
+            catch { /* offline / fetch failed — fall back to navdata names */ }
+        }
+
         // Build graph (off the UI thread to avoid stalls at large airports)
         var paths = _dataProvider.GetTaxiPaths(icao);
         if (paths.Count == 0)
