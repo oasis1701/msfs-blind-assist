@@ -200,6 +200,11 @@ public class TaxiRouter
             Log($"[TaxiRouter] Step 1 bridge OK: {bridge.Count} nodes across runway");
         }
 
+        // When the LAST cleared taxiway is honored as the route terminus (it holds short of /
+        // branches off the destination rather than leading onto it), skip the final unconstrained
+        // "to destination" leg below — that leg would bypass the cleared taxiway onto the runway.
+        bool lastTaxiwayTerminal = false;
+
         // Step 2: For remaining taxiways in sequence
         for (int i = 1; i < taxiwaySequence.Count; i++)
         {
@@ -243,6 +248,33 @@ public class TaxiRouter
             {
                 targetNode = FindNearestNodeOnTaxiwayToTarget(endNodeId, currentTaxiway, distFromFinalDest);
                 if (targetNode == -1) targetNode = endNodeId;
+
+                // Honor the LAST cleared taxiway. FindNearestNodeOnTaxiwayToTarget picks the node on
+                // it with the smallest GRAPH distance to the destination. When the last taxiway
+                // branches AWAY from a destination the PRIOR taxiway already reaches, that node is the
+                // ENTRY junction we just arrived at (targetNode == currentNode): every node on the
+                // last taxiway can only reach the destination by going BACK through the entry. The
+                // step would then no-op (continue, below) and the final unconstrained leg would
+                // bypass the cleared taxiway straight onto the runway with NO hold short. Live case:
+                // EIDW "…N, N2" to 28R — taxiway N runs to the 28R threshold (4 m), N2 is a ~450 m
+                // connector that only rejoins through its junction with N, so N2 was silently dropped
+                // and the aircraft was guided down N onto the runway. Instead, force traversal ALONG
+                // the last taxiway to the node geographically nearest the runway (its hold-short end)
+                // and make THAT the route terminus — do not append the bypass leg.
+                if (targetNode == currentNode && taxiwaySequence.Count > 1)
+                {
+                    var destNode = _graph.Nodes[endNodeId];
+                    int holdEnd = FindNodeOnTaxiwayNearestPosition(
+                        currentTaxiway, destNode.Latitude, destNode.Longitude,
+                        _graph.Nodes[currentNode].ComponentId);
+                    if (holdEnd != -1 && holdEnd != currentNode)
+                    {
+                        targetNode = holdEnd;
+                        lastTaxiwayTerminal = true;
+                        Log($"[TaxiRouter] Last taxiway '{currentTaxiway}' branches off the destination — " +
+                            $"routing to its hold-short end {holdEnd} (no bypass leg)");
+                    }
+                }
             }
 
             if (currentNode == targetNode && !bridgedAcrossRunway) continue;
@@ -288,8 +320,10 @@ public class TaxiRouter
             }
         }
 
-        // Step 3: Route from last taxiway to destination
-        if (currentNode != endNodeId)
+        // Step 3: Route from last taxiway to destination — UNLESS the last cleared taxiway was
+        // honored as the terminus (it holds short of the runway; appending an unconstrained leg
+        // here would bypass it onto the runway — see the last-taxiway branch above).
+        if (currentNode != endNodeId && !lastTaxiwayTerminal)
         {
             var finalLeg = AStarSearch(currentNode, endNodeId, null);
             if (finalLeg == null)
@@ -373,6 +407,30 @@ public class TaxiRouter
     /// component — both shouldn't happen during normal operation but keep
     /// the helper defensive.
     /// </summary>
+    /// <summary>
+    /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
+    /// that is GEOGRAPHICALLY closest to the given position, or -1 if none. Used to honor a last
+    /// cleared taxiway that branches off the destination by routing to its hold-short end (the node
+    /// nearest the runway). Euclidean is correct here precisely because that taxiway does NOT lead
+    /// onto the runway in the graph, so graph distance degenerately picks the entry junction.
+    /// </summary>
+    private int FindNodeOnTaxiwayNearestPosition(string taxiwayName, double lat, double lon, int requiredComponent)
+    {
+        int best = -1;
+        double bestM = double.MaxValue;
+        foreach (var kvp in _graph.Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var node = _graph.Nodes[nodeId];
+            if (node.ComponentId != requiredComponent) continue;
+            double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, lat, lon);
+            if (d < bestM) { bestM = d; best = nodeId; }
+        }
+        return best;
+    }
+
     private int FindNearestNodeOnTaxiwayToTarget(
         int targetNodeId, string taxiwayName,
         Dictionary<int, double>? precomputedDistFromTarget = null)
