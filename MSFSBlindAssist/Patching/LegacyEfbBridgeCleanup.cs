@@ -17,8 +17,8 @@ namespace MSFSBlindAssist.Patching
             try
             {
                 // Sweep EVERY sim's Community folder (FS2020 AND FS2024) — at startup no sim is
-                // running, so FindCommunityFolderPath() would only clean the default sim and leave
-                // the package behind in the other one. FindAllCommunityFolders() covers both.
+                // running, so a single-folder lookup would only clean the default sim and leave the
+                // package behind in the other one. FindAllCommunityFolders() covers both.
                 var folders = EFBModPackageManager.FindAllCommunityFolders();
                 if (folders == null) return;
                 foreach (var (_, folder) in folders)

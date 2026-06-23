@@ -15,9 +15,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     public override string AircraftName => "PMDG 737";
     public override string AircraftCode => "PMDG_737";
 
-    // EFB accessibility bridge is supported on the 738 — it ships the identical
-    // EFB app as the 777, so the shared bridge JS + package and the 777 EFB panels
-    // are reused. Opened with Shift+T via the shared PMDGEFBForm.
+    // EFB accessibility is supported on the 738 — it renders the identical EFB app as the 777,
+    // so the same Coherent in-page agent (coherent-pmdg-efb-agent.js) reads it. Opened with
+    // Shift+T via the shared FbwEfbForm over CoherentPmdgEfbClient (no Community-folder bridge).
     public bool HasEFBSupport => true;
 
     // Cached merged variables dictionary — built once on first access.

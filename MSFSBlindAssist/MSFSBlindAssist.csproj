@@ -114,7 +114,7 @@
     <None Update="Checklists\FBW_A380_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <!-- Bridge Scripts -->
+    <!-- Coherent in-page agents (injected at runtime via the remote debugger) -->
     <None Update="Resources\coherent-a380-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
