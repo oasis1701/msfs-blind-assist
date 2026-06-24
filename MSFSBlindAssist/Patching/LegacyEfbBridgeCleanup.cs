@@ -5,14 +5,13 @@ namespace MSFSBlindAssist.Patching
     /// have been superseded by the Coherent-debugger transport:
     ///   • PMDG EFB  — <c>zzz-pmdg-efb-accessibility</c> (now <see cref="SimConnect.CoherentPmdgEfbClient"/>),
     ///     removed via <see cref="EFBModPackageManager.Remove"/>.
-    ///   • HorizonSim 787 — the FS2020 <c>zzz-hs787-accessibility</c> override package, removed by a
-    ///     direct folder delete (the 787 is now driven over the Coherent debugger).
-    /// A user who ran an injecting build still has these packages shadowing the real instrument HTML;
-    /// removing the override folder reverts cleanly (the package only ever shadowed the originals).
-    ///
-    /// LIMITATION: the FS2024 HS787 in-place HTML patch is NOT reverted here. The code that safely
-    /// restored it (HS787ModPackageManager.RestoreFs2024FromBackups) was deleted with the 787 Coherent
-    /// migration, so only the FS2020 override-folder case is cleaned up.
+    ///   • HorizonSim 787 — via <see cref="Hs787LegacyUninstaller.Remove"/>, which reverts BOTH the
+    ///     FS2020 <c>zzz-hs787-accessibility</c> override package (folder delete) AND the FS2024
+    ///     in-place HTML patch (restored from its <c>.msfsba_backup</c> copies). The 787 is now driven
+    ///     over the Coherent debugger; the uninstaller is the removal half of the deleted
+    ///     <c>HS787ModPackageManager</c> (no install/patch logic — that installer is intentionally gone).
+    /// A user who ran an injecting build still has these bridges shadowing/patching the real instrument
+    /// HTML; reverting them restores the original aircraft.
     ///
     /// Never throws; any per-folder failure is logged and skipped. Safe to call on every startup —
     /// a no-op once the packages are gone (a single Directory.Exists / IsInstalled check per folder).
@@ -59,39 +58,22 @@ namespace MSFSBlindAssist.Patching
             return removed;
         }
 
-        // The FS2020 HorizonSim 787 override package folder. (HS787ModPackageManager was removed
-        // when the 787 moved to the Coherent transport, so this is a direct, manager-free delete.)
-        private const string Hs787PackageFolderName = "zzz-hs787-accessibility";
-
         private static int RemoveHs787Bridge()
         {
             int removed = 0;
             try
             {
                 // Reuse EFBModPackageManager's Community-folder discovery (it enumerates every
-                // detected sim's Community folder — sim-agnostic, not PMDG-specific).
+                // detected sim's Community folder — sim-agnostic, not PMDG-specific). The actual
+                // removal (FS2020 override folder + FS2024 in-place patch restore) lives in
+                // Hs787LegacyUninstaller — the uninstall half of the deleted HS787ModPackageManager.
                 foreach (var (simLabel, communityPath) in EFBModPackageManager.FindAllCommunityFolders())
                 {
-                    try
+                    if (Hs787LegacyUninstaller.Remove(communityPath))
                     {
-                        // Delete the FS2020 zzz-hs787-accessibility OVERRIDE package — like the PMDG
-                        // package it only ever shadowed the original instrument HTML, so removing the
-                        // folder reverts cleanly. NOTE: the FS2024 in-place HTML patch (patched HTML +
-                        // .msfsba_backup copies) is NOT handled here — the code that safely restored it
-                        // (HS787ModPackageManager.RestoreFs2024FromBackups) was removed with the 787
-                        // Coherent migration. Reverting that patch would need that restoration logic and
-                        // is out of scope for this folder cleanup.
-                        string packagePath = System.IO.Path.Combine(communityPath, Hs787PackageFolderName);
-                        if (!System.IO.Directory.Exists(packagePath)) continue;
-                        System.IO.Directory.Delete(packagePath, recursive: true);
                         removed++;
                         System.Diagnostics.Debug.WriteLine(
-                            $"[LegacyEfbBridgeCleanup] Removed retired HS787 override package from {simLabel}: {packagePath}");
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[LegacyEfbBridgeCleanup] HS787 remove failed for {communityPath}: {ex.Message}");
+                            $"[LegacyEfbBridgeCleanup] Removed retired HS787 bridge from {simLabel}: {communityPath}");
                     }
                 }
             }
