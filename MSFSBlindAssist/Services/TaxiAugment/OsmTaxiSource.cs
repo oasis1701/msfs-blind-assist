@@ -5,7 +5,16 @@ public sealed class OsmTaxiSource : ITaxiDataSource
 {
     public string Id => "osm";
     private readonly HttpClient _http;
-    public OsmTaxiSource(HttpClient http) => _http = http;
+    public OsmTaxiSource(HttpClient http)
+    {
+        _http = http;
+        // Overpass returns HTTP 406 for a request with NO User-Agent, so the shared client MUST
+        // send one or every OSM fetch silently fails (+osm=0 at every airport — the catch in
+        // FetchAsync swallows the 406). Guard against a caller that already set one (the client is
+        // shared with the apt.dat source). Verified live: no UA -> 406 / 0 elements; with UA -> 200.
+        if (_http.DefaultRequestHeaders.UserAgent.Count == 0)
+            _http.DefaultRequestHeaders.UserAgent.ParseAdd("MSFSBlindAssist/1.0 (taxi-augment)");
+    }
 
     private static readonly string[] Mirrors = {
         "https://overpass-api.de/api/interpreter",
