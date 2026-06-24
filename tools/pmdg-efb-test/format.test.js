@@ -10,14 +10,16 @@ test('OFP <pre> linearizes to one item per line, controlType pre', () => {
   assert.ok(pre.some(e => e.text.indexOf('RWY 17L/35R CLOSED DUE TO WIP.') >= 0));
 });
 
-test('two-column form: real text label + value; checkbox active unit from Settings', () => {
+test('two-column form: real text label + value; unit toggle renders as a select reading el.checked', () => {
   const els = scrape('prefs', { settings: { weight_unit: 'kg' } });
   const sb = els.find(e => e.controlType === 'text' && e.text === 'SimBrief Alias');
   assert.strictEqual(sb.value, 'ABC123');
-  // unit toggle: active unit folded into the LABEL; value stays boolean (rendered checked state)
-  const w = els.find(e => e.controlType === 'checkbox' && e.text === 'Weight Unit: kilograms');
-  assert.ok(w, 'Weight Unit checkbox shows the live active unit (::after) in full words');
-  assert.ok(w.value === 'true' || w.value === 'false', 'checkbox value is boolean');
+  // unit toggle: a known *_unit toggle is reported as a 2-option select whose value is the
+  // active unit derived from el.checked (unchecked weight -> kg -> kilograms), in full words.
+  const w = els.find(e => e.controlType === 'select' && e.text === 'Weight Unit');
+  assert.ok(w, 'Weight Unit renders as a select');
+  assert.strictEqual(w.value, 'kilograms', 'active unit (unchecked -> kg) in full words');
+  assert.deepEqual(w.options, ['kilograms', 'pounds'], 'both unit options offered');
 });
 
 test('dashboard: CALLSIGN merges with value; leaflet markers dropped', () => {

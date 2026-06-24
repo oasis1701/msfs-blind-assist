@@ -2,15 +2,22 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { scrape } = require('./run');
 
-test('unit toggles read the LIVE active unit (::after) in full words', () => {
+test('unit toggles render as 2-option selects reading the LIVE active unit (from el.checked) in full words', () => {
+  // This EFB build renders the unit toggles as TEXTLESS checkboxes (::before/::after empty,
+  // Settings lags until Save), so the active unit can only come from el.checked via UNIT_PAIRS.
+  // The agent reports them as 2-option SELECTS (clearer for a screen reader than a bare checkbox).
   const els = scrape('unittoggle');
-  const cb = els.filter(e => e.controlType === 'checkbox').map(e => e.text);
-  // ::after is the active unit; expanded to full words
-  assert.ok(cb.includes('Weight Unit: kilograms'), 'weight ::after=kg -> kilograms');
-  assert.ok(cb.includes('Distance Unit: nautical miles'), 'distance ::after=nm -> nautical miles');
-  assert.ok(cb.includes('Temperature Unit: Celsius'), 'temperature ::after=C -> Celsius');
-  // never the stale/abbreviated form
-  assert.ok(!cb.some(t => /: (kg|nm|C)\b/.test(t)), 'no abbreviated unit leaks');
+  const sel = {};
+  els.filter(e => e.controlType === 'select').forEach(e => { sel[e.text] = e; });
+  // active unit derived from el.checked (weight unchecked->kg, distance/temp checked->nm/C), full words
+  assert.equal(sel['Weight Unit'] && sel['Weight Unit'].value, 'kilograms', 'weight unchecked -> kilograms');
+  assert.equal(sel['Distance Unit'] && sel['Distance Unit'].value, 'nautical miles', 'distance checked -> nautical miles');
+  assert.equal(sel['Temperature Unit'] && sel['Temperature Unit'].value, 'Celsius', 'temperature checked -> Celsius');
+  // both unit options are offered, in full words, so the user can pick the other one
+  assert.deepEqual(sel['Weight Unit'].options, ['kilograms', 'pounds'], 'weight options');
+  assert.deepEqual(sel['Temperature Unit'].options, ['Fahrenheit', 'Celsius'], 'temperature options');
+  // never the abbreviated form as the displayed value
+  assert.ok(!Object.values(sel).some(e => /^(kg|nm|c|lbs|f|km|ft|m|hpa|inhg)$/i.test(e.value)), 'no abbreviated unit leaks');
 });
 
 test('Ground Operations active sub-tab marked "(selected)" via *_highlighted', () => {
