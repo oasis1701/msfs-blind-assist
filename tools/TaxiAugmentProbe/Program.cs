@@ -184,5 +184,39 @@ Check(StandId.Parse("P 209")    is { Letter: "P", Number: 209, HasNumber: true }
 Check(StandId.Parse("").HasNumber == false,                                                   "StandId: '' -> no number");
 Check(StandId.Parse("N") is { Letter: "N", HasNumber: false },                                "StandId: 'N' -> letter N, no number");
 
+// ──────────────────────────────────────────────────────────────────────
+// Task 2: GateAliasResolver — identity-matched, alias-only, idempotent
+// ──────────────────────────────────────────────────────────────────────
+ParkingSpot Gate(string name, int num, int type = 11, string suffix = "")
+    => new ParkingSpot { Name = name, Number = num, Type = type, Suffix = suffix, Latitude = 45.0, Longitude = -73.0 };
+
+// Online stands (coords irrelevant here — distance check disabled with maxMeters: 0).
+var onlineStands = new List<(string, double, double)>
+{
+    ("Gate 11B", 45.0, -73.0), ("Gate 15", 45.0, -73.0), ("51", 45.0, -73.0),
+    ("A51", 45.0, -73.0), ("53A", 45.0, -73.0), ("S3", 45.0, -73.0), ("N3", 45.0, -73.0),
+};
+
+var a15 = GateAliasResolver.ResolveAliases(Gate("", 15), onlineStands, 0);
+Check(a15.Count == 0, $"Resolver: gate 15 gets NO alias — '11B' rejected (number mismatch), '15' restatement (got [{string.Join(",", a15)}])");
+
+var a51 = GateAliasResolver.ResolveAliases(Gate("", 51), onlineStands, 0);
+Check(a51.Contains("A51"), $"Resolver: gate 51 aliases 'A51' (concourse prefix) (got [{string.Join(",", a51)}])");
+Check(!a51.Contains("51"), "Resolver: gate 51 does NOT alias the bare '51' restatement");
+
+var a53 = GateAliasResolver.ResolveAliases(Gate("", 53), onlineStands, 0);
+Check(a53.Contains("53A"), $"Resolver: gate 53 aliases MARS '53A' (got [{string.Join(",", a53)}])");
+
+var aN3 = GateAliasResolver.ResolveAliases(Gate("N", 3), onlineStands, 0);
+Check(!aN3.Contains("S3"), "Resolver: gate 'N 3' never adopts 'S3' (letter disagreement)");
+Check(aN3.Count == 0, $"Resolver: gate 'N 3' gets no alias ('N3' is a restatement) (got [{string.Join(",", aN3)}])");
+
+var r1 = GateAliasResolver.ResolveAliases(Gate("", 51), onlineStands, 0);
+var r2 = GateAliasResolver.ResolveAliases(Gate("", 51), onlineStands, 0);
+Check(r1.SequenceEqual(r2), "Resolver: idempotent — two runs identical");
+
+var farStands = new List<(string, double, double)> { ("A51", 46.0, -73.0) }; // ~111 km away
+Check(GateAliasResolver.ResolveAliases(Gate("", 51), farStands, 150).Count == 0, "Resolver: same-number stand >150 m away rejected as data error");
+
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;
