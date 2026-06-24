@@ -3293,7 +3293,7 @@ public class SimConnectManager
         AircraftIcaoTypeDetected?.Invoke(this, icao);
 
         // Log whether this is the expected FBW A32NX aircraft
-        if (info.title.Contains("A32NX") || info.title.Contains("A320"))
+        if (info.title?.Contains("A32NX") == true || info.title?.Contains("A320") == true)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Successfully connected to FBW A32NX{identification}");
         }

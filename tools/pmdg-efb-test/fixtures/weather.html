@@ -1,0 +1,30 @@
+<div id="efb_dashboard_weather" class="row" data-vis="1" data-rect="800,100,1300,1300">
+  <div class="col-sm-12" data-vis="1" data-rect="800,100,1300,1300">
+    <div class="row" data-vis="1" data-rect="840,100,900,900">
+      <div class="col-sm-4" data-vis="1" data-rect="840,780,900,900">
+        <input id="efb_dashboard_toggle_weather" type="checkbox" class="toggle_switch_simple toggle_switch_text" checked data-vis="1" data-rect="848,791,811,868" />
+      </div>
+    </div>
+    <div class="row d-flex" data-vis="1" data-rect="1030,100,1300,1300">
+      <div class="col-sm-12" data-vis="1" data-rect="1030,100,1300,1300">
+        <div id="efb_dashboard_weatherairportsearchbar" data-vis="1" data-rect="1035,142,1000,1065">
+          <input id="efb_dashboard_weather_icao" type="text" value="LIMC" data-vis="1" data-rect="1035,142,900,1065" />
+        </div>
+        <div id="efb_dashboard_weatherairportoutput_metar" class="row" data-vis="1" data-rect="1110,100,1200,1160">
+          <h2 id="efb_dashboard_weather_metar_data" data-vis="1" data-rect="1110,142,1200,1160">LIMC 201950Z 02004KT CAVOK 28/20 Q1021 NOSIG</h2>
+        </div>
+        <!-- the "simple" widget renders Temp/QNH as <label class="pmdg_measurement"> VALUES -->
+        <div id="efb_dashboard_weatherairportoutput_simple" class="row" data-vis="1" data-rect="1200,100,1300,1300">
+          <div class="col-sm-6" data-vis="1" data-rect="1200,100,400,1240">
+            <label id="efb_dashboard_weather_temp" class="efb_dashboard_weather_widget_simple pmdg_measurement temperature" data-vis="1" data-rect="1200,100,300,1240">28</label>
+            <span id="efb_dashboard_weather_temp_unit" class="output-unit" data-vis="1" data-rect="1200,300,340,1240">C</span>
+          </div>
+          <div class="col-sm-6" data-vis="1" data-rect="1200,400,700,1240">
+            <label id="efb_dashboard_weather_qnh" class="efb_dashboard_weather_widget_simple pmdg_measurement pressure" data-vis="1" data-rect="1200,400,600,1240">1021</label>
+            <span id="efb_dashboard_weather_qnh_unit" class="output-unit" data-vis="1" data-rect="1200,600,640,1240">hpa</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

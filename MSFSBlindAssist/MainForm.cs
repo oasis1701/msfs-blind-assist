@@ -8,7 +8,6 @@ using MSFSBlindAssist.Forms.FenixA320;
 using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
-using MSFSBlindAssist.Forms.PMDGEFB;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -42,10 +41,8 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm? flyByWireMCDUForm;
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
     private System.Windows.Forms.Form? pmdgCDUForm;
-    private System.Windows.Forms.Form? pmdgEFBForm;
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
     private Forms.FBWA380.FbwEfbForm? fbwEfbForm;
-    private EFBBridgeServer? efbBridgeServer;
     // No-injection A380X transport: reads/drives the MFD live through the
     // MSFS Coherent GT debugger (127.0.0.1:19999). Created when the A380X
     // loads; replaces the injection bridge for the MCDU.
@@ -54,6 +51,14 @@ public partial class MainForm : Form
     // same Coherent GT debugger, resolved to the flyPad view ("- EFB" title).
     // Replaces the injection bridge for the flyPad.
     private CoherentEFBClient? coherentEFBClient;
+    // No-injection PMDG EFB transport: reads/drives the PMDG 737/777 EFB tablet
+    // live through the Coherent GT debugger. One client per crew side (Captain /
+    // First Officer), each reusing the generic FbwEfbForm. Created lazily on
+    // Shift+T (CA) / Ctrl+Shift+T (FO); disposed on aircraft swap.
+    private CoherentPmdgEfbClient? coherentPmdgEfbCaptain;
+    private CoherentPmdgEfbClient? coherentPmdgEfbFirstOfficer;
+    private Forms.FBWA380.FbwEfbForm? pmdgCoherentEfbCaptainForm;
+    private Forms.FBWA380.FbwEfbForm? pmdgCoherentEfbFirstOfficerForm;
     // No-injection A380X ND OANS transport (BTV exit selection / airport map),
     // resolved to the Captain ND view ("A380X_ND_1"). Reuses FbwEfbForm.
     private CoherentNDClient? coherentNDClient;
@@ -328,21 +333,14 @@ public partial class MainForm : Form
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
 
-        // Initialize EFB bridge if starting with a PMDG aircraft that has EFB support wired up
-        if (currentAircraft is IPMDGAircraft pmdgStartup && pmdgStartup.HasEFBSupport)
-        {
-            CheckAndOfferEFBModPackage();
-            StartEFBBridgeServer();
-        }
         // The FBW A380X MFD/MCDU, flyPad and ND OANS are read live through the
         // MSFS Coherent GT debugger (127.0.0.1:19999). Start the MFD client now so
         // it is connected by the time the user opens the MCDU.
-        else if (currentAircraft?.AircraftCode == "FBW_A380")
+        if (currentAircraft?.AircraftCode == "FBW_A380")
         {
             coherentClient = new CoherentDebuggerClient();
             coherentClient.Start();
             coherentClient.SetActive(false);   // connect + install agent now; scrape only while the MCDU window is open
-            StartEFBBridgeServer();
             StartA380EWDMonitor();
         }
 
@@ -2044,6 +2042,7 @@ public partial class MainForm : Form
             HotkeyAction.ShowElectronicFlightBag,
             HotkeyAction.ShowFenixMCDU,
             HotkeyAction.ShowPMDGEFB,
+            HotkeyAction.ShowPMDGEFBFirstOfficer,
             HotkeyAction.TaxiStatus
         };
 
@@ -2240,7 +2239,7 @@ public partial class MainForm : Form
             case HotkeyAction.ShowPMDGEFB:
                 if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
                 {
-                    ShowPMDGEFBDialog();
+                    ShowPmdgCoherentEfbDialog(firstOfficer: false);
                 }
                 else if (currentAircraft?.AircraftCode == "FBW_A380")
                 {
@@ -2263,6 +2262,10 @@ public partial class MainForm : Form
                     // host the live site directly (no scraping/shim like the FBW flyPad).
                     ShowFenixEFBDialog();
                 }
+                break;
+            case HotkeyAction.ShowPMDGEFBFirstOfficer:
+                if (currentAircraft is IPMDGAircraft pmdgEfbFo && pmdgEfbFo.HasEFBSupport)
+                    ShowPmdgCoherentEfbDialog(firstOfficer: true);
                 break;
             case HotkeyAction.ShowRMP:
                 if (currentAircraft is FlyByWireA380Definition)
@@ -2965,24 +2968,6 @@ public partial class MainForm : Form
         }
     }
 
-    private void ShowPMDGEFBDialog()
-    {
-        hotkeyManager.ExitInputHotkeyMode();
-
-        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
-        {
-            announcer.Announce("EFB bridge server is not running. Please ensure the EFB mod package is installed and restart the flight.");
-            return;
-        }
-
-        if (pmdgEFBForm == null || pmdgEFBForm.IsDisposed)
-        {
-            pmdgEFBForm = new PMDGEFBForm(efbBridgeServer, announcer, currentAircraft.AircraftCode);
-        }
-
-        ((PMDGEFBForm)pmdgEFBForm).ShowForm();
-    }
-
     /// <summary>
     /// Speaks FMS flight progress for the A380 D / Shift+D hotkeys. The numbers come
     /// from the FMS guidance controller in the MFD page (no stock SimVar exposes
@@ -3149,6 +3134,44 @@ public partial class MainForm : Form
         }
         coherentEFBClient.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
         fbwEfbForm.ShowForm();
+    }
+
+    // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
+    // crew side, reusing the generic FbwEfbForm. Mirrors ShowFbwEfbDialog's lazy
+    // client/form creation + non-modal ShowForm pattern.
+    private void ShowPmdgCoherentEfbDialog(bool firstOfficer)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        string side = firstOfficer ? "FO" : "CA";
+        string title = (currentAircraft?.AircraftCode == "PMDG_737" ? "PMDG 737 EFB" : "PMDG 777 EFB") + (firstOfficer ? " (First Officer)" : "");
+
+        if (firstOfficer)
+        {
+            if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = new CoherentPmdgEfbClient(side); coherentPmdgEfbFirstOfficer.Start(); }
+            if (pmdgCoherentEfbFirstOfficerForm == null || pmdgCoherentEfbFirstOfficerForm.IsDisposed)
+            {
+                pmdgCoherentEfbFirstOfficerForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbFirstOfficer, announcer, title, "EFB", "Universal Flight Tablet");
+                // Idle-gate the 600 ms tablet scrape to the window's visibility (same pattern as
+                // the flyPad form above); the inspector socket + installed agent stay warm. Without
+                // this the scrape runs forever after the first open until aircraft swap.
+                var foForm = pmdgCoherentEfbFirstOfficerForm;
+                foForm.VisibleChanged += (_, _) => coherentPmdgEfbFirstOfficer?.SetActive(!foForm.IsDisposed && foForm.Visible);
+            }
+            coherentPmdgEfbFirstOfficer.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
+            pmdgCoherentEfbFirstOfficerForm.ShowForm();
+        }
+        else
+        {
+            if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = new CoherentPmdgEfbClient(side); coherentPmdgEfbCaptain.Start(); }
+            if (pmdgCoherentEfbCaptainForm == null || pmdgCoherentEfbCaptainForm.IsDisposed)
+            {
+                pmdgCoherentEfbCaptainForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbCaptain, announcer, title, "EFB", "Universal Flight Tablet");
+                var caForm = pmdgCoherentEfbCaptainForm;
+                caForm.VisibleChanged += (_, _) => coherentPmdgEfbCaptain?.SetActive(!caForm.IsDisposed && caForm.Visible);
+            }
+            coherentPmdgEfbCaptain.SetActive(true);
+            pmdgCoherentEfbCaptainForm.ShowForm();
+        }
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
@@ -3373,194 +3396,6 @@ public partial class MainForm : Form
         hs787EicasForm = null;
         hs787CasClient?.Dispose();
         hs787CasClient = null;
-    }
-
-    private void CheckAndOfferEFBModPackage()
-    {
-        var allFolders = EFBModPackageManager.FindAllCommunityFolders();
-        if (allFolders.Count == 0)
-        {
-            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find any MSFS Community folder");
-            return;
-        }
-
-        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
-
-        // First, update any already-installed packages
-        bool anyInstalled = false;
-        foreach (var (simLabel, folderPath) in allFolders)
-        {
-            if (EFBModPackageManager.IsInstalled(folderPath))
-            {
-                anyInstalled = true;
-                if (File.Exists(bridgeJsSource))
-                {
-                    var updateResult = EFBModPackageManager.UpdateModPackage(folderPath, bridgeJsSource);
-                    if (updateResult == ModPackageResult.Updated)
-                    {
-                        MessageBox.Show($"The EFB accessibility mod package for {simLabel} has been updated. Changes will take effect next time the simulator starts.",
-                            "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                }
-            }
-        }
-
-        // Check if any sims still need installation
-        var notInstalledFolders = allFolders.Where(f => !EFBModPackageManager.IsInstalled(f.Path)).ToList();
-        if (notInstalledFolders.Count == 0) return; // All detected sims have it
-
-        // Not installed everywhere — offer to install in remaining sims
-        if (!File.Exists(bridgeJsSource))
-        {
-            announcer.Announce("Bridge script file not found. Cannot install mod package.");
-            return;
-        }
-
-        // Determine which sims to offer
-        List<string> installTargets = new();
-
-        if (notInstalledFolders.Count == 1)
-        {
-            // Only one sim needs it — simple yes/no
-            var (simLabel, folderPath) = notInstalledFolders[0];
-            string context = anyInstalled
-                ? $"The EFB mod is already installed for {allFolders.First(f => EFBModPackageManager.IsInstalled(f.Path)).SimLabel}. Would you also like to install it for {simLabel}?"
-                : $"The PMDG EFB accessibility mod package is not installed. Would you like to install it for {simLabel}? No PMDG files are modified.";
-            announcer.Announce(context);
-            if (MessageBox.Show(context, "EFB Accessibility Bridge", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            {
-                installTargets.Add(folderPath);
-            }
-        }
-        else
-        {
-            // Multiple sims need installation — show choice dialog
-            using var dialog = new Form
-            {
-                Text = "EFB Accessibility Bridge",
-                ClientSize = new Size(400, 220),
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                StartPosition = FormStartPosition.CenterScreen,
-                MaximizeBox = false,
-                MinimizeBox = false
-            };
-
-            var label = new Label
-            {
-                Text = "MSFS 2020 and 2024 detected. Where would you like to install the EFB accessibility mod?",
-                Location = new Point(15, 15),
-                Size = new Size(370, 40),
-                AccessibleName = "Installation location"
-            };
-
-            var radioButtons = new List<RadioButton>();
-            int y = 60;
-            foreach (var (simLabel, _) in notInstalledFolders)
-            {
-                var rb = new RadioButton
-                {
-                    Text = simLabel,
-                    Location = new Point(20, y),
-                    Size = new Size(350, 25),
-                    AccessibleName = simLabel
-                };
-                radioButtons.Add(rb);
-                dialog.Controls.Add(rb);
-                y += 30;
-            }
-
-            var rbBoth = new RadioButton
-            {
-                Text = "Both",
-                Location = new Point(20, y),
-                Size = new Size(350, 25),
-                AccessibleName = "Both simulators",
-                Checked = true
-            };
-            radioButtons.Add(rbBoth);
-            dialog.Controls.Add(rbBoth);
-            y += 40;
-
-            var btnOk = new Button { Text = "Install", Location = new Point(200, y), Size = new Size(80, 30), DialogResult = DialogResult.OK };
-            var btnCancel = new Button { Text = "Cancel", Location = new Point(290, y), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
-            dialog.Controls.AddRange(new Control[] { label, btnOk, btnCancel });
-            dialog.AcceptButton = btnOk;
-            dialog.CancelButton = btnCancel;
-
-            announcer.Announce("MSFS 2020 and 2024 detected. Choose where to install the EFB accessibility mod.");
-
-            if (dialog.ShowDialog(this) == DialogResult.OK)
-            {
-                if (rbBoth.Checked)
-                {
-                    installTargets.AddRange(notInstalledFolders.Select(f => f.Path));
-                }
-                else
-                {
-                    for (int i = 0; i < notInstalledFolders.Count; i++)
-                    {
-                        if (radioButtons[i].Checked)
-                        {
-                            installTargets.Add(notInstalledFolders[i].Path);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Install to selected targets
-        foreach (string folderPath in installTargets)
-        {
-            var installResult = EFBModPackageManager.Install(folderPath, bridgeJsSource);
-            string simName = notInstalledFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel
-                ?? allFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel ?? "MSFS";
-            switch (installResult)
-            {
-                case ModPackageResult.Success:
-                    MessageBox.Show($"EFB mod package installed for {simName} successfully.",
-                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    break;
-                case ModPackageResult.PmdgPackageNotFound:
-                    MessageBox.Show($"Could not find the PMDG 777 in the {simName} Community folder. Skipping.",
-                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    break;
-                case ModPackageResult.AlreadyInstalled:
-                    break;
-                default:
-                    MessageBox.Show($"Failed to install for {simName}: {installResult}",
-                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    break;
-            }
-        }
-    }
-
-
-    private void StartEFBBridgeServer()
-    {
-        if (efbBridgeServer == null)
-        {
-            efbBridgeServer = new EFBBridgeServer();
-        }
-
-        if (!efbBridgeServer.IsRunning)
-        {
-            efbBridgeServer.Start();
-        }
-    }
-
-    private void StopEFBBridgeServer()
-    {
-        if (pmdgEFBForm != null && !pmdgEFBForm.IsDisposed)
-        {
-            pmdgEFBForm.Dispose();
-            pmdgEFBForm = null;
-        }
-
-        // NOTE: fbwA380MCDUForm / fbwEfbForm are Coherent-client-driven, not bridge-server-driven —
-        // their disposal lives in the SwitchAircraft cleanup path (above this call), not here.
-
-        efbBridgeServer?.Stop();
     }
 
     private void ShowElectronicFlightBagDialog()
@@ -4872,17 +4707,8 @@ public partial class MainForm : Form
             pmdgCDUForm = null;
         }
 
-        // Dispose PMDG EFB form when switching aircraft
-        if (pmdgEFBForm != null && !pmdgEFBForm.IsDisposed)
-        {
-            pmdgEFBForm.Dispose();
-            pmdgEFBForm = null;
-        }
-
-        // Dispose FBW A380 MCDU + EFB forms on swap. The EFBBridgeServer is
-        // kept running by the block below when the new aircraft also uses
-        // it; disposing the forms just clears their state-update wiring so
-        // the next aircraft doesn't get cross-talk.
+        // Dispose FBW A380 MCDU + EFB forms on swap; disposing the forms clears
+        // their state-update wiring so the next aircraft doesn't get cross-talk.
         if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
         {
             fbwA380MCDUForm.Dispose();
@@ -4905,6 +4731,11 @@ public partial class MainForm : Form
             coherentEFBClient.Dispose();
             coherentEFBClient = null;
         }
+        // Tear down the PMDG EFB Coherent clients + windows on swap.
+        pmdgCoherentEfbCaptainForm?.Dispose(); pmdgCoherentEfbCaptainForm = null;
+        pmdgCoherentEfbFirstOfficerForm?.Dispose(); pmdgCoherentEfbFirstOfficerForm = null;
+        coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
+        coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
         if (coherentNDClient != null)
         {
             coherentNDClient.Dispose();
@@ -4995,33 +4826,17 @@ public partial class MainForm : Form
         // init would silently no-op (see comment above the dispose block).
         EnsurePMDGProgPageMonitor();
 
-        // EFB bridge: PMDG (mod package) or FBW A320 (CDP, owned by the EFB form)
-        if (newAircraft is IPMDGAircraft pmdgChange && pmdgChange.HasEFBSupport)
+        // EFB transport per aircraft. PMDG (Shift+T) and FBW A320/A380 flyPad all
+        // read live through the Coherent GT debugger now — the PMDG/A320 clients are
+        // created lazily when the user opens the EFB and are disposed by the swap
+        // cleanup above. The A380 MCDU client is pre-started so it is connected by
+        // the time the user opens the MCDU.
+        if (newAircraft.AircraftCode == "FBW_A380")
         {
-            CheckAndOfferEFBModPackage();
-            StartEFBBridgeServer();
-        }
-        else if (newAircraft.AircraftCode == "A320")
-        {
-            // FBW A320 flyPad: uses the shared CoherentEFBClient + generic EFB form
-            // (same as the A380). The client is created lazily when the user opens
-            // the flyPad, and is disposed by the unconditional swap cleanup above.
-        }
-        else if (newAircraft.AircraftCode == "FBW_A380")
-        {
-            // The A380X MCDU is read live through the Coherent GT debugger. Start
-            // the client now so it is connected by the time the user opens the MCDU.
             coherentClient = new CoherentDebuggerClient();
             coherentClient.Start();
             coherentClient.SetActive(false);   // connect + install agent now; scrape only while the MCDU window is open
-            // EFB form still uses the legacy bridge server until it moves to a
-            // served accessible page; keep it running for now.
-            StartEFBBridgeServer();
             StartA380EWDMonitor();
-        }
-        else
-        {
-            StopEFBBridgeServer();
         }
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from
@@ -6995,16 +6810,17 @@ public partial class MainForm : Form
         // Clean up ActiveSky weather-update monitor
         activeSkyWeatherMonitor?.Dispose();
 
-        // Clean up EFB bridge
-        efbBridgeServer?.Dispose();
-        efbBridgeServer = null;
-
         // Clean up A380X Coherent clients
         coherentClient?.Dispose();
         coherentEFBClient?.Dispose();
         coherentNDClient?.Dispose();
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
+
+        // Clean up PMDG EFB Coherent clients (otherwise only disposed on aircraft swap —
+        // a user who opens the EFB then quits without switching aircraft leaks the socket + poll loop).
+        coherentPmdgEfbCaptain?.Dispose();
+        coherentPmdgEfbFirstOfficer?.Dispose();
 
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();

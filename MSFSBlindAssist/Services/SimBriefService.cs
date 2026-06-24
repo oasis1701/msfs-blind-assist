@@ -48,16 +48,22 @@ public class SimBriefService
             string xmlContent = DownloadXML(url);
             return ParseSimBriefXML(xmlContent, username);
         }
-        catch (WebException ex)
+        catch (HttpRequestException ex)
         {
-            if (ex.Response is HttpWebResponse response)
+            // HttpClient throws HttpRequestException (with StatusCode set by EnsureSuccessStatusCode);
+            // SimBrief returns 400 for an unknown username — keep the original friendly message.
+            if (ex.StatusCode == HttpStatusCode.BadRequest)
             {
-                if (response.StatusCode == HttpStatusCode.BadRequest)
-                {
-                    throw new Exception($"Invalid SimBrief username or no flight plan found for user: {username}", ex);
-                }
+                throw new Exception($"Invalid SimBrief username or no flight plan found for user: {username}", ex);
             }
             throw new Exception($"Failed to download flight plan from SimBrief: {ex.Message}", ex);
+        }
+        catch (TaskCanceledException ex)
+        {
+            // HttpClient.Send throws TaskCanceledException (not HttpRequestException) when its
+            // timeout elapses; no CancellationToken is passed here, so this is always the timeout.
+            // Surface a network-specific message instead of the generic "A task was canceled."
+            throw new Exception($"Timed out contacting SimBrief — check your internet connection and try again.", ex);
         }
         catch (Exception ex)
         {
@@ -70,18 +76,15 @@ public class SimBriefService
     /// </summary>
     private string DownloadXML(string url)
     {
-        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
-
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-        request.Timeout = TIMEOUT_SECONDS * 1000;
-        request.UserAgent = "FBWBA-EFB/1.0";
-
-        using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-        using (Stream stream = response.GetResponseStream())
-        using (StreamReader reader = new StreamReader(stream))
-        {
-            return reader.ReadToEnd();
-        }
+        // Reuses the shared _httpClient (30 s timeout). TLS 1.2+ is the .NET 9 default — no
+        // ServicePointManager configuration needed (replaces the obsolete WebRequest path).
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("FBWBA-EFB/1.0");
+        using var response = _httpClient.Send(request);
+        response.EnsureSuccessStatusCode();
+        using var stream = response.Content.ReadAsStream();
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     /// <summary>

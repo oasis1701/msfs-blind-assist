@@ -154,32 +154,25 @@ PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warn
 ## EFB support
 
 The PMDG 737-600 / -700 / -800 / -900 EFB has full parity with the PMDG 777. The 737 ships the
-**byte-identical** EFB application bundle as the 777 (MD5-confirmed for `PMDGTablet.js` across all
-five aircraft variants), so the bridge JS, the shared `zzz-pmdg-efb-accessibility` Community
-package, the `EFBBridgeServer`, and every EFB app panel are reused unchanged. The only per-variant
-data is the path string inside `PMDGTabletCA.html` (`pmdg-737-800`, `pmdg-737-600`, etc.) —
-`EFBModPackageManager.Variants` enumerates all four 737 entries and creates a tablet override
-folder for each.
+**byte-identical** EFB application bundle as the 777. The EFB is read and driven over the MSFS
+Coherent debugger via the shared `coherent-pmdg-efb-agent.js` (generic agent that resolves controls
+by TYPE, so new PMDG pages read automatically) + `CoherentPmdgEfbClient` + `FbwEfbForm` (the same
+WebView2 form that the FBW flyPad uses). NO Community mod package is installed, NO HTTP bridge is
+needed, and NO sim restart is required.
 
 - Enabled via `IPMDGAircraft.HasEFBSupport => true` in `PMDG737Definition` — this single flag turns
-  on the startup/aircraft-change EFB plumbing (bridge-server start + mod-package install prompt) and
-  the Shift+T dispatch (`MainForm` gates those sites on `HasEFBSupport`).
-- `Forms/PMDGEFB/PMDGEFBForm.cs` is the **shared** accessible form for both 737 and 777. The
-  constructor takes `currentAircraft.AircraftCode`; the form title reads `"PMDG 737 EFB"` for
-  `PMDG_737` and `"PMDG 777 EFB"` otherwise. All seven EFB app panels are hosted:
-  Dashboard / Preferences / Navdata / Performance / Ground Ops / Weights & Balance / Manuals
-  (plus a Display debug tab and Ctrl+Shift+{R,C,D,E} diagnostic hotkeys).
-- `MainForm.ShowPMDGEFBDialog` constructs `PMDGEFBForm(efbBridgeServer, announcer, AircraftCode)`
-  unconditionally — no per-aircraft switch.
-- `EFBModPackageManager.Variants` includes the four 737 entries (`pmdg-aircraft-736 / 737 / 738 / 739`
-  with tablet subfolders `pmdg-737-600 / -700 / -800 / -900`). Existing installs pick up newly
-  installed variants via `UpdateModPackage`'s `HasMissingVariantOverride` check; the same path
-  also re-runs after a `BridgeVersion` bump.
-
-First-time install needs **one sim restart** for MSFS to load the override HTML (the bridge then
-injects when the tablet opens). The 738's Flight Attendant Panel (`PMDGFlightAttendantPanel.*`)
-is a separate VCockpit instrument with its own DOM and is NOT part of the EFB bridge — making it
-accessible would need its own bridge package and is out of scope.
+  on the EFB plumbing (Coherent client startup) and the Shift+T dispatch (`MainForm` gates those on
+  `HasEFBSupport`).
+- Hotkeys: **Shift+T (input mode) = Captain EFB**, **Ctrl+Shift+T (input mode) = First Officer EFB**.
+  The shared `FbwEfbForm.cs` shows the currently selected tablet side. Form title reads `"PMDG 737
+  EFB"` for `PMDG_737` and `"PMDG 777 EFB"` otherwise.
+- On startup, `Patching/LegacyEfbBridgeCleanup.cs` removes the retired Community packages
+  (`zzz-pmdg-efb-accessibility`, `zzz-hs787-accessibility`) automatically. The old HTTP bridge
+  (`EFBBridgeServer`) was deleted; Coherent transport is the only mechanism (shared with FBW A380).
+- The agent's `collect()` carries live-validated noise-suppression rules (drop anonymous buttons +
+  single-character runway-diagram glyphs; reject value-display labels so the METAR temperature can't
+  bleed into the Toggle Weather / Weather Icao fields; clean icon-button collision names) — see the
+  "PMDG EFB (Coherent debugger)" section of `CLAUDE.md`. All locked by `tools/pmdg-efb-test` (jsdom).
 
 ## Interior section
 

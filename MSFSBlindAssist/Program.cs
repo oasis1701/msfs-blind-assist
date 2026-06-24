@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.Utils;
 
 namespace MSFSBlindAssist;
@@ -37,6 +38,14 @@ static class Program
                 // place to find logs even after running older builds.
                 AppLogs.MigrateLegacyLogs();
                 StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
+
+                // One-time, best-effort removal of the RETIRED Community-folder accessibility
+                // bridges (PMDG EFB zzz-pmdg-efb-accessibility + HorizonSim 787 zzz-hs787-accessibility
+                // / FS2024 in-place patch) — both are now driven over the Coherent debugger, so the
+                // old HTML overrides are dead weight. Never throws; no-op once gone.
+                int removedLegacyBridges = LegacyEfbBridgeCleanup.RemoveRetiredBridges();
+                if (removedLegacyBridges > 0)
+                    StartupLogger.Log($"Removed retired accessibility bridge package(s) from {removedLegacyBridges} Community folder(s)");
 
                 // Allocate a console for NVDA to monitor (do this early for logging)
                 StartupLogger.Log("Allocating console window...");

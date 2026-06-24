@@ -29,6 +29,13 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
 
+    <!-- WebView2 ships a WPF wrapper (Microsoft.Web.WebView2.Wpf) that this WinForms-only app never
+         loads, but it transitively references WindowsBase 5.0.0.0, conflicting with the net9 ref
+         assembly (4.0.0.0). MSBuild resolves it CORRECTLY to the net9 WindowsBase — the WPF control
+         is never instantiated — so this is a benign third-party packaging conflict. Demote the
+         MSB3277 reference-conflict warning to a build message. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+
     <!-- Build Settings -->
     <Deterministic>true</Deterministic>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -114,10 +121,7 @@
     <None Update="Checklists\FBW_A380_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <!-- Bridge Scripts -->
-    <None Update="Resources\pmdg-efb-accessibility-bridge.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <!-- Coherent in-page agents (injected at runtime via the remote debugger) -->
     <None Update="Resources\coherent-a380-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -137,6 +141,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-flypad-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-pmdg-efb-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-oans-agent.js">

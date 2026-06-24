@@ -49,6 +49,7 @@ Each probe is an IIFE that returns a string (JSON or plain text):
 | File | View / used by | Purpose |
 |------|----------------|---------|
 | `_settings_scrape.js` | "- EFB" (flypad agent) | scrape the flyPad Settings pages — the reference flyPad probe |
+| `_pmdg_settings_dump.js` | "VCockpit09/10 - PMDGTablet" (pmdg-efb agent) | dump the whole PMDG tablet scrape as readable one-line-per-element — the reference PMDG EFB probe (Settings/Dashboard/chrome tours) |
 | `_door_fiber.js` | "- EFB" (flypad agent) | read flyPad door identities from the React fiber (precise door names in flight) |
 | `_click_by_text.js` | any (agent) | generic click-an-element-by-its-text helper |
 | `_capture_fixture.js` | bakes `tools/perf-builder-test` fixtures | stamp `data-rect`/`data-vis` onto a live MFD scrape so `enumerateLines` runs offline under jsdom |

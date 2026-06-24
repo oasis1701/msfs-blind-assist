@@ -130,12 +130,17 @@ Traffic and Weather:
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager
   Shift+E    Route viewer, procedure planner and airport lookup
-  Shift+T    PMDG EFB Tablet (SimBrief uplink, Navigraph, preferences)
   Shift+L    Location Info
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
-  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
+
+INPUT MODE - PMDG EFB Tablet:
+  Shift+T    PMDG EFB Tablet - Captain tablet
+  Ctrl+Shift+T  PMDG EFB Tablet - First Officer tablet
+
+OUTPUT MODE - Cold Temperature Altitude Correction:
+  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
 
 Hand Fly Mode Hotkeys:
   A          Read MSL
