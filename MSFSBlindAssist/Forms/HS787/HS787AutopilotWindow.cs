@@ -87,17 +87,6 @@ public class HS787AutopilotWindow : Form
         _hdgHoldButton = MakeBtn(col2, row,  btnW, btnH, "HDG Hold",     "AP_HDG_HOLD",          7);
         row += rowH;
         _vsButton      = MakeBtn(col1, row,  btnW, btnH, "V/S",          "AP_VS_HOLD",           8);
-        // A/P Disconnect — a momentary action (always disconnects), distinct from the A/P toggle
-        // which would RE-engage if pressed while off. Plain button (no engaged-state to track).
-        var apDiscButton = new Button
-        {
-            Text = "A/P Disconnect",
-            Location = new Point(col2, row),
-            Size = new Size(btnW, btnH),
-            AccessibleName = "Autopilot Disconnect",
-            TabIndex = 9
-        };
-        apDiscButton.Click += (_, _) => _simConnect.SendEvent("AUTOPILOT_OFF");
         row += rowH;
 
         _closeButton = new Button
@@ -107,14 +96,14 @@ public class HS787AutopilotWindow : Form
             Size = new Size(col2 + btnW - col1, btnH),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
-            TabIndex = 10
+            TabIndex = 9
         };
         _closeButton.Click += (_, _) => Close();
 
         Controls.AddRange(new Control[]
         {
             _apButton, _atButton, _lnavButton, _vnavButton, _apprButton,
-            _flchButton, _altHoldButton, _hdgHoldButton, _vsButton, apDiscButton, _closeButton
+            _flchButton, _altHoldButton, _hdgHoldButton, _vsButton, _closeButton
         });
 
         CancelButton = _closeButton;

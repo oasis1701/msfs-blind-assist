@@ -5,17 +5,9 @@ using System.Text.Json;
 
 namespace MSFSBlindAssist.SimConnect
 {
-    /// <summary>
-    /// State push raised by every MCDU/EFB bridge transport (Coherent debugger
-    /// clients, the flyPad/OANS clients, the HS787 CDU client). Carries a typed
-    /// state message + its string-keyed payload. (Originally colocated with the
-    /// retired HTTP-bridge server; re-homed here next to <see cref="IMcduBridge"/>.)
-    /// </summary>
-    public class EFBStateUpdateEventArgs : EventArgs
-    {
-        public string Type { get; set; } = "";
-        public Dictionary<string, string> Data { get; set; } = new();
-    }
+    // EFBStateUpdateEventArgs lives in EFBBridgeServer.cs (the HTTP bridge is retained on this
+    // branch because HS787 still uses it; PR #106 only moves the PMDG EFB to the Coherent
+    // transport). The Coherent clients + IMcduBridge below reference that same type (same namespace).
 
     /// <summary>
     /// The surface the FBW A380X MCDU window depends on. The no-injection

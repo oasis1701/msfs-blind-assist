@@ -20,6 +20,7 @@ public partial class HS787SimBriefForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    private readonly EFBBridgeServer? _bridgeServer;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimBriefService _simBriefService = new();
@@ -29,8 +30,9 @@ public partial class HS787SimBriefForm : Form
     private bool _disposed;
     private bool _fetching;
 
-    public HS787SimBriefForm(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    public HS787SimBriefForm(EFBBridgeServer? bridgeServer, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        _bridgeServer = bridgeServer;
         _simConnect = simConnect;
         _announcer = announcer;
 
@@ -236,9 +238,13 @@ public partial class HS787SimBriefForm : Form
 
     private void OpenFmcButton_Click(object? sender, EventArgs e)
     {
-        // The 787 FMC/CDU is now read and driven through the Coherent debugger
-        // (open it with Shift+M); the retired HTTP bridge no longer exists.
-        SetStatus("Open the 787 CDU with Shift+M to reach the FMC.");
+        if (_bridgeServer == null)
+        {
+            SetStatus("FMC bridge not active. Ensure the mod package is installed and MSFS is running.");
+            return;
+        }
+        _bridgeServer.EnqueueMfdCommand("page_init_ref");
+        SetStatus("FMC Init/Ref page requested.");
     }
 
     // ------------------------------------------------------------------

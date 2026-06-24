@@ -178,11 +178,6 @@ public class UserSettings
         // when AircraftCode == "FBW_A380". Persisted across sessions.
         public List<string> A380DisabledMonitorVariables { get; set; } = new List<string>();
 
-        // Auto-announced HS787 variables the user has muted via the 787 Monitor Manager
-        // (Ctrl+M, HS787MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated when
-        // AircraftCode == "HS_787". Persisted across sessions.
-        public List<string> HS787DisabledMonitorVariables { get; set; } = new List<string>();
-
         // FlyByWire A32NX Monitor Manager — variable keys the user has un-checked in
         // FlyByWireA320MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
         // when AircraftCode == "A320". Persisted across sessions.
@@ -289,6 +284,11 @@ public class UserSettings
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
 
+        // HS787 bridge — community folder override for non-standard installs
+        public string? Hs787CommunityFolderOverride { get; set; } = null;
+        // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
+        public string? Hs787SimVersionOverride { get; set; } = null;
+
         /// <summary>
         /// When true, the AccessGSX service continues to announce GSX tooltip
         /// updates through the screen reader even after the AccessGSX form is
@@ -372,7 +372,6 @@ public class UserSettings
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
-            HS787DisabledMonitorVariables = new List<string>(HS787DisabledMonitorVariables),
             A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),
             AltitudeCalloutsEnabled = AltitudeCalloutsEnabled,
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
@@ -390,6 +389,8 @@ public class UserSettings
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
             TakeoffAssistGroundSpeedAnnounceInterval = TakeoffAssistGroundSpeedAnnounceInterval,
+            Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
+            Hs787SimVersionOverride = Hs787SimVersionOverride,
             GsxBackgroundMonitoring = GsxBackgroundMonitoring,
             GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute,
             DockingGuidanceEnabled = DockingGuidanceEnabled,

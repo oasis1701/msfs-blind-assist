@@ -73,22 +73,12 @@ Traffic and Weather:
   Ctrl+R     Open TCAS Traffic Window
   Shift+R    Open Weather Radar Window
 
-Cockpit Display Read-outs:
-  Alt+E      EICAS crew alerts - opens a navigable window listing every active warning,
-             caution and advisory (arrow keys to read, Escape to close; refreshes live).
-             (Per-alert auto-chatter is intentionally off; the Master Caution / Master
-             Warning still auto-announce the moment something posts, so you know to press
-             Alt+E for the specifics.) No API key needed.
-  Alt+S      System Synoptic Display (HYD, ELEC, FUEL, AIR, APU, OXYGEN, status
-             messages) - opens a live, navigable text window (arrow keys to read,
-             F5 refreshes, Escape closes). No API key needed.
-  Alt+N      Read the Navigation Display via AI vision (requires a Gemini API key
-             in File > Gemini Settings; use the Ctrl+2 cockpit view first). The
-             waypoint/distance data is also on D / Shift+D / W / Ctrl+W.
-  Alt+P      Read PFD via AI vision (Gemini key + Ctrl+2 view). Airspeed, altitude,
-             heading and baro are also on B / Shift+S / Shift+H / A / Q.
-  Alt+I      Read the standby instrument via AI vision (Gemini key + Ctrl+2 view).
-  Alt+D      Describe outside scene (AI vision)
+AI Display Reading (requires Gemini API key in File > Gemini Settings):
+  Alt+P      Read PFD (use Ctrl+2 cockpit view first)
+  Alt+N      Read Navigation Display (use Ctrl+2 cockpit view first)
+  Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)
+  Alt+E      Read EICAS/SYNOPTIC display (use Ctrl+2 cockpit view first)
+  Alt+D      Describe outside scene
 
 Displays and Windows:
   Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
@@ -97,12 +87,6 @@ Displays and Windows:
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
-
-Background Announcements:
-  Ctrl+M     787 Monitor Manager - a checklist of every variable the 787 announces
-             automatically as it changes (master caution/warning, AP modes, hydraulics,
-             anti-ice, IRS, etc.). Uncheck any you don't want spoken; the choice is
-             saved. On-demand read-out hotkeys are unaffected.
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode
@@ -149,13 +133,12 @@ MCP Set Values:
   Ctrl+V     Set Vertical Speed (opens dialog with V/S Engage, V/S/FPA Mode, Approach toggles)
 
 Autopilot Panel:
-  Ctrl+P     Open Autopilot Panel (A/P, A/T, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S, A/P Disconnect)
+  Ctrl+P     Open Autopilot Panel (A/P 1, A/P 2, A/T, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S)
              Approach button shows: GS Active / LOC Active / Armed / OFF
-             A/P Disconnect always disconnects (distinct from the A/P toggle)
              Auto-announces: "Approach armed", "Approach disengaged"
 
 FMC / CDU Windows:
-  Shift+M    Open 787 FMC Window (no mod required; reads the FMC live)
+  Shift+M    Open 787 FMC Window (requires bridge mod installed)
 
 General:
   Escape     Exit active hotkey mode

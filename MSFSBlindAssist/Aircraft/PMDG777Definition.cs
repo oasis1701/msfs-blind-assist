@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// Panel structure and event ID dictionary are defined here.
 /// Variables and panel controls will be populated in subsequent tasks.
 /// </summary>
-public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
+public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 {
     public override string AircraftName => "PMDG 777";
     public override string AircraftCode => "PMDG_777";
@@ -118,7 +118,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "Captain Seat", "First Officer Seat", "Windows and Shades", "Doors and Tables"
             },
-            ["Displays"] = new List<string> { "System Display" },
         };
     }
 
@@ -135,7 +134,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
-        RegisterSystemDisplayVars(variables);
         _cachedVariables = variables;
         return variables;
     }
@@ -4946,9 +4944,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     {
         return new Dictionary<string, List<string>>
         {
-            // Displays — accessible synoptic read-out: page selector + read-only status box
-            ["System Display"] = new List<string> { "PMDG777_SD_PAGE" },
-
             // Overhead — Electrical
             ["Electrical"] = new List<string>
             {
@@ -5282,8 +5277,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // Optional overrides — stubs
     // =========================================================================
 
-    public override Dictionary<string, List<string>> GetPanelDisplayVariables()
-        => new() { ["System Display"] = new List<string> { SdPageKey } };
+    public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
     // =========================================================================
@@ -5780,10 +5774,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        // System Display page selector (accessible synoptic read-out).
-        if (varKey == SdPageKey)
-            return HandleSystemDisplaySelect(value, simConnect, announcer);
-
         // ------------------------------------------------------------------
         // 0. Standard SimConnect events and COM frequency set
         //    Handled here to prevent MainForm's redundant announcements.
