@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.TaxiAugment;
 int failures = 0;
 void Check(bool ok, string label){ Console.WriteLine((ok?"PASS ":"FAIL ")+label); if(!ok) failures++; }
@@ -169,6 +170,19 @@ Check(TaxiDataMerger.NormalizeTaxiwayName("") == "",
                             StringComparison.OrdinalIgnoreCase));
     Check(wouldAdd, "ParkingSpot.Aliases: 'GATE47' (normalizes to 'GATE47') passes dedup guard");
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Task 1: StandId parser
+// ──────────────────────────────────────────────────────────────────────
+Check(StandId.Parse("Gate 11B") is { Letter: "", Number: 11, Suffix: "B", HasNumber: true }, "StandId: 'Gate 11B' -> (,11,B)");
+Check(StandId.Parse("A51")      is { Letter: "A", Number: 51, HasNumber: true },              "StandId: 'A51' -> (A,51)");
+Check(StandId.Parse("N 1")      is { Letter: "N", Number: 1,  HasNumber: true },              "StandId: 'N 1' -> (N,1)");
+Check(StandId.Parse("51")       is { Letter: "", Number: 51, HasNumber: true },               "StandId: '51' -> (,51)");
+Check(StandId.Parse("53A")      is { Letter: "", Number: 53, Suffix: "A", HasNumber: true },  "StandId: '53A' -> (,53,A)");
+Check(StandId.Parse("F211")     is { Letter: "F", Number: 211, HasNumber: true },             "StandId: 'F211' -> (F,211)");
+Check(StandId.Parse("P 209")    is { Letter: "P", Number: 209, HasNumber: true },             "StandId: 'P 209' -> (P,209)");
+Check(StandId.Parse("").HasNumber == false,                                                   "StandId: '' -> no number");
+Check(StandId.Parse("N") is { Letter: "N", HasNumber: false },                                "StandId: 'N' -> letter N, no number");
 
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;

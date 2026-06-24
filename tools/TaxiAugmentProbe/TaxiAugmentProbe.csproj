@@ -17,6 +17,8 @@
     <!-- ParkingSpot model (for the Aliases round-trip assertion). GateSource is its only dep. -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs" Link="Linked\%(Filename)%(Extension)" />
+    <!-- StandId identity parser (Task 1) -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\StandId.cs" Link="Linked\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />
