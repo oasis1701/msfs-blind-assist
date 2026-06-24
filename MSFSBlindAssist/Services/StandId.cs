@@ -19,16 +19,19 @@ public readonly record struct StandId(string Letter, int Number, string Suffix, 
     {
         if (string.IsNullOrWhiteSpace(raw)) return new StandId("", 0, "", false);
 
-        // Uppercase, drop ALL whitespace: "N 1" -> "N1", "P 209" -> "P209".
+        // Drop stand-TYPE qualifier words (Ramp/Gate/Stand/Apron/Dock/Tie Down/…) token-by-token and
+        // all whitespace, uppercasing: "Ramp 51" -> "51", "Tie Down 5" -> "5", "N 1" -> "N1". Shares
+        // GateSearchFilter.StandTypeWords so the identity parser and the search/normalizer agree —
+        // otherwise "Ramp 51" would parse to a bogus letter "RAMP" and mint a junk alias. "GA" is
+        // intentionally NOT a type word (real GA-apron concourse), so "GA 5" -> "GA5" is preserved.
         var sb = new System.Text.StringBuilder(raw.Length);
-        foreach (char c in raw)
-            if (!char.IsWhiteSpace(c)) sb.Append(char.ToUpperInvariant(c));
+        foreach (var tok in raw.ToUpperInvariant()
+                     .Split((char[]?)null, System.StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (GateSearchFilter.StandTypeWords.Contains(tok)) continue;
+            sb.Append(tok);
+        }
         string s = sb.ToString();
-
-        // Strip ONE leading descriptor word: "GATE11B" -> "11B", "STAND5" -> "5", "PARKING209" -> "209".
-        foreach (var w in new[] { "GATE", "STAND", "PARKING" })
-            if (s.StartsWith(w, StringComparison.Ordinal) && s.Length > w.Length)
-            { s = s.Substring(w.Length); break; }
 
         var m = Shape.Match(s);
         if (m.Success)

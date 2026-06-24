@@ -118,19 +118,6 @@ Check(cov.NavNamedTaxiways == 1,   $"Merger: 1 already-named segment counted (go
     Check(onName.Taxiways.Any(t => t.Name == "Neptune"), "OSM: name-only taxiway 'Neptune' captured (name fallback)");
     var onRef = OsmTaxiSource.Parse("{\"elements\":[{\"type\":\"way\",\"tags\":{\"aeroway\":\"taxiway\",\"ref\":\"K\",\"name\":\"Kilo\"},\"geometry\":[{\"lat\":1.0,\"lon\":2.0},{\"lat\":1.001,\"lon\":2.0}]}]}");
     Check(onRef.Taxiways.All(t => t.Name == "K"), "OSM: ref wins over name when both present");
-
-    // P4: AssignParking 1:1 nearest-pair (the AugmentParking core, now pure + testable).
-    var sp = new List<(double, double)> { (0, 0), (0, 0.001) };
-    var stands = new List<(string, double, double)> { ("S1", 0, 0), ("S2", 0, 0.001) };
-    var asg = TaxiDataMerger.AssignParking(sp, stands, 50);
-    Check(asg.Count == 2 && asg.Any(a => a.spotIndex == 0 && a.onlineName == "S1") && asg.Any(a => a.spotIndex == 1 && a.onlineName == "S2"),
-          "AssignParking: 2 spots / 2 stands → correct 1:1");
-    var sp2 = new List<(double, double)> { (0, 0), (0, 0.0003) };   // ~0 m and ~33 m from G
-    var one = new List<(string, double, double)> { ("G", 0, 0) };
-    var asg2 = TaxiDataMerger.AssignParking(sp2, one, 50);
-    Check(asg2.Count == 1 && asg2[0].spotIndex == 0 && asg2[0].onlineName == "G",
-          "AssignParking: one stand → only the nearest spot claims it (no double-name)");
-    Check(TaxiDataMerger.AssignParking(new List<(double, double)>(), one, 50).Count == 0, "AssignParking: empty spots → empty");
 }
 
 // Gate search must match BOTH the navdata identity AND the online alias — type EITHER name.
@@ -287,6 +274,15 @@ Check(StandId.Parse("F211")     is { Letter: "F", Number: 211, HasNumber: true }
 Check(StandId.Parse("P 209")    is { Letter: "P", Number: 209, HasNumber: true },             "StandId: 'P 209' -> (P,209)");
 Check(StandId.Parse("").HasNumber == false,                                                   "StandId: '' -> no number");
 Check(StandId.Parse("N") is { Letter: "N", HasNumber: false },                                "StandId: 'N' -> letter N, no number");
+// Type-word stripping (shared with GateSearchFilter) — a 'Ramp'/'Tie Down' prefix is NOT a letter.
+Check(StandId.Parse("Ramp 51")   is { Letter: "", Number: 51, HasNumber: true },              "StandId: 'Ramp 51' -> (,51) (RAMP stripped, not a letter)");
+Check(StandId.Parse("Tie Down 5") is { Letter: "", Number: 5, HasNumber: true },              "StandId: 'Tie Down 5' -> (,5)");
+Check(StandId.Parse("GA 5")      is { Letter: "GA", Number: 5, HasNumber: true },             "StandId: 'GA 5' -> (GA,5) ('GA' kept — real concourse)");
+// And the resolver must NOT mint a junk 'RAMP51' alias for a 'Ramp 51' online stand on bare gate 51.
+Check(GateAliasResolver.ResolveAliases(
+        new ParkingSpot { Name = "", Number = 51, Type = 13, Latitude = 45, Longitude = -73 },
+        new List<(string, double, double)> { ("Ramp 51", 45, -73) }, 0).Count == 0,
+      "Resolver: 'Ramp 51' on bare gate 51 -> no junk alias (type-prefix restatement)");
 
 // ──────────────────────────────────────────────────────────────────────
 // Task 2: GateAliasResolver — identity-matched, alias-only, idempotent

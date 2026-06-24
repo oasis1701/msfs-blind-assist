@@ -28,7 +28,9 @@ public static class GateSearchFilter
     // online name to a navdata stand so e.g. "Ramp H2" is recognized as the SAME stand as
     // navdata "H 2" (identity "H2") and not recorded as a redundant alias. Deliberately EXCLUDES
     // "GA" (a real GA-apron concourse designator at some airports) to avoid over-merging.
-    private static readonly HashSet<string> StandTypeWords = new(StringComparer.Ordinal)
+    // internal so StandId.Parse shares the SAME list — the identity parser and the search/normalizer
+    // must agree on what counts as a type word, or e.g. "Ramp 51" parses to a bogus letter "RAMP".
+    internal static readonly HashSet<string> StandTypeWords = new(StringComparer.Ordinal)
     {
         "GATE", "RAMP", "STAND", "PARKING", "PARK", "APRON", "DOCK", "HARDSTAND",
         "HANGAR", "TIEDOWN", "TIE", "DOWN", "REMOTE", "CARGO", "MILITARY", "BAY",

@@ -267,44 +267,4 @@ public static class TaxiDataMerger
         return bestName;
     }
 
-    /// <summary>
-    /// 1:1 nearest-pair assignment of online stands to navdata spots within <paramref name="maxMeters"/>.
-    /// Each online stand is used at most once and each spot enriched at most once; closest pairs win first.
-    /// Pure + deterministic (stable tie-break) so it's directly probe-testable. Returns (spotIndex, onlineName).
-    /// </summary>
-    public static List<(int spotIndex, string onlineName)> AssignParking(
-        IReadOnlyList<(double lat, double lon)> spots,
-        IReadOnlyList<(string name, double lat, double lon)> online,
-        double maxMeters)
-    {
-        var result = new List<(int, string)>();
-        if (spots.Count == 0 || online.Count == 0) return result;
-
-        var pairs = new List<(int s, int o, double d)>();
-        for (int s = 0; s < spots.Count; s++)
-            for (int o = 0; o < online.Count; o++)
-            {
-                double d = TaxiGeo.HaversineMeters(spots[s].lat, spots[s].lon, online[o].lat, online[o].lon);
-                if (d < maxMeters) pairs.Add((s, o, d));
-            }
-        // Closest first; deterministic tie-break (spot, then stand) so output is reproducible.
-        pairs.Sort((a, b) =>
-        {
-            int c = a.d.CompareTo(b.d);
-            if (c != 0) return c;
-            c = a.s.CompareTo(b.s);
-            return c != 0 ? c : a.o.CompareTo(b.o);
-        });
-
-        var spotTaken = new bool[spots.Count];
-        var standTaken = new bool[online.Count];
-        foreach (var (s, o, _) in pairs)
-        {
-            if (spotTaken[s] || standTaken[o]) continue;
-            spotTaken[s] = true;
-            standTaken[o] = true;
-            result.Add((s, online[o].name));
-        }
-        return result;
-    }
 }
