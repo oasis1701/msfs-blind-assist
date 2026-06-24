@@ -58,6 +58,13 @@ public class SimBriefService
             }
             throw new Exception($"Failed to download flight plan from SimBrief: {ex.Message}", ex);
         }
+        catch (TaskCanceledException ex)
+        {
+            // HttpClient.Send throws TaskCanceledException (not HttpRequestException) when its
+            // timeout elapses; no CancellationToken is passed here, so this is always the timeout.
+            // Surface a network-specific message instead of the generic "A task was canceled."
+            throw new Exception($"Timed out contacting SimBrief — check your internet connection and try again.", ex);
+        }
         catch (Exception ex)
         {
             throw new Exception($"Error fetching SimBrief flight plan: {ex.Message}", ex);

@@ -99,6 +99,14 @@ namespace MSFSBlindAssist.SimConnect
             {
                 RaiseError($"Could not load PMDG EFB agent script: {ex.Message}");
             }
+            // With no agent script every EnsureConnected installs nothing -> never "installed" ->
+            // RunLoop would spin forever, opening + aborting an inspector socket on the live tablet
+            // every ReconnectDelayMs with only the single error above. Don't start the loop.
+            if (string.IsNullOrEmpty(_agentJs))
+            {
+                RaiseError("PMDG EFB agent script is missing or empty; EFB unavailable.");
+                return;
+            }
             _ = Task.Run(() => RunLoop(_cts.Token));
         }
 

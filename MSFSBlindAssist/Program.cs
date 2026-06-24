@@ -39,6 +39,14 @@ static class Program
                 AppLogs.MigrateLegacyLogs();
                 StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
 
+                // One-time, best-effort removal of the RETIRED PMDG EFB Community-folder bridge
+                // (zzz-pmdg-efb-accessibility) — the PMDG EFB is now driven over the Coherent
+                // debugger, so the old HTML-override package is dead weight. Never throws; no-op
+                // once gone. (Scoped to PMDG only — the HS787 package is still in use.)
+                int removedLegacyEfb = LegacyEfbBridgeCleanup.RemoveRetiredPmdgBridge();
+                if (removedLegacyEfb > 0)
+                    StartupLogger.Log($"Removed retired PMDG EFB bridge package from {removedLegacyEfb} Community folder(s)");
+
                 // Allocate a console for NVDA to monitor (do this early for logging)
                 StartupLogger.Log("Allocating console window...");
                 AllocConsole();

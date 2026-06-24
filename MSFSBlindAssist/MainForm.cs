@@ -3085,14 +3085,27 @@ public partial class MainForm : Form
         {
             if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = new CoherentPmdgEfbClient(side); coherentPmdgEfbFirstOfficer.Start(); }
             if (pmdgCoherentEfbFirstOfficerForm == null || pmdgCoherentEfbFirstOfficerForm.IsDisposed)
+            {
                 pmdgCoherentEfbFirstOfficerForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbFirstOfficer, announcer, title, "EFB");
+                // Idle-gate the 600 ms tablet scrape to the window's visibility (same pattern as
+                // the flyPad form above); the inspector socket + installed agent stay warm. Without
+                // this the scrape runs forever after the first open until aircraft swap.
+                var foForm = pmdgCoherentEfbFirstOfficerForm;
+                foForm.VisibleChanged += (_, _) => coherentPmdgEfbFirstOfficer?.SetActive(!foForm.IsDisposed && foForm.Visible);
+            }
+            coherentPmdgEfbFirstOfficer.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
             pmdgCoherentEfbFirstOfficerForm.ShowForm();
         }
         else
         {
             if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = new CoherentPmdgEfbClient(side); coherentPmdgEfbCaptain.Start(); }
             if (pmdgCoherentEfbCaptainForm == null || pmdgCoherentEfbCaptainForm.IsDisposed)
+            {
                 pmdgCoherentEfbCaptainForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbCaptain, announcer, title, "EFB");
+                var caForm = pmdgCoherentEfbCaptainForm;
+                caForm.VisibleChanged += (_, _) => coherentPmdgEfbCaptain?.SetActive(!caForm.IsDisposed && caForm.Visible);
+            }
+            coherentPmdgEfbCaptain.SetActive(true);
             pmdgCoherentEfbCaptainForm.ShowForm();
         }
     }
@@ -6822,6 +6835,11 @@ public partial class MainForm : Form
         coherentNDClient?.Dispose();
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
+
+        // Clean up PMDG EFB Coherent clients (otherwise only disposed on aircraft swap —
+        // a user who opens the EFB then quits without switching aircraft leaks the socket + poll loop).
+        coherentPmdgEfbCaptain?.Dispose();
+        coherentPmdgEfbFirstOfficer?.Dispose();
 
         // Clean up 787 bridge and forms
         hs787FMCForm?.Dispose();

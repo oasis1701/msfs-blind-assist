@@ -765,15 +765,6 @@
     try { el.click(); return 'OK'; } catch (e) { return 'ERR:' + e.message; }
   };
 
-  A.clickText = function (needle) {
-    var els = A.collect(); needle = String(needle).toLowerCase();
-    for (var i = 0; i < els.length; i++) {
-      var t = (els[i].label || '').toLowerCase();
-      if (t === needle || t.indexOf(needle) >= 0) return A.clickElement(els[i].idx) + ' :: ' + els[i].label;
-    }
-    return 'NO_MATCH:' + needle;
-  };
-
   // Apply a synthesized Preferences control (no DOM element). Resolves the chosen display text to
   // the setting value, then drives the native setter(s). selected_map additionally switches the
   // live map and skips persistence when an unauthenticated Navigraph switch would be blocked
@@ -814,9 +805,11 @@
     var el = A._byIdx(idx); if (!el) return 'NO_EL';
     val = String(val);
     try {
-      // A unit toggle is reported as a 2-option SELECT but is really a checkbox: selecting a unit
-      // means "set the checkbox to the state that yields that unit" — click only if it must flip.
-      if (el.type === 'checkbox' && A.UNIT_PAIRS[el.id]) {
+      // A unit toggle is reported as a 2-option SELECT but is really a checkbox (or, defensively, a
+      // radio — collect() rewrites EITHER into the select): selecting a unit means "set the input to
+      // the state that yields that unit" — click only if it must flip. Must accept 'radio' too, or a
+      // radio-typed toggle reads as a settable select the user can never actually change.
+      if ((el.type === 'checkbox' || el.type === 'radio') && A.UNIT_PAIRS[el.id]) {
         var upr = A.UNIT_PAIRS[el.id];
         var lv = val.toLowerCase();
         var wantChecked = (lv === A.unitWord(upr[1]).toLowerCase() || lv === upr[1].toLowerCase());
