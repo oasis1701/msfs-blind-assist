@@ -140,6 +140,22 @@
     return A.UNIT_WORDS[k.toLowerCase()] || k;
   };
 
+  // Preference UNIT toggles are TEXTLESS checkboxes: ::before/::after content is empty, and
+  // window.Settings (the saved value) only commits on "Save Preferences", so it LAGS the live
+  // toggle. The ONLY live signal is el.checked. Verified live (PMDG 737/777 EFB, 2026-06) by
+  // reading each toggle's checked + its saved Settings value. Map = id -> [uncheckedUnit, checkedUnit].
+  // We render these as 2-option SELECTS (clearer for a screen reader than a bare "checked" checkbox)
+  // and toggle the checkbox on selection (see setValue). speed_unit / airspeed_unit are omitted —
+  // their second value wasn't confirmed — so they fall back to the saved-Settings read.
+  A.UNIT_PAIRS = {
+    efb_preferences_length_unit:      ['m',   'ft'],
+    efb_preferences_altitude_unit:    ['m',   'ft'],
+    efb_preferences_distance_unit:    ['km',  'nm'],
+    efb_preferences_weight_unit:      ['kg',  'lbs'],
+    efb_preferences_temperature_unit: ['F',   'C'],
+    efb_preferences_pressure_unit:    ['hpa', 'inhg']
+  };
+
   // Active-tab / current-page marker (flypad convention). PMDG marks the selected tab/nav with
   // the class `active_button`; the EFB sub-nav pages additionally carry `efb_main_menu_button`.
   // Returns " (current page)" for an active nav page, " (selected)" for an active in-page tab,
@@ -515,12 +531,19 @@
       if (type === 'checkbox' || type === 'radio') {
         item.checked = !!el.checked;
         var caps = A.toggleCaptions(el); if (caps.length) item.captions = caps;
-        // UNIT toggles (id ...*_unit) render the two units as ::before / ::after; the ::after
-        // caption is the LIVE active unit (it flips on toggle), so read THAT — NOT the saved
-        // Settings, which only commits on Save Preferences and so made the displayed unit look
-        // stuck. Expand to a full word. caps = [before, after]; active = caps[1] (fallbacks below).
-        // Scoped to unit toggles so a non-unit on/off toggle (e.g. Toggle Weather) is untouched.
-        if (el.id && /unit/i.test(el.id)) {
+        // A known UNIT toggle is a TEXTLESS checkbox whose active unit can only be read from
+        // el.checked (see UNIT_PAIRS). Render it as a 2-option SELECT — "Length unit: feet / meters"
+        // — which is far clearer for a screen reader than a "checked/unchecked" checkbox, and reads
+        // the LIVE unit (the old ::after / saved-Settings read showed a stuck value because the
+        // captions are empty and Settings lags until Save). Selecting an option toggles the checkbox
+        // (see setValue). type is overridden to 'select' so the form renders a combo box.
+        if (el.id && A.UNIT_PAIRS[el.id]) {
+          var pr = A.UNIT_PAIRS[el.id];
+          item.type = 'select';
+          item.options = [A.unitWord(pr[0]), A.unitWord(pr[1])];
+          item.value = A.unitWord(pr[el.checked ? 1 : 0]);
+        } else if (el.id && /unit/i.test(el.id)) {
+          // Unit toggle with no confirmed pair (speed/airspeed): best-effort saved value.
           var active = caps.length >= 2 ? caps[1] : (caps.length === 1 ? caps[0] : '');
           if (active) item.value = A.unitWord(active);
           else { var au = A.activeUnit(el); if (au) item.value = A.unitWord(au); }
@@ -791,6 +814,15 @@
     var el = A._byIdx(idx); if (!el) return 'NO_EL';
     val = String(val);
     try {
+      // A unit toggle is reported as a 2-option SELECT but is really a checkbox: selecting a unit
+      // means "set the checkbox to the state that yields that unit" — click only if it must flip.
+      if (el.type === 'checkbox' && A.UNIT_PAIRS[el.id]) {
+        var upr = A.UNIT_PAIRS[el.id];
+        var lv = val.toLowerCase();
+        var wantChecked = (lv === A.unitWord(upr[1]).toLowerCase() || lv === upr[1].toLowerCase());
+        if (!!el.checked !== wantChecked) { try { el.click(); } catch (e) {} }
+        return 'OK_UNIT:' + (el.checked ? upr[1] : upr[0]);
+      }
       if (el.tagName === 'SELECT' || (typeof el.className === 'string' && el.className.indexOf('custom-select') >= 0)) return A._setSelect(el, val);
       var proto = (el.tagName === 'TEXTAREA') ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
       var setter = null; try { setter = Object.getOwnPropertyDescriptor(proto, 'value').set; } catch (d) {}
