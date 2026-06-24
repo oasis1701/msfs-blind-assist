@@ -14,13 +14,6 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 public class HorizonSim787Definition : BaseAircraftDefinition
 {
-    // Bridge server reference — set by MainForm after the HS787 bridge starts.
-    // Used to fire alt INTV from inside Coherent GT when the FMC bridge is connected.
-    public EFBBridgeServer? BridgeServer { get; set; }
-
-    // SimVar diagnostic: 0=unknown, 1=script loaded, 2=fetch failed, 3=connected.
-    // Written by L:MSFSBA_787_STAGE from hs787-mfd-bridge.js; read here via SimConnect.
-    public int BridgeStage { get; private set; } = 0;
 
     // Tri-state init (-1 = unset, suppresses first-poll announcement so MSFSBA
     // doesn't speak the entire panel state when it connects to a powered-up sim).
@@ -48,6 +41,28 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousEngState2   = -1;
     // Cached autopilot window — created on first FCUSetAutopilot press, focused on subsequent presses.
     private Forms.HS787.HS787AutopilotWindow? _autopilotWindow;
+    // Single live-display read-out window (ND / Synoptic-System / Standby). Only one open at a
+    // time so it never runs more than one extra Coherent socket; replaced when another is opened.
+    private Forms.HS787.HS787DisplayForm? _displayWindow;
+
+    // FD combo intent-tracking. TOGGLE_FLIGHT_DIRECTOR is RELATIVE, and the HS787_FlightDirector
+    // cache lags a monitor batch after a toggle — so a rapid combo re-select (On->Off within that
+    // lag) would read a stale "current" and double-fire / land inverted. Within a short window we
+    // trust our own last-commanded intent instead of the stale cache; after it, the cache (which
+    // also reflects an external cockpit FD change) wins again.
+    private long _lastFdSetTicks;
+    private int  _lastFdDesired;
+
+    // Dispose the aux windows this def instance owns (the synoptic-display window holds a live
+    // MFD_2 Coherent socket; the autopilot window holds a refresh timer). MUST be called on
+    // aircraft swap so the socket/timer don't outlive the def instance (see SwitchAircraft).
+    public void CloseAuxWindows()
+    {
+        if (_displayWindow != null && !_displayWindow.IsDisposed) _displayWindow.Dispose();
+        _displayWindow = null;
+        if (_autopilotWindow != null && !_autopilotWindow.IsDisposed) _autopilotWindow.Dispose();
+        _autopilotWindow = null;
+    }
     private int  _previousPackL       = -1;
     private int  _previousPackR       = -1;
     private int  _previousHydDemandL  = -1;
@@ -60,6 +75,15 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousIrsKnob2    = -1;
     private int  _previousIrsAligned1 = -1;
     private int  _previousIrsAligned2 = -1;
+    private int  _previousIrsAlignState = -1;
+    // MCP selected-value announce baselines (first value silent, then speak external knob turns).
+    private int    _prevMcpHeading = -1;
+    private int    _prevMcpAlt     = -1;
+    private int    _prevMcpVs      = int.MinValue;
+    private int    _prevMcpIas     = -1;
+    private double _prevMcpMach    = -1;
+    private bool   _mcpIsMach      = false;   // cached from HS787_MCP_IsMach (ProcessSimVarUpdate has no simConnect)
+    private bool   _mcpSpdManual   = false;   // cached from HS787_MCP_SpdManual
 
     // Anti-ice, signs, lights, landing — -1 suppresses first-poll announcement
     private int  _previousAntiIceEng1  = -1;
@@ -171,6 +195,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousSATCOM           = -1;
     private int  _previousVBar             = -1;
     private int  _previousAutobrake        = -1;
+    // The value MSFSBA just commanded via the autobrake combo (-1 = none pending). The single
+    // continuous update that lands on this value is swallowed so the user's own set isn't spoken
+    // twice (the screen reader already reads the combo). Latched by VALUE, not by a step COUNT —
+    // see the autobrake handlers for why a count leaks under the var's 1 Hz sampling.
+    private int  _autobrakeSuppressTarget  = -1;
+    private long _autobrakeSuppressTicks   = 0;
     private int  _previousLightTaxi        = -1;
     private int  _previousLightLogo        = -1;
     private int  _previousLightWing        = -1;
@@ -310,9 +340,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Pressurization"] = new List<string> { "HS787_PressLdgAlt", "HS787_CabinAltitude", "HS787_CabinPressureLevel" },
             ["Landing"]       = new List<string> { "HS787_ReverseNozzle1", "HS787_ReverseNozzle2" },
             ["EFIS"]          = new List<string> { "HS787_BaroSetting" },
-            // IRS: read-only indicators. HS787_IRS_Align is the true,
-            // Realistic-respecting alignment state (bridge-sourced); the
-            // Position vars are the WT_IRS_POS_SET "position accepted" flags.
+            // IRS: read-only indicators. HS787_IRS_Align is the true, Realistic-respecting
+            // alignment state (Coherent-sourced: CoherentHS787IrsClient reads the WT
+            // .time-to-align element); the Position vars are the WT_IRS_POS_SET flags.
             ["IRS"]           = new List<string>
             {
                 "HS787_IRS_Align", "HS787_IRS_AlignMinutes",
@@ -342,6 +372,125 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // (active freq button label, standby textbox, swap button) is its own
             // control row; announcements fire from ProcessSimVarUpdate on change.
             // The ReadSquawkCode hotkey handles on-demand squawk readback.
+            ["VNAV"] = new List<string>
+            {
+                "HS787_LV_WTAP_Boeing_VNav_Desired_State",
+                "HS787_LV_WTAP_Boeing_VNav_RNP",
+                "HS787_LV_WTAP_VNAV_Required_VS",
+                "HS787_LV_WTAP_VNav_Alt_Capture_Type",
+                "HS787_LV_WTAP_VNav_BOC_Leg_Index",
+                "HS787_LV_WTAP_VNav_BOD_Leg_Index",
+                "HS787_LV_WTAP_VNav_Constraint_Altitude",
+                "HS787_LV_WTAP_VNav_Constraint_Leg_Index",
+                "HS787_LV_WTAP_VNav_Distance_To_BOC",
+                "HS787_LV_WTAP_VNav_Distance_To_BOD",
+                "HS787_LV_WTAP_VNav_Distance_To_Performance_TOD",
+                "HS787_LV_WTAP_VNav_Distance_To_TOC",
+                "HS787_LV_WTAP_VNav_FPA",
+                "HS787_LV_WTAP_VNav_Next_Constraint_Altitude",
+                "HS787_LV_WTAP_VNav_Path_Available",
+                "HS787_LV_WTAP_VNav_Path_Mode",
+                "HS787_LV_WTAP_VNav_Performance_TOD_Distance_In_Leg",
+                "HS787_LV_WTAP_VNav_Performance_TOD_Leg_Index",
+                "HS787_LV_WTAP_VNav_State",
+                "HS787_LV_WTAP_VNav_TOC_Distance_In_Leg",
+                "HS787_LV_WTAP_VNav_TOC_Leg_Index",
+                "HS787_LV_WTAP_VNav_TOD_Distance_In_Leg",
+                "HS787_LV_WTAP_VNav_TOD_Leg_Index",
+                "HS787_LV_WTAP_VNav_Target_Altitude",
+                "HS787_LV_WTAP_VNav_Vertical_Deviation",
+            },
+            ["LNAV and Progress"] = new List<string>
+            {
+                "HS787_LV_WTAP_LNav_Along_Track_Speed",
+                "HS787_LV_WTAP_LNav_CDI_Scale",
+                "HS787_LV_WTAP_LNav_CDI_Scale_Label",
+                "HS787_LV_WTAP_LNav_Course_To_Steer",
+                "HS787_LV_WTAP_LNav_DIS",
+                "HS787_LV_WTAP_LNav_DTK",
+                "HS787_LV_WTAP_LNav_DTK_Mag",
+                "HS787_LV_WTAP_LNav_Is_Suspended",
+                "HS787_LV_WTAP_LNav_Is_Tracking",
+                "HS787_LV_WTAP_LNav_Leg_Distance_Along",
+                "HS787_LV_WTAP_LNav_Leg_Distance_Remaining",
+                "HS787_LV_WTAP_LNav_Tracked_Leg_Index",
+                "HS787_LV_WTAP_LNav_Tracked_Vector_Index",
+                "HS787_LV_WTAP_LNav_Transition_Mode",
+                "HS787_LV_WTAP_LNav_Vector_Anticipation_Distance",
+                "HS787_LV_WTAP_LNav_Vector_Distance_Along",
+                "HS787_LV_WTAP_LNav_Vector_Distance_Remaining",
+                "HS787_LV_WTAP_LNav_XTK",
+                "HS787_LV_WTAP_LPV_Vertical_Deviation",
+                "HS787_LV_WTBoeing_LNavData_CDI_Scale_Label",
+                "HS787_LV_WTBoeing_LNavData_Destination_Distance_Direct",
+                "HS787_LV_WTBoeing_LNavData_Destination_Runway_Distance_Direct",
+                "HS787_LV_WTBoeing_LNavData_Faf_Distance",
+                "HS787_LV_WTBoeing_LNavData_Map_Distance",
+                "HS787_LV_WTBoeing_LNavData_Nominal_Leg_Index",
+                "HS787_LV_WTBoeing_LNavData_RNP",
+                "HS787_LV_WTBoeing_LNavData_Total_Distance_Direct",
+                "HS787_LV_WTBoeing_LNavData_Tracked_Leg_End_Distance",
+                "HS787_LV_WT_LNavData_CDI_Scale",
+                "HS787_LV_WT_LNavData_DTK_Mag",
+                "HS787_LV_WT_LNavData_DTK_True",
+                "HS787_LV_WT_LNavData_Destination_Distance",
+                "HS787_LV_WT_LNavData_Waypoint_Bearing_Mag",
+                "HS787_LV_WT_LNavData_Waypoint_Bearing_True",
+                "HS787_LV_WT_LNavData_Waypoint_Distance",
+                "HS787_LV_WT_LNavData_XTK",
+            },
+            ["Glidepath"] = new List<string>
+            {
+                "HS787_LV_WTAP_GP_Approach_Mode",
+                "HS787_LV_WTAP_GP_Distance",
+                "HS787_LV_WTAP_GP_FPA",
+                "HS787_LV_WTAP_GP_Required_VS",
+                "HS787_LV_WTAP_GP_Service_Level",
+                "HS787_LV_WTAP_GP_Vertical_Deviation",
+            },
+            // The WT_FADEC_* family is DEAD on the HS787 (every one reads 0 — verified live in
+            // climb + cruise, with cost index entered), so it was replaced with the live engine
+            // indications (the same SimVars the Alt+E EICAS window uses).
+            ["Engine Data"] = new List<string>
+            {
+                "HS787_EicasN1_1", "HS787_EicasN1_2",
+                "HS787_EicasEGT_1", "HS787_EicasEGT_2",
+                "HS787_EicasN2_1", "HS787_EicasN2_2",
+                "HS787_EicasOilP_1", "HS787_EicasOilP_2",
+                "HS787_EicasOilT_1", "HS787_EicasOilT_2",
+                "HS787_EicasFuelKg", "HS787_EicasGwKg", "HS787_EicasTat",
+            },
+            ["Flight Control Inputs"] = new List<string>
+            {
+                "HS787_LV_WT_78_AILERON_INPUT",
+                "HS787_LV_WT_78_ELEVATOR_INPUT",
+                "HS787_LV_WT_78_RUDDER_INPUT",
+                "HS787_LV_WT_78_STABILIZER_TRIM_INPUT",
+            },
+            ["Timers"] = new List<string>
+            {
+                "HS787_LV_WTFltTimer_Initial_Value",
+                "HS787_LV_WTFltTimer_Reference_Time",
+                "HS787_LV_WTFltTimer_Reference_Value",
+            },
+            ["Other Data"] = new List<string>
+            {
+                "HS787_LV_AIRLINER_V1_SPEED",
+                "HS787_LV_AP_VNAV_ARMED",
+                "HS787_LV_B787_10_Hud_Brightness_Level",
+                "HS787_LV_B787_10_Hud_Brightness_Mode",
+                "HS787_LV_HUD_AP_SELECTED_ALTITUDE",
+                "HS787_LV_VHF_ACTIVE_INDEX",
+                "HS787_LV_WT_BOEING_MINIMUMS_MODE",
+                "HS787_LV_WT_Boeing_Autothrottle_Status",
+                "HS787_LV_WT_MFD_1_CONTRAST",
+                "HS787_LV_WT_MFD_2_CONTRAST",
+                "HS787_LV_WT_MINIMUMS_MODE",
+                "HS787_LV_WT_PFD_1_CONTRAST",
+                "HS787_LV_WT_Virtual_Throttle_Lever_Pos_",
+                "HS787_LV_XMLVAR_MFD_Side_",
+                "HS787_LV_XMLVAR_ThrottlePosition_",
+            },
         };
 
     // =========================================================================
@@ -391,8 +540,43 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             {
                 "Doors",
                 "Services"
+            },
+            ["Flight Data"] = new List<string>
+            {
+                "VNAV",
+                "LNAV and Progress",
+                "Glidepath",
+                "Engine Data",
+                "Flight Control Inputs",
+                "Timers",
+                "Other Data",
             }
         };
+    }
+
+    // Panel display-value formatting hook. Renders the baro setting (read as inHg) as hPa for the
+    // EFIS panel, instead of a raw "29.92".
+    public override bool TryGetDisplayOverride(string varKey, double value, out string text)
+    {
+        if (varKey == "HS787_BaroSetting")
+        {
+            int hpa = (int)Math.Round(value * 33.8639);
+            text = $"{hpa} hPa ({value:0.00} inHg)";
+            return true;
+        }
+        // EICAS N1/N2 are 0..1 ratios -> percent; gross weight kg -> tonnes.
+        if (varKey is "HS787_EicasN1_1" or "HS787_EicasN1_2" or "HS787_EicasN2_1" or "HS787_EicasN2_2")
+        {
+            text = $"{value * 100:0.0} percent";
+            return true;
+        }
+        if (varKey == "HS787_EicasGwKg")
+        {
+            text = $"{value / 1000.0:0.0} tonnes";
+            return true;
+        }
+        text = "";
+        return false;
     }
 
     // =========================================================================
@@ -665,9 +849,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // of the Realistic align-time setting. True alignment (operating mode
             // Navigation / the "TIME TO ALIGN" countdown) lives only on the WT
             // internal Coherent bus and is NOT exposed as any L-var. So this var
-            // is honestly a "position accepted" flag, not "aligned". Real
-            // realistic-alignment status is sourced via the MFD bridge instead
-            // (see HS787_IRS_Align below / hs787-mfd-bridge.js irs_align scrape).
+            // is honestly a "position accepted" flag, not "aligned". The realistic
+            // "TIME TO ALIGN" countdown is not on any L-var (only the WT Coherent bus);
+            // reading it over the Coherent ND view is a verification-flight TODO.
             // These are read-only (the IRS system owns them) — exposed via
             // GetPanelDisplayVariables, NOT BuildPanelControls, so they render as
             // a read-only status field, not an editable combo.
@@ -706,16 +890,16 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
-            // True IRS alignment status, sourced from the MFD bridge scraping the
-            // WT "TIME TO ALIGN" element (the only place real, Realistic-respecting
-            // alignment state is exposed). Read-only display. Values:
-            //   0 = Off / unknown   1 = Aligning   2 = Aligned (Navigation)
-            // The minutes-remaining detail is carried separately for the hotkey
-            // readout; this var drives the panel field + the completion announce.
+            // True IRS alignment status. The WT "TIME TO ALIGN" countdown is exposed only on
+            // the ND/PFD .time-to-align DOM element (the one IRS L-var WT sets, WT_IRS_POS_SET_N,
+            // is "position accepted", NOT alignment complete). CoherentHS787IrsClient reads that
+            // element over the Coherent debugger and writes these synthetic L-vars; we read them
+            // here through the normal SimVar path. Read-only display. Values:
+            //   0 = Off   1 = Aligning   2 = Aligned (Navigation)
             ["HS787_IRS_Align"] = new SimConnect.SimVarDefinition
             {
-                Name = "MSFSBA_IRS_ALIGN_STATE",   // synthetic L-var written by the bridge feed
-                DisplayName = "IRS Alignment",
+                Name = "MSFSBA_IRS_ALIGN_STATE",   // synthetic L-var written by the Coherent IRS client
+                DisplayName = "IRS",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -728,11 +912,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
-            // Minutes remaining in the WT "TIME TO ALIGN" countdown (bridge feed).
-            // -1 = not aligning / unknown. Cache-only (silent) — surfaced in the
-            // read-only IRS display field so the pilot can check time remaining on
-            // demand without a noisy per-minute callout. The completion is
-            // announced by HS787_IRS_Align transitioning to Aligned.
+            // Minutes remaining in the WT "TIME TO ALIGN" countdown (Coherent IRS client feed).
+            // -1 = not aligning / unknown. Cache-only (silent) — surfaced in the read-only IRS
+            // display field so the pilot can check time remaining on demand without a noisy
+            // per-minute callout. The completion is announced by HS787_IRS_Align -> Aligned.
             ["HS787_IRS_AlignMinutes"] = new SimConnect.SimVarDefinition
             {
                 Name = "MSFSBA_IRS_ALIGN_MINUTES",
@@ -1705,7 +1888,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // AUTOBRAKE CONTROL SWITCH POSITION: 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX
             ["HS787_Autobrake"] = new SimConnect.SimVarDefinition
             {
-                Name = "AUTOBRAKE CONTROL SWITCH POSITION",
+                // The WT 787 tracks the selector on AUTO BRAKE SWITCH CB (0..6), NOT
+                // AUTOBRAKE CONTROL SWITCH POSITION (which is stuck at 0). Live-verified 7 detents.
+                Name = "AUTO BRAKE SWITCH CB",
                 DisplayName = "Autobrakes",
                 Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1717,7 +1902,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                     [2] = "1",
                     [3] = "2",
                     [4] = "3",
-                    [5] = "MAX"
+                    [5] = "4",
+                    [6] = "MAX"
                 }
             },
 
@@ -1803,6 +1989,23 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
+
+            // --- EICAS engine indications: cached for the Alt+E EICAS window (suppressed in
+            // ProcessSimVarUpdate so they never auto-announce). N1/N2 are ratios (x100 in the
+            // window), EGT in celsius, fuel in kg. ---
+            ["HS787_EicasN1_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:1", DisplayName = "Engine 1 N1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN1_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N1:2", DisplayName = "Engine 2 N1", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN2_1"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:1", DisplayName = "Engine 1 N2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasN2_2"] = new SimConnect.SimVarDefinition { Name = "TURB ENG CORRECTED N2:2", DisplayName = "Engine 2 N2", Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasEGT_1"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:1", DisplayName = "Engine 1 EGT", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasEGT_2"] = new SimConnect.SimVarDefinition { Name = "ENG EXHAUST GAS TEMPERATURE:2", DisplayName = "Engine 2 EGT", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasFuelKg"] = new SimConnect.SimVarDefinition { Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Total Fuel", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasGwKg"]   = new SimConnect.SimVarDefinition { Name = "TOTAL WEIGHT", DisplayName = "Gross Weight", Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilP_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:1", DisplayName = "Engine 1 Oil Pressure", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilP_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL PRESSURE:2", DisplayName = "Engine 2 Oil Pressure", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilT_1"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:1", DisplayName = "Engine 1 Oil Temperature", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasOilT_2"] = new SimConnect.SimVarDefinition { Name = "GENERAL ENG OIL TEMPERATURE:2", DisplayName = "Engine 2 Oil Temperature", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
+            ["HS787_EicasTat"]    = new SimConnect.SimVarDefinition { Name = "TOTAL AIR TEMPERATURE", DisplayName = "TAT", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true },
 
             ["HS787_FuelLH"] = new SimConnect.SimVarDefinition
             {
@@ -1965,7 +2168,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_LightLogo"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT LOGO",
+                // LIGHT LOGO lags the toggle by one frame (read it right after TOGGLE_LOGO_LIGHTS and
+                // it's stale); LIGHT LOGO ON updates immediately — use it for a correct read-back.
+                Name = "LIGHT LOGO ON",
                 DisplayName = "Logo Light",
                 Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -2914,9 +3119,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // --- Baro setting raw value (in current display unit, hPa or inHg) ---
             ["HS787_BaroSetting"] = new SimConnect.SimVarDefinition
             {
-                Name = "XMLVAR_Baro",
+                // Was the dead L:var XMLVAR_Baro (read a constant 0 -> "Baro 0"). The real captain
+                // baro is the stock KOHLSMAN SETTING (same source the working altimeter hotkey uses);
+                // TryGetDisplayOverride formats it as hPa / Standard.
+                Name = "KOHLSMAN SETTING HG",
                 DisplayName = "Baro Setting",
-                Type = SimConnect.SimVarType.LVar,
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "inHg",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
 
@@ -3081,6 +3290,32 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 IsAnnounced = true
             },
 
+            // Transponder IDENT — momentary action button. Fires XPNDR_IDENT_ON via SendEvent
+            // (the A380 def uses the same event; MSFSBA's SendEvent maps it by raw name even
+            // though the MCP event registry doesn't list it). Lives in the Transponder panel.
+            ["HS787_XpndrIdent"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_787_XPNDR_IDENT",   // synthetic marker — action only, never read
+                DisplayName = "Transponder Ident",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                IsAnnounced = false
+            },
+
+            // Flight Director (combined L+R) — live-verified settable: TOGGLE_FLIGHT_DIRECTOR
+            // flips AUTOPILOT FLIGHT DIRECTOR ACTIVE 0<->1. Off/On combo in the MCP panel
+            // (the FD had no control before).
+            ["HS787_FlightDirector"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AUTOPILOT FLIGHT DIRECTOR ACTIVE",
+                DisplayName = "Flight Director",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+
             // Warnings panel — momentary reset buttons for Master Caution / Master Warning.
             // K:MASTER_CAUTION_ACKNOWLEDGE drives L:Generic_Master_Caution_Active to 0;
             // K:MASTER_WARNING_ACKNOWLEDGE does the same for the warning. Name is a synthetic
@@ -3105,17 +3340,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 StateVariable = "HS787_MasterWarning"
-            },
-
-            // Bridge diagnostic: written by L:MSFSBA_787_STAGE in hs787-mfd-bridge.js.
-            // IsAnnounced = true puts it in the continuous batch; ProcessSimVarUpdate handles it silently.
-            ["HS787_BridgeStage"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MSFSBA_787_STAGE",
-                DisplayName = "Bridge Stage",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
             },
 
             // =====================================================================
@@ -3386,7 +3610,881 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Cutoff", [1] = "Run" }
-            }
+            },
+
+            // ===================================================================
+            // FLIGHT DATA — read-only L:var telemetry auto-extracted from the WT/HS787
+            // instrument JS var surface (VNAV / LNAV / glidepath / FADEC / timers / etc.).
+            // Numeric readouts; exact units + enum decode pending an in-flight pass.
+            // ===================================================================
+            ["HS787_LV_AIRLINER_V1_SPEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIRLINER_V1_SPEED",
+                DisplayName = "AIRLINER V1 SPEED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_AP_VNAV_ARMED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AP_VNAV_ARMED",
+                DisplayName = "AP VNAV ARMED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_B787_10_Hud_Brightness_Level"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_10_Hud_Brightness_Level",
+                DisplayName = "Hud Brightness Level",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_B787_10_Hud_Brightness_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_10_Hud_Brightness_Mode",
+                DisplayName = "Hud Brightness Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_HUD_AP_SELECTED_ALTITUDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HUD_AP_SELECTED_ALTITUDE",
+                DisplayName = "HUD AP SELECTED ALTITUDE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_VHF_ACTIVE_INDEX"] = new SimConnect.SimVarDefinition
+            {
+                Name = "VHF_ACTIVE_INDEX",
+                DisplayName = "VHF ACTIVE INDEX",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_Boeing_VNav_Desired_State"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_Boeing_VNav_Desired_State",
+                DisplayName = "VNAV Desired State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_Boeing_VNav_RNP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_Boeing_VNav_RNP",
+                DisplayName = "VNAV RNP",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Approach_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Approach_Mode",
+                DisplayName = "GP Approach Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Distance",
+                DisplayName = "GP Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_FPA",
+                DisplayName = "GP FPA",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Required_VS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Required_VS",
+                DisplayName = "GP Required VS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Service_Level"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Service_Level",
+                DisplayName = "GP Service Level",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_GP_Vertical_Deviation"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_GP_Vertical_Deviation",
+                DisplayName = "GP Vertical Deviation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Along_Track_Speed"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Along_Track_Speed",
+                DisplayName = "LNAV Along Track Speed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_CDI_Scale"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_CDI_Scale",
+                DisplayName = "LNAV CDI Scale",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_CDI_Scale_Label"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_CDI_Scale_Label",
+                DisplayName = "LNAV CDI Scale Label",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Course_To_Steer"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Course_To_Steer",
+                DisplayName = "LNAV Course To Steer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_DIS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_DIS",
+                DisplayName = "LNAV DIS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_DTK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_DTK",
+                DisplayName = "LNAV DTK",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_DTK_Mag"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_DTK_Mag",
+                DisplayName = "LNAV DTK Mag",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Is_Suspended"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Is_Suspended",
+                DisplayName = "LNAV Is Suspended",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not suspended", [1] = "Suspended" }
+            },
+            ["HS787_LV_WTAP_LNav_Is_Tracking"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Is_Tracking",
+                DisplayName = "LNAV Is Tracking",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not tracking", [1] = "Tracking" }
+            },
+            ["HS787_LV_WTAP_LNav_Leg_Distance_Along"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Leg_Distance_Along",
+                DisplayName = "LNAV Leg Distance Along",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Leg_Distance_Remaining"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Leg_Distance_Remaining",
+                DisplayName = "LNAV Leg Distance Remaining",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Tracked_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Tracked_Leg_Index",
+                DisplayName = "LNAV Tracked Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Tracked_Vector_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Tracked_Vector_Index",
+                DisplayName = "LNAV Tracked Vector Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Transition_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Transition_Mode",
+                DisplayName = "LNAV Transition Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Vector_Anticipation_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Vector_Anticipation_Distance",
+                DisplayName = "LNAV Vector Anticipation Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Vector_Distance_Along"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Vector_Distance_Along",
+                DisplayName = "LNAV Vector Distance Along",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_Vector_Distance_Remaining"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_Vector_Distance_Remaining",
+                DisplayName = "LNAV Vector Distance Remaining",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LNav_XTK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LNav_XTK",
+                DisplayName = "LNAV XTK",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_LPV_Vertical_Deviation"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_LPV_Vertical_Deviation",
+                DisplayName = "LPV Vertical Deviation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNAV_Required_VS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNAV_Required_VS",
+                DisplayName = "VNAV Required VS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Alt_Capture_Type"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Alt_Capture_Type",
+                DisplayName = "VNAV Alt Capture Type",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_BOC_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_BOC_Leg_Index",
+                DisplayName = "VNAV BOC Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_BOD_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_BOD_Leg_Index",
+                DisplayName = "VNAV BOD Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Constraint_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Constraint_Altitude",
+                DisplayName = "VNAV Constraint Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Constraint_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Constraint_Leg_Index",
+                DisplayName = "VNAV Constraint Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_BOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_BOC",
+                DisplayName = "VNAV Distance To BOC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_BOD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_BOD",
+                DisplayName = "VNAV Distance To BOD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_Performance_TOD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_Performance_TOD",
+                DisplayName = "VNAV Distance To Performance TOD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Distance_To_TOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Distance_To_TOC",
+                DisplayName = "VNAV Distance To TOC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_FPA",
+                DisplayName = "VNAV FPA",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Next_Constraint_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Next_Constraint_Altitude",
+                DisplayName = "VNAV Next Constraint Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Path_Available"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Path_Available",
+                DisplayName = "VNAV Path Available",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not available", [1] = "Available" }
+            },
+            ["HS787_LV_WTAP_VNav_Path_Mode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Path_Mode",
+                DisplayName = "VNAV Path Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Performance_TOD_Distance_In_Leg"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Performance_TOD_Distance_In_Leg",
+                DisplayName = "VNAV Performance TOD Distance In Leg",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Performance_TOD_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Performance_TOD_Leg_Index",
+                DisplayName = "VNAV Performance TOD Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_State"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_State",
+                DisplayName = "VNAV State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOC_Distance_In_Leg"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOC_Distance_In_Leg",
+                DisplayName = "VNAV TOC Distance In Leg",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOC_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOC_Leg_Index",
+                DisplayName = "VNAV TOC Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOD_Distance_In_Leg"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOD_Distance_In_Leg",
+                DisplayName = "VNAV TOD Distance In Leg",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_TOD_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_TOD_Leg_Index",
+                DisplayName = "VNAV TOD Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Target_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Target_Altitude",
+                DisplayName = "VNAV Target Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTAP_VNav_Vertical_Deviation"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTAP_VNav_Vertical_Deviation",
+                DisplayName = "VNAV Vertical Deviation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_CDI_Scale_Label"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_CDI_Scale_Label",
+                DisplayName = "LNavData CDI Scale Label",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Destination_Distance_Direct"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Destination_Distance_Direct",
+                DisplayName = "LNavData Destination Distance Direct",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Destination_Runway_Distance_Direct"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Destination_Runway_Distance_Direct",
+                DisplayName = "LNavData Destination Runway Distance Direct",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Faf_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Faf_Distance",
+                DisplayName = "LNavData FAF Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Map_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Map_Distance",
+                DisplayName = "LNavData Map Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Nominal_Leg_Index"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Nominal_Leg_Index",
+                DisplayName = "LNavData Nominal Leg Index",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_RNP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_RNP",
+                DisplayName = "LNavData RNP",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Total_Distance_Direct"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Total_Distance_Direct",
+                DisplayName = "LNavData Total Distance Direct",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTBoeing_LNavData_Tracked_Leg_End_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTBoeing_LNavData_Tracked_Leg_End_Distance",
+                DisplayName = "LNavData Tracked Leg End Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTFltTimer_Initial_Value"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTFltTimer_Initial_Value",
+                DisplayName = "Initial Value",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTFltTimer_Reference_Time"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTFltTimer_Reference_Time",
+                DisplayName = "Reference Time",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WTFltTimer_Reference_Value"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WTFltTimer_Reference_Value",
+                DisplayName = "Reference Value",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_AILERON_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_AILERON_INPUT",
+                DisplayName = "AILERON INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_ELEVATOR_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_ELEVATOR_INPUT",
+                DisplayName = "ELEVATOR INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_RUDDER_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_RUDDER_INPUT",
+                DisplayName = "RUDDER INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_78_STABILIZER_TRIM_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_STABILIZER_TRIM_INPUT",
+                DisplayName = "STABILIZER TRIM INPUT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_BOEING_MINIMUMS_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_BOEING_MINIMUMS_MODE",
+                DisplayName = "BOEING MINIMUMS MODE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_Boeing_Autothrottle_Status"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_Boeing_Autothrottle_Status",
+                DisplayName = "Autothrottle Status",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_CLB_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_CLB_N1",
+                DisplayName = "CLB N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_CRU_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_CRU_N1",
+                DisplayName = "CRU N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_EGT_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_EGT_AMBER",
+                DisplayName = "EGT AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_EGT_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_EGT_RED",
+                DisplayName = "EGT RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_EGT_START_LIMIT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_EGT_START_LIMIT",
+                DisplayName = "EGT START LIMIT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_IDLE_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_IDLE_N1",
+                DisplayName = "IDLE N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_IDLE_N2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_IDLE_N2",
+                DisplayName = "IDLE N2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_N1_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N1_AMBER",
+                DisplayName = "N1 AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_N1_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N1_RED",
+                DisplayName = "N1 RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_N2_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N2_AMBER",
+                DisplayName = "N2 AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_N2_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_N2_RED",
+                DisplayName = "N2 RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_OIL_TEMP_HIGH_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_OIL_TEMP_HIGH_AMBER",
+                DisplayName = "OIL TEMP HIGH AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_OIL_TEMP_LOW_AMBER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_OIL_TEMP_LOW_AMBER",
+                DisplayName = "OIL TEMP LOW AMBER",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_OIL_TEMP_LOW_RED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_OIL_TEMP_LOW_RED",
+                DisplayName = "OIL TEMP LOW RED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Exceedance" }
+            },
+            ["HS787_LV_WT_FADEC_REF_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_REF_N1",
+                DisplayName = "REF N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_REF_TPR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_REF_TPR",
+                DisplayName = "REF TPR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_TGT_N1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_TGT_N1",
+                DisplayName = "TGT N1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_FADEC_TGT_TPR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_TGT_TPR",
+                DisplayName = "TGT TPR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_CDI_Scale"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_CDI_Scale",
+                DisplayName = "CDI Scale",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_DTK_Mag"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_DTK_Mag",
+                DisplayName = "DTK Mag",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_DTK_True"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_DTK_True",
+                DisplayName = "DTK True",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Destination_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Destination_Distance",
+                DisplayName = "Destination Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Waypoint_Bearing_Mag"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Waypoint_Bearing_Mag",
+                DisplayName = "Waypoint Bearing Mag",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Waypoint_Bearing_True"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Waypoint_Bearing_True",
+                DisplayName = "Waypoint Bearing True",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_Waypoint_Distance"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_Waypoint_Distance",
+                DisplayName = "Waypoint Distance",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_LNavData_XTK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_LNavData_XTK",
+                DisplayName = "XTK",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_MFD_1_CONTRAST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_MFD_1_CONTRAST",
+                DisplayName = "MFD 1 CONTRAST",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_MFD_2_CONTRAST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_MFD_2_CONTRAST",
+                DisplayName = "MFD 2 CONTRAST",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_MINIMUMS_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_MINIMUMS_MODE",
+                DisplayName = "MINIMUMS MODE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_PFD_1_CONTRAST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_PFD_1_CONTRAST",
+                DisplayName = "PFD 1 CONTRAST",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_WT_Virtual_Throttle_Lever_Pos_"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_Virtual_Throttle_Lever_Pos_",
+                DisplayName = "Virtual Throttle Lever Pos",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_XMLVAR_MFD_Side_"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_MFD_Side_",
+                DisplayName = "XMLVAR MFD Side",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["HS787_LV_XMLVAR_ThrottlePosition_"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_ThrottlePosition_",
+                DisplayName = "XMLVAR ThrottlePosition",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
         };
 
         var variables = GetBaseVariables();
@@ -3557,6 +4655,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["MCP"] = new List<string>
             {
                 "HS787_APMaster",
+                "HS787_FlightDirector",
                 "HS787_ATStatus",
                 "HS787_YawDamper",
                 "HS787_FPAMode",
@@ -3586,6 +4685,18 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // section visible in the section nav.
             ["Annunciators"] = new List<string>(),
             ["Fire"] = new List<string>(),
+            // Flight Data sub-panels: pure read-only nav/engine/timer readouts whose values
+            // come from GetPanelDisplayVariables. They were listed in GetPanelStructure +
+            // GetPanelDisplayVariables but NOT here, so MainForm's panel-build hit its
+            // "not in GetPanelControls -> return" guard and rendered them completely EMPTY.
+            // The empty control list is what makes a display-only panel render (FMC Status pattern).
+            ["VNAV"] = new List<string>(),
+            ["LNAV and Progress"] = new List<string>(),
+            ["Glidepath"] = new List<string>(),
+            ["Engine Data"] = new List<string>(),
+            ["Flight Control Inputs"] = new List<string>(),
+            ["Timers"] = new List<string>(),
+            ["Other Data"] = new List<string>(),
             // Warnings: momentary reset buttons for the Master Caution / Master Warning.
             // Each button's label is suffixed with the current state (On / Off) so the
             // user can tell at a glance whether there is anything to acknowledge.
@@ -3605,7 +4716,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Transponder"] = new List<string>
             {
                 "HS787_TransponderMode",
-                "TRANSPONDER_CODE_SET"
+                "TRANSPONDER_CODE_SET",
+                "HS787_XpndrIdent"
             },
             ["Landing"] = new List<string>
             {
@@ -3988,10 +5100,45 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // EICAS (Alt+E) reads back every active Crew-Alerting-System message (warnings /
+            // cautions / advisories) from the always-on CAS monitor (which also AUTO-announces each
+            // new alert as it posts). The monitor owns the MFD_1 Coherent view.
+            case HotkeyAction.ReadDisplayUpperECAM:        // Alt+E — EICAS crew alerts
+                (parentForm as MainForm)?.AnnounceHs787CasAlerts();
+                return true;
+
+            // The lower-MFD system synoptic (HYD / ELEC / FUEL / AIR / APU / OXYGEN / status) scrapes
+            // cleanly as text over the Coherent debugger (MFD_2) — open a live read-out window. No key.
+            case HotkeyAction.ReadDisplayLowerECAM:        // Alt+S — system synoptic
+                ShowHs787Display("787 System Synoptic Display", "HSB789_MFD_2", announcer, hotkeyManager);
+                return true;
+
+            // The ND / PFD / standby are positional (a flat scrape returns scale ticks), so read them
+            // with the AI-vision path (needs a Gemini key + the Ctrl+2 cockpit view). Their data is
+            // also on the SimVar read-outs (B / Shift+S / Shift+H / A / Q, D / Shift+D, waypoint info).
+            // The CAS monitor owns MFD_1 and the IRS reader owns the PFD view, so neither is scraped.
+            case HotkeyAction.ReadDisplayND:               // Alt+N
+                ReadDisplay(Services.GeminiService.DisplayType.ND, "Navigation Display", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayPFD:              // Alt+P
+                ReadDisplay(Services.GeminiService.DisplayType.PFD, "PFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayISIS:             // Alt+I — standby instrument
+                ReadDisplay(Services.GeminiService.DisplayType.ISIS, "Standby Instrument", announcer, parentForm);
+                return true;
+
             // FMC keyboard not available in Phase 1 (requires JS bridge)
             // MainForm will handle ShowFenixMCDU for other aircraft; return false here
             case HotkeyAction.ShowFenixMCDU:
                 return false;
+
+            // Ctrl+M — per-aircraft monitor manager (mute/unmute the auto-announced vars).
+            case HotkeyAction.MonitorManager:
+                hotkeyManager.ExitOutputHotkeyMode();
+                (parentForm as MainForm)?.ShowHS787MonitorManagerDialog();
+                return true;
 
             case HotkeyAction.FCUSetAutopilot:
             {
@@ -4019,6 +5166,22 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
     }
 
+    // Open (or replace) the single live-display read-out window for a 787 Coherent display view.
+    // Only one is kept open at a time so we never run more than one extra display socket.
+    private void ShowHs787Display(string title, string viewNeedle, ScreenReaderAnnouncer announcer,
+        HotkeyManager hotkeyManager)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        var old = _displayWindow;
+        _displayWindow = null;
+        if (old != null && !old.IsDisposed) old.Close();
+
+        var w = new Forms.HS787.HS787DisplayForm(title, viewNeedle, announcer);
+        w.FormClosed += (_, _) => { if (ReferenceEquals(_displayWindow, w)) _displayWindow = null; };
+        _displayWindow = w;
+        w.Show();
+    }
+
     // =========================================================================
     // HandleUIVariableSet — panel control actions
     // =========================================================================
@@ -4043,6 +5206,33 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (varKey == "HS787_APMaster")
         {
             simConnect.SendEvent("AP_MASTER");
+            return true;
+        }
+
+        // Flight Director — TOGGLE_FLIGHT_DIRECTOR flips AUTOPILOT FLIGHT DIRECTOR ACTIVE; only
+        // fire when the desired Off/On state differs from the live state (so the combo is a true set).
+        if (varKey == "HS787_FlightDirector")
+        {
+            int desired = value > 0.5 ? 1 : 0;
+            int current;
+            if (_lastFdSetTicks != 0 && (Environment.TickCount64 - _lastFdSetTicks) < 700)
+                current = _lastFdDesired;   // recent command — trust intent, the cache still lags
+            else
+                current = (simConnect.GetCachedVariableValue("HS787_FlightDirector") ?? 0) > 0.5 ? 1 : 0;
+            if (desired != current) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR");
+            _lastFdDesired = desired;
+            _lastFdSetTicks = Environment.TickCount64;
+            return true;
+        }
+
+        // Transponder IDENT — momentary button; fire XPNDR_IDENT_ON on press.
+        if (varKey == "HS787_XpndrIdent")
+        {
+            if (value > 0.5)
+            {
+                simConnect.SendEvent("XPNDR_IDENT_ON");
+                announcer.Announce("Ident");
+            }
             return true;
         }
 
@@ -4132,22 +5322,37 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // APU Generator switches — toggle using K: events
-        if (varKey == "HS787_ApuGen1")
+        // APU Generators. The per-index APU_GEN1/2_SWITCH_SET events are no-ops on the WT 787
+        // (live-verified). The stock un-indexed APU_GENERATOR_SWITCH_SET works and drives BOTH
+        // APU GENERATOR SWITCH:1 AND :2 (the two gens are ganged on this model), so both combos
+        // fire it; their read-backs (:1 / :2) stay in sync.
+        if (varKey == "HS787_ApuGen1" || varKey == "HS787_ApuGen2")
         {
-            simConnect.ExecuteCalculatorCode($"{(int)value} (>K:APU_GEN1_SWITCH_SET)");
-            return true;
-        }
-        if (varKey == "HS787_ApuGen2")
-        {
-            simConnect.ExecuteCalculatorCode($"{(int)value} (>K:APU_GEN2_SWITCH_SET)");
+            simConnect.ExecuteCalculatorCode($"{(int)value} (>K:APU_GENERATOR_SWITCH_SET)");
             return true;
         }
 
-        // Autobrakes — SET_AUTOBRAKE_CONTROL with position 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX
+        // Autobrakes (0 Off .. 6 MAX). SET_AUTOBRAKE_CONTROL is a no-op on the WT 787; the working
+        // path is the relative rotary events INCREASE/DECREASE_AUTOBRAKE_CONTROL stepped to the
+        // target (they clamp at the ends, so over-stepping is safe). Live-verified.
         if (varKey == "HS787_Autobrake")
         {
-            simConnect.SendEvent("SET_AUTOBRAKE_CONTROL", (uint)(int)value);
+            int target = Math.Max(0, Math.Min(6, (int)Math.Round(value)));
+            int current = (int)Math.Round(simConnect.GetCachedVariableValue("HS787_Autobrake") ?? 0);
+            // Latch the TARGET VALUE (not a |target-current| step count) so ProcessSimVarUpdate
+            // swallows exactly the one update that lands on it. The selector is Continuous at 1 Hz,
+            // and the sim applies a multi-detent jump within a single frame, so MSFSBA observes only
+            // ONE change (straight to target) — a step count would be decremented just once and the
+            // leftover (count-1) would then silently swallow that many LATER, legitimate selector
+            // callouts (e.g. autobrake disarming on the rollout). INCREASE/DECREASE clamp at the
+            // ends, so the selector always reaches target even if the cached `current` is stale.
+            if (target != current)
+            {
+                _autobrakeSuppressTarget = target;
+                _autobrakeSuppressTicks = Environment.TickCount64;
+                string ev = target > current ? "INCREASE_AUTOBRAKE_CONTROL" : "DECREASE_AUTOBRAKE_CONTROL";
+                for (int i = 0; i < Math.Abs(target - current); i++) simConnect.SendEvent(ev);
+            }
             return true;
         }
 
@@ -4328,7 +5533,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
         if (varKey == "HS787_LightStrobe")
         {
-            simConnect.SendEvent("STROBE_LIGHTS_SET", (uint)(int)value);
+            // STROBE_LIGHTS_SET is a no-op on this Asobo-template lighting; the stock STROBES_SET
+            // drives LIGHT STROBE (live-verified 0->1), same as the A380 ext-lighting fix.
+            simConnect.SendEvent("STROBES_SET", value > 0.5 ? 1u : 0u);
             return true;
         }
         if (varKey == "HS787_LightNav")
@@ -4348,7 +5555,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
         if (varKey == "HS787_LightLogo")
         {
-            simConnect.ExecuteCalculatorCode($"(A:LIGHT LOGO,Bool) {(int)value} != if{{ (>K:TOGGLE_LOGO_LIGHTS) }}");
+            // Guard on LIGHT LOGO ON (immediate), not LIGHT LOGO (lags a frame) — a rapid set-after-set
+            // could otherwise mis-decide off the stale value and double-toggle.
+            simConnect.ExecuteCalculatorCode($"(A:LIGHT LOGO ON,Bool) {(int)value} != if{{ (>K:TOGGLE_LOGO_LIGHTS) }}");
             return true;
         }
         if (varKey == "HS787_LightWing")
@@ -4543,13 +5752,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     {
         if (base.ProcessSimVarUpdate(variableKey, value, announcer))
             return true;
-
-        // Bridge diagnostic L-var — store silently, no announcement.
-        if (variableKey == "HS787_BridgeStage")
-        {
-            BridgeStage = (int)value;
-            return true;
-        }
 
         // =====================================================================
         // BridgeVersion 18+ — new annunciators / status. All use the same pattern:
@@ -5310,8 +6512,21 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         }
 
         // IRS position accepted (WT_IRS_POS_SET_N) — NOT alignment complete.
-        // Announce the honest position semantics; true alignment completion is
-        // owned by HS787_IRS_Align (bridge-sourced). Suppress first poll.
+        // Announce the honest position semantics. (The true "TIME TO ALIGN" countdown
+        // is not on any L-var; see the IRS section in GetVariables.) Suppress first poll.
+        // IRS alignment state (synthetic L-var from the Coherent IRS client): 0 Off / 1 Aligning /
+        // 2 Aligned. Announce as a clean phrase ("IRS aligned", not the generic "IRS: Aligned" which
+        // read as "IRS alignment aligned" before the rename). First value is the silent baseline so
+        // the client's connect-time write doesn't blurt "IRS off".
+        if (variableKey == "HS787_IRS_Align")
+        {
+            int now = (int)Math.Round(value);
+            if (_previousIrsAlignState >= 0 && now != _previousIrsAlignState)
+                announcer.Announce(now == 2 ? "IRS aligned" : now == 1 ? "IRS aligning" : "IRS off");
+            _previousIrsAlignState = now;
+            return true;
+        }
+
         if (variableKey == "HS787_IRS_Aligned1")
         {
             int now = value > 0.5 ? 1 : 0;
@@ -5701,13 +6916,22 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (variableKey == "HS787_Autobrake")
         {
             int now = (int)value;
+            // Swallow exactly the update that lands on the value MSFSBA just commanded via the combo
+            // (the screen reader already speaks the selection). Matched by VALUE within a short window
+            // and one-shot, so it can NEVER permanently mute callouts: any other change — including a
+            // later external knob turn — falls through and announces, and the latch self-expires.
+            if (_autobrakeSuppressTarget >= 0 && now == _autobrakeSuppressTarget &&
+                Environment.TickCount64 - _autobrakeSuppressTicks < 3000)
+            {
+                _autobrakeSuppressTarget = -1;
+                _previousAutobrake = now;
+                return true;
+            }
             if (_previousAutobrake >= 0 && now != _previousAutobrake)
             {
-                // Positions MUST match HS787_Autobrake.ValueDescriptions (~line 1700) and the
-                // SET_AUTOBRAKE_CONTROL write in HandleUIVariableSet, which both use
-                // 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX. This switch previously used a different
-                // mapping (0=RTO, 1=Disarmed), so the spoken callout contradicted the panel combo
-                // label and the value actually commanded. Keep all three in sync.
+                // Positions MUST match HS787_Autobrake.ValueDescriptions and the INCREASE/DECREASE
+                // step-write in HandleUIVariableSet: the AUTO BRAKE SWITCH CB scale is 0..6 =
+                // Off / RTO / 1 / 2 / 3 / 4 / MAX (live-verified 7 detents). Keep all three in sync.
                 string msg = now switch
                 {
                     0 => "Autobrakes Off",
@@ -5715,7 +6939,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                     2 => "Autobrakes 1",
                     3 => "Autobrakes 2",
                     4 => "Autobrakes 3",
-                    5 => "Autobrakes Max",
+                    5 => "Autobrakes 4",
+                    6 => "Autobrakes Max",
                     _ => $"Autobrakes {now}"
                 };
                 announcer.Announce(msg);
@@ -6066,11 +7291,70 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // MCP selected-value CHANGES are announced so an external hardware-knob turn is spoken
+        // (the user's request). MSFSBA's own set dialogs fire the value SILENTLY via events
+        // (ShowHeadingDialog etc. send HEADING_BUG_SET with no announce), so this auto-announce
+        // is the single confirmation for both paths — no double-speak. First value is the silent
+        // baseline; deadbands kill jitter. Speed is gated on MANUAL mode so the FMC's managed-speed
+        // drift in VNAV/climb doesn't chatter (the user wants knob turns, not managed targets).
+        if (variableKey == "HS787_MCP_Heading")
+        {
+            int hdg = ((int)Math.Round(value) % 360 + 360) % 360;
+            if (_prevMcpHeading >= 0 && Math.Abs(hdg - _prevMcpHeading) >= 1) announcer.Announce($"Heading {hdg:000}");
+            _prevMcpHeading = hdg;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_Altitude")
+        {
+            int alt = (int)Math.Round(value);
+            if (_prevMcpAlt >= 0 && Math.Abs(alt - _prevMcpAlt) >= 10) announcer.Announce($"Altitude {alt}");
+            _prevMcpAlt = alt;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_VS")
+        {
+            int vs = (int)Math.Round(value);
+            if (_prevMcpVs != int.MinValue && Math.Abs(vs - _prevMcpVs) >= 50)
+                announcer.Announce(vs == 0 ? "Vertical speed zero" : $"Vertical speed {(vs > 0 ? "plus " : "minus ")}{Math.Abs(vs)}");
+            _prevMcpVs = vs;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_IsMach")   { _mcpIsMach = value > 0.5; return true; }
+        if (variableKey == "HS787_MCP_SpdManual") { _mcpSpdManual = value > 0.5; return true; }
+        if (variableKey == "HS787_MCP_IAS")
+        {
+            int ias = (int)Math.Round(value);
+            if (_prevMcpIas >= 0 && Math.Abs(ias - _prevMcpIas) >= 1 && _mcpSpdManual && !_mcpIsMach) announcer.Announce($"Speed {ias}");
+            _prevMcpIas = ias;
+            return true;
+        }
+        if (variableKey == "HS787_MCP_Mach")
+        {
+            if (_prevMcpMach >= 0 && Math.Abs(value - _prevMcpMach) >= 0.005 && _mcpSpdManual && _mcpIsMach)
+                announcer.Announce($"Mach {value:0.00}");
+            _prevMcpMach = value;
+            return true;
+        }
+
         // Cache-only variables — suppress all automatic announcements.
         // These are IsAnnounced=true purely so the monitoring engine caches them;
         // hotkey readouts and dialog toggles read the cached values on demand.
         switch (variableKey)
         {
+            // EICAS engine indications — cached for the Alt+E window, never auto-announced.
+            case "HS787_EicasN1_1":
+            case "HS787_EicasN1_2":
+            case "HS787_EicasN2_1":
+            case "HS787_EicasN2_2":
+            case "HS787_EicasEGT_1":
+            case "HS787_EicasEGT_2":
+            case "HS787_EicasFuelKg":
+            case "HS787_EicasGwKg":
+            case "HS787_EicasOilP_1":
+            case "HS787_EicasOilP_2":
+            case "HS787_EicasOilT_1":
+            case "HS787_EicasOilT_2":
+            case "HS787_EicasTat":
             case "HS787_MCP_IAS":
             case "HS787_MCP_Mach":
             case "HS787_MCP_IsMach":
@@ -6097,9 +7381,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // user-facing announcement, so suppress here to avoid duplicate speech.
             case "HS787_ExtPwr1":
             case "HS787_ExtPwr2":
-            // IRS time-to-align: cached for the read-only display field only.
-            // The Aligned transition is announced via HS787_IRS_Align; a
-            // per-minute spoken countdown would be noise.
+            // IRS time-to-align minutes: cached for the read-only display field only.
+            // The Aligning->Aligned transition is announced via HS787_IRS_Align's
+            // ValueDescriptions; a per-minute spoken countdown would be noise.
             case "HS787_IRS_AlignMinutes":
                 return true; // cached — no announcement
         }
@@ -6276,15 +7560,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             }, () => simConnect.SendEvent("AP_ALT_HOLD")),
 
             new("Alt &INTV", () => "Momentary", () =>
-            {
-                // Fire from inside Coherent GT via bridge when available — more reliable for
-                // WT Boeing H events that are internal to the sim's JS runtime. Fall back to
-                // MobiFlight WASM if the bridge is not connected.
-                if (BridgeServer != null && BridgeServer.IsBridgeConnected)
-                    BridgeServer.EnqueueMfdCommand("fcu_key:ALTITUDE_INTERVENTION");
-                else
-                    simConnect.SendHVar("AS01B_FMC_1_ALTITUDE_INTERVENTION");
-            })
+                // Fire the WT Boeing altitude-intervention H event via MobiFlight WASM. (The
+                // CDU/EFB no longer run an HTTP bridge, so there is no Coherent command path here.)
+                simConnect.SendHVar("AS01B_FMC_1_ALTITUDE_INTERVENTION"))
         };
 
         var dialog = new ValueInputForm(
