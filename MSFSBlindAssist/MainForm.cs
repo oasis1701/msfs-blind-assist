@@ -33,6 +33,7 @@ public partial class MainForm : Form
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
     private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
+    private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
@@ -72,10 +73,15 @@ public partial class MainForm : Form
     // Live A380X Electronic Checklist window (normal checklists + ECP controls),
     // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
     private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
-    private EFBBridgeServer? hs787BridgeServer;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
-    private HS787EFBForm? hs787EFBForm;
+    // Background Coherent reader for the WT IRS "TIME TO ALIGN" state — writes the synthetic
+    // MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the HS787 def reads. Runs while the HS787 is loaded.
+    private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
+    // Always-on EICAS Crew-Alerting-System monitor — announces new cautions/warnings as they post.
+    private SimConnect.CoherentHS787CasClient? hs787CasClient;
+    // On-demand EICAS alert window (Alt+E), fed by hs787CasClient.GetAlertsText().
+    private Forms.HS787.HS787EicasForm? hs787EicasForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -342,14 +348,11 @@ public partial class MainForm : Form
 
         // FBW flyPad: the EFB form owns its CDP client; nothing to pre-start here.
 
-        // Initialize 787 bridge if starting with HS 787
+        // The HS787 CDU + EFB open their own Coherent connections on demand (from their forms).
+        // The IRS-alignment monitor must run continuously from load so it catches the alignment
+        // countdown, so start it here.
         if (currentAircraft?.AircraftCode == "HS_787")
-        {
-            CheckAndOfferHS787ModPackage();
-            StartHS787BridgeServer();
-            if (currentAircraft is HorizonSim787Definition hs787defInit)
-                hs787defInit.BridgeServer = hs787BridgeServer;
-        }
+            StartHS787IrsMonitor();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -869,10 +872,53 @@ public partial class MainForm : Form
         }
 
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
-        // This lets each aircraft handle complex variables before generic processing
-        bool wasProcessedByAircraft = currentAircraft!.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        // This lets each aircraft handle complex variables before generic processing.
+        //
+        // The HS787 auto-announces ~100 of its vars from INSIDE ProcessSimVarUpdate, which returns
+        // true and exits this method (line below) BEFORE reaching either the generic disabled-monitor
+        // gate OR the generic _uiSetEcho gate further down. So two suppressions that work for every
+        // other aircraft (which announce on the generic path) silently never fire on the 787:
+        //   (1) monitor-manager mute (Ctrl+M),
+        //   (2) UI-set echo — don't re-announce a value the user JUST set via a combo (the screen
+        //       reader already spoke the combo selection).
+        // Both are fixed here the same way: ProcessSimVarUpdate auto-announces ONLY via the
+        // suppressible announcer.Announce(...) (its AnnounceImmediate calls are all hotkey readouts),
+        // so suppress the announcer just for this var's processing — the per-branch state/baseline
+        // updates still run, only the speech is dropped.
+        bool hs787 = currentAircraft!.AircraftCode == "HS_787";
+        bool hs787Muted = hs787 &&
+            Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+        // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
+        // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
+        // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
+        // this method BEFORE the generic _uiSetEcho gate further down ever runs, so without
+        // suppressing right here the value the user JUST set via a combo is spoken TWICE: once by
+        // the screen reader (the combo selection) and again by the def. Match on the time window
+        // ONLY (not the value): a combo set can write a different encoding than the SDK reads back
+        // (event position vs struct field, 0/1 vs 0/100), so a value compare silently misses and
+        // the double-announce survives. The user just touched THIS control, so any change to it
+        // inside the short echo window IS the echo. The generic value-matched gate below still
+        // guards the non-def-handled announce path and its own baseline accuracy.
+        bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
+            && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
+        bool suppressDefAnnounce = hs787Muted || uiEcho;
+        bool prevSuppressed = announcer.Suppressed;
+        if (suppressDefAnnounce) announcer.Suppressed = true;
+        bool wasProcessedByAircraft;
+        try
+        {
+            wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        }
+        finally
+        {
+            if (suppressDefAnnounce) announcer.Suppressed = prevSuppressed;
+        }
         if (wasProcessedByAircraft)
         {
+            // The def announced (suppressed) and updated its own baseline — consume the echo so a
+            // later change from any source still announces. (If the def did NOT handle it, the echo
+            // is left intact for the generic _uiSetEcho gate further down.)
+            if (uiEcho) _uiSetEcho.Remove(e.VarName);
             // Update window title if flight phase changed (for aircraft that track flight phases)
             if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
             {
@@ -960,6 +1006,13 @@ public partial class MainForm : Form
                 // Check if disabled in the A32NX Monitor Manager.
                 if (currentAircraft.AircraftCode == "A320" &&
                     Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the HS787 Monitor Manager.
+                if (currentAircraft.AircraftCode == "HS_787" &&
+                    Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -2195,7 +2248,7 @@ public partial class MainForm : Form
                 }
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
-                    ShowHS787EFBFormDialog();
+                    announcer.AnnounceImmediate("787 E F B not available.");
                 }
                 else if (currentAircraft?.AircraftCode == "A320")
                 {
@@ -2754,6 +2807,16 @@ public partial class MainForm : Form
         fbwA320MonitorManagerForm.ShowForm();
     }
 
+    public void ShowHS787MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (hs787MonitorManagerForm == null || hs787MonitorManagerForm.IsDisposed)
+        {
+            hs787MonitorManagerForm = new Forms.HS787.HS787MonitorManagerForm(currentAircraft.GetVariables());
+        }
+        hs787MonitorManagerForm.ShowForm();
+    }
+
     /// <summary>
     /// Public accessor for the PROG-page monitor. PMDG777Definition's distance
     /// handlers read its <see cref="PMDGProgPageMonitor.LastProgData"/> when
@@ -3207,177 +3270,90 @@ public partial class MainForm : Form
         coherentEWDClient = null;
     }
 
-    private void ShowHS787EFBFormDialog()
-    {
-        hotkeyManager.ExitInputHotkeyMode();
-
-        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
-        {
-            announcer.Announce("EFB bridge server is not running. Please install the mod package and restart the flight.");
-            return;
-        }
-
-        if (hs787EFBForm == null || hs787EFBForm.IsDisposed)
-            hs787EFBForm = new HS787EFBForm(hs787BridgeServer, announcer);
-
-        hs787EFBForm.ShowForm();
-    }
 
     private void ShowHS787FMCDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
-        {
-            announcer.Announce("FMC bridge server is not running. Please install the mod package and restart the flight.");
-            return;
-        }
-
+        // The CDU now reads + drives over the Coherent debugger (HSB789_MFD_3) — no HTTP
+        // bridge server, no injected JS, no mod-package HTML patching required.
         if (hs787FMCForm == null || hs787FMCForm.IsDisposed)
         {
-            hs787FMCForm = new HS787FMCForm(hs787BridgeServer, simConnectManager, announcer);
+            hs787FMCForm = new HS787FMCForm(simConnectManager, announcer);
         }
 
         hs787FMCForm.ShowForm();
     }
 
-    /// <summary>
-    /// Builds the list of (simLabel, communityPath) tuples to try for the HS787 bridge.
-    /// Saved override comes first (if the directory still exists); auto-detected paths follow,
-    /// deduplicated by normalized path.
-    /// </summary>
-    private static List<(string SimLabel, string Path)> BuildHS787FolderList()
+    // Start the always-on HS787 Coherent monitors (idempotent): the IRS-alignment reader (writes
+    // MSFSBA_IRS_ALIGN_STATE/_MINUTES from the PFD view) and the EICAS CAS alert monitor (announces
+    // new cautions/warnings from the MFD_1 view).
+    private void StartHS787IrsMonitor()
     {
-        var list = new List<(string SimLabel, string Path)>();
-        var settings = SettingsManager.Current;
-
-        if (!string.IsNullOrEmpty(settings.Hs787CommunityFolderOverride) &&
-            Directory.Exists(settings.Hs787CommunityFolderOverride))
+        if (hs787IrsClient == null)
         {
-            string label = settings.Hs787SimVersionOverride == "FS2024" ? "MSFS 2024" : "MSFS 2020";
-            list.Add((label, settings.Hs787CommunityFolderOverride));
+            hs787IrsClient = new SimConnect.CoherentHS787IrsClient();
+            hs787IrsClient.Start();
         }
-
-        foreach (var folder in HS787ModPackageManager.FindAllCommunityFolders())
+        if (hs787CasClient == null)
         {
-            bool duplicate = list.Any(f =>
-            {
-                try { return string.Equals(System.IO.Path.GetFullPath(f.Path), System.IO.Path.GetFullPath(folder.Path), StringComparison.OrdinalIgnoreCase); }
-                catch (ArgumentException) { return false; }
-            });
-            if (!duplicate)
-                list.Add(folder);
-        }
-
-        return list;
-    }
-
-    private static void SaveHS787FolderOverride(string path, string simVersion)
-    {
-        var settings = SettingsManager.Current;
-        settings.Hs787CommunityFolderOverride = path;
-        settings.Hs787SimVersionOverride = simVersion;
-        SettingsManager.Save(settings);
-    }
-
-    private void CheckAndOfferHS787ModPackage()
-    {
-        string resourcesDir = Path.Combine(Application.StartupPath, "Resources");
-        var allFolders = BuildHS787FolderList();
-
-        // Nothing auto-detected and no saved override — ask the user.
-        if (allFolders.Count == 0)
-        {
-            using var dlg = new HS787CommunityFolderForm();
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-            SaveHS787FolderOverride(dlg.SelectedPath, dlg.SelectedSimVersion);
-            allFolders.Add((dlg.SelectedSimVersion == "FS2024" ? "MSFS 2024" : "MSFS 2020", dlg.SelectedPath));
-        }
-
-        foreach (var (simName, communityPath) in allFolders)
-        {
-            if (HS787ModPackageManager.IsInstalled(communityPath))
-            {
-                var updateResult = HS787ModPackageManager.UpdateModPackage(communityPath, resourcesDir);
-                if (updateResult == ModPackageResult.Updated)
-                    System.Diagnostics.Debug.WriteLine($"[HS787] Bridge updated in {simName} Community folder.");
-                continue;
-            }
-
-            var answer = MessageBox.Show(
-                $"The HorizonSim 787-9 FMC and EFB accessibility bridge is not installed for {simName}.\n\n" +
-                "Would you like to install it now? This installs a small mod package into your Community folder " +
-                "that allows Blind Assist to read the FMC screen, send button presses, and read the EFB tablet.\n\n" +
-                "Note: You must restart the flight after installation for the bridge to take effect.",
-                "787-9 Accessibility Bridge",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (answer != DialogResult.Yes) continue;
-
-            var installResult = HS787ModPackageManager.Install(communityPath, resourcesDir);
-
-            // CommunityFolderNotFound means the saved/detected path is wrong — let the user correct it.
-            string displayName = simName;
-            if (installResult == ModPackageResult.CommunityFolderNotFound)
-            {
-                MessageBox.Show(
-                    "The Community folder path could not be found. Please verify or update it.",
-                    "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-
-                string currentSimVersion = simName.Contains("2024") ? "FS2024" : "FS2020";
-                using var fixDlg = new HS787CommunityFolderForm(communityPath, currentSimVersion);
-                if (fixDlg.ShowDialog(this) != DialogResult.OK) continue;
-
-                SaveHS787FolderOverride(fixDlg.SelectedPath, fixDlg.SelectedSimVersion);
-                displayName = fixDlg.SelectedSimVersion == "FS2024" ? "MSFS 2024" : "MSFS 2020";
-                installResult = HS787ModPackageManager.Install(fixDlg.SelectedPath, resourcesDir);
-            }
-
-            switch (installResult)
-            {
-                case ModPackageResult.Success:
-                    MessageBox.Show(
-                        $"Bridge installed successfully for {displayName}. Please restart your flight for it to take effect.",
-                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    break;
-                case ModPackageResult.HS787PackageNotFound:
-                    MessageBox.Show(
-                        $"Could not find the HorizonSim 787-9 package in your {displayName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
-                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    break;
-                case ModPackageResult.BridgeJsSourceNotFound:
-                    MessageBox.Show(
-                        "Bridge JS source file not found. Please reinstall MSFS Blind Assist.",
-                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    break;
-                case ModPackageResult.CommunityFolderNotFound:
-                    MessageBox.Show(
-                        "The Community folder path could not be found. Please verify or update it.",
-                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    break;
-                default:
-                    MessageBox.Show($"Failed to install for {displayName}: {installResult}",
-                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    break;
-            }
+            hs787CasClient = new SimConnect.CoherentHS787CasClient();
+            hs787CasClient.Start();
         }
     }
 
-    private void StartHS787BridgeServer()
+    // Open the EICAS alert window on demand (the HS787 Alt+E key). A navigable read-only window
+    // (arrow keys to read every active warning/caution/advisory, Escape to close), refreshed live —
+    // not a one-shot spoken read-back.
+    public void AnnounceHs787CasAlerts()
     {
-        if (hs787BridgeServer == null)
+        hotkeyManager.ExitOutputHotkeyMode();
+        // The EICAS window reads engine indications + the CAS monitor's alert list. If the monitor
+        // isn't up yet (HS787 not fully initialised, or a startup failure left it null), speak a cue
+        // rather than returning in total silence — a blind pilot can't otherwise tell whether there
+        // are zero alerts or the feature is broken.
+        if (hs787CasClient == null)
         {
-            hs787BridgeServer = new EFBBridgeServer(port: 19778);
+            announcer.AnnounceImmediate("EICAS not available.");
+            return;
         }
-
-        if (!hs787BridgeServer.IsRunning)
-        {
-            hs787BridgeServer.Start();
-        }
+        if (hs787EicasForm == null || hs787EicasForm.IsDisposed)
+            hs787EicasForm = new Forms.HS787.HS787EicasForm(BuildHs787EicasText);
+        hs787EicasForm.ShowForm();
     }
 
-    private void StopHS787BridgeServer()
+    // Full EICAS read-out for the Alt+E window: the primary/secondary engine indications (per
+    // engine N1 / EGT / N2 / oil), fuel + gross weight + TAT, then the live crew-alert list — i.e.
+    // what the real 787 EICAS shows, not just the alert messages. Values come from the cached
+    // HS787_Eicas* SimVars (see GetVariables); the alerts from the always-on CAS monitor.
+    private string BuildHs787EicasText()
+    {
+        double GV(string k) => simConnectManager?.GetCachedVariableValue(k) ?? 0;
+        int Pct(string k) => (int)Math.Round(GV(k) * 100);     // N1/N2 are 0..1 ratios
+        int C(string k) => (int)Math.Round(GV(k));
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("EICAS");
+        sb.AppendLine($"Engine 1 N1: {Pct("HS787_EicasN1_1")}%");
+        sb.AppendLine($"Engine 1 EGT: {C("HS787_EicasEGT_1")} C");
+        sb.AppendLine($"Engine 1 N2: {Pct("HS787_EicasN2_1")}%");
+        sb.AppendLine($"Engine 1 Oil Pressure: {C("HS787_EicasOilP_1")} psi");
+        sb.AppendLine($"Engine 1 Oil Temp: {C("HS787_EicasOilT_1")} C");
+        sb.AppendLine($"Engine 2 N1: {Pct("HS787_EicasN1_2")}%");
+        sb.AppendLine($"Engine 2 EGT: {C("HS787_EicasEGT_2")} C");
+        sb.AppendLine($"Engine 2 N2: {Pct("HS787_EicasN2_2")}%");
+        sb.AppendLine($"Engine 2 Oil Pressure: {C("HS787_EicasOilP_2")} psi");
+        sb.AppendLine($"Engine 2 Oil Temp: {C("HS787_EicasOilT_2")} C");
+        sb.AppendLine($"Total Fuel: {C("HS787_EicasFuelKg")} kg");
+        sb.AppendLine($"Gross Weight: {Math.Round(GV("HS787_EicasGwKg") / 1000.0, 1)} t");
+        sb.AppendLine($"TAT: {C("HS787_EicasTat")} C");
+        sb.AppendLine();
+        sb.Append(hs787CasClient?.GetAlertsText() ?? "");
+        return sb.ToString();
+    }
+
+    // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
+    // so their Coherent debugger connections close. There is no HTTP bridge to stop.
+    private void DisposeHS787Forms()
     {
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
         {
@@ -3391,13 +3367,12 @@ public partial class MainForm : Form
             hs787SimBriefForm = null;
         }
 
-        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
-        {
-            hs787EFBForm.Dispose();
-            hs787EFBForm = null;
-        }
-
-        hs787BridgeServer?.Stop();
+        hs787IrsClient?.Dispose();
+        hs787IrsClient = null;
+        if (hs787EicasForm != null && !hs787EicasForm.IsDisposed) hs787EicasForm.Dispose();
+        hs787EicasForm = null;
+        hs787CasClient?.Dispose();
+        hs787CasClient = null;
     }
 
     private void CheckAndOfferEFBModPackage()
@@ -4754,6 +4729,9 @@ public partial class MainForm : Form
         // any tracked hotkey windows (FCU/Baro/E/WD) the old def instance created.
         (oldAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (oldAircraft as FlyByWireA320Definition)?.StopAllMotion();
+        // The HS787 def owns its synoptic-display window (a live MFD_2 Coherent socket) + the
+        // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
+        (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
@@ -4971,6 +4949,11 @@ public partial class MainForm : Form
             fbwA320MonitorManagerForm.Dispose();
             fbwA320MonitorManagerForm = null;
         }
+        if (hs787MonitorManagerForm != null && !hs787MonitorManagerForm.IsDisposed)
+        {
+            hs787MonitorManagerForm.Dispose();
+            hs787MonitorManagerForm = null;
+        }
         StopA380EWDMonitor(oldAircraft);
 
         // Dispose HS 787 forms when switching aircraft
@@ -4984,12 +4967,6 @@ public partial class MainForm : Form
         {
             hs787SimBriefForm.Dispose();
             hs787SimBriefForm = null;
-        }
-
-        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
-        {
-            hs787EFBForm.Dispose();
-            hs787EFBForm = null;
         }
 
         // PMDG data manager lifecycle
@@ -5047,18 +5024,14 @@ public partial class MainForm : Form
             StopEFBBridgeServer();
         }
 
-        // 787 FMC bridge: mod package check and server start
+        // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from
+        // their forms) — no HTTP bridge to start. The IRS-alignment monitor runs continuously
+        // (so it catches the alignment countdown). When leaving the HS787, dispose its forms +
+        // the IRS monitor so their Coherent connections close.
         if (newAircraft.AircraftCode == "HS_787")
-        {
-            CheckAndOfferHS787ModPackage();
-            StartHS787BridgeServer();
-            if (newAircraft is HorizonSim787Definition hs787def)
-                hs787def.BridgeServer = hs787BridgeServer;
-        }
+            StartHS787IrsMonitor();
         else
-        {
-            StopHS787BridgeServer();
-        }
+            DisposeHS787Forms();
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
@@ -7033,12 +7006,13 @@ public partial class MainForm : Form
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
 
-        // Clean up 787 bridge and forms
+        // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();
         hs787SimBriefForm?.Dispose();
-        hs787EFBForm?.Dispose();
-        hs787BridgeServer?.Dispose();
-        hs787BridgeServer = null;
+        hs787IrsClient?.Dispose();
+        hs787IrsClient = null;
+        hs787CasClient?.Dispose();
+        hs787CasClient = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
