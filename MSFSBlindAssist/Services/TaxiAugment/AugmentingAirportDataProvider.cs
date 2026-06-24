@@ -85,11 +85,10 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     public List<StartPosition> GetRunwayStarts(string icao)                       => _base.GetRunwayStarts(icao);
 
     /// <summary>
-    /// Returns parking spots for the airport, filling in EMPTY navdata gate/stand names from the
-    /// cached online sources (OSM parking_position ref, X-Plane ramp-start name). Navdata is
-    /// authoritative — a non-empty navdata name is never overwritten, and all other ParkingSpot
-    /// fields (position, heading, radius, GSX data) are untouched. Rides the same per-ICAO cache
-    /// GetTaxiPaths populates; never triggers its own fetch. No-op when disabled or uncached.
+    /// Returns parking spots, attaching online-sourced searchable ALIASES to existing navdata gates.
+    /// Identity-matched (same number, agreeing letter), alias-only, idempotent. NEVER overwrites a
+    /// gate's Name or position, and NEVER adds a selectable gate — so online data cannot move where
+    /// you taxi (anti-grass). No-op when disabled or uncached.
     /// </summary>
     public List<ParkingSpot> GetParkingSpots(string icao)
     {
@@ -97,64 +96,15 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         if (!Enabled || nav == null || nav.Count == 0) return nav;
         if (!_cache.TryLoad(icao, out var sources) || sources == null) return nav;
 
-        const double maxMeters = 30.0; // a named online stand within 30 m is the same stand
+        var online = sources
+            .SelectMany(s => s.Parking)
+            .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+            .ToList();
+        if (online.Count == 0) return nav;
+
         foreach (var spot in nav)
-        {
-            if (string.IsNullOrWhiteSpace(spot.Name))
-            {
-                // ── Empty-name fill (original behaviour) ──────────────────────
-                // Navdata has no name; adopt the nearest online name as the spot name.
-                string? best = null;
-                double bestD = maxMeters;
-                foreach (var src in sources)
-                    foreach (var (pName, pLat, pLon) in src.Parking)
-                    {
-                        if (string.IsNullOrWhiteSpace(pName)) continue;
-                        double d = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, pLat, pLon);
-                        if (d < bestD) { bestD = d; best = pName; }
-                    }
-                if (best != null) spot.Name = best.Trim();
-            }
-            else
-            {
-                // ── Alias discovery (new) ──────────────────────────────────────
-                // Navdata has a name; if an online source names the same stand
-                // differently (after normalization), record the online name as an
-                // alias so it becomes a selectable entry in the gate dropdown.
-                string spotNorm = TaxiDataMerger.NormalizeTaxiwayName(spot.Name);
+            spot.Aliases = GateAliasResolver.ResolveAliases(spot, online); // fresh + deterministic → idempotent
 
-                string? bestAlias = null;
-                double bestD = maxMeters;
-                foreach (var src in sources)
-                    foreach (var (pName, pLat, pLon) in src.Parking)
-                    {
-                        if (string.IsNullOrWhiteSpace(pName)) continue;
-                        double d = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, pLat, pLon);
-                        if (d < bestD)
-                        {
-                            bestD = d;
-                            bestAlias = pName.Trim();
-                        }
-                    }
-
-                if (bestAlias != null)
-                {
-                    string aliasNorm = TaxiDataMerger.NormalizeTaxiwayName(bestAlias);
-                    // Only add when the normalized forms differ (otherwise it's the
-                    // same name, just formatted differently — not a meaningful alias).
-                    if (!string.IsNullOrEmpty(aliasNorm)
-                        && !string.Equals(aliasNorm, spotNorm, StringComparison.OrdinalIgnoreCase)
-                        && !spot.Aliases.Any(a =>
-                            string.Equals(
-                                TaxiDataMerger.NormalizeTaxiwayName(a),
-                                aliasNorm,
-                                StringComparison.OrdinalIgnoreCase)))
-                    {
-                        spot.Aliases.Add(bestAlias);
-                    }
-                }
-            }
-        }
         return nav;
     }
 
