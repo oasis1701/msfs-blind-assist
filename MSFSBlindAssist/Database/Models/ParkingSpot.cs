@@ -97,6 +97,10 @@ public class ParkingSpot
         };
     }
 
+    /// <summary>True for gate-type stands (Gate Small/Medium/Large/Heavy/Extra) — used to render
+    /// an empty-name gate as "Gate {n}" rather than the generic "Spot {n}".</summary>
+    private bool IsGateType() => Type is 9 or 10 or 11 or 13 or 14;
+
     /// <summary>
     /// Returns whether this spot fits an aircraft with the given wing span
     /// (in FEET — matches <c>SimConnectManager.AircraftWingSpan</c>).
@@ -162,7 +166,9 @@ public class ParkingSpot
         else if (!string.IsNullOrEmpty(Name))
             baseDescription = $"{Name} - {GetParkingType()}";
         else if (!string.IsNullOrEmpty(numberPart))
-            baseDescription = $"Spot {numberPart} - {GetParkingType()}";
+            baseDescription = IsGateType()
+                ? $"Gate {numberPart} - {GetParkingType()}"
+                : $"Spot {numberPart} - {GetParkingType()}";
         else
             baseDescription = $"Parking - {GetParkingType()}";
 

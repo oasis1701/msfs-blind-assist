@@ -274,5 +274,16 @@ Check(TaxiDataMerger.NormalizeTaxiwayName("") == "",
     Check(wouldAdd, "ParkingSpot.Aliases: 'GATE47' (normalizes to 'GATE47') passes dedup guard");
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Gate {n} display: empty-name gate-type spots read "Gate {n}"; non-gate keeps "Spot {n}".
+// ──────────────────────────────────────────────────────────────────────
+{
+    var gDisp = new ParkingSpot { Name = "", Number = 51, Type = 13 /*Gate Heavy*/ };
+    Check(gDisp.Describe().StartsWith("Gate 51"), $"Display: empty-name gate -> 'Gate 51' (got '{gDisp.Describe()}')");
+    Check(!gDisp.Describe().Contains("Spot"),     "Display: gate type never says 'Spot'");
+    var rDisp = new ParkingSpot { Name = "", Number = 7, Type = 6 /*Ramp Cargo*/ };
+    Check(rDisp.Describe().StartsWith("Spot 7"),  $"Display: non-gate empty-name keeps 'Spot 7' (got '{rDisp.Describe()}')");
+}
+
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;
