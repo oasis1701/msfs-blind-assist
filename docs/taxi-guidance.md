@@ -1366,13 +1366,16 @@ Some airports have a mismatch between navdata taxiway names and OSM/apt.dat name
 
 Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
 
-**How parking aliases are collected (in the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)`):** the online stands (from OSM + apt.dat) are flattened once and assigned to the navdata spots **1:1, nearest pair first**, within a **50 m** Haversine radius. Each online stand is used at most once and each navdata spot enriched at most once — so a single online stand can never name two different gates "A12", and one spot can't claim a stand that clearly belongs to another. For a matched pair: an **empty** navdata name adopts the online name directly; a **named** spot whose normalized name differs gets the online name appended to `ParkingSpot.Aliases`. The navdata name is never overwritten.
+**How parking aliases are collected — REWORKED 2026-06-23 (identity-matched, alias-only).** The earlier nearest-within-50 m gate-NAME fill was REMOVED: it corrupted gate identity at dense terminals (CYUL gate 15 adopted "Gate 11B" from an offset apt.dat ramp). Now the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)` flattens the online stands once and, for each authoritative gate, sets `spot.Aliases = GateAliasResolver.ResolveAliases(spot, online)` — a **pure, idempotent** resolver that:
 
-- 50 m radius (widened from 30 m): tolerates gate-position offset between the online dataset (e.g. X-Plane Gateway scenery) and the user's installed MSFS scenery. Nearest-match still picks the closest, so adjacent gates aren't mis-tagged.
-- **X-Plane apt.dat is the key gate source.** Many airports have *real* gate numbers in apt.dat that navdata lacks (e.g. CYYZ "Gate 131", KATL "A12"/"B7"/…) — these surface as gate aliases against navdata's generic spot codes.
-- `AugmentParking` is **public** and called on the GSX gate list too (GSX is the gate SOURCE and bypasses `GetParkingSpots`), so GSX stands get the same aliases. Called in both `TaxiAssistForm` and `GateTeleportForm` after building the GSX list.
-- Dedup guard: `TaxiDataMerger.NormalizeTaxiwayName` is applied to both existing aliases and the candidate before adding, so `"47"` and `"GATE 47"` do not both appear.
-- `ParkingSpot.Aliases` is in-memory only — never persisted to the database.
+- matches by **IDENTITY, not distance**: an online stand aliases a gate only when their **numbers match AND any letters agree** (`StandId.Parse` extracts letter/number/suffix). Navdata gate 15 never adopts a neighbour's "Gate 11B" (number mismatch); an "N" de-ice pad never adopts "S3" (letter disagreement). A **150 m** Haversine value is a sanity *backstop* only (a same-number stand kilometres away is a data error, skipped) — it is NOT the matcher.
+- adds an alias **only when it carries info the identity lacks** — a concourse letter (`"A51"` for bare gate 51), a MARS suffix (`"53A"`) — a pure restatement (`"51"`, `"N3"`) adds nothing and is dropped.
+- **NEVER sets a Name or position and NEVER adds a selectable gate (anti-grass).** Online data cannot move where you taxi; it only contributes searchable alternative labels. `spot.Aliases` is recomputed from scratch each call → idempotent.
+
+- **X-Plane apt.dat is the key gate source.** Many airports have *real* gate numbers in apt.dat that navdata lacks (CYYZ "Gate 131", KATL "A12"/"B7") — these surface as identity-matched aliases.
+- `AugmentParking` is **public** and called on the GSX gate list too (GSX is the gate SOURCE and bypasses `GetParkingSpots`), so GSX stands get the same aliases. Called in `TaxiAssistForm` and `GateTeleportForm` after building the GSX list.
+- Empty-name gate-type spots render **`Gate {n}`** (not `Spot {n}`); a stand with no taxi node within `MAX_PARKING_TO_GRAPH_M` is kept but marked **`(no taxi route)`** and refused by the Calculate guard (was: silently dropped).
+- `ParkingSpot.Aliases` is in-memory only — never persisted to the database. `StandId` (`Services/StandId.cs`) + `GateAliasResolver` (`Services/TaxiAugment/`) are pure + probe-tested (`tools/TaxiAugmentProbe`).
 
 **How parking aliases are surfaced:**
 

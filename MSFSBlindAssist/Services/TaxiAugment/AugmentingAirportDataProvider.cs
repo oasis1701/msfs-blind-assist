@@ -134,68 +134,33 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     }
 
     /// <summary>
-    /// Enriches a parking/gate list (from navdata OR GSX) IN PLACE with online names: fills an
-    /// EMPTY name from the nearest online stand (≤30 m) and records a DIFFERING online name as an
-    /// alias (which becomes a selectable dropdown entry). Navdata/GSX is authoritative — a non-empty
-    /// name is never overwritten; all other fields are untouched. Rides the per-ICAO online cache
-    /// (no fetch); idempotent. PUBLIC so the GSX gate path — which bypasses GetParkingSpots because
-    /// GSX is the gate SOURCE — gets the SAME aliases: GSX stands also carry spot codes that don't
-    /// match the real gate numbers, so the online alias is what lets the pilot pick the ATC gate.
-    /// No-op when disabled, uncached, or empty.
+    /// Attaches online-sourced searchable ALIASES to an authoritative gate list (navdata OR GSX),
+    /// IN PLACE. Identity-matched (same number, agreeing letter — via <see cref="GateAliasResolver"/>),
+    /// alias-only, and idempotent: it NEVER overwrites a gate's Name or position and NEVER adds a
+    /// selectable gate, so online data can never move where you taxi (anti-grass). This REPLACES the
+    /// older nearest-distance name-fill, which corrupted gate identity at dense terminals (CYUL gate
+    /// 15 → 'Gate 11B' from an offset apt.dat ramp). PUBLIC so the GSX gate path — which bypasses
+    /// GetParkingSpots because GSX is the gate SOURCE — gets the SAME aliases (GSX stands carry spot
+    /// codes that don't match the real gate numbers, so the online alias is what lets the pilot pick
+    /// the ATC gate). Rides the per-ICAO online cache (no fetch). No-op when disabled, uncached, empty.
     /// </summary>
     public void AugmentParking(string icao, IList<ParkingSpot>? spots)
     {
         if (!Enabled || spots == null || spots.Count == 0) return;
         if (!_cache.TryLoad(icao, out var sources) || sources == null) return;
 
-        // 50 m (widened from 30 m): tolerates gate-position offsets between the online dataset
-        // (e.g. X-Plane Gateway scenery) and the user's INSTALLED MSFS scenery, which may place
-        // the same gate tens of metres apart. Nearest-pair-first 1:1 matching still picks the
-        // closest online stand, so adjacent gates aren't mis-tagged even at the wider radius.
-        const double maxMeters = 50.0;
-
         // Flatten online stands once (skip unnamed).
-        var online = new List<(string name, double lat, double lon)>();
+        var online = new List<(string Name, double Lat, double Lon)>();
         foreach (var src in sources)
             foreach (var (pName, pLat, pLon) in src.Parking)
                 if (!string.IsNullOrWhiteSpace(pName))
                     online.Add((pName.Trim(), pLat, pLon));
         if (online.Count == 0) return;
 
-        // 1:1 nearest-pair assignment (pure, probe-tested in TaxiDataMerger.AssignParking):
-        // each online stand used at most once, each spot enriched at most once, closest pairs first.
-        var spotCoords = new List<(double lat, double lon)>(spots.Count);
-        foreach (var sp in spots) spotCoords.Add((sp.Latitude, sp.Longitude));
-
-        foreach (var (spotIdx, onName) in TaxiDataMerger.AssignParking(spotCoords, online, maxMeters))
-        {
-            var spot = spots[spotIdx];
-            if (string.IsNullOrWhiteSpace(spot.Name))
-            {
-                // Empty navdata/GSX name → adopt the online name.
-                spot.Name = onName;
-            }
-            else
-            {
-                // Named already → record the online name as an ALIAS only when it names a DIFFERENT
-                // stand identity, so the real ATC name becomes a selectable dropdown entry. Compare
-                // the FULL navdata identity (concourse + number + suffix, e.g. "H2") against a
-                // gate-aware normalization of the online name that strips stand-type words and spaces
-                // (so "Ramp H2"/"H 2" → "H2"). The old check compared only spot.Name ("H", missing
-                // the number) with the bare taxiway normalizer (no type-word strip), so it logged a
-                // redundant "(also Ramp H2)" alias on essentially every stand at airports whose
-                // online names carry a "Ramp"/"Gate" qualifier (CYYZ).
-                string spotNorm = MSFSBlindAssist.Services.GateSearchFilter.NormalizeIdentity(spot);
-                string aliasNorm = MSFSBlindAssist.Services.GateSearchFilter.NormalizeGateName(onName);
-                if (!string.IsNullOrEmpty(aliasNorm)
-                    && !string.Equals(aliasNorm, spotNorm, StringComparison.Ordinal)
-                    && !spot.Aliases.Any(a => string.Equals(
-                        MSFSBlindAssist.Services.GateSearchFilter.NormalizeGateName(a), aliasNorm, StringComparison.Ordinal)))
-                {
-                    spot.Aliases.Add(onName);
-                }
-            }
-        }
+        // Identity-matched, alias-ONLY enrichment (pure GateAliasResolver — probe-tested). Recomputed
+        // from scratch each call → idempotent; never touches Name / position / selectability.
+        foreach (var spot in spots)
+            spot.Aliases = GateAliasResolver.ResolveAliases(spot, online);
     }
 
     // ── The enriching member ────────────────────────────────────────────────

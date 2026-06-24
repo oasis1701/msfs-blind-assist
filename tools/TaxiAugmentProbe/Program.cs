@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.TaxiAugment;
 int failures = 0;
 void Check(bool ok, string label){ Console.WriteLine((ok?"PASS ":"FAIL ")+label); if(!ok) failures++; }
@@ -275,15 +276,75 @@ Check(TaxiDataMerger.NormalizeTaxiwayName("") == "",
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Gate {n} display: empty-name gate-type spots read "Gate {n}"; non-gate keeps "Spot {n}".
+// Task 1: StandId parser
 // ──────────────────────────────────────────────────────────────────────
+Check(StandId.Parse("Gate 11B") is { Letter: "", Number: 11, Suffix: "B", HasNumber: true }, "StandId: 'Gate 11B' -> (,11,B)");
+Check(StandId.Parse("A51")      is { Letter: "A", Number: 51, HasNumber: true },              "StandId: 'A51' -> (A,51)");
+Check(StandId.Parse("N 1")      is { Letter: "N", Number: 1,  HasNumber: true },              "StandId: 'N 1' -> (N,1)");
+Check(StandId.Parse("51")       is { Letter: "", Number: 51, HasNumber: true },               "StandId: '51' -> (,51)");
+Check(StandId.Parse("53A")      is { Letter: "", Number: 53, Suffix: "A", HasNumber: true },  "StandId: '53A' -> (,53,A)");
+Check(StandId.Parse("F211")     is { Letter: "F", Number: 211, HasNumber: true },             "StandId: 'F211' -> (F,211)");
+Check(StandId.Parse("P 209")    is { Letter: "P", Number: 209, HasNumber: true },             "StandId: 'P 209' -> (P,209)");
+Check(StandId.Parse("").HasNumber == false,                                                   "StandId: '' -> no number");
+Check(StandId.Parse("N") is { Letter: "N", HasNumber: false },                                "StandId: 'N' -> letter N, no number");
+
+// ──────────────────────────────────────────────────────────────────────
+// Task 2: GateAliasResolver — identity-matched, alias-only, idempotent
+// ──────────────────────────────────────────────────────────────────────
+ParkingSpot Gate(string name, int num, int type = 11, string suffix = "")
+    => new ParkingSpot { Name = name, Number = num, Type = type, Suffix = suffix, Latitude = 45.0, Longitude = -73.0 };
+
+// Online stands (coords irrelevant here — distance check disabled with maxMeters: 0).
+var onlineStands = new List<(string, double, double)>
 {
-    var gDisp = new ParkingSpot { Name = "", Number = 51, Type = 13 /*Gate Heavy*/ };
-    Check(gDisp.Describe().StartsWith("Gate 51"), $"Display: empty-name gate -> 'Gate 51' (got '{gDisp.Describe()}')");
-    Check(!gDisp.Describe().Contains("Spot"),     "Display: gate type never says 'Spot'");
-    var rDisp = new ParkingSpot { Name = "", Number = 7, Type = 6 /*Ramp Cargo*/ };
-    Check(rDisp.Describe().StartsWith("Spot 7"),  $"Display: non-gate empty-name keeps 'Spot 7' (got '{rDisp.Describe()}')");
-}
+    ("Gate 11B", 45.0, -73.0), ("Gate 15", 45.0, -73.0), ("51", 45.0, -73.0),
+    ("A51", 45.0, -73.0), ("53A", 45.0, -73.0), ("S3", 45.0, -73.0), ("N3", 45.0, -73.0),
+};
+
+var a15 = GateAliasResolver.ResolveAliases(Gate("", 15), onlineStands, 0);
+Check(a15.Count == 0, $"Resolver: gate 15 gets NO alias — '11B' rejected (number mismatch), '15' restatement (got [{string.Join(",", a15)}])");
+
+var a51 = GateAliasResolver.ResolveAliases(Gate("", 51), onlineStands, 0);
+Check(a51.Contains("A51"), $"Resolver: gate 51 aliases 'A51' (concourse prefix) (got [{string.Join(",", a51)}])");
+Check(!a51.Contains("51"), "Resolver: gate 51 does NOT alias the bare '51' restatement");
+
+var a53 = GateAliasResolver.ResolveAliases(Gate("", 53), onlineStands, 0);
+Check(a53.Contains("53A"), $"Resolver: gate 53 aliases MARS '53A' (got [{string.Join(",", a53)}])");
+
+var aN3 = GateAliasResolver.ResolveAliases(Gate("N", 3), onlineStands, 0);
+Check(!aN3.Contains("S3"), "Resolver: gate 'N 3' never adopts 'S3' (letter disagreement)");
+Check(aN3.Count == 0, $"Resolver: gate 'N 3' gets no alias ('N3' is a restatement) (got [{string.Join(",", aN3)}])");
+
+var r1 = GateAliasResolver.ResolveAliases(Gate("", 51), onlineStands, 0);
+var r2 = GateAliasResolver.ResolveAliases(Gate("", 51), onlineStands, 0);
+Check(r1.SequenceEqual(r2), "Resolver: idempotent — two runs identical");
+
+var farStands = new List<(string, double, double)> { ("A51", 46.0, -73.0) }; // ~111 km away
+Check(GateAliasResolver.ResolveAliases(Gate("", 51), farStands, 150).Count == 0, "Resolver: same-number stand >150 m away rejected as data error");
+
+// ──────────────────────────────────────────────────────────────────────
+// Task 4: ParkingSpot display — 'Gate {n}' identity + '(online)' alias tag
+// ──────────────────────────────────────────────────────────────────────
+var disp51 = new ParkingSpot { Name = "", Number = 51, Type = 13 /*Gate Heavy*/, HasJetway = true };
+Check(disp51.Describe().StartsWith("Gate 51"), $"Display: empty-name gate -> 'Gate 51' (got '{disp51.Describe()}')");
+Check(!disp51.Describe().Contains("Spot"),      "Display: gate type never says 'Spot'");
+
+var rampSpot = new ParkingSpot { Name = "", Number = 7, Type = 6 /*Ramp Cargo*/ };
+Check(rampSpot.Describe().StartsWith("Spot 7"), $"Display: non-gate empty-name keeps 'Spot 7' (got '{rampSpot.Describe()}')");
+
+disp51.Aliases.Add("A51");
+Check(disp51.ToString().Contains("A51") && disp51.ToString().Contains("(online)"),
+      $"Display: alias tagged '(online)' (got '{disp51.ToString()}')");
+
+// ──────────────────────────────────────────────────────────────────────
+// Task 5: GateSearchFilter — alias-aware
+// ──────────────────────────────────────────────────────────────────────
+var search51 = new ParkingSpot { Name = "", Number = 51, Type = 13 };
+search51.Aliases.Add("A51");
+Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(search51, "A51"), "Search: 'A51' matches gate 51 via alias");
+Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(search51, "51"),  "Search: '51' matches gate 51 via identity");
+Check(!MSFSBlindAssist.Services.GateSearchFilter.Matches(new ParkingSpot { Name = "", Number = 15, Type = 10 }, "11B"),
+      "Search: '11B' does NOT match gate 15");
 
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;

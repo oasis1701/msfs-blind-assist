@@ -190,7 +190,7 @@ public class ParkingSpot
         // identity, unaffected by the display string). Dropdowns that list aliases as their own
         // entries call Describe() instead to avoid a redundant/nested suffix.
         if (Aliases.Count > 0)
-            d += " (also " + string.Join(", ", Aliases) + ")";
+            d += ", also " + string.Join(", ", Aliases) + " (online)";
         return d;
     }
 }
