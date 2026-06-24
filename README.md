@@ -83,6 +83,7 @@ Full accessibility support for the PMDG 777.
 - Accessible EFB (Electronic Flight Bag), opened with Shift+T — Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance and Manuals.
 - Cockpit furniture panels (Cockpit section): armrests, foot and shoulder heaters, sun visors, sliding windows with handle and clipboard, window shades, cockpit and crew-rest doors, cockpit curtain, and all four worktables.
 - Using the power of Google Gemini to read PMDG displays. Requires the user's own free AIStudio API key.
+- System Display synoptic read-outs (Displays section → System Display) — standardized status pages organized like the real Display Select Panel synoptics (Engine, Status, Electrical, Hydraulics, Fuel, Air, Doors, Gear, Flight Controls), read live from the SDK broadcast and stock simulator data with no display OCR required.
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 
 ### PMDG Boeing 737 (NG3)
