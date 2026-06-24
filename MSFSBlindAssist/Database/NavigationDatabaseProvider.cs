@@ -116,10 +116,16 @@ public class NavigationDatabaseProvider
         {
             connection.Open();
 
+            // Exclude SIDs (suffix 'D') and STARs (suffix 'A'). Circling approaches (VOR-A, NDB-A, …)
+            // also carry suffix 'A' but are real approaches — they are distinguished from STARs by
+            // having a missed-approach leg, so keep those.
             string sql = @"SELECT approach_id, type, runway_name, suffix
                           FROM approach
                           WHERE UPPER(airport_ident) = UPPER(@icao)
-                          AND (suffix IS NULL OR suffix NOT IN ('A', 'D'))
+                          AND suffix IS NOT 'D'
+                          AND NOT (suffix = 'A' AND NOT EXISTS (
+                                SELECT 1 FROM approach_leg l
+                                WHERE l.approach_id = approach.approach_id AND l.is_missed = 1))
                           ORDER BY runway_name, type";
 
             using (var command = new SqliteCommand(sql, connection))
@@ -203,10 +209,14 @@ public class NavigationDatabaseProvider
         {
             connection.Open();
 
+            // suffix 'A' is STARs — but circling approaches (VOR-A, etc.) also use 'A'; exclude those
+            // (they have a missed-approach leg) so they don't pollute the STAR list.
             string sql = @"SELECT DISTINCT fix_ident, type
                           FROM approach
                           WHERE UPPER(airport_ident) = UPPER(@icao)
                           AND suffix = 'A'
+                          AND NOT EXISTS (SELECT 1 FROM approach_leg l
+                                          WHERE l.approach_id = approach.approach_id AND l.is_missed = 1)
                           ORDER BY fix_ident";
 
             using (var command = new SqliteCommand(sql, connection))
@@ -291,12 +301,21 @@ public class NavigationDatabaseProvider
             // If "ALL" is selected, show all unique SIDs at the airport (deduplicated by fix_ident)
             if (runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
-                sql = @"SELECT MIN(approach_id) as approach_id, fix_ident, type
-                          FROM approach
-                          WHERE UPPER(airport_ident) = UPPER(@icao)
-                          AND suffix = 'D'
-                          GROUP BY fix_ident, type
-                          ORDER BY fix_ident";
+                // A named SID has a separate `approach` row per runway transition. The old
+                // MIN(approach_id) pick loaded an ARBITRARY runway's legs under "ALL". Prefer the
+                // runway-independent row (empty runway_name) per SID name instead.
+                sql = @"SELECT a.approach_id, a.fix_ident, a.type
+                          FROM approach a
+                          WHERE UPPER(a.airport_ident) = UPPER(@icao)
+                          AND a.suffix = 'D'
+                          AND a.approach_id = (
+                                SELECT a2.approach_id FROM approach a2
+                                WHERE a2.airport_ident = a.airport_ident AND a2.suffix = 'D'
+                                  AND a2.fix_ident IS a.fix_ident
+                                ORDER BY (CASE WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 0 ELSE 1 END),
+                                         a2.approach_id
+                                LIMIT 1)
+                          ORDER BY a.fix_ident";
             }
             else
             {
@@ -396,21 +415,33 @@ public class NavigationDatabaseProvider
             // If "ALL" is selected, show all unique STARs at the airport (deduplicated by fix_ident)
             if (runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
-                sql = @"SELECT MIN(approach_id) as approach_id, fix_ident, type
-                          FROM approach
-                          WHERE UPPER(airport_ident) = UPPER(@icao)
-                          AND suffix = 'A'
-                          GROUP BY fix_ident, type
-                          ORDER BY fix_ident";
+                // Prefer the runway-independent STAR body per name (see GetSIDsForRunway), and exclude
+                // circling approaches that share suffix 'A' (they have a missed-approach leg).
+                sql = @"SELECT a.approach_id, a.fix_ident, a.type
+                          FROM approach a
+                          WHERE UPPER(a.airport_ident) = UPPER(@icao)
+                          AND a.suffix = 'A'
+                          AND NOT EXISTS (SELECT 1 FROM approach_leg l
+                                          WHERE l.approach_id = a.approach_id AND l.is_missed = 1)
+                          AND a.approach_id = (
+                                SELECT a2.approach_id FROM approach a2
+                                WHERE a2.airport_ident = a.airport_ident AND a2.suffix = 'A'
+                                  AND a2.fix_ident IS a.fix_ident
+                                ORDER BY (CASE WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 0 ELSE 1 END),
+                                         a2.approach_id
+                                LIMIT 1)
+                          ORDER BY a.fix_ident";
             }
             else
             {
-                // Show STARs for specific runway
+                // Show STARs for specific runway (exclude circling approaches sharing suffix 'A')
                 sql = @"SELECT approach_id, fix_ident, type, runway_name
                           FROM approach
                           WHERE UPPER(airport_ident) = UPPER(@icao)
                           AND suffix = 'A'
                           AND UPPER(runway_name) = UPPER(@runwayName)
+                          AND NOT EXISTS (SELECT 1 FROM approach_leg l
+                                          WHERE l.approach_id = approach.approach_id AND l.is_missed = 1)
                           ORDER BY fix_ident";
             }
 
@@ -656,32 +687,42 @@ public class NavigationDatabaseProvider
     private WaypointFix? ParseLegToWaypoint(SqliteDataReader reader, bool isApproachLeg = true)
     {
         string? fixIdent = SafeGetString(reader, "fix_ident");
-        if (string.IsNullOrEmpty(fixIdent))
-            return null;
-
         string? fixRegion = SafeGetString(reader, "fix_region");
+        string? fixType = SafeGetString(reader, "fix_type");
+        string? fixAirport = SafeGetString(reader, "fix_airport_ident");
 
-        // Lookup coordinates from waypoint table
+        // The ARINC 424 path/terminator (IF, TF, CF, DF, CA, VA, CI, VM, RF, HM, …) is stored in `type`.
+        string legType = SafeGetString(reader, "type") ?? "Fix";
+        string turnDir = SafeGetString(reader, "turn_direction") ?? "";
+        double? course = SafeGetNullableDouble(reader, "course");
+
+        double? alt1 = SafeGetNullableDouble(reader, "altitude1");
+        double? alt2 = SafeGetNullableDouble(reader, "altitude2");
+        string? altDesc = SafeGetString(reader, "alt_descriptor");
+
+        // Many legs (CA/VA "to altitude", VM/FM vectors, CI/VI intercept, CD/VD/CR/VR) intentionally
+        // have NO terminating fix. Previously these were dropped, silently removing the initial-climb
+        // segment of most SIDs and the heading legs of most missed approaches. Keep them with a
+        // synthesized, human-readable maneuver label instead.
+        bool fixless = string.IsNullOrEmpty(fixIdent);
+
+        // Resolve coordinates. The `waypoint` table only holds enroute/terminal waypoints, so VOR/NDB,
+        // runway-threshold (RWxx) and airport fixes were left at (0,0) — corrupting distance/bearing.
         double latitude = 0.0;
         double longitude = 0.0;
-
-        var waypointCoords = GetWaypoint(fixIdent, fixRegion);
-        if (waypointCoords != null)
-        {
-            latitude = waypointCoords.Latitude;
-            longitude = waypointCoords.Longitude;
-        }
+        if (!fixless)
+            ResolveFixCoordinates(fixIdent!, fixRegion, fixType, fixAirport, out latitude, out longitude);
 
         var waypoint = new WaypointFix
         {
-            Ident = fixIdent,
+            Ident = fixless ? BuildManeuverLabel(legType, course, turnDir, alt1) : fixIdent!,
             Region = fixRegion ?? "",
             Latitude = latitude,
             Longitude = longitude,
-            Type = SafeGetString(reader, "type") ?? "Fix",
+            Type = legType,
             IsFlyover = SafeGetInt(reader, "is_flyover") == 1,
-            TurnDirection = SafeGetString(reader, "turn_direction") ?? "",
-            Course = SafeGetNullableDouble(reader, "course"),
+            TurnDirection = turnDir,
+            Course = course,
             Distance = SafeGetNullableDouble(reader, "distance"),
             RNP = SafeGetNullableDouble(reader, "rnp"),
             VerticalAngle = SafeGetNullableDouble(reader, "vertical_angle"),
@@ -689,20 +730,16 @@ public class NavigationDatabaseProvider
             Theta = SafeGetNullableDouble(reader, "theta"),
             Rho = SafeGetNullableDouble(reader, "rho"),
             IsTrueCourse = SafeGetInt(reader, "is_true_course") == 1,
-            ArincDescCode = SafeGetString(reader, "approach_fix_type") ?? "",  // Use clean single-letter codes
+            ArincDescCode = SafeGetString(reader, "arinc_descr_code") ?? "",   // the real ARINC route descriptor
             ApproachFixType = SafeGetString(reader, "approach_fix_type") ?? "",
             SpeedLimitType = SafeGetString(reader, "speed_limit_type") ?? "",
             IsMissedApproach = isApproachLeg && SafeGetInt(reader, "is_missed") == 1,  // Only in approach_leg
-            FixType = SafeGetString(reader, "fix_type") ?? "",
-            FixAirportIdent = SafeGetString(reader, "fix_airport_ident") ?? "",
+            FixType = fixType ?? "",
+            FixAirportIdent = fixAirport ?? "",
             RecommendedFixIdent = SafeGetString(reader, "recommended_fix_ident") ?? ""
         };
 
         // Parse altitude restrictions
-        double? alt1 = SafeGetNullableDouble(reader, "altitude1");
-        double? alt2 = SafeGetNullableDouble(reader, "altitude2");
-        string? altDesc = SafeGetString(reader, "alt_descriptor");
-
         if (alt1.HasValue || alt2.HasValue)
         {
             waypoint.MinAltitude = (int?)alt1;
@@ -722,6 +759,142 @@ public class NavigationDatabaseProvider
         }
 
         return waypoint;
+    }
+
+    /// <summary>
+    /// Resolves a fix's coordinates across the waypoint / VOR / NDB / runway-end / airport tables.
+    /// The `waypoint` table only holds enroute/terminal waypoints; navaid, runway-threshold (RWxx) and
+    /// airport fixes live in their own tables, so a waypoint-only lookup left them at (0,0).
+    /// </summary>
+    private void ResolveFixCoordinates(string ident, string? region, string? fixType, string? fixAirport,
+                                       out double latitude, out double longitude)
+    {
+        latitude = 0.0;
+        longitude = 0.0;
+
+        var wp = GetWaypoint(ident, region);
+        if (wp != null && !(wp.Latitude == 0.0 && wp.Longitude == 0.0))
+        {
+            latitude = wp.Latitude;
+            longitude = wp.Longitude;
+            return;
+        }
+
+        switch ((fixType ?? "").ToUpperInvariant())
+        {
+            case "V": if (TryGetNavaidCoords("vor", ident, region, out latitude, out longitude)) return; break;
+            case "N": if (TryGetNavaidCoords("ndb", ident, region, out latitude, out longitude)) return; break;
+            case "R": if (TryGetRunwayEndCoords(fixAirport, ident, out latitude, out longitude)) return; break;
+            case "A": if (TryGetAirportCoords(ident, out latitude, out longitude)) return; break;
+        }
+
+        // Last resort when fix_type is blank: try navaid tables by ident.
+        if (TryGetNavaidCoords("vor", ident, region, out latitude, out longitude)) return;
+        if (TryGetNavaidCoords("ndb", ident, region, out latitude, out longitude)) return;
+    }
+
+    private bool TryGetNavaidCoords(string table, string ident, string? region, out double latitude, out double longitude)
+    {
+        latitude = 0.0;
+        longitude = 0.0;
+        // `table` is a hardcoded literal ("vor" / "ndb"); ident/region are parameterized.
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        string sql = $"SELECT lonx, laty FROM {table} WHERE UPPER(ident) = UPPER(@ident)";
+        if (!string.IsNullOrEmpty(region)) sql += " AND UPPER(region) = UPPER(@region)";
+        sql += " LIMIT 1";
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@ident", ident);
+        if (!string.IsNullOrEmpty(region)) cmd.Parameters.AddWithValue("@region", region);
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read() && !reader.IsDBNull(0) && !reader.IsDBNull(1))
+        {
+            longitude = reader.GetDouble(0);
+            latitude = reader.GetDouble(1);
+            return !(latitude == 0.0 && longitude == 0.0);
+        }
+        return false;
+    }
+
+    private bool TryGetRunwayEndCoords(string? airportIdent, string runwayFixIdent, out double latitude, out double longitude)
+    {
+        latitude = 0.0;
+        longitude = 0.0;
+        if (string.IsNullOrEmpty(airportIdent)) return false;
+        // Runway fixes are stored as "RWxx" (e.g. RW06L); the runway_end name is the bare designator.
+        string runwayName = runwayFixIdent.StartsWith("RW", StringComparison.OrdinalIgnoreCase)
+            ? runwayFixIdent.Substring(2) : runwayFixIdent;
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        string sql = @"SELECT re.lonx, re.laty
+                       FROM runway_end re
+                       JOIN runway r ON re.runway_end_id = r.primary_end_id OR re.runway_end_id = r.secondary_end_id
+                       JOIN airport a ON r.airport_id = a.airport_id
+                       WHERE (UPPER(a.icao) = UPPER(@apt) OR UPPER(a.ident) = UPPER(@apt))
+                         AND UPPER(re.name) = UPPER(@rwy)
+                       LIMIT 1";
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@apt", airportIdent);
+        cmd.Parameters.AddWithValue("@rwy", runwayName);
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read() && !reader.IsDBNull(0) && !reader.IsDBNull(1))
+        {
+            longitude = reader.GetDouble(0);
+            latitude = reader.GetDouble(1);
+            return !(latitude == 0.0 && longitude == 0.0);
+        }
+        return false;
+    }
+
+    private bool TryGetAirportCoords(string ident, out double latitude, out double longitude)
+    {
+        latitude = 0.0;
+        longitude = 0.0;
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        string sql = "SELECT lonx, laty FROM airport WHERE UPPER(icao) = UPPER(@id) OR UPPER(ident) = UPPER(@id) LIMIT 1";
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", ident);
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read() && !reader.IsDBNull(0) && !reader.IsDBNull(1))
+        {
+            longitude = reader.GetDouble(0);
+            latitude = reader.GetDouble(1);
+            return !(latitude == 0.0 && longitude == 0.0);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Builds a human-readable label for a path/terminator leg that has no terminating fix
+    /// (CA/VA to-altitude, VM/FM vectors, CI/VI intercept, CD/VD to-DME, CR/VR to-radial).
+    /// </summary>
+    private static string BuildManeuverLabel(string legType, double? course, string turnDir, double? alt1)
+    {
+        legType = (legType ?? "").ToUpperInvariant();
+        string heading = legType.StartsWith("V") ? "heading" : "course";
+        string crs = course.HasValue ? $"{course.Value:F0}°" : "";
+        string turn = turnDir == "L" ? ", left turn" : turnDir == "R" ? ", right turn" : "";
+        char term = legType.Length > 1 ? legType[1] : ' ';
+
+        static string Cap(string s) => s.Length > 0 ? char.ToUpper(s[0]) + s.Substring(1) : s;
+
+        switch (term)
+        {
+            case 'A': // to altitude
+                string alt = alt1.HasValue ? $"{alt1.Value:F0} feet" : "altitude";
+                return string.IsNullOrEmpty(crs) ? $"Climb to {alt}{turn}" : $"Climb {heading} {crs} to {alt}{turn}";
+            case 'I': // to intercept
+                return $"{Cap(heading)} {crs} to intercept{turn}".Trim();
+            case 'M': // to manual termination (vectors)
+                return $"{Cap(heading)} {crs}, vectors{turn}".Trim();
+            case 'D': // to DME distance
+                return $"{Cap(heading)} {crs} to DME{turn}".Trim();
+            case 'R': // to radial
+                return $"{Cap(heading)} {crs} to radial{turn}".Trim();
+            default:
+                return string.IsNullOrEmpty(crs) ? $"{legType} leg{turn}".Trim() : $"{Cap(heading)} {crs}{turn}".Trim();
+        }
     }
 
     /// <summary>

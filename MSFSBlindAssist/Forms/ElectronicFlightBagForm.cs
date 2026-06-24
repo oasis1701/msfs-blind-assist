@@ -701,6 +701,7 @@ public partial class ElectronicFlightBagForm : Form
 
         // Airport Lookup tab
         airportLookupIcaoTextBox.TextChanged += AirportLookupIcaoTextBox_TextChanged;
+        airportLookupRunwaysListBox.SelectedIndexChanged += AirportLookupRunwaysListBox_SelectedIndexChanged;
         airportLookupLoadButton.Click += AirportLookupLoadButton_Click;
 
         // Flight plan manager events
@@ -1708,6 +1709,9 @@ public partial class ElectronicFlightBagForm : Form
     {
         try
         {
+            // Show airport info as soon as a complete ICAO is entered.
+            airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
+
             var runways = _flightPlanManager.GetRunways(icao);
             airportLookupRunwaysListBox.Items.Clear();
 
@@ -1718,12 +1722,34 @@ public partial class ElectronicFlightBagForm : Form
 
             if (runways.Count > 0)
             {
+                // Selecting index 0 raises SelectedIndexChanged, which fills the runway info box.
                 airportLookupRunwaysListBox.SelectedIndex = 0;
             }
+            else
+            {
+                runwayInfoTextBox.Text = "No runways found for this airport.";
+            }
         }
-        catch
+        catch (Exception ex)
         {
             airportLookupRunwaysListBox.Items.Clear();
+            runwayInfoTextBox.Text = $"Error loading runways: {ex.Message}";
+        }
+    }
+
+    private void AirportLookupRunwaysListBox_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        string icao = airportLookupIcaoTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(icao)) return;
+        if (airportLookupRunwaysListBox.SelectedItem is not Runway selectedRunway) return;
+
+        try
+        {
+            runwayInfoTextBox.Text = GetRunwayDetailedInfo(icao, selectedRunway.RunwayID);
+        }
+        catch (Exception ex)
+        {
+            runwayInfoTextBox.Text = $"Error loading runway information: {ex.Message}";
         }
     }
 
@@ -1967,9 +1993,17 @@ public partial class ElectronicFlightBagForm : Form
                 return $"Airport {icao} not found.";
             }
 
-            // Query runway with runway_end join
+            // Query runway with runway_end join.
+            // runway and runway_end BOTH have heading/altitude/lonx/laty; with `r.*, re.*` those
+            // ambiguous names resolved to the runway-CENTER (r) values, so a secondary end (e.g. 24L)
+            // showed the primary end's heading (off by 180°). Alias the runway-end values explicitly.
             var sql = @"
-                SELECT r.*, re.*, a.mag_var
+                SELECT r.*, re.*,
+                       re.heading  AS end_heading,
+                       re.altitude AS end_altitude,
+                       re.lonx     AS end_lonx,
+                       re.laty     AS end_laty,
+                       a.mag_var
                 FROM runway r
                 JOIN runway_end re ON re.runway_end_id = r.primary_end_id OR re.runway_end_id = r.secondary_end_id
                 JOIN airport a ON r.airport_id = a.airport_id
@@ -2073,18 +2107,18 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine($"  Shoulder:             {reader["shoulder"]?.ToString() ?? "N/A"}");
                         sb.AppendLine();
 
-                        // HEADINGS
+                        // HEADINGS (use the selected runway END's heading, not the runway-center value)
                         var magVar = Convert.ToDouble(reader["mag_var"] ?? 0.0);
-                        var heading = Convert.ToDouble(reader["heading"] ?? 0.0);
+                        var heading = Convert.ToDouble(reader["end_heading"] ?? 0.0);
                         sb.AppendLine("HEADINGS:");
                         sb.AppendLine($"  True Heading:         {heading:F1}°");
                         sb.AppendLine($"  Magnetic Heading:     {(heading - magVar):F1}°");
                         sb.AppendLine();
 
-                        // COORDINATES
+                        // COORDINATES (threshold of the selected runway end)
                         sb.AppendLine("COORDINATES:");
-                        sb.AppendLine($"  Longitude:            {reader["lonx"]}");
-                        sb.AppendLine($"  Latitude:             {reader["laty"]}");
+                        sb.AppendLine($"  Longitude:            {reader["end_lonx"]}");
+                        sb.AppendLine($"  Latitude:             {reader["end_laty"]}");
                         sb.AppendLine();
 
                         // THRESHOLD DATA
@@ -2097,7 +2131,7 @@ public partial class ElectronicFlightBagForm : Form
                         // PATTERN ALTITUDE
                         sb.AppendLine("PATTERN:");
                         sb.AppendLine($"  Pattern Altitude:     {reader["pattern_altitude"]} ft");
-                        sb.AppendLine($"  Altitude (MSL):       {reader["altitude"]} ft");
+                        sb.AppendLine($"  Altitude (MSL):       {reader["end_altitude"]} ft");
                         sb.AppendLine();
 
                         // LIGHTING
