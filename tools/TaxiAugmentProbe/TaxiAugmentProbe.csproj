@@ -19,6 +19,8 @@
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs" Link="Linked\%(Filename)%(Extension)" />
     <!-- StandId identity parser (Task 1) -->
     <Compile Include="..\..\MSFSBlindAssist\Services\StandId.cs" Link="Linked\%(Filename)%(Extension)" />
+    <!-- GateSearchFilter (Task 5) -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\GateSearchFilter.cs" Link="Linked\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />

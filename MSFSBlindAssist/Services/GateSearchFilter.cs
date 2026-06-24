@@ -24,13 +24,17 @@ public static class GateSearchFilter
     public static bool Matches(ParkingSpot s, string? query)
     {
         string q = Normalize(query);
-        return q.Length == 0 || NormalizeIdentity(s).Contains(q, StringComparison.Ordinal);
+        if (q.Length == 0) return true;
+        if (NormalizeIdentity(s).Contains(q, StringComparison.Ordinal)) return true;
+        foreach (var a in s.Aliases)
+            if (Normalize(a).Contains(q, StringComparison.Ordinal)) return true;
+        return false;
     }
 
     public static List<ParkingSpot> Filter(IEnumerable<ParkingSpot> spots, string? query)
     {
         string q = Normalize(query);
         if (q.Length == 0) return spots.ToList();
-        return spots.Where(s => NormalizeIdentity(s).Contains(q, StringComparison.Ordinal)).ToList();
+        return spots.Where(s => Matches(s, query)).ToList();
     }
 }

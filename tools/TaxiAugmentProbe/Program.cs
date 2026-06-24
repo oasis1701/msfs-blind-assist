@@ -232,5 +232,15 @@ disp51.Aliases.Add("A51");
 Check(disp51.ToString().Contains("A51") && disp51.ToString().Contains("(online)"),
       $"Display: alias tagged '(online)' (got '{disp51.ToString()}')");
 
+// ──────────────────────────────────────────────────────────────────────
+// Task 5: GateSearchFilter — alias-aware
+// ──────────────────────────────────────────────────────────────────────
+var search51 = new ParkingSpot { Name = "", Number = 51, Type = 13 };
+search51.Aliases.Add("A51");
+Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(search51, "A51"), "Search: 'A51' matches gate 51 via alias");
+Check(MSFSBlindAssist.Services.GateSearchFilter.Matches(search51, "51"),  "Search: '51' matches gate 51 via identity");
+Check(!MSFSBlindAssist.Services.GateSearchFilter.Matches(new ParkingSpot { Name = "", Number = 15, Type = 10 }, "11B"),
+      "Search: '11B' does NOT match gate 15");
+
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;
