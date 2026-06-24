@@ -90,6 +90,12 @@ public class TaxiRouter
             return FallbackShortest(startNodeId, endNodeId, reason);
         }
 
+        // Set when the LAST cleared taxiway is honored as the route terminus (it holds short of /
+        // branches off the destination); the final "to destination" leg below is then skipped so it
+        // can't bypass the cleared taxiway. Declared here because a SINGLE-taxiway sequence is itself
+        // the last taxiway and sets this in the step-1 path below.
+        bool lastTaxiwayTerminal = false;
+
         // Determine the target for the first taxiway
         string? secondTaxiway = taxiwaySequence.Count > 1 ? taxiwaySequence[1] : null;
         int firstTarget;
@@ -125,6 +131,25 @@ public class TaxiRouter
         {
             firstTarget = FindNearestNodeOnTaxiwayToTarget(endNodeId, taxiwaySequence[0], distFromFinalDest);
             if (firstTarget == -1) firstTarget = endNodeId;
+
+            // A SINGLE cleared taxiway is also the LAST. If its nearest-to-destination node is the
+            // start node (no traversal — the destination node sits back near where we entered), force
+            // traversal to its FAR end and make it the terminus, skipping the bypass leg. Otherwise
+            // the step no-ops and the final unconstrained leg deviates off the cleared taxiway — the
+            // aircraft, correctly on it, then reads as off-route (LFPG recalc "R1" to 26R: R1's
+            // nearest-to-26R node is the R/R1 junction it starts on).
+            if (firstTarget == startNodeId)
+            {
+                int far = FindNodeOnTaxiwayFarthestFromNode(
+                    taxiwaySequence[0], startNodeId, _graph.Nodes[startNodeId].ComponentId);
+                if (far != -1 && far != startNodeId)
+                {
+                    firstTarget = far;
+                    lastTaxiwayTerminal = true;
+                    Log($"[TaxiRouter] Single taxiway '{taxiwaySequence[0]}' branches off the destination — " +
+                        $"routing along it to {far} (no bypass leg)");
+                }
+            }
         }
 
         // Try each candidate entry point
@@ -200,11 +225,6 @@ public class TaxiRouter
             Log($"[TaxiRouter] Step 1 bridge OK: {bridge.Count} nodes across runway");
         }
 
-        // When the LAST cleared taxiway is honored as the route terminus (it holds short of /
-        // branches off the destination rather than leading onto it), skip the final unconstrained
-        // "to destination" leg below — that leg would bypass the cleared taxiway onto the runway.
-        bool lastTaxiwayTerminal = false;
-
         // Step 2: For remaining taxiways in sequence
         for (int i = 1; i < taxiwaySequence.Count; i++)
         {
@@ -263,16 +283,25 @@ public class TaxiRouter
                 // and make THAT the route terminus — do not append the bypass leg.
                 if (targetNode == currentNode && taxiwaySequence.Count > 1)
                 {
+                    int comp = _graph.Nodes[currentNode].ComponentId;
                     var destNode = _graph.Nodes[endNodeId];
+                    // First try the node nearest the destination POSITION — correct when the last
+                    // taxiway ends AT the runway (EIDW "…N, N2" to 28R → N2's hold-short end).
                     int holdEnd = FindNodeOnTaxiwayNearestPosition(
-                        currentTaxiway, destNode.Latitude, destNode.Longitude,
-                        _graph.Nodes[currentNode].ComponentId);
+                        currentTaxiway, destNode.Latitude, destNode.Longitude, comp);
+                    // If that is STILL the entry, the destination node sits back near the entry rather
+                    // than at the taxiway's far end (LFPG "…R, R1" to 26R: the 26R node is closer to the
+                    // R/R1 junction than to R1's far end). Fall back to the node FARTHEST along the
+                    // cleared taxiway from the entry so it is still traversed — otherwise the step
+                    // no-ops and the unconstrained final leg deviates off the clearance.
+                    if (holdEnd == currentNode || holdEnd == -1)
+                        holdEnd = FindNodeOnTaxiwayFarthestFromNode(currentTaxiway, currentNode, comp);
                     if (holdEnd != -1 && holdEnd != currentNode)
                     {
                         targetNode = holdEnd;
                         lastTaxiwayTerminal = true;
                         Log($"[TaxiRouter] Last taxiway '{currentTaxiway}' branches off the destination — " +
-                            $"routing to its hold-short end {holdEnd} (no bypass leg)");
+                            $"routing along it to {holdEnd} (no bypass leg)");
                     }
                 }
             }
@@ -427,6 +456,30 @@ public class TaxiRouter
             if (node.ComponentId != requiredComponent) continue;
             double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, lat, lon);
             if (d < bestM) { bestM = d; best = nodeId; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
+    /// that is GEOGRAPHICALLY FARTHEST from <paramref name="fromNodeId"/>, or -1 if none. Used to honor
+    /// a last cleared taxiway by traversing it to its far end when its nearest-to-destination node
+    /// degenerates to the entry we arrived on (the destination node sits back near that entry).
+    /// </summary>
+    private int FindNodeOnTaxiwayFarthestFromNode(string taxiwayName, int fromNodeId, int requiredComponent)
+    {
+        if (!_graph.Nodes.TryGetValue(fromNodeId, out var from)) return -1;
+        int best = -1;
+        double bestM = -1;
+        foreach (var kvp in _graph.Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var node = _graph.Nodes[nodeId];
+            if (node.ComponentId != requiredComponent) continue;
+            double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, from.Latitude, from.Longitude);
+            if (d > bestM) { bestM = d; best = nodeId; }
         }
         return best;
     }
