@@ -77,36 +77,42 @@ public partial class PMDG777Definition
         ["TOTAL AIR TEMPERATURE"] = "celsius", ["AMBIENT TEMPERATURE"] = "celsius"
     };
 
+    // Row formatters — STATIC so the compiler caches the method-group delegates. These
+    // were per-call local functions, re-allocating ~8 delegates on every PMDG777SdRows
+    // call (the 3 s auto-refresh tick AND the 9-page registration loop).
+    // One decimal place on the continuous readouts so a SUB-UNIT change is visible —
+    // integer rounding hid live movement (a reservoir at 96.9% read a static "97").
+    private static string Pct(double v) => $"{v:0.0} percent";
+    private static string V(double v) => $"{v:0.0} volts";
+    private static string Psi(double v) => $"{v:0.0} psi";
+    private static string Cdeg(double v) => $"{v:0.0} degrees C";
+    // Show weight/fuel in BOTH pounds and kilograms (1 lb = 0.45359237 kg). Applies to
+    // every pounds field across all System Display pages (Fuel Flow, Fuel Used, Gross
+    // Weight, Total Fuel, per-tank quantities) since they all route through these two.
+    private static string Lbs(double v) => $"{v:0} pounds ({v * 0.45359237:0} kg)";
+    private static string Pph(double v) => $"{v:0} pounds per hour ({v * 0.45359237:0} kg per hour)";
+    private static string GearPos(double v) => v >= 99 ? "down" : v <= 1 ? "up" : $"in transit {v:0} percent";
+    private static string DoorState(double v) => (int)Math.Round(v) switch
+    {
+        0 => "open", 1 => "closed", 2 => "closed and armed",
+        3 => "closing", 4 => "opening", _ => "unknown"
+    };
+    // Brake accumulator: the PMDG SDK needle is a 0–100 gauge-sweep value and the 777
+    // brake-accumulator gauge is 0–4000 psi full-scale, so psi = needle × 40.
+    // Live-verified 2026-06: needle 78 → 3120 psi (nominal charged accumulator ~3000 psi).
+    private static string BrakeAccumPsi(double v) => $"{v * 40:0} psi";
+
     /// <summary>Decoded rows for one synoptic page: (label, registration-key/var-name, formatter).</summary>
     private List<(string label, string var, Func<double, string> fmt)> PMDG777SdRows(int page)
     {
-        // One decimal place on the continuous readouts so a SUB-UNIT change is visible — integer
-        // rounding hid live movement (a reservoir at 96.9% read a static "97", looking stuck).
-        string Pct(double v) => $"{v:0.0} percent";
-        string Pct1(double v) => $"{v:0.0} percent";
-        string V(double v) => $"{v:0.0} volts";
-        string Psi(double v) => $"{v:0.0} psi";
-        string Cdeg(double v) => $"{v:0.0} degrees C";
-        // Show weight/fuel in BOTH pounds and kilograms (1 lb = 0.45359237 kg). Applies to every
-        // pounds field across all System Display pages (Fuel Flow, Fuel Used, Gross Weight, Total
-        // Fuel, per-tank quantities) since they all route through these two formatters.
-        string Lbs(double v) => $"{v:0} pounds ({v * 0.45359237:0} kg)";
-        string Pph(double v) => $"{v:0} pounds per hour ({v * 0.45359237:0} kg per hour)";
-        string GearPos(double v) => v >= 99 ? "down" : v <= 1 ? "up" : $"in transit {v:0} percent";
-        string DoorState(double v) => (int)Math.Round(v) switch
-        {
-            0 => "open", 1 => "closed", 2 => "closed and armed",
-            3 => "closing", 4 => "opening", _ => "unknown"
-        };
-
         var r = new List<(string, string, Func<double, string>)>();
         switch (page)
         {
             case 0: // ENG
-                r.Add(("Engine 1 N1", "TURB ENG N1:1", Pct1));
-                r.Add(("Engine 2 N1", "TURB ENG N1:2", Pct1));
-                r.Add(("Engine 1 N2", "TURB ENG N2:1", Pct1));
-                r.Add(("Engine 2 N2", "TURB ENG N2:2", Pct1));
+                r.Add(("Engine 1 N1", "TURB ENG N1:1", Pct));
+                r.Add(("Engine 2 N1", "TURB ENG N1:2", Pct));
+                r.Add(("Engine 1 N2", "TURB ENG N2:1", Pct));
+                r.Add(("Engine 2 N2", "TURB ENG N2:2", Pct));
                 r.Add(("Engine 1 EGT", "ENG EXHAUST GAS TEMPERATURE:1", Cdeg));
                 r.Add(("Engine 2 EGT", "ENG EXHAUST GAS TEMPERATURE:2", Cdeg));
                 r.Add(("Engine 1 Fuel Flow", "TURB ENG FUEL FLOW PPH:1", Pph));
@@ -179,7 +185,7 @@ public partial class PMDG777Definition
                 r.Add(("Left Gear", "GEAR LEFT POSITION", GearPos));
                 r.Add(("Center Gear", "GEAR CENTER POSITION", GearPos));
                 r.Add(("Right Gear", "GEAR RIGHT POSITION", GearPos));
-                r.Add(("Brake Accumulator", "BRAKES_BrakePressNeedle", v => $"{v * 40:0} psi"));
+                r.Add(("Brake Accumulator", "BRAKES_BrakePressNeedle", BrakeAccumPsi));
                 break;
             case 8: // F-CTL
                 r.Add(("Aileron", "AILERON LEFT DEFLECTION PCT", Pct));
@@ -257,8 +263,12 @@ public partial class PMDG777Definition
                         // PMDG SDK-broadcast fields read LIVE from the data snapshot
                         // (an OnRequest PMDGVar never lands in the cache); stock SimVars
                         // read from the cache (populated by the forceUpdate reads below).
+                        // GATE PMDG reads on IsReady: until the first CDA snapshot arrives,
+                        // GetFieldValue returns 0.0 for EVERY field (IPMDGDataManager
+                        // contract), which DoorState(0)="open" would render as "every door
+                        // open" / "0 lb" — a false readout. Treat not-ready as unknown ("--").
                         cv = _sdPmdgVars.Contains(row.var)
-                            ? dm?.GetFieldValue(row.var)
+                            ? (dm is { IsReady: true } ? dm.GetFieldValue(row.var) : (double?)null)
                             : simConnect.GetCachedVariableValue(row.var);
                     }
                     catch { cv = null; }
@@ -304,7 +314,10 @@ public partial class PMDG777Definition
     {
         if (varKey == SdPageKey)
         {
-            int pi = (int)Math.Round(value);
+            // Use _sdPage (the same source _sdContent was composed from), NOT the cached
+            // L:var value: the calc-write/read-back lags a page change, so reading `value`
+            // here could show e.g. "Fuel page" above freshly-painted Doors content.
+            int pi = _sdPage;
             string pname = _sdPageNames.TryGetValue(pi, out var pn) ? pn : $"Page {pi}";
             displayText = string.IsNullOrEmpty(_sdContent)
                 ? $"{pname} page (select a page to load its content)"

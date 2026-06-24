@@ -6590,6 +6590,13 @@ public partial class MainForm : Form
                     if (!currentAircraft.GetVariables().ContainsKey(varKey)) continue;
                     var varDef = currentAircraft.GetVariables()[varKey];
 
+                    // Only PMDG broadcast fields carry data in the data manager. Reading any
+                    // other type (LVar/SimVar/Event) returns GetFieldValue's 0.0 "unknown
+                    // field" sentinel, which force-resets the control (e.g. the System Display
+                    // page combo to page 0) and logs spurious "unknown field" lines. Non-PMDG
+                    // controls are populated via combo-creation + continuous monitoring instead.
+                    if (varDef.Type != SimVarType.PMDGVar) continue;
+
                     // Read current value from PMDG data manager using the struct field name
                     double value = dm.GetFieldValue(varDef.Name);
                     currentSimVarValues[varKey] = value;
