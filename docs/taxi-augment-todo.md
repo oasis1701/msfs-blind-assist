@@ -4,11 +4,14 @@ Tracked follow-ups for the `feat/taxi-data-augmentation` feature. The core featu
 enhancements are DONE on this branch (see CLAUDE.md "Taxi-data augmentation" + `docs/taxi-guidance.md`).
 
 ## DONE (2026-06)
-- ✅ **Gate/parking aliases** — `ParkingSpot.Aliases`; `AugmentingAirportDataProvider.GetParkingSpots`
-  collects online gate names that differ from a navdata spot name (≤30 m, normalized-dedup);
-  surfaced as labeled, selectable entries in TaxiAssistForm ("47 (GN 3 - …)" → same spot) and in
-  the gate-teleport listbox (`ParkingSpot.ToString()` appends "(also 47)"). Fixes the CYUL-class
-  case where OSM has the real gate numbers. (`Describe()` vs `ToString()` split keeps labels clean.)
+- ✅ **Gate/parking aliases — REWORKED 2026-06-23** (`docs/superpowers/specs/2026-06-23-gate-data-correctness-design.md`):
+  online stand names attach to a navdata gate as searchable `(online)`-tagged aliases via the pure
+  `GateAliasResolver` — **identity-matched** (same number + agreeing letter; `StandId` parser),
+  **alias-only / idempotent**, never overwriting the gate's `Name` / position (anti-grass). Replaces
+  the original nearest-within-30 m gate-NAME fill, which corrupted identity at dense terminals (CYUL
+  gate 15 → 'Gate 11B' from offset apt.dat ramps). Surfaced in TaxiAssistForm ("A51 (online) (Gate
+  51 …)"), the gate-teleport listbox (`ToString()` → ", also A51 (online)"), and `GateSearchFilter`.
+  Empty-name gate-type spots render `Gate {n}`; unreachable stands marked `(no taxi route)`.
 - ✅ **Self-describing taxiway alias labels** — dropdown shows "B (HAWKER)" (was bare "B"); exact
   resolution via `TaxiGraph.AliasDisplayToCanonical`. Tested in `tools/ProgressiveTaxiProbe`.
 - ✅ **In-dialog enable checkbox + visible ODbL attribution** — Taxi Guidance Options.

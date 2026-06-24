@@ -257,7 +257,7 @@ For both runway and gate destinations, taxi guidance and the teleport hotkeys ar
 
 The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA "line up and wait" procedure — align with the centerline and remain stationary awaiting further clearance from ATC. This is the universal stop point for LUAW *and* the spot where you'd briefly stop before applying takeoff thrust under "cleared for takeoff." Either way, that's the convergence target.
 
-**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built directly from `IAirportDataProvider.GetParkingSpots(icao)` — the same data source the gate-teleport dialog uses — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
+**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built directly from `IAirportDataProvider.GetParkingSpots(icao)` — the same data source the gate-teleport dialog uses — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor). Beyond that the stand is **kept but marked `(no taxi route)`** in the taxi-assist dropdown and refused by the Calculate guard (it was previously dropped silently) — so the pilot sees the gate exists but isn't routed across non-pavement to it.
 
 ### Taxiway connectivity in the route form
 
@@ -1359,24 +1359,28 @@ Some airports have a mismatch between navdata taxiway names and OSM/apt.dat name
 
 ### Gate / Parking Aliases
 
-Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
+Online sources sometimes label a stand with extra information the navdata identity lacks — a concourse-letter prefix (FlightAware-style `"A51"` for gate 51) or a MARS sub-stand suffix (`"53A"` for gate 53). Surfacing those as aliases lets a pilot find the gate by the label ATC/charts use. (The alias number always EQUALS the navdata gate number — see the matching rule below; cross-number position aliasing, e.g. a hypothetical `"GN 3" ↔ "47"`, is deliberately NOT done — it is the same mechanism that caused the identity corruption this rework removed.)
 
-**How parking aliases are collected (in `AugmentingAirportDataProvider.GetParkingSpots`):** For every navdata spot that already has a name, the provider runs the same 30 m Haversine proximity match against OSM and apt.dat to find what online sources call the nearest parking at that location. If the nearest online name's normalized form differs from the spot's normalized navdata name, the raw online name is appended to `ParkingSpot.Aliases` (deduped, case-insensitive). The navdata name is never overwritten.
+**How gate aliases are resolved (`GateAliasResolver.ResolveAliases`, called from `AugmentingAirportDataProvider.GetParkingSpots`):** identity-matched, alias-only, idempotent. For each authoritative gate (GSX or navdata) the resolver parses its identity via `StandId` (letter from the navdata `Name`, number from `Number`). An online stand (OSM `parking_position` / apt.dat ramp) contributes an alias only when:
 
-- Empty-name spots: behavior unchanged — the best online name within 30 m fills `ParkingSpot.Name` directly (existing behavior).
-- Named spots: online name whose normalized form differs from the navdata name → appended to `ParkingSpot.Aliases`.
-- Dedup guard: `TaxiDataMerger.NormalizeTaxiwayName` is applied to both existing aliases and the candidate before adding, so `"47"` and `"GATE 47"` do not both appear when they normalize to the same string.
-- `ParkingSpot.Aliases` is in-memory only — never persisted to the database.
+- its parsed **number equals the gate number** — so navdata gate 15 never adopts a neighbouring `"Gate 11B"` (the old nearest-within-30 m fill's failure mode at dense terminals like CYUL, where offset apt.dat ramps put "Gate 11B" 19 m from gate 15);
+- **letters agree** — a lettered gate requires the same letter (`"N 3"` never adopts `"S3"` or a bare `"3"`); a number-only gate may take an online concourse prefix (`"A51"` on gate 51);
+- it is within a 150 m distance sanity backstop; and
+- it adds info the identity doesn't already state — a pure restatement (`"51"` / `"Gate 51"` for gate 51) contributes nothing.
 
-**How parking aliases are surfaced:**
+The alias is the online canonical (`"A51"`, `"53A"`), deduped. `GetParkingSpots` SETS `spot.Aliases` fresh each call (idempotent — no accumulation, so the old `(also …)` doubling is structurally impossible), and **never** writes `Name` / `Latitude` / `Longitude` and **never** adds a selectable gate (anti-grass). `ParkingSpot.Aliases` is in-memory only. (The OLD behavior — empty-name spots adopted the nearest online name within 30 m as `ParkingSpot.Name` — was REMOVED; it corrupted identity. Empty-name gate-type spots now render `Gate {n}` from the navdata number.)
 
-1. **TaxiAssistForm destination dropdown** — for each spot with `Aliases.Count > 0`, the normal label (e.g. `"GN 3 - Gate Large"`) is added first, then one additional combo item per alias formatted as `"{alias} ({normalLabel})"` (e.g. `"47 (GN 3 - Gate Large)"`). Both items map to the same spot in `_destinationSpotMap`, so routing is identical regardless of which label the pilot picks. This alias loop runs at both spots where parking spots are added to the dropdown: the deice section and the regular parking section.
+**How gate aliases are surfaced:**
 
-2. **GateTeleportForm listbox** — `ParkingSpot.ToString()` appends `" (also 47)"` when `Aliases.Count > 0`, so a screen reader reading the gate list hears the alternative name without a separate selection.
+1. **TaxiAssistForm destination dropdown** — for each spot with `Aliases.Count > 0`, the clean base label (e.g. `"Gate 51 - Gate Heavy (Jetway)"`) is added first, then one combo item per alias formatted as `"{alias} (online) ({base})"` (e.g. `"A51 (online) (Gate 51 - Gate Heavy (Jetway))"`). Both items map to the same spot in `_destinationSpotMap`, so routing is identical. (The deice section runs the same loop but is effectively dead — deice areas never run the resolver, so their `Aliases` is always empty.)
+
+2. **GateTeleportForm listbox** — `ParkingSpot.ToString()` appends `", also A51 (online)"` when `Aliases.Count > 0`, so a screen reader reading the gate list hears the alternative name (tagged as online) without a separate selection.
+
+3. **Search** — `GateSearchFilter` matches the identity AND the aliases, so typing `"A51"` finds gate 51, and `"11B"` no longer wrongly returns gate 15.
 
 **Safety invariants:**
 - Spots with no aliases produce identical behavior (empty `Aliases` list → the alias loop is a no-op in TaxiAssistForm; `ToString()` is unchanged in GateTeleportForm).
-- The navdata name is always authoritative; aliases are additive display helpers only.
+- The gate identity (GSX name or `Gate {n}`) AND position are always authoritative; online aliases are additive, searchable display helpers only — they can never change where you taxi.
 - Both dropdown entries for the same spot resolve to the same navdata spot object and therefore the same routing endpoint.
 
 ### Background fetch / deduplication
