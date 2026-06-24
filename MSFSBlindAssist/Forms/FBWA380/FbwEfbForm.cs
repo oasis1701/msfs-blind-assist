@@ -51,6 +51,9 @@ public class FbwEfbForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _windowTitle;
     private readonly string _deviceNoun; // "flyPad" or "OANS" — used in status text
+    private readonly string _deviceLabel; // human name of the tablet shown in the in-page heading /
+                                          // accessible names ("flyPad" for FBW, "Universal Flight
+                                          // Tablet" for PMDG). Keeps FlyByWire wording off other aircraft.
 
     private Label _statusLabel = null!;
     private Label _pageLabel = null!;
@@ -84,12 +87,15 @@ public class FbwEfbForm : Form
     private System.Windows.Forms.Timer _statusTimer = null!;
 
     public FbwEfbForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
-                          string? windowTitle = null, string? deviceNoun = null)
+                          string? windowTitle = null, string? deviceNoun = null, string? pageLabel = null)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
         _windowTitle = windowTitle ?? "FBW flyPad EFB";
         _deviceNoun = deviceNoun ?? "flyPad";
+        // In-page heading / accessible-name noun. Defaults to "flyPad" so the FBW flyPad and the
+        // A380 OANS reuse are byte-identical; PMDG passes "Universal Flight Tablet".
+        _deviceLabel = pageLabel ?? "flyPad";
 
         InitializeComponent();
         WireEvents();
@@ -140,7 +146,7 @@ public class FbwEfbForm : Form
             Location = new Point(10, 36),
             Size = new Size(700, 22),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            AccessibleName = "Current flyPad page"
+            AccessibleName = $"Current {_deviceLabel} page"
         };
         Controls.Add(_pageLabel);
 
@@ -152,7 +158,7 @@ public class FbwEfbForm : Form
             Location = contentBounds.Location,
             Size = contentBounds.Size,
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            AccessibleName = "flyPad page (browser view)",
+            AccessibleName = $"{_deviceLabel} page (browser view)",
             Visible = true
         };
         Controls.Add(_webView);
@@ -165,8 +171,8 @@ public class FbwEfbForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             AutoScroll = true,
             BorderStyle = BorderStyle.FixedSingle,
-            AccessibleName = "flyPad page content (list view)",
-            AccessibleDescription = "Interactive controls for the current flyPad page. Tab between them; F5 refreshes.",
+            AccessibleName = $"{_deviceLabel} page content (list view)",
+            AccessibleDescription = $"Interactive controls for the current {_deviceLabel} page. Tab between them; F5 refreshes.",
             Visible = false
         };
         Controls.Add(_contentPanel);
@@ -234,7 +240,7 @@ public class FbwEfbForm : Form
             // reload. The native list view remains as a backstop if it can't recover.
             _webView.CoreWebView2.ProcessFailed += OnWebViewProcessFailed;
             _webView.CoreWebView2.NavigationCompleted += OnWebViewNavigationCompleted;
-            _webView.CoreWebView2.NavigateToString(PageHtml);
+            _webView.CoreWebView2.NavigateToString(BuildPageHtml());
         }
         catch (Exception ex)
         {
@@ -343,7 +349,7 @@ public class FbwEfbForm : Form
         {
             if (!string.IsNullOrEmpty(_currentPage) && _currentPage != _previousAnnouncedPage)
             {
-                _announcer.Announce("flyPad page: " + _currentPage);
+                _announcer.Announce($"{_deviceLabel} page: " + _currentPage);
                 _previousAnnouncedPage = _currentPage;
             }
             string signature = StructureSignature();
@@ -723,6 +729,24 @@ public class FbwEfbForm : Form
         double.TryParse(s, System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
 
+    // Fill the {{TITLE}} (document title) and {{NOUN}} (in-page heading) placeholders in PageHtml
+    // with this form's per-aircraft strings. {{NOUN}} appears in BOTH HTML text and JS single-quoted
+    // string literals, so the substituted value is sanitized of characters dangerous to either
+    // context (controlled internal labels never contain them, but never trust a literal into markup).
+    private string BuildPageHtml() =>
+        PageHtml.Replace("{{TITLE}}", SanitizeForMarkup(_windowTitle))
+                .Replace("{{NOUN}}", SanitizeForMarkup(_deviceLabel));
+
+    private static string SanitizeForMarkup(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (char c in s)
+            if (c != '<' && c != '>' && c != '&' && c != '"' && c != '\'' && c != '\\' && c != '`' && c != '\r' && c != '\n')
+                sb.Append(c);
+        return sb.ToString();
+    }
+
     // ---- the semantic HTML document hosted in WebView2 --------------------
     //
     // window.__render({page, items}) rebuilds the body as real HTML so the
@@ -733,7 +757,7 @@ public class FbwEfbForm : Form
 <html lang=""en"">
 <head>
 <meta charset=""utf-8"">
-<title>A380X flyPad</title>
+<title>{{TITLE}}</title>
 <style>
   body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 10px; background: #14141f; color: #eee; }
   h1 { font-size: 20px; margin: 0 0 4px 0; color: #fff; }
@@ -756,8 +780,8 @@ public class FbwEfbForm : Form
 <body>
 <div id=""live"" aria-live=""polite""></div>
 <main id=""content"">
-  <h1 id=""pgttl"" tabindex=""-1"">flyPad</h1>
-  <div id=""list""><p class=""txt"">Waiting for the flyPad…</p></div>
+  <h1 id=""pgttl"" tabindex=""-1"">{{NOUN}}</h1>
+  <div id=""list""><p class=""txt"">Waiting for the {{NOUN}}…</p></div>
 </main>
 <script>
   var lastPage = '';
@@ -947,8 +971,8 @@ public class FbwEfbForm : Form
     window.__lastRenderSig = sig;
 
     var page = payload.page || '';
-    setText(document.getElementById('pgttl'), page ? ('flyPad: ' + page) : 'flyPad');
-    if (page && page !== lastPage) { announce('flyPad page: ' + page); lastPage = page; }
+    setText(document.getElementById('pgttl'), page ? ('{{NOUN}}: ' + page) : '{{NOUN}}');
+    if (page && page !== lastPage) { announce('{{NOUN}} page: ' + page); lastPage = page; }
 
     var list = document.getElementById('list');
     if (page !== renderedPage) { list.innerHTML = ''; renderedPage = page; }   // page change → clean rebuild
