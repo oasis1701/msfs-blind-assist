@@ -218,5 +218,19 @@ Check(r1.SequenceEqual(r2), "Resolver: idempotent — two runs identical");
 var farStands = new List<(string, double, double)> { ("A51", 46.0, -73.0) }; // ~111 km away
 Check(GateAliasResolver.ResolveAliases(Gate("", 51), farStands, 150).Count == 0, "Resolver: same-number stand >150 m away rejected as data error");
 
+// ──────────────────────────────────────────────────────────────────────
+// Task 4: ParkingSpot display — 'Gate {n}' identity + '(online)' alias tag
+// ──────────────────────────────────────────────────────────────────────
+var disp51 = new ParkingSpot { Name = "", Number = 51, Type = 13 /*Gate Heavy*/, HasJetway = true };
+Check(disp51.Describe().StartsWith("Gate 51"), $"Display: empty-name gate -> 'Gate 51' (got '{disp51.Describe()}')");
+Check(!disp51.Describe().Contains("Spot"),      "Display: gate type never says 'Spot'");
+
+var rampSpot = new ParkingSpot { Name = "", Number = 7, Type = 6 /*Ramp Cargo*/ };
+Check(rampSpot.Describe().StartsWith("Spot 7"), $"Display: non-gate empty-name keeps 'Spot 7' (got '{rampSpot.Describe()}')");
+
+disp51.Aliases.Add("A51");
+Check(disp51.ToString().Contains("A51") && disp51.ToString().Contains("(online)"),
+      $"Display: alias tagged '(online)' (got '{disp51.ToString()}')");
+
 Console.WriteLine(failures==0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures==0 ? 0 : 1;
