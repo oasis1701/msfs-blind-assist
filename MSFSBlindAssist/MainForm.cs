@@ -1989,6 +1989,7 @@ public partial class MainForm : Form
             HotkeyAction.ShowElectronicFlightBag,
             HotkeyAction.ShowFenixMCDU,
             HotkeyAction.ShowPMDGEFB,
+            HotkeyAction.ShowPMDGEFBFirstOfficer,
             HotkeyAction.TaxiStatus
         };
 
