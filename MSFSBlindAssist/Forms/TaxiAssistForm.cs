@@ -1033,14 +1033,16 @@ public class TaxiAssistForm : Form
                 var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
                 foreach (var spot in sourceSpots)
                 {
+                    int nodeId = -1; // -1 = no reachable taxi-graph node (kept, marked "(no taxi route)")
                     var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
-                    if (nearNode == null) continue;
-
-                    double dist = TaxiGraph.CalculateDistanceMeters(
-                        nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
-                    if (dist > MAX_PARKING_TO_GRAPH_M) continue;
-
-                    resolved.Add((spot, nearNode.NodeId));
+                    if (nearNode != null)
+                    {
+                        double dist = TaxiGraph.CalculateDistanceMeters(
+                            nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
+                        if (dist <= MAX_PARKING_TO_GRAPH_M)
+                            nodeId = nearNode.NodeId;
+                    }
+                    resolved.Add((spot, nodeId));
                 }
                 _cachedGateSpots = resolved;
                 _cachedGateSpotsIcao = _currentIcao;
@@ -1091,6 +1093,7 @@ public class TaxiAssistForm : Form
             {
                 // ParkingSpot.ToString() format matches the gate-teleport dialog.
                 string label = spot.Describe();  // clean base; aliases added as separate entries below
+                if (nodeId < 0) label += " (no taxi route)";
                 if (_destinationNodeMap.ContainsKey(label)) continue;
 
                 _destinationNodeMap[label] = nodeId;
@@ -1103,7 +1106,7 @@ public class TaxiAssistForm : Form
                 // route to the same spot (e.g. "47 (GN 3 - Gate Large)").
                 foreach (var alias in spot.Aliases)
                 {
-                    string aliasLabel = $"{alias} ({label})";
+                    string aliasLabel = $"{alias} (online) ({label})";
                     if (_destinationSpotMap.ContainsKey(aliasLabel)) continue;
                     _destinationNodeMap[aliasLabel] = nodeId;
                     _destinationHeadingMap[aliasLabel] = spot.Heading;
@@ -2005,6 +2008,13 @@ public class TaxiAssistForm : Form
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
         {
             _announcer.Announce("Please select a destination.");
+            return;
+        }
+
+        if (destNodeId < 0)
+        {
+            _announcer.Announce($"No taxi route to {destName}. This stand can't be reached by the taxi network.");
+            lblStatus.Text = "Selected stand has no taxi route.";
             return;
         }
 
