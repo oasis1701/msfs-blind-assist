@@ -2,7 +2,6 @@ using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.SimConnect
 {
@@ -10,7 +9,8 @@ namespace MSFSBlindAssist.SimConnect
     /// EICAS Crew-Alerting-System reader for the HorizonSim 787. Connects to the MFD_1 / EICAS
     /// Coherent view, installs <c>coherent-hs787-cas-agent.js</c>, and keeps the active
     /// <c>.cas-warning</c> / <c>.cas-caution</c> / <c>.cas-advisory</c> message lists current so
-    /// <see cref="AnnounceCurrentAlerts"/> can read them all back ON DEMAND (the EICAS key, Alt+E).
+    /// <see cref="GetAlertsText"/> can render them ON DEMAND for the EICAS window (the Alt+E key,
+    /// MainForm.AnnounceHs787CasAlerts → HS787EicasForm).
     /// It does NOT auto-announce per message: the def already auto-announces Master Caution /
     /// Master Warning, so the pilot is told the moment something posts and checks the specifics
     /// with Alt+E — no redundant chatter.
@@ -31,7 +31,6 @@ namespace MSFSBlindAssist.SimConnect
 
         public event Action<string>? Error;
 
-        private readonly ScreenReaderAnnouncer _announcer;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
         private readonly SemaphoreSlim _sendLock = new(1, 1);
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
@@ -47,7 +46,7 @@ namespace MSFSBlindAssist.SimConnect
         private volatile bool _agentInstalled;
         private bool _disposed;
 
-        public CoherentHS787CasClient(ScreenReaderAnnouncer announcer) { _announcer = announcer; }
+        public CoherentHS787CasClient() { }
 
         public void Start()
         {
@@ -67,23 +66,6 @@ namespace MSFSBlindAssist.SimConnect
             _cts?.Cancel();
             try { _ws?.Abort(); } catch { }
             _ws = null; _agentInstalled = false;
-        }
-
-        /// <summary>On-demand read-back of every active CAS alert (the EICAS key).</summary>
-        public void AnnounceCurrentAlerts()
-        {
-            List<string> w, c, a;
-            lock (_lock) { w = new(_warnings); c = new(_cautions); a = new(_advisories); }
-            if (w.Count == 0 && c.Count == 0 && a.Count == 0)
-            {
-                _announcer.AnnounceImmediate("No EICAS alerts.");
-                return;
-            }
-            var parts = new List<string>();
-            if (w.Count > 0) parts.Add($"{w.Count} warning{(w.Count == 1 ? "" : "s")}: {string.Join(", ", w)}");
-            if (c.Count > 0) parts.Add($"{c.Count} caution{(c.Count == 1 ? "" : "s")}: {string.Join(", ", c)}");
-            if (a.Count > 0) parts.Add($"{a.Count} advisor{(a.Count == 1 ? "y" : "ies")}: {string.Join(", ", a)}");
-            _announcer.AnnounceImmediate("EICAS. " + string.Join(". ", parts) + ".");
         }
 
         /// <summary>Formatted active-alert text for the EICAS window (one alert per line, grouped).</summary>

@@ -3297,7 +3297,7 @@ public partial class MainForm : Form
         }
         if (hs787CasClient == null)
         {
-            hs787CasClient = new SimConnect.CoherentHS787CasClient(announcer);
+            hs787CasClient = new SimConnect.CoherentHS787CasClient();
             hs787CasClient.Start();
         }
     }
@@ -3307,8 +3307,16 @@ public partial class MainForm : Form
     // not a one-shot spoken read-back.
     public void AnnounceHs787CasAlerts()
     {
-        if (hs787CasClient == null) return;
         hotkeyManager.ExitOutputHotkeyMode();
+        // The EICAS window reads engine indications + the CAS monitor's alert list. If the monitor
+        // isn't up yet (HS787 not fully initialised, or a startup failure left it null), speak a cue
+        // rather than returning in total silence — a blind pilot can't otherwise tell whether there
+        // are zero alerts or the feature is broken.
+        if (hs787CasClient == null)
+        {
+            announcer.AnnounceImmediate("EICAS not available.");
+            return;
+        }
         if (hs787EicasForm == null || hs787EicasForm.IsDisposed)
             hs787EicasForm = new Forms.HS787.HS787EicasForm(BuildHs787EicasText);
         hs787EicasForm.ShowForm();

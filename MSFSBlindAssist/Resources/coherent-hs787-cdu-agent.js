@@ -76,8 +76,13 @@
     // Page buttons outside the LSK columns, DOM order (from the WT render source):
     // 0 INIT/REF 1 RTE 2 DEP/ARR 3 ALTN 4 VNAV 5 EXEC 6 FIX 7 LEGS 8 HOLD
     // 9 FMC/COMM 10 PROG 11 NAV/RAD 12 OFST* 13 RTA* 14 PREV PAGE 15 NEXT PAGE
+    // The named pages 0..11 are stable absolute indices (always rendered, ahead of the optional
+    // ones). PREV/NEXT PAGE, however, are the LAST two buttons in DOM order — resolve them relative
+    // to the END of the list, NOT by a fixed 14/15, because the OFST*/RTA* buttons (12/13) are
+    // conditional: when WT omits them the absolute 14/15 fall off the end and PREV/NEXT silently
+    // no-op (the user can't page multi-page screens like LEGS/FIX).
     A.PAGE = { INIT_REF: 0, RTE: 1, DEP_ARR: 2, ALTN: 3, VNAV: 4, EXEC: 5, FIX: 6, LEGS: 7,
-               HOLD: 8, FMC_COMM: 9, PROG: 10, NAV_RAD: 11, PREV_PAGE: 14, NEXT_PAGE: 15 };
+               HOLD: 8, FMC_COMM: 9, PROG: 10, NAV_RAD: 11 };
     A.clickPage = function (key) {
       var cdu = A.cduRoot(); if (!cdu) return false;
       var all = cdu.querySelectorAll('.wt787-cdu-button'), page = [];
@@ -85,8 +90,11 @@
         var b = all[i];
         if (!(b.closest('.wt787-cdu-lsk-column-left') || b.closest('.wt787-cdu-lsk-column-right'))) page.push(b);
       }
-      var idx = A.PAGE[key];
-      if (idx === undefined || page.length <= idx) return false;
+      var idx;
+      if (key === 'PREV_PAGE') idx = page.length - 2;
+      else if (key === 'NEXT_PAGE') idx = page.length - 1;
+      else idx = A.PAGE[key];
+      if (idx === undefined || idx < 0 || page.length <= idx) return false;
       A.clickElement(page[idx]); return true;
     };
 

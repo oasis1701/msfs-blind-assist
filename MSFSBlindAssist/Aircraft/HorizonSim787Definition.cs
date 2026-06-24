@@ -195,7 +195,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousSATCOM           = -1;
     private int  _previousVBar             = -1;
     private int  _previousAutobrake        = -1;
-    private int  _autobrakeSuppressCount   = 0;    // # of autobrake updates to swallow while MSFSBA steps the selector
+    // The value MSFSBA just commanded via the autobrake combo (-1 = none pending). The single
+    // continuous update that lands on this value is swallowed so the user's own set isn't spoken
+    // twice (the screen reader already reads the combo). Latched by VALUE, not by a step COUNT —
+    // see the autobrake handlers for why a count leaks under the var's 1 Hz sampling.
+    private int  _autobrakeSuppressTarget  = -1;
+    private long _autobrakeSuppressTicks   = 0;
     private int  _previousLightTaxi        = -1;
     private int  _previousLightLogo        = -1;
     private int  _previousLightWing        = -1;
@@ -5334,13 +5339,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         {
             int target = Math.Max(0, Math.Min(6, (int)Math.Round(value)));
             int current = (int)Math.Round(simConnect.GetCachedVariableValue("HS787_Autobrake") ?? 0);
-            // Swallow exactly the N detent-change callouts this step produces (a self-clearing COUNT,
-            // not an exact-value latch — if the selector never lands on the target the count still
-            // drains to 0, so it can't permanently mute future callouts). The combo's own value is
-            // read by the screen reader; the final value is also echo-suppressed.
-            _autobrakeSuppressCount = Math.Abs(target - current);
-            string ev = target > current ? "INCREASE_AUTOBRAKE_CONTROL" : "DECREASE_AUTOBRAKE_CONTROL";
-            for (int i = 0; i < Math.Abs(target - current); i++) simConnect.SendEvent(ev);
+            // Latch the TARGET VALUE (not a |target-current| step count) so ProcessSimVarUpdate
+            // swallows exactly the one update that lands on it. The selector is Continuous at 1 Hz,
+            // and the sim applies a multi-detent jump within a single frame, so MSFSBA observes only
+            // ONE change (straight to target) — a step count would be decremented just once and the
+            // leftover (count-1) would then silently swallow that many LATER, legitimate selector
+            // callouts (e.g. autobrake disarming on the rollout). INCREASE/DECREASE clamp at the
+            // ends, so the selector always reaches target even if the cached `current` is stale.
+            if (target != current)
+            {
+                _autobrakeSuppressTarget = target;
+                _autobrakeSuppressTicks = Environment.TickCount64;
+                string ev = target > current ? "INCREASE_AUTOBRAKE_CONTROL" : "DECREASE_AUTOBRAKE_CONTROL";
+                for (int i = 0; i < Math.Abs(target - current); i++) simConnect.SendEvent(ev);
+            }
             return true;
         }
 
@@ -6904,12 +6916,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (variableKey == "HS787_Autobrake")
         {
             int now = (int)value;
-            // While MSFSBA steps the selector, swallow the detent callouts it produces (count drains
-            // to 0 so it self-clears even if the value never lands exactly on the target). External
-            // cockpit-knob turns (count already 0) announce normally.
-            if (_autobrakeSuppressCount > 0)
+            // Swallow exactly the update that lands on the value MSFSBA just commanded via the combo
+            // (the screen reader already speaks the selection). Matched by VALUE within a short window
+            // and one-shot, so it can NEVER permanently mute callouts: any other change — including a
+            // later external knob turn — falls through and announces, and the latch self-expires.
+            if (_autobrakeSuppressTarget >= 0 && now == _autobrakeSuppressTarget &&
+                Environment.TickCount64 - _autobrakeSuppressTicks < 3000)
             {
-                _autobrakeSuppressCount--;
+                _autobrakeSuppressTarget = -1;
                 _previousAutobrake = now;
                 return true;
             }
