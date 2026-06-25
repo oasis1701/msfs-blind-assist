@@ -278,6 +278,10 @@ Check(StandId.Parse("N") is { Letter: "N", HasNumber: false },                  
 Check(StandId.Parse("Ramp 51")   is { Letter: "", Number: 51, HasNumber: true },              "StandId: 'Ramp 51' -> (,51) (RAMP stripped, not a letter)");
 Check(StandId.Parse("Tie Down 5") is { Letter: "", Number: 5, HasNumber: true },              "StandId: 'Tie Down 5' -> (,5)");
 Check(StandId.Parse("GA 5")      is { Letter: "GA", Number: 5, HasNumber: true },             "StandId: 'GA 5' -> (GA,5) ('GA' kept — real concourse)");
+// A digit run too long for an int must NOT overflow-throw (untrusted online stand names); treat
+// as no-number (a 12-digit "gate number" isn't a real gate) so AugmentParking never crashes.
+Check(StandId.Parse("123456789012") is { HasNumber: false },                                  "StandId: 12-digit '123456789012' -> no number (no overflow throw)");
+Check(StandId.Parse("B999999999999") is { HasNumber: false, Letter: "B999999999999" },        "StandId: oversized 'B999...' -> no number, whole token kept as letter");
 // And the resolver must NOT mint a junk 'RAMP51' alias for a 'Ramp 51' online stand on bare gate 51.
 Check(GateAliasResolver.ResolveAliases(
         new ParkingSpot { Name = "", Number = 51, Type = 13, Latitude = 45, Longitude = -73 },
@@ -306,6 +310,19 @@ Check(!a51.Contains("51"), "Resolver: gate 51 does NOT alias the bare '51' resta
 
 var a53 = GateAliasResolver.ResolveAliases(Gate("", 53), onlineStands, 0);
 Check(a53.Contains("53A"), $"Resolver: gate 53 aliases MARS '53A' (got [{string.Join(",", a53)}])");
+
+// Ambiguous concourse: a LETTERLESS gate must NOT adopt two DIFFERENT-letter same-number online
+// stands (facing A/B piers within the distance backstop). A51 + B51 both compete for bare gate 51
+// → neither is safe (the gate isn't actually on a known concourse), so adopt none.
+var ambConcourse = new List<(string, double, double)>
+{
+    ("A51", 45.0, -73.0), ("B51", 45.0, -73.0),
+};
+var aAmb = GateAliasResolver.ResolveAliases(Gate("", 51), ambConcourse, 0);
+Check(aAmb.Count == 0, $"Resolver: bare gate 51 with both 'A51' and 'B51' -> ambiguous concourse -> no alias (got [{string.Join(",", aAmb)}])");
+// But a SINGLE lettered candidate is unambiguous and still adopts (guard must not over-fire).
+var aOne = GateAliasResolver.ResolveAliases(Gate("", 51), new List<(string, double, double)> { ("A51", 45.0, -73.0) }, 0);
+Check(aOne.Contains("A51"), $"Resolver: bare gate 51 with only 'A51' still adopts it (got [{string.Join(",", aOne)}])");
 
 var aN3 = GateAliasResolver.ResolveAliases(Gate("N", 3), onlineStands, 0);
 Check(!aN3.Contains("S3"), "Resolver: gate 'N 3' never adopts 'S3' (letter disagreement)");

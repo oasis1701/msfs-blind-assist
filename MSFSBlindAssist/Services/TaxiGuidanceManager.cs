@@ -1260,7 +1260,8 @@ public class TaxiGuidanceManager : IDisposable
             TaxiRoute? route;
 
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
-                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence);
+                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
+                    destinationIsRunway: isRunwayDestination);
             else
                 route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
 
@@ -1286,7 +1287,8 @@ public class TaxiGuidanceManager : IDisposable
                     // or the lead-in was a dead-end detour) — start on the cleared
                     // taxiway like before and note it in the summary.
                     route = router.FindConstrainedPath(
-                        firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!);
+                        firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!,
+                        destinationIsRunway: isRunwayDestination);
                     leadIn = default;
                     leadInFallback = true;
                 }
@@ -3010,7 +3012,8 @@ public class TaxiGuidanceManager : IDisposable
         TaxiRoute? newRoute;
         if (remainingSequence != null && remainingSequence.Count > 0)
         {
-            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence);
+            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence,
+                destinationIsRunway: _isRunwayLineup);
         }
         else
         {

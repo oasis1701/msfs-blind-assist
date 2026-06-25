@@ -42,7 +42,15 @@ public class TaxiRouter
     /// Finds a path that follows the specified taxiway sequence.
     /// Falls back to shortest path if the constrained route fails, with reason stored in route.
     /// </summary>
-    public TaxiRoute? FindConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence)
+    /// <param name="destinationIsRunway">
+    /// True only when the destination is a RUNWAY. The "honor the last cleared taxiway as a
+    /// hold-short terminus" logic (skip the final bypass leg when the last taxiway branches off the
+    /// destination) is correct hold-short behaviour for a runway, but WRONG for a gate/parking
+    /// destination — there the route must continue ONTO the gate via the final connector leg. So the
+    /// terminus skip is gated on this flag; gate and progressive-taxi destinations route normally.
+    /// </param>
+    public TaxiRoute? FindConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence,
+        bool destinationIsRunway = false)
     {
         // Append a session header (size-capped) — the old truncate-per-run
         // destroyed the previous build's log: debugging the KIAH 2026-06-10
@@ -138,7 +146,10 @@ public class TaxiRouter
             // the step no-ops and the final unconstrained leg deviates off the cleared taxiway — the
             // aircraft, correctly on it, then reads as off-route (LFPG recalc "R1" to 26R: R1's
             // nearest-to-26R node is the R/R1 junction it starts on).
-            if (firstTarget == startNodeId)
+            // Runway destinations ONLY — for a gate this degenerate case means the gate sits back
+            // near the entry, and the route must still continue onto the gate via the final leg
+            // (routing to the taxiway's far end would strand it short of the stand).
+            if (destinationIsRunway && firstTarget == startNodeId)
             {
                 int far = FindNodeOnTaxiwayFarthestFromNode(
                     taxiwaySequence[0], startNodeId, _graph.Nodes[startNodeId].ComponentId);
@@ -281,7 +292,10 @@ public class TaxiRouter
                 // and the aircraft was guided down N onto the runway. Instead, force traversal ALONG
                 // the last taxiway to the node geographically nearest the runway (its hold-short end)
                 // and make THAT the route terminus — do not append the bypass leg.
-                if (targetNode == currentNode && taxiwaySequence.Count > 1)
+                // Runway destinations ONLY (see the destinationIsRunway note on this method): for a
+                // gate this skip would strand the route at the taxiway end instead of continuing onto
+                // the stand via the final connector leg.
+                if (destinationIsRunway && targetNode == currentNode && taxiwaySequence.Count > 1)
                 {
                     int comp = _graph.Nodes[currentNode].ComponentId;
                     var destNode = _graph.Nodes[endNodeId];
@@ -438,15 +452,18 @@ public class TaxiRouter
     /// </summary>
     /// <summary>
     /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
-    /// that is GEOGRAPHICALLY closest to the given position, or -1 if none. Used to honor a last
-    /// cleared taxiway that branches off the destination by routing to its hold-short end (the node
-    /// nearest the runway). Euclidean is correct here precisely because that taxiway does NOT lead
-    /// onto the runway in the graph, so graph distance degenerately picks the entry junction.
+    /// whose geographic distance to (<paramref name="refLat"/>, <paramref name="refLon"/>) is minimal
+    /// (<paramref name="farthest"/> = false) or maximal (true), or -1 if none. The two callers honor a
+    /// last cleared taxiway that branches off the destination: NEAREST-to-the-runway-position picks
+    /// its hold-short end; FARTHEST-from-the-entry traverses it when the nearest-to-destination node
+    /// degenerates to the entry. Euclidean is correct here precisely because that taxiway does NOT
+    /// lead onto the destination in the graph, so graph distance degenerately picks the entry.
     /// </summary>
-    private int FindNodeOnTaxiwayNearestPosition(string taxiwayName, double lat, double lon, int requiredComponent)
+    private int FindExtremeNodeOnTaxiway(string taxiwayName, double refLat, double refLon,
+        int requiredComponent, bool farthest)
     {
         int best = -1;
-        double bestM = double.MaxValue;
+        double bestM = farthest ? -1 : double.MaxValue;
         foreach (var kvp in _graph.Adjacency)
         {
             int nodeId = kvp.Key;
@@ -454,35 +471,21 @@ public class TaxiRouter
                 continue;
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != requiredComponent) continue;
-            double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, lat, lon);
-            if (d < bestM) { bestM = d; best = nodeId; }
+            double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, refLat, refLon);
+            if (farthest ? d > bestM : d < bestM) { bestM = d; best = nodeId; }
         }
         return best;
     }
 
-    /// <summary>
-    /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
-    /// that is GEOGRAPHICALLY FARTHEST from <paramref name="fromNodeId"/>, or -1 if none. Used to honor
-    /// a last cleared taxiway by traversing it to its far end when its nearest-to-destination node
-    /// degenerates to the entry we arrived on (the destination node sits back near that entry).
-    /// </summary>
+    /// <summary>Node on the taxiway geographically NEAREST the given position (-1 if none).</summary>
+    private int FindNodeOnTaxiwayNearestPosition(string taxiwayName, double lat, double lon, int requiredComponent)
+        => FindExtremeNodeOnTaxiway(taxiwayName, lat, lon, requiredComponent, farthest: false);
+
+    /// <summary>Node on the taxiway geographically FARTHEST from the given node (-1 if none / node unknown).</summary>
     private int FindNodeOnTaxiwayFarthestFromNode(string taxiwayName, int fromNodeId, int requiredComponent)
-    {
-        if (!_graph.Nodes.TryGetValue(fromNodeId, out var from)) return -1;
-        int best = -1;
-        double bestM = -1;
-        foreach (var kvp in _graph.Adjacency)
-        {
-            int nodeId = kvp.Key;
-            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase)))
-                continue;
-            var node = _graph.Nodes[nodeId];
-            if (node.ComponentId != requiredComponent) continue;
-            double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, from.Latitude, from.Longitude);
-            if (d > bestM) { bestM = d; best = nodeId; }
-        }
-        return best;
-    }
+        => _graph.Nodes.TryGetValue(fromNodeId, out var from)
+            ? FindExtremeNodeOnTaxiway(taxiwayName, from.Latitude, from.Longitude, requiredComponent, farthest: true)
+            : -1;
 
     private int FindNearestNodeOnTaxiwayToTarget(
         int targetNodeId, string taxiwayName,

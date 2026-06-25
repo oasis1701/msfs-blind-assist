@@ -1038,11 +1038,18 @@ public class LittleNavMapProvider : IAirportDataProvider
             if (airportId == -1)
                 return paths;
 
+            // ORDER BY taxi_path_id makes the row order DETERMINISTIC across calls. The taxi-data
+            // augmentation caches per-segment names aligned to one GetTaxiPaths fetch and re-applies
+            // them onto a LATER fetch BY INDEX (AugmentingAirportDataProvider.ApplyMergedNames);
+            // without a stable order SQLite may return rows in a different order across the two
+            // queries, stamping a name onto the wrong pavement. A primary-key sort is cheap and
+            // removes that whole class of mis-naming.
             var sql = @"SELECT taxi_path_id, airport_id, type, surface, width, name,
                               start_type, start_dir, start_lonx, start_laty,
                               end_type, end_dir, end_lonx, end_laty
                        FROM taxi_path
-                       WHERE airport_id = @AirportId";
+                       WHERE airport_id = @AirportId
+                       ORDER BY taxi_path_id";
 
             using (var command = new SqliteCommand(sql, connection))
             {

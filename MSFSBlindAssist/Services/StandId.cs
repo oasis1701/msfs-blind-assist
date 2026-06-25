@@ -33,13 +33,16 @@ public readonly record struct StandId(string Letter, int Number, string Suffix, 
         }
         string s = sb.ToString();
 
+        // int.TryParse, NOT int.Parse: the digit run comes from untrusted online stand names
+        // (OSM ref / apt.dat free text), so a 11+ digit token overflows Int32. On overflow fall
+        // through to the no-number branch — a 12-digit "gate number" is not a real gate — instead
+        // of throwing out of AugmentParking into the UI thread.
         var m = Shape.Match(s);
-        if (m.Success)
-            return new StandId(m.Groups[1].Value,
-                               int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture),
-                               m.Groups[3].Value, true);
+        if (m.Success && int.TryParse(m.Groups[2].Value, NumberStyles.Integer,
+                                      CultureInfo.InvariantCulture, out int number))
+            return new StandId(m.Groups[1].Value, number, m.Groups[3].Value, true);
 
-        // No number (a bare letter like "N", or a word like "HAWKER").
+        // No number (a bare letter like "N", a word like "HAWKER", or an over-long digit run).
         return new StandId(s, 0, "", false);
     }
 }

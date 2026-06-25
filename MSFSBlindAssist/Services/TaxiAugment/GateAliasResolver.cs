@@ -26,6 +26,10 @@ public static class GateAliasResolver
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { gateCanonical };
 
+        // Collect accepted candidates with the concourse letter they carry, so a letterless gate
+        // can reject an AMBIGUOUS concourse (two different letters competing) below.
+        var accepted = new List<(string Canonical, string Letter)>();
+
         foreach (var (name, lat, lon) in onlineStands)
         {
             if (string.IsNullOrWhiteSpace(name)) continue;
@@ -43,8 +47,27 @@ public static class GateAliasResolver
             if (string.Equals(canonical, gateCanonical, StringComparison.OrdinalIgnoreCase)) continue; // restatement
             if (!seen.Add(canonical)) continue; // dedup
 
-            result.Add(canonical);
+            accepted.Add((canonical, oid.Letter));
         }
+
+        // Ambiguous-concourse guard (letterless gate only): if two surviving candidates carry
+        // DIFFERENT non-empty concourse letters (e.g. "A51" AND "B51" on bare gate 51 — facing piers
+        // within the distance backstop), the gate's real concourse is unknown, so adopting either
+        // would let the pilot "find" gate 51 by the wrong concourse. Drop the lettered candidates;
+        // keep any letterless ones (a MARS suffix like "53A" carries no concourse and is unaffected).
+        if (gateLetter.Length == 0)
+        {
+            int distinctLetters = accepted
+                .Where(a => a.Letter.Length > 0)
+                .Select(a => a.Letter)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            if (distinctLetters > 1)
+                accepted.RemoveAll(a => a.Letter.Length > 0);
+        }
+
+        foreach (var a in accepted)
+            result.Add(a.Canonical);
         return result;
     }
 }
