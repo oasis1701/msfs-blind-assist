@@ -88,9 +88,9 @@ public class GeminiService
                         !m.SupportedGenerationMethods.Contains("generateContent")) continue;
 
                     string id = m.Name.StartsWith("models/") ? m.Name.Substring("models/".Length) : m.Name;
-                    if (IsNonChatModel(id)) continue;
-
                     string displayName = string.IsNullOrWhiteSpace(m.DisplayName) ? id : m.DisplayName!;
+                    if (IsNonChatModel(id, displayName)) continue;
+
                     models.Add(new GeminiModelInfo(id, displayName));
                 }
             }
@@ -174,7 +174,7 @@ public class GeminiService
         return 0;                                                             // preview / experimental
     }
 
-    private static bool IsNonChatModel(string id)
+    private static bool IsNonChatModel(string id, string displayName)
     {
         string lower = id.ToLowerInvariant();
 
@@ -183,15 +183,17 @@ public class GeminiService
         // lyria-* (music), veo-* (video), deep-research-*, antigravity, gemma-*, learnlm-*, aqa.
         if (!lower.StartsWith("gemini")) return true;
 
-        // Exclude Gemini-branded SPECIALTY variants that share the generateContent method but
-        // are not text+vision chat models: image generation (Nano Banana, *-image), TTS and
-        // native-audio (*-tts / *-audio), live/real-time, robotics, embeddings, and computer-use.
-        // The chat+vision lineup we want (Flash / Pro / Flash-Lite, incl. previews and the
-        // *-latest rolling aliases) carries none of these markers.
-        string[] specialtyMarkers = { "image", "tts", "audio", "live", "robotics", "embedding", "computer-use" };
+        // Exclude SPECIALTY variants that share the generateContent method but are not text+vision
+        // chat models: image generation (Nano Banana, *-image), TTS / native-audio, live/real-time,
+        // robotics, embeddings, computer-use, and "Custom Tools" tuning variants. Match against BOTH
+        // the id and the human display name — some labels (e.g. "Custom Tools") surface only in the
+        // display name. The chat+vision lineup we want (Flash / Pro / Flash-Lite, incl. previews and
+        // the *-latest rolling aliases) carries none of these markers.
+        string haystack = (id + " " + displayName).ToLowerInvariant();
+        string[] specialtyMarkers = { "image", "tts", "audio", "live", "robotics", "embedding", "computer-use", "custom" };
         foreach (string marker in specialtyMarkers)
         {
-            if (lower.Contains(marker)) return true;
+            if (haystack.Contains(marker)) return true;
         }
         return false;
     }
