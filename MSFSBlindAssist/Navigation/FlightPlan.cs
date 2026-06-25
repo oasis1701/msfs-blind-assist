@@ -186,6 +186,17 @@ public class FlightPlan
             var previousWaypoint = allWaypoints[i - 1];
             var currentWaypoint = allWaypoints[i];
 
+            // Maneuver legs (heading/course-to-altitude, vectors) and any fix whose coordinates
+            // could not be resolved sit at (0,0) — they have no position, so a great-circle leg
+            // distance to or from them is meaningless (yields thousands of NM toward the Gulf of
+            // Guinea). Leave the leg distance unset, mirroring FlightPlanManager.UpdateAircraftPosition.
+            if ((previousWaypoint.Latitude == 0.0 && previousWaypoint.Longitude == 0.0) ||
+                (currentWaypoint.Latitude == 0.0 && currentWaypoint.Longitude == 0.0))
+            {
+                currentWaypoint.Distance = null;
+                continue;
+            }
+
             // Calculate distance from previous waypoint to current waypoint
             double legDistance = NavigationCalculator.CalculateDistance(
                 previousWaypoint.Latitude,
