@@ -24,6 +24,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -61,6 +62,7 @@ namespace MSFSBlindAssist
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -222,6 +224,7 @@ namespace MSFSBlindAssist
             this.aircraftMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.flyByWireA320MenuItem,
             this.flyByWireA380MenuItem,
+            this.headwindA330MenuItem,
             this.fenixA320MenuItem,
             this.pmdg737MenuItem,
             this.pmdg777MenuItem,
@@ -289,6 +292,16 @@ namespace MSFSBlindAssist
             this.horizonSim787MenuItem.Text = "HorizonSim Boeing &787-9";
             this.horizonSim787MenuItem.Checked = false;
             this.horizonSim787MenuItem.Click += new System.EventHandler(this.HorizonSim787MenuItem_Click);
+            //
+            // headwindA330MenuItem
+            //
+            this.headwindA330MenuItem.AccessibleName = "Headwind Airbus A330-900neo";
+            this.headwindA330MenuItem.AccessibleDescription = "Switch to Headwind Airbus A330-900neo";
+            this.headwindA330MenuItem.Name = "headwindA330MenuItem";
+            this.headwindA330MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.headwindA330MenuItem.Text = "&Headwind Airbus A330-900neo";
+            this.headwindA330MenuItem.Checked = false;
+            this.headwindA330MenuItem.Click += new System.EventHandler(this.HeadwindA330MenuItem_Click);
             //
             // sectionsListBox
             // 
