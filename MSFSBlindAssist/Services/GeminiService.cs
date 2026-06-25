@@ -18,6 +18,12 @@ public class GeminiService
     // Flash model, so a fresh install / failed fetch still has a working default.
     private const string API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
     private const string DEFAULT_MODEL = "gemini-flash-latest";
+
+    // Matches a purely numeric id token (e.g. a "001" snapshot suffix). Compiled + hoisted so
+    // FamilyKey's per-token loop doesn't allocate a Regex on every call.
+    private static readonly System.Text.RegularExpressions.Regex NumericTokenRegex =
+        new System.Text.RegularExpressions.Regex(@"^\d+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly string apiKey;
 
     static GeminiService()
@@ -143,7 +149,7 @@ public class GeminiService
         {
             string last = parts[parts.Count - 1];
             bool isVariant = last == "preview" || last == "exp"
-                || System.Text.RegularExpressions.Regex.IsMatch(last, @"^\d+$");
+                || NumericTokenRegex.IsMatch(last);
             if (!isVariant) break;
             parts.RemoveAt(parts.Count - 1);
         }
