@@ -46,8 +46,9 @@ public class GeminiService
     }
 
     /// <summary>
-    /// Fetches the account's available models, filtered to generateContent-capable text/vision
-    /// models, sorted newest-first. Throws on HTTP/network failure (caller falls back to a curated
+    /// Fetches the account's available models, filtered to generateContent-capable Gemini
+    /// chat/vision models, collapsed to one (latest) entry per family, sorted newest-first.
+    /// Throws on HTTP/network failure (caller falls back to a curated
     /// list). Does not retry — this is an interactive, best-effort dialog populate.
     /// </summary>
     public async Task<IReadOnlyList<GeminiModelInfo>> ListAvailableModelsAsync()
@@ -90,16 +91,81 @@ public class GeminiService
             pageToken = list?.NextPageToken;
         } while (!string.IsNullOrEmpty(pageToken));
 
+        // Collapse every variant of a model line (dated snapshots, -preview, -exp) to ONE
+        // representative per family so the picker isn't flooded with snapshots.
+        List<GeminiModelInfo> result = SelectFamilyRepresentatives(models);
+
         // Newest-first: descending by the leading version number parsed from the id; unversioned
         // ids (rolling aliases like gemini-flash-latest) sort last; ties broken alphabetically.
-        models.Sort((a, b) =>
+        result.Sort((a, b) =>
         {
             double va = ParseModelVersion(a.Id);
             double vb = ParseModelVersion(b.Id);
             if (va != vb) return vb.CompareTo(va);
             return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
         });
-        return models;
+        return result;
+    }
+
+    /// <summary>
+    /// Collapses every variant of a model line (dated snapshots like -001, -preview-09-2025,
+    /// -exp) down to ONE representative per family, so the picker shows the latest per family
+    /// rather than every pinned snapshot. Preference: the canonical bare id (e.g.
+    /// "gemini-2.5-flash" — the family's auto-updating latest-stable pointer) > newest pinned
+    /// stable snapshot > newest preview/experimental. The rolling "*-latest" aliases are their
+    /// own families and are kept.
+    /// </summary>
+    private static List<GeminiModelInfo> SelectFamilyRepresentatives(List<GeminiModelInfo> models)
+    {
+        var byFamily = new Dictionary<string, GeminiModelInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in models)
+        {
+            string family = FamilyKey(m.Id);
+            if (!byFamily.TryGetValue(family, out var current) || PrefersOver(m.Id, current.Id))
+            {
+                byFamily[family] = m;
+            }
+        }
+        return new List<GeminiModelInfo>(byFamily.Values);
+    }
+
+    /// <summary>
+    /// Family key = the id with trailing variant tokens (numeric snapshots, "preview", "exp",
+    /// and date pieces) stripped, so all variants of one model line share a key. Tier tokens
+    /// (flash/pro/lite), the "8b" gauge, the version, and the "latest" alias suffix are kept.
+    /// e.g. gemini-2.5-flash-001 / gemini-2.5-flash-preview-09-2025 -> gemini-2.5-flash;
+    ///      gemini-2.0-flash-lite-001 -> gemini-2.0-flash-lite; gemini-flash-latest unchanged.
+    /// </summary>
+    private static string FamilyKey(string id)
+    {
+        var parts = new List<string>(id.ToLowerInvariant().Split('-'));
+        while (parts.Count > 1)
+        {
+            string last = parts[parts.Count - 1];
+            bool isVariant = last == "preview" || last == "exp"
+                || System.Text.RegularExpressions.Regex.IsMatch(last, @"^\d+$");
+            if (!isVariant) break;
+            parts.RemoveAt(parts.Count - 1);
+        }
+        return string.Join("-", parts);
+    }
+
+    /// <summary>True if model id <paramref name="a"/> is a better family representative than <paramref name="b"/>.</summary>
+    private static bool PrefersOver(string a, string b)
+    {
+        int ra = RepresentativeRank(a), rb = RepresentativeRank(b);
+        if (ra != rb) return ra > rb;
+        // Same tier: prefer the later snapshot/date. Lexicographic ordering puts higher -00N and
+        // later ISO-ish dates last; best-effort for the rare preview-only family with several previews.
+        return string.Compare(a, b, StringComparison.OrdinalIgnoreCase) > 0;
+    }
+
+    private static int RepresentativeRank(string id)
+    {
+        string lower = id.ToLowerInvariant();
+        if (lower == FamilyKey(lower)) return 2;                              // canonical bare alias (latest stable)
+        if (!lower.Contains("preview") && !lower.Contains("exp")) return 1;   // pinned stable snapshot
+        return 0;                                                             // preview / experimental
     }
 
     private static bool IsNonChatModel(string id)
