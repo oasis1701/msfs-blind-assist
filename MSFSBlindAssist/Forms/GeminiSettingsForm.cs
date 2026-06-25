@@ -298,17 +298,6 @@ public partial class GeminiSettingsForm : Form
             settings.GeminiModel = selectedModel.Id;
         }
         SettingsManager.Save(settings);
-
-        MessageBox.Show("Gemini settings saved successfully.\n\n" +
-                       "You can now use Input Hotkey Mode (press '[') followed by:\n" +
-                       "  1 - Read PFD\n" +
-                       "  2 - Read Lower ECAM\n" +
-                       "  3 - Read Upper ECAM/EWD\n" +
-                       "  4 - Read ND\n" +
-                       "  5 - Read ISIS",
-                       "Settings Saved",
-                       MessageBoxButtons.OK,
-                       MessageBoxIcon.Information);
     }
 
     private void LinkLabel_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
