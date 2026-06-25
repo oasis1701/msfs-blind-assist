@@ -235,6 +235,29 @@ public class TaxiGuidanceManager : IDisposable
     // backstop for a wide pass (drew abeam/past the node but >25 m to the side).
     private const double LANDING_EXIT_ARRIVAL_RADIUS_M = 25.0;
     private const double LANDING_EXIT_ARRIVAL_CROSS_M = 60.0;
+
+    // Plain taxiway-endpoint arrival backstop (progressive-taxi "end of taxiway X").
+    // These destinations carry the tight ~6 m gate radius but have NO lineup target,
+    // parking countdown, or docking handoff, so a pilot rolling THROUGH the endpoint
+    // at taxi speed can miss the 6 m circle entirely — the look-ahead tone then keeps
+    // pointing at the now-behind node and the pilot circles it (OMDB end-of-K10
+    // 2026-06-14: passed within ~8 m at 17 kt, the 6 m arrival never fired, tone wound
+    // hard right onto the passed node). Mirror the landing-exit along-track backstop:
+    // once the aircraft is past the final node (alongRemaining <= 0) and within this
+    // cross tolerance, declare arrival. Scoped (in the arrival check) to non-gate /
+    // non-runway endpoints so gate parking countdown and runway lineup are untouched.
+    private const double ENDPOINT_ARRIVAL_BACKSTOP_CROSS_M = 25.0;
+
+    // How far past the runway half-width the aircraft datum must be before a
+    // landing-exit arrival ("Off the runway. Stop and hold position.") is allowed
+    // to fire. Without this, an early/aggressive exit turn + re-route can curve the
+    // route back toward the runway and the 25 m arrival fires while the aircraft is
+    // still WITHIN the runway half-width — telling a blind pilot to STOP on an active
+    // runway (OMDB 30L → K10 2026-06-14: "arrived" at ~20 m off a 30 m-half-width
+    // runway; Where-Am-I correctly reported the aircraft was still on 12R/30L). While
+    // still on the runway we suppress the arrival and keep guiding toward the
+    // off-runway extension node, so the "stop" is spoken only once genuinely clear.
+    private const double RUNWAY_CLEAR_MARGIN_M = 10.0;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
     // Steering-tone look-ahead: target = the point this many metres ahead
     // along the route polyline (continuous walk — see GuidanceGeometry).
@@ -780,7 +803,7 @@ public class TaxiGuidanceManager : IDisposable
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
     private const double LINEUP_HEADING_TOLERANCE_DEG = 5.0;             // gate default
-    private const double LINEUP_CENTERLINE_TOLERANCE_FEET = 25.0;
+    private const double LINEUP_CENTERLINE_TOLERANCE_FEET = 25.0;        // gate default cross-track band
     private const double GATE_ARRIVAL_RADIUS_FEET = 20.0;
 
     // Runway-lineup blend band: when far from centerline, steer toward the threshold
@@ -1118,6 +1141,8 @@ public class TaxiGuidanceManager : IDisposable
         {
             // Store for recalculation
             _dataProvider = dataProvider;
+            // Set fresh so a normal (non-progressive) route always resets it to null.
+            _progressiveTerminator = progressiveTerminator;
             _destinationNodeId = destinationNodeId;
             _destinationName = destinationName;
             _icao = icao ?? "";
@@ -2143,7 +2168,27 @@ public class TaxiGuidanceManager : IDisposable
                 out double alongRemainingM, out double crossM);
             bool pastNode = alongRemainingM <= 0.0
                             && Math.Abs(crossM) <= LANDING_EXIT_ARRIVAL_CROSS_M;
-            if (distToTarget < LANDING_EXIT_ARRIVAL_RADIUS_M || pastNode)
+
+            // Don't declare "Off the runway. Stop and hold." while the aircraft is
+            // still within the runway half-width. An early/aggressive exit turn can
+            // re-route the final approach back toward the runway and trip the 25 m
+            // arrival on the pavement (OMDB 30L → K10). Suppress arrival while still
+            // on the runway PROVIDED the extension node is still ahead (alongRemaining
+            // > 0) so the look-ahead tone keeps guiding the pilot off — once clear,
+            // arrival fires normally. If the node is already behind while still on the
+            // runway (degenerate on-runway extension node), fall through and arrive
+            // rather than risk the tone chasing a passed node back across the runway.
+            bool stillOnRunway = false;
+            if (_rolloutRunway != null && _rolloutRunwayHeadingTrue != 0.0 && alongRemainingM > 0.0)
+            {
+                double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 60.0) * 0.5;
+                double lateralM = AbsLateralFromRunwayMeters(
+                    lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+                    _rolloutRunwayHeadingTrue);
+                stillOnRunway = lateralM <= halfWidthM + RUNWAY_CLEAR_MARGIN_M;
+            }
+
+            if (!stillOnRunway && (distToTarget < LANDING_EXIT_ARRIVAL_RADIUS_M || pastNode))
             {
                 RolloutDiag($"Landing-exit arrival: distToTarget={distToTarget:F0}m " +
                     $"alongRemaining={alongRemainingM:F0}m cross={crossM:F0}m pastNode={pastNode}");
@@ -2152,13 +2197,36 @@ public class TaxiGuidanceManager : IDisposable
             }
         }
 
-        if (onFinalSegment && distToTarget < arrivalRadius)
+        if (onFinalSegment)
         {
-            // Announce the 50/20/10ft countdown one last time before arriving,
-            // so it fires even if updates are sparse near the target.
-            CheckParkingCountdown(distToTarget);
-            HandleArrival();
-            return;
+            bool arrived = distToTarget < arrivalRadius;
+
+            // Past-node backstop for plain taxiway-endpoint destinations
+            // (progressive-taxi "end of taxiway X"): no lineup target, no parking
+            // countdown, no docking — so a roll-through at taxi speed can miss the
+            // tight 6 m radius and the tone then chases the now-behind node. Scoped
+            // to !_hasLineupTarget && !_isRunwayLineup so gate parking countdown and
+            // runway lineup are untouched; landing-exit routes are already handled
+            // (and returned) by the branch above. Mirrors that along-track backstop.
+            if (!arrived && !_hasLineupTarget && !_isRunwayLineup)
+            {
+                AlongTrackToSegmentEnd(lat, lon, currentSeg,
+                    out double alongRemEndM, out double crossEndM);
+                if (alongRemEndM <= 0.0
+                    && Math.Abs(crossEndM) <= ENDPOINT_ARRIVAL_BACKSTOP_CROSS_M)
+                {
+                    arrived = true;
+                }
+            }
+
+            if (arrived)
+            {
+                // Announce the 50/20/10ft countdown one last time before arriving,
+                // so it fires even if updates are sparse near the target.
+                CheckParkingCountdown(distToTarget);
+                HandleArrival();
+                return;
+            }
         }
 
         // Calculate heading error for steering tone using LOOK-AHEAD target
