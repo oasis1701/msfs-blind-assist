@@ -767,6 +767,32 @@ public class TaxiAssistForm : Form
             return;
         }
 
+        // Fetch online taxiway-name augmentation BEFORE building the graph, so the taxiway list
+        // includes the augmented names on first open. Without this, a cache-miss here returns
+        // navdata-only and the graph (which never rebuilds for the same airport — see the early
+        // return above) would never pick up the names even after the background fetch lands. A cache
+        // hit (departure/destination already prefetched) returns instantly; only a never-fetched
+        // airport actually waits, and the status line shows why.
+        if (_dataProvider is MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider augProvider
+            && augProvider.Enabled)
+        {
+            lblStatus.Text = $"{icao}: fetching taxiway names…";
+            // BOUND the wait. A cache hit (dep/dest already prefetched by the flight triggers)
+            // completes instantly. A never-fetched airport — typically only an ad-hoc typed ICAO —
+            // would otherwise block the form open on a network round-trip up to the HttpClient's
+            // 60 s timeout if an Overpass mirror is slow. Wait at most a few seconds; if the fetch
+            // hasn't landed, build from navdata NOW. The fetch keeps running in the background
+            // (shared in-flight task) and populates the cache, so augmented names appear the next
+            // time this airport's taxi form is opened.
+            const int prefetchWaitMs = 8000;
+            try
+            {
+                var prefetch = augProvider.PrefetchAsync(icao);
+                await Task.WhenAny(prefetch, Task.Delay(prefetchWaitMs));
+            }
+            catch { /* offline / fetch failed — fall back to navdata names */ }
+        }
+
         // Build graph (off the UI thread to avoid stalls at large airports)
         var paths = _dataProvider.GetTaxiPaths(icao);
         if (paths.Count == 0)
@@ -948,6 +974,9 @@ public class TaxiAssistForm : Form
 
             foreach (var spot in deiceAreas.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
+                // ONE entry per spot — same rule as the gate path: ToString() shows any online
+                // alias as a "(also X)" hint, and a separate per-alias dropdown entry is NOT added
+                // (it doubled the list at airports whose online names differ from the scenery names).
                 string label = spot.ToString();
                 if (_destinationNodeMap.ContainsKey(label)) continue;
 
@@ -972,9 +1001,9 @@ public class TaxiAssistForm : Form
                     nearNode.Latitude, nearNode.Longitude, targetLat, targetLon);
                 if (dist > MAX_DEICE_TO_GRAPH_M) continue;
 
-                _destinationNodeMap[label] = nearNode.NodeId;
                 double stopHeading = spot.StopHeading.HasValue
                     ? spot.StopHeading.Value : spot.Heading;
+                _destinationNodeMap[label] = nearNode.NodeId;
                 _destinationHeadingMap[label] = stopHeading;
                 _destinationHeadingTrueMap[label] = stopHeading;
                 _destinationThresholdMap[label] = (targetLat, targetLon);
@@ -1017,17 +1046,25 @@ public class TaxiAssistForm : Form
                 || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
             {
                 var sourceSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
+                // Apply online gate aliases to the GSX-sourced list too (GSX bypasses GetParkingSpots,
+                // but GSX stands carry spot codes that don't match real gate numbers — the online alias
+                // is what lets the pilot pick the ATC gate). No-op for the navdata list (already aliased)
+                // and when augmentation is off/uncached.
+                (_dataProvider as MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider)
+                    ?.AugmentParking(_currentIcao, sourceSpots);
                 var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
                 foreach (var spot in sourceSpots)
                 {
+                    int nodeId = -1; // -1 = no reachable taxi-graph node (kept, marked "(no taxi route)")
                     var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
-                    if (nearNode == null) continue;
-
-                    double dist = TaxiGraph.CalculateDistanceMeters(
-                        nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
-                    if (dist > MAX_PARKING_TO_GRAPH_M) continue;
-
-                    resolved.Add((spot, nearNode.NodeId));
+                    if (nearNode != null)
+                    {
+                        double dist = TaxiGraph.CalculateDistanceMeters(
+                            nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
+                        if (dist <= MAX_PARKING_TO_GRAPH_M)
+                            nodeId = nearNode.NodeId;
+                    }
+                    resolved.Add((spot, nodeId));
                 }
                 _cachedGateSpots = resolved;
                 _cachedGateSpotsIcao = _currentIcao;
@@ -1076,8 +1113,14 @@ public class TaxiAssistForm : Form
 
             foreach (var (spot, nodeId) in parkingSpots)
             {
-                // ParkingSpot.ToString() format matches the gate-teleport dialog.
+                // ONE entry per spot — matches the gate-teleport dialog (GateTeleportForm). ToString()
+                // appends any online alias as a "(also X)" hint, and the alias-aware gate search box
+                // above (GateSearchFilter, which matches ParkingSpot.Aliases) lets the pilot type the
+                // ATC name to find it. We deliberately do NOT add a separate dropdown entry per alias:
+                // at airports whose online names differ from the scenery names (e.g. LIMC) that doubled
+                // the gate list with a near-identical "online" duplicate of every "scenery" gate.
                 string label = spot.ToString();
+                if (nodeId < 0) label += " (no taxi route)";
                 if (_destinationNodeMap.ContainsKey(label)) continue;
 
                 _destinationNodeMap[label] = nodeId;
@@ -1834,6 +1877,12 @@ public class TaxiAssistForm : Form
                 _announcer.Announce("Select at least one taxiway for progressive taxi.");
                 return;
             }
+            // Resolve any online-source alias label (e.g. "B (HAWKER)") to the canonical
+            // navdata name BEFORE the graph-distance terminator helpers run — they match
+            // taxiway names exactly, and LoadRoute's alias resolution only covers the route
+            // SEQUENCE, not these pre-route terminator lookups. Without this, picking an alias
+            // label from the terminator dropdown fails with "Could not find taxiway B (HAWKER)".
+            lastTaxiway = _graph.ResolveTaxiwayName(lastTaxiway);
 
             // Component + start node for the graph-distance terminator helpers,
             // mirroring FindFarSideRunwayNode's aircraft-component restriction so
@@ -1851,7 +1900,10 @@ public class TaxiAssistForm : Form
             // combos are NOT consulted here — they remain plain intermediate
             // hold-shorts (carried in progRwyHoldShorts as on every other row).
             string runwayTarget = TerminatorRunwayTarget();   // bare designator, "" if none
-            string taxiwayTarget = cmbTerminatorTaxiway.SelectedItem?.ToString() ?? "";
+            // Resolve an alias label ("B (HAWKER)") to its canonical navdata name; harmless no-op
+            // for real names and the "(none)" sentinel. The Hold-short-of-taxiway list is filled
+            // from GetAllTaxiwayNames() (which surfaces alias labels), so the selection can be one.
+            string taxiwayTarget = _graph.ResolveTaxiwayName(cmbTerminatorTaxiway.SelectedItem?.ToString() ?? "");
 
             int terminatorTypeIndex = cmbTerminatorType.SelectedIndex;
             int destNode = -1;
@@ -1979,6 +2031,13 @@ public class TaxiAssistForm : Form
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
         {
             _announcer.Announce("Please select a destination.");
+            return;
+        }
+
+        if (destNodeId < 0)
+        {
+            _announcer.Announce($"No taxi route to {destName}. This stand can't be reached by the taxi network.");
+            lblStatus.Text = "Selected stand has no taxi route.";
             return;
         }
 

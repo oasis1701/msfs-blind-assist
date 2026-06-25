@@ -853,33 +853,43 @@ public class TaxiGuidanceManager : IDisposable
         if (string.IsNullOrWhiteSpace(icao))
             return "No airport nearby.";
 
-        TaxiGraph? graph = null;
+        TaxiGraph? graph;
 
-        // Prefer the active guidance graph if it's for this airport
-        if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
-            graph = _graph;
-        else if (_whereAmICachedGraph != null &&
-                 string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
-            graph = _whereAmICachedGraph;
-
-        if (graph == null)
+        // _stateLock serializes the cache read + build + write against the background-thread
+        // OnAirportDataUpdated (which nulls the cache) and the locked GetStatusAnnouncement
+        // overload — without it, OnAirportDataUpdated could null _whereAmICachedGraph between
+        // the read here and a later use, or tear the (graph, icao) pair. DescribeLocation runs
+        // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
+        lock (_stateLock)
         {
-            try
-            {
-                var paths = dataProvider.GetTaxiPaths(icao);
-                if (paths == null || paths.Count == 0)
-                    return $"No taxi data available for {icao}.";
+            // Prefer the active guidance graph if it's for this airport
+            if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
+                graph = _graph;
+            else if (_whereAmICachedGraph != null &&
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                graph = _whereAmICachedGraph;
+            else
+                graph = null;
 
-                var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
-                var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
-
-                graph = TaxiGraph.Build(paths, parking, runwayStarts);
-                _whereAmICachedGraph = graph;
-                _whereAmICachedIcao = icao;
-            }
-            catch (Exception ex)
+            if (graph == null)
             {
-                return $"Could not load airport data for {icao}. {ex.Message}";
+                try
+                {
+                    var paths = dataProvider.GetTaxiPaths(icao);
+                    if (paths == null || paths.Count == 0)
+                        return $"No taxi data available for {icao}.";
+
+                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    _whereAmICachedGraph = graph;
+                    _whereAmICachedIcao = icao;
+                }
+                catch (Exception ex)
+                {
+                    return $"Could not load airport data for {icao}. {ex.Message}";
+                }
             }
         }
 
@@ -898,6 +908,27 @@ public class TaxiGuidanceManager : IDisposable
     {
         _whereAmICachedGraph = null;
         _whereAmICachedIcao = "";
+    }
+
+    /// <summary>
+    /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched. Drop any
+    /// cached Where-Am-I graph built from the OLDER (pre-augmentation) data so the next query rebuilds
+    /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Invoked from the
+    /// background fetch thread, so it MUST take _stateLock to serialize against the UI-thread
+    /// Where-Am-I reader/writer (DescribeCurrentLocation) and the locked GetStatusAnnouncement
+    /// overload — both touch the same _whereAmICachedGraph/_whereAmICachedIcao pair.
+    /// </summary>
+    public void OnAirportDataUpdated(string icao)
+    {
+        if (string.IsNullOrEmpty(icao)) return;
+        lock (_stateLock)
+        {
+            if (string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+            {
+                _whereAmICachedGraph = null;
+                _whereAmICachedIcao = "";
+            }
+        }
     }
 
     /// <summary>
@@ -1172,6 +1203,17 @@ public class TaxiGuidanceManager : IDisposable
             // apron/grass. In that case start from the aircraft's nearest
             // in-component graph node so FindConstrainedPath builds a
             // pavement-following lead-in onto the taxiway (its Step-1 AStarSearch).
+
+            // Resolve any pilot-entered alias names to canonical navdata names BEFORE any
+            // routing or node-snapping. This is the single choke point — all callers benefit.
+            // Example: pilot enters "K" but navdata calls the taxiway "HAWKER" →
+            //          ResolveTaxiwayName maps "K" → "HAWKER" so routing finds the correct nodes.
+            if (taxiwaySequence != null)
+            {
+                for (int i = 0; i < taxiwaySequence.Count; i++)
+                    taxiwaySequence[i] = _graph.ResolveTaxiwayName(taxiwaySequence[i]);
+            }
+
             string? firstCleared = (taxiwaySequence is { Count: > 0 }) ? taxiwaySequence[0] : null;
             TaxiNode? firstTwNode = firstCleared != null
                 ? _graph.FindNearestNodeOnTaxiway(
@@ -1218,7 +1260,8 @@ public class TaxiGuidanceManager : IDisposable
             TaxiRoute? route;
 
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
-                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence);
+                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
+                    destinationIsRunway: isRunwayDestination);
             else
                 route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
 
@@ -1244,7 +1287,8 @@ public class TaxiGuidanceManager : IDisposable
                     // or the lead-in was a dead-end detour) — start on the cleared
                     // taxiway like before and note it in the summary.
                     route = router.FindConstrainedPath(
-                        firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!);
+                        firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!,
+                        destinationIsRunway: isRunwayDestination);
                     leadIn = default;
                     leadInFallback = true;
                 }
@@ -2968,7 +3012,8 @@ public class TaxiGuidanceManager : IDisposable
         TaxiRoute? newRoute;
         if (remainingSequence != null && remainingSequence.Count > 0)
         {
-            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence);
+            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence,
+                destinationIsRunway: _isRunwayLineup);
         }
         else
         {
@@ -3072,6 +3117,40 @@ public class TaxiGuidanceManager : IDisposable
         _routeReachesRunway = !_isRunwayLineup ||
             DestinationCrossTrackMeters(_destinationNodeId) <= RUNWAY_REACH_MAX_CROSS_M;
 
+        // Distinct consecutive named taxiways of the recalculated route, in order.
+        var viaNames = new List<string>();
+        foreach (var s in newRoute.Segments)
+        {
+            if (!string.IsNullOrEmpty(s.TaxiwayName) &&
+                (viaNames.Count == 0 || !viaNames[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
+                viaNames.Add(s.TaxiwayName);
+        }
+
+        // No-op recalc guard: if the recalculated route reproduces the SAME remaining
+        // taxiway sequence we're already on, leave the current route + guidance untouched.
+        // The usual trigger is the off-route detector tripping while the aircraft cuts the
+        // corner ONTO a taxiway it is correctly turning onto (the route's next segment is
+        // laterally offset mid-turn) — the recalc then re-plans the identical tail. Swapping
+        // it in would bark "Route changed", reset the safety-critical countdown latches, and
+        // re-slew the steering tone, all for a route the pilot is already correctly on
+        // (reported as a spurious "Route changed … super sharp right" while turning onto N).
+        // The recalc cooldown was already stamped by the caller, so this won't re-fire each
+        // frame. A genuine reroute (different taxiways) has a different sequence and proceeds.
+        var oldRemainingVia = new List<string>();
+        if (_route != null)
+        {
+            for (int i = Math.Max(0, _currentSegmentIndex); i < _route.Segments.Count; i++)
+            {
+                var nm = _route.Segments[i].TaxiwayName;
+                if (!string.IsNullOrEmpty(nm) &&
+                    (oldRemainingVia.Count == 0 || !oldRemainingVia[^1].Equals(nm, StringComparison.OrdinalIgnoreCase)))
+                    oldRemainingVia.Add(nm);
+            }
+        }
+        if (oldRemainingVia.Count > 0 &&
+            oldRemainingVia.SequenceEqual(viaNames, StringComparer.OrdinalIgnoreCase))
+            return;
+
         _route = newRoute;
         _currentSegmentIndex = 0;
         _approachAnnounced = false;
@@ -3094,14 +3173,6 @@ public class TaxiGuidanceManager : IDisposable
         // route changed — a recalc can trim/replace the entered clearance (PHNL
         // 2026-06-13: "Z A L N Z D" silently became "Z D", and the old generic
         // "Recalculating. … Taxiway Z." never said the sequence had changed).
-        // Distinct consecutive named taxiways of the new route, in order.
-        var viaNames = new List<string>();
-        foreach (var s in newRoute.Segments)
-        {
-            if (!string.IsNullOrEmpty(s.TaxiwayName) &&
-                (viaNames.Count == 0 || !viaNames[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
-                viaNames.Add(s.TaxiwayName);
-        }
         string callout = viaNames.Count > 0
             ? $"Route changed. Now via {string.Join(", ", viaNames)}. {distStr} to {_destinationName}."
             : $"Route changed. {distStr} to {_destinationName}.";

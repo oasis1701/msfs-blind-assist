@@ -118,7 +118,12 @@ When a recalc does fire, two additional safeguards keep the new route honest to 
 
 1. **Position-aware sequence trimming (`FindRemainingSequenceByPosition`).** The ATC taxiway sequence is stored in `_originalTaxiwaySequence`. On recalc the manager walks the sequence from **last to first**, asking the graph "is there a node on this taxiway within 50 m of the aircraft?" The first hit is the latest taxiway the aircraft is physically on; everything before it is dropped before passing to `FindConstrainedPath`. Driving the trim from aircraft position (rather than from the recorded `_currentSegmentIndex`) handles the case where a previous recalc reset the segment index to 0 even though the aircraft is far along the route — observed at LEPA where a recalc near the H2 hold-short produced a route that physically started back at LE, sending the aircraft on a big loop. Aircraft drifted entirely off the cleared route → no sequence-taxiway hit → caller falls back to `FindNearestNodeInDirection` + shortest path.
 2. **Diversion guard.** If the router fell back to unconstrained shortest path (`ConstrainedFallbackReason` is non-empty) and the new total distance exceeds `2 × oldRemaining + 500 m`, the manager **rejects the recalc** and announces: `"Off route. Could not follow clearance. <reason>. Continuing on original route."` This prevents a bad recalc from sending the aircraft across the field just because a single intersection node has no bridging edge on the expected taxiway.
+
+### Last cleared taxiway honored as the hold-short terminus
+
+When the LAST taxiway in the clearance branches *off* the runway rather than onto it — i.e. a prior taxiway already reaches the runway and the last one is a hold-short connector beside it — `FindConstrainedPath` used to drop it. The node-picker scores by graph distance to the destination, and for such a connector every node's shortest path to the runway goes *back* through its entry junction, so the picker returns the entry node, the step no-ops, and the final unconstrained leg routes onto the runway via the prior taxiway with **no hold short**. Live case: EIDW clearance `F2 F3 F-OUTER N N2` to 28R — taxiway **N** runs to the 28R threshold (4 m) while **N2** is a ~450 m connector, so N2 was silently dropped and the aircraft was guided straight down N onto the runway. Fix: when the last taxiway's target equals the node we entered it on, force traversal along it and end the route there (skipping the bypass leg). The traversal target is the taxiway node nearest the destination position, or — if THAT is still the entry — the node farthest *along* the taxiway from the entry. The second case is **LFPG `…R, R1` → 26R**: the 26R destination node sits closer to the R/R1 junction than to R1's far end, so nearest-to-position also degenerated to the entry, R1 was dropped, the unconstrained final leg deviated off R1, and the aircraft (correctly on R1) read as off-route → a recalc fired. The fix applies to both the multi-taxiway last step and the single-taxiway path (a recalc trimmed to one taxiway is itself the last). It only triggers when the step would otherwise no-op — a last taxiway that genuinely leads to the runway picks its far end, so ordinary routes are unchanged.
 3. **The recalc callout names the new sequence.** When a recalc is accepted, it announces `"Route changed. Now via <taxiway list>. <dist> to <dest>."` (distinct named taxiways of the new route, in order) rather than a generic "Recalculating." A recalc can trim/replace the entered clearance (see the route-joined latch above, and the position-aware trim), and the old generic callout never told the pilot their taxiways had changed — at PHNL the clearance was silently cut from `Z A L N Z D` to `Z D` with no audible indication.
+4. **No-op recalc suppression.** Before swapping in the recalculated route, the accept block compares the recalc's distinct taxiway sequence to the CURRENT remaining sequence; if they're identical it returns early — no route swap, no "Route changed" callout, no countdown-latch reset, no steering-tone re-slew. A sharp turn ONTO a cleared taxiway (cutting the corner) laterally offsets the aircraft from the route's next segment long enough to trip the off-route detector, which then re-plans the IDENTICAL tail. Reported live at LFPG as a spurious *"Route changed … super sharp right"* while turning onto N (route unchanged: `N B BD1 D1`). The recalc cooldown is stamped before the accept block, so the no-op path cannot re-fire every frame; a genuine reroute has a different sequence and proceeds.
 
 ## Concurrency
 
@@ -1279,6 +1284,134 @@ On success the summary names the lead-in explicitly — *"Route to Runway 23 via
 - `TryRecalculateRoute`: always uses the heading-aware `FindNearestNodeInDirection`; the lead-in is a `LoadRoute`-only feature.
 
 **Verification:** verified in-sim — the CYYZ GB/GC stand → runway 23 via A, H departure (2026-06-17). The route now starts at the apron node nearest the aircraft, and the lead-in follows the AJ taxiway onto A — the steering-tone target tracks the AJ centreline within ~3 m — instead of the earlier ~64 m straight beeline across the grass north of AJ; the route summary names the lead-in. The pure helper math (`TaxiLeadIn.Extract` / `IsAcceptable` / `Clause`) is small and self-contained in `Navigation/TaxiLeadIn.cs`.
+
+## Taxi-Data Augmentation Pipeline (Phase 5)
+
+**Goal:** silently fill in unnamed navdata taxi-path segments with real-world taxiway names sourced from OpenStreetMap (OSM) and the X-Plane apt.dat gateway, so ATC-clearance routing and spoken announcements work correctly at airports where the navdatareader database has unnamed segments.
+
+### Architecture
+
+```
+IAirportDataProvider  (base — navdata SQLite)
+        │
+        ▼
+AugmentingAirportDataProvider   (decorator — transparent to all consumers)
+        │  GetTaxiPaths()
+        │    ├─ cache hit  →  MergeOnto()  →  return enriched list
+        │    └─ cache miss →  return navdata now
+        │                      BackgroundFetch()  (fire-and-forget)
+        │                           │
+        │                    OsmTaxiSource  +  XplaneAptDatSource
+        │                           │  FetchAsync()
+        │                    TaxiDataCache  (per-ICAO JSON, 30-day TTL)
+        │                           │  Save()
+        │                    AirportDataUpdated event
+        │
+        ▼
+TaxiDataMerger.MergeNamesOntoNavData()   (pure geometry — bearing + midpoint match)
+        │
+        ▼
+List<TaxiPath>  (names written back BY INDEX — no object rebuild, no field loss)
+```
+
+### Key files
+
+| File | Role |
+|------|------|
+| `Services/TaxiAugment/AugmentingAirportDataProvider.cs` | Decorator; the main deliverable |
+| `Services/TaxiAugment/OsmTaxiSource.cs` | OSM Overpass fetch → `AirportTaxiData` |
+| `Services/TaxiAugment/XplaneAptDatSource.cs` | X-Plane Gateway apt.dat fetch |
+| `Services/TaxiAugment/TaxiDataMerger.cs` | Geometric name-overlay (pure) |
+| `Services/TaxiAugment/TaxiDataCache.cs` | In-memory per-ICAO cache (`ConcurrentDictionary`, TTL, no disk) |
+| `Services/TaxiAugment/AirportTaxiData.cs` | DTOs: `AirportTaxiData`, `MergeOptions`, `CoverageReport` |
+| `MainForm.cs` | Wiring: wraps `DatabaseSelector.SelectProvider()` in the decorator |
+
+### Wiring in MainForm
+
+The decorator is constructed immediately after `DatabaseSelector.SelectProvider()` returns. Only constructed when a base provider is available (no DB = no decoration). The typed `_augmentingProvider` field is kept for Phase 6's `PrefetchAsync` calls.
+
+Cache: **in-memory only** (`TaxiDataCache` = a `ConcurrentDictionary` with a TTL). There is no disk cache — every session fetches fresh, so data is never stale (the user explicitly did not want a disk cache). The active flight's departure + destination are fetched force-fresh; geofenced nearby airports ride the in-session cache.
+
+Augmentation event log: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` (via `AppLogs.PathFor`).
+
+### Merge strategy
+
+- Segment matching uses midpoint proximity (`MatchMaxMidpointMeters = 30 m`) and bearing agreement (`MatchMaxBearingDeg = 25°`).
+- Name writeback is **by index** — iterates `nav[i]` and `merged[i]` together; copies `merged[i].Name` onto `nav[i].Name` only when `nav[i].Name` is blank and `merged[i].Name` is not. All other `TaxiPath` fields (`Width`, `Type`, `Surface`, `StartType`, `EndType`, `StartDir`, `EndDir`) are preserved because the original objects are mutated in place, never rebuilt.
+- `TaxiDataMerger.MergeNamesOntoNavData` never overwrites an existing non-whitespace name; the navdata name is always authoritative.
+
+### Name normalization
+
+`TaxiDataMerger.NormalizeTaxiwayName(string)` converts a taxiway name to a canonical comparison form: uppercase, trim, remove all spaces, strip a leading `TAXIWAY` or `TWY` token. Examples: `"twy k 2"` → `"K2"`, `"TAXIWAY K2"` → `"K2"`, `"K 2"` → `"K2"`. Used **only for comparing names**, never for storing or announcing them. The stored name is always the original human-readable form from the authoritative source.
+
+### Alias resolution
+
+Some airports have a mismatch between navdata taxiway names and OSM/apt.dat names (e.g. navdata calls a taxiway `"HAWKER"` while OSM labels it `"K"`). Without alias resolution, a pilot entering `"K"` as their cleared taxiway would get no match.
+
+**How aliases are collected (in `TaxiDataMerger.MergeNamesOntoNavData`):** For every navdata segment that already has a name, the merger runs the geometry match against OSM and apt.dat to find what the online sources call that same pavement. If the normalized online name differs from the normalized navdata name, the raw online name is appended to `NavSegment.Aliases` (deduped, case-insensitive). The navdata name is never overwritten.
+
+**How aliases propagate:**
+1. `TaxiDataMerger` stores them in `NavSegment.Aliases`.
+2. `AugmentingAirportDataProvider.MergeOnto` copies them to `TaxiPath.Aliases` (in-memory only; not persisted to the DB).
+3. `TaxiGraph.Build` reads every `TaxiPath.Aliases` list and populates `TaxiwayAliasToCanonical` (normalized alias → canonical navdata name, case-insensitive dictionary).
+4. `TaxiGraph.ResolveTaxiwayName(string entered)` normalizes the entered name, looks it up in `TaxiwayAliasToCanonical`, and returns the canonical name if found — otherwise the original input unchanged.
+5. `TaxiGuidanceManager.LoadRoute` passes every pilot-entered taxiway name through `_graph.ResolveTaxiwayName(...)` **before** any routing or node-snapping. This is the single choke point; all callers benefit.
+
+**Safety invariants:**
+- Aliases only affect name lookup, never geometry or steering.
+- Airports with no online data behave exactly as before (empty alias lists → `TaxiwayAliasToCanonical` is empty → `ResolveTaxiwayName` is a no-op).
+- The navdata name is always the canonical form stored in the graph and spoken to the pilot.
+
+### Gate / Parking Aliases
+
+Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
+
+**How parking aliases are collected — REWORKED 2026-06-23 (identity-matched, alias-only).** The earlier nearest-within-50 m gate-NAME fill was REMOVED: it corrupted gate identity at dense terminals (CYUL gate 15 adopted "Gate 11B" from an offset apt.dat ramp). Now the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)` flattens the online stands once and, for each authoritative gate, sets `spot.Aliases = GateAliasResolver.ResolveAliases(spot, online)` — a **pure, idempotent** resolver that:
+
+- matches by **IDENTITY, not distance**: an online stand aliases a gate only when their **numbers match AND any letters agree** (`StandId.Parse` extracts letter/number/suffix). Navdata gate 15 never adopts a neighbour's "Gate 11B" (number mismatch); an "N" de-ice pad never adopts "S3" (letter disagreement). A **150 m** Haversine value is a sanity *backstop* only (a same-number stand kilometres away is a data error, skipped) — it is NOT the matcher.
+- adds an alias **only when it carries info the identity lacks** — a concourse letter (`"A51"` for bare gate 51), a MARS suffix (`"53A"`) — a pure restatement (`"51"`, `"N3"`) adds nothing and is dropped.
+- **NEVER sets a Name or position and NEVER adds a selectable gate (anti-grass).** Online data cannot move where you taxi; it only contributes searchable alternative labels. `spot.Aliases` is recomputed from scratch each call → idempotent.
+
+- **X-Plane apt.dat is the key gate source.** Many airports have *real* gate numbers in apt.dat that navdata lacks (CYYZ "Gate 131", KATL "A12"/"B7") — these surface as identity-matched aliases.
+- `AugmentParking` is **public** and called on the GSX gate list too (GSX is the gate SOURCE and bypasses `GetParkingSpots`), so GSX stands get the same aliases. Called in `TaxiAssistForm` and `GateTeleportForm` after building the GSX list.
+- Empty-name gate-type spots render **`Gate {n}`** (not `Spot {n}`); a stand with no taxi node within `MAX_PARKING_TO_GRAPH_M` is kept but marked **`(no taxi route)`** and refused by the Calculate guard (was: silently dropped).
+- `ParkingSpot.Aliases` is in-memory only — never persisted to the database. `StandId` (`Services/StandId.cs`) + `GateAliasResolver` (`Services/TaxiAugment/`) are pure + probe-tested (`tools/TaxiAugmentProbe`).
+
+**How parking aliases are surfaced:**
+
+1. **TaxiAssistForm destination dropdown** — for each spot with `Aliases.Count > 0`, the normal label (e.g. `"GN 3 - Gate Large"`) is added first, then one additional combo item per alias formatted as `"{alias} ({normalLabel})"` (e.g. `"47 (GN 3 - Gate Large)"`). Both items map to the same spot in `_destinationSpotMap`, so routing is identical regardless of which label the pilot picks. This alias loop runs at both spots where parking spots are added to the dropdown: the deice section and the regular parking section.
+
+2. **GateTeleportForm listbox** — `ParkingSpot.ToString()` appends `" (also 47)"` when `Aliases.Count > 0`, so a screen reader reading the gate list hears the alternative name without a separate selection.
+
+**Safety invariants:**
+- Spots with no aliases produce identical behavior (empty `Aliases` list → the alias loop is a no-op in TaxiAssistForm; `ToString()` is unchanged in GateTeleportForm).
+- The navdata name is always authoritative; aliases are additive display helpers only.
+- Both dropdown entries for the same spot resolve to the same navdata spot object and therefore the same routing endpoint.
+
+### Background fetch / deduplication
+
+- `BackgroundFetch` uses a `HashSet<string> _inFlight` + `lock` so at most one fetch per ICAO is in flight at a time.
+- `FetchCoreAsync` wraps both sources in `Task.WhenAll` with a 60-second `CancellationTokenSource`.
+- Any exception is swallowed — background fetches must never propagate into callers.
+- `PrefetchAsync(icao, force)` is the awaitable variant for Phase 6.
+
+### Settings toggle + manual refresh
+
+`AugmentingAirportDataProvider.Enabled` (default `true`) is wired to `UserSettings.TaxiAugmentEnabled`, exposed as an in-dialog checkbox in the Taxi Guidance Options form (with visible "© OpenStreetMap contributors (ODbL) + X-Plane Scenery Gateway" attribution). The same dialog has a **"Refresh Taxiway Names"** button that force-fetches the nearby airport and announces how many names were added (`GetLastCoverage(icao)` → "Taxiway names refreshed for X: N added" / "No new names found").
+
+### Dropdown presentation (taxiway + gate aliases)
+
+Aliases are **separate, self-labeled dropdown items** — not merged into one. A taxiway navdata calls "HAWKER" but ATC calls "B" shows as TWO entries: `HAWKER` and `B (HAWKER)` (the latter at the "B" position). Gates likewise: `Gate 131 (GH 5 - …)` sits separately from `GH 5 - …`. Either resolves to the same canonical pavement/spot. This lets a pilot scroll to the name ATC actually used while still seeing what the scenery calls it.
+
+### Licensing & data attribution (verified 2026-06)
+
+Both online sources were checked for whether MSFSBA's use is permitted. **It is** — because MSFSBA only *consumes* names at runtime and **never redistributes the source data or any database derived from it.**
+
+**OpenStreetMap — ODbL 1.0.** OSM data is under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/). The license distinguishes a *Derivative Database* (redistributing the data / a database built from it → triggers **share-alike**, must be re-licensed ODbL) from a *Produced Work* (a finished output made *from* the data → **attribution only**). MSFSBA fetches OSM via Overpass, extracts only taxiway/parking **name tags**, overlays them onto the user's own navdata **in memory**, speaks/shows them, and discards them at session end — it publishes no database. Per the [OSMF Licence & Legal FAQ](https://osmfoundation.org/wiki/Licence/Licence_and_Legal_FAQ): *"If you do not make Public Use of the data, then you do not have to share anything with anybody."* So this is a **Produced Work, attribution-only, share-alike NOT triggered**. Required attribution — **"© OpenStreetMap contributors"** with a note that the data is under the ODbL — is shown in the Taxi Guidance Options dialog and the docs ([Attribution Guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines)).
+
+**X-Plane Scenery Gateway — public API, per-pack `COPYING`, no redistribution by us.** The [Gateway API](https://gateway.x-plane.com/api) is open (no authentication for downloads); its only stated condition is a courtesy: *"be considerate of our server load and avoid making unnecessary requests."* The airport data is community-contributed and each scenery pack carries its own artist-set `COPYING` license field (there is no single blanket data license). MSFSBA again **does not redistribute** the apt.dat data — it fetches per-airport on demand, extracts taxiway/gate **names** only, and holds them in memory — so per-pack redistribution terms don't bind it; attribution (**"X-Plane Scenery Gateway"**, shown in-app) is the obligation we honor. We respect the server-load courtesy by design: fetches are **on-demand (departure/destination only), cached per session, and never bulk-crawled** (the earlier full-database census tooling was removed precisely to honor this).
+
+**Net:** name-only extraction + in-memory overlay + no redistribution + visible attribution for both sources = compliant. If MSFSBA ever changed to **bundle/redistribute** the source data (e.g. ship a prebuilt name database), the analysis changes — OSM share-alike would apply to any distributed OSM-derived database, and each Gateway pack's `COPYING` would need honoring. Don't do that without re-reviewing the licenses.
 
 ## Related Documentation
 

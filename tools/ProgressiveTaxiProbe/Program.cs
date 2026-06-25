@@ -250,5 +250,75 @@ Check(!TaxiGraph.EdgeCrossesRunwayStatic(42.3600, -71.0200, 42.3720, -71.0170,
         rwy04Lat1, rwy04Lon1, rwy04Lat2, rwy04Lon2),
       "edge parallel to 04L (same side, west of centerline) does not register a crossing");
 
+// ---------------------------------------------------------------------------
+// Taxiway ALIAS resolution — the "test data port" for online-source names.
+// Build a graph from ONE named taxiway "HAWKER" that an online source (OSM/apt.dat)
+// also calls "B". Verifies the dropdown shows BOTH the canonical and the labeled alias,
+// and that selecting/entering either routes to the canonical pavement.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- taxiway alias resolution --");
+{
+    var hawker = new TaxiPath
+    {
+        Type = "T", Name = "HAWKER", Width = 75,
+        StartLat = 40.0, StartLon = -74.0, EndLat = 40.0, EndLon = -73.999,
+        Aliases = new List<string> { "B" },
+    };
+    var ag = TaxiGraph.Build(
+        new List<TaxiPath> { hawker },
+        new List<ParkingSpot>(),
+        new List<StartPosition>());
+
+    var names = ag.GetAllTaxiwayNames();
+    Check(names.Contains("HAWKER"), "alias: canonical 'HAWKER' is in the dropdown");
+    Check(names.Contains("B (HAWKER)"), "alias: labeled alias 'B (HAWKER)' is in the dropdown");
+    Check(ag.ResolveTaxiwayName("B (HAWKER)") == "HAWKER", "alias: picking 'B (HAWKER)' routes to HAWKER");
+    Check(ag.ResolveTaxiwayName("B") == "HAWKER", "alias: bare 'B' (ATC clearance) routes to HAWKER");
+    Check(ag.ResolveTaxiwayName("HAWKER") == "HAWKER", "alias: canonical 'HAWKER' unchanged");
+    Check(ag.ResolveTaxiwayName("ZZ") == "ZZ", "alias: unknown name passes through unchanged");
+}
+
+// ---------------------------------------------------------------------------
+// #4 — AMBIGUOUS bare alias: two DIFFERENT navdata taxiways both online-named "B"
+// (and "B" is NOT itself a real taxiway). A bare "B" can't safely pick one pavement,
+// so ResolveTaxiwayName must NOT guess — it returns "B" unchanged. The disambiguated
+// labels still resolve. (Was: first-registered canonical silently won.)
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- ambiguous bare alias --");
+{
+    var hawker = new TaxiPath { Type = "T", Name = "HAWKER", Width = 75,
+        StartLat = 40.0, StartLon = -74.0, EndLat = 40.0, EndLon = -73.999, Aliases = new List<string> { "B" } };
+    var foxtrot = new TaxiPath { Type = "T", Name = "FOXTROT", Width = 75,
+        StartLat = 41.0, StartLon = -74.0, EndLat = 41.0, EndLon = -73.999, Aliases = new List<string> { "B" } };
+    var ag = TaxiGraph.Build(new List<TaxiPath> { hawker, foxtrot },
+        new List<ParkingSpot>(), new List<StartPosition>());
+
+    Check(ag.ResolveTaxiwayName("B") == "B", "ambiguous: bare 'B' (two canonicals) does NOT guess — returns 'B' unchanged");
+    Check(ag.ResolveTaxiwayName("B (HAWKER)") == "HAWKER", "ambiguous: disambiguated 'B (HAWKER)' still resolves");
+    Check(ag.ResolveTaxiwayName("B (FOXTROT)") == "FOXTROT", "ambiguous: disambiguated 'B (FOXTROT)' still resolves");
+    var nm = ag.GetAllTaxiwayNames();
+    Check(nm.Contains("B (HAWKER)") && nm.Contains("B (FOXTROT)"), "ambiguous: both labeled aliases still in dropdown");
+}
+
+// ---------------------------------------------------------------------------
+// #6 — collision-skip must use the build-time normalized alias, NOT a re-parse of
+// the display label. A canonical name containing " (" breaks LastIndexOf(" ("):
+// canonical "RAMP (NORTH)" aliased "K2" while "K2" is itself a REAL taxiway — the
+// mislabeled "K2 (RAMP (NORTH))" must be SKIPPED from the dropdown (collision guard).
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- alias collision skip with parens in canonical --");
+{
+    var ramp = new TaxiPath { Type = "T", Name = "RAMP (NORTH)", Width = 75,
+        StartLat = 42.0, StartLon = -74.0, EndLat = 42.0, EndLon = -73.999, Aliases = new List<string> { "K2" } };
+    var realK2 = new TaxiPath { Type = "T", Name = "K2", Width = 75,
+        StartLat = 43.0, StartLon = -74.0, EndLat = 43.0, EndLon = -73.999 };
+    var ag = TaxiGraph.Build(new List<TaxiPath> { ramp, realK2 },
+        new List<ParkingSpot>(), new List<StartPosition>());
+
+    var nm = ag.GetAllTaxiwayNames();
+    Check(nm.Contains("K2"), "collision: real taxiway 'K2' is in the dropdown");
+    Check(!nm.Contains("K2 (RAMP (NORTH))"), "collision: mislabeled 'K2 (RAMP (NORTH))' is SKIPPED (alias normalizes to real 'K2')");
+}
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);

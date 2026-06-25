@@ -34,8 +34,16 @@ public class TaxiGuidanceOptionsForm : Form
     private Label dockingBeepVolumeValueLabel = null!;
     private Button dockingBeepTestButton = null!;
 
+    private Button refreshTaxiwayNamesButton = null!;
+    private CheckBox taxiAugmentEnabledCheckBox = null!;
+    private Label taxiAugmentAttributionLabel = null!;
+
     private Button okButton = null!;
     private Button cancelButton = null!;
+
+    // Optional callback for the manual taxiway-names refresh (Task 4).
+    // Null when the caller doesn't supply augmenting-provider support.
+    private readonly Func<Task>? _onRefreshTaxiwayNames;
 
     private AudioToneGenerator? testToneGenerator;
 
@@ -54,6 +62,9 @@ public class TaxiGuidanceOptionsForm : Form
     public HandFlyWaveType DockingBeepWaveform { get; private set; }
     public double DockingBeepVolume { get; private set; }
 
+    /// <summary>When true (default), the augmenting provider fetches online taxiway/gate names.</summary>
+    public bool TaxiAugmentEnabled { get; private set; } = true;
+
     public TaxiGuidanceOptionsForm(
         HandFlyWaveType currentWaveform,
         double currentVolume,
@@ -66,8 +77,11 @@ public class TaxiGuidanceOptionsForm : Form
         bool gsxAutoSelectGateOnRoute = true,
         bool dockingGuidanceEnabled = true,
         HandFlyWaveType dockingBeepWaveform = HandFlyWaveType.Sine,
-        double dockingBeepVolume = 0.05)
+        double dockingBeepVolume = 0.05,
+        Func<Task>? onRefreshTaxiwayNames = null,
+        bool taxiAugmentEnabled = true)
     {
+        TaxiAugmentEnabled = taxiAugmentEnabled;
         SelectedToneWaveform = currentWaveform;
         SelectedVolume = currentVolume;
         InvertSteeringTone = invertSteeringTone;
@@ -80,6 +94,7 @@ public class TaxiGuidanceOptionsForm : Form
         DockingGuidanceEnabled = dockingGuidanceEnabled;
         DockingBeepWaveform = dockingBeepWaveform;
         DockingBeepVolume = dockingBeepVolume;
+        _onRefreshTaxiwayNames = onRefreshTaxiwayNames;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -87,7 +102,7 @@ public class TaxiGuidanceOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Taxi Guidance Options";
-        Size = new Size(500, 730);
+        Size = new Size(500, 860);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -473,11 +488,60 @@ public class TaxiGuidanceOptionsForm : Form
             }
         };
 
+        // Refresh Taxiway Names Button (Task 4 — manual refresh, only wired when callback is provided)
+        refreshTaxiwayNamesButton = new Button
+        {
+            Text = "Refresh Taxiway Names",
+            Location = new Point(20, 625),
+            Size = new Size(200, 35),
+            Enabled = _onRefreshTaxiwayNames != null,
+            AccessibleName = "Refresh Taxiway Names",
+            AccessibleDescription = "Download fresh taxiway-name data for the nearest airport and announce when complete"
+        };
+        refreshTaxiwayNamesButton.Click += async (s, e) =>
+        {
+            if (_onRefreshTaxiwayNames != null)
+            {
+                refreshTaxiwayNamesButton.Enabled = false;
+                try
+                {
+                    await _onRefreshTaxiwayNames();
+                }
+                finally
+                {
+                    if (!IsDisposed)
+                        refreshTaxiwayNamesButton.Enabled = true;
+                }
+            }
+        };
+
+        // Online taxiway/gate-name augmentation enable toggle.
+        taxiAugmentEnabledCheckBox = new CheckBox
+        {
+            Text = "Online taxiway and gate names (OpenStreetMap + X-Plane)",
+            Location = new Point(20, 665),
+            Size = new Size(450, 25),
+            Checked = TaxiAugmentEnabled,
+            AccessibleName = "Online taxiway and gate names",
+            AccessibleDescription = "When enabled, fetches real-world taxiway and gate names from OpenStreetMap and the X-Plane Scenery Gateway to enrich your navdata, on demand for departure and destination. Disable to use navdata names only with no online requests. Applies immediately."
+        };
+        taxiAugmentEnabledCheckBox.CheckedChanged += (s, e) =>
+            TaxiAugmentEnabled = taxiAugmentEnabledCheckBox.Checked;
+
+        // ODbL / source attribution (required for OSM-derived data).
+        taxiAugmentAttributionLabel = new Label
+        {
+            Text = "Online names: © OpenStreetMap contributors (ODbL) + X-Plane Scenery Gateway.",
+            Location = new Point(20, 692),
+            Size = new Size(450, 30),
+            AccessibleName = "Online taxiway name data attribution"
+        };
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 640),
+            Location = new Point(310, 735),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -494,7 +558,7 @@ public class TaxiGuidanceOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 640),
+            Location = new Point(395, 735),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -518,6 +582,8 @@ public class TaxiGuidanceOptionsForm : Form
             dockingBeepTypeLabel, dockingBeepTypeCombo,
             dockingBeepVolumeLabel, dockingBeepVolumeTrackBar, dockingBeepVolumeValueLabel,
             dockingBeepTestButton,
+            refreshTaxiwayNamesButton,
+            taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel,
             okButton, cancelButton
         });
 
@@ -543,6 +609,8 @@ public class TaxiGuidanceOptionsForm : Form
         dockingBeepTypeCombo.TabIndex = tabIdx++;
         dockingBeepVolumeTrackBar.TabIndex = tabIdx++;
         dockingBeepTestButton.TabIndex = tabIdx++;
+        refreshTaxiwayNamesButton.TabIndex = tabIdx++;
+        taxiAugmentEnabledCheckBox.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
 

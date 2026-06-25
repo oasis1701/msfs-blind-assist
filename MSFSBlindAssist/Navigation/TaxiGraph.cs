@@ -69,6 +69,48 @@ public class TaxiGraph
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Maps a normalized alias (see TaxiDataMerger.NormalizeTaxiwayName) to the canonical
+    /// taxiway name stored in the graph. Populated during Build from TaxiPath.Aliases.
+    /// Used by ResolveTaxiwayName so pilots can enter alternative names (e.g. "K" for
+    /// a navdata taxiway named "HAWKER") and still find the correct route.
+    /// </summary>
+    public Dictionary<string, string> TaxiwayAliasToCanonical { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Self-describing dropdown labels for online-source aliases — maps the display string
+    /// (e.g. "B (HAWKER)") to the canonical navdata name ("HAWKER"). Surfaced in the taxiway
+    /// dropdowns so a screen-reader user hears "B, HAWKER" and knows it's the SAME pavement;
+    /// selecting one resolves to the canonical via ResolveTaxiwayName (exact match on the label).
+    /// </summary>
+    public Dictionary<string, string> AliasDisplayToCanonical { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Display label (e.g. "B (HAWKER)") → the normalized alias form ("B") captured at Build time.
+    /// GetAllTaxiwayNames' collision skip reads THIS instead of re-parsing the label with
+    /// LastIndexOf(" (") — a canonical name that itself contains " (" (e.g. "RAMP (NORTH)") would
+    /// otherwise split at the wrong paren and mis-classify the alias.
+    /// </summary>
+    private readonly Dictionary<string, string> _aliasDisplayToNormalized = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Normalized forms of every REAL navdata taxiway name. An alias is never allowed to remap a
+    /// name that is itself a real taxiway (that would misroute a legitimate clearance), so
+    /// ResolveTaxiwayName / GetAllTaxiwayNames consult this set as a guard.
+    /// </summary>
+    private readonly HashSet<string> _normalizedRealNames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Normalized bare aliases that map to MORE THAN ONE distinct canonical name (two different
+    /// navdata taxiways online-named the same thing). A bare such alias can't safely pick one
+    /// pavement, so ResolveTaxiwayName refuses to resolve it (returns the entered text unchanged) —
+    /// a miss is safer than guessing. The disambiguated labels ("B (HAWKER)" / "B (FOXTROT)") still
+    /// resolve via AliasDisplayToCanonical.
+    /// </summary>
+    private readonly HashSet<string> _ambiguousNormalizedAliases = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Builds the taxi graph asynchronously — useful at large airports where Build can take
     /// 200-500ms and would otherwise stall the UI thread. Runs on the thread pool.
     /// </summary>
@@ -135,6 +177,52 @@ public class TaxiGraph
             {
                 graph.RegisterTaxiwayNode(name, startNodeId);
                 graph.RegisterTaxiwayNode(name, endNodeId);
+                // Track the normalized real name so an alias can never remap a genuine taxiway.
+                graph._normalizedRealNames.Add(
+                    MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger.NormalizeTaxiwayName(name));
+            }
+
+            // Register any online-source aliases discovered by TaxiDataMerger.
+            // Only affects COMPARISON / routing — never changes what is stored in the graph.
+            if (path.Aliases != null && path.Aliases.Count > 0 && !string.IsNullOrEmpty(name))
+            {
+                foreach (var alias in path.Aliases)
+                {
+                    if (string.IsNullOrWhiteSpace(alias)) continue;
+                    string normalizedAlias = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+                        .NormalizeTaxiwayName(alias);
+                    if (string.IsNullOrEmpty(normalizedAlias)) continue;
+
+                    // Self-describing label "ALIAS (CANONICAL)" for the dropdown so the pilot can
+                    // find + select the ATC/real name and hear which pavement it is. ALWAYS register
+                    // the label (one per distinct canonical), so when two taxiways share an online
+                    // name BOTH "B (HAWKER)" and "B (FOXTROT)" are selectable; resolution is exact on
+                    // the label string. Also store the normalized alias for GetAllTaxiwayNames' skip.
+                    string label = $"{alias.Trim()} ({name})";
+                    graph.AliasDisplayToCanonical[label] = name;
+                    graph._aliasDisplayToNormalized[label] = normalizedAlias;
+
+                    // Bare-alias → canonical map, with ambiguity detection. A second DIFFERENT
+                    // canonical for the same normalized alias makes the bare form ambiguous: remove
+                    // it and never re-add (ResolveTaxiwayName then leaves a bare "B" unresolved).
+                    if (graph._ambiguousNormalizedAliases.Contains(normalizedAlias))
+                    {
+                        // already ambiguous — labels stay, bare form stays unresolved
+                    }
+                    else if (graph.TaxiwayAliasToCanonical.TryGetValue(normalizedAlias, out var existing))
+                    {
+                        if (!string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            graph._ambiguousNormalizedAliases.Add(normalizedAlias);
+                            graph.TaxiwayAliasToCanonical.Remove(normalizedAlias);
+                        }
+                        // same canonical (another segment of the same taxiway) — keep as-is
+                    }
+                    else
+                    {
+                        graph.TaxiwayAliasToCanonical[normalizedAlias] = name;
+                    }
+                }
             }
         }
 
@@ -1059,7 +1147,9 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Gets all unique taxiway names in the graph, sorted.
+    /// Gets all unique taxiway names in the graph, sorted, including alias names so
+    /// pilots can type an alternative name and still see it in dropdowns.
+    /// Alias names are the human-readable forms collected from online sources.
     /// </summary>
     public List<string> GetAllTaxiwayNames()
     {
@@ -1072,9 +1162,60 @@ public class TaxiGraph
                     names.Add(edge.TaxiwayName);
             }
         }
+
+        // Include alias display names (the human-readable online-source forms, e.g. "B" for a
+        // navdata "HAWKER") so a pilot can SELECT the ATC/real name from the dropdown — the combo
+        // is DropDownList (no free text), so an alias the pilot can't select would be useless.
+        // Selecting an alias resolves to the canonical name at route time (ResolveTaxiwayName).
+        // Skip any alias whose normalized form collides with a real taxiway name: that real name
+        // is ALREADY in the list and ResolveTaxiwayName routes the bare name to the REAL taxiway
+        // (collision guard), so surfacing e.g. "Z (K)" would be a mislabeled duplicate of the real
+        // taxiway Z that, if selected, mis-routes to K. These collisions are common at rich,
+        // junction-dense airports (OMDB: ~130 such labels) where a navdata segment's midpoint
+        // matches a DIFFERENT-named crossing online segment. The normalized alias is captured at
+        // Build time in _aliasDisplayToNormalized — do NOT re-derive it by parsing the label, since
+        // a canonical name containing " (" (e.g. "RAMP (NORTH)") splits at the wrong paren.
+        foreach (var display in AliasDisplayToCanonical.Keys)
+        {
+            string normAlias = _aliasDisplayToNormalized.TryGetValue(display, out var na) ? na : "";
+            if (!string.IsNullOrEmpty(normAlias) && _normalizedRealNames.Contains(normAlias))
+                continue;
+            names.Add(display);
+        }
+
         var sorted = names.ToList();
         sorted.Sort(StringComparer.OrdinalIgnoreCase);
         return sorted;
+    }
+
+    /// <summary>
+    /// Resolves an entered taxiway name to the canonical navdata name via the alias map.
+    /// If <paramref name="entered"/> (normalized) is a known alias, returns the canonical
+    /// navdata name stored in the graph. Otherwise returns <paramref name="entered"/> unchanged.
+    /// Comparison is normalized (case-insensitive, spaces stripped, TWY/TAXIWAY prefix stripped).
+    /// </summary>
+    public string ResolveTaxiwayName(string entered)
+    {
+        if (string.IsNullOrWhiteSpace(entered))
+            return entered;
+
+        // Exact match on a labeled dropdown alias ("B (HAWKER)") → canonical navdata name.
+        if (AliasDisplayToCanonical.TryGetValue(entered.Trim(), out string? byLabel))
+            return byLabel;
+
+        string normalized = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+            .NormalizeTaxiwayName(entered);
+
+        // Collision guard: if the entered name IS a real taxiway, never remap it to an alias
+        // canonical — a legitimate "B" clearance must route to the real "B", not to whatever
+        // online source happened to also call "B" by another name.
+        if (!string.IsNullOrEmpty(normalized) && !_normalizedRealNames.Contains(normalized) &&
+            TaxiwayAliasToCanonical.TryGetValue(normalized, out string? canonical))
+        {
+            return canonical;
+        }
+
+        return entered;
     }
 
     /// <summary>

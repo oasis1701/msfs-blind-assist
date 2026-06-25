@@ -28,6 +28,8 @@ public partial class MainForm : Form
     private ScreenReaderAnnouncer announcer = null!;
     private HotkeyManager hotkeyManager = null!;
     private IAirportDataProvider? airportDataProvider;
+    // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
+    private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
     private ChecklistForm? checklistForm;
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
@@ -136,6 +138,11 @@ public partial class MainForm : Form
     // while cruising over the airport.
     private bool _lastOnGround = true;
     private LandingExitForm? landingExitForm;
+
+    // Per-session set of ICAOs already prefetched by AugmentingAirportDataProvider.
+    // Guards automatic departure/destination prefetches so each airport is fetched at most once
+    // per app session. Manual refresh (force:true) bypasses it.
+    private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
 
     // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
     private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
@@ -482,6 +489,46 @@ public partial class MainForm : Form
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
+
+        // Wrap with the taxi-data augmentation decorator (Phase 5).
+        // The decorator is transparent: all IAirportDataProvider calls delegate to the base
+        // except GetTaxiPaths, which enriches unnamed segments from OSM / X-Plane apt.dat.
+        // Only wrap when a base provider is available — no DB means no decoration needed.
+        if (airportDataProvider != null)
+        {
+            var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
+            var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
+            {
+                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(http),
+                new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
+            };
+            var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
+
+            // IN-MEMORY cache only — nothing written to the user's disk. It just holds an async
+            // fetch's result for the route build that follows + avoids re-fetching one airport
+            // repeatedly in a session. Everything is real-time: the active flight's dep/dest are
+            // force-refreshed, and the cache is gone on exit. (7-day TTL is moot in-session.)
+            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(ttlDays: 7);
+            var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
+                airportDataProvider, augCache, sources, mergeOpt);
+
+            // Phase 8: honour the user's on/off setting.
+            decorator.Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
+
+            decorator.AirportDataUpdated += icao =>
+            {
+                // Real-time: drop any cached graph built from the older (pre-augmentation) data so
+                // Where-Am-I and friends pick up the fresh names on next use — no manual refresh.
+                taxiGuidanceManager?.OnAirportDataUpdated(icao);
+
+                string logLine = $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}  taxi-augment: data updated for {icao}{System.Environment.NewLine}";
+                try { System.IO.File.AppendAllText(MSFSBlindAssist.Utils.AppLogs.PathFor("taxi-augment.log"), logLine); }
+                catch { /* log failure must never surface */ }
+            };
+
+            _augmentingProvider = decorator;
+            airportDataProvider = decorator;
+        }
 
         // Initialize flight plan manager with navigation database
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -1117,6 +1164,10 @@ public partial class MainForm : Form
         if (e.VarName == "GROUND_VELOCITY")
         {
             groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround, takeoffAssistManager.IsActive);
+            // Taxiway-name augmentation is fetched ONLY for the active flight's departure and
+            // destination (the airports you actually taxi at, both force-fresh) plus on demand when
+            // you type an ICAO into the gate-teleport dialog. The old 50 NM geofence scan was removed
+            // — it added background fetching for airports you never taxi at, with no benefit.
             return true;
         }
 
@@ -2711,6 +2762,11 @@ public partial class MainForm : Form
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
             {
                 simConnectManager.SetDestinationRunway(dialog.SelectedRunway, dialog.SelectedAirport);
+                // Destination just set → force-fresh the online taxiway names + gate aliases NOW, so
+                // they're ready well before the approach (instead of waiting until ILS guidance or the
+                // landing-exit planner is opened).
+                if (_augmentPrefetched.Add(dialog.SelectedAirport.ICAO))
+                    _ = _augmentingProvider?.PrefetchAsync(dialog.SelectedAirport.ICAO, force: true);
                 announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
             }
         }
@@ -3559,6 +3615,12 @@ public partial class MainForm : Form
         if (nearbyAirports.Count > 0)
             nearestIcao = nearbyAirports[0];
 
+        // Task 2 — Departure prefetch: when on the ground and we've resolved a nearest
+        // airport, prefetch once per session so taxiway names are cached before taxi starts.
+        // SILENT (fire-and-forget, debounced via _augmentPrefetched).
+        if (_lastOnGround && !string.IsNullOrEmpty(nearestIcao) && _augmentPrefetched.Add(nearestIcao))
+            _ = _augmentingProvider?.PrefetchAsync(nearestIcao, force: true);
+
         taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
 
         // (StateChanged is subscribed once in InitializeManagers. We deliberately do NOT
@@ -3597,6 +3659,9 @@ public partial class MainForm : Form
             presetRunway = simConnectManager.GetDestinationRunway();
             var destAp = simConnectManager.GetDestinationAirport();
             presetIcao = destAp?.ICAO;
+            // Task 1 — Destination prefetch (silent, fire-and-forget)
+            if (!string.IsNullOrEmpty(presetIcao) && _augmentPrefetched.Add(presetIcao))
+                _ = _augmentingProvider?.PrefetchAsync(presetIcao, force: true);
         }
 
         // Always rebuild the form so the preset (ICAO + runway from the current
@@ -3774,6 +3839,10 @@ public partial class MainForm : Form
             return;
         }
 
+        // Task 1 — Destination prefetch (silent, fire-and-forget)
+        if (_augmentPrefetched.Add(airport.ICAO))
+            _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
+
         // Query ILS data from database
         var ilsData = airportDataProvider.GetILSForRunway(airport.ICAO, runway.RunwayID);
 
@@ -3895,6 +3964,10 @@ public partial class MainForm : Form
             if (simConnectManager.HasDestinationRunway())
             {
                 var destinationAirport = simConnectManager.GetDestinationAirport();
+
+                // Task 1 — Destination prefetch (silent, fire-and-forget)
+                if (destinationAirport != null && _augmentPrefetched.Add(destinationAirport.ICAO))
+                    _ = _augmentingProvider?.PrefetchAsync(destinationAirport.ICAO, force: true);
 
                 // Get destination wind from VATSIM API
                 var destinationWindData = await VATSIMService.GetAirportWindAsync(destinationAirport?.ICAO ?? "");
@@ -4162,6 +4235,10 @@ public partial class MainForm : Form
                 visualGuidanceManager.Stop(announce: false);
                 return;
             }
+
+            // Task 1 — Destination prefetch (silent, fire-and-forget)
+            if (_augmentPrefetched.Add(airport.ICAO))
+                _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
             // Get user preferences from settings
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -4431,6 +4508,43 @@ public partial class MainForm : Form
     private void TaxiGuidanceOptionsMenuItem_Click(object? sender, EventArgs e)
     {
         var currentSettings = SettingsManager.Current;
+        // Task 4 — Manual taxiway-name refresh callback.
+        // Only wired when the augmenting provider is available; null otherwise
+        // (the button in the dialog disables itself when the callback is null).
+        // The callback runs on a thread-pool thread and marshals the announce
+        // back to the UI thread via BeginInvoke so it is always SILENT unless
+        // the user explicitly pressed the button.
+        Func<Task>? refreshCallback = null;
+        if (_augmentingProvider != null && airportDataProvider != null)
+        {
+            var provider = _augmentingProvider;
+            var dataProvider = airportDataProvider;
+            refreshCallback = async () =>
+            {
+                var pos = simConnectManager.LastKnownPosition;
+                if (pos == null) return;
+
+                string? icao = await Task.Run(() =>
+                    dataProvider.GetNearbyAirportICAOs(pos.Value.Latitude, pos.Value.Longitude, 50.0)
+                        .Where(c => c != null && c.Length == 4)
+                        .FirstOrDefault());
+
+                if (icao == null) return;
+
+                await provider.PrefetchAsync(icao, force: true);
+
+                // Tell the pilot HOW MANY names the online sources added (new feature).
+                var cov = provider.GetLastCoverage(icao);
+                int added = cov == null ? 0
+                    : cov.NamesAdoptedFromOsm + cov.NamesAdoptedFromAptDat + cov.AliasesAdded;
+                string msg = added > 0
+                    ? $"Taxiway names refreshed for {icao}: {added} added."
+                    : $"Taxiway names refreshed for {icao}. No new names found.";
+                if (IsHandleCreated && !IsDisposed)
+                    BeginInvoke(() => announcer.AnnounceImmediate(msg));
+            };
+        }
+
         using (var settingsForm = new Forms.TaxiGuidanceOptionsForm(
             currentSettings.TaxiGuidanceToneWaveform,
             currentSettings.TaxiGuidanceToneVolume,
@@ -4443,7 +4557,9 @@ public partial class MainForm : Form
             currentSettings.GsxAutoSelectGateOnRoute,
             currentSettings.DockingGuidanceEnabled,
             currentSettings.DockingBeepWaveform,
-            currentSettings.DockingBeepVolume))
+            currentSettings.DockingBeepVolume,
+            onRefreshTaxiwayNames: refreshCallback,
+            taxiAugmentEnabled: currentSettings.TaxiAugmentEnabled))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -4460,6 +4576,10 @@ public partial class MainForm : Form
                 currentSettings.DockingGuidanceEnabled = settingsForm.DockingGuidanceEnabled;
                 currentSettings.DockingBeepWaveform = settingsForm.DockingBeepWaveform;
                 currentSettings.DockingBeepVolume = settingsForm.DockingBeepVolume;
+                currentSettings.TaxiAugmentEnabled = settingsForm.TaxiAugmentEnabled;
+                // Apply live (next route build) — no restart needed.
+                if (_augmentingProvider != null)
+                    _augmentingProvider.Enabled = settingsForm.TaxiAugmentEnabled;
                 SettingsManager.Save();
 
                 statusLabel.Text = "Taxi guidance options saved successfully";
