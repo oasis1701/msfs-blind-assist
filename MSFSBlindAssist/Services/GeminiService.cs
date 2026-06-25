@@ -13,15 +13,11 @@ public class GeminiService
 {
     private static readonly HttpClient httpClient = new HttpClient();
 
-    // MODEL FALLBACK CHAIN. The real-world failure mode is NOT a sunset model — it's that free-tier
-    // Gemini Flash models intermittently return HTTP 503 "high demand" (the symptom: "nothing comes
-    // back"). Any single model — including the rolling `gemini-flash-latest` alias — spikes to 503
-    // under load. Different models have INDEPENDENT load, so on a busy/unavailable model we try the
-    // NEXT one instead of just failing. Order: newest stable GA first (most reliable in testing),
-    // then the rolling alias, then a proven GA fallback. All are fast, vision-capable, and support
-    // "thinking". A model that 404s (sunset) is skipped automatically, so the chain self-heals.
-    private static readonly string[] MODELS = { "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash" };
+    // The model is user-selectable (UserSettings.GeminiModel, populated from a live fetch in the
+    // Gemini Settings dialog). DEFAULT_MODEL is a rolling alias that always resolves to a current
+    // Flash model, so a fresh install / failed fetch still has a working default.
     private const string API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private const string DEFAULT_MODEL = "gemini-flash-latest";
     private readonly string apiKey;
 
     static GeminiService()
@@ -362,11 +358,6 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             }
         };
 
-        // Balanced thinking ENABLED for the route briefing (Shift+E). Unlike display reading —
-        // an extractive task where thinking is disabled for speed — the route narrative is a
-        // reasoning task (geography, SID/STAR routing, NOTAM synthesis), so thinking improves
-        // quality. Budget 8192 caps latency/cost so it stays balanced rather than unbounded.
-        var thinking = new { thinkingConfig = new { thinkingBudget = 8192 } };
         object requestBody = enableSearch
             ? new
             {
@@ -374,10 +365,9 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 tools = new object[]
                 {
                     new { google_search = new { } }
-                },
-                generationConfig = thinking
+                }
             }
-            : new { contents, generationConfig = thinking };
+            : new { contents };
 
         return await SendRequestAsync(requestBody);
     }
@@ -406,19 +396,16 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                         }
                     }
                 }
-            },
-            // Enable model "thinking" for display reading too: reading exact instrument values
-            // (airspeed, altitude, FMA modes, ECAM messages) is accuracy-critical for a blind pilot,
-            // and a WRONG number is far worse than a slightly slower readout. Use the same balanced
-            // budget as the text/route path. (Was 0/disabled for speed; enabled per user 2026-06.)
-            generationConfig = new { thinkingConfig = new { thinkingBudget = 8192 } }
+            }
         };
 
         return await SendRequestAsync(requestBody);
     }
 
     /// <summary>
-    /// Sends a request to the Gemini API and returns the text response.
+    /// Sends a request to the Gemini API (single configured model) and returns the text response.
+    /// Retries transient failures (429/5xx/timeout/connection) with backoff; fails fast on client
+    /// errors (400/401/403/404).
     /// </summary>
     private async Task<string> SendRequestAsync(object requestBody)
     {
@@ -427,119 +414,132 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini Settings.");
         }
 
-        string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        Exception? lastTransient = null;
-
-        // Try each model in the fallback chain. A model that stays overloaded (503), rate-limited
-        // (429) or is missing (404, sunset) after its retries falls through to the NEXT model —
-        // their loads are independent, so this recovers from the intermittent "high demand" 503s
-        // that otherwise surface to the pilot as "nothing came back".
-        foreach (string model in MODELS)
+        string model = SettingsManager.Current.GeminiModel;
+        if (string.IsNullOrWhiteSpace(model))
         {
-            string url = $"{API_BASE}{model}:generateContent?key={apiKey}";
-            const int maxAttempts = 3; // per model: 1 initial + 2 retries
-            HttpResponseMessage? response = null;
-            bool tryNextModel = false;
-
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
-            {
-                var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-                try
-                {
-                    response = await httpClient.PostAsync(url, content);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        break;
-                    }
-
-                    var status = response.StatusCode;
-
-                    // A sunset/unknown model (404) won't be helped by retrying — skip to the next.
-                    if (status == System.Net.HttpStatusCode.NotFound)
-                    {
-                        lastTransient = new HttpRequestException($"Gemini model '{model}' not found (404).");
-                        response.Dispose(); response = null;
-                        tryNextModel = true;
-                        break;
-                    }
-
-                    // Transient overload / rate-limit: retry this model with backoff, else next model.
-                    if (status == System.Net.HttpStatusCode.ServiceUnavailable ||
-                        status == System.Net.HttpStatusCode.TooManyRequests)
-                    {
-                        if (attempt < maxAttempts - 1)
-                        {
-                            int delaySeconds = GetRetryDelay(response, attempt);
-                            response.Dispose(); response = null;
-                            await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
-                            continue;
-                        }
-                        string busyBody = await response.Content.ReadAsStringAsync();
-                        lastTransient = new HttpRequestException($"Gemini model '{model}' busy ({(int)status}): {busyBody}");
-                        response.Dispose(); response = null;
-                        tryNextModel = true;
-                        break;
-                    }
-
-                    // Any other non-success (400 bad request, 403 auth, …) is a real error the other
-                    // models won't fix — fail immediately.
-                    string errorContent = await response.Content.ReadAsStringAsync();
-                    response.Dispose();
-                    throw new HttpRequestException($"Gemini API request failed with status {status}: {errorContent}");
-                }
-                catch (TaskCanceledException ex) when (!ex.CancellationToken.IsCancellationRequested)
-                {
-                    // HTTP timeout — retry this model, else move to the next.
-                    if (attempt < maxAttempts - 1)
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds((int)Math.Pow(2, attempt + 1)));
-                    }
-                    else
-                    {
-                        lastTransient = new HttpRequestException($"Gemini model '{model}' timed out after retries.");
-                        tryNextModel = true;
-                    }
-                }
-            }
-
-            if (tryNextModel || response == null)
-            {
-                continue; // this model is busy/unavailable — try the next in the chain
-            }
-
-            // Success — parse the response.
-            string responseJson;
-            using (response)
-            {
-                responseJson = await response.Content.ReadAsStringAsync();
-            }
-            var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
-
-            if (result?.Candidates == null || result.Candidates.Length == 0)
-            {
-                throw new InvalidOperationException("Gemini API returned no candidates in response.");
-            }
-
-            var candidateContent = result.Candidates[0].Content;
-            if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
-            {
-                throw new InvalidOperationException("Gemini API returned no content in response.");
-            }
-
-            // Join EVERY text part. Thinking-capable Gemini models can return multiple parts (e.g. a
-            // thought part before the answer), so reading Parts[0] alone could yield empty text and
-            // look "broken". Concatenating all non-empty text parts is robust across response shapes.
-            string combined = string.Concat(candidateContent.Parts
-                .Where(p => !string.IsNullOrEmpty(p.Text))
-                .Select(p => p.Text));
-            return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
+            model = DEFAULT_MODEL;
         }
 
-        // Every model in the chain was busy/unavailable.
-        throw new HttpRequestException(
-            "Gemini is busy right now — all models returned high-demand (503) errors. Please try again in a moment.",
-            lastTransient);
+        string jsonRequest = JsonConvert.SerializeObject(requestBody);
+        string url = $"{API_BASE}{model}:generateContent?key={apiKey}";
+
+        const int maxAttempts = 4; // 1 initial + 3 retries
+        Exception? lastTransient = null;
+        HttpResponseMessage? response = null;
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+            // Only PostAsync is inside the try — status handling (and the deliberate fail-fast
+            // throws) live OUTSIDE it, so a thrown HttpRequestException is never self-caught.
+            try
+            {
+                response = await httpClient.PostAsync(url, content);
+            }
+            catch (TaskCanceledException ex)
+            {
+                // HttpClient 120s timeout. No caller token is ever passed, so a cancellation here is
+                // always the timeout. Do NOT gate on ex.CancellationToken.IsCancellationRequested —
+                // on .NET 9 the timeout token IS signaled, so that filter never matches a timeout
+                // (matches the SimBriefService pattern). Transient — retry with backoff.
+                lastTransient = new HttpRequestException("Gemini API request timed out.", ex);
+                response = null;
+                if (attempt < maxAttempts - 1)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds((int)Math.Pow(2, attempt + 1)));
+                    continue;
+                }
+                break;
+            }
+            catch (HttpRequestException ex)
+            {
+                // Connection-level failure (DNS, reset, TLS). Transient — retry with backoff.
+                lastTransient = ex;
+                response = null;
+                if (attempt < maxAttempts - 1)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds((int)Math.Pow(2, attempt + 1)));
+                    continue;
+                }
+                break;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                break;
+            }
+
+            var status = response.StatusCode;
+            int code = (int)status;
+
+            // Client errors won't be fixed by retrying — fail fast with the body.
+            if (status == System.Net.HttpStatusCode.BadRequest ||      // 400
+                status == System.Net.HttpStatusCode.Unauthorized ||    // 401
+                status == System.Net.HttpStatusCode.Forbidden ||       // 403
+                status == System.Net.HttpStatusCode.NotFound)          // 404 (model unavailable)
+            {
+                string errorContent = await response.Content.ReadAsStringAsync();
+                response.Dispose();
+                string message = status == System.Net.HttpStatusCode.NotFound
+                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Gemini Settings. ({errorContent})"
+                    : $"Gemini API request failed with status {code}: {errorContent}";
+                throw new HttpRequestException(message);
+            }
+
+            // Transient server / rate-limit errors (429, 500, 502, 503, 504, any other 5xx) — retry.
+            if (status == System.Net.HttpStatusCode.TooManyRequests || (code >= 500 && code <= 599))
+            {
+                string busyBody = await response.Content.ReadAsStringAsync();
+                lastTransient = new HttpRequestException($"Gemini transient error ({code}): {busyBody}");
+                if (attempt < maxAttempts - 1)
+                {
+                    int delaySeconds = GetRetryDelay(response, attempt);
+                    response.Dispose(); response = null;
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                    continue;
+                }
+                response.Dispose(); response = null;
+                break;
+            }
+
+            // Any other unexpected status — fail with the body.
+            string otherBody = await response.Content.ReadAsStringAsync();
+            response.Dispose();
+            throw new HttpRequestException($"Gemini API request failed with status {code}: {otherBody}");
+        }
+
+        if (response == null || !response.IsSuccessStatusCode)
+        {
+            response?.Dispose();
+            throw new HttpRequestException(
+                "Gemini is busy or unavailable — please try again in a moment.",
+                lastTransient);
+        }
+
+        string responseJson;
+        using (response)
+        {
+            responseJson = await response.Content.ReadAsStringAsync();
+        }
+
+        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
+        if (result?.Candidates == null || result.Candidates.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no candidates in response.");
+        }
+
+        var candidateContent = result.Candidates[0].Content;
+        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no content in response.");
+        }
+
+        // Join EVERY non-empty text part — thinking-capable models can return multiple parts.
+        string combined = string.Concat(candidateContent.Parts
+            .Where(p => !string.IsNullOrEmpty(p.Text))
+            .Select(p => p.Text));
+        return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
     }
 
     private static int GetRetryDelay(HttpResponseMessage response, int attempt)
