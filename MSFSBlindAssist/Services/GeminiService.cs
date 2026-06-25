@@ -105,8 +105,23 @@ public class GeminiService
     private static bool IsNonChatModel(string id)
     {
         string lower = id.ToLowerInvariant();
-        return lower.Contains("embedding") || lower.Contains("aqa")
-            || lower.Contains("image") || lower.Contains("tts");
+
+        // Keep ONLY Gemini-branded models. This drops the non-Gemini families that also serve
+        // generateContent but are inappropriate for display reading / scene / route briefing:
+        // lyria-* (music), veo-* (video), deep-research-*, antigravity, gemma-*, learnlm-*, aqa.
+        if (!lower.StartsWith("gemini")) return true;
+
+        // Exclude Gemini-branded SPECIALTY variants that share the generateContent method but
+        // are not text+vision chat models: image generation (Nano Banana, *-image), TTS and
+        // native-audio (*-tts / *-audio), live/real-time, robotics, embeddings, and computer-use.
+        // The chat+vision lineup we want (Flash / Pro / Flash-Lite, incl. previews and the
+        // *-latest rolling aliases) carries none of these markers.
+        string[] specialtyMarkers = { "image", "tts", "audio", "live", "robotics", "embedding", "computer-use" };
+        foreach (string marker in specialtyMarkers)
+        {
+            if (lower.Contains(marker)) return true;
+        }
+        return false;
     }
 
     private static double ParseModelVersion(string id)
