@@ -114,6 +114,7 @@ public class UserSettings
         // Gemini AI Settings
         public string GeminiApiKey { get; set; } = "";
         public bool GeminiSearchGrounding { get; set; } = false;
+        public string GeminiModel { get; set; } = "gemini-flash-latest";
 
         // Range Settings (in selected distance units)
         public int NearbyCitiesRange { get; set; } = 25;
@@ -362,6 +363,7 @@ public class UserSettings
             SimbriefUsername = SimbriefUsername,
             GeminiApiKey = GeminiApiKey,
             GeminiSearchGrounding = GeminiSearchGrounding,
+            GeminiModel = GeminiModel,
             NearbyCitiesRange = NearbyCitiesRange,
             RegionalCitiesRange = RegionalCitiesRange,
             MajorCitiesRange = MajorCitiesRange,

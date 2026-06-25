@@ -966,6 +966,13 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **[Development](docs/development.md)** - Dependencies, key files, development notes
 - **[Developer Tooling Guide](docs/tooling.md)** - Coherent debugger (`:19999`) probes/scrapers/drivers in `tools/`, how to run each, and crash diagnosis
 
+## Gemini AI (display reading + scene/route description)
+
+`Services/GeminiService.cs` powers the AI features (on-demand cockpit-display reading, scene description, and the Shift+E route briefing). Key points:
+- **Model is USER-SELECTABLE, not a fallback chain.** The model used for every AI call is `UserSettings.GeminiModel` (default `gemini-flash-latest`, a rolling alias). The Gemini Settings dialog (`Forms/GeminiSettingsForm.cs`) populates a `DropDownList` from a LIVE fetch — `GeminiService.ListAvailableModelsAsync()` (`GET …/v1beta/models`, filtered to `generateContent`-capable text/vision models, newest-first) — with a curated fallback list (`gemini-flash-latest`, `gemini-3.5-flash`, `gemini-2.5-flash`) when offline / no key / fetch fails. Do NOT reinstate a silent multi-model fallback: it hid which model produced a response, which the user rejected.
+- **Do NOT send `thinkingConfig`/`thinkingBudget`.** `thinkingBudget` is the Gemini 2.5 parameter; Gemini 3.x models use `thinking_level` and treat `thinkingBudget` as deprecated (and error if both are set). The default models (`gemini-3.5-flash`, `gemini-2.5-flash`) already enable dynamic thinking by default, so omitting `thinkingConfig` keeps thinking on for accuracy across every selectable model without sending a wrong/redundant parameter.
+- **Reliability = per-request retry/backoff.** `SendRequestAsync` retries transient failures (429, 500/502/503/504, HTTP timeout, connection-level `HttpRequestException`) with backoff and fails fast on client errors (400/401/403/404, where 404 means "model unavailable — pick another"); on exhaustion it throws a clear "Gemini is busy or unavailable — please try again" message. The timeout catch must NOT gate on `ex.CancellationToken.IsCancellationRequested` (false on a .NET 9 HttpClient timeout) — catch `TaskCanceledException` as the timeout (the `SimBriefService` pattern).
+
 ## Technology Stack
 
 .NET 9 (C# 13), Windows Forms, SimConnect SDK (MSFS), SQLite, NVDA/Tolk (screen readers)
