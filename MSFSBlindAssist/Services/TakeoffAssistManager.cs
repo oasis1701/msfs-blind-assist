@@ -50,6 +50,13 @@ public class TakeoffAssistManager : IDisposable
     private double lastAnnouncedPitch = 0;
     private DateTime lastPitchAnnouncement = DateTime.MinValue;
 
+    // Diagnostic frame trace for the takeoff roll (one append per ~100 ms while
+    // active). Lets a post-flight reader see the actual swing + the yaw-rate
+    // lead's effect so leadSeconds can be tuned from data.
+    private static readonly string TakeoffLogPath = Utils.AppLogs.PathFor("takeoff_assist.log");
+    private const long MAX_TAKEOFF_LOG_BYTES = 2 * 1024 * 1024;
+    private DateTime lastTakeoffLogTime = DateTime.MinValue;
+
     // Speed callout state (for takeoff roll)
     private bool hasAnnounced80Knots = false;
     private bool hasAnnounced100Knots = false;
@@ -68,7 +75,21 @@ public class TakeoffAssistManager : IDisposable
     // Configuration constants - modern mode
     private const double CENTERLINE_TOLERANCE_FEET = 25.0; // Within ±25 feet is "center"
     private const double CENTERLINE_CHANGE_THRESHOLD_FEET = 10.0; // Announce if deviation changes by >10 feet
-    private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° heading deviation for full left/right pan
+    private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° tracking error for full left/right pan
+
+    // Cross-track centerline tracking. The pan tone tracks an INTERCEPT
+    // heading that converges on the centerline, not the bare runway heading —
+    // exactly like the taxi-guidance runway-lineup intercept. A pure
+    // heading-only tone (the original design) left pilots unable to hold
+    // centerline: a small steady heading error silently integrates into a
+    // huge sideways drift (measured 800 ft off at EIDW 28R while the nose
+    // never strayed >12° from runway heading), and the tone gave no cue of it.
+    // Here the "desired" heading is biased back toward the centerline by an
+    // intercept angle proportional to cross-track, so nulling the tone means
+    // converging on centerline rather than merely pointing straight.
+    private const double CROSSTRACK_INTERCEPT_DEADBAND_FEET = 8.0;   // on centerline → hold heading, no crab
+    private const double CROSSTRACK_INTERCEPT_DEG_PER_FOOT = 0.1;    // crab angle commanded per foot off
+    private const double CROSSTRACK_MAX_INTERCEPT_DEG = 10.0;        // cap the commanded crab (gentle on the roll)
 
     // Configuration constants - legacy mode
     private const double HEADING_TOLERANCE_DEGREES = 1.0; // Within ±1 degree is "center"
@@ -178,6 +199,9 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedCrossTrackFeet = 0;
                 lastCenterlineAnnouncement = DateTime.MinValue;
                 centerlineTone?.Start(toneWaveType, toneVolume, 600.0);
+
+                lastTakeoffLogTime = DateTime.MinValue;
+                BeginTakeoffLog();
             }
 
             if (hasRunwayReference)
@@ -318,31 +342,60 @@ public class TakeoffAssistManager : IDisposable
             // manager. Cheap — single setting lookup.
             hardPanTone = SettingsManager.Current.TakeoffAssistHardPanTone;
 
-            // Audio pan based on heading deviation - centered tone = nose pointed down runway
-            // Positive headingDiff = pointed right of runway, pan right (unless inverted).
-            // Hard-pan mode forces ±1 (one speaker only) for users on stereo
-            // speakers; proportional curve otherwise.
+            // --- Cross-track intercept ----------------------------------------
+            // Bias the "ideal" heading back toward the centerline by a crab angle
+            // proportional to how far off-centerline we are (sign convention:
+            // crossTrackFeet + = left of centerline → command a right crab; - =
+            // right → left crab). The tone is silent on the heading that CONVERGES
+            // on centerline, not merely on runway heading — so a pilot pointed
+            // straight but drifting off-CL still gets a steer cue. Within the
+            // deadband we command no crab so a dead-on-centerline roll stays steady.
+            double desiredCrabDeg = 0.0;
+            double absCt = Math.Abs(crossTrackFeet);
+            if (absCt > CROSSTRACK_INTERCEPT_DEADBAND_FEET)
+            {
+                double mag = Math.Min(
+                    (absCt - CROSSTRACK_INTERCEPT_DEADBAND_FEET) * CROSSTRACK_INTERCEPT_DEG_PER_FOOT,
+                    CROSSTRACK_MAX_INTERCEPT_DEG);
+                desiredCrabDeg = mag * Math.Sign(crossTrackFeet);
+            }
+
+            // steerError > 0 = steer RIGHT to reach the intercept heading; < 0 =
+            // steer LEFT. Matches the taxi steering-tone convention exactly: the
+            // tone pans in the direction you should TURN, and you steer TOWARD the
+            // tone to centre it (InvertPanning flips to steer-away, mirroring taxi).
+            double steerError = desiredCrabDeg - headingDiff;
+            // ------------------------------------------------------------------
+
+            // Audio pan in the steer direction - silent/centred tone = on the
+            // heading that converges on centerline. Positive steerError = steer
+            // right → pan RIGHT (unless inverted). Hard-pan mode forces ±1 (one
+            // speaker only) for stereo-speaker users; proportional curve otherwise.
             float pan;
             if (hardPanTone)
             {
-                // Sign(0) is 0 — leave pan = 0 so the dead-on-centerline
-                // case still reads as silent / centred via the existing
-                // headingToneThreshold gate below.
-                pan = (float)Math.Sign(headingDiff);
+                // Sign(0) is 0 — leave pan = 0 so the on-track case still reads
+                // as silent / centred via the existing headingToneThreshold gate.
+                pan = (float)Math.Sign(steerError);
             }
             else
             {
-                pan = (float)Math.Clamp(headingDiff / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
+                pan = (float)Math.Clamp(steerError / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
             }
             if (invertPanning) pan = -pan;
             centerlineTone?.SetPan(pan);
 
-            // Apply threshold - mute tone if deviation is below threshold
+            // Apply threshold - mute tone when the steer error is below threshold
+            // (on track). Being off-centerline un-mutes it via the crab term, even
+            // when the nose is pointed straight down the runway.
             if (headingToneThreshold > 0)
             {
-                bool shouldPlayTone = Math.Abs(headingDiff) >= headingToneThreshold;
+                bool shouldPlayTone = Math.Abs(steerError) >= headingToneThreshold;
                 centerlineTone?.UpdateVolume(shouldPlayTone ? toneVolume : 0);
             }
+
+            AppendTakeoffLog(currentLat, currentLon, currentHeadingMagnetic,
+                headingDiff, desiredCrabDeg, steerError, pan, crossTrackFeet);
 
             // Check if we should announce centerline deviation
             double deviationChange = Math.Abs(crossTrackFeet - lastAnnouncedCrossTrackFeet);
@@ -524,6 +577,46 @@ public class TakeoffAssistManager : IDisposable
         {
             return "level";
         }
+    }
+
+    /// <summary>
+    /// Writes a session-start header + CSV column row to the takeoff trace.
+    /// Appends (like the taxi log) so history survives across rolls; truncates
+    /// once past MAX_TAKEOFF_LOG_BYTES so it can't grow without bound.
+    /// </summary>
+    private void BeginTakeoffLog()
+    {
+        try
+        {
+            if (System.IO.File.Exists(TakeoffLogPath) &&
+                new System.IO.FileInfo(TakeoffLogPath).Length > MAX_TAKEOFF_LOG_BYTES)
+            {
+                System.IO.File.WriteAllText(TakeoffLogPath, string.Empty);
+            }
+            int rwyHdg = referenceRunwayHeadingMagnetic.HasValue
+                ? (int)Math.Round(referenceRunwayHeadingMagnetic.Value) : -1;
+            System.IO.File.AppendAllText(TakeoffLogPath,
+                $"=== Takeoff {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={referenceAirportICAO} rwy={referenceRunwayID} rwyHdgMag={rwyHdg} ===" + Environment.NewLine
+                + "time,lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,pan,crossTrackFt" + Environment.NewLine);
+        }
+        catch { /* diagnostic only */ }
+    }
+
+    /// <summary>
+    /// One frame of the takeoff trace, throttled to ~100 ms.
+    /// </summary>
+    private void AppendTakeoffLog(double lat, double lon, double hdgMag,
+        double headingDiff, double desiredCrabDeg, double steerError, float pan, double crossTrackFeet)
+    {
+        var now = DateTime.Now;
+        if ((now - lastTakeoffLogTime).TotalMilliseconds < 100) return;
+        lastTakeoffLogTime = now;
+        try
+        {
+            System.IO.File.AppendAllText(TakeoffLogPath,
+                $"{now:HH:mm:ss.fff},{lat:F7},{lon:F7},{hdgMag:F1},{headingDiff:F2},{desiredCrabDeg:F2},{steerError:F2},{pan:F2},{crossTrackFeet:F1}" + Environment.NewLine);
+        }
+        catch { /* diagnostic only */ }
     }
 
     /// <summary>

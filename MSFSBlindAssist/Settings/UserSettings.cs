@@ -83,7 +83,10 @@ public class UserSettings
         /// </summary>
         public bool TakeoffAssistHardPanTone { get; set; } = false;
         public bool TakeoffAssistLegacyMode { get; set; } = false; // Legacy mode: heading-based instead of centerline tracking
-        public int TakeoffAssistHeadingToneThreshold { get; set; } = 0; // 0 = Always, 1-5 = degrees threshold
+        // 0 = Always play (continuous centred tone), 1-5 = silent until the steer
+        // error exceeds N degrees. Default 1 = silent when on track, only sounds
+        // when you need to steer back — matches "silent on the deadband".
+        public int TakeoffAssistHeadingToneThreshold { get; set; } = 1;
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
         /// <summary>
