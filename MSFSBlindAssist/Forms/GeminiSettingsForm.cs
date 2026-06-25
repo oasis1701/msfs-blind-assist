@@ -24,6 +24,8 @@ public partial class GeminiSettingsForm : Form
     private static readonly string[] FallbackModelIds =
         { "gemini-flash-latest", "gemini-3.5-flash", "gemini-2.5-flash" };
 
+    private bool _populatingModels;
+
     public GeminiSettingsForm()
     {
         InitializeComponent();
@@ -199,47 +201,64 @@ public partial class GeminiSettingsForm : Form
 
     private async Task PopulateModelsAsync()
     {
-        string savedModel = SettingsManager.Current.GeminiModel ?? "";
-        string key = apiKeyTextBox.Text.Trim();
-
-        IReadOnlyList<GeminiService.GeminiModelInfo>? models = null;
-        if (!string.IsNullOrEmpty(key))
+        if (_populatingModels) return;
+        _populatingModels = true;
+        refreshModelsButton.Enabled = false;
+        try
         {
+            string savedModel = SettingsManager.Current.GeminiModel ?? "";
+            string key = apiKeyTextBox.Text.Trim();
+
+            IReadOnlyList<GeminiService.GeminiModelInfo>? models = null;
+            if (!string.IsNullOrEmpty(key))
+            {
+                try
+                {
+                    var service = new GeminiService(key);
+                    models = await service.ListAvailableModelsAsync();
+                }
+                catch
+                {
+                    models = null; // fall back to the curated list below
+                }
+            }
+
+            modelComboBox.BeginUpdate();
             try
             {
-                var service = new GeminiService(key);
-                models = await service.ListAvailableModelsAsync();
-            }
-            catch
-            {
-                models = null; // fall back to the curated list below
-            }
-        }
+                modelComboBox.Items.Clear();
+                if (models != null && models.Count > 0)
+                {
+                    foreach (var m in models)
+                    {
+                        modelComboBox.Items.Add(m);
+                    }
+                    modelStatusLabel.Text = "";
+                }
+                else
+                {
+                    foreach (var id in FallbackModelIds)
+                    {
+                        modelComboBox.Items.Add(new GeminiService.GeminiModelInfo(id, id));
+                    }
+                    modelStatusLabel.Text = string.IsNullOrEmpty(key)
+                        ? "Enter an API key and choose Refresh models to load the current list."
+                        : "Using offline model list (could not fetch from Gemini).";
+                }
 
-        modelComboBox.BeginUpdate();
-        modelComboBox.Items.Clear();
-        if (models != null && models.Count > 0)
-        {
-            foreach (var m in models)
-            {
-                modelComboBox.Items.Add(m);
+                EnsureModelPresent(savedModel);
+                SelectModel(savedModel);
             }
-            modelStatusLabel.Text = "";
-        }
-        else
-        {
-            foreach (var id in FallbackModelIds)
+            finally
             {
-                modelComboBox.Items.Add(new GeminiService.GeminiModelInfo(id, id));
+                modelComboBox.EndUpdate();
             }
-            modelStatusLabel.Text = string.IsNullOrEmpty(key)
-                ? "Enter an API key and choose Refresh models to load the current list."
-                : "Using offline model list (could not fetch from Gemini).";
         }
-
-        EnsureModelPresent(savedModel);
-        SelectModel(savedModel);
-        modelComboBox.EndUpdate();
+        finally
+        {
+            _populatingModels = false;
+            refreshModelsButton.Enabled = true;
+        }
     }
 
     private void EnsureModelPresent(string id)
