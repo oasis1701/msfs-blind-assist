@@ -25,9 +25,101 @@ public class GeminiService
         httpClient.Timeout = TimeSpan.FromSeconds(120);
     }
 
-    public GeminiService()
+    public GeminiService(string? apiKeyOverride = null)
     {
-        apiKey = SettingsManager.Current.GeminiApiKey;
+        apiKey = !string.IsNullOrWhiteSpace(apiKeyOverride)
+            ? apiKeyOverride.Trim()
+            : SettingsManager.Current.GeminiApiKey;
+    }
+
+    /// <summary>A Gemini model usable for generateContent, for the settings dropdown.</summary>
+    public sealed class GeminiModelInfo
+    {
+        public string Id { get; }
+        public string DisplayName { get; }
+        public GeminiModelInfo(string id, string displayName)
+        {
+            Id = id;
+            DisplayName = displayName;
+        }
+        public override string ToString() => DisplayName;
+    }
+
+    /// <summary>
+    /// Fetches the account's available models, filtered to generateContent-capable text/vision
+    /// models, sorted newest-first. Throws on HTTP/network failure (caller falls back to a curated
+    /// list). Does not retry — this is an interactive, best-effort dialog populate.
+    /// </summary>
+    public async Task<IReadOnlyList<GeminiModelInfo>> ListAvailableModelsAsync()
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured.");
+        }
+
+        var models = new List<GeminiModelInfo>();
+        string? pageToken = null;
+        do
+        {
+            string url = $"{API_BASE}?key={apiKey}&pageSize=1000";
+            if (!string.IsNullOrEmpty(pageToken))
+            {
+                url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
+            }
+
+            using var response = await httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+            string json = await response.Content.ReadAsStringAsync();
+            var list = JsonConvert.DeserializeObject<ModelListResponse>(json);
+
+            if (list?.Models != null)
+            {
+                foreach (var m in list.Models)
+                {
+                    if (string.IsNullOrEmpty(m.Name)) continue;
+                    if (m.SupportedGenerationMethods == null ||
+                        !m.SupportedGenerationMethods.Contains("generateContent")) continue;
+
+                    string id = m.Name.StartsWith("models/") ? m.Name.Substring("models/".Length) : m.Name;
+                    if (IsNonChatModel(id)) continue;
+
+                    string displayName = string.IsNullOrWhiteSpace(m.DisplayName) ? id : m.DisplayName!;
+                    models.Add(new GeminiModelInfo(id, displayName));
+                }
+            }
+            pageToken = list?.NextPageToken;
+        } while (!string.IsNullOrEmpty(pageToken));
+
+        // Newest-first: descending by the leading version number parsed from the id; unversioned
+        // ids (rolling aliases like gemini-flash-latest) sort last; ties broken alphabetically.
+        models.Sort((a, b) =>
+        {
+            double va = ParseModelVersion(a.Id);
+            double vb = ParseModelVersion(b.Id);
+            if (va != vb) return vb.CompareTo(va);
+            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+        });
+        return models;
+    }
+
+    private static bool IsNonChatModel(string id)
+    {
+        string lower = id.ToLowerInvariant();
+        return lower.Contains("embedding") || lower.Contains("aqa")
+            || lower.Contains("image") || lower.Contains("tts");
+    }
+
+    private static double ParseModelVersion(string id)
+    {
+        // "gemini-3.5-flash" -> 3.5 ; "gemini-flash-latest" -> -1 (sorts last).
+        var match = System.Text.RegularExpressions.Regex.Match(id, @"gemini-(\d+(?:\.\d+)?)");
+        if (match.Success && double.TryParse(match.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double v))
+        {
+            return v;
+        }
+        return -1;
     }
 
     /// <summary>
@@ -621,6 +713,27 @@ FLIGHT PLAN DATA:
     }
 
     #region Response Models
+
+    private class ModelListResponse
+    {
+        [JsonProperty("models")]
+        public ModelEntry[]? Models { get; set; }
+
+        [JsonProperty("nextPageToken")]
+        public string? NextPageToken { get; set; }
+    }
+
+    private class ModelEntry
+    {
+        [JsonProperty("name")]
+        public string? Name { get; set; }
+
+        [JsonProperty("displayName")]
+        public string? DisplayName { get; set; }
+
+        [JsonProperty("supportedGenerationMethods")]
+        public string[]? SupportedGenerationMethods { get; set; }
+    }
 
     private class GeminiResponse
     {
