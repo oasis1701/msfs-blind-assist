@@ -38,7 +38,6 @@ public class FirstOfficerForm : Form
     private readonly AircraftActionExecutor _actionExec;
     private readonly ChecklistManager _checklistMgr;
     private readonly FlowManager _flowMgr;
-    private readonly FmcProgrammingService _fmcSvc;
     private readonly FlightPhaseMonitor _flightPhaseMon;
     private readonly FOAutoManager _foAutoMgr;
 
@@ -80,8 +79,7 @@ public class FirstOfficerForm : Form
     private Button _startFlowBtn = null!;
     private Button _pauseResumeBtn = null!;
     private Button _stopFlowBtn = null!;
-    private Button _programFmcBtn = null!;
-    private bool   _fmcWaitingForUser;
+    private Button _loadSimBriefBtn = null!;
     private CheckBox _speakProgressCheck = null!;
 
     // ------------------------------------------------------------------
@@ -111,7 +109,6 @@ public class FirstOfficerForm : Form
         _flows       = PMDG777FlowDefinitions.Build();
         _checklistMgr = new ChecklistManager(_stateEval, _actionExec, _checklistGroups);
         _flowMgr     = new FlowManager(_stateEval, _actionExec, _checklistMgr, announcer);
-        _fmcSvc      = new FmcProgrammingService(simConnect, simConnect.PMDGDataManager as PMDG777DataManager);
         _flightPhaseMon = new FlightPhaseMonitor(_actionExec, _stateEval, announcer);
         _foAutoMgr   = new FOAutoManager(_actionExec, _stateEval, announcer)
         {
@@ -422,7 +419,7 @@ public class FirstOfficerForm : Form
         _startFlowBtn    = MakeButton("Start Flow",    "Start the selected flow",   StartSelectedFlow);
         _pauseResumeBtn  = MakeButton("Pause / Resume","Pause or resume the running flow", PauseResumeFlow);
         _stopFlowBtn     = MakeButton("Stop Flow",     "Stop and cancel the running flow", StopFlow);
-        _programFmcBtn   = MakeButton("Load SimBrief", "Load SimBrief flight plan, set transition altitudes, and program the FMC", ProgramFmc);
+        _loadSimBriefBtn = MakeButton("Load SimBrief", "Load SimBrief flight plan and set transition altitudes", LoadSimBrief);
 
         _speakProgressCheck = new CheckBox
         {
@@ -433,7 +430,7 @@ public class FirstOfficerForm : Form
         };
 
         btnPanel.Controls.AddRange(new Control[] {
-            _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _programFmcBtn,
+            _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn,
             _speakProgressCheck });
         layout.Controls.Add(btnPanel, 0, 3);
 
@@ -748,9 +745,9 @@ public class FirstOfficerForm : Form
         UpdateFlowButtonStates();
     }
 
-    private async void ProgramFmc()
+    private async void LoadSimBrief()
     {
-        _programFmcBtn.Enabled = false;
+        _loadSimBriefBtn.Enabled = false;
 
         try
         {
@@ -761,87 +758,29 @@ public class FirstOfficerForm : Form
                 return;
             }
 
+            _announcer.AnnounceImmediate("Loading SimBrief flight plan...");
+
             SimBriefOFP ofp;
-
-            if (!_fmcWaitingForUser)
+            try
             {
-                // Phase 1 — fetch fresh OFP and start programming
-                _announcer.AnnounceImmediate("Loading SimBrief flight plan...");
-                try
-                {
-                    ofp = await _simBriefService.FetchFullOFPAsync(username);
-                }
-                catch (Exception ex)
-                {
-                    _announcer.AnnounceImmediate($"Failed to fetch SimBrief data: {ex.Message}");
-                    return;
-                }
-
-                _loadedOFP = ofp;
-                ApplyFlightPlanThresholds(ofp);
-                _flightPhaseMon.Reset();
+                ofp = await _simBriefService.FetchFullOFPAsync(username);
             }
-            else
+            catch (Exception ex)
             {
-                // Phase 2 — reuse the OFP fetched in Phase 1
-                if (_loadedOFP == null)
-                {
-                    _announcer.AnnounceImmediate("No flight plan loaded. Please start from the beginning.");
-                    _fmcWaitingForUser = false;
-                    _fmcSvc.Reset();
-                    BeginInvoke(ResetProgramFmcButton);
-                    return;
-                }
-                ofp = _loadedOFP;
-                _announcer.AnnounceImmediate("Completing FMC programming...");
+                _announcer.AnnounceImmediate($"Failed to fetch SimBrief data: {ex.Message}");
+                return;
             }
 
-            var progress = new Progress<string>(msg =>
-            {
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(() => { _currentStepLabel.Text = msg; });
-            });
-
-            var result = await _fmcSvc.ProgramAsync(ofp, progress);
-
-            if (result.WaitingForUser)
-            {
-                // Phase 1 complete — prompt user to program SID/runway, then press again
-                _fmcWaitingForUser = true;
-                _announcer.AnnounceImmediate(result.WaitingMessage ?? "Program SID and runway, then press Complete FMC.");
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(() =>
-                    {
-                        _currentStepLabel.Text     = result.WaitingMessage ?? "";
-                        _programFmcBtn.Text        = "Complete FMC";
-                        _programFmcBtn.AccessibleName = "Complete FMC programming after SID/runway selection";
-                    });
-            }
-            else
-            {
-                // Phase 2 complete (or error)
-                _fmcWaitingForUser = false;
-                string summary = result.BuildSummary();
-                _announcer.AnnounceImmediate(summary);
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(() =>
-                    {
-                        _currentStepLabel.Text = summary;
-                        ResetProgramFmcButton();
-                    });
-            }
+            _loadedOFP = ofp;
+            ApplyFlightPlanThresholds(ofp);
+            _flightPhaseMon.Reset();
+            _announcer.AnnounceImmediate("SimBrief flight plan loaded.");
         }
         finally
         {
             if (IsHandleCreated && !IsDisposed)
-                BeginInvoke(() => { _programFmcBtn.Enabled = true; });
+                BeginInvoke(() => { _loadSimBriefBtn.Enabled = true; });
         }
-    }
-
-    private void ResetProgramFmcButton()
-    {
-        _programFmcBtn.Text           = "Load SimBrief";
-        _programFmcBtn.AccessibleName = "Load SimBrief flight plan, set transition altitudes, and program the FMC";
     }
 
     private void UpdateFlowButtonStates()
