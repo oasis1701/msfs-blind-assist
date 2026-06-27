@@ -405,6 +405,12 @@
       // Map control buttons + the source select are SIBLINGS of .leaflet-container, so kept.
       var clsLeaf = (typeof el.className === 'string' ? el.className : '');
       if (clsLeaf.indexOf('leaflet-container') >= 0 || clsLeaf.indexOf('leaflet-marker-icon') >= 0) { skipUnder = el; continue; }
+      // The EFB alert/confirmation card (#alert_card: heading + message + OK button — e.g.
+      // "Success / Tablet preferences were updated.") is emitted as ONE announce-flagged 'alert'
+      // item by a dedicated pass below, so the screen reader speaks it the moment it pops up
+      // (it otherwise rendered as silent text and was never read). Skip the card's heading/message
+      // here to avoid a duplicate; KEEP the OK button (#alert_card_button) so it stays clickable.
+      if (el.id !== 'alert_card_button') { try { if (el.closest && el.closest('#alert_card')) continue; } catch (eac) {} }
       // Preformatted block (the SimBrief OFP is ONE <pre> of 800+ fragments). Emit its OWN
       // line breaks verbatim — that's the briefing exactly as a sighted pilot reads it
       // (aligned columns, fuel table, NOTAMs) — and skip its children so they don't fragment.
@@ -633,6 +639,24 @@
       idx++;
       out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: pname + (pclean ? ': ' + pclean : ''), src: 'groundops-progress' });
     }
+    // ALERT / confirmation card (#alert_card: heading + message + OK button). These pop up on
+    // Save Preferences, errors, etc. ("Success — Tablet preferences were updated.") and previously
+    // rendered as silent text that was never announced — issue: the screen reader didn't read them.
+    // Emit ONE item flagged for ASSERTIVE announcement (type 'alert'); the host form speaks it the
+    // moment it appears (see FbwEfbForm). The card's heading/message are skipped in the main loop
+    // (above) so this is the single representation; the OK button is emitted separately + clickable.
+    var alertCard = document.getElementById('alert_card');
+    if (alertCard && A.isVisible(alertCard)) {
+      var ah = document.getElementById('alert_card_heading');
+      var am = document.getElementById('alert_card_message');
+      var ahTxt = ah ? A.txt(ah) : '';
+      // The message packs multiple sentences with no separating space ("updated.Hoppie ID …")
+      // because the source <p> joins separate text nodes; re-insert a space after .!? before a
+      // capital so the screen reader reads "updated. Hoppie ID …" instead of one run-on token.
+      var amTxt = am ? A.txt(am).replace(/([.!?])([A-Z0-9])/g, '$1 $2') : '';
+      var alertLabel = ahTxt && amTxt ? (ahTxt + ': ' + amTxt) : (ahTxt || amTxt);
+      if (alertLabel) { idx++; out.push({ idx: idx, type: 'alert', tag: 'DIV', label: alertLabel, src: 'alert-card' }); }
+    }
     // Drop standalone text that duplicates a control's label, and UPGRADE a weak id-derived
     // control label to a fuller standalone text that contains it ("Brightness" -> "Tablet
     // Brightness"). Both remove redundant text lines next to their control.
@@ -769,6 +793,7 @@
       case 'link': o.kind = 'link'; break;
       case 'heading': o.kind = 'heading'; o.level = it.level || 0; break;
       case 'status': o.kind = 'static'; o.live = 'polite'; break;
+      case 'alert': o.kind = 'alert'; o.live = 'assertive'; break;
       case 'text': case 'number': o.controlType = 'text'; o.value = String(it.value || ''); break;
       case 'range':
         o.controlType = 'range'; o.value = String(it.value || '');
