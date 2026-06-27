@@ -586,6 +586,53 @@
       idx++;
       out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: oval ? (onm + ': ' + oval + (ounit ? ' ' + ounit : '')) : onm, src: 'output-row' });
     }
+    // GROUND OPS output values (Automated Ground Ops + every ground-ops sub-page): the live
+    // readouts — Turn Time, Turn Time Remaining, Fuel Uplift Remaining, Target Fuel, Uplift, ... —
+    // render as <label class="groundops_ui_outputlabel">value, preceded by a sibling
+    // <label class="groundops_ui_label">name (and a <br>), with an optional <span class="output-unit">.
+    // Like .opt-output above, the generic <label> text-skip dropped ALL of these, so the page showed
+    // only the settable Plan-Fuel input + the section headings — issue #113 ("turnaround time … not
+    // there"). Emit each visible one as a readable "Name: value unit" line. Skip empty values so a
+    // not-yet-running turn doesn't read a wall of blanks.
+    var gouts = document.querySelectorAll('.groundops_ui_outputlabel');
+    for (var gi = 0; gi < gouts.length; gi++) {
+      var gv = gouts[gi];
+      if (!A.isVisible(gv)) continue;
+      var gval = A.txt(gv);
+      if (!gval) continue;
+      // Name = the nearest PRECEDING .groundops_ui_label sibling (skip <br>/text between them).
+      var gnm = '';
+      var ps = gv.previousElementSibling;
+      while (ps) { if (ps.className && String(ps.className).indexOf('groundops_ui_label') >= 0) { gnm = A.txt(ps).replace(/:\s*$/, ''); break; } if (ps.tagName !== 'BR') { var pn = A.txt(ps); if (pn) break; } ps = ps.previousElementSibling; }
+      if (!gnm) gnm = gv.id ? A.idToLabel(gv.id) : '';
+      if (!gnm) continue;
+      // Unit = a following .output-unit sibling, else one inside the parent.
+      var gu = '';
+      var ns = gv.nextElementSibling;
+      if (ns && ns.className && String(ns.className).indexOf('output-unit') >= 0) gu = A.txt(ns);
+      if (!gu && gv.parentElement && gv.parentElement.querySelector) { var gue = gv.parentElement.querySelector('.output-unit'); if (gue) gu = A.txt(gue); }
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: gnm + ': ' + gval + (gu ? ' ' + gu : ''), src: 'groundops-output' });
+    }
+    // GROUND OPS progress bars (Turnaround / per-service): <div class="progress_bar"> holds a
+    // <label class="progress_label">Name<span>- NN%</span>. Emit "Name: NN%" so the screen reader
+    // gets the turnaround/service completion percentage (the visual bar alone is meaningless).
+    var pbars = document.querySelectorAll('.progress_bar');
+    for (var pbi = 0; pbi < pbars.length; pbi++) {
+      var pb = pbars[pbi];
+      if (!A.isVisible(pb)) continue;
+      var plab = pb.querySelector ? pb.querySelector('.progress_label') : null;
+      if (!plab) continue;
+      var pfull = A.txt(plab);                 // e.g. "Turnaround - 0%"
+      var pspan = plab.querySelector ? plab.querySelector('span') : null;
+      var ppct = pspan ? A.txt(pspan) : '';    // e.g. "- 0%"
+      var pname = pfull;
+      if (ppct) { pname = pfull.replace(ppct, '').trim(); }      // strip the % off the name
+      var pclean = ppct.replace(/^[\s\-]+/, '').trim();          // "- 0%" -> "0%"
+      if (!pname) pname = (pb.id ? A.idToLabel(pb.id) : 'Progress');
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: pname + (pclean ? ': ' + pclean : ''), src: 'groundops-progress' });
+    }
     // Drop standalone text that duplicates a control's label, and UPGRADE a weak id-derived
     // control label to a fuller standalone text that contains it ("Brightness" -> "Tablet
     // Brightness"). Both remove redundant text lines next to their control.

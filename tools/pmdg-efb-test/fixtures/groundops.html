@@ -1,0 +1,51 @@
+<!-- PMDG Automated Ground Ops page (live DOM 2026-06, issue #113). The status readouts are
+     <label class="groundops_ui_outputlabel"> value-displays preceded by a .groundops_ui_label
+     name (+ <br>), with an optional .output-unit span. The turnaround progress is a .progress_bar
+     whose .progress_label holds "Name<span>- NN%</span>". The generic <label> text-skip dropped
+     all of these — only the settable Plan-Fuel input + headings survived.
+     data-rect is "top,left,right,bottom" (run.js): keep bottom>top and right>left so isVisible passes. -->
+<div data-vis="1" data-rect="0,0,800,600">
+  <div id="groundops_content" data-vis="1" data-rect="0,0,800,600">
+    <div id="AutomatedGroundOps" data-vis="1" data-rect="0,0,800,600">
+      <div id="automatedgroundops_button_grid" data-vis="1" data-rect="0,0,600,400">
+        <h2 class="groundops_ui_sectiontitle" data-vis="1" data-rect="0,0,200,20">Setup</h2>
+        <label class="groundops_ui_label" data-vis="1" data-rect="20,0,200,40">Plan Fuel</label>
+        <input id="target_fuel" type="text" class="form-control groundops_ui_input pmdg_measurement" data-vis="1" data-rect="40,0,200,60">
+        <h2 class="groundops_ui_sectiontitle" data-vis="1" data-rect="80,0,200,100">Status</h2>
+        <div id="automtedgroundops_generated_section" data-vis="1" data-rect="100,0,400,300">
+          <div class="row" data-vis="1" data-rect="100,0,400,160">
+            <div class="col-md-6" data-vis="1" data-rect="100,0,200,160">
+              <label class="groundops_ui_label" data-vis="1" data-rect="100,0,200,120">Turn Time</label>
+              <br>
+              <label id="turn_time_l" class="groundops_ui_outputlabel" data-vis="1" data-rect="120,0,200,140">00:55</label>
+            </div>
+            <div class="col-md-6" data-vis="1" data-rect="100,200,400,160">
+              <label class="groundops_ui_label" data-vis="1" data-rect="100,200,400,120">Turn Time Remaining</label>
+              <br>
+              <label id="turn_time_remaining_l" class="groundops_ui_outputlabel" data-vis="1" data-rect="120,200,400,140">00:52:18</label>
+            </div>
+          </div>
+          <div class="row" data-vis="1" data-rect="160,0,400,220">
+            <div class="col-md-6" data-vis="1" data-rect="160,0,200,220">
+              <label class="groundops_ui_label" data-vis="1" data-rect="160,0,200,180">Target Fuel</label>
+              <br>
+              <label id="target_fuel_l" class="groundops_ui_outputlabel pmdg_measurement weight" data-vis="1" data-rect="180,0,160,200">0</label>
+              <span id="target_fuel_l_unit" class="output-unit" data-vis="1" data-rect="180,160,200,200">kg</span>
+            </div>
+          </div>
+        </div>
+        <div id="automatedgroundops_progression_section_bars" data-vis="1" data-rect="300,0,400,360">
+          <div id="Turnaround_progress_bar" class="progress_bar" data-vis="1" data-rect="300,0,400,340">
+            <label class="progress_label" data-vis="1" data-rect="300,0,400,320">Turnaround<span data-vis="1" data-rect="300,300,400,320">- 5%</span></label>
+            <div id="Turnaround_progress_bar_progressor" class="inc_progress row progress_bar_progressor" data-vis="1" data-rect="320,0,400,340"></div>
+          </div>
+        </div>
+      </div>
+      <div id="automatedgroundops_fuel_uplift_column" class="col-md-6" data-vis="1" data-rect="0,400,600,200">
+        <label class="groundops_ui_label" data-vis="1" data-rect="0,400,600,20">Uplift</label>
+        <br>
+        <label id="uplift_l" class="groundops_ui_outputlabel" data-vis="1" data-rect="20,400,600,40">0</label>
+      </div>
+    </div>
+  </div>
+</div>
