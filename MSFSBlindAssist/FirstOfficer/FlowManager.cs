@@ -282,10 +282,6 @@ public class FlowManager
                     return true;
                 }
 
-                case FlowStepActionType.ProgramFmc:
-                    // Handled externally by FirstOfficerForm which owns the FmcProgrammingService
-                    return true;
-
                 default:
                     return true;
             }

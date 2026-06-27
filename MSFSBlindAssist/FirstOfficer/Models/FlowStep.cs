@@ -24,9 +24,6 @@ public enum FlowStepActionType
 
     /// <summary>Walk-around pause — announces and waits.</summary>
     WalkAround,
-
-    /// <summary>Trigger the FMC programming service.</summary>
-    ProgramFmc,
 }
 
 /// <summary>What the flow engine does if a step fails or times out.</summary>
