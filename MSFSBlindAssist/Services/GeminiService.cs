@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using MSFSBlindAssist.Settings;
@@ -11,7 +12,18 @@ namespace MSFSBlindAssist.Services;
 public class GeminiService
 {
     private static readonly HttpClient httpClient = new HttpClient();
-    private const string API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
+
+    // The model is user-selectable (UserSettings.GeminiModel, populated from a live fetch in the
+    // Gemini Settings dialog). DEFAULT_MODEL is a rolling alias that always resolves to a current
+    // Flash model, so a fresh install / failed fetch still has a working default.
+    private const string API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private const string DEFAULT_MODEL = "gemini-flash-latest";
+
+    // Matches a purely numeric id token (e.g. a "001" snapshot suffix). Compiled + hoisted so
+    // FamilyKey's per-token loop doesn't allocate a Regex on every call.
+    private static readonly System.Text.RegularExpressions.Regex NumericTokenRegex =
+        new System.Text.RegularExpressions.Regex(@"^\d+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly string apiKey;
 
     static GeminiService()
@@ -19,9 +31,184 @@ public class GeminiService
         httpClient.Timeout = TimeSpan.FromSeconds(120);
     }
 
-    public GeminiService()
+    public GeminiService(string? apiKeyOverride = null)
     {
-        apiKey = SettingsManager.Current.GeminiApiKey;
+        apiKey = !string.IsNullOrWhiteSpace(apiKeyOverride)
+            ? apiKeyOverride.Trim()
+            : SettingsManager.Current.GeminiApiKey;
+    }
+
+    /// <summary>A Gemini model usable for generateContent, for the settings dropdown.</summary>
+    public sealed class GeminiModelInfo
+    {
+        public string Id { get; }
+        public string DisplayName { get; }
+        public GeminiModelInfo(string id, string displayName)
+        {
+            Id = id;
+            DisplayName = displayName;
+        }
+        public override string ToString() => DisplayName;
+    }
+
+    /// <summary>
+    /// Fetches the account's available models, filtered to generateContent-capable Gemini
+    /// chat/vision models, collapsed to one (latest) entry per family, sorted newest-first.
+    /// Throws on HTTP/network failure (caller falls back to a curated
+    /// list). Does not retry — this is an interactive, best-effort dialog populate.
+    /// </summary>
+    public async Task<IReadOnlyList<GeminiModelInfo>> ListAvailableModelsAsync()
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured.");
+        }
+
+        var models = new List<GeminiModelInfo>();
+        string? pageToken = null;
+        do
+        {
+            string url = $"{API_BASE}?key={apiKey}&pageSize=1000";
+            if (!string.IsNullOrEmpty(pageToken))
+            {
+                url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
+            }
+
+            using var response = await httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+            string json = await response.Content.ReadAsStringAsync();
+            var list = JsonConvert.DeserializeObject<ModelListResponse>(json);
+
+            if (list?.Models != null)
+            {
+                foreach (var m in list.Models)
+                {
+                    if (string.IsNullOrEmpty(m.Name)) continue;
+                    if (m.SupportedGenerationMethods == null ||
+                        !m.SupportedGenerationMethods.Contains("generateContent")) continue;
+
+                    string id = m.Name.StartsWith("models/") ? m.Name.Substring("models/".Length) : m.Name;
+                    string displayName = string.IsNullOrWhiteSpace(m.DisplayName) ? id : m.DisplayName!;
+                    if (IsNonChatModel(id, displayName)) continue;
+
+                    models.Add(new GeminiModelInfo(id, displayName));
+                }
+            }
+            pageToken = list?.NextPageToken;
+        } while (!string.IsNullOrEmpty(pageToken));
+
+        // Collapse every variant of a model line (dated snapshots, -preview, -exp) to ONE
+        // representative per family so the picker isn't flooded with snapshots.
+        List<GeminiModelInfo> result = SelectFamilyRepresentatives(models);
+
+        // Newest-first: descending by the leading version number parsed from the id; unversioned
+        // ids (rolling aliases like gemini-flash-latest) sort last; ties broken alphabetically.
+        result.Sort((a, b) =>
+        {
+            double va = ParseModelVersion(a.Id);
+            double vb = ParseModelVersion(b.Id);
+            if (va != vb) return vb.CompareTo(va);
+            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+        });
+        return result;
+    }
+
+    /// <summary>
+    /// Collapses every variant of a model line (dated snapshots like -001, -preview-09-2025,
+    /// -exp) down to ONE representative per family, so the picker shows the latest per family
+    /// rather than every pinned snapshot. Preference: the canonical bare id (e.g.
+    /// "gemini-2.5-flash" — the family's auto-updating latest-stable pointer) > newest pinned
+    /// stable snapshot > newest preview/experimental. The rolling "*-latest" aliases are their
+    /// own families and are kept.
+    /// </summary>
+    private static List<GeminiModelInfo> SelectFamilyRepresentatives(List<GeminiModelInfo> models)
+    {
+        var byFamily = new Dictionary<string, GeminiModelInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in models)
+        {
+            string family = FamilyKey(m.Id);
+            if (!byFamily.TryGetValue(family, out var current) || PrefersOver(m.Id, current.Id))
+            {
+                byFamily[family] = m;
+            }
+        }
+        return new List<GeminiModelInfo>(byFamily.Values);
+    }
+
+    /// <summary>
+    /// Family key = the id with trailing variant tokens (numeric snapshots, "preview", "exp",
+    /// and date pieces) stripped, so all variants of one model line share a key. Tier tokens
+    /// (flash/pro/lite), the "8b" gauge, the version, and the "latest" alias suffix are kept.
+    /// e.g. gemini-2.5-flash-001 / gemini-2.5-flash-preview-09-2025 -> gemini-2.5-flash;
+    ///      gemini-2.0-flash-lite-001 -> gemini-2.0-flash-lite; gemini-flash-latest unchanged.
+    /// </summary>
+    private static string FamilyKey(string id)
+    {
+        var parts = new List<string>(id.ToLowerInvariant().Split('-'));
+        while (parts.Count > 1)
+        {
+            string last = parts[parts.Count - 1];
+            bool isVariant = last == "preview" || last == "exp"
+                || NumericTokenRegex.IsMatch(last);
+            if (!isVariant) break;
+            parts.RemoveAt(parts.Count - 1);
+        }
+        return string.Join("-", parts);
+    }
+
+    /// <summary>True if model id <paramref name="a"/> is a better family representative than <paramref name="b"/>.</summary>
+    private static bool PrefersOver(string a, string b)
+    {
+        int ra = RepresentativeRank(a), rb = RepresentativeRank(b);
+        if (ra != rb) return ra > rb;
+        // Same tier: prefer the later snapshot/date. Lexicographic ordering puts higher -00N and
+        // later ISO-ish dates last; best-effort for the rare preview-only family with several previews.
+        return string.Compare(a, b, StringComparison.OrdinalIgnoreCase) > 0;
+    }
+
+    private static int RepresentativeRank(string id)
+    {
+        string lower = id.ToLowerInvariant();
+        if (lower == FamilyKey(lower)) return 2;                              // canonical bare alias (latest stable)
+        if (!lower.Contains("preview") && !lower.Contains("exp")) return 1;   // pinned stable snapshot
+        return 0;                                                             // preview / experimental
+    }
+
+    private static bool IsNonChatModel(string id, string displayName)
+    {
+        string lower = id.ToLowerInvariant();
+
+        // Keep ONLY Gemini-branded models. This drops the non-Gemini families that also serve
+        // generateContent but are inappropriate for display reading / scene / route briefing:
+        // lyria-* (music), veo-* (video), deep-research-*, antigravity, gemma-*, learnlm-*, aqa.
+        if (!lower.StartsWith("gemini")) return true;
+
+        // Exclude SPECIALTY variants that share the generateContent method but are not text+vision
+        // chat models: image generation (Nano Banana, *-image), TTS / native-audio, live/real-time,
+        // robotics, embeddings, computer-use, and "Custom Tools" tuning variants. Match against BOTH
+        // the id and the human display name — some labels (e.g. "Custom Tools") surface only in the
+        // display name. The chat+vision lineup we want (Flash / Pro / Flash-Lite, incl. previews and
+        // the *-latest rolling aliases) carries none of these markers.
+        string haystack = (id + " " + displayName).ToLowerInvariant();
+        string[] specialtyMarkers = { "image", "tts", "audio", "live", "robotics", "embedding", "computer-use", "custom" };
+        foreach (string marker in specialtyMarkers)
+        {
+            if (haystack.Contains(marker)) return true;
+        }
+        return false;
+    }
+
+    private static double ParseModelVersion(string id)
+    {
+        // "gemini-3.5-flash" -> 3.5 ; "gemini-flash-latest" -> -1 (sorts last).
+        var match = System.Text.RegularExpressions.Regex.Match(id, @"gemini-(\d+(?:\.\d+)?)");
+        if (match.Success && double.TryParse(match.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double v))
+        {
+            return v;
+        }
+        return -1;
     }
 
     /// <summary>
@@ -37,7 +224,11 @@ public class GeminiService
         EICAS,         // Engine Indicating and Crew Alerting System (Boeing 777)
         PFD777,        // Primary Flight Display (Boeing 777)
         ND777,         // Navigation Display (Boeing 777)
-        ISFD           // Integrated Standby Flight Display (Boeing 777)
+        ISFD,          // Integrated Standby Flight Display (Boeing 777)
+        PFD737,        // Primary Flight Display (Boeing 737 NG3)
+        ND737,         // Navigation Display (Boeing 737 NG3)
+        ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
+        EICAS737       // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
     }
 
     /// <summary>
@@ -240,6 +431,80 @@ Skip normal colors (green, white) - only mention warning/alert colors (amber, re
 Use line breaks to separate parameters. Put each engine on its own line, then system page data on separate lines.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
+            DisplayType.PFD737 => @"You are reading the Primary Flight Display (PFD) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the Primary Flight Display (PFD) — the leftmost display showing airspeed, altitude, and attitude. Ignore the ND, the Engine Display, the ISFD, and any other displays.
+Be extremely concise and direct. Skip descriptions of tape layouts, scales, and visual positioning. Only report actual values, modes, states, and deviations.
+
+Report in this order:
+Airspeed: current indicated airspeed in knots, any speed reference bugs shown (V1, VR, V2, Vref, flap maneuvering speeds, FMC speed bug).
+Mach number if displayed.
+Altitude: current altitude in feet, MCP selected altitude if shown.
+Vertical speed in feet per minute.
+Heading or track value.
+Flight Mode Annunciations (FMA) at the top of the PFD: report autothrottle mode (N1, MCP SPD, FMC SPD, RETARD, THR HLD, ARM, IDLE, GA), roll mode (HDG SEL, LNAV, VOR/LOC, TO/GA), pitch mode (V/S, LVL CHG, VNAV PTH, VNAV SPD, VNAV ALT, ALT HOLD, ALT ACQ, G/S, FLARE, TO/GA), and autopilot/flight-director engagement (CMD A, CMD B, CWS A, CWS B, FD). Green = active, white = armed, magenta = FMC commanded mode.
+Flight director bars if active.
+Localizer and glideslope deviation if displayed and not centered.
+Radio altitude and DH bug if displayed.
+Barometric setting (IN HG or HPA), and whether STD is displayed.
+Any warnings or alerts (e.g., flag conditions like NO VSPD, FLAG ATT).
+
+Skip normal colors (green, white) for flight data — only mention warning/alert colors (amber, red).
+Use line breaks to separate major values. Put each item on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.ND737 => @"You are reading the Navigation Display (ND) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the Navigation Display (ND) — the map display next to the PFD. Ignore PFD, Engine Display, ISFD, and any other displays.
+Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
+
+Report in this order:
+Display mode: MAP, CTR MAP, EXP MAP, PLAN, APP, or VOR.
+Range setting in nautical miles.
+Aircraft heading or track in degrees, and whether HDG or TRK reference is selected (MAG / TRU label).
+Active waypoint and next waypoints in sequence with distances (NM) and ETA/time remaining if shown.
+Step climb or descent points if visible.
+Course deviation and CDI if shown.
+Wind direction (degrees true) and speed (knots) if displayed.
+Ground speed (GS) and true airspeed (TAS) if shown.
+RNP / ANP values if displayed.
+VOR 1 / VOR 2 source labels and DME readouts at the bottom of the display if present (e.g., ""VOR 1 FMC L, ANP 0.05"", ""VOR 2 DME ---"").
+Weather radar returns if shown (intensity and position relative to aircraft).
+TCAS traffic if present (relative position, altitude, and climb/descend trend).
+Terrain shading or warnings if TERR is active.
+
+Skip normal colors (green, white, magenta) — only mention warning/alert colors (amber, red).
+Use line breaks to separate information. Put mode and range on the first line, heading/track on the next, then each waypoint on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.ISFD737 => @"You are reading the Integrated Standby Flight Display (ISFD) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the ISFD — the small square backup instrument located between the captain's displays and the Engine Display. Ignore all other displays.
+The ISFD is a compact display showing basic flight parameters as backup instruments.
+Be extremely concise and direct. Skip descriptions of instrument layout and visual positioning. Only report actual values.
+Report: airspeed in knots, altitude in feet, barometric setting (including STD if standard altimeter is selected), pitch and roll attitude if significant, ILS localizer/glideslope deviation if displayed, heading if shown, any warnings or flags.
+Skip normal colors — only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Put airspeed, altitude, baro setting, attitude, and any deviations each on their own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.EICAS737 => @"You are reading the Upper Engine Display (also called the Engine Display or EICAS-equivalent, designated DU3) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the upper center display showing N1, EGT, and fuel flow for both engines. Ignore the PFD, the ND, the ISFD, the lower system display (which shows N2, oil pressure, oil temperature, oil quantity, vibration), the CDU, and any other displays.
+
+Important: the 737's Upper Engine Display does NOT show N2 — that is on the lower display. Do not report N2 values from this display.
+
+Report in this order:
+Thrust mode label at the top (TO, R-TO, CLB, CLB1, CLB2, CON, CRZ, GA).
+TAT (Total Air Temperature) and SAT (Static Air Temperature) if shown, in degrees Celsius.
+For each engine (ENG 1 / ENG 2 or Left / Right):
+  N1 percentage, and the N1 reference / limit indicator if displayed (small numbers above each N1 gauge, e.g. ""96.3"").
+  EGT in degrees Celsius.
+  Fuel flow (FF) in thousands of pounds per hour (e.g. ""2.95"" means 2950 PPH).
+Fuel quantity panel: left, center, right tank quantities and total, in thousands of pounds (e.g. ""6.76 / 0.41 / 6.34, TOTAL 13.5"").
+Landing gear limit information if shown (extension/retraction/extended speeds in knots).
+Flaps limit information if shown (max IAS per flap detent).
+Any crew alert messages in the lower portion of the display (caution/warning text).
+
+Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
+Use line breaks to separate parameters. Put thrust mode on the first line, TAT/SAT on the next, then each engine on its own line, then fuel quantities, then limits, then any alerts.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
     }
@@ -319,7 +584,9 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     }
 
     /// <summary>
-    /// Sends a request to the Gemini API and returns the text response.
+    /// Sends a request to the Gemini API (single configured model) and returns the text response.
+    /// Retries transient failures (429/5xx/timeout/connection) with backoff; fails fast on client
+    /// errors (400/401/403/404).
     /// </summary>
     private async Task<string> SendRequestAsync(object requestBody)
     {
@@ -328,65 +595,116 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini Settings.");
         }
 
+        string model = SettingsManager.Current.GeminiModel;
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            model = DEFAULT_MODEL;
+        }
+
         string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        string url = $"{API_BASE_URL}?key={apiKey}";
+        string url = $"{API_BASE}{model}:generateContent?key={apiKey}";
 
         const int maxAttempts = 4; // 1 initial + 3 retries
+        Exception? lastTransient = null;
         HttpResponseMessage? response = null;
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
+            // Only PostAsync is inside the try — status handling (and the deliberate fail-fast
+            // throws) live OUTSIDE it, so a thrown HttpRequestException is never self-caught.
             try
             {
                 response = await httpClient.PostAsync(url, content);
-
-                if (response.IsSuccessStatusCode)
+            }
+            catch (TaskCanceledException ex)
+            {
+                // HttpClient 120s timeout. No caller token is ever passed, so a cancellation here is
+                // always the timeout. Do NOT gate on ex.CancellationToken.IsCancellationRequested —
+                // on .NET 9 the timeout token IS signaled, so that filter never matches a timeout
+                // (matches the SimBriefService pattern). Transient — retry with backoff.
+                lastTransient = new HttpRequestException("Gemini API request timed out.", ex);
+                response = null;
+                if (attempt < maxAttempts - 1)
                 {
-                    break;
+                    await Task.Delay(TimeSpan.FromSeconds((int)Math.Pow(2, attempt + 1)));
+                    continue;
                 }
-
-                // Only retry on transient server errors
-                if ((response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ||
-                     response.StatusCode == System.Net.HttpStatusCode.TooManyRequests) &&
-                    attempt < maxAttempts - 1)
+                break;
+            }
+            catch (HttpRequestException ex)
+            {
+                // Connection-level failure (DNS, reset, TLS). Transient — retry with backoff.
+                lastTransient = ex;
+                response = null;
+                if (attempt < maxAttempts - 1)
                 {
-                    // Respect Retry-After header if present, otherwise use exponential backoff
+                    await Task.Delay(TimeSpan.FromSeconds((int)Math.Pow(2, attempt + 1)));
+                    continue;
+                }
+                break;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                break;
+            }
+
+            var status = response.StatusCode;
+            int code = (int)status;
+
+            // Client errors won't be fixed by retrying — fail fast with the body.
+            if (status == System.Net.HttpStatusCode.BadRequest ||      // 400
+                status == System.Net.HttpStatusCode.Unauthorized ||    // 401
+                status == System.Net.HttpStatusCode.Forbidden ||       // 403
+                status == System.Net.HttpStatusCode.NotFound)          // 404 (model unavailable)
+            {
+                string errorContent = await response.Content.ReadAsStringAsync();
+                response.Dispose();
+                string message = status == System.Net.HttpStatusCode.NotFound
+                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Gemini Settings. ({errorContent})"
+                    : $"Gemini API request failed with status {code}: {errorContent}";
+                throw new HttpRequestException(message);
+            }
+
+            // Transient server / rate-limit errors (429, 500, 502, 503, 504, any other 5xx) — retry.
+            if (status == System.Net.HttpStatusCode.TooManyRequests || (code >= 500 && code <= 599))
+            {
+                string busyBody = await response.Content.ReadAsStringAsync();
+                lastTransient = new HttpRequestException($"Gemini transient error ({code}): {busyBody}");
+                if (attempt < maxAttempts - 1)
+                {
                     int delaySeconds = GetRetryDelay(response, attempt);
-                    response.Dispose();
+                    response.Dispose(); response = null;
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
                     continue;
                 }
+                response.Dispose(); response = null;
+                break;
+            }
 
-                // Non-retryable error or final attempt
-                string errorContent = await response.Content.ReadAsStringAsync();
-                response.Dispose();
-                throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
-            }
-            catch (TaskCanceledException ex) when (!ex.CancellationToken.IsCancellationRequested)
-            {
-                // HTTP timeout (not explicit cancellation) — retry with backoff
-                if (attempt < maxAttempts - 1)
-                {
-                    int delaySeconds = (int)Math.Pow(2, attempt + 1);
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
-                }
-                else
-                {
-                    throw new HttpRequestException("Gemini API request timed out after all retry attempts.");
-                }
-            }
+            // Any other unexpected status — fail with the body.
+            string otherBody = await response.Content.ReadAsStringAsync();
+            response.Dispose();
+            throw new HttpRequestException($"Gemini API request failed with status {code}: {otherBody}");
         }
 
-        // Loop exits via break (success), or throws on non-retryable/final-attempt errors
+        if (response == null || !response.IsSuccessStatusCode)
+        {
+            response?.Dispose();
+            throw new HttpRequestException(
+                "Gemini is busy or unavailable — please try again in a moment.",
+                lastTransient);
+        }
+
         string responseJson;
-        using (response!)
+        using (response)
         {
             responseJson = await response.Content.ReadAsStringAsync();
         }
-        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
 
+        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
         if (result?.Candidates == null || result.Candidates.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no candidates in response.");
@@ -398,7 +716,11 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
-        return candidateContent.Parts[0].Text ?? "No description available.";
+        // Join EVERY non-empty text part — thinking-capable models can return multiple parts.
+        string combined = string.Concat(candidateContent.Parts
+            .Where(p => !string.IsNullOrEmpty(p.Text))
+            .Select(p => p.Text));
+        return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
     }
 
     private static int GetRetryDelay(HttpResponseMessage response, int attempt)
@@ -480,6 +802,27 @@ FLIGHT PLAN DATA:
     }
 
     #region Response Models
+
+    private class ModelListResponse
+    {
+        [JsonProperty("models")]
+        public ModelEntry[]? Models { get; set; }
+
+        [JsonProperty("nextPageToken")]
+        public string? NextPageToken { get; set; }
+    }
+
+    private class ModelEntry
+    {
+        [JsonProperty("name")]
+        public string? Name { get; set; }
+
+        [JsonProperty("displayName")]
+        public string? DisplayName { get; set; }
+
+        [JsonProperty("supportedGenerationMethods")]
+        public string[]? SupportedGenerationMethods { get; set; }
+    }
 
     private class GeminiResponse
     {

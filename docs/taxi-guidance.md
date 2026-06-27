@@ -59,7 +59,7 @@ This gives the pilot the connector name (`Hold short taxiway A5`) instead of a g
 
 `TruncateToHoldShort` picks the correct stopping point for a runway-destination route. Two universal-DB refinements keep it reliable across every airport the user's navdatareader build might expose:
 
-1. **Prefer `ILSHoldShort` (IHS/IHSND) over `HoldShort` (HS/HSND).** If the route passes both on the way to the same runway, the ILS hold-short wins. ILS hold lines sit farther back from the runway (ICAO Annex 14: ~90–107.5 m) to protect the localizer critical area, so stopping at the IHS is always safe (it's also the correct hold line when low-vis / LVP is in force). Plain HS distances scale with runway code (30 m Code A → 90 m Code E/F). When only one type exists in the DB, whichever is present is used.
+1. **Prefer `ILSHoldShort` (IHS/IHSND) over `HoldShort` (HS/HSND) — but only on the *same final approach*.** If the route passes both on the way to the same runway, the ILS hold-short wins: ILS hold lines sit farther back from the runway (ICAO Annex 14: ~90–107.5 m) to protect the localizer critical area, so stopping at the IHS is safe (it's also the correct hold line when low-vis / LVP is in force). Plain HS distances scale with runway code (30 m Code A → 90 m Code E/F). When only one type exists in the DB, whichever is present is used. **The IHS preference is gated on geometric proximity (`SAME_APPROACH_IHS_MAX_M = 150 m`): an IHS that is farther from the runway than the latest HS is honoured only when the two holds are within 150 m of each other** (i.e. the ILS hold genuinely sits just behind the CAT I hold on the same connector). Otherwise the latest (closest-to-runway) hold-short of either type is used. **Why:** the previous unconditional IHS preference broke at airports where the cleared route merely *crosses* an ILS-critical-area hold on a transit taxiway before turning onto the final connector — that transit IHS hijacked the truncation and the manager announced the hold a whole taxiway early (OMDB 30R via N12, fs2024: the route runs down taxiway N, which carries its own IHS nodes ~620 m from N12's hold, then turns onto N12; the N IHS was picked over N12's actual 30R hold).
 2. **Synthetic 60 m back-off when no HS/IHS node exists.** Some airports in some DB builds have runways with no hold-short graph nodes at all (older navdata, partial Navigraph merges, small GA fields). Rather than routing the aircraft onto the runway, we walk backwards along the route from the runway lineup target and stop at the first node that is at least 60 m from it — an ICAO-Annex-14-inspired minimum distance. The final segment is marked `IsHoldShortPoint = true` so the guidance manager announces "Hold short" normally.
 
 The destination name passed to `TruncateToHoldShort` (e.g. `09R`) is stamped onto the final segment's `HoldShortRunway` so the announcement is specific ("Hold short runway 09 Right") even when the hold-short node itself has no runway label.
@@ -110,6 +110,7 @@ Raw "perpendicular cross-track >50 m for >3 s" alone caused a cascade during the
 1. **Post-turn grace period (`POST_TURN_OFFROUTE_GRACE_SEC = 4.0 s`).** Every time a segment is advanced (`AdvanceSegment` and `AdvanceToNearestSegment`) the manager stamps `_lastSegmentAdvanceTime`. Off-route detection is suppressed for 4 s after any advance, giving the aircraft time to settle onto the new segment's geometry before the cross-track check re-arms.
 2. **Turn-imminent suppression.** If the aircraft is already within the speed-scaled "turn now" window of the current segment's endpoint, off-route is suppressed — the cross-track to the current segment will legitimately spike as the aircraft carves the corner.
 3. **Width outlier cap (`OFF_ROUTE_PERP_WIDTH_CAP_FT = 300.0 ft`).** When the current segment's `PathWidth` looks corrupt (e.g. a stray 999 ft value from bad DB data on an apron taxilane), it is capped at 300 ft before being used to derive the off-route tolerance. Prevents a single bad row from effectively disabling the off-route check for that leg.
+4. **Route-joined latch (`_hasJoinedRoute`).** Off-route detection is suppressed entirely until the aircraft has reached the route line at least once (`perp <= perpTolerance` on any frame). The post-pushback taxi from the gate ONTO the first taxiway is legitimately off the route's first segment — the route starts on the taxiway, often 100 m+ from the gate — so without this the slow taxi-out (gs ≥ 2 kt but not yet on the route) reads as off-route and recalcs fire, silently trimming the entered clearance before the pilot has joined it. PHNL 2026-06-13: 4–5 recalcs at 3–6 kt while still on segment 0 cut `Z A L N Z D` down to `Z D`. The `gs ≥ 2 kt` gate alone didn't help (pushback exceeds it). Latch resets on `LoadRoute` / `StopGuidance`; once joined, normal off-route detection applies for the rest of the taxi.
 
 ### Recalculation hardening (remaining sequence + diversion guard)
 
@@ -117,6 +118,12 @@ When a recalc does fire, two additional safeguards keep the new route honest to 
 
 1. **Position-aware sequence trimming (`FindRemainingSequenceByPosition`).** The ATC taxiway sequence is stored in `_originalTaxiwaySequence`. On recalc the manager walks the sequence from **last to first**, asking the graph "is there a node on this taxiway within 50 m of the aircraft?" The first hit is the latest taxiway the aircraft is physically on; everything before it is dropped before passing to `FindConstrainedPath`. Driving the trim from aircraft position (rather than from the recorded `_currentSegmentIndex`) handles the case where a previous recalc reset the segment index to 0 even though the aircraft is far along the route — observed at LEPA where a recalc near the H2 hold-short produced a route that physically started back at LE, sending the aircraft on a big loop. Aircraft drifted entirely off the cleared route → no sequence-taxiway hit → caller falls back to `FindNearestNodeInDirection` + shortest path.
 2. **Diversion guard.** If the router fell back to unconstrained shortest path (`ConstrainedFallbackReason` is non-empty) and the new total distance exceeds `2 × oldRemaining + 500 m`, the manager **rejects the recalc** and announces: `"Off route. Could not follow clearance. <reason>. Continuing on original route."` This prevents a bad recalc from sending the aircraft across the field just because a single intersection node has no bridging edge on the expected taxiway.
+
+### Last cleared taxiway honored as the hold-short terminus
+
+When the LAST taxiway in the clearance branches *off* the runway rather than onto it — i.e. a prior taxiway already reaches the runway and the last one is a hold-short connector beside it — `FindConstrainedPath` used to drop it. The node-picker scores by graph distance to the destination, and for such a connector every node's shortest path to the runway goes *back* through its entry junction, so the picker returns the entry node, the step no-ops, and the final unconstrained leg routes onto the runway via the prior taxiway with **no hold short**. Live case: EIDW clearance `F2 F3 F-OUTER N N2` to 28R — taxiway **N** runs to the 28R threshold (4 m) while **N2** is a ~450 m connector, so N2 was silently dropped and the aircraft was guided straight down N onto the runway. Fix: when the last taxiway's target equals the node we entered it on, force traversal along it and end the route there (skipping the bypass leg). The traversal target is the taxiway node nearest the destination position, or — if THAT is still the entry — the node farthest *along* the taxiway from the entry. The second case is **LFPG `…R, R1` → 26R**: the 26R destination node sits closer to the R/R1 junction than to R1's far end, so nearest-to-position also degenerated to the entry, R1 was dropped, the unconstrained final leg deviated off R1, and the aircraft (correctly on R1) read as off-route → a recalc fired. The fix applies to both the multi-taxiway last step and the single-taxiway path (a recalc trimmed to one taxiway is itself the last). It only triggers when the step would otherwise no-op — a last taxiway that genuinely leads to the runway picks its far end, so ordinary routes are unchanged.
+3. **The recalc callout names the new sequence.** When a recalc is accepted, it announces `"Route changed. Now via <taxiway list>. <dist> to <dest>."` (distinct named taxiways of the new route, in order) rather than a generic "Recalculating." A recalc can trim/replace the entered clearance (see the route-joined latch above, and the position-aware trim), and the old generic callout never told the pilot their taxiways had changed — at PHNL the clearance was silently cut from `Z A L N Z D` to `Z D` with no audible indication.
+4. **No-op recalc suppression.** Before swapping in the recalculated route, the accept block compares the recalc's distinct taxiway sequence to the CURRENT remaining sequence; if they're identical it returns early — no route swap, no "Route changed" callout, no countdown-latch reset, no steering-tone re-slew. A sharp turn ONTO a cleared taxiway (cutting the corner) laterally offsets the aircraft from the route's next segment long enough to trip the off-route detector, which then re-plans the IDENTICAL tail. Reported live at LFPG as a spurious *"Route changed … super sharp right"* while turning onto N (route unchanged: `N B BD1 D1`). The recalc cooldown is stamped before the accept block, so the no-op path cannot re-fire every frame; a genuine reroute has a different sequence and proceeds.
 
 ## Concurrency
 
@@ -176,27 +183,51 @@ toneHeadingError = NormalizeAngle(desiredHeading − aircraftHeadingTrue)
 
 **Pulse → continuous transition: always refresh volume.** `TaxiSteeringTone.SetTone` calls `_toneGenerator.UpdateVolume(EffectiveVolume())` every sounding frame, regardless of `_pulseActive`. The previous "only refresh in pulse mode" optimization left the tone stuck at zero volume during a pulse-off transition: the pilot is stopped-misaligned (pulse fires, volume alternates 0 / configured at 3 Hz), then starts moving (`SetPulse(false)` is called); on the next frame `_pulseActive` is false, the optimization skipped UpdateVolume, and if the previous pulse cycle had set the volume to 0 (silent half) the tone stayed silent in continuous mode until something else triggered a state change (oversteer / going silent / Pause). One UpdateVolume call per ~30 Hz frame is cheap; correctness beats the micro-op.
 
+### Turn rollout anticipation (rate-lead tone, per-aircraft)
+
+The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**, not the raw smoothed error: `projected = error − yawRate × TurnLeadSeconds` (clamped ±30°, only while |yawRate| ≥ 1°/s — see `GuidanceGeometry.ProjectHeadingError`). The tone therefore **centres BEFORE the nose reaches the target bearing**, absorbing pilot reaction time + airframe yaw inertia: tone centred mid-turn = "this rate of turn lands exactly on the new heading — hold it"; tone panning opposite = "unwind now". Without this, the tone centred at error = 0 and the aircraft yawed 15–25° past during the pilot's reaction — the chronic Airbus turn-overshoot reported 2026-06-10. Lineup, docking, and rollout tone paths are NOT projected — they keep their own precision profiles.
+
+**`TurnLeadSeconds` is per-aircraft** (`IAircraftDefinition.TaxiTurnLeadSeconds`, wired by MainForm at startup + aircraft switch; base default 1.2 s; 0 disables). Measured values (rollout-residual analysis over the pilot's own telemetry — residual error when yaw settles after each ≥30° turn episode):
+
+| Aircraft | Lead | Provenance |
+|---|---|---|
+| FBW A32NX (A20N) | 1.6 s | Open-loop MEASURED 2026-06-10 (13 turns, median needed 0.95 s → 1.3); closed-loop revalidation 2026-06-11 rolled ~15° LONG — with the cue available the pilot waits for tone-centre instead of self-anticipating, exposing the full reaction+inertia chain → stepped to 1.6; converging |
+| Fenix A320/A321 | 1.3 s | Proxy from the FBW measurement; round-2 mid-route turn ON (+2.5°). High Fenix yaw rates (14–15°/s) make low-speed quick turns centre early — a rate-tapered lead is a possible future refinement |
+| PMDG 737 | 0.4 s | MEASURED + VALIDATED 2026-06-11 (0.8 prior over-led by 8.7°; at 0.4: 3/3 rollouts ON, median +1.6° — the pilot self-anticipates Boeing rollouts) |
+| PMDG 777 | 0.3 s | MEASURED + VALIDATED 2026-06-11 (1.0 prior over-led; at 0.3 across two sessions: n=14, 9 ON, medians +1.2°/+3.6° incl. a 7 km 188-segment KATL taxi) |
+| HS 787 | 1.2 s | base default, unmeasured |
+| FBW A380 | **1.8 s — ADD AT MERGE** | The definition lives on the FlyByWire branch. MEASURED 2026-06-11 flying the A380 on the A320's 1.3 s: five rollouts went 10–42° LONG at 15–19 kt (the reported "correct left right, left right" oscillation); pilot only coped by slowing below 13 kt. One-line override when the definition lands. |
+
+**"Straighten." cue is yaw-episode based, NOT junction-angle based.** A sustained-yaw episode opens at |yawRate| ≥ 4°/s, accumulates signed heading change, closes below 1.5°/s (direction flip restarts it). The cue fires once per episode when the episode has turned ≥ 35°, the route ahead within 60 m bends < 15° (a steady mid-curve arc holds projected error near zero BY DESIGN — the straightness gate is what prevents false fires inside long curves), and the projected error crosses centre against the yaw direction. **Do not re-introduce a `TurnAngleDegrees ≥ SHARP_TURN_ANGLE_DEG` gate:** real navdata splits 90° turns into 5–15° micro-bends — a measured KSFO route had 107 junctions and only ONE ≥ 60°, which made the original junction-gated cue dead code.
+
+**Curve announcements ("Curving left/right.")** fire once per direction when the cumulative bend over the next `CURVE_SCAN_WINDOW_M = 100 m` reaches ≥ 30° with no single junction ≥ 20° (discrete junctions keep the existing turn callouts). Sign-keyed latch with 15° re-arm hysteresis. **Opposite-yaw deferral:** the cue is suppressed while the aircraft is still yawing ≥ 3°/s AGAINST the announced direction — near a curve's exit the scan window already reaches into the next, opposite curve, and announcing it mid-turn reads as a contradiction (pilot report 2026-06-11). It fires the moment the current turn settles.
+
+**Deferred: user-tunable lead setting (design agreed 2026-06-11, intentionally not implemented).** When pilots want to tune beyond the per-aircraft defaults: `Dictionary<string, double> TaxiTurnLeadOverrides` on `UserSettings` keyed by aircraft code (JSON-serializes in the existing settings file, no migration); one combo in Taxi Guidance Options — "Turn anticipation (this aircraft): Aircraft default (recommended) / Off / 0.2 s … 3.0 s in 0.2 steps" — reading/writing the current aircraft's entry; effective lead = `override ?? aircraft.TaxiTurnLeadSeconds`, recomputed on dialog save + aircraft switch (the two existing MainForm wiring sites). Range rationale: measured fleet spans ~0.0–2.3 s; 3.0 gives headroom; 0 = off. Per-aircraft (not global) because the measured differences BETWEEN aircraft are the point; a global override would poison the rest of the fleet the moment one aircraft is tuned.
+
 ## Announcements
 
 | Trigger | Distance / Condition | Announcement |
 |---|---|---|
 | Route calculated | — | `Taxi to runway 22L via Alpha, Bravo, hold short 13L, Kilo. Total distance 1.2 miles.` |
-| Start of taxi (apron first-leg look-ahead) | first movement | `Steering guidance active. Join taxiway Alpha in 200 feet.` (or `Taxiway Alpha. Steering guidance active.` if already on a named taxiway) |
+| Start of taxi (apron first-leg look-ahead) | first movement | `Steering guidance active. Join taxiway Alpha in 200 metres.` (or `Taxiway Alpha. Steering guidance active.` if already on a named taxiway). Distance shown in the active unit — 200 metres or ~650 feet depending on the Distance units setting. |
 | Taxiway change | on segment advance | `Taxiway Bravo.` |
-| Approaching turn | ~300 ft (100 m) | `In 300 feet, turn left onto taxiway Bravo.` Direction is computed from the aircraft's CURRENT heading toward the next segment's bearing — see "Verbal turn direction" below — so the spoken cue always agrees with the steering tone's pan. |
-| Turn imminent | speed-scaled ~65–245 ft | `Turn left, taxiway Bravo.` Same heading-based direction as the approaching-turn cue. |
-| Crossing taxiway | ~150 ft (50 m) | `Crossing taxiway Kilo.` (toggle in settings) |
-| Hold short countdown | 300 / 150 / 50 ft | `Hold short runway 13 Left in 300 feet.` / `Hold short runway 13 Left in 150 feet. Slow down.` (the *Slow down* suffix only fires if GS > 10 kt) / `Hold short runway 13 Left in 50 feet. Stop.` (the *Stop* suffix only fires if GS > 1 kt — no point telling a stopped pilot to stop). |
+| Approaching turn | ~300 ft / ~100 m | `In 100 metres, turn left onto taxiway Bravo.` (metres default) or `In 300 feet, turn left onto taxiway Bravo.` (feet mode). Distance is in the active unit. Direction is computed from the aircraft's CURRENT heading toward the next segment's bearing — see "Verbal turn direction" below — so the spoken cue always agrees with the steering tone's pan. |
+| Turn imminent | speed-scaled ~20–75 m / 65–245 ft | `Turn left, taxiway Bravo.` Same heading-based direction as the approaching-turn cue. |
+| Crossing taxiway | ~150 ft / ~50 m | `Crossing taxiway Kilo.` (toggle in settings) |
+| Hold short countdown | speed-proportional triggers (15 s / 8 s / 4 s lead; floors 300 / 150 / 50 ft, caps 600 / 400 / 200 ft) | `Hold short runway 13 Left in 100 metres.` / `Hold short runway 13 Left in 50 metres. Slow down.` / `Hold short runway 13 Left in 15 metres. Stop.` The **live** distance is spoken (unit-aware via `DistanceFormatter.FromFeet`) — hold-short does **not** use a milestone table, because its trigger distance scales with ground speed. The *Slow down* and *Stop* suffixes fire **unconditionally** (see Speed-aware directives). |
 | At hold short | within radius | `Hold short runway 13 Left. Press continue when cleared.` (tone pauses) |
 | Continue pressed | — | `Crossing runway 13 Left. Taxiway Kilo.` (tone resumes) |
-| Approaching runway destination | ~300 ft | `Runway 22 Left ahead.` |
+| Approaching runway destination | ~300 ft / ~100 m | `Runway 22 Left ahead.` |
 | Runway lineup achieved | heading <1° AND cross <10 ft | `Lined up, runway 22 Left. Hold position.` Tone pauses. The *Hold position* directive is the LUAW stop cue (FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA: align with centerline and remain stationary awaiting further clearance). Convergence target matches what runway-teleport places you at (20 m back from the threshold, aligned with runway heading). |
-| Gate countdown | 50 / 20 / 10 ft | `50 feet to gate.` / `20 feet.` / `10 feet. Stop.` (the *Stop* suffix at 10 ft only fires if GS > 1 kt). |
-| Arrived at gate | within 20 ft | `Gate Alpha 25 reached.` |
-| Off route | >50 m for >3 s | `Off route. Recalculating.` |
+| Gate countdown | 50 / 20 / 10 ft **or** 15 / 10 / 5 m (per Distance units setting) | `15 metres to gate.` / `10 metres.` / `5 metres. Stop.` (the *Stop* suffix fires unconditionally — see Speed-aware directives). Unit-native spacing via `DistanceMilestones.ParkingArrival`. |
+| Arrived at gate | within 20 ft / ~6 m | `Gate Alpha 25 reached.` |
+| Off route (recalc accepted) | >50 m for >3 s, after the route is joined | `Route changed. Now via <taxiways>. <dist> to <dest>.` |
 | Speed warning | >30 kt straight / >12 kt turn | `Slow down.` (8 s cooldown) |
 | Runway incursion | non-route hold-short within 40 m | `Runway crossing ahead. Hold short.` (10 s cooldown) |
-| On-demand status | Output > `Y` | `Taxiway Bravo. In 400 feet turn right onto Kilo. 0.8 miles to destination.` |
+| Exit approach (landing rollout) | 1500 / 900 / 500 ft **or** 500 / 300 / 150 m (per Distance units setting) | `Approaching high-speed exit Sierra 5, 500 metres.` / `Sierra 5, 300 metres.` / `Sierra 5, 150 metres. Slow down.` Unit-native spacing via `DistanceMilestones.ExitApproach`. |
+| Runway-end countdown (missed last exit) | 1500 / 500 / 100 ft **or** 500 / 150 / 30 m (per Distance units setting) | `Runway end in 500 metres.` / `Runway end in 150 metres. Slow down.` / `Runway end in 30 metres. Stop.` Unit-native spacing via `DistanceMilestones.RunwayEnd`. |
+| Ground traffic alert | live distance, unit-aware | `Slow down, traffic ahead, 150 metres.` (metres default) or `Slow down, traffic ahead, 500 feet.` (feet mode). Via `DistanceFormatter.FromFeet` in `GroundTrafficMonitor`. |
+| On-demand status | Output > `Y` | `Taxiway Bravo. In 400 metres turn right onto Kilo. 0.8 miles to destination.` (distances in active unit; NM used for totals over ~1 NM regardless of unit setting). |
 | Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — two peripheral sites still call plain `_announcer.Announce` without populating `_lastInstruction`: (a) the LoadRoute route summary, (b) the periodic ground-speed bucket announcer — so the Repeat-Last buffer keeps the most recent actionable callout. |
 | Where am I | Output > `Alt+Y` | `Taxiway Bravo at KJFK.` / `Gate A25 at KJFK.` / `Runway 22L at KJFK.` Works with or without active guidance. |
 
@@ -218,7 +249,7 @@ Crossing announcements use a 45-second per-taxiway-name dedup window (`_recentCr
 
 ### Start of taxi — apron look-ahead
 
-If the aircraft is on an unnamed apron taxilane connector at route start, `StartGuidance` walks forward through the route segments to the first one with a non-empty `TaxiwayName`, accumulating the distance. When the distance to join exceeds 10 m the announcement becomes `"Steering guidance active. Join taxiway Alpha in 200 feet."` instead of immediately announcing the taxiway name. This matches the real-world sequence after pushback — the aircraft rolls down the stand taxilane to the apron edge before joining the first named taxiway.
+If the aircraft is on an unnamed apron taxilane connector at route start, `StartGuidance` walks forward through the route segments to the first one with a non-empty `TaxiwayName`, accumulating the distance. When the distance to join exceeds 10 m the announcement becomes `"Steering guidance active. Join taxiway Alpha in 200 metres."` (or feet, per the Distance units setting) instead of immediately announcing the taxiway name. This matches the real-world sequence after pushback — the aircraft rolls down the stand taxilane to the apron edge before joining the first named taxiway. The distance is formatted via `DistanceFormatter.FromMetres`.
 
 ### Convergence target: taxi guidance ends where teleport places you
 
@@ -227,7 +258,7 @@ For both runway and gate destinations, taxi guidance and the teleport hotkeys ar
 | Destination | Teleport places you at | Taxi guidance ends with |
 |---|---|---|
 | Runway | 20 m back from the threshold, on the centerline, heading = runway heading, on ground (`SimConnectManager.TeleportToRunway`) | Aircraft on the runway centerline, aligned with runway heading within 1° (lineup-aligned hysteresis), `Lined up, runway X. Hold position.` announced, tone paused |
-| Gate / parking | At the parking spot lat/lon, heading = gate heading, on ground (`SimConnectManager.TeleportToParkingSpot`) | Aircraft within 20 ft of the parking spot (`GATE_ARRIVAL_RADIUS_FEET`), 50/20/10 ft countdown announced, gate-lineup heading tone silent at parking heading |
+| Gate / parking | At the parking spot lat/lon, heading = gate heading, on ground (`SimConnectManager.TeleportToParkingSpot`) | Aircraft within 20 ft of the parking spot (`GATE_ARRIVAL_RADIUS_FEET`), unit-aware parking countdown announced (50/20/10 ft or 15/10/5 m per Distance units setting), gate-lineup heading tone silent at parking heading |
 
 The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA "line up and wait" procedure — align with the centerline and remain stationary awaiting further clearance from ATC. This is the universal stop point for LUAW *and* the spot where you'd briefly stop before applying takeoff thrust under "cleared for takeoff." Either way, that's the convergence target.
 
@@ -249,11 +280,15 @@ Why also list non-connected taxiways: occasional ATC clearances skip a taxiway t
 
 FAA AIM 4-3-18 and ICAO Doc 4444 require that an aircraft hold short of *every* runway it crosses on the way to its destination, with explicit ATC clearance for each crossing — controllers issue them one at a time. `TaxiGuidanceManager.InsertRunwayCrossingHoldShorts(route, destinationName)` runs after `LoadRoute` builds the route and after `TruncateToHoldShort` (which owns the destination runway's hold-short separately):
 
-- For every consecutive segment pair, if the *next* segment's end is on a runway centerline (perpendicular distance ≤ `HalfWidth + 5 m` via `RunwayCenterline`-pair geometry from `TaxiGraph`), tag the *current* segment as `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`.
-- Skip the destination runway (already handled).
-- Skip duplicate consecutive same-runway tags (a multi-segment crossing pavement only fires one hold-short, not one per segment).
+- For each route segment whose **edge** (FromNode→ToNode) crosses a runway centerline — `TaxiGraph.EdgeCrossesRunwayStatic` (a proper segment-vs-centerline-between-thresholds intersection) via `WhichRunwayCrossedByEdge` — tag the segment immediately **before** that crossing edge as `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`.
+- Skip the destination runway (already handled; the prefixed `"Runway 33L"` is normalized to bare `"33L"` before comparing).
+- Skip duplicate consecutive same-runway tags (`lastTaggedRunway` — a wide runway's entry and exit edges both cross the centerline).
 
-Pilot then gets the standard 300/150/50 ft hold-short countdown approaching each crossed runway, the tone pauses at the line, and pressing `Y` (Continue) crosses. Same flow as ATC-instructed hold-shorts — no separate UI. Driven by the runway-centerline pairs already used by Where-Am-I, so it works on any DB that has enough `start` table rows to pair runway thresholds (vanilla MSFS, Navigraph, third-party scenery — all supported). `WhichRunwayContains(lat, lon)` is exposed as a private helper using the public `TaxiGraph.PerpendicularDistanceMetersStatic`.
+**Why edge intersection, not point-on-pavement.** A taxiway crosses a runway via an edge that *spans* the pavement, with both flanking nodes sitting *off* the runway. The original test ("is the next segment's endpoint within `HalfWidth + 5 m` of the centerline?") therefore silently missed every crossing whose nodes were more than ~half-width+5 m out. Motivating defect (2026-06-20): KBOS taxi to 33L via K/B/C — taxiway C crosses 04L (nearest C node 35 m from the centerline), 04R (26 m → caught), and 27 (86 m); the point test tagged only 04R, and `ApplyUserRunwayHoldShorts` falsely reported *"route does not cross 04L after taxiway C"* for the user's explicit "hold short 04L" pick. Meanwhile the runtime incursion guard (`CheckRunwayIncursion`, which keys on graph `HoldShort` node TYPE + `HoldShortName` — a separate, working path) correctly called out all three crossings, which is why the symptom was "it announced the crossings but never told me to hold short." The edge test catches a crossing regardless of node spacing.
+
+Pilot then gets the standard 300/150/50 ft hold-short countdown approaching each crossed runway, the tone pauses at the line, and pressing `Y` (Continue) crosses. Same flow as ATC-instructed hold-shorts — no separate UI. Driven by the runway-centerline pairs already used by Where-Am-I, so it works on any DB that has enough `start` table rows to pair runway thresholds (vanilla MSFS, Navigraph, third-party scenery — all supported). `TaxiGraph.EdgeCrossesRunwayStatic` is the public geometry primitive (probe-pinned in `tools/ProgressiveTaxiProbe`).
+
+**Runway-NAME association uses the centerline, not the threshold.** A hold-short node is named after its runway by `TaxiGraph.MatchHoldShortRunwayName(lat, lon, RunwayCenterlines, HOLDSHORT_RUNWAY_MATCH_M = 150 m)` — the nearest runway *centerline* by clamped perpendicular distance (closer-end designator), which is length-invariant. The previous heuristic (nearest runway *threshold* within 500 m) mislabeled a hold-short where a taxiway crosses a *long* runway far from either threshold with the taxiway name — e.g. KBOS 15R on taxiway N announced "Hold short of N" instead of "runway 15R". The 150 m tolerance sits above a CAT III / code-F holding-position setback (~107 m) yet below major-airport parallel-runway spacing, so a node binds to its own runway; a clamped perpendicular distance also means a node beyond a runway end is not falsely matched. The threshold method remains only as a fallback for navdata with no reciprocal centerline pairs. The matched name is `"runway X at <holdPoint>"` (e.g. `runway 15R at N`), so the crossing/arrival callout reads "Stop. Hold short of runway 15R at N." This must be correct at the source because `InsertRunwayCrossingHoldShorts` (above) does not overwrite a non-empty `HoldShortRunway`. Pure-geometry coverage: `tools/ProgressiveTaxiProbe` (mid-runway match, far-node reject, beyond-end reject).
 
 ### Ground-speed announcer (configurable interval)
 
@@ -269,12 +304,11 @@ Active during normal taxiing, lineup, and the takeoff roll — complements the t
 
 ### Speed-aware directives
 
-The user principle: only fire an action directive when actually needed. Telling a pilot already at 5 kt to "slow down" is noise; telling a stopped pilot to "stop" is patronising. The pattern is applied to every directive suffix:
+Most action directives ("Slow down.", "Stop.") fire **unconditionally** alongside the distance callout — the pilot needs the action cue regardless of current speed, and a stopped-in-zone fallback fires "Stop." when the aircraft has parked between the slow-down and stop tiers. The one remaining speed-aware suffix:
 
-- **Hold-short at 150 ft → "Slow down."** suffix only added if `_lastGroundSpeedKts > 10` kt (`SLOW_DOWN_GS_THRESHOLD_KTS`).
-- **Hold-short at 50 ft → "Stop."** suffix only added if `_lastGroundSpeedKts > 1` kt (`STOP_GS_THRESHOLD_KTS`).
-- **Gate countdown at 10 ft → "Stop."** suffix only added if `_lastGroundSpeedKts > 1` kt.
-- The base distance callout always fires (e.g. `"Hold short runway 13 Left in 150 feet."`) — only the action verb is conditional.
+- **Rollout runway-end at 500 ft → "Slow down."** suffix only added if `groundSpeedKts > ROLLOUT_TAXI_GS_KTS` (30 kt). Below taxi speed the directive is noise.
+
+Hold-short (slow-down + stop tiers), parking-arrival ("10 feet. Stop."), and the rollout 100 ft "Stop" callout all fire their action suffix unconditionally — even when the aircraft is already at low / zero ground speed. The previous speed gating tended to leave blind pilots without confirmation of the required action; making the action suffix unconditional matches the safety-critical nature of those callouts. The base distance callout always fires (e.g. `"Hold short runway 13 Left in 150 feet."`) — only the rollout 500 ft "Slow down" remains conditional.
 
 **The lineup tone itself is intentionally NOT speed-dependent.** The user's principle: alignment cues must work regardless of how slowly you're maneuvering. The runway-lineup tone (silent 0.5° / activation 1° / max-pan 15°) and the "Lined up" announcement fire purely on heading + cross-track error, never gated on ground speed. The pulse-mode cue (`SetPulse(true)` at ≤3 kt + ≥5° error) is an *extra* "you're stopped and stuck" signal, not a substitute for the always-on tone.
 
@@ -361,9 +395,41 @@ Opened from the File menu. User-tunable settings:
 
 - **Steering tone waveform** — Sine (default), Square, Triangle, Sawtooth. Picks up from `HandFlyWaveType` to share the hand-fly tone palette.
 - **Steering tone volume** — slider, default 0.05 (quiet — intended to sit under ATC chatter).
-- **Announce taxiway crossings** — checkbox, default on. Turns off the ~150 ft "Crossing taxiway X" callouts for pilots who find them chatty.
+- **Announce taxiway crossings** — checkbox, default on. Turns off the ~150 ft / ~50 m "Crossing taxiway X" callouts for pilots who find them chatty.
+- **Ground speed announcements** — off / 5 kt / 10 kt. Periodic ground-speed bucket callout during all on-ground phases.
 
 All settings persist through `UserSettings`.
+
+### Distance units
+
+`UserSettings.GroundDistanceUnit` (enum `DistanceUnit.Metres` / `DistanceUnit.Feet`, default **Metres**). Controlled by the **"Use feet for distances"** checkbox in the Taxi Guidance Options Form.
+
+**What it governs — every user-facing horizontal ground-distance readout:**
+
+- Taxi turn advance-notice and "turn now" callouts (`"In 100 metres, turn left…"` vs `"In 300 feet, turn left…"`)
+- Hold-short countdowns (speed-proportional triggers; the **live** distance is spoken, unit-aware via `DistanceFormatter.FromFeet` — no milestone table)
+- Parking / gate arrival countdowns (15/10/5 m **or** 50/20/10 ft; via `DistanceMilestones.ParkingArrival`)
+- Landing-exit approach callouts (500/300/150 m **or** 1500/900/500 ft; via `DistanceMilestones.ExitApproach`)
+- Runway-end countdown (500/150/30 m **or** 1500/500/100 ft; via `DistanceMilestones.RunwayEnd`)
+- On-demand status distances (`"In 400 metres turn right onto Kilo. 1.5 kilometres to destination."`) — totals over ~6000 ft switch to the big unit matching the setting: kilometres in metres mode, nautical miles in feet mode
+- Touchdown callouts (`"Touchdown. High-speed exit K2 in 1 800 metres."`)
+- Landing exit and runway combo-box labels (`LandingExit.ToString()`, `Runway.ToString()` — short form, e.g. `"K2 — 550 m from threshold"` or `"K2 — 1 800 ft from threshold"`)
+- Ground-traffic alerts (`"Slow down, traffic ahead, 150 metres."` vs `"… 500 feet."`)
+- Backtracking distance readout in on-demand status
+
+**What it does NOT govern (intentionally out of scope):**
+
+- Altitude callouts (always feet — aviation standard, ICAO Annex 5)
+- AGL / vertical-speed callouts (always feet)
+- Takeoff-assist / visual-guidance announcements (altitude/AGL — always feet)
+- Weather visibility (reported in km / statute miles per METAR convention)
+- Internal guidance thresholds — all geometry stays metric; the unit setting is a **display-layer-only** conversion applied at announcement time via `DistanceFormatter` and the unit-native `DistanceMilestones` tables.
+
+**Why Metres is the default:**
+
+ICAO Annex 5 and most non-US airspace use metric for all ground-distance callouts (taxi, RVR, taxiway widths). GSX Pro's gate data uses metres. Feet is the US aviation standard and is available via the checkbox for pilots who prefer it.
+
+**Implementation:** `DistanceFormatter.UnitProvider` is wired to `() => SettingsManager.Current.GroundDistanceUnit` at app startup in `MainForm`. A setting change takes effect on the next callout — no restart required.
 
 ## Landing Exit Planner
 
@@ -382,14 +448,14 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 3. Pilot picks an exit, presses `Plan Exit`. The planner stores the selection plus the pre-built `TaxiGraph` (so activation doesn't need to rebuild it).
 4. `LandingExitPlanner.ProcessGroundState(onGround, gs, lat, lon, headingTrue)` is fed from every `SIM_ON_GROUND` update in `MainForm.OnSimVarUpdated`. It edge-detects the airborne→on-ground transition and requires ground speed ≥ 40 kt (`LANDING_MIN_GS_KNOTS`) to count as a real touchdown — a teleport or reload at low speed won't trigger it.
 5. On touchdown it calls `TaxiGuidanceManager.LoadRoute(...)` with the exit node id as the destination, `isRunwayDestination: false`, and the pre-built graph as `prebuiltGraph`. Then `StartGuidance(SettingsManager.Current)`. The route snaps from the aircraft's current (post-touchdown) position through the exit's graph node — shortest path, so it naturally follows the runway centerline until the chosen exit.
-6. Announcement: "Touchdown. Guiding to taxiway K2, 5800 feet remaining."
+6. Announcement: "Touchdown. High-speed exit taxiway K2 in 1800 metres." (metres mode) / "…in 5800 feet." (feet mode). The exit class ("high-speed exit", "exit", "runway-end exit") and unit are determined at runtime from the exit geometry and the user's distance-unit setting (`DistanceFormatter.FromFeet`).
 7. **Rollout phase (`TaxiGuidanceState.LandingRollout`).** Steering tone is muted during the deceleration phase. Voice callouts at 1500 ft / 500 ft / turn-now mark approach to the chosen exit. Two transitions out of this phase:
 
    - **Normal handoff to `Taxiing`** when EITHER the pilot has begun the turn off the runway (heading deviation ≥ `ROLLOUT_TURN_BEGAN_HDG_DEG` (15°) off runway centerline), OR BOTH (a) the aircraft is at taxi speed (`< 30 kt`) AND (b) is within 500 ft (`ROLLOUT_NEAR_EXIT_FT`) of the exit. The conjunctive gate on `nearExit` prevents the tone from resuming early on long runways where GS drops below 30 kt thousands of feet upfield of the planned exit.
 
    - **Overshoot retarget.** If the aircraft has rolled past the chosen exit by ≥ 100 ft (`ROLLOUT_OVERSHOOT_FT`) along the runway centerline without starting the turn, `TaxiGuidanceManager` scans the precomputed exit list for the next downfield exit and `LoadRoute`s to it in place via `RetargetLandingExit`. Approach callouts re-arm for the new exit. Announcement: *"Missed taxiway A6. Retargeting taxiway A7, N feet ahead."* If no downfield exit remains, `EnterRunwayEndCountdown` clears the route (steering tone silent, no recalc) and announces *"Missed last exit on runway X."* before handing off to the runway-end countdown described below.
 
-   - **Runway-end countdown.** When the overshoot path finds no downfield exit (or the retarget itself fails), state stays in `LandingRollout` and `UpdateRunwayEndCountdown` drives three voice callouts as the aircraft approaches the physical end of the runway: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* (suffix suppressed when GS ≤ 30 kt) / *"Runway end in 100 feet. Stop."* (suffix suppressed when GS ≤ 1 kt). Tone stays silent — the pilot is on rudder/brakes alone. Transition to `Taxiing` (with `_route = null` — no recalc target) when GS drops below `ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3 kt` or heading deviates ≥ 15° (backtaxi turn). Replaces the previous "full silence" behavior so a blind pilot rolling toward the end of an active runway gets real braking information instead of being left to query Where-Am-I repeatedly.
+   - **Runway-end countdown.** When the overshoot path finds no downfield exit (or the retarget itself fails), state stays in `LandingRollout` and `UpdateRunwayEndCountdown` drives three voice callouts as the aircraft approaches the physical end of the runway: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* (suffix suppressed when GS ≤ 30 kt) / *"Runway end in 100 feet. Stop."* (suffix unconditional — the action cue fires regardless of current GS). Tone stays silent — the pilot is on rudder/brakes alone. Transition to `Taxiing` (with `_route = null` — no recalc target) when GS drops below `ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3 kt` or heading deviates ≥ 15° (backtaxi turn). Replaces the previous "full silence" behavior so a blind pilot rolling toward the end of an active runway gets real braking information instead of being left to query Where-Am-I repeatedly.
 
 ### Exit detection math (TaxiGraph.GetLandingExits)
 
@@ -478,7 +544,559 @@ Headwind formula: `speed × cos(windDir − runwayHeading)`. Positive = headwind
 
 We do NOT auto-recommend a specific exit because that would require aircraft-performance data we don't have (approach speed, weight, brake config, etc.). Giving the pilot the headwind/tailwind number lets them choose appropriately for whatever airframe they're flying. Works with any weather source the user has active — MSFS live weather, ActiveSky, REX, or static — because SimConnect's `AMBIENT WIND DIRECTION` / `AMBIENT WIND VELOCITY` reflect the active weather model.
 
-## Reliability Notes
+## GSX Gate Integration
+
+When **GSX Pro** is running and has a profile for the airport, it becomes the
+**authoritative** source for gates/stands — GSX's metadata (heavy/jetway/VDGS,
+exact positions) is far more accurate than navdata's, so navdata's own
+heavy/jetway classification is never shown when GSX can answer. GSX availability
+for gate sourcing = `GsxService.CouatlStarted` (running this session) AND a
+matching profile exists. When GSX is absent, everything falls back to navdata
+unchanged.
+
+### Gate source (GSX-authoritative overlay)
+
+`GateDataSource` builds the gate list as an **overlay**: GSX metadata wins;
+position comes from the GSX `.ini` `this_parking_pos` when present, else the
+matched navdata stand's position; navdata-only stands are appended (nothing
+lost). Matching is by number + suffix, disambiguated by concourse (navdata `GC`
+→ GSX `C`). Size/heavy is derived from GSX `maxwingspan` → ICAO wingspan code
+(A&lt;15 B&lt;24 C&lt;36 D&lt;52 E&lt;65 F≥65 m; heavy = E/F), not the ambiguous
+`.ini type` enum. VDGS type (`SafeDockT42`, `Marshaller`, …) and the
+`parkingsystem_stopposition` (nose-stop) are carried on `ParkingSpot`
+(`VdgsType`, `StopLatitude/StopLongitude`, `MaxWingspanMeters`, `Source`).
+
+Profiles are parsed universally (`GsxProfileParser`) — pure-numeric gates,
+suffix glued to number (`218l`), direction-prefixed parking (`w parking 4`),
+and letter-before-number-as-concourse vs letter-after-as-suffix are all handled.
+
+### Search / concourse filter
+
+Both the Gate Teleport and Taxi Assist gate pickers have a type-to-filter box
+(`GateSearchFilter`) matching on name + number + suffix, with concourse-token
+filtering — works with or without GSX.
+
+**Per-ICAO gate-list cache.** `TaxiAssistForm` caches the airport's gate list as
+(spot, resolved graph node) pairs per ICAO; the search box and the fitting filter
+then filter **in memory** on each keystroke (matching the `GateTeleportForm`
+pattern). Do not reintroduce per-keystroke directory enumeration + navdata query
++ per-spot nearest-node resolution on the UI thread.
+
+### "Show only fitting stands" filter
+
+The fitting checkbox uses `ParkingSpot.FitsAircraft(wingspanFeet)`, which is
+**source-aware**: GSX stands compare the aircraft's wing span (converted to
+metres) against GSX's authoritative `MaxWingspanMeters`; navdata stands use the
+physical parking `Radius` (feet) vs half the wing span. A GSX stand with no
+`maxwingspan` is treated as fitting (never hidden). (The earlier code compared
+GSX's metre-based radius against a feet threshold and hid almost everything —
+fixed.)
+
+### Auto-select gate on Calculate Route
+
+Setting `GsxAutoSelectGateOnRoute` (default on). When Taxi Assist calculates a
+route to a gate and GSX is active, `GsxGateSelector` drives GSX's hierarchical
+parking menu to select that exact stand — structure-agnostic
+(terminal/concourse/flat), text-matching, and **never** chooses a WARP /
+Follow-Me / reposition entry (positive-safe-action-only, abort on uncertainty).
+
+The driver (`GsxMenuAutomation` over `GsxService`) is a **backtracking DFS**
+(`GsxGateSelector.TraverseAsync`): at each menu level it matches a gate leaf,
+else drills the best unvisited category (strongest concourse score first) and
+recurses, pressing GSX's "↑ Back" to try the next sibling when a branch misses —
+so it finds stands even when GSX files them under a different apron than their
+letter (e.g. OMDB groups C47–C64 outside "Apron C"). Apron submenus default to a
+filtered view, so the DFS clicks **"Show all positions"** first to reveal stands
+hidden by the size filter. All choices are page-relative and sent only while the
+live menu is on that page. Budget: 600 menu reads / 180 s for very large
+airports. **Changing gates:** when a gate is already selected, the top menu is
+"Change parking or service"; the selector drills its "Change Facility" entry to
+re-open the position selector, then traverses to the new stand.
+
+Success is confirmed by GSX's `FSDT_GSX_SetGate_Name/Number/Suffix` L-vars. These
+update with a lag (and briefly hold the previous gate when changing), so after
+choosing the leaf + the safe servicing action ("Show me this spot and activate",
+which arms the VDGS/marshaller) the selector **polls** the vars up to 6 s until
+they match before announcing success. Tuning lives in one place
+(`GsxMenuClassifier`); the full walk is logged to
+`%APPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
+
+**Matching and reentrancy hardening:**
+
+- **Bare-number leaf fallback.** A letterless GSX menu leaf ("Parking 209") now
+  matches a navdata-lettered target ("P 209" — the letter was borrowed by the
+  merger for display) on bare number alone. Exact identity match is always tried
+  first; the fallback is logged as `MATCH-BARENUMBER`. Fixes a guaranteed
+  "not found" at EGLL-style airports.
+- **`SelectGateAsync` reentrancy latch** (`Interlocked`). Two Calculate clicks
+  could interleave two DFS traversals on one live GSX menu — the `IsMenuActive`
+  guard reads false during every menu transition, so it cannot prevent the
+  overlap — pressing arbitrary wrong entries. The second call now fails fast.
+- **Classifier ordering** (`GsxMenuClassifier`): the `"(N suitable parkings)"`
+  count-suffix Category check runs **before** the Back check (a group like
+  "Main Apron (12 suitable parkings)" classified as Back made every stand inside
+  unreachable and desynced `BackOutAsync`), and the "main"/"top" back-patterns
+  are full phrases ("main menu" / "back to top") so apron and terminal names
+  cannot false-positive as Back.
+
+## VDGS / Marshalling Docking
+
+After a taxi route to a gate is calculated, **docking guidance auto-engages** when
+the aircraft is on the ground near the selected gate's stop position — specifically
+when ground speed is low (≤ 15 kt), the aircraft is within the engage range of the
+stop position, and it is roughly facing the gate (within the 70° cone). Docking
+guidance never modifies taxi guidance's route or state; until it actually engages,
+taxi runs its normal arrival sequence in full, and once engaged docking owns the
+arrival callouts (see *Engage-latched arrival ownership* below).
+
+**Engage range**: For `.ini` gates that carry a `gatedistancethreshold` value (the
+distance at which GSX activates the VDGS), that value is used as the engage range
+instead of the fixed 50 m default. It is clamped to [20, 70] m. For navdata-only
+and `.py` gates (no `gatedistancethreshold`), the fixed 50 m applies.
+
+### What it does
+
+Three simultaneous audio feedback streams activate on engagement:
+
+1. **Lateral steering tone** — reuses `TaxiSteeringTone` (pan left/right) to keep
+   the nose on the gate centreline. The tone waveform and volume are the same as
+   the taxi steering tone setting; there is no separate waveform/volume for it.
+
+2. **Proximity beeper** (`ProximityBeeper`) — an accelerating click/beep whose
+   cadence is analogous to a car parking sensor: slow and separate far out (~60 m),
+   progressively faster as the aircraft closes, and solid (continuous) at the stop
+   position. The beep sound (waveform) and volume are independently configurable
+   in Taxi Guidance Options.
+
+3. **Spoken distance milestones** — at 30 m, 20 m, 10 m, and 5 m: `"30 metres."`,
+   `"20 metres."`, `"10 metres."`, `"5 metres."`. The final callout at the stop
+   position is **`"GSX docking complete."`** for GSX `.ini` gates that have a
+   `parkingsystem_stopposition`, or **`"Stop."`** for deice pads and navdata-only
+   gates. If the aircraft overshoots, the system announces `"Stop. You have passed
+   the stop position."` immediately. Spoken distances honour the Distance units
+   setting (`DistanceFormatter` / `UserSettings.GroundDistanceUnit`).
+
+On engagement, the system announces the gate's VDGS/guidance type once when it is
+known from the GSX `.ini` profile's `parkingsystem` key:
+
+| `parkingsystem` family | Spoken phrase |
+|---|---|
+| `Safedock*` / `SafeDock*` | "SafeDock display" |
+| `Marshaller` | "Marshaller" |
+| `Agnis*` | "AGNIS" |
+| `Apis*` | "APIS" |
+| `Rlg*` | "lead-in lights" |
+| `VgdsDeIce*` | (none — deice branch) |
+| `Vgds*`, `Honeywell*`, `Dummy`, `1` | (none — not actionable) |
+| navdata / `.py` gate (no `parkingsystem`) | (none) |
+
+For example: `"Docking guidance. SafeDock display. 45 metres to stop. Jetway on your left."`
+
+On reaching the stop position:
+- **GSX `.ini` gate** (has a `parkingsystem_stopposition`) — announces `"GSX docking complete."` and
+  silences beeper and tone.
+- **Navdata / `.py` gate or deice pad** — announces `"Stop."` as before.
+
+### Target position precedence (universal)
+
+Two different "positions" exist per spot, and they have different priority chains:
+
+**Docking stop target** — `DockingGuidanceManager` reads the preserved
+`ParkingSpot.StopLatitude / StopLongitude / StopHeading` fields **directly**
+(sourced from the GSX profile's `parkingsystem_stopposition` key parsed by
+`GsxProfileParser`) and falls back to the spot's position when they are absent.
+The stop position is the most precise docking reference; it matches what the
+visual SafeDock/marshaller boards display inside the sim. `StopHeading` is the
+gate-facing true heading used as the centreline reference for both lateral
+steering and the along-track distance calculation.
+
+**Spot position (display / teleport / routing)** — chosen by `GsxNavdataMerger`
+in this order:
+
+1. **GSX parking position** — the `this_parking_pos` coordinate (the actual
+   aircraft-datum parking position).
+2. **Navdata parking position** — the raw parking spot lat/lon from the
+   `LittleNavMapProvider` / navdatareader `parking` table (also an aircraft-datum
+   location).
+3. **GSX VDGS nose-stop** — LAST resort only. The stop position is a **nose-stop
+   reference, not an aircraft-datum spawn**: teleporting at it placed the datum
+   metres deep into the stand, sometimes at heading 0 when `StopHeading` was
+   absent. (It previously sat second, ahead of navdata, which mis-placed
+   stop-position-only gates.) Demoting it loses nothing for docking — the `Stop*`
+   fields are carried on the spot separately, so docking still drives to the real
+   nose-stop.
+
+**No cross-concourse coordinate borrowing.** When a GSX gate has a concourse, the
+merger only borrows a navdata candidate's coordinates if the normalized concourses
+match; otherwise the spot is **dropped** rather than silently routing a blind
+pilot to the wrong pier (e.g. "A12" listed at B12's position).
+
+### GSX `.py` per-aircraft stop offset
+
+Large airports ship a GSX **Python** (`.py`) profile (≈72 installed, including
+EDDF). These are NOT parsed for the gate LIST (`GateDataSource` is `.ini`-only),
+but they DO carry per-aircraft stop math: each gate's `customOffset` function
+returns a longitudinal/lateral offset (in metres) that GSX's VDGS applies so a
+777-300 stops a few metres deeper than an A320 at the same stand. Measured at
+EDDF A66: a 777-300 stops **+5.3 m** vs the navdata base.
+
+The offset is applied to **every non-deice gate, including `.ini` gates**. It was
+once skipped whenever the gate carried a `StopLatitude` (i.e. `.ini` gates), on the
+mistaken assumption that the `.ini` stop was already aircraft-exact. It isn't: the
+`.py` `customOffset` is GSX's **per-aircraft** adjustment layered *on top of* the
+static `.ini`/navdata base, which is why the same gate yields a different offset per
+airframe (EDDF A66: 777 = 5.3 m, A380 = 6.3 m, base = 1.65 m). Without it the 777
+parked ~5.3 m short at every `.ini` airport (EDDF included).
+
+When the aircraft id is known, `TaxiAssistForm.ApplyGsxStopOffset` resolves the
+offset and feeds it to `DockingGuidanceManager.SetStopOffset`:
+
+- `GsxStopOffsetResolver` locates the airport's `.py` (`GsxProfileLocator.TryFindPyProfile`,
+  most-recent match, `_handler.py` companions excluded), parses it with
+  `GsxPyProfileReader` (cached by path + last-write-time), and evaluates the gate's
+  function with `GsxPyOffsetEvaluator` for the resolved `GsxAircraftId`.
+- **Aircraft id resolution is UNIVERSAL** (`GsxAircraftIdMap.TryResolve(icao, wingspanMetres)`):
+  the PRIMARY mechanism DERIVES `idMajor`/`idMinor` from the ICAO type designator
+  pattern (Boeing `B7Xd` → 707+X·10; Airbus `A3YZ` narrowbody literal / widebody
+  300+Y·10; Embraer E-Jets literal) and the ARC code from wingspan (Annex-14:
+  A&lt;15 … F≥65 m). A thin exception table holds only genuinely irregular
+  designators (B787 bare-minor, A350 idMinor 1000, neo idMinor 1, A220, and the
+  **737 MAX family** — `B37M`/`B38M`/`B39M`/`B3XM` → 737 family with
+  closest-gauge minor, because the `B3xM` designators break the `B7Xd` pattern
+  and resolved idMajor 0, silently losing every idMajor-keyed `.py` stop offset;
+  probe asserts lock this). So any
+  aircraft — including ones MSFSBA has never seen — resolves to a usable id; the
+  raw ICAO is always preserved so ICAO-keyed profile tables hit regardless.
+- The evaluator's group fallback tries `"ARC-E"`, bare `"E"`, and `"Heavy"` because
+  different scenery authors key their group dicts differently (the `"ARC-X"` form
+  dominates the installed profiles).
+- **The gate suffix changes the resolved function.** EDDF **A66** (no suffix) →
+  777 = **+5.3 m**, but EDDF **A66A** (suffix "A") → 777 = **0 m**: that stand's
+  function has no 777 table entry, so it correctly falls to the base 0 (an A320 at
+  the same stand gets −2.5 m, proving the function is evaluated rather than parse-
+  missed). `tools/GsxOffsetProbe` carries resolver-level asserts that lock this.
+- A `STOPOFFSET` diagnostic line (icao / gate# / suffix / `stopLatSet` / aircraft /
+  aircraft id / resolved offset) is appended to
+  `%APPDATA%\MSFSBlindAssist\logs\docking-aircraft.log` on each route-calculate,
+  for one-glance debugging of "offset is 0" reports.
+
+In `DockingGuidanceManager.UpdatePosition`, the stop point is shifted BEFORE any
+distance is computed: `LongitudinalMetres` along `StopHeading`, `LateralMetres`
+perpendicular (right = +), via an equirectangular metres→degrees conversion. Every
+cue (along-track, lineup, milestones) then references the shifted stop. **Deice
+areas keep the offset at `GsxOffset.Zero`** (datum-aligned pads). `GsxOffset.Zero`
+is the default and a strict no-op — the shift is skipped entirely, so behaviour is
+byte-identical to having no offset. Any miss at any layer (no profile, unknown
+aircraft, parse error) degrades to `Zero`, never worse than the bare navdata stop.
+The applied offset is logged (`stopOffL` / `stopOffLat`) in `docking.log`.
+
+### Geometry (DockingGeometry)
+
+GSX exposes **no docking-distance L-var** — the lateral and longitudinal distance
+readouts on the visual SafeDock/marshaller board are internal rendering data with
+no SimConnect interface. Guidance is therefore computed geometrically by the
+`DockingGeometry` helper class:
+
+- **Along-track distance to stop** — great-circle distance from the aircraft's
+  current position to the stop position, projected forward along the gate
+  centreline: `d_along = d_gc × cos(headingError)`, where `headingError` is the
+  angle between the aircraft's true heading and `StopHeading`.
+- **Lateral deviation** — computed via `NavigationCalculator.CalculateCrossTrackError`
+  (the same signed cross-track helper used for runway lineup). Positive = right of
+  centreline; negative = left.
+
+All internal geometry is in metres. Spoken distances are converted at announcement
+time via `DistanceFormatter.FromMetres` to respect the user's Distance units
+setting (metres or feet).
+
+### Architecture
+
+`DockingGuidanceManager` is a standalone state machine with four states:
+
+```
+Idle → Armed → Docking → Stopped
+```
+
+- **Idle** — no gate selected, or guidance is disabled in settings.
+- **Armed** — a gate with a known stop position has been selected and the aircraft
+  is near the engage range (50 m default, or `gatedistancethreshold` clamped to
+  [20, 70] m). Waiting for low ground speed and a roughly gate-facing heading to
+  engage.
+- **Docking** — all three feedback streams are active. The manager feeds
+  `TaxiSteeringTone.UpdateHeadingError`, drives the `ProximityBeeper` cadence from
+  along-track distance, and fires spoken distance milestones.
+- **Stopped** — along-track distance has reached ~0 (or the aircraft has
+  overshot). Lateral tone silent; the beeper holds a solid "docked — hold
+  position" tone (except after an overshoot stop, where a "docked" marker over a
+  bad park would mislead). **Stopped is escapable** — see *Docking state
+  lifecycle* under *Docking precision & GSX stop* below: taxiing away (absolute
+  distance > 75 m, any direction) disengages, and backing up > 3 m re-arms to
+  Idle so a retry dock re-engages with fresh audio and milestones.
+
+`DockingGuidanceManager.UpdatePosition(lat, lon, headingTrue, groundSpeedKts)` is
+called from the same ~30 Hz SimConnect position handler that drives
+`TaxiGuidanceManager`. Docking never touches `_route`, `_state`, or any other
+taxi-guidance field. The coupling runs the other way only, per frame in MainForm:
+`SetSteeringToneSuppressed(IsActive)` (tone mute) and `SetDockingActive(IsActive)`
+(arrival-callout ownership) — both driven by docking's engage-latched `IsActive`
+snapshot, so taxi's gate-arrival countdown fires normally **until docking
+engages** and is suppressed from then on.
+
+### Options (Taxi Guidance Options form)
+
+Two new settings appear in the Taxi Guidance Options form under a "Docking
+guidance" group:
+
+- **Docking guidance** — enable/disable toggle (default on). When off, the
+  `DockingGuidanceManager` stays in `Idle` and no beep or distance callouts fire.
+- **Docking beep sound** — waveform picker (Sine, Square, Triangle, Sawtooth) for
+  the `ProximityBeeper`. Independent of the steering-tone waveform setting.
+- **Docking beep volume** — slider, independent of the steering-tone volume slider.
+
+The **lateral steering tone** during docking reuses the existing taxi steering-tone
+waveform and volume settings (no separate control — same tone the pilot is already
+calibrated to from taxiing).
+
+### Pure-logic verification
+
+`tools/DockingProbe` is a console probe (no xUnit, per CLAUDE.md) that exercises
+`DockingGeometry` and the `DockingGuidanceManager` state machine against scripted
+position sequences:
+
+- Nominal approach: aircraft starts 60 m out, step-closes to 0 → verifies
+  milestone firings, beeper cadence steps, and final `"Stop."` announcement.
+- Overshoot: aircraft crosses the stop position → verifies the overshoot
+  announcement.
+- Lateral deviation: aircraft offset from centreline → verifies steering-tone pan
+  direction (left = steer left, right = steer right) is consistent with
+  `DockingGeometry.CrossTrackMeters` sign.
+- Target precedence: verifies GSX stop-position wins over navdata parking when
+  both are present.
+
+Run with `dotnet run --project tools/DockingProbe -p:Platform=x64` → expect
+`ALL PASS`.
+
+### Datum-aligned stop & door-side cue
+
+The aircraft **DATUM** stops at the parking/stop position. An MSFS parking
+position — and a GSX stop position — is where the aircraft *reference* (the model
+origin) sits when correctly parked; the scenery jetway is placed to reach the
+door for that datum location. Docking guidance therefore drives the datum to the
+stop coordinate with **no door correction**: the "Stop" threshold is **0.3 m**
+(`StopToleranceMetres`, see *Docking precision & GSX stop* below).
+
+**Do NOT reintroduce a door-offset subtraction.** An earlier build subtracted the
+per-aircraft `gsx.cfg` door offset from the along-track distance
+(`doorDistanceToStop = alongTrackToStop − doorOffset`). That was wrong — the
+`gsx.cfg` `[exit] pos` longitudinal column describes where the door is **on the
+airframe**, not a stop offset — and it parked a B777 ~26 m short of the gate.
+After the datum-alignment fix the offset survived only as dead telemetry-only
+plumbing (`SetDoorOffsetMetres`); that plumbing is now **removed end-to-end**.
+Per-airframe stop depth is handled by the GSX `.py` per-aircraft stop offset (see
+*GSX `.py` per-aircraft stop offset* above), which shifts the stop **target**
+the way GSX's own VDGS does.
+
+**What `gsx.cfg` still feeds: the door SIDE cue.**
+`Services/Gsx/GsxAirplaneProfile.cs` reads each aircraft's `gsx.cfg`
+`[exit<preferredexit>] pos` lateral (first) column — negative = left — to
+announce *"Jetway on your left/right."* (or *"Door on your …"* for stands
+without a jetway) at docking engage. The scan covers aircraft package folders
+(`…\SimObjects\Airplanes\*\gsx.cfg`, package root from `UserCfg.opt`) and GSX's
+per-aircraft profiles (`%APPDATA%\Virtuali\Airplanes\*\gsx.cfg`), runs on a
+background thread, and is cached for the session. Hardening: the map build is
+**single-flight via `Lazy`** (concurrent multi-second scans can't race), the
+directory walk is **depth-bounded (6)** so texture/sound trees are never crawled,
+and `UserCfg.opt` parsing **excludes `InstalledPackagesPathNextBoot`** lines
+(which could resolve a not-yet-active packages path after a relocation).
+`MainForm.OnAircraftIcaoTypeDetected` locks its `_refreshedIcaos` set and
+rechecks the ICAO is still current before publishing the door side, so a late
+refresh for the previous aircraft cannot clobber the new one. Aircraft with no
+`gsx.cfg` simply get no door-side phrase.
+
+**Engage cadence.** Docking guidance auto-engages on the ground within the engage
+range of the stop (50 m default, or the gate's `gatedistancethreshold` clamped to
+[20, 70] m) at ≤ 15 kt, provided the aircraft is roughly facing the gate.
+Distance milestones are unit-native (metres or feet per the Distance units
+setting). "Slow down" is announced at 6 m. "Stop" fires at 0.3 m
+(`StopToleranceMetres`).
+
+### Docking precision & GSX stop
+
+These refinements tighten the final few metres so the door lands within jetway-
+bridge tolerance and the pilot gets an unambiguous "stop here" cue.
+
+- **Docking completion stops taxi guidance.** `DockingGuidanceManager` raises a
+  `DockingCompleted` event once on the Docking → Stopped transition (including
+  overshoot), fired outside its lock. `MainForm` subscribes and calls
+  `taxiGuidanceManager.StopGuidance()` (thread-safe and silent), so the flow ends
+  cleanly instead of taxi sitting in LiningUp forever after parking.
+- **Engage-latched arrival ownership.** `MainForm` feeds
+  `taxiGuidanceManager.SetDockingActive(dockingGuidanceManager.IsActive)`, where
+  `IsActive` = the docking state machine is **engaged** (Docking or Stopped) — a
+  lock-free volatile snapshot, so the per-frame read costs no lock (and no
+  SettingsManager static-lock acquisition). Taxi speaks its FULL arrival
+  sequence — parking countdown, "Stop. Hold position.", "Align with X",
+  "Destination reached", "Parking brake." — right up until docking actually
+  engages; once engaged, docking owns the arrival through Stopped and taxi stays
+  quiet so the two never contradict. **Do NOT widen this back to gate-set
+  semantics** (the removed `OwnsArrival` = gate set + docking enabled): with that
+  design, a navdata gate where docking never engages — approach outside the 70°
+  cone, stop beyond engage range, approximate navdata heading — arrived in
+  **total verbal silence**. The deliberate trade: a brief sequential overlap is
+  possible (taxi's stop callout fires, then docking engages with its own
+  countdown a moment later); that overlap is self-correcting and far better than
+  silent arrivals. The same `IsActive` read also drives the steering-tone mute
+  via `SetSteeringToneSuppressed`.
+- **Jetway-precise lateral lineup** (`ComputeLineupError`). The intercept dead-band
+  was tightened **8 ft → 1 ft** (the 8 ft band stopped correcting cross-track below
+  8 ft, parking the aircraft up to ~2.4 m off centerline), and `SaturationFt` went
+  60 → 40 (a small residual still earns a usable correction angle). Cross-track
+  convergence is a function of distance travelled, not time
+  (`d(cross)/d(forward) = −sin(angle)`), so it closes the same per metre at 1 kt as
+  at 5 kt — no slow-speed special-casing — and the continuous sqrt ramp never
+  springs a late turn.
+- **Final alignment turn completes earlier.** The intercept-fade squares the heading
+  to pure gate heading by **2.5 m out** (`FadeStartM`/`FadeEndM` = 6/2.5, was 4/1),
+  so an over-rotated gate entry (~5° off the taxi turn) finishes the squaring turn
+  with room to creep straight in, instead of cramming it into the final metre and
+  stopping ~2° off.
+- **Precise, unforgiving stop + persistent "docked" tone.**
+  - `StopToleranceMetres` tightened **0.5 → 0.3 m** (drives gate IsStop, the solid
+    tone, and the "GSX docking complete." callout), so the pilot lands within
+    ~0.3 m of the exact stop.
+  - The beep plateau is removed: `BeepNearMetres = StopToleranceMetres`, so the
+    accelerating pulse keeps speeding up right to the stop with **no** max-speed
+    plateau. The old 2 m plateau made everything from 2 m to the stop sound
+    identical, so pilots read "fast beep" as "stop" and parked short, mid-turn.
+    Now the rule is simple: accelerating pulse = keep creeping; solid tone = stop.
+  - The solid continuous tone was previously dead code — the state machine called
+    `_beeper.Stop()` at the same 0.3 m threshold the solid tone begins, so the beep
+    just vanished at the stop. Fixed: at IsStop the lateral pan tone stops but the
+    beeper is held in its solid mode and keeps sounding through the Stopped state as
+    a "docked — hold position" marker, until the pilot ends guidance (Stop taxi
+    guidance button → `SetDestinationGate(null)` → `ResetLocked` stops it) or taxis
+    or backs away (see the lifecycle bullet below). An **overshoot stop does NOT
+    hold the solid tone** (a "docked" marker over a bad park would mislead) and no
+    longer disposes the beeper, so a retry dock re-engages with working audio.
+- **Docking state lifecycle — Stopped is escapable, every state is exitable.**
+  - **Taxi-away disengage uses ABSOLUTE distance, not along-track.** Along-track
+    goes **negative** once the stop is behind the aircraft, so the old
+    `alongM > 75` check could never fire for a forward taxi-out and the Stopped
+    state (with its solid tone) latched forever. Raw distance > 75 m
+    (`DisengageRangeMetres`) now disengages in any direction — including a stale
+    next-flight gate hundreds of kilometres away.
+  - **Backing up > 3 m past the stop re-arms to Idle** (`RearmBackupMetres`): a
+    pilot who overshoots (or wants a better park) backs up a few metres and the
+    normal Idle/Armed → `ShouldEngage` path re-engages with fresh audio and fresh
+    milestones.
+  - **Disabling docking (or losing the gate) mid-approach fully resets**
+    (`ResetLocked`, not just silence). Leaving `_state` latched at Docking/Stopped
+    kept `IsActive` true forever, so MainForm went on muting taxi's steering tone
+    every frame and the pilot had no lateral cue for the final gate turn.
+  - **Stopped-short closure.** Engaged + sitting still (gs < 0.5 kt) for ≥ 4 s with
+    0.3–10 m still to go → *"X to stop. Continue forward."* Taxi's own
+    stopped-in-zone "Stop. Hold position." cue is suppressed while docking owns
+    the arrival, so docking must provide the verbal closure itself — otherwise the
+    pilot gets an endless fast-but-not-solid beep and no explanation.
+  - **Stale-gate lifecycle.** Takeoff-assist activation and `LandingRollout` entry
+    both clear the docking gate (`SetDestinationGate(null)`) — the previous
+    arrival is over. Without this, a stale departure gate could keep `IsActive`
+    latched on landing and mute the landing-exit rollout steering tone. (The
+    absolute-distance disengage also self-heals this, but takeoff is the
+    unambiguous boundary.)
+- **Gate-lineup "aligned" band is docking-aware; gate lineup never pulses.** The
+  aligned hysteresis in the gate-lineup branch is **tight (enter 1° / 12.5 ft,
+  exit 2° / 25 ft) only while docking is engaged** (`_dockingActive` — docking's
+  tone and 0.3 m stop own the precision, and taxi's verbal is suppressed anyway,
+  so the tight band just keeps the brief pre-mute window from flapping) and
+  **forgiving (enter 4° / 25 ft, exit 7° / 40 ft) otherwise**: the synthetic
+  centerline runs through the navdata parking point, which is routinely metres
+  off the real stand markings, and demanding ~12 ft to a possibly-offset point
+  left correctly-parked pilots permanently "not aligned" with no "Parking brake."
+  cue. The runway-style stopped-misaligned **pulse was briefly enabled for gate
+  lineup and is removed — do not re-add it**: precision parking is docking's job,
+  and pulsing 3 Hz at a correctly-parked pilot demanding precision to a wrong
+  point is a misfeature. Runway lineup keeps its pulse (its centerline reference
+  is authoritative).
+- **Hot-path gating.** Docking's far-field telemetry + lineup math run only when
+  engaged or within 150 m raw distance (`DetailRangeMetres`) — at taxi distances
+  they fed nothing but the `docking.log` line, which cost an open/append/close
+  file write twice per second on the SimConnect thread, under the docking lock,
+  for the entire taxi. Similarly on the taxi side, the hold-short / parking /
+  exit-approach / runway-end callout paths early-out once all their latches have
+  fired — don't reintroduce per-frame milestone-table builds.
+- **`docking.log` telemetry includes absolute coords.** Lines now carry
+  `stopLat`/`stopLon` (the computed stop target) and `acLat`/`acLon` (aircraft
+  position) alongside the relative `along`/`crossFt`, enabling a direct comparison
+  of docking's target against a known-correct GSX position.
+- **SimConnect heading-unit gotcha (live verification).** SimConnect's
+  `PLANE_HEADING_DEGREES_TRUE` / `_MAGNETIC` are returned in **radians**, not
+  degrees, despite the name — multiply by 57.2958 (180/π) to get degrees (a logged
+  5.93 = 339.7°). Latitude/Longitude are in degrees. This matters for any future
+  MCP/SimConnect live-verification of docking geometry.
+- **GSX operational note: engines OFF for services.** GSX will not offer ground
+  services (deboarding, jetway, etc.) while engines are running — it prompts "stop
+  engines to request services." This is GSX behaviour, not an MSFSBA docking bug; a
+  precise dock with engines running still won't surface service options.
+- **Verified live (EDDF A66 / B77W, engines off):** offset 5.30 m applied; docking
+  target (50.04691716, 8.56034700) heading 339.9° true; a real dock stopped ~0.6 m
+  short and 0.27 m left of centerline, and GSX accepted services — confirming the
+  target is GSX-correct.
+
+### Remote deicing guidance
+
+GSX airport profiles describe remote-deicing pads as **`is_deicearea=1`
+sections** — "special parking spots" with `this_parking_pos`,
+`parkingsystem_stopposition` (lat/lon/heading), `radius`, and
+`parkingsystem=VgdsDeIceWall`. These are not ordinary gate stands; they are
+dedicated apron pads where aircraft are parked over the pad centre while ground
+equipment applies deicing fluid.
+
+**Data pipeline:**
+- `GsxProfileParser` recognises `is_deicearea=1` sections and sets
+  `ParkingSpot.IsDeiceArea = true` on the resulting record. All other fields
+  (`StopLatitude`, `StopLongitude`, `StopHeading`, `Radius`, `UiName`) are parsed
+  identically to a normal GSX gate — the stop-position keys use the same
+  `parkingsystem_stopposition` format.
+- `GateDataSource.GetDeiceAreas(icao)` exposes the deice-pad list for an airport.
+  Deice areas are **excluded from the normal gate list** returned by
+  `GetParkingSpots` — they would be confusing destinations in the taxi-to-gate
+  flow; they are surfaced only through the dedicated Deice Area destination type.
+
+**Taxi Assist — "Deice Area" destination type:**
+`TaxiAssistForm`'s Destination type combo box includes a **"Deice Area"** entry
+alongside Runway and Gate / Parking. When selected, the Destination combo
+populates with the airport's deice pads by `UiName` (e.g., `"De-Ice Pad 1"`). If
+no GSX profile is active or the profile has no `is_deicearea=1` sections, the
+combo shows `"No deicing areas at this airport"` and the Calculate button is
+disabled. Routing to the chosen pad, hold-short insertion, and off-route
+recalculation work identically to any other gate destination — the pad's
+`this_parking_pos` lat/lon is the routing endpoint and the nearest graph node
+within `MAX_PARKING_TO_GRAPH_M` is the A* target.
+
+**Docking — pad-centre stop (no `.py` stop offset, no door-side phrase):**
+Deice areas centre the *aircraft* over the pad. All docking is datum-aligned (see
+*Datum-aligned stop & door-side cue*), and for deice pads `DockingGuidanceManager`
+additionally keeps the GSX `.py` per-aircraft stop offset at `GsxOffset.Zero` —
+the stop position is the pad centre, and "Stop" fires when the aircraft datum
+reaches it. On engagement
+the system announces **`"Deicing guidance…"`** (followed by the distance to the
+pad) instead of the SafeDock / Marshaller / neutral docking callout used for gate
+stands. All other docking streams (proximity beeper, lateral steering tone,
+spoken distance milestones) are identical to gate docking.
+
+**Scope:** This feature covers **positioning and guidance to the deice pad**.
+The deicing service itself — calling the trucks, the fluid application sequence,
+the "deicing complete" confirmation — is GSX's own workflow, invoked through the
+GSX menu as normal. The two concerns are fully decoupled: MSFSBA's guidance ends
+at "Stop" on the pad; the pilot then interacts with GSX to request deicing.
+
+**Airport coverage:** Only applicable at airports whose GSX profile contains
+`is_deicearea=1` entries (EGLL, KDFW, KDEN, EHAM, EDDF, and similar large hubs
+with remote deicing infrastructure). Airports without a GSX profile, or whose
+profile has no deice sections, show the "No deicing areas at this airport"
+placeholder and are unaffected.
+
 
 ### High confidence
 - Graph data quality — verified across KJFK, EGLL, and GA fields; thousands of airports with named taxiways.
@@ -497,7 +1115,7 @@ We do NOT auto-recommend a specific exit because that would require aircraft-per
 The navdatareader schema exposes a few fields this feature currently ignores. None are blocking; each is a marginal refinement if a real case comes up:
 
 - **Directional hold-short filter.** `taxi_path.start_dir` / `end_dir` (`F`/`N`) indicates whether a hold-short node is directional (only one approach direction) or non-directional. The router currently treats all HS/IHS nodes as bidirectional. A directional filter would prevent routing "through" a one-way hold from the wrong side at airports that model this. Audit: 42,376 HSND undirected vs. 38,458 directional across the test DB — the non-directional majority is the common case, so the refinement is lower-priority.
-- **ILS critical-area protection.** `runway_end.ils_ident` identifies ILS-equipped runways (~4,135 in the test DB). The IHS-over-HS preference already stops behind the correct line when IHS nodes exist; an explicit `ils_ident != NULL` hint could also be used to *force* IHS-preference even if the router's first match was HS — not currently needed, but worth noting if edge cases appear.
+- **ILS critical-area protection.** `runway_end.ils_ident` identifies ILS-equipped runways (~4,135 in the test DB). The IHS-over-HS preference stops behind the correct line when the IHS and HS sit on the same final approach (now gated by `SAME_APPROACH_IHS_MAX_M`, see "Runway hold-short selection" above); an explicit `ils_ident != NULL` hint could also be used to *force* IHS-preference even if the router's first match was HS — not currently needed, but worth noting if edge cases appear.
 
 **Displaced-threshold handling (implemented).** `runway_end.offset_threshold` (feet) is now applied in `GetLandingExits`: the along-runway distance of each candidate exit is measured from the physical pavement start, then the offset is subtracted to produce `DistanceFromThresholdFeet` (from the landing threshold) and `DistanceFromTouchdownFeet` (from landing threshold + 1000 ft aim point). On runways with a non-zero offset (e.g. KJFK 13R at 2055 ft, KJFK 22R at 3438 ft, EGLL 27R at ~1004 ft), this keeps the "distance from touchdown" column honest — an exit listed at 2000 ft is 2000 ft past the landing threshold, not 2000 ft past the pavement start.
 
@@ -506,6 +1124,58 @@ The navdatareader schema exposes a few fields this feature currently ignores. No
 - **Advance warnings**: 300 ft for turns, 300/150/50 ft for hold-shorts, distance countdowns for gates.
 - **Safe defaults**: hold-short = silence (stop moving). Deviation = auto-reroute. Unknown state = bearing + distance fallback.
 - **User always in control**: hotkeys for status, repeat, continue, stop available at any time.
+
+## Unreachable-runway safety net, tone slew limiter & start cues
+
+Three related behaviors added after an OMDB/PHNL 04L user session where a taxi
+clearance ended on a taxiway that only *parallels* the destination runway (no
+connector taxiway to the runway itself), so guidance silently held short ~450 m
+off the centerline and the lineup tone panned forever.
+
+- **Unreachable-runway warning (route load).** For a runway destination,
+  `LoadRoute` measures the perpendicular distance from the route's final point to
+  the runway centerline (`AbsLateralFromRunwayMeters`). Beyond
+  `RUNWAY_REACH_MAX_CROSS_M` the route doesn't reach the runway. The full detail
+  ("ends about N to the side of Runway X … missing the connecting taxiway …") is
+  put in the route-summary **box** (`LastRouteSummary`); a **short** spoken form
+  is exposed via `LastRouteReachWarning`. The route still loads — ATC routings and
+  odd navdata exist; the pilot decides.
+- **Warning is spoken AFTER `StartGuidance`, by the form.** Announcing it inside
+  `LoadRoute` (even `AnnounceImmediate`) doesn't work — `OnCalculateClicked` calls
+  `StartGuidance` immediately after, and its first-taxiway callout stomps it
+  (confirmed in-sim: pilot saw it in the box, heard the taxiway, never the
+  warning). `TaxiAssistForm` speaks `LastRouteReachWarning` via `AnnounceImmediate`
+  *after* `StartGuidance`. The spoken summary is **skipped** when a reach warning
+  is present (still in the box), and an 8 s `REACH_WARNING_CHATTER_GRACE_SEC`
+  window holds the informational taxiway-crossing callout so the warning isn't cut
+  by "Crossing taxiway G". Hold-shorts / runway crossings / the lineup bailout are
+  never gated.
+- **Lineup bailout (during lineup).** If the runway-lineup phase sits beyond
+  `LINEUP_UNREACHABLE_CROSS_FEET` for `LINEUP_UNREACHABLE_SEC` without converging,
+  a one-shot bailout speaks ("This route does not reach Runway X. Reprogram …").
+  This catches recalc-built routes too (which bypass `LoadRoute`). Both latches
+  reset on `LoadRoute` / `StopGuidance`.
+
+**Tone slew limiter (`SlewLimitToneError`).** The Taxiing tone's heading error is
+slew-rate-limited to `TAXI_TONE_MAX_SLEW_DEG_PER_SEC`. Two events move the tone's
+target discontinuously and used to slam the pan hard left↔right: a multi-segment
+index skip when a large aircraft (A380 ~50 m+ turn radius) swings wide through a
+sharp corner (`AdvanceToNearestSegment` jumps the index), and an in-place route
+recalc (resets the heading smoother). The limiter stretches such a jump into a
+smooth ~1–1.5 s sweep; genuine turns (≈ yaw rate) pass untouched. Wrap-safe
+(shortest-path step). Baseline persists across recalcs (so a recalc snap is
+softened) and resets only on `StopGuidance` (so a fresh session snaps on frame
+one). Applied **after** the rate-lead projection, so it also bounds lead-driven
+swings. Taxiing only — lineup/docking keep their own precision profiles.
+
+**Initial big-turn cue.** At guidance start the aircraft often points well away
+from the route's first segment (post-pushback the tug leaves it facing one way,
+the route leaves the gate another). A tone alone starts at full pan and can't
+convey "turn around, which way." On the first taxiing frame, if the heading error
+exceeds `INITIAL_TURN_CUE_DEG`, a one-shot cue speaks ("Taxiway A is behind you.
+Turn left to come around." / "Sharp turn left onto taxiway A."), direction sign
+matching the tone. One-shot, reset on `LoadRoute` / `StopGuidance` (not on
+recalc). Skipped when a reach warning is present (that warning is the priority).
 
 ## Tuning & Constants Reference
 
@@ -524,12 +1194,14 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `ARRIVAL_RADIUS_M` | 30.0 | Runway arrival radius |
 | `GATE_ARRIVAL_RADIUS_FEET` | 20.0 | Gate arrival radius |
 | `RECALCULATION_COOLDOWN_SEC` | 15.0 | Minimum gap between auto-reroutes |
-| `GUIDANCE_LOOK_AHEAD_M` | 50.0 | Minimum distance to the heading target — keeps short segments from wobbling the tone |
+| `GUIDANCE_LOOK_AHEAD_SEC` | 6.0 | Speed-scaled look-ahead horizon for the heading target (continuous walk via `GuidanceGeometry.WalkTarget`) |
+| `GUIDANCE_LOOK_AHEAD_MIN_M` | 50.0 | Look-ahead floor — keeps short segments from wobbling the tone at low speed |
+| `GUIDANCE_LOOK_AHEAD_MAX_M` | 120.0 | Look-ahead ceiling — caps the projected heading target at high taxi speed |
 | `HEADING_ERROR_FILTER_ALPHA` | 0.25 | Low-pass filter on heading error fed to the tone |
 | `CROSSING_DEDUP_WINDOW_SEC` | 45.0 | Per-taxiway-name crossing announcement dedup |
 | `MAX_TAXI_SPEED_STRAIGHT_KTS` | 30.0 | Speed-warning threshold on straight segments |
 | `MAX_TAXI_SPEED_TURN_KTS` | 12.0 | Speed-warning threshold in / approaching turns |
-| `LINEUP_HEADING_TOLERANCE_DEG` | 5.0 | Gate-lineup hysteresis center (enter at 4°, exit at 7°) |
+| `LINEUP_HEADING_TOLERANCE_DEG` | 5.0 | Gate-lineup hysteresis center — docking-aware band: enter 4° / exit 7° normally, tightened to enter 1° / exit 2° only while docking is engaged |
 | Runway-lineup heading hysteresis (literals in `UpdateLineup`) | enter 1° / exit 2° | "Lined up" announcement only fires when heading is within 1° of runway heading; tone re-resumes if drifted past 2°. Was 2°/5° but was leaving pilots 3° off with no cue |
 | Runway-lineup centerline hysteresis (literals in `UpdateLineup`) | enter 10 ft / exit 20 ft | Same as above but for cross-track. Tightened from 15/30 |
 | Runway-lineup tone thresholds (literals at the `UpdateHeadingErrorWithThresholds` call) | silent 0.5° / activation 1° / max-pan 15° | Bypasses width scaling. Tone keeps panning until heading is centered within ½°; resumes if drifted past 1° |
@@ -542,6 +1214,12 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `INCURSION_WARN_DISTANCE_M` | 40.0 | Off-route hold-short proximity warning |
 | `OFF_ROUTE_PERP_WIDTH_CAP_FT` | 300.0 | Upper cap on segment width used for off-route tolerance (rejects bad DB width rows) |
 | `POST_TURN_OFFROUTE_GRACE_SEC` | 4.0 | Off-route detection suppressed for this many seconds after every segment advance |
+| `RUNWAY_REACH_MAX_CROSS_M` | 120.0 | Unreachable-runway warning: if a runway-destination route's final point is more than this perpendicular distance off the runway centerline, the route doesn't reach the runway. Above the ~90 m ICAO Annex 14 max hold-short offset, below real misroutes (PHNL 04L: ~456 m) |
+| `LINEUP_UNREACHABLE_CROSS_FEET` | 400.0 | During lineup, cross-track beyond this (~122 m) for `LINEUP_UNREACHABLE_SEC` with no convergence ⇒ the route never reached the runway → one-shot spoken bailout |
+| `LINEUP_UNREACHABLE_SEC` | 12.0 | Sustain time for the lineup unreachable-runway bailout |
+| `TAXI_TONE_MAX_SLEW_DEG_PER_SEC` | 60.0 | Slew-rate cap on the Taxiing tone's heading error. A genuine turn changes the error gradually (≈ yaw rate, well under the cap) and passes through; a one-frame target discontinuity (segment-index skip on a sharp corner, or a route recalc) is stretched into a smooth ~1–1.5 s sweep instead of a hard L↔R pan slam. Applied after the rate-lead projection, Taxiing only |
+| `INITIAL_TURN_CUE_DEG` | 100.0 | At guidance start, if the heading error to the first segment exceeds this, speak a one-shot turn-direction cue (matches the tone) so the pilot knows which way to come around — the normal post-pushback case. Skipped when a reach warning is present |
+| `REACH_WARNING_CHATTER_GRACE_SEC` | 8.0 | After a reach warning, hold the informational taxiway-crossing / taxiway-change callouts this long so they don't stomp the (longer, safety-critical) warning at guidance start. Hold-shorts, runway-crossing callouts, and the lineup bailout are NOT gated |
 
 ### TaxiSteeringTone
 
@@ -583,6 +1261,157 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `ROLLOUT_NEAR_EXIT_FT` | 500.0 | Proximity to the chosen exit at which the speed-based handoff is allowed to fire. Matches the existing "500 ft slow down" callout — by the time the pilot hears that, they're committed to the turn |
 | `ROLLOUT_OVERSHOOT_FT` | 100.0 | Along-runway distance past the chosen exit at which an overshoot is declared, triggering retarget to the next downfield exit (or graceful end if none remain) |
 | `ROLLOUT_NO_EXIT_STOPPED_GS_KTS` | 3.0 | Ground-speed threshold at which the runway-end countdown mode considers the aircraft effectively stopped and hands off to plain `Taxiing`. Lower than `ROLLOUT_TAXI_GS_KTS` (30) because the countdown has no more useful callouts to make once the pilot is at a crawl |
+
+## Pavement lead-in onto the first cleared taxiway
+
+When a pilot enters a clearance like "taxi to runway 23 via A, H" while parked at gate GB/GC at CYYZ, the nearest graph node *on* taxiway A can be 200–300 m away across open apron. Without a lead-in the old code pre-snapped the route start to that distant A node, and `FindConstrainedPath`'s Step-1 A* would draw a straight beeline from the aircraft across the apron — cutting through grass, crossing taxiway AJ at an angle, and demanding a 180° pivot before the pilot had even moved.
+
+The fix is a **pavement-following lead-in** that only activates when the gap is large (> `TaxiLeadIn.TriggerMeters` = 75 m). In that case `LoadRoute` sets the constrained route's start node to the aircraft's nearest *in-component* graph node — whatever apron taxilane or connector it is sitting on — and lets `FindConstrainedPath`'s Step-1 A\* plan a proper ground-path from there onto the first cleared taxiway. The router walks the apron network (e.g. ramp taxilane 4 → AJ) and arrives at taxiway A in the correct direction, with hold-shorts and crossings intact.
+
+The lead-in is **accepted** only when two conditions hold:
+
+1. The router honoured the full clearance (`ConstrainedFallbackReason == null`) — a fallback to shortest path means the lead-in segment is suspect.
+2. The lead-in distance is within `gap × 2.5 + 300 m` (`TaxiLeadIn.IsAcceptable`) — this dead-end guard rejects a route that had to backtrack through a graph dead-end, which would inflate the lead-in far beyond the straight-line gap.
+
+If either condition fails, `LoadRoute` falls back to the pre-snap behaviour (start on the taxiway) and prepends *"Could not compute a path onto taxiway A along the apron; route starts on A."* to the spoken summary. The pilot knows the route may not begin on pavement.
+
+On success the summary names the lead-in explicitly — *"Route to Runway 23 via A, H. First taxi via 4 and AJ to reach A. …"* — using `TaxiLeadIn.Clause`, so a screen reader announces it before the constrained sequence.
+
+**Unchanged cases:**
+
+- Gap ≤ 75 m: the pre-snap (`FindNearestNodeOnTaxiway`) runs exactly as before — the lead-in path is never computed.
+- Unconstrained routes (no user taxiway sequence): `FindNearestNodeInDirection` is still used; lead-in logic is bypassed entirely.
+- `TryRecalculateRoute`: always uses the heading-aware `FindNearestNodeInDirection`; the lead-in is a `LoadRoute`-only feature.
+
+**Verification:** verified in-sim — the CYYZ GB/GC stand → runway 23 via A, H departure (2026-06-17). The route now starts at the apron node nearest the aircraft, and the lead-in follows the AJ taxiway onto A — the steering-tone target tracks the AJ centreline within ~3 m — instead of the earlier ~64 m straight beeline across the grass north of AJ; the route summary names the lead-in. The pure helper math (`TaxiLeadIn.Extract` / `IsAcceptable` / `Clause`) is small and self-contained in `Navigation/TaxiLeadIn.cs`.
+
+## Taxi-Data Augmentation Pipeline (Phase 5)
+
+**Goal:** silently fill in unnamed navdata taxi-path segments with real-world taxiway names sourced from OpenStreetMap (OSM) and the X-Plane apt.dat gateway, so ATC-clearance routing and spoken announcements work correctly at airports where the navdatareader database has unnamed segments.
+
+### Architecture
+
+```
+IAirportDataProvider  (base — navdata SQLite)
+        │
+        ▼
+AugmentingAirportDataProvider   (decorator — transparent to all consumers)
+        │  GetTaxiPaths()
+        │    ├─ cache hit  →  MergeOnto()  →  return enriched list
+        │    └─ cache miss →  return navdata now
+        │                      BackgroundFetch()  (fire-and-forget)
+        │                           │
+        │                    OsmTaxiSource  +  XplaneAptDatSource
+        │                           │  FetchAsync()
+        │                    TaxiDataCache  (per-ICAO JSON, 30-day TTL)
+        │                           │  Save()
+        │                    AirportDataUpdated event
+        │
+        ▼
+TaxiDataMerger.MergeNamesOntoNavData()   (pure geometry — bearing + midpoint match)
+        │
+        ▼
+List<TaxiPath>  (names written back BY INDEX — no object rebuild, no field loss)
+```
+
+### Key files
+
+| File | Role |
+|------|------|
+| `Services/TaxiAugment/AugmentingAirportDataProvider.cs` | Decorator; the main deliverable |
+| `Services/TaxiAugment/OsmTaxiSource.cs` | OSM Overpass fetch → `AirportTaxiData` |
+| `Services/TaxiAugment/XplaneAptDatSource.cs` | X-Plane Gateway apt.dat fetch |
+| `Services/TaxiAugment/TaxiDataMerger.cs` | Geometric name-overlay (pure) |
+| `Services/TaxiAugment/TaxiDataCache.cs` | In-memory per-ICAO cache (`ConcurrentDictionary`, TTL, no disk) |
+| `Services/TaxiAugment/AirportTaxiData.cs` | DTOs: `AirportTaxiData`, `MergeOptions`, `CoverageReport` |
+| `MainForm.cs` | Wiring: wraps `DatabaseSelector.SelectProvider()` in the decorator |
+
+### Wiring in MainForm
+
+The decorator is constructed immediately after `DatabaseSelector.SelectProvider()` returns. Only constructed when a base provider is available (no DB = no decoration). The typed `_augmentingProvider` field is kept for Phase 6's `PrefetchAsync` calls.
+
+Cache: **in-memory only** (`TaxiDataCache` = a `ConcurrentDictionary` with a TTL). There is no disk cache — every session fetches fresh, so data is never stale (the user explicitly did not want a disk cache). The active flight's departure + destination are fetched force-fresh; geofenced nearby airports ride the in-session cache.
+
+Augmentation event log: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` (via `AppLogs.PathFor`).
+
+### Merge strategy
+
+- Segment matching uses midpoint proximity (`MatchMaxMidpointMeters = 30 m`) and bearing agreement (`MatchMaxBearingDeg = 25°`).
+- Name writeback is **by index** — iterates `nav[i]` and `merged[i]` together; copies `merged[i].Name` onto `nav[i].Name` only when `nav[i].Name` is blank and `merged[i].Name` is not. All other `TaxiPath` fields (`Width`, `Type`, `Surface`, `StartType`, `EndType`, `StartDir`, `EndDir`) are preserved because the original objects are mutated in place, never rebuilt.
+- `TaxiDataMerger.MergeNamesOntoNavData` never overwrites an existing non-whitespace name; the navdata name is always authoritative.
+
+### Name normalization
+
+`TaxiDataMerger.NormalizeTaxiwayName(string)` converts a taxiway name to a canonical comparison form: uppercase, trim, remove all spaces, strip a leading `TAXIWAY` or `TWY` token. Examples: `"twy k 2"` → `"K2"`, `"TAXIWAY K2"` → `"K2"`, `"K 2"` → `"K2"`. Used **only for comparing names**, never for storing or announcing them. The stored name is always the original human-readable form from the authoritative source.
+
+### Alias resolution
+
+Some airports have a mismatch between navdata taxiway names and OSM/apt.dat names (e.g. navdata calls a taxiway `"HAWKER"` while OSM labels it `"K"`). Without alias resolution, a pilot entering `"K"` as their cleared taxiway would get no match.
+
+**How aliases are collected (in `TaxiDataMerger.MergeNamesOntoNavData`):** For every navdata segment that already has a name, the merger runs the geometry match against OSM and apt.dat to find what the online sources call that same pavement. If the normalized online name differs from the normalized navdata name, the raw online name is appended to `NavSegment.Aliases` (deduped, case-insensitive). The navdata name is never overwritten.
+
+**How aliases propagate:**
+1. `TaxiDataMerger` stores them in `NavSegment.Aliases`.
+2. `AugmentingAirportDataProvider.MergeOnto` copies them to `TaxiPath.Aliases` (in-memory only; not persisted to the DB).
+3. `TaxiGraph.Build` reads every `TaxiPath.Aliases` list and populates `TaxiwayAliasToCanonical` (normalized alias → canonical navdata name, case-insensitive dictionary).
+4. `TaxiGraph.ResolveTaxiwayName(string entered)` normalizes the entered name, looks it up in `TaxiwayAliasToCanonical`, and returns the canonical name if found — otherwise the original input unchanged.
+5. `TaxiGuidanceManager.LoadRoute` passes every pilot-entered taxiway name through `_graph.ResolveTaxiwayName(...)` **before** any routing or node-snapping. This is the single choke point; all callers benefit.
+
+**Safety invariants:**
+- Aliases only affect name lookup, never geometry or steering.
+- Airports with no online data behave exactly as before (empty alias lists → `TaxiwayAliasToCanonical` is empty → `ResolveTaxiwayName` is a no-op).
+- The navdata name is always the canonical form stored in the graph and spoken to the pilot.
+
+### Gate / Parking Aliases
+
+Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
+
+**How parking aliases are collected — REWORKED 2026-06-23 (identity-matched, alias-only).** The earlier nearest-within-50 m gate-NAME fill was REMOVED: it corrupted gate identity at dense terminals (CYUL gate 15 adopted "Gate 11B" from an offset apt.dat ramp). Now the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)` flattens the online stands once and, for each authoritative gate, sets `spot.Aliases = GateAliasResolver.ResolveAliases(spot, online)` — a **pure, idempotent** resolver that:
+
+- matches by **IDENTITY, not distance**: an online stand aliases a gate only when their **numbers match AND any letters agree** (`StandId.Parse` extracts letter/number/suffix). Navdata gate 15 never adopts a neighbour's "Gate 11B" (number mismatch); an "N" de-ice pad never adopts "S3" (letter disagreement). A **150 m** Haversine value is a sanity *backstop* only (a same-number stand kilometres away is a data error, skipped) — it is NOT the matcher.
+- adds an alias **only when it carries info the identity lacks** — a concourse letter (`"A51"` for bare gate 51), a MARS suffix (`"53A"`) — a pure restatement (`"51"`, `"N3"`) adds nothing and is dropped.
+- **NEVER sets a Name or position and NEVER adds a selectable gate (anti-grass).** Online data cannot move where you taxi; it only contributes searchable alternative labels. `spot.Aliases` is recomputed from scratch each call → idempotent.
+
+- **X-Plane apt.dat is the key gate source.** Many airports have *real* gate numbers in apt.dat that navdata lacks (CYYZ "Gate 131", KATL "A12"/"B7") — these surface as identity-matched aliases.
+- `AugmentParking` is **public** and called on the GSX gate list too (GSX is the gate SOURCE and bypasses `GetParkingSpots`), so GSX stands get the same aliases. Called in `TaxiAssistForm` and `GateTeleportForm` after building the GSX list.
+- Empty-name gate-type spots render **`Gate {n}`** (not `Spot {n}`); a stand with no taxi node within `MAX_PARKING_TO_GRAPH_M` is kept but marked **`(no taxi route)`** and refused by the Calculate guard (was: silently dropped).
+- `ParkingSpot.Aliases` is in-memory only — never persisted to the database. `StandId` (`Services/StandId.cs`) + `GateAliasResolver` (`Services/TaxiAugment/`) are pure + probe-tested (`tools/TaxiAugmentProbe`).
+
+**How parking aliases are surfaced:**
+
+1. **TaxiAssistForm destination dropdown** — for each spot with `Aliases.Count > 0`, the normal label (e.g. `"GN 3 - Gate Large"`) is added first, then one additional combo item per alias formatted as `"{alias} ({normalLabel})"` (e.g. `"47 (GN 3 - Gate Large)"`). Both items map to the same spot in `_destinationSpotMap`, so routing is identical regardless of which label the pilot picks. This alias loop runs at both spots where parking spots are added to the dropdown: the deice section and the regular parking section.
+
+2. **GateTeleportForm listbox** — `ParkingSpot.ToString()` appends `" (also 47)"` when `Aliases.Count > 0`, so a screen reader reading the gate list hears the alternative name without a separate selection.
+
+**Safety invariants:**
+- Spots with no aliases produce identical behavior (empty `Aliases` list → the alias loop is a no-op in TaxiAssistForm; `ToString()` is unchanged in GateTeleportForm).
+- The navdata name is always authoritative; aliases are additive display helpers only.
+- Both dropdown entries for the same spot resolve to the same navdata spot object and therefore the same routing endpoint.
+
+### Background fetch / deduplication
+
+- `BackgroundFetch` uses a `HashSet<string> _inFlight` + `lock` so at most one fetch per ICAO is in flight at a time.
+- `FetchCoreAsync` wraps both sources in `Task.WhenAll` with a 60-second `CancellationTokenSource`.
+- Any exception is swallowed — background fetches must never propagate into callers.
+- `PrefetchAsync(icao, force)` is the awaitable variant for Phase 6.
+
+### Settings toggle + manual refresh
+
+`AugmentingAirportDataProvider.Enabled` (default `true`) is wired to `UserSettings.TaxiAugmentEnabled`, exposed as an in-dialog checkbox in the Taxi Guidance Options form (with visible "© OpenStreetMap contributors (ODbL) + X-Plane Scenery Gateway" attribution). The same dialog has a **"Refresh Taxiway Names"** button that force-fetches the nearby airport and announces how many names were added (`GetLastCoverage(icao)` → "Taxiway names refreshed for X: N added" / "No new names found").
+
+### Dropdown presentation (taxiway + gate aliases)
+
+Aliases are **separate, self-labeled dropdown items** — not merged into one. A taxiway navdata calls "HAWKER" but ATC calls "B" shows as TWO entries: `HAWKER` and `B (HAWKER)` (the latter at the "B" position). Gates likewise: `Gate 131 (GH 5 - …)` sits separately from `GH 5 - …`. Either resolves to the same canonical pavement/spot. This lets a pilot scroll to the name ATC actually used while still seeing what the scenery calls it.
+
+### Licensing & data attribution (verified 2026-06)
+
+Both online sources were checked for whether MSFSBA's use is permitted. **It is** — because MSFSBA only *consumes* names at runtime and **never redistributes the source data or any database derived from it.**
+
+**OpenStreetMap — ODbL 1.0.** OSM data is under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/). The license distinguishes a *Derivative Database* (redistributing the data / a database built from it → triggers **share-alike**, must be re-licensed ODbL) from a *Produced Work* (a finished output made *from* the data → **attribution only**). MSFSBA fetches OSM via Overpass, extracts only taxiway/parking **name tags**, overlays them onto the user's own navdata **in memory**, speaks/shows them, and discards them at session end — it publishes no database. Per the [OSMF Licence & Legal FAQ](https://osmfoundation.org/wiki/Licence/Licence_and_Legal_FAQ): *"If you do not make Public Use of the data, then you do not have to share anything with anybody."* So this is a **Produced Work, attribution-only, share-alike NOT triggered**. Required attribution — **"© OpenStreetMap contributors"** with a note that the data is under the ODbL — is shown in the Taxi Guidance Options dialog and the docs ([Attribution Guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines)).
+
+**X-Plane Scenery Gateway — public API, per-pack `COPYING`, no redistribution by us.** The [Gateway API](https://gateway.x-plane.com/api) is open (no authentication for downloads); its only stated condition is a courtesy: *"be considerate of our server load and avoid making unnecessary requests."* The airport data is community-contributed and each scenery pack carries its own artist-set `COPYING` license field (there is no single blanket data license). MSFSBA again **does not redistribute** the apt.dat data — it fetches per-airport on demand, extracts taxiway/gate **names** only, and holds them in memory — so per-pack redistribution terms don't bind it; attribution (**"X-Plane Scenery Gateway"**, shown in-app) is the obligation we honor. We respect the server-load courtesy by design: fetches are **on-demand (departure/destination only), cached per session, and never bulk-crawled** (the earlier full-database census tooling was removed precisely to honor this).
+
+**Net:** name-only extraction + in-memory overlay + no redistribution + visible attribution for both sources = compliant. If MSFSBA ever changed to **bundle/redistribute** the source data (e.g. ship a prebuilt name database), the analysis changes — OSM share-alike would apply to any distributed OSM-derived database, and each Gateway pack's `COPYING` would need honoring. Don't do that without re-reviewing the licenses.
 
 ## Related Documentation
 

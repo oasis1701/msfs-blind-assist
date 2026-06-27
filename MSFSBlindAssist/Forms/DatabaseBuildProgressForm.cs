@@ -15,7 +15,6 @@ public partial class DatabaseBuildProgressForm : Form
     private Button cancelButton = null!;
     private Button closeButton = null!;
 
-    private readonly ScreenReaderAnnouncer announcer;
     private readonly NavdataReaderBuilder builder;
     private readonly string simulatorVersion;
     private readonly string outputPath;
@@ -29,7 +28,6 @@ public partial class DatabaseBuildProgressForm : Form
     public DatabaseBuildProgressForm(string simulatorVersion, ScreenReaderAnnouncer announcer)
     {
         this.simulatorVersion = simulatorVersion;
-        this.announcer = announcer;
         this.builder = new NavdataReaderBuilder();
         // Always build to the canonical location, even if a legacy DB exists.
         // GetDefaultDatabasePath() now falls back to the legacy folder when the

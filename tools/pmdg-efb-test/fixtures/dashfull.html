@@ -1,0 +1,47 @@
+<div id="Dashboard" data-vis="1" data-rect="40,100,1945,2100">
+  <div id="efb_dashboard_flightdetails" class="row" data-vis="1" data-rect="40,100,1945,560">
+    <div class="col-sm-4" data-vis="1" data-rect="200,1100,1760,240">
+      <h5 data-vis="1" data-rect="200,1100,1400,240">ZFW:</h5>
+      <label id="efb_dashboard_zfw" class="dashboard_flight_details pmdg_measurement weight" data-vis="1" data-rect="200,1420,1700,240">462,330</label>
+      <span id="efb_dashboard_zfw_unit" class="output-unit" data-vis="1" data-rect="200,1710,1760,240">lb</span>
+    </div>
+    <div class="col-sm-4" data-vis="1" data-rect="300,1100,1760,340">
+      <h5 data-vis="1" data-rect="300,1100,1450,340">ROUTE DIST:</h5>
+      <label id="efb_dashboard_crz" class="dashboard_flight_details pmdg_measurement distance" data-vis="1" data-rect="300,1470,1700,340">1,183</label>
+      <span id="efb_dashboard_crz_unit" class="output-unit" data-vis="1" data-rect="300,1710,1760,340">nm</span>
+    </div>
+    <div class="row" data-vis="1" data-rect="400,300,1580,460">
+      <div class="col-sm-2" data-vis="1" data-rect="400,300,500,460"><h3 id="efb_dashboard_originiata" data-vis="1" data-rect="400,300,500,460">LAX</h3></div>
+      <div class="col-sm-2" data-vis="1" data-rect="400,520,760,460"><h3 id="efb_dashboard_originicao" data-vis="1" data-rect="400,520,760,460">KLAX</h3></div>
+      <div class="col-sm-4" data-vis="1" data-rect="400,800,1000,460"><i class="fa-solid fa-plane" data-vis="1" data-rect="400,800,1000,460"></i></div>
+      <div class="col-sm-2" data-vis="1" data-rect="400,1100,1360,460"><h3 id="efb_dashboard_destinationicao" data-vis="1" data-rect="400,1100,1360,460">KDFW</h3></div>
+      <div class="col-sm-2" data-vis="1" data-rect="400,1380,1580,460"><h3 id="efb_dashboard_destinationiata" data-vis="1" data-rect="400,1380,1580,460">DFW</h3></div>
+    </div>
+    <div class="row" data-vis="1" data-rect="480,300,1600,540">
+      <div class="col-sm-6" data-vis="1" data-rect="480,300,900,540"><h3 id="efb_dashboard_std" data-vis="1" data-rect="480,300,900,540">14:30 UTC / 14:50 UTC</h3></div>
+      <div class="col-sm-6" data-vis="1" data-rect="480,1000,1600,540"><h3 id="efb_dashboard_sta" data-vis="1" data-rect="480,1000,1600,540">17:20 UTC / 17:28 UTC</h3></div>
+    </div>
+  </div>
+  <div class="col-sm-6" data-vis="1" data-rect="600,100,1100,2000">
+    <div id="efb_dashboard_map_container" data-vis="1" data-rect="600,100,1100,1900">
+      <div class="leaflet-container leaflet-touch" data-vis="1" data-rect="600,100,1100,1900">
+        <div class="leaflet-pane leaflet-tooltip-pane" data-vis="1" data-rect="650,200,300,680">
+          <div class="leaflet-tooltip custom-tooltip" data-vis="1" data-rect="650,200,290,690"><div class="custom-tooltip-content" data-vis="1" data-rect="650,200,280,680">HOLTZ</div></div>
+        </div>
+      </div>
+    </div>
+    <div id="efb_dashboard_map_leaflet_source" class="custom-select efb_dashboard_select row" data-vis="1" data-rect="1900,100,500,2060">
+      <div class="row" data-vis="1" data-rect="1900,100,500,2060">
+        <div class="selected-option col-sm-11" data-vis="1" data-rect="1900,100,460,2060">IFR HIGH</div>
+        <div class="col-sm-1" data-vis="1" data-rect="1900,460,500,2060"><i class="fa-regular fa-angle-down" data-vis="1" data-rect="1900,460,500,2060"></i></div>
+      </div>
+      <div class="options row" data-vis="0" data-rect="0,0,0,0">
+        <div class="option row" data-vis="0" data-rect="0,0,0,0">WORLD</div>
+        <div class="option row" data-vis="0" data-rect="0,0,0,0">IFR HIGH</div>
+        <div class="option row" data-vis="0" data-rect="0,0,0,0">IFR LOW</div>
+        <div class="option row" data-vis="0" data-rect="0,0,0,0">VFR</div>
+      </div>
+    </div>
+    <button id="efb_dashboard_map_zoom_in" class="btn btn-primary efb_map_buttons" data-vis="1" data-rect="1950,1000,1080,2010"><i class="fa-solid fa-plus" data-vis="1" data-rect="1950,1000,1080,2010"></i><span class="tooltip-text" data-display="none">Zoom In</span></button>
+  </div>
+</div>

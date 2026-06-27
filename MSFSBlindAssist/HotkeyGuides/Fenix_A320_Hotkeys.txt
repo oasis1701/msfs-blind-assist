@@ -3,6 +3,7 @@ Fenix A320 HOTKEY REFERENCE
 Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -58,6 +59,8 @@ Altimeter:
 
 Vertical:
   V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
 
 Weather:
   I          Wind Info
@@ -82,7 +85,7 @@ Location:
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
-CTRL+v, activate/deactivate visual guidance mode, note, requires hand fly mode to be on. Enables more hotkeys.
+CTRL+v, activate/deactivate visual guidance mode, note, does not require hand fly mode. Enables the same single-letter quick-access hotkeys hand fly mode does, plus F for target VS.
 CTRL+T, activate/deactivate Takeoff Assistance
 CTRL+D, read Distance to Selected Runway
 CTRL+I, read ILS guidance system report
@@ -117,6 +120,7 @@ control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
   Shift+M,    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
+  Ctrl+Shift+T, Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+T,    Toggle Trim Announcements
   Shift+B,    SimBrief Briefing
   Shift+C,    Show Checklist
@@ -131,10 +135,33 @@ B, Read aircraft's bank
 Q, read AGL
 V, Read VS
 
-Visual guidance mode hotkeys:
+Visual guidance mode hotkeys (same single-letter set as hand fly mode, plus F):
+A, read MSL
+S, Read IAS
+D, Read distance to destination runway
+H, Read MH
+P, Read aircraft's pitch
+B, Read aircraft's bank
+Q, read AGL
+V, Read VS
 F, Read target VS
 
+Note: both modes share the quick-access hotkeys. Activate hand fly mode, visual guidance mode, or both — the single-letter keys H, V, Q, S, D, B, P, A work in either. F is visual-guidance-specific (announces "visual guidance not active" if pressed when VG is off).
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
+             In the Access GSX window, press F5 to open the GSX menu, 1-9/0/A-E
+             to choose menu options, C to open GSX Settings, and Escape to hide
+             the window. If multiple GSX services are active, use the Active
+             services combo to choose which service drives tooltip announcements.
+
 INPUT MODE - Press [ to activate
+
+EFB / Tablet:
+  Shift+T    Open Fenix EFB (tablet) window. Hosts the Fenix EFB website
+             (http://localhost:8083); the Fenix A320 must be loaded in the
+             sim. (Note: in OUTPUT mode, Shift+T toggles trim announcements —
+             this Shift+T is the INPUT-mode EFB window.)
 
 Teleport:
   Shift+R    Runway Teleport
@@ -170,6 +197,9 @@ Taxi Guidance:
              touchdown; guidance auto-starts when you land — reuses the ILS
              destination runway if one is set; announces headwind/tailwind on
              runway selection so you can pick an exit that matches the rollout)
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
 
 
 General:
@@ -217,66 +247,3 @@ Alt+Arrow Navigation:
   Alt+Right    Next section
   Alt+Up       Scroll up
   Alt+Down     Scroll down
-
-Fenix A320 web MCDU accessibility extension hotkeys (browser add-on):
-
-  Line Select Keys
-
-  Left Side (Ctrl + number):
-  - Ctrl+1: LSK1L (Line Select Key 1 Left)
-  - Ctrl+2: LSK2L (Line Select Key 2 Left)
-  - Ctrl+3: LSK3L (Line Select Key 3 Left)
-  - Ctrl+4: LSK4L (Line Select Key 4 Left)
-  - Ctrl+5: LSK5L (Line Select Key 5 Left)
-  - Ctrl+6: LSK6L (Line Select Key 6 Left)
-
-  Right Side (Alt + number):
-  - Alt+1: LSK1R (Line Select Key 1 Right)
-  - Alt+2: LSK2R (Line Select Key 2 Right)
-  - Alt+3: LSK3R (Line Select Key 3 Right)
-  - Alt+4: LSK4R (Line Select Key 4 Right)
-  - Alt+5: LSK5R (Line Select Key 5 Right)
-  - Alt+6: LSK6R (Line Select Key 6 Right)
-
-  Alphanumeric Keys
-
-  Letters: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z
-
-  Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-
-  Special Characters
-
-  - Space: SPACE
-  - /: SLASH
-  - .: DOT
-  - -: MINUS
-  - Backspace: CLR (Clear)
-
-  Arrow Keys
-
-  - ArrowUp: UP
-  - ArrowDown: DOWN
-  - ArrowLeft: LEFT
-  - ArrowRight: RIGHT
-
-  Function Buttons (Ctrl + letter)
-
-  - Ctrl+I: INIT
-  - Ctrl+M: MENU
-  - Ctrl+D: DIR
-  - Ctrl+P: PROG
-  - Ctrl+F: FPLN (Flight Plan)
-  - Ctrl+R: RAD_NAV (Radio Navigation)
-  - Ctrl+E: PERF (Performance)
-  - Ctrl+S: SEC_FPLN (Secondary Flight Plan)
-  - Ctrl+C: ATC_COM (ATC Communication)
-  - Ctrl+O: OVFY (Overflight)
-  - Ctrl+U: FUEL_PRED (Fuel Prediction)
-  - Ctrl+A: AIRPORT
-  - Ctrl+T: DATA
-  - Ctrl+ArrowUp: BRT (Brightness Up)
-  - Ctrl+ArrowDown: DIM (Brightness Down)
-
-  Interface Control
-
-  - Alt+M: Toggle interface visibility (minimize/show)

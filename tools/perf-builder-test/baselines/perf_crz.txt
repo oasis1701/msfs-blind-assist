@@ -1,0 +1,48 @@
+# perf_crz
+input | idx 8 | ---- FT
+input | idx 9 | 139 KT
+input | idx 10 | 144 KT
+input | idx 11 | 150 KT
+radio | idx 12 | TOGA
+radio | idx 13 | FLEX
+radio | idx 14 | DERATED
+input | idx 15 | +65 °C
+input | idx 16 | 1 (combobox)
+input | idx 17 | 40.3 %
+input | idx 18 | ON (combobox)
+input | idx 19 | OFF (combobox)
+input | idx 20 | 1510 FT
+input | idx 22 | 18000 FT
+input | idx 23 | 1510 FT
+input | idx 24 | ECON (combobox)
+input | idx 25 | 15
+input | idx 26 | NONE (combobox)
+input | idx 27 | FL 380
+input | idx 28 | 1510 FT
+input | idx 30 | 18000 FT
+text | idx 0 | RWY, 04L, T.O SHIFT, V1, F, 156, KT, VR, S, 181, KT, V2, 244, KT, FLAPS, THS FOR, PACKS, ANTI ICE, THR RED, ACCEL, TRANS, EO ACCEL, CI, DERATED CLB, MODE, SPD, MACH, PRED TO, MANAGED, 290, KT, .84, THR RED, ACCEL, CLB SPD LIM, 250, KT, /, FL, 100, TRANS
+text | idx 0 | ACTIVE/PERF
+input | idx 1 | CRZ: FL 380
+text | idx 0 | OPT, FL, 405, REC MAX, FL, 425
+text | idx 0 | EO MAX, FL, 340
+subtab | idx 2 | T.O
+subtab | idx 3 | CLB
+subtab | idx 4 | CRZ (active)
+subtab | idx 5 | DES
+subtab | idx 6 | APPR
+subtab | idx 7 | GA
+input | idx 31 | ECON (combobox)
+input | idx 32 | CI: 15
+text | idx 0 | MODE, MACH, PRED TO, T/D
+input | idx 33 | PRESEL: .--
+input | idx 34 | SPD: --- KT
+text | idx 0 | MANAGED, .85, ---, KT, --:-- ----, NM
+text | idx 0 | LRC, .84, ---
+text | idx 0 | MAX TURB, .85, ---
+button | idx 35 | CMS
+button | idx 36 | STEP ALTs
+text | idx 0 | DEST, KLAX, 19:57, 29.4, KLB
+button | idx 38 | ACTIVATE APPR *
+button | idx 37 | RETURN
+button | idx 39 | POS MONITOR
+button | idx 40 | MSG LIST

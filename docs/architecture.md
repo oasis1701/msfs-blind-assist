@@ -94,6 +94,8 @@ For custom data requests beyond the public API, aircraft definitions can access 
 
 **Refactored in 2025:** FCU (Flight Control Unit) logic moved from SimConnectManager to individual aircraft definitions. This allows different aircraft to have completely different FCU implementations with their own variable names.
 
+> **DOM-based glass cockpits (FBW A32NX/A380X and any Coherent GT aircraft).** When a display's content lives in a rendered web view rather than SimVars (the FBW MCDU/MFD, flyPad EFB, SD/EWD/ND/PFD/ISIS), it is read and driven through the **MSFS Coherent GT remote debugger**, not the SimVar path. The transport, the in-page agents (`Resources/coherent-*-agent.js`), the C# clients (`CoherentDebuggerClient` / `CoherentEFBClient` / `CoherentEWDClient` / `CoherentDisplayClient`), and the dev tooling are all documented in the **[Developer Tooling Guide](tooling.md)** — including **[§9 "Adaptability to other aircraft"](tooling.md)**, which explains which pieces are reusable for a new aircraft (transport + generic scrape core: universal; selectors/navigation/input: re-derive) and how. Crash diagnosis for the WebView2/Coherent layer is in [§8](tooling.md).
+
 ### Display Monitoring Architecture
 
 Display monitoring (ECAM, EICAS, etc.) remains aircraft-specific within SimConnectManager using variable name pattern matching. This design is safe because:
@@ -332,6 +334,16 @@ Complete A320 aircraft implementation:
 - 27 button-to-state mappings for automatic announcements
 - **Serves as reference implementation** for adding new aircraft
 
+## PMDG737Definition
+
+**File:** `Aircraft/PMDG737Definition.cs`
+
+PMDG 737-800 NG3 aircraft implementation:
+- Uses CDA (Client Data Area) via `PMDG_NG3_Data` / `PMDG_NG3_Control` / `PMDG_NG3_CDU_0/1` structs
+- Two CDUs (Captain = 0, F/O = 1); no observer CDU
+- MCP value entry via dialogs (Shift+H / Shift+S / Shift+A / Shift+V) — no FPA mode
+- See `### PMDG 737-800 NG3 Specific Patterns` in CLAUDE.md for SDK gotchas
+
 ## Dynamic Aircraft Selection System
 
 - `MainForm.currentAircraft`: Holds active aircraft instance
@@ -366,23 +378,26 @@ Marker interfaces (no methods) used for type checking with the `is` operator:
 
 ```
 Forms/
-├── A32NX/                          # FlyByWire A320 specific forms
-│   ├── PFDForm.cs                 # Primary Flight Display
-│   ├── NavigationDisplayForm.cs   # ND/EFIS display
-│   ├── ECAMDisplayForm.cs         # Engine/Warning Display
-│   ├── StatusDisplayForm.cs       # ECAM STATUS page
-│   └── FuelPayloadDisplayForm.cs  # Fuel and payload
-├── RunwayTeleportForm.cs          # Universal (all aircraft)
-├── GateTeleportForm.cs            # Universal (all aircraft)
-├── AnnouncementSettingsForm.cs    # Universal (all aircraft)
-├── WeatherRadarForm.cs           # Weather radar, SIGMETs, winds aloft
-└── TcasForm.cs                   # TCAS traffic display
+├── FlyByWireA320/                  # FBW A32NX forms (MCDU, monitor manager)
+├── FBWA320/                        # FBW A32NX FCU value-entry windows (Speed/Heading/Altitude/VS/AP/Baro)
+├── FBWA380/                        # FBW A380X forms (FCU windows, MCDU/MFD, flyPad EFB, RMP, OANS, ECL, monitor manager, ...)
+├── FenixA320/                      # Fenix A320 forms
+├── PMDG737/  PMDG777/  PMDGEFB/    # PMDG forms + the shared accessible EFB
+├── HS787/                          # HorizonSim 787 FMC form
+├── RunwayTeleportForm.cs           # Universal (all aircraft)
+├── GateTeleportForm.cs             # Universal (all aircraft)
+├── AnnouncementSettingsForm.cs     # Universal (all aircraft)
+├── FbwEwdWindow.cs                 # FBW E/WD pop-out window (A32NX + A380X)
+├── WeatherRadarForm.cs             # Weather radar, SIGMETs, winds aloft
+└── TcasForm.cs                     # TCAS traffic display
 ```
+
+> **Note on the FlyByWire jets:** the A32NX and A380X no longer have dedicated PFD / ND / ECAM / STATUS / ISIS display *windows* — those forms were removed. Their values are read from the accessible status-box **panels** (Sections/Panels tree); the one exception is the **E/WD**, which keeps a pop-out window (`FbwEwdWindow`, `Alt`+`E`). The window-based display pattern below still applies to the Fenix and PMDG aircraft.
 
 ### Namespace Convention
 
-- Aircraft-specific forms: `MSFSBlindAssist.Forms.A32NX`
-- Future aircraft: `MSFSBlindAssist.Forms.B737`, `MSFSBlindAssist.Forms.C172`, etc.
+- Aircraft-specific forms live in a per-aircraft subfolder and matching namespace, e.g. `MSFSBlindAssist.Forms.FlyByWireA320`, `MSFSBlindAssist.Forms.FBWA380`, `MSFSBlindAssist.Forms.FenixA320`, `MSFSBlindAssist.Forms.PMDG777`
+- Future aircraft: add a new subfolder, e.g. `MSFSBlindAssist.Forms.B737`
 - Universal forms: `MSFSBlindAssist.Forms`
 
 ### Menu Visibility Control
@@ -456,7 +471,7 @@ public class Boeing737Definition : BaseAircraftDefinition,
 When moving existing forms to subfolders, use `git mv` to preserve commit history:
 
 ```bash
-git mv MSFSBlindAssist/Forms/PFDForm.cs MSFSBlindAssist/Forms/A32NX/PFDForm.cs
+git mv MSFSBlindAssist/Forms/SomeForm.cs MSFSBlindAssist/Forms/B737/SomeForm.cs
 ```
 
 ## Other Core Components
@@ -525,6 +540,17 @@ Dual-mode hotkey system:
 - ICAO code input with autocomplete runway/gate selection
 - Integration with SimConnect for aircraft positioning
 
+### Access GSX subsystem
+**Files:** `Services/GsxService.cs`, `Forms/AccessGSXForm.cs`, `Forms/GsxSettingsForm.cs`
+
+- Accessible wrapper for GSX Ground Services Pro menu and tooltip output
+- `GsxService` tracks menu state, tooltip text, active services, settings metadata, invoices/receipts, and announcement throttling
+- `AccessGSXForm` exposes status, menu, tooltip, active-service selection, `F5` menu open, option keys, `C` settings, and `Esc` hide
+- `GsxSettingsForm` renders GSX settings as standard Windows controls and persists changed values back to GSX configuration
+- Background tooltip announcements are controlled by `UserSettings.GsxBackgroundMonitoring`
+
+See [Access GSX](gsx.md) for the full reference.
+
 ### TaxiGuidance subsystem
 **Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/TaxiGuidanceOptionsForm.cs`
 
@@ -537,6 +563,21 @@ Dual-mode hotkey system:
 - Universal airport support: no hardcoded taxiway / parking / runway names; everything comes from the user's DB
 
 See [Taxi Guidance](taxi-guidance.md) for the full reference.
+
+### TaxiAugment subsystem (Phase 5)
+**Files:** `Services/TaxiAugment/AugmentingAirportDataProvider.cs`, `OsmTaxiSource.cs`, `XplaneAptDatSource.cs`, `TaxiDataMerger.cs`, `TaxiDataCache.cs`, `AirportTaxiData.cs`
+
+- **Decorator pattern** on `IAirportDataProvider`: `AugmentingAirportDataProvider` wraps the `LittleNavMapProvider` returned by `DatabaseSelector.SelectProvider()` and is transparent to all downstream consumers (`TaxiGraph`, `TaxiGuidanceManager`, etc.)
+- `GetTaxiPaths(icao)` enriches unnamed navdata segments with real-world taxiway names from OSM (Overpass API) and the X-Plane apt.dat gateway via geometric midpoint + bearing matching
+- `GetParkingSpots(icao)` calls the public `AugmentParking(icao, spots)`, which assigns online stands to navdata spots **1:1, nearest-pair-first, within 50 m** (each online stand used at most once — no two gates get the same name): an empty navdata name adopts the online name; a named spot whose name differs collects a **parking alias** (`ParkingSpot.Aliases`, e.g. navdata `"GN 3"` / online `"47"`; X-Plane apt.dat supplies real gate numbers many navdata sets lack, e.g. CYYZ "Gate 131"). `AugmentParking` is **public** so the GSX gate path (which bypasses `GetParkingSpots`) gets the same aliases. Aliases surface as separate labeled dropdown entries — navdata name is always authoritative
+- Cache is **in-memory only** (`ConcurrentDictionary` + TTL, no disk) — fresh every session; departure/destination force-fresh, geofenced nearby airports ride the in-session cache
+- Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
+- Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
+- Wired in `MainForm` immediately after `DatabaseSelector.SelectProvider()`, guarded by `if (airportDataProvider != null)`
+- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` via `AppLogs.PathFor`
+- `Enabled` property (default `true`) wired to `UserSettings.TaxiAugmentEnabled` (in-dialog checkbox + ODbL / X-Plane attribution in Taxi Guidance Options); a "Refresh Taxiway Names" button force-fetches the nearby airport and announces the names-added count (`GetLastCoverage`)
+
+See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-data-augmentation-pipeline-phase-5) for the full reference.
 
 ## Key Design Patterns
 

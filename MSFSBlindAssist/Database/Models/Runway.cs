@@ -19,6 +19,18 @@ public class Runway
         public double ILSHeading { get; set; }
         public double ThresholdOffset { get; set; }
 
+        /// <summary>Threshold elevation in feet MSL, sourced from runway_end.altitude.
+        /// At airports with sloped runways or different elevations between runway ends
+        /// (KASE, LSZS, KSEA 16L/34R), this is more accurate than the airport's published
+        /// field elevation. 0 means unknown — callers fall back to airport.Altitude.</summary>
+        public double ThresholdElevation { get; set; }
+
+        /// <summary>Published ILS glideslope angle in degrees, sourced from ils.gs_pitch.
+        /// Most ILSes are 3.0°, but some are not — London City 5.5°, Aspen 6.59°, Innsbruck
+        /// 3.8°. 0 means the runway has no ILS or the navdata doesn't carry the angle —
+        /// callers fall back to 3.0°.</summary>
+        public double GlideslopeAngleDeg { get; set; }
+
         // Operational status flags read from runway_end. Defaults are PERMISSIVE
         // (closed=false, can-land=true, can-takeoff=true) because most user DBs
         // — including the test build this app was developed against — populate
@@ -64,7 +76,17 @@ public class Runway
 
         public override string ToString()
         {
-            string baseInfo = $"Runway {RunwayID} - {Length:0}ft {GetSurfaceType()}";
+            string len = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(Length, shortForm: true, round: false);
+            string baseInfo;
+            if (Width > 0)
+            {
+                string wid = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(Width, shortForm: true, round: false);
+                baseInfo = $"Runway {RunwayID} - {len} long, {wid} wide - {GetSurfaceType()}";
+            }
+            else
+            {
+                baseInfo = $"Runway {RunwayID} - {len} {GetSurfaceType()}";
+            }
 
             if (ILSFreq > 0)
             {

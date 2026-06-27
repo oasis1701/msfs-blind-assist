@@ -1,114 +1,188 @@
-[Preflight Check]
-Batteries on
-APU on
-MCDU opened in browser to check status
+[Cockpit Preparation]
+Batteries 1 and 2 on
+External power on if available
+Fire detection tests, APU and engines 1 and 2
+APU master switch on, then APU start
 APU bleed air on
-Crew Oxygen Supply on
-IRS 1,2,3 set to nav
-Nav and logo lights on
-EFB Flight imported
-EFB Ground OPS passengers boarded
-EFB Ground OPS refueling completed
-Seatbelts sign on
-No smoking auto
-Emergency lights, auto/armed
-Transponder mode auto
-Contact ATC for clearance and set squawk
-Left and right side Barometer knobs pushed and set
-Initial climb set through FCU
-MCDU Flight Plan received through AOC menu
-MCDU flight plan requested through init
-MCDU departure Runway and sid selected
-MCDU arrival runway and star selected, not recommended for online
-MCDU FP page check, flight discontinuitys checked and cleared if required
-MCDU Init fuel pred page completed
-MCDU perf takeoff page completed, v1, 140, vr, 145, v2, 155, flaps as required
+Crew oxygen supply on
+ADIRS, all three IR mode selectors to nav
+Navigation and logo lights on
+Strobe lights auto
+Seat belts sign on
+No smoking sign auto
+Emergency exit lights armed
+All six fuel pumps on
+Transponder mode auto, enter the squawk code in the Transponder panel
+Contact ATC for clearance
+Open the flyPad EFB with input mode then shift T
+flyPad, import the SimBrief flight plan
+flyPad Ground Ops, board passengers and load cargo
+flyPad Ground Ops, request and complete refueling
+Verify fuel on board with output mode then shift F
 
-[Before Start Check]
+[MCDU and Performance Setup]
+Open the MCDU window with input mode then shift M
+MCDU init page, enter from and to airports, flight number, cost index and cruise flight level
+MCDU, request the company flight plan from the init or AOC page if using SimBrief
+MCDU, set the departure runway and SID
+MCDU, set the arrival runway and STAR per clearance
+MCDU flight plan page, check the route and clear any discontinuities
+MCDU radio nav page, check ILS and navaid frequencies, usually tuned automatically
+MCDU init fuel prediction page, enter zero fuel weight and block fuel
+MCDU performance takeoff page, enter V1, VR, V2, flap setting, flex temperature and transition altitude
+Set QNH on both altimeters with the altimeter window, input mode then control B
+Initial climb altitude set on the FCU with the altitude window, input mode then control A
+Optional for online CPDLC, log on from the MCDU ATSU notification page, requires the flight number, the ATC center, and a from and to on the init page
+Optional, open the DCDU window with input mode then control shift D to read and answer CPDLC messages
+
+[Before Start]
+Boarding and refueling complete, doors closed
+Takeoff speeds and thrust confirmed on the performance page
 Beacon light on
-Strobes auto
-Fuel pumps all on
-Set eng selector to ign
-Eng2 master on
-Eng1 master on
-Set eng mode selector normal
+Parking brake set
+External power disconnected and off
+APU bleed confirmed on
+Fuel pumps confirmed on
+Pushback with ground services if required
 
-[After Start Check]
-Flaps set
-Spoilers armed
+[Engine Start]
+Engine mode selector to ignition start
+Engine master 1 on
+Monitor engine 1 start on the engine and warning display, output mode then alt E
+Engine master 2 on once engine 1 is stable
+Monitor engine 2 start
+Engine mode selector back to norm
+
+[After Start]
+Flaps set for takeoff, confirm with output mode then L
+Ground spoilers armed
 APU bleed off
-APU master off
-Anti ice, as required
-RW Turn off lights, on
-Nose light, taxi
-PREDICTIVE WINDSHEAR SYSTEM - Auto
-Autobrakes set
-Check and set FCU controls, hdg, speed, altitude
+APU master switch off
+Engine anti ice as required
+Pitch trim checked against the performance page
+Rudder trim neutral
+Flight controls checked, full sidestick and rudder sweep
+ECAM status checked, no warnings
 
-[Taxi Check]
-Contact ATC, ask for teleport if flying online
-Use input mode > shift+r to position aircraft on runway
-Confirm aligned on runway by checking heading output mode > H
+[Taxi]
+Nose light to taxi
+Runway turnoff lights on
+Autobrake set to maximum for a rejected takeoff
+Weather radar on system 1, predictive windshear auto
+Check and set the FCU, heading, speed and altitude windows are control H, control S and control A in input mode
+Contact ATC for taxi clearance
+Optional, open the taxi assist form with input mode then shift Y and enter the clearance for turn by turn guidance
+Or teleport to the departure runway with input mode then shift R, coordinate with ATC if flying online
+Confirm lined up by reading the heading with output mode then H
 
-[Before Takeoff Check]
-Transponder Ident
-TCAS TA/RA
+[Before Takeoff]
+Takeoff config test pressed on the ECAM control panel, no warnings
+TCAS to TA RA, traffic and resolution advisories are announced automatically
+Packs as required
 Landing lights on
-Nose Light T O
-Parking brakes released
-T.O. config test button pressed, no audible alerts
-Departure clearance received
+Nose light to takeoff
+Strobe lights on or auto
+Cabin ready
+Takeoff clearance received
+Parking brake released
+Optional, activate takeoff assistance with output mode then control T, automatic if taxi guidance lined you up
 
-[Takeoff Procedure]
-Apply Flex/MCT or TO/GA power
-Monitor ias with output mode > w
-Rotate at v1 speed
-Gear up
-Autopilot 1 on with input mode > shift+a as soon as possible
-Pull throttle back to CLB position
-Flaps up
-Spoilers disarmed
-Communicate with ATC, Adjust FCU as required
+[Takeoff]
+Advance thrust to about fifty percent, then set flex MCT or TOGA, detents are announced
+Monitor airspeed with output mode then S
+Rotate at VR
+Positive climb, gear up
+At thrust reduction altitude, thrust levers back to the climb detent
+Autopilot 1 on with input mode then shift A when desired
+Flaps to 1 at F speed if takeoff was flaps 2 or 3, read F speed with output mode then shift 3
+Flaps up at S speed, read S speed with output mode then shift 2
+Ground spoilers disarmed
+Packs on if they were off
+Nose light off, runway turnoff lights off
 
-[Climbing Checks]
-MCDU perf on climb mode check
-Check MCDU FP page
-Landing lights off at 10000
-both Baro knobs pulled to STD position at correct altitude
-Seatbelts sign off
+[Climb]
+Set each cleared altitude on the FCU and push the knob for managed climb
+At transition altitude, both altimeters to standard, input mode then control B
+MCDU performance page now on the climb phase, check
+At ten thousand feet, landing lights off
+Seat belts sign off when stable
+Confirm the altimeter setting with output mode then B
 
-[Descent Check]
-FCU alt set, knob pushed or pulled as required
-MCDU set arrival runway and star per ATC instructions if not set before
-MCDU RadNav page check for ILS freq and course, most times automatically set by airbus
-Select destination runway through input mode > shift+d
-Optional, check runway threshold distance through output mode > control+D
-Follow ATC instructions or FMC managed path down into approach
-Activate approach phase in MCDU perf page when 40 miles out
-Landing lights on at 10000
-Seatbelts signs on
+[Cruise]
+Verify cruise level and managed speed on the FCU
+Monitor fuel on board with output mode then F for pounds or shift F for kilograms
+Check distance to destination with output mode then D
+Check distance and time to top of descent with output mode then shift D
+Start descent preparation well before top of descent
 
-[Approach and Landing Check]
-Check Speed, FCU should manage, adjust if approach phase not properly engaged or ATC requests
-Flaps 1
-APPR mode on to establish
-Auto pilot 2 on after establish
-Flaps 2 on final
-Gear down
-Spoilers armed
-Autobrakes set
-RWY TURN OFF lights on
-Nose light set to T O
+[Descent Preparation]
+Get destination weather, the METAR window opens with output mode then shift M
+MCDU, set or confirm the arrival runway, STAR and approach
+MCDU flight plan page, clear any new discontinuities
+MCDU performance approach page, enter QNH, temperature, wind, minimums and landing flaps 3 or full
+MCDU radio nav page, verify the ILS frequency and course, usually automatic
+Select the destination runway with input mode then shift D for distance readouts and ILS guidance
+Optional, pick a runway exit with the landing exit planner, input mode then shift X
+Autobrake low, or medium for a wet or short runway
+With clearance, set the cleared altitude on the FCU and push the knob for managed descent
+At transition level, set QNH on both altimeters, input mode then control B
+At ten thousand feet, landing lights on
+Seat belts sign on
+Check distance to the selected runway any time with output mode then control D
+
+[Approach and Landing]
+Activate or confirm the approach phase on the MCDU performance page, speed becomes managed
+Flaps 1, check VFE next with output mode then shift 6 before each selection
+Arm approach mode with input mode then shift P once cleared for the approach
+Autopilot 2 on with input mode then control O for autoland if desired
+Flaps 2 before glideslope capture
+Gear down around two thousand feet
+Ground spoilers armed
+Autobrake confirmed set
+Runway turnoff lights on, nose light to takeoff
 Flaps 3
 Flaps full
-Land mode received from FMA
+Landing memo checked, cabin ready
+Monitor the approach with output mode then control I for the ILS guidance report
+Land mode on the flight mode annunciator is announced automatically
+At the retard callout, thrust levers to idle
+After touchdown, reverse thrust as required, ground spoilers deploy automatically
 
-[On Ground]
-Apply reverse thrust when required
-Parking breaks set
+[After Landing]
+Reverse to idle by seventy knots, brake to taxi speed
+Vacate the runway, landing exit guidance continues to the taxiway if planned
+Read the landing rate with output mode then control shift R
+Ground spoilers disarmed
 Flaps up
-AP red disconnect button pressed
-Teleport to gate through input mode > shift+g
+TCAS to standby
+Weather radar and predictive windshear off
+APU master switch on, then APU start
+Landing lights off, nose light taxi, runway turnoff lights on
+Engine anti ice as required
+Taxi to the gate, or teleport with input mode then shift G
 
-[Shutdown and Secure Aircraft]
-Complete shutdown procedures
+[Parking]
+Parking brake set
+APU bleed on
+Engine master 1 and 2 off
+Engine N1 winding down below five percent
+Seat belts sign off
+Beacon light off after the engines stop
+Fuel pumps off
+Strobe and wing lights off, exterior lights as required
+External power on if available
+flyPad Ground Ops, deboard passengers if desired
+Verify remaining fuel with output mode then shift F
+
+[Securing the Aircraft]
+Crew oxygen supply off
+ADIRS, all three IR selectors off
+Navigation and logo lights off
+All remaining exterior lights off
+No smoking sign off
+Emergency exit lights off
+APU bleed off
+APU master switch off
+External power off
+Batteries 1 and 2 off
+Aircraft is now cold and dark

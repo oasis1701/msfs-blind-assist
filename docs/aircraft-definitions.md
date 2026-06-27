@@ -2,6 +2,14 @@
 
 **IMPORTANT:** Dictionaries are now instance methods in aircraft definition classes, NOT static dictionaries in SimVarDefinitions.cs.
 
+**Supported aircraft definitions:**
+- `FlyByWireA320Definition` — FlyByWire A32NX (reference implementation)
+- `FlyByWireA380Definition` — FlyByWire A380X (Coherent-debugger MFD/flyPad/ECL transport; near-parity with the A320 definition)
+- `FenixA320Definition` — Fenix A320
+- `PMDG777Definition` — PMDG 777X
+- `PMDG737Definition` — PMDG 737-800 NG3
+- `HorizonSim787Definition` — HorizonSim 787-9
+
 The application accesses dictionaries through the current aircraft instance:
 - `currentAircraft.GetVariables()` - Get all variables for current aircraft
 - `currentAircraft.GetPanelStructure()` - Get section/panel organization

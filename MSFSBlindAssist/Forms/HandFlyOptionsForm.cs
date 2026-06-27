@@ -30,6 +30,14 @@ public partial class HandFlyOptionsForm : Form
     private TrackBar guidanceVolumeTrackBar = null!;
     private Label guidanceVolumeValueLabel = null!;
 
+    // Visual Guidance — second "current attitude" follower tone (always on; pilot matches it by ear).
+    private Label currentToneLabel = null!;
+    private ComboBox currentToneCombo = null!;
+    private Label currentToneVolumeLabel = null!;
+    private TrackBar currentToneVolumeTrackBar = null!;
+    private Label currentToneVolumeValueLabel = null!;
+    private CheckBox visualGuidanceHardPanCheckBox = null!;
+
     private Label takeoffToneLabel = null!;
     private ComboBox takeoffToneCombo = null!;
 
@@ -44,6 +52,7 @@ public partial class HandFlyOptionsForm : Form
     private ComboBox headingToneThresholdCombo = null!;
     private CheckBox legacyTakeoffCheckBox = null!;
     private CheckBox enableCalloutsCheckBox = null!;
+    private CheckBox autoActivateOnLineupCheckBox = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -57,6 +66,9 @@ public partial class HandFlyOptionsForm : Form
     public bool MonitorVerticalSpeed { get; private set; }
     public HandFlyWaveType GuidanceToneWaveform { get; private set; }
     public double SelectedGuidanceVolume { get; private set; }
+    public HandFlyWaveType VisualGuidanceCurrentToneWaveform { get; private set; }
+    public double VisualGuidanceCurrentToneVolume { get; private set; }
+    public bool VisualGuidanceHardPanTone { get; private set; }
     public HandFlyWaveType TakeoffToneWaveform { get; private set; }
     public double TakeoffToneVolume { get; private set; }
     public bool TakeoffAssistMuteCenterlineAnnouncements { get; private set; }
@@ -65,14 +77,20 @@ public partial class HandFlyOptionsForm : Form
     public int TakeoffAssistHeadingToneThreshold { get; private set; }
     public bool TakeoffAssistLegacyMode { get; private set; }
     public bool TakeoffAssistEnableCallouts { get; private set; }
+    public bool TakeoffAssistAutoActivateOnLineup { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
         bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
-        double currentGuidanceVolume, HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
+        double currentGuidanceVolume,
+        HandFlyWaveType visualGuidanceCurrentToneWaveform,
+        double visualGuidanceCurrentToneVolume,
+        bool visualGuidanceHardPanTone,
+        HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
         bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning,
         bool takeoffAssistHardPanTone,
         int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode,
-        bool takeoffAssistEnableCallouts)
+        bool takeoffAssistEnableCallouts,
+        bool takeoffAssistAutoActivateOnLineup)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
@@ -81,6 +99,9 @@ public partial class HandFlyOptionsForm : Form
         MonitorVerticalSpeed = monitorVerticalSpeed;
         GuidanceToneWaveform = guidanceToneWaveform;
         SelectedGuidanceVolume = currentGuidanceVolume;
+        VisualGuidanceCurrentToneWaveform = visualGuidanceCurrentToneWaveform;
+        VisualGuidanceCurrentToneVolume = visualGuidanceCurrentToneVolume;
+        VisualGuidanceHardPanTone = visualGuidanceHardPanTone;
         TakeoffToneWaveform = takeoffToneWaveform;
         TakeoffToneVolume = takeoffToneVolume;
         TakeoffAssistMuteCenterlineAnnouncements = takeoffAssistMuteCenterlineAnnouncements;
@@ -89,6 +110,7 @@ public partial class HandFlyOptionsForm : Form
         TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
         TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
         TakeoffAssistEnableCallouts = takeoffAssistEnableCallouts;
+        TakeoffAssistAutoActivateOnLineup = takeoffAssistAutoActivateOnLineup;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -96,7 +118,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 835);
+        Size = new Size(500, 975);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -313,11 +335,86 @@ public partial class HandFlyOptionsForm : Form
             TextAlign = ContentAlignment.MiddleLeft
         };
 
+        // ── Visual Guidance — Current-Attitude (follower) tone ──
+        // A second tone always plays alongside the desired tone with the SAME 200–800 Hz / ±1.0 pan
+        // mapping, tracking the aircraft's actual pitch/bank. The pilot zero-beats the two
+        // frequencies (vertical) and matches the two pans (lateral) by ear.
+
+        currentToneLabel = new Label
+        {
+            Text = "Current-attitude tone:",
+            Location = new Point(20, 485),
+            Size = new Size(250, 20),
+            AccessibleName = "Current attitude tone Label"
+        };
+
+        currentToneCombo = new ComboBox
+        {
+            Location = new Point(280, 483),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Current attitude tone",
+            AccessibleDescription = "Wave type for the second visual-guidance tone. Pick a different waveform from the main guidance tone so the two stay distinguishable when their pitches match."
+        };
+        currentToneCombo.Items.AddRange(new object[]
+        {
+            "Sine (Smoothest)",
+            "Triangle (Smooth)",
+            "Sawtooth (Bright)",
+            "Sine (Rich)"
+        });
+        currentToneCombo.SelectedIndex = (int)VisualGuidanceCurrentToneWaveform;
+        currentToneCombo.SelectedIndexChanged += CurrentToneCombo_SelectedIndexChanged;
+
+        currentToneVolumeLabel = new Label
+        {
+            Text = "Current-attitude Volume:",
+            Location = new Point(20, 520),
+            Size = new Size(100, 20),
+            AccessibleName = "Current attitude tone volume Label"
+        };
+
+        currentToneVolumeTrackBar = new TrackBar
+        {
+            Location = new Point(120, 515),
+            Size = new Size(300, 45),
+            Minimum = 0,
+            Maximum = 100,
+            TickFrequency = 10,
+            Value = (int)(VisualGuidanceCurrentToneVolume * 100),
+            AccessibleName = "Current attitude tone volume level",
+            AccessibleDescription = "Adjust the current-attitude (follower) tone volume from 0 to 100 percent"
+        };
+        currentToneVolumeTrackBar.ValueChanged += CurrentToneVolumeTrackBar_ValueChanged;
+
+        currentToneVolumeValueLabel = new Label
+        {
+            Text = $"{currentToneVolumeTrackBar.Value}%",
+            Location = new Point(430, 520),
+            Size = new Size(40, 20),
+            AccessibleName = "Current attitude tone volume value",
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        // Hard-pan checkbox for the dual-tone system. ON snaps both tones' pan to full left /
+        // full right once bank exceeds ~1°, instead of proportional pan. Useful on stereo
+        // speakers where partial pan blends with centred. Headphones generally don't need this.
+        visualGuidanceHardPanCheckBox = new CheckBox
+        {
+            Text = "Hard-pan visual-guidance tones (speaker-friendly)",
+            Location = new Point(20, 565),
+            Size = new Size(450, 25),
+            Checked = VisualGuidanceHardPanTone,
+            AccessibleName = "Hard-pan visual guidance tones",
+            AccessibleDescription = "When enabled, both visual-guidance tones snap to full left or full right once bank exceeds about one degree, instead of a proportional pan. Useful on stereo speakers where partial pan is hard to distinguish from centred. Headphone users normally leave this off. Default off."
+        };
+        visualGuidanceHardPanCheckBox.CheckedChanged += VisualGuidanceHardPanCheckBox_CheckedChanged;
+
         // Takeoff Assist - Tone Waveform Label
         takeoffToneLabel = new Label
         {
             Text = "Takeoff Assist Tone:",
-            Location = new Point(20, 485),
+            Location = new Point(20, 595),
             Size = new Size(250, 20),
             AccessibleName = "Takeoff Assist Tone Label"
         };
@@ -325,7 +422,7 @@ public partial class HandFlyOptionsForm : Form
         // Takeoff Assist - Tone Waveform ComboBox
         takeoffToneCombo = new ComboBox
         {
-            Location = new Point(280, 483),
+            Location = new Point(280, 593),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Takeoff Assist Tone",
@@ -345,7 +442,7 @@ public partial class HandFlyOptionsForm : Form
         takeoffVolumeLabel = new Label
         {
             Text = "Takeoff Assist Volume:",
-            Location = new Point(20, 520),
+            Location = new Point(20, 630),
             Size = new Size(100, 20),
             AccessibleName = "Takeoff Assist Volume Label"
         };
@@ -353,7 +450,7 @@ public partial class HandFlyOptionsForm : Form
         // Takeoff Assist Volume TrackBar
         takeoffVolumeTrackBar = new TrackBar
         {
-            Location = new Point(120, 515),
+            Location = new Point(120, 625),
             Size = new Size(300, 45),
             Minimum = 0,
             Maximum = 100,
@@ -368,7 +465,7 @@ public partial class HandFlyOptionsForm : Form
         takeoffVolumeValueLabel = new Label
         {
             Text = $"{takeoffVolumeTrackBar.Value}%",
-            Location = new Point(430, 520),
+            Location = new Point(430, 630),
             Size = new Size(40, 20),
             AccessibleName = "Takeoff Assist Volume Value",
             TextAlign = ContentAlignment.MiddleLeft
@@ -378,7 +475,7 @@ public partial class HandFlyOptionsForm : Form
         muteCenterlineCheckBox = new CheckBox
         {
             Text = "Mute centerline deviation announcements",
-            Location = new Point(20, 555),
+            Location = new Point(20, 665),
             Size = new Size(450, 25),
             Checked = TakeoffAssistMuteCenterlineAnnouncements,
             AccessibleName = "Mute centerline deviation announcements",
@@ -390,7 +487,7 @@ public partial class HandFlyOptionsForm : Form
         invertPanningCheckBox = new CheckBox
         {
             Text = "Invert heading track panning",
-            Location = new Point(20, 590),
+            Location = new Point(20, 700),
             Size = new Size(450, 25),
             Checked = TakeoffAssistInvertPanning,
             AccessibleName = "Invert heading track panning",
@@ -406,7 +503,7 @@ public partial class HandFlyOptionsForm : Form
         hardPanCheckBox = new CheckBox
         {
             Text = "Hard-pan centerline tone (full left or full right; speaker-friendly)",
-            Location = new Point(20, 620),
+            Location = new Point(20, 730),
             Size = new Size(450, 25),
             Checked = TakeoffAssistHardPanTone,
             AccessibleName = "Hard-pan centerline tone",
@@ -419,7 +516,7 @@ public partial class HandFlyOptionsForm : Form
         headingToneThresholdLabel = new Label
         {
             Text = "Play heading deviation tone:",
-            Location = new Point(20, 655),
+            Location = new Point(20, 765),
             Size = new Size(250, 20),
             AccessibleName = "Heading Tone Threshold Label"
         };
@@ -427,7 +524,7 @@ public partial class HandFlyOptionsForm : Form
         // Heading Tone Threshold ComboBox
         headingToneThresholdCombo = new ComboBox
         {
-            Location = new Point(280, 653),
+            Location = new Point(280, 763),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Play heading deviation tone",
@@ -449,7 +546,7 @@ public partial class HandFlyOptionsForm : Form
         legacyTakeoffCheckBox = new CheckBox
         {
             Text = "Legacy takeoff assist mode (heading-based, no tone)",
-            Location = new Point(20, 690),
+            Location = new Point(20, 800),
             Size = new Size(450, 25),
             Checked = TakeoffAssistLegacyMode,
             AccessibleName = "Legacy takeoff assist mode",
@@ -461,7 +558,7 @@ public partial class HandFlyOptionsForm : Form
         enableCalloutsCheckBox = new CheckBox
         {
             Text = "Enable takeoff assistant call outs",
-            Location = new Point(20, 720),
+            Location = new Point(20, 830),
             Size = new Size(450, 25),
             Checked = TakeoffAssistEnableCallouts,
             AccessibleName = "Enable takeoff assistant call outs",
@@ -469,11 +566,23 @@ public partial class HandFlyOptionsForm : Form
         };
         enableCalloutsCheckBox.CheckedChanged += EnableCalloutsCheckBox_CheckedChanged;
 
+        // Auto-Activate on Lineup Checkbox
+        autoActivateOnLineupCheckBox = new CheckBox
+        {
+            Text = "Auto-activate Takeoff Assist on lineup",
+            Location = new Point(20, 860),
+            Size = new Size(450, 25),
+            Checked = TakeoffAssistAutoActivateOnLineup,
+            AccessibleName = "Auto-activate Takeoff Assist on lineup",
+            AccessibleDescription = "When enabled, Takeoff Assist activates automatically when taxi guidance reaches a stable runway lineup, so you don't have to press control T. One-shot per route: if you disable Takeoff Assist after it auto-activates, it won't re-engage until the next taxi route."
+        };
+        autoActivateOnLineupCheckBox.CheckedChanged += AutoActivateOnLineupCheckBox_CheckedChanged;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 765),
+            Location = new Point(310, 905),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -485,7 +594,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 765),
+            Location = new Point(395, 905),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -500,11 +609,14 @@ public partial class HandFlyOptionsForm : Form
             testToneButton, monitorHeadingCheckBox, monitorVSCheckBox,
             guidanceToneLabel, guidanceToneCombo,
             guidanceVolumeLabel, guidanceVolumeTrackBar, guidanceVolumeValueLabel,
+            currentToneLabel, currentToneCombo,
+            currentToneVolumeLabel, currentToneVolumeTrackBar, currentToneVolumeValueLabel,
+            visualGuidanceHardPanCheckBox,
             takeoffToneLabel, takeoffToneCombo,
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             muteCenterlineCheckBox, invertPanningCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
-            legacyTakeoffCheckBox, enableCalloutsCheckBox,
+            legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
             okButton, cancelButton
         });
 
@@ -534,18 +646,25 @@ public partial class HandFlyOptionsForm : Form
         guidanceToneCombo.TabIndex = 13;
         guidanceVolumeLabel.TabIndex = 14;
         guidanceVolumeTrackBar.TabIndex = 15;
-        takeoffToneLabel.TabIndex = 16;
-        takeoffToneCombo.TabIndex = 17;
-        takeoffVolumeLabel.TabIndex = 18;
-        takeoffVolumeTrackBar.TabIndex = 19;
-        muteCenterlineCheckBox.TabIndex = 20;
-        invertPanningCheckBox.TabIndex = 21;
-        hardPanCheckBox.TabIndex = 22;
-        headingToneThresholdLabel.TabIndex = 23;
-        headingToneThresholdCombo.TabIndex = 24;
-        legacyTakeoffCheckBox.TabIndex = 25;
-        okButton.TabIndex = 26;
-        cancelButton.TabIndex = 27;
+        currentToneLabel.TabIndex = 16;
+        currentToneCombo.TabIndex = 17;
+        currentToneVolumeLabel.TabIndex = 18;
+        currentToneVolumeTrackBar.TabIndex = 19;
+        visualGuidanceHardPanCheckBox.TabIndex = 20;
+        takeoffToneLabel.TabIndex = 21;
+        takeoffToneCombo.TabIndex = 22;
+        takeoffVolumeLabel.TabIndex = 23;
+        takeoffVolumeTrackBar.TabIndex = 24;
+        muteCenterlineCheckBox.TabIndex = 25;
+        invertPanningCheckBox.TabIndex = 26;
+        hardPanCheckBox.TabIndex = 27;
+        headingToneThresholdLabel.TabIndex = 28;
+        headingToneThresholdCombo.TabIndex = 29;
+        legacyTakeoffCheckBox.TabIndex = 30;
+        enableCalloutsCheckBox.TabIndex = 31;
+        autoActivateOnLineupCheckBox.TabIndex = 32;
+        okButton.TabIndex = 33;
+        cancelButton.TabIndex = 34;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -622,6 +741,22 @@ public partial class HandFlyOptionsForm : Form
         guidanceVolumeValueLabel.Text = $"{guidanceVolumeTrackBar.Value}%";
     }
 
+    private void CurrentToneCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        VisualGuidanceCurrentToneWaveform = (HandFlyWaveType)currentToneCombo.SelectedIndex;
+    }
+
+    private void CurrentToneVolumeTrackBar_ValueChanged(object? sender, EventArgs e)
+    {
+        VisualGuidanceCurrentToneVolume = currentToneVolumeTrackBar.Value / 100.0;
+        currentToneVolumeValueLabel.Text = $"{currentToneVolumeTrackBar.Value}%";
+    }
+
+    private void VisualGuidanceHardPanCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        VisualGuidanceHardPanTone = visualGuidanceHardPanCheckBox.Checked;
+    }
+
     private void TakeoffToneCombo_SelectedIndexChanged(object? sender, EventArgs e)
     {
         TakeoffToneWaveform = (HandFlyWaveType)takeoffToneCombo.SelectedIndex;
@@ -656,6 +791,11 @@ public partial class HandFlyOptionsForm : Form
     private void EnableCalloutsCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
         TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
+    }
+
+    private void AutoActivateOnLineupCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistAutoActivateOnLineup = autoActivateOnLineupCheckBox.Checked;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)

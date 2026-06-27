@@ -9,10 +9,12 @@ namespace MSFSBlindAssist.Aircraft;
 /// Panel structure and event ID dictionary are defined here.
 /// Variables and panel controls will be populated in subsequent tasks.
 /// </summary>
-public class PMDG777Definition : BaseAircraftDefinition
+public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 {
     public override string AircraftName => "PMDG 777";
     public override string AircraftCode => "PMDG_777";
+
+    public bool HasEFBSupport => true;
 
     // Cached merged variables dictionary — built once on first access.
     // All callers are read-only so sharing a single instance is safe.
@@ -42,6 +44,43 @@ public class PMDG777Definition : BaseAircraftDefinition
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
+
+    // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than
+    // A320. All values measured against the PMDG 777's coupled ILS autoland:
+    // - GlideslopeAltitudeBiasFt = 80: a correctly-flown glideslope reads near-zero on VG (the
+    //   first uncorrected run measured ~80 ft high; corrected residual is ±10 ft, acceptable).
+    // - FlareAltitudeBiasFt = 40: in flare attitude the SimConnect datum sits ~40 ft above the
+    //   wheels. Each in-sim test bumped the value by 10 ft to chase the actual fire-point:
+    //   run 1 (bias=0, trigger=30) → fired at RA 10. run 2 (bias=20, trigger=30) → fired at
+    //   RA 20. run 3 (bias=30, trigger=40) → fired at RA 30. The pattern is linear: each +10
+    //   of bias moves the fire-point up by +10. Real offset = 40, locking the cue at RA 40.
+    // - FlareTriggerWheelHeightFt = 40: the PMDG 777 autoland begins its flare at ~40 ft RA;
+    //   timing VG's cue to match lets a hand-flying pilot mirror the autoland.
+    // - FlareTargetPitchDeg = 4.5: Boeing FCTM specifies a 2–3° pitch increase from approach
+    //   attitude during flare. Approach pitch on the 777 is ~+1.5°, so flare ≈ +4–4.5°. The
+    //   shared default of 6° was tuned for Airbus and overshoots the 777 by ~1.5°.
+    // - TonePitchRangeDeg = 10: the default 6° gave 50 Hz/° of beat (too dissonant at the
+    //   ±0.1° pitch errors a stabilized approach produces). 10° = 30 Hz/° — gentler at small
+    //   errors, still clearly audible when off.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 4.5,
+        ReferenceVrefKnots        = 145.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,
+        FlareAltitudeBiasFt       = 40.0,
+        FlareTriggerWheelHeightFt = 40.0,
+        FlareTargetPitchDeg       = 4.5,
+        TonePitchRangeDeg         = 10.0
+    };
+
+    // MEASURED 2026-06-11 (KSFO, B77W, 6 turns): the 1.0 s prior over-led —
+    // 5 of 6 rollouts stopped 5.5–10.5° SHORT (median correction −0.97 s).
+    // Same pattern as the 737: the pilot self-anticipates Boeing rollouts, so
+    // tone lead stacks on their habit. Set near the measured optimum with a
+    // small margin; re-measure once the pilot trusts the cue.
+    public override double TaxiTurnLeadSeconds => 0.3;
 
     // =========================================================================
     // Panel Structure
@@ -75,6 +114,11 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
                 "Boris Audio Works"
             },
+            ["Cockpit"] = new List<string>
+            {
+                "Captain Seat", "First Officer Seat", "Windows and Shades", "Doors and Tables"
+            },
+            ["Displays"] = new List<string> { "System Display" },
         };
     }
 
@@ -91,6 +135,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
+        RegisterSystemDisplayVars(variables);
         _cachedVariables = variables;
         return variables;
     }
@@ -4587,6 +4632,309 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Vickers 1", [100] = "Vickers 2" }
             },
+
+            // =================================================================
+            // COCKPIT FURNITURE (Cockpit section — Captain/FO Seat, Windows
+            // and Shades, Doors and Tables). All live-verified 2026-06-11 on
+            // the 777-300ER. Two mechanism families:
+            //
+            // (a) PMDG SDK events with direct-position CDA params: armrests
+            //     (switch_100N_a anim L:vars are SDK-OWNED read-backs — PMDG
+            //     rewrites them from the real switch state every frame, same
+            //     family as the xBAW switches, so a raw SetLVar reverts; the
+            //     EVT_*_ARMREST_* event is the actuator and the L:var then
+            //     follows for display) and foot heaters (proper SDK struct
+            //     field AIR_FootHeaterSelector + EVT_FWD_*_FOOT_HEATER).
+            //
+            // (b) Cockpit-model anim L:vars that ARE the pilot input (from
+            //     77W_Cockpit_Behavior.xml): visors, worktables, shoulder
+            //     heaters, window handle/clipboard, cockpit/crew doors,
+            //     curtain, shades. Writes hold and the model/system follows
+            //     (door_cockpit write flips the SDK DOOR_CockpitDoorOpen
+            //     read-back; LEFT_SHOULDER_HEATER write moves the SDK
+            //     AIR_ShoulderHeaterKnob field). These take MainForm's
+            //     generic SetLVar fall-through — no event mapping needed.
+            //     The sliding WINDOW itself is the one exception: no SDK
+            //     event AND no plain write — see the WINDOW_CA/FO branch in
+            //     HandleUIVariableSet (stock exit 17/18 + companion L:vars).
+            // =================================================================
+            ["switch_1006_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1006_a",
+                DisplayName = "Captain Armrest Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            ["switch_1007_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1007_a",
+                DisplayName = "Captain Armrest Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            ["switch_1008_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1008_a",
+                DisplayName = "First Officer Armrest Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            ["switch_1009_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_1009_a",
+                DisplayName = "First Officer Armrest Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [100] = "Up" }
+            },
+            // Captain / First Officer Foot Heater controls REMOVED (2026-06). The xBAW
+            // "Boris Audio Works" soundpack repurposes the CAPTAIN FOOT HEATER knob
+            // (SDK switch 319) as its hydraulic-pump-model gate, so the foot-heater combo
+            // and the Boris "Hydraulic Pump Model" combo (switch_319_a) drove the SAME
+            // physical knob — selecting a Vickers model moved the foot heater and vice
+            // versa (the reported cross-wiring). They are one control, so only the Boris
+            // hydraulic-pump combo is exposed now; the FO foot heater was removed too for
+            // symmetry. (Shoulder heaters below are independent and stay.)
+            // Shoulder heaters are continuous 0-100 knobs; the named L:var IS
+            // the input (write 60 -> SDK AIR_ShoulderHeaterKnob reads 60,
+            // live-verified) — the old "continuous knobs cannot be controlled
+            // via SDK" rule does not apply to cockpit-model L:var knobs.
+            // Stepped combo because this branch has no slider control.
+            ["SHOULDER_HEATER_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LEFT_SHOULDER_HEATER",
+                DisplayName = "Captain Shoulder Heater",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [33] = "Low", [66] = "Medium", [100] = "High" }
+            },
+            ["SHOULDER_HEATER_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "RIGHT_SHOULDER_HEATER",
+                DisplayName = "First Officer Shoulder Heater",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [33] = "Low", [66] = "Medium", [100] = "High" }
+            },
+            // Visor stow/unstow is a VISIBILITY mesh-swap with EXACT compares
+            // in the model (`0 ==` shows the stowed mesh, `1 ==` the deployed
+            // one) — any other value (e.g. 100) matches neither and the visor
+            // VANISHES. These four combos are strictly 0/1; the slide combos
+            // below are normal 0-100 anim positions.
+            ["VISOR_CA_FRONT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_front_stow_unstow",
+                DisplayName = "Captain Front Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
+            },
+            ["VISOR_CA_FRONT_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_front_drag",
+                DisplayName = "Captain Front Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            ["VISOR_CA_SIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_side_stow_unstow",
+                DisplayName = "Captain Side Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
+            },
+            ["VISOR_CA_SIDE_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_L_side_drag",
+                DisplayName = "Captain Side Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            ["VISOR_FO_FRONT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_front_stow_unstow",
+                DisplayName = "First Officer Front Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
+            },
+            ["VISOR_FO_FRONT_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_front_drag",
+                DisplayName = "First Officer Front Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            ["VISOR_FO_SIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_side_stow_unstow",
+                DisplayName = "First Officer Side Visor",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" }
+            },
+            ["VISOR_FO_SIDE_SLIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "visor_R_side_drag",
+                DisplayName = "First Officer Side Visor Slide",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "0 percent", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "100 percent" }
+            },
+            // Windows: clipboard must be moved aside AND handle unlocked
+            // before the window itself can move (the cockpit interlock).
+            // The WINDOW_CA/FO combos auto-perform that sequence on Open.
+            ["WINDOW_CLIPBOARD_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowClipboardCA",
+                DisplayName = "Captain Window Clipboard",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Over window", [100] = "Moved aside" }
+            },
+            ["WINDOW_HANDLE_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowHandleCA",
+                DisplayName = "Captain Window Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Locked", [100] = "Unlocked" }
+            },
+            ["WINDOW_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "Window_OpenClose_CA",
+                DisplayName = "Captain Sliding Window",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["WINDOW_CLIPBOARD_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowClipboardFO",
+                DisplayName = "First Officer Window Clipboard",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Over window", [100] = "Moved aside" }
+            },
+            ["WINDOW_HANDLE_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WindowHandleFO",
+                DisplayName = "First Officer Window Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Locked", [100] = "Unlocked" }
+            },
+            ["WINDOW_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "Window_OpenClose_FO",
+                DisplayName = "First Officer Sliding Window",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["SHADE_LF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_LF",
+                DisplayName = "Window Shade Left Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["SHADE_LR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_LR",
+                DisplayName = "Window Shade Left Rear",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["SHADE_RF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_RF",
+                DisplayName = "Window Shade Right Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["SHADE_RR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "7X7X_shade_RR",
+                DisplayName = "Window Shade Right Rear",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Extended" }
+            },
+            ["DOOR_COCKPIT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "door_cockpit",
+                DisplayName = "Cockpit Door",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [100] = "Open" }
+            },
+            ["DOOR_CREW_LEFT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "door_crew_area_left",
+                DisplayName = "Crew Rest Door Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [100] = "Open" }
+            },
+            ["DOOR_CREW_RIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "door_crew_area_right",
+                DisplayName = "Crew Rest Door Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [100] = "Open" }
+            },
+            ["CURTAIN_COCKPIT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "curtain_cockpit",
+                DisplayName = "Cockpit Curtain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [100] = "Drawn" }
+            },
+            ["WORKTABLE_CA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_ca",
+                DisplayName = "Captain Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["WORKTABLE_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_fo",
+                DisplayName = "First Officer Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["WORKTABLE_OBS_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_obs_l",
+                DisplayName = "Left Observer Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
+            ["WORKTABLE_OBS_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "worktable_obs_r",
+                DisplayName = "Right Observer Worktable",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [100] = "Deployed" }
+            },
         };
     }
 
@@ -4598,6 +4946,9 @@ public class PMDG777Definition : BaseAircraftDefinition
     {
         return new Dictionary<string, List<string>>
         {
+            // Displays — accessible synoptic read-out: page selector + read-only status box
+            ["System Display"] = new List<string> { "PMDG777_SD_PAGE" },
+
             // Overhead — Electrical
             ["Electrical"] = new List<string>
             {
@@ -4851,9 +5202,10 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "EVAC_Command", "EVAC_HornShutoff", "EVAC_PressToTest"
             },
 
-            // Pedestal — Warning (Master Warning/Caution already in Glareshield Warning section)
+            // Pedestal — Warning
             ["Warning"] = new List<string>
             {
+                "WARN_annunMasterWarning_L", "WARN_annunMasterCaution_L",
                 "WARN_Reset_L", "WARN_Reset_R"
             },
 
@@ -4896,6 +5248,33 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "switch_622_a", "switch_623_a", "switch_319_a"
             },
 
+            // Cockpit — furniture (seats/comfort, windows, doors, tables)
+            ["Captain Seat"] = new List<string>
+            {
+                "switch_1006_a", "switch_1007_a",
+                "SHOULDER_HEATER_CA",
+                "VISOR_CA_FRONT", "VISOR_CA_FRONT_SLIDE",
+                "VISOR_CA_SIDE", "VISOR_CA_SIDE_SLIDE"
+            },
+            ["First Officer Seat"] = new List<string>
+            {
+                "switch_1008_a", "switch_1009_a",
+                "SHOULDER_HEATER_FO",
+                "VISOR_FO_FRONT", "VISOR_FO_FRONT_SLIDE",
+                "VISOR_FO_SIDE", "VISOR_FO_SIDE_SLIDE"
+            },
+            ["Windows and Shades"] = new List<string>
+            {
+                "WINDOW_CLIPBOARD_CA", "WINDOW_HANDLE_CA", "WINDOW_CA",
+                "WINDOW_CLIPBOARD_FO", "WINDOW_HANDLE_FO", "WINDOW_FO",
+                "SHADE_LF", "SHADE_LR", "SHADE_RF", "SHADE_RR"
+            },
+            ["Doors and Tables"] = new List<string>
+            {
+                "DOOR_COCKPIT", "DOOR_CREW_LEFT", "DOOR_CREW_RIGHT", "CURTAIN_COCKPIT",
+                "WORKTABLE_CA", "WORKTABLE_FO", "WORKTABLE_OBS_L", "WORKTABLE_OBS_R"
+            },
+
         };
     }
 
@@ -4903,7 +5282,8 @@ public class PMDG777Definition : BaseAircraftDefinition
     // Optional overrides — stubs
     // =========================================================================
 
-    public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
+    public override Dictionary<string, List<string>> GetPanelDisplayVariables()
+        => new() { ["System Display"] = new List<string> { SdPageKey } };
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
     // =========================================================================
@@ -4937,6 +5317,16 @@ public class PMDG777Definition : BaseAircraftDefinition
     // ValueDescriptions would duplicate the "Vickers 2" combo entry).
     private int _prevHydVickers2 = -1;
 
+    // Cockpit Door echo suppression. The "Doors and Tables" combo writes
+    // L:door_cockpit, which flips the SEPARATE monitored SDK bool
+    // DOOR_CockpitDoorOpen — a different varKey, so MainForm's own
+    // set-echo bookkeeping can't match them up and the monitor spoke
+    // "Cockpit Door: Open" on top of the screen reader's combo echo.
+    // The combo set arms a short window; changes inside it stay silent,
+    // background changes (cockpit click, ground crew) still announce.
+    private int _prevCockpitDoorOpen = -1;
+    private DateTime _cockpitDoorSetEcho = DateTime.MinValue;
+
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
     private double _lastComActiveFreq1;
@@ -4944,6 +5334,17 @@ public class PMDG777Definition : BaseAircraftDefinition
     private double _lastComStandbyFreq1;
     private double _lastComStandbyFreq2;
     private double _lastSquawkCode;
+
+    // Armrest varKey (anim L:var, doubles as the combo's state read-back) →
+    // SDK actuator event. Used by the 1c branch in HandleUIVariableSet.
+    private static readonly IReadOnlyDictionary<string, string> _armrestEvents =
+        new Dictionary<string, string>
+        {
+            ["switch_1006_a"] = "EVT_CA_ARMREST_LEFT_SWITCH",
+            ["switch_1007_a"] = "EVT_CA_ARMREST_RIGHT_SWITCH",
+            ["switch_1008_a"] = "EVT_FO_ARMREST_LEFT_SWITCH",
+            ["switch_1009_a"] = "EVT_FO_ARMREST_RIGHT_SWITCH",
+        };
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
@@ -5109,6 +5510,12 @@ public class PMDG777Definition : BaseAircraftDefinition
             // --- Signs ---
             ["SIGNS_NoSmoking"]         = "EVT_OH_NO_SMOKING_LIGHT_SWITCH",
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
+
+            // --- Cockpit furniture (foot-heater event maps REMOVED 2026-06: the
+            //     captain foot heater is the same SDK switch 319 the Boris soundpack
+            //     uses for its hydraulic-pump model, so the controls were unified onto
+            //     the Boris combo — see the def-removal note. Armrests are handled by
+            //     the dedicated branch in HandleUIVariableSet.) ---
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
             ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
@@ -5373,6 +5780,10 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        // System Display page selector (accessible synoptic read-out).
+        if (varKey == SdPageKey)
+            return HandleSystemDisplaySelect(value, simConnect, announcer);
+
         // ------------------------------------------------------------------
         // 0. Standard SimConnect events and COM frequency set
         //    Handled here to prevent MainForm's redundant announcements.
@@ -5415,7 +5826,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varKey == "LTS_EmerLights")
         {
             int target = (int)value;
-            var dm = simConnect.PMDG777DataManager;
+            var dm = simConnect.PMDGDataManager;
             if (dm != null && (int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
             {
                 return true;
@@ -5436,9 +5847,16 @@ public class PMDG777Definition : BaseAircraftDefinition
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                _ = simConnect.SendPMDGGuardedToggle(
+                int targetPos = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == targetPos)
+                {
+                    return true; // already at target — no-op
+                }
+                _ = simConnect.SendPMDGGuardedSet(
                     guardPair.Guard,  (uint)gId,
-                    guardPair.Switch, (uint)sId);
+                    guardPair.Switch, (uint)sId,
+                    targetPos);
                 return true;
             }
         }
@@ -5491,6 +5909,61 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
+        // 1c. Armrests — the switch_100N_a anim L:vars are PMDG-SDK-OWNED
+        //     read-backs (rewritten from the real armrest state every frame,
+        //     same family as the xBAW switches above), so a raw SetLVar
+        //     reverts. The EVT_*_ARMREST_* SDK event with a direct-position
+        //     CDA param (1 = up, 0 = down) is the actuator; the L:var then
+        //     follows (0/100) for the combo read-back. Live-verified.
+        // ------------------------------------------------------------------
+        if (_armrestEvents.TryGetValue(varKey, out string? armrestEvent))
+        {
+            if (EventIds.TryGetValue(armrestEvent, out int armrestId))
+            {
+                simConnect.SendPMDGEvent(armrestEvent, (uint)armrestId, value >= 50 ? 1 : 0);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1d. Sliding cockpit windows — there is NO PMDG SDK event for the
+        //     window itself (EVT_DOOR_WINDOW_* is a different part): the
+        //     cockpit click runs RPN that toggles L:Window_OpenClose_* and
+        //     fires the stock exit event (exit 17 = captain, 18 = first
+        //     officer), gated on the handle being unlocked AND the clipboard
+        //     moved aside. Opening auto-performs that prerequisite sequence
+        //     (what a sighted pilot does with three clicks); closing only
+        //     closes the window — the handle stays unlocked and can be
+        //     re-locked with its own combo once the window has finished
+        //     travelling (the model blocks the handle while the window
+        //     moves). Calc strings are verbatim from the live-verified
+        //     sequence (77W_Cockpit_Behavior.xml Window_OpenClose_* callback).
+        // ------------------------------------------------------------------
+        // Cockpit door — same write the generic LVar fall-through would do,
+        // but through this branch so the set can arm the echo window that
+        // keeps the DOOR_CockpitDoorOpen monitor quiet (see the field docs).
+        if (varKey == "DOOR_COCKPIT")
+        {
+            _cockpitDoorSetEcho = DateTime.UtcNow;
+            simConnect.SetLVar("door_cockpit", value);
+            return true;
+        }
+
+        if (varKey == "WINDOW_CA" || varKey == "WINDOW_FO")
+        {
+            string side = varKey == "WINDOW_CA" ? "CA" : "FO";
+            int exitIndex = varKey == "WINDOW_CA" ? 17 : 18;
+            string code = value >= 0.5
+                ? $"100 (>L:WindowHandle{side}) 100 (>L:WindowClipboard{side}) " +
+                  $"1 (>L:Window_OpenClose_{side}, Bool) 1 {exitIndex} (>K:TOGGLE_AIRCRAFT_EXIT_FAST) " +
+                  $"0 (>L:WindowClose{side}, Bool) 1 (>L:WindowOpen{side}, Bool)"
+                : $"0 (>L:Window_OpenClose_{side}, Bool) 0 {exitIndex} (>K:TOGGLE_AIRCRAFT_EXIT_FAST) " +
+                  $"1 (>L:WindowClose{side}, Bool) 0 (>L:WindowOpen{side}, Bool)";
+            simConnect.ExecuteCalculatorCode(code);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 2. Look up the event name for this variable key
         // ------------------------------------------------------------------
         if (!_simpleEventMap.TryGetValue(varKey, out string? eventName))
@@ -5526,7 +5999,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             varKey == "MCP_ATArm_L" || varKey == "MCP_ATArm_R")
         {
             int target = (int)value;
-            var dm = simConnect.PMDG777DataManager;
+            var dm = simConnect.PMDGDataManager;
             if (dm != null)
             {
                 int current = (int)dm.GetFieldValue(varDef.Name);
@@ -5555,7 +6028,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (varKey == "ELEC_APU_Start")
         {
-            var dm = simConnect.PMDG777DataManager;
+            var dm = simConnect.PMDGDataManager;
             int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
             if (current == 1)
                 simConnect.SendPMDGEvent(eventName, eventId, 2); // 2 = Start position
@@ -5574,7 +6047,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varKey == "FCTL_Flaps")
         {
             int target = (int)value;
-            var dm = simConnect.PMDG777DataManager;
+            var dm = simConnect.PMDGDataManager;
             if (dm != null && (int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
             {
                 return true;
@@ -5619,7 +6092,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varDef.ValueDescriptions.Count >= 2)
         {
             int target = (int)value;
-            var dm = simConnect.PMDG777DataManager;
+            var dm = simConnect.PMDGDataManager;
             if (dm != null)
             {
                 int current = (int)dm.GetFieldValue(varDef.Name);
@@ -5683,18 +6156,37 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Hydraulic pump model (switch_319_a / HYD_OPTION). 0 = Vickers 1,
-        // any positive (mid-detent 50 or 100) = Vickers 2. Announce on real
-        // change; first poll cached silently. Return true so the generic
-        // exact-key path can't speak a raw "50.0" at the mid-detent.
+        // Hydraulic pump model (switch_319_a / HYD_OPTION). The xBAW soundset
+        // repurposes the CAPTAIN FOOT HEATER knob (SDK switch 319) as its
+        // hydraulic-pump-model gate — they are ONE physical knob. The separate
+        // foot-heater combos were removed (2026-06) because exposing both drove
+        // the same knob from two controls (the reported cross-wiring), so this
+        // is now the single control for switch 319. Auto-announce stays SILENT:
+        // the screen reader speaks the combo selection on change (and the global
+        // UI-set-echo suppression keeps that from double-speaking), while a
+        // background nudge of a niche soundpack gate isn't worth a callout. The
+        // Boris panel combo shows the Vickers state on demand. Return true so
+        // the generic exact-key path can't speak a raw "50.0" at the mid-detent.
         if (varName == "switch_319_a")
         {
-            int now = value <= 0 ? 0 : 1; // 1 = Vickers 2
-            if (_prevHydVickers2 >= 0 && now != _prevHydVickers2)
-                announcer.Announce(now == 1
-                    ? "Hydraulic Pump Model: Vickers 2"
-                    : "Hydraulic Pump Model: Vickers 1");
-            _prevHydVickers2 = now;
+            _prevHydVickers2 = value <= 0 ? 0 : 1;
+            return true;
+        }
+
+        // Cockpit Door. Announce real background changes only — a change
+        // inside the combo's echo window stays silent (the screen reader
+        // already voiced the combo selection; see _cockpitDoorSetEcho).
+        // First poll is cached silently. NOTE: ProcessSimVarUpdate receives
+        // the VARKEY ("DOOR_CockpitDoor") — OnPMDGVariableChanged translates
+        // the struct field name (DOOR_CockpitDoorOpen) to the key before the
+        // event enters the pipeline; matching the field name never fires.
+        if (varName == "DOOR_CockpitDoor")
+        {
+            int now = value >= 0.5 ? 1 : 0;
+            bool comboEcho = (DateTime.UtcNow - _cockpitDoorSetEcho).TotalSeconds < 3.0;
+            if (_prevCockpitDoorOpen >= 0 && now != _prevCockpitDoorOpen && !comboEcho)
+                announcer.Announce(now == 1 ? "Cockpit Door: Open" : "Cockpit Door: Closed");
+            _prevCockpitDoorOpen = now;
             return true;
         }
 
@@ -5980,7 +6472,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadHeading:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int heading = (int)dm.GetFieldValue("MCP_Heading");
                 string hdgMode = (int)dm.GetFieldValue("MCP_HDGDial_Mode") == 0 ? "HDG" : "TRK";
@@ -5993,7 +6485,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadSpeed:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 bool isBlank = (int)dm.GetFieldValue("MCP_IASBlank") > 0;
                 if (isBlank)
@@ -6017,7 +6509,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadAltitude:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int altitude = (int)dm.GetFieldValue("MCP_Altitude");
                 string altMode = "";
@@ -6030,7 +6522,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFCUVerticalSpeedFPA:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int vsMode = (int)dm.GetFieldValue("MCP_VSDial_Mode");
                 string vsEngaged = (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? ", engaged" : "";
@@ -6053,7 +6545,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFuelQuantity:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int left   = (int)Math.Round(dm.GetFieldValue("FUEL_QtyLeft"));
                 int center = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter"));
@@ -6071,7 +6563,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFlaps:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int lever = (int)dm.GetFieldValue("FCTL_Flaps_Lever");
                 string position = lever switch
@@ -6091,7 +6583,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadGear:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int gear = (int)dm.GetFieldValue("GEAR_Lever");
                 // GEAR_Lever: 0 = up, 1 = down
@@ -6105,7 +6597,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadAltimeter:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
 
                 // Read actual altimeter setting from cached SimConnect variable
@@ -6133,7 +6625,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadDistanceToTOD:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
 
                 // Enhanced mode: probe the PROG page on demand. The monitor
@@ -6193,7 +6685,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadDistanceToDest:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
 
                 // Enhanced mode: probe the PROG DEST line on demand.
@@ -6264,6 +6756,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             case HotkeyAction.ShowFenixMCDU:
                 return false;
 
+            // EFB handled by MainForm.
+            case HotkeyAction.ShowPMDGEFB:
+            case HotkeyAction.ShowPMDGEFBFirstOfficer:
+                return false;
+
 
             case HotkeyAction.ReadDisplayPFD:
                 ReadDisplay(Services.GeminiService.DisplayType.PFD777, "PFD", announcer, parentForm);
@@ -6283,7 +6780,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFuelInfo:
             {
-                var dm = simConnect.PMDG777DataManager;
+                var dm = simConnect.PMDGDataManager;
                 if (dm == null) return false;
                 int leftKg   = (int)Math.Round(dm.GetFieldValue("FUEL_QtyLeft") * 0.453592);
                 int centerKg = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter") * 0.453592);
@@ -6330,73 +6827,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
     }
 
-    /// <summary>
-    /// Captures screenshot and analyzes cockpit display using Gemini AI.
-    /// </summary>
-    private async void ReadDisplay(Services.GeminiService.DisplayType displayType,
-                                    string displayName,
-                                    ScreenReaderAnnouncer announcer,
-                                    System.Windows.Forms.Form parentForm)
-    {
-        try
-        {
-            announcer.Announce($"Capturing {displayName}...");
-
-            var screenshotService = new Services.ScreenshotService();
-            var geminiService = new Services.GeminiService();
-
-            if (!screenshotService.IsMsfsWindowAvailable())
-            {
-                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
-                return;
-            }
-
-            byte[]? screenshot = await screenshotService.CaptureAsync();
-            if (screenshot == null || screenshot.Length == 0)
-            {
-                announcer.Announce($"Failed to capture {displayName} screenshot.");
-                return;
-            }
-
-            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
-
-            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.ShowForm();
-
-            announcer.Announce($"{displayName} analysis ready.");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
-        {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                "Gemini API key is not configured.\n\n" +
-                "Please configure your API key in:\n" +
-                "File > Gemini Settings\n\n" +
-                "Get a free API key at: https://aistudio.google.com/apikey",
-                "API Key Required",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                $"Error analyzing {displayName}:\n\n{ex.Message}",
-                "Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
-        }
-    }
-
     // =========================================================================
     // FCU Request Override Methods
     // =========================================================================
 
     public override void RequestFCUHeading(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
         if (dm == null) return;
         int heading = (int)dm.GetFieldValue("MCP_Heading");
         announcer.AnnounceImmediate($"Heading {heading}");
@@ -6404,7 +6841,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
     public override void RequestFCUSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
         if (dm == null) return;
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
@@ -6415,7 +6852,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
     public override void RequestFCUAltitude(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
         if (dm == null) return;
         int altitude = (int)dm.GetFieldValue("MCP_Altitude");
         announcer.AnnounceImmediate($"Altitude {altitude}");
@@ -6423,7 +6860,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
     public override void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
         if (dm == null) return;
         int vsMode = (int)dm.GetFieldValue("MCP_VSDial_Mode");
         if (vsMode == 1)
@@ -6475,7 +6912,7 @@ public class PMDG777Definition : BaseAircraftDefinition
     /// </summary>
     private static void AnnounceTODFromSDK(
         SimConnect.SimConnectManager simConnect,
-        SimConnect.PMDG777DataManager dm,
+        SimConnect.IPMDGDataManager dm,
         ScreenReaderAnnouncer announcer)
     {
         float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
@@ -6504,7 +6941,7 @@ public class PMDG777Definition : BaseAircraftDefinition
     /// </summary>
     private static void AnnounceDestFromSDK(
         SimConnect.SimConnectManager simConnect,
-        SimConnect.PMDG777DataManager dm,
+        SimConnect.IPMDGDataManager dm,
         ScreenReaderAnnouncer announcer)
     {
         float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
@@ -6531,7 +6968,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
 
         var toggles = new List<ToggleButtonDef>
         {
@@ -6586,7 +7023,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
 
         var toggles = new List<ToggleButtonDef>
         {
@@ -6651,7 +7088,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
 
         var toggles = new List<ToggleButtonDef>
         {
@@ -6706,7 +7143,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dm = simConnect.PMDG777DataManager;
+        var dm = simConnect.PMDGDataManager;
 
         var toggles = new List<ToggleButtonDef>
         {
@@ -7528,5 +7965,13 @@ public class PMDG777Definition : BaseAircraftDefinition
             // CDU Right and Center brightness (missing from initial registration)
             ["EVT_CDU_R_BRITENESS"]                = 70105,
             ["EVT_CDU_C_BRITENESS"]                = 70357,
+
+            // Cockpit furniture (THIRD_PARTY_EVENT_ID_MIN 69632 + SDK offset)
+            ["EVT_CA_ARMREST_LEFT_SWITCH"]         = 70638,
+            ["EVT_CA_ARMREST_RIGHT_SWITCH"]        = 70639,
+            ["EVT_FO_ARMREST_LEFT_SWITCH"]         = 70640,
+            ["EVT_FO_ARMREST_RIGHT_SWITCH"]        = 70641,
+            ["EVT_FWD_LEFT_FOOT_HEATER"]           = 69951,
+            ["EVT_FWD_RIGHT_FOOT_HEATER"]          = 69920,
         };
 }

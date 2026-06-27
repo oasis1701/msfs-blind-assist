@@ -1,0 +1,7 @@
+{
+  "name": "pmdg-efb-test",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": { "test": "node --test" },
+  "devDependencies": { "jsdom": "24.1.0" }
+}

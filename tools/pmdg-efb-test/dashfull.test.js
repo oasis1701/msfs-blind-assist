@@ -1,0 +1,45 @@
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { scrape } = require('./run');
+
+test('flight-details measurement values merge with their colon-heading (ZFW / ROUTE DIST)', () => {
+  const els = scrape('dashfull');
+  const texts = els.map(e => e.text);
+  assert.ok(texts.includes('ZFW: 462,330 lb'), 'ZFW value + unit captured and merged');
+  assert.ok(texts.includes('ROUTE DIST: 1,183 nm'), 'Route Dist value + unit captured and merged');
+  assert.ok(!texts.includes('ROUTE DIST: LAX'), 'Route Dist no longer mis-merges with the origin code');
+  assert.ok(!texts.some(t => t === 'ZFW:' || t === 'ROUTE DIST:'), 'no orphan colon labels');
+});
+
+test('captured measurement values never bleed onto a control as its label', () => {
+  const els = scrape('dashfull');
+  // C6 captures pmdg_measurement values (with units), so they carry letters — assert they are
+  // never adopted as a select/checkbox/text label (the _isValue tag must exclude them).
+  assert.ok(!els.some(e => (e.controlType === 'select' || e.controlType === 'checkbox' || e.controlType === 'text') && /\b(462,330|1,183)\b/.test(e.text)),
+    'no control labeled with a flight-details measurement value');
+});
+
+test('leaflet map overlay text (waypoint tooltips) is suppressed; map controls kept', () => {
+  const els = scrape('dashfull');
+  assert.ok(!els.some(e => e.text === 'HOLTZ'), 'leaflet tooltip waypoint dropped');
+  assert.ok(els.some(e => e.kind === 'button' && e.text === 'Zoom In'), 'map control button kept');
+});
+
+test('map source select reads a clean label (no internal "Leaflet" library term) with its options', () => {
+  const els = scrape('dashfull');
+  const sel = els.find(e => e.controlType === 'select' && /Map Source/.test(e.text));
+  assert.ok(sel, 'map source select labeled "Map Source" (Leaflet stripped)');
+  assert.ok(!/Leaflet/i.test(sel.text), 'no "Leaflet" in the label');
+  assert.strictEqual(sel.value, 'IFR HIGH');
+  assert.deepStrictEqual(sel.options, ['WORLD', 'IFR HIGH', 'IFR LOW', 'VFR']);
+});
+
+test('route-header codes are labeled (Origin / Destination / STD / STA)', () => {
+  const els = scrape('dashfull');
+  const texts = els.map(e => e.text);
+  assert.ok(texts.includes('Origin: LAX / KLAX'));
+  assert.ok(texts.includes('Destination: KDFW / DFW'));
+  assert.ok(texts.includes('STD: 14:30 UTC / 14:50 UTC'));
+  assert.ok(texts.includes('STA: 17:20 UTC / 17:28 UTC'));
+  assert.ok(!texts.includes('LAX') && !texts.includes('KDFW'), 'bare floating codes are gone');
+});

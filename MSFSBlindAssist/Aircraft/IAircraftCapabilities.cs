@@ -27,3 +27,21 @@ public interface ISupportsNavigationDisplay
 public interface ISupportsPFDDisplay
 {
 }
+
+/// <summary>
+/// Marker interface indicating aircraft supports an MCDU readable through the
+/// MSFSBA EFB bridge (HTTP polling JS injected into the aircraft package).
+/// Currently implemented for FlyByWire A380X.
+/// </summary>
+public interface ISupportsBridgedMCDU
+{
+}
+
+/// <summary>
+/// Marker interface indicating aircraft supports an EFB tablet (flyPad-style)
+/// readable through the MSFSBA EFB bridge.
+/// Currently implemented for FlyByWire A380X (flyPadOS 3).
+/// </summary>
+public interface ISupportsBridgedEFB
+{
+}

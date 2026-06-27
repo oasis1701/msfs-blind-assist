@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.Utils;
 
 namespace MSFSBlindAssist;
@@ -30,6 +31,21 @@ static class Program
                 StartupLogger.Log("MSFS Blind Assist Starting");
                 StartupLogger.Log("========================================");
                 StartupLogger.LogSystemInfo();
+
+                // One-time, best-effort move of legacy log files (Roaming-root *.log and
+                // the former %LOCALAPPDATA% logs folder) into the canonical
+                // %APPDATA%\MSFSBlindAssist\logs folder, so testers have exactly ONE
+                // place to find logs even after running older builds.
+                AppLogs.MigrateLegacyLogs();
+                StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
+
+                // One-time, best-effort removal of the RETIRED Community-folder accessibility
+                // bridges (PMDG EFB zzz-pmdg-efb-accessibility + HorizonSim 787 zzz-hs787-accessibility
+                // / FS2024 in-place patch) — both are now driven over the Coherent debugger, so the
+                // old HTML overrides are dead weight. Never throws; no-op once gone.
+                int removedLegacyBridges = LegacyEfbBridgeCleanup.RemoveRetiredBridges();
+                if (removedLegacyBridges > 0)
+                    StartupLogger.Log($"Removed retired accessibility bridge package(s) from {removedLegacyBridges} Community folder(s)");
 
                 // Allocate a console for NVDA to monitor (do this early for logging)
                 StartupLogger.Log("Allocating console window...");
@@ -109,6 +125,13 @@ static class Program
                 ApplicationConfiguration.Initialize();
                 StartupLogger.Log("ApplicationConfiguration initialized");
 
+                // Install global exception handlers BEFORE the message loop so a stray
+                // exception from a background poll loop, timer tick, or async callback is
+                // LOGGED and (when it is a recoverable UI-thread fault) does NOT take the
+                // whole app down. This is the primary defence against "crashes while idle".
+                InstallGlobalExceptionHandlers();
+                StartupLogger.Log("Global exception handlers installed");
+
                 StartupLogger.Log("Creating main form...");
                 var mainForm = new MainForm();
                 StartupLogger.Log("Main form created successfully");
@@ -143,6 +166,48 @@ static class Program
                 // Release the single-instance lock even on error
                 SingleInstanceManager.ReleaseSingleInstanceLock();
             }
+        }
+
+        /// <summary>
+        /// Registers process-wide exception handlers so background/UI faults are logged
+        /// (and, where recoverable, survived) instead of silently killing the app while
+        /// it sits idle. The captured stack traces in the startup log let a specific
+        /// culprit be fixed at the source on the next occurrence.
+        /// </summary>
+        private static void InstallGlobalExceptionHandlers()
+        {
+            // UI-thread exceptions (WinForms message loop: timer ticks, event handlers,
+            // BeginInvoke callbacks). Catch + log + KEEP RUNNING — for a screen-reader
+            // tool, staying alive beats dying on a non-fatal glitch.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) =>
+            {
+                try { StartupLogger.LogError("Unhandled UI-thread exception (recovered, app kept running)", e.Exception); }
+                catch { /* never let the handler itself throw */ }
+            };
+
+            // Background-thread exceptions (SimConnect receive pump, Task.Run poll loops).
+            // The CLR tears the process down for these, but log the cause first.
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                try
+                {
+                    if (e.ExceptionObject is Exception ex)
+                        StartupLogger.LogError($"Unhandled background exception (terminating={e.IsTerminating})", ex);
+                    else
+                        StartupLogger.Log($"Unhandled non-CLR exception (terminating={e.IsTerminating}): {e.ExceptionObject}");
+                }
+                catch { }
+            };
+
+            // Unobserved Task exceptions — a Task.Run loop that faulted and whose
+            // exception was never awaited. Observing them prevents a finalizer-time crash.
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                try { StartupLogger.LogError("Unobserved task exception (observed)", e.Exception); }
+                catch { }
+                e.SetObserved();
+            };
         }
 
         /// <summary>

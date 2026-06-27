@@ -305,12 +305,11 @@ public class LandingExitForm : Form
 
         _graph = builtGraph;
 
-        // Filter against landing-eligible flags. Defaults are permissive so
-        // DBs that don't populate IsClosed/IsLanding still show every runway.
-        // Closed runways and landing-prohibited directions are dropped — pilot
-        // can't pick an exit on a runway they can't legally land on.
+        // Only exclude closed runways. IsLanding=false just means no published
+        // instrument approach in the navdata — ATC can still assign the runway
+        // for landing (as at EIDW 10R), so let the pilot pick any open direction.
         _runways = _dataProvider.GetRunways(icao)
-            .Where(r => !r.IsClosed && r.IsLanding)
+            .Where(r => !r.IsClosed)
             .ToList();
 
         // Wrap each Runway so the combo's ToString returns just the runway ID.

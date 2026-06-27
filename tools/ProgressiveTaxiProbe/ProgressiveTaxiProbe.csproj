@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Navigation -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.cs"             Link="Linked\TaxiGraph.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\NavigationCalculator.cs"  Link="Linked\NavigationCalculator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExit.cs"           Link="Linked\LandingExit.cs" />
+    <!-- TaxiLeadIn is pure (Database.Models only); it does NOT link TaxiRouter, so
+         pinning it here does not touch the shared taxi_router.log (the reason the
+         old TaxiLeadInProbe was removed). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiLeadIn.cs"            Link="Linked\TaxiLeadIn.cs" />
+    <!-- Database models -->
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs"      Link="Linked\ParkingSpot.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs"       Link="Linked\GateSource.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\StartPosition.cs"    Link="Linked\StartPosition.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\Runway.cs"           Link="Linked\Runway.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiRoute.cs"        Link="Linked\TaxiRoute.cs" />
+    <!-- Services -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\DistanceFormatter.cs"       Link="Linked\DistanceFormatter.cs" />
+    <!--
+      TaxiDataMerger.NormalizeTaxiwayName is called from TaxiGraph (alias resolution).
+      Include the three self-contained TaxiAugment files it depends on; exclude
+      AugmentingAirportDataProvider.cs (which pulls in IAirportDataProvider and other
+      types not available in this probe's stripped compilation unit).
+    -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\AirportTaxiData.cs"  Link="Linked\AirportTaxiData.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiGeo.cs"          Link="Linked\TaxiGeo.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiDataMerger.cs"   Link="Linked\TaxiDataMerger.cs" />
+    <!-- Settings -->
+    <Compile Include="..\..\MSFSBlindAssist\Settings\DistanceUnit.cs"            Link="Linked\DistanceUnit.cs" />
+  </ItemGroup>
+  <!-- SimConnectStub.cs is auto-included by the SDK glob — no explicit entry needed. -->
+</Project>

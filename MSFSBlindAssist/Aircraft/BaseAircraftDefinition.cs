@@ -12,13 +12,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
     private Dictionary<string, List<string>>? _cachedPanelControls;
 
-    // Altitude tracking for thousand-foot crossing announcements
-    private double? _previousAltitude = null;
-    private int? _lastAnnouncedAltitudeThousands = null;
-    private double? _lastAnnouncedRawAltitude = null;
-
-    // Elevator trim announcement toggle and debounce
-    private bool _trimAnnouncementsEnabled = true;
+    // Elevator trim announcement toggle and debounce.
+    // Toggle is protected so aircraft that source trim from a custom variable
+    // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
+    // POSITION SimVar is not driven by the NG3) can honour the shared Shift+T
+    // gate from their own ProcessSimVarUpdate.
+    protected bool _trimAnnouncementsEnabled = true;
     private double _lastAnnouncedTrimDeg = double.NaN;
 
     // Glideslope alive/lost tracking
@@ -72,6 +71,59 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Units = "feet",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
+            },
+
+            // Ground speed - universal SimConnect variable feeding the GLOBAL ground-speed
+            // announcer (Services/GroundSpeedAnnouncer.cs). Continuous so callouts work in
+            // every phase — takeoff roll, landing rollout, taxi — not just while taxi
+            // guidance is active. IsAnnounced=true gets it into the continuous batch; the
+            // generic "value changed" announcement is suppressed by a GROUND_VELOCITY case
+            // in MainForm.HandleSpecialAnnouncements, which routes the value to the
+            // ground-speed announcer's bucket/hysteresis logic instead.
+            ["GROUND_VELOCITY"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GROUND VELOCITY",
+                DisplayName = "Ground Speed",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "knots",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            // Vertical g-force — fed continuously to the LandingRateAnnouncer so it can capture
+            // the PEAK g of a touchdown (the ReadLastLandingPeakG output hotkey). Not announced
+            // on its own (MainForm routes it to the announcer and suppresses the generic call-out).
+            ["G_FORCE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "G FORCE",
+                DisplayName = "G Force",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "GForce",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                // MUST be IsAnnounced=true to be monitored at all. ExcludeFromBatch +
+                // HighFrequency route it through a per-var SIM_FRAME subscription — the
+                // 1 Hz continuous batch missed the touchdown impact spike entirely, so
+                // the peak-g readout under-reported every landing. MainForm routes
+                // G_FORCE to the landing tracker and suppresses the generic call-out
+                // (HandleSpecialAnnouncements).
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                HighFrequency = true
+            },
+            // Touchdown vertical speed — the sim latches this at touchdown and it persists until
+            // the next landing, so the ReadLastLandingRate output hotkey reads it straight from
+            // the cache (×60 → fpm). Continuous so it's always in the cache; not announced.
+            ["PLANE_TOUCHDOWN_NORMAL_VELOCITY"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE TOUCHDOWN NORMAL VELOCITY",
+                DisplayName = "Touchdown Vertical Speed",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "feet per second",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                // MUST be IsAnnounced=true to be monitored at all (continuous batch =
+                // Continuous + IsAnnounced; SimConnectManager ~L805). With it false the cache
+                // stayed empty and ReadLastLandingRate always said "no landing recorded".
+                // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
+                IsAnnounced = true
             },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
@@ -447,6 +499,56 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Default: do nothing (aircraft has no FCU)
     }
 
+    /// <summary>
+    /// Called after a panel Event-type button is pressed (after the event is sent
+    /// and GetButtonStateMapping is handled). Lets an aircraft run a custom
+    /// post-press read-out — e.g. the FCU knob push/pull buttons speak the
+    /// resulting selected/managed value the same way their hotkeys do.
+    /// Default: no-op.
+    /// </summary>
+    public virtual void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+    }
+
+    /// <summary>
+    /// Called once after a panel's controls are built/shown. Aircraft with a
+    /// multi-page status box driven by a page combo override this to POPULATE the box
+    /// with the combo's CURRENT page immediately — so the user doesn't have to cycle
+    /// the combo to get content on first display. Default: no-op.
+    /// </summary>
+    public virtual void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
+    {
+    }
+
+    /// <summary>
+    /// Default: no override — the panel display uses ValueDescriptions / numeric
+    /// formatting. Aircraft with ARINC429 (or otherwise non-presentable) display
+    /// fields override this to return a decoded string.
+    /// </summary>
+    public virtual bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        return false;
+    }
+
+    /// <summary>
+    /// Generic ARINC429 decode. If the var is flagged <see cref="SimConnect.SimVarDefinition.IsArinc429"/>,
+    /// decode the raw double via <see cref="SimConnect.Arinc429Word"/> and return "&lt;value&gt; &lt;unit&gt;"
+    /// (SSM NormalOperation/FunctionalTest) or the not-available text. Returns false for non-ARINC vars so
+    /// callers fall through to their existing logic. Central so the panel display field and the auto-announce
+    /// path share ONE decode — any ARINC var surfaces decoded instead of a raw ~14-billion word.
+    /// </summary>
+    public bool TryDecodeArinc429(string varKey, double value, out string text)
+    {
+        text = "";
+        if (!GetVariables().TryGetValue(varKey, out var def) || !def.IsArinc429) return false;
+        var w = new SimConnect.Arinc429Word(value);
+        if (!(w.IsNormalOperation || w.IsFunctionalTest)) { text = def.Arinc429NotAvailableText; return true; }
+        string v = w.Value.ToString(def.Arinc429Format, System.Globalization.CultureInfo.InvariantCulture);
+        text = string.IsNullOrEmpty(def.Arinc429Unit) ? v : $"{v} {def.Arinc429Unit}";
+        return true;
+    }
+
     // Variable Update Processing
 
     /// <summary>
@@ -459,53 +561,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Handle altitude thousand-foot crossing announcements
         if (varName == "INDICATED_ALTITUDE")
         {
-            // Reset hysteresis if aircraft has moved 300+ feet away from last announced altitude
-            if (_lastAnnouncedRawAltitude.HasValue &&
-                Math.Abs(value - _lastAnnouncedRawAltitude.Value) >= 300)
-            {
-                _lastAnnouncedAltitudeThousands = null;
-            }
-
-            if (_previousAltitude.HasValue)
-            {
-                int oldThousands = (int)(_previousAltitude.Value / 1000);
-                int newThousands = (int)(value / 1000);
-
-                if (newThousands > oldThousands)
-                {
-                    // Climbing: announce each thousand-foot level crossed (with hysteresis)
-                    for (int i = oldThousands + 1; i <= newThousands; i++)
-                    {
-                        // Only announce if different from last announced altitude
-                        if (!_lastAnnouncedAltitudeThousands.HasValue || i != _lastAnnouncedAltitudeThousands.Value)
-                        {
-                            announcer.Announce($"{i * 1000}");
-                            _lastAnnouncedAltitudeThousands = i;
-                            _lastAnnouncedRawAltitude = value;
-                        }
-                    }
-                }
-                else if (newThousands < oldThousands)
-                {
-                    // Descending: announce each thousand-foot level crossed (with hysteresis)
-                    for (int i = oldThousands; i > newThousands; i--)
-                    {
-                        // Only announce if different from last announced altitude
-                        if (!_lastAnnouncedAltitudeThousands.HasValue || i != _lastAnnouncedAltitudeThousands.Value)
-                        {
-                            announcer.Announce($"{i * 1000}");
-                            _lastAnnouncedAltitudeThousands = i;
-                            _lastAnnouncedRawAltitude = value;
-                        }
-                    }
-                }
-                // If oldThousands == newThousands, no crossing occurred (no announcement)
-            }
-
-            // Update tracked altitude
-            _previousAltitude = value;
-
-            // Return true to suppress default announcement (we handle it custom)
+            // NOTE: thousand-foot crossing callouts are handled by the canonical,
+            // settings-controlled AltitudeCalloutAnnouncer service (MainForm.OnSimVarUpdated →
+            // HandleSpecialAnnouncements). This in-base announce was a DUPLICATE — the base spoke
+            // "32000" while the service also spoke "32,000 feet." (Gus's note). The base announce
+            // is removed so there is exactly ONE altitude callout. We still
+            // suppress the generic gate's raw "Altitude: 5234" announcement.
             return true;
         }
 
@@ -579,5 +640,73 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual void StopDisplayMonitoring(SimConnect.SimConnectManager simConnect)
     {
         // Default: do nothing (aircraft has no display system)
+    }
+
+    /// <summary>
+    /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
+    /// </summary>
+    public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
+
+    public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
+
+    /// <summary>
+    /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.
+    /// Shared by all aircraft definitions that support Gemini display capture.
+    /// </summary>
+    protected async void ReadDisplay(Services.GeminiService.DisplayType displayType,
+                                      string displayName,
+                                      ScreenReaderAnnouncer announcer,
+                                      System.Windows.Forms.Form parentForm)
+    {
+        try
+        {
+            announcer.Announce($"Capturing {displayName}...");
+
+            var screenshotService = new Services.ScreenshotService();
+            var geminiService = new Services.GeminiService();
+
+            if (!screenshotService.IsMsfsWindowAvailable())
+            {
+                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
+                return;
+            }
+
+            byte[]? screenshot = await screenshotService.CaptureAsync();
+            if (screenshot == null || screenshot.Length == 0)
+            {
+                announcer.Announce($"Failed to capture {displayName} screenshot.");
+                return;
+            }
+
+            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
+
+            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
+            resultForm.ShowForm();
+
+            announcer.Announce($"{displayName} analysis ready.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        {
+            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                "Gemini API key is not configured.\n\n" +
+                "Please configure your API key in:\n" +
+                "File > Gemini Settings\n\n" +
+                "Get a free API key at: https://aistudio.google.com/apikey",
+                "API Key Required",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
+        }
+        catch (Exception ex)
+        {
+            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                $"Error analyzing {displayName}:\n\n{ex.Message}",
+                "Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
+        }
     }
 }

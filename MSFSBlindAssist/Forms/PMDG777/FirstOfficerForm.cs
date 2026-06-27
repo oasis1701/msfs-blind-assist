@@ -111,7 +111,7 @@ public class FirstOfficerForm : Form
         _flows       = PMDG777FlowDefinitions.Build();
         _checklistMgr = new ChecklistManager(_stateEval, _actionExec, _checklistGroups);
         _flowMgr     = new FlowManager(_stateEval, _actionExec, _checklistMgr, announcer);
-        _fmcSvc      = new FmcProgrammingService(simConnect, simConnect.PMDG777DataManager);
+        _fmcSvc      = new FmcProgrammingService(simConnect, simConnect.PMDGDataManager as PMDG777DataManager);
         _flightPhaseMon = new FlightPhaseMonitor(_actionExec, _stateEval, announcer);
         _foAutoMgr   = new FOAutoManager(_actionExec, _stateEval, announcer)
         {
@@ -252,7 +252,7 @@ public class FirstOfficerForm : Form
 
     private void UpdateServicesFromConnection()
     {
-        _stateEval.SetDataManager(_simConnect.PMDG777DataManager);
+        _stateEval.SetDataManager(_simConnect.PMDGDataManager as PMDG777DataManager);
         _actionExec.SetSimConnect(_simConnect.IsConnected ? _simConnect : null);
     }
 

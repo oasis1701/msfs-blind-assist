@@ -19,7 +19,6 @@ public partial class DestinationRunwayForm : Form
     private Label statusLabel = null!;
 
     private readonly IAirportDataProvider _database;
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly IntPtr previousWindow;
 
     public Runway? SelectedRunway { get; private set; }
@@ -31,7 +30,6 @@ public partial class DestinationRunwayForm : Form
         previousWindow = GetForegroundWindow();
 
         _database = database;
-        _announcer = announcer;
         InitializeComponent();
         SetupAccessibility();
     }

@@ -27,6 +27,20 @@ public class FlightPlanManager
     }
 
     /// <summary>
+    /// Force-fresh the online taxiway-name augmentation for an origin/destination ICAO the moment
+    /// a flight plan names it — strengthens dep/dest detection (covers manual-plan entry before
+    /// the aircraft is near either field) and keeps the active flight's taxi data current (no
+    /// stale download). Fire-and-forget; no-op when augmentation is off or the provider isn't the
+    /// augmenting decorator.
+    /// </summary>
+    private void PrefetchTaxiData(string icao)
+    {
+        if (!string.IsNullOrWhiteSpace(icao) &&
+            _airportDatabase is MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider aug)
+            _ = aug.PrefetchAsync(icao, force: true);
+    }
+
+    /// <summary>
     /// Loads flight plan from SimBrief
     /// </summary>
     public void LoadFromSimBrief(string username)
@@ -57,6 +71,7 @@ public class FlightPlanManager
     {
         try
         {
+            PrefetchTaxiData(icao);   // origin known → force-fresh online taxiway names
             if (_airportDatabase == null)
                 throw new Exception("Airport database not available. Please build the database from File menu.");
 
@@ -116,6 +131,7 @@ public class FlightPlanManager
     {
         try
         {
+            PrefetchTaxiData(icao);   // destination known → force-fresh online taxiway names
             if (_airportDatabase == null)
                 throw new Exception("Airport database not available. Please build the database from File menu.");
 
@@ -169,6 +185,24 @@ public class FlightPlanManager
     }
 
     /// <summary>
+    /// Appends <paramref name="additions"/> to <paramref name="target"/>, dropping the first addition
+    /// when it duplicates the last existing waypoint. A transition and its procedure share the boundary
+    /// fix, which otherwise appeared twice with a spurious 0 NM leg between them.
+    /// </summary>
+    private static void AppendWaypoints(List<WaypointFix> target, List<WaypointFix> additions)
+    {
+        int start = 0;
+        if (target.Count > 0 && additions.Count > 0 &&
+            !string.IsNullOrEmpty(target[^1].Ident) &&
+            string.Equals(target[^1].Ident, additions[0].Ident, StringComparison.OrdinalIgnoreCase))
+        {
+            start = 1;
+        }
+        for (int i = start; i < additions.Count; i++)
+            target.Add(additions[i]);
+    }
+
+    /// <summary>
     /// Loads SID procedure (Section B)
     /// </summary>
     public void LoadSID(int sidId, int? transitionId, string sidName)
@@ -190,7 +224,7 @@ public class FlightPlanManager
                     wpt.Section = FlightPlanSection.SID;
                     wpt.InboundAirway = "SID";
                 }
-                waypoints.AddRange(transitionWaypoints);
+                AppendWaypoints(waypoints, transitionWaypoints);
             }
 
             CurrentFlightPlan.SIDName = sidName;
@@ -227,9 +261,9 @@ public class FlightPlanManager
                 waypoints.AddRange(transitionWaypoints);
             }
 
-            // Load STAR waypoints
+            // Load STAR waypoints (drop the boundary fix shared with the transition)
             var starWaypoints = _navigationDatabase.GetSTARWaypoints(starId);
-            waypoints.AddRange(starWaypoints);
+            AppendWaypoints(waypoints, starWaypoints);
 
             CurrentFlightPlan.STARName = starName;
             CurrentFlightPlan.UpdateSection(FlightPlanSection.STAR, waypoints);
@@ -260,9 +294,9 @@ public class FlightPlanManager
                 waypoints.AddRange(transitionWaypoints);
             }
 
-            // Load approach waypoints
+            // Load approach waypoints (drop the boundary fix shared with the transition)
             var approachWaypoints = _navigationDatabase.GetApproachWaypoints(approachId);
-            waypoints.AddRange(approachWaypoints);
+            AppendWaypoints(waypoints, approachWaypoints);
 
             // Set section and airway info
             for (int i = 0; i < waypoints.Count; i++)
@@ -299,6 +333,16 @@ public class FlightPlanManager
 
         foreach (var waypoint in allWaypoints)
         {
+            // Maneuver legs (heading/course-to-altitude, vectors) and any fix whose coordinates could
+            // not be resolved have no position — skip them rather than computing nonsense distances
+            // toward (0,0).
+            if (waypoint.Latitude == 0.0 && waypoint.Longitude == 0.0)
+            {
+                waypoint.DistanceFromAircraft = null;
+                waypoint.BearingFromAircraft = null;
+                continue;
+            }
+
             // Calculate distance in nautical miles
             waypoint.DistanceFromAircraft = NavigationCalculator.CalculateDistance(
                 latitude, longitude, waypoint.Latitude, waypoint.Longitude);

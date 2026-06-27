@@ -1,0 +1,95 @@
+// coherent-rmp-agent.js — A380X RMP (Radio Management Panel) accessible scrape.
+// ES5 ONLY (Coherent GT = Chromium 49: var, no arrow funcs, no String.includes,
+// top-level try/catch). Installed by CoherentDisplayClient on the A380X_RMP_1 /
+// A380X_RMP_2 view; exposes window.__MSFSBA_DISP.scrape() -> {ok, rows[]} (the same
+// contract the generic display agent uses, so the existing client reads it unchanged).
+//
+// The FBW A380 RMP dev build renders ONE of TWO pages at a time: VHF (the 3 transceiver
+// rows) or Transponder/SQWK. (HF/TEL/NAV/MENU are not modelled — those page keys do
+// nothing.) The hidden page's elements still exist in the DOM (display:none, rect 0×0),
+// so we gate every row on vis() to read only the active page. On the VHF page each
+// transceiver row is a flat fragment of .active-frequency + .transceiver-ident +
+// .stby-frequency-cell (DOM order), so we zip the three class lists by index; the
+// .stby-frequency div's textContent already concatenates its 6 digit children + the dot
+// into "121.950", and during entry it shows the live scratchpad ("118.000"). reverse-video
+// on the ident = transmit-selected; .selected on the cell = the row the keypad types into.
+// On the SQWK page we read .transponder-mode / .transponder-code .cyan / .transponder-ident.
+(function () {
+  try {
+    function vis(el) {
+      if (!el) return false;
+      var r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }
+    function tight(el) { return el ? (el.textContent || '').replace(/\s+/g, '').trim() : ''; }
+    function loose(el) { return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+
+    function scrape() {
+      try {
+        var rows = [];
+        var actives = document.querySelectorAll('.active-frequency');
+        var idents = document.querySelectorAll('.transceiver-ident');
+        var cells = document.querySelectorAll('.stby-frequency-cell');
+        var n = Math.min(actives.length, idents.length, cells.length);
+        for (var i = 0; i < n; i++) {
+          // The RMP shows ONE page; the other page's rows still exist in the DOM but are
+          // display:none (rect 0×0). Skip any transceiver row that is not actually visible,
+          // so the SQWK page doesn't read the hidden VHF rows (and vice-versa).
+          if (!vis(actives[i])) continue;
+          var ident = tight(idents[i]);            // VHF1 / VHF2 / VHF3
+          var active = tight(actives[i]);          // 122.800 / DATA / ---.---
+          // standby = the VISIBLE .stby-frequency in this cell (VHF3 DATA hides the digits one)
+          var sf = cells[i].querySelectorAll('.stby-frequency');
+          var standby = '';
+          for (var j = 0; j < sf.length; j++) { if (vis(sf[j])) { standby = tight(sf[j]); break; } }
+          if (!standby && sf.length) standby = tight(sf[0]);
+          var transmit = (idents[i].className || '').indexOf('reverse-video') >= 0;
+          var selected = (cells[i].className || '').indexOf('selected') >= 0;
+          var line = ident + ': active ' + active + ', standby ' + standby;
+          // Standby MODE title (.stdby-mode is only shown for the selected row).
+          // "STBY" = a normal tunable frequency; "EMER" = emergency guard (121.5);
+          // DATA mode shows "DATA" in the standby freq area (already captured above).
+          // Only VHF3 has more than one mode -- Alt+Up/Down cycles it.
+          var modeEl = cells[i].querySelector('.stdby-mode');
+          if (modeEl && vis(modeEl)) {
+            var mode = tight(modeEl);
+            if (mode === 'EMER') line += ', standby emergency';
+          }
+          if (transmit) line += ', transmit';
+          if (selected) line += ', selected';
+          rows.push(line);
+        }
+
+        // Transponder (SQWK) page: mode (AUTO/STBY), the squawk code (the .cyan child of
+        // .transponder-code, NOT the "SQWK" label), and IDENT. Only when actually visible.
+        var tMode = document.querySelector('.transponder-mode');
+        if (tMode && vis(tMode)) {
+          var codeEl = document.querySelector('.transponder-code .cyan');
+          var code = codeEl ? tight(codeEl) : '';
+          var tline = 'Transponder ' + tight(tMode);   // AUTO or STBY
+          if (code) tline += ', squawk ' + code;
+          var ident = document.querySelector('.transponder-ident');
+          if (ident && vis(ident)) {
+            var it = tight(ident);                      // "*IDENT" = ready, "IDENT" = identing
+            tline += it.indexOf('*') >= 0 ? ', ident ready' : ', identing';
+          }
+          rows.push(tline);
+        }
+
+        // Bottom message line (e.g. "SQUAWK : 2000 - STBY", tuning errors).
+        var msg = document.querySelector('.rmp-messages');
+        if (msg && vis(msg)) { var m = loose(msg); if (m) rows.push('Message: ' + m); }
+
+        if (rows.length === 0) rows.push('RMP page has no readable rows (powered? on VHF/HF/TEL/SQWK?).');
+        return JSON.stringify({ ok: true, rows: rows });
+      } catch (e) {
+        return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
+      }
+    }
+
+    window.__MSFSBA_DISP = { __rmp: true, scrape: scrape, ping: function () { return 'ok'; } };
+    return 'MSFSBA_DISP_INSTALLED';
+  } catch (e) {
+    return 'MSFSBA_DISP_ERROR: ' + e;
+  }
+})();

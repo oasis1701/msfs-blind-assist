@@ -11,8 +11,18 @@ namespace MSFSBlindAssist.Navigation;
 /// </summary>
 public class LandingExit
 {
-    /// <summary>Node id of the exit point in the taxi graph.</summary>
+    /// <summary>Node id of the exit point in the taxi graph (on-runway junction).</summary>
     public int NodeId { get; set; }
+
+    /// <summary>
+    /// First graph node outside the runway lateral corridor on this exit path.
+    /// For HS/IHS exits equals NodeId (the hold-short bar is already at the junction).
+    /// For fallback implicit exits this is the node where the curved path first clears
+    /// the runway strip — used to re-route at the LandingRollout → Taxiing handoff so
+    /// the steering tone guides the pilot through the actual curve, not a wrong apron path.
+    /// -1 when unknown (off-axis exits where BFS was not run).
+    /// </summary>
+    public int ApronNodeId { get; set; } = -1;
 
     public double Latitude { get; set; }
     public double Longitude { get; set; }
@@ -42,6 +52,18 @@ public class LandingExit
     public double ExitAngleDegrees { get; set; }
 
     /// <summary>
+    /// True bearing (0–360°) of the best taxiway edge leading away from the
+    /// runway at this exit node. Used during landing rollout to blend the
+    /// steering tone toward the actual exit direction as the aircraft closes
+    /// in — gives a clear pan cue even for exits whose node sits very close
+    /// to the runway centreline (where bearing-to-node alone gives near-zero
+    /// error). Set from the same "best edge" used to compute ExitAngleDegrees.
+    /// 0 when no valid edge was found (tone falls back to bearing-to-node only).
+    /// Due-north edges (raw bearing 0°) are stored as 360° to keep 0 unambiguous.
+    /// </summary>
+    public double ExitBearingTrue { get; set; }
+
+    /// <summary>
     /// Category derived from ExitAngleDegrees:
     ///   "High-speed" — ≤ 50° (RET / rapid exit)
     ///   "Normal"     — 50-110° (standard 90° exit)
@@ -49,11 +71,18 @@ public class LandingExit
     /// </summary>
     public string ExitType { get; set; } = "";
 
+    /// <summary>
+    /// Which side of the runway this exit is on — "Left" or "Right" relative to the
+    /// landing direction. Empty string when the bearing is unknown (ExitBearingTrue == 0).
+    /// </summary>
+    public string ExitSide { get; set; } = "";
+
     public override string ToString()
     {
-        int distFt = (int)Math.Round(DistanceFromThresholdFeet);
+        string dist = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(DistanceFromThresholdFeet, shortForm: true, round: false);
         int angle = (int)Math.Round(ExitAngleDegrees);
         string nameLabel = string.IsNullOrEmpty(TaxiwayName) ? "(unnamed)" : TaxiwayName;
-        return $"{nameLabel} — {distFt} ft from threshold ({ExitType}, {angle}°)";
+        string sideLabel = string.IsNullOrEmpty(ExitSide) ? "" : $", {ExitSide.ToLower()}";
+        return $"{nameLabel} — {dist} from threshold ({ExitType}{sideLabel}, {angle}°)";
     }
 }

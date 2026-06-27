@@ -9,6 +9,16 @@ public class ScreenReaderAnnouncer : IDisposable
     private SpeechSynthesizer? speechSynthesizer;
     private bool disposed = false;
 
+    /// <summary>
+    /// When true, the AUTOMATIC announce paths (Announce / AnnounceQueued /
+    /// AnnounceWithQueue) are silently dropped. User-initiated AnnounceImmediate is
+    /// NOT affected, so hotkeys still talk. Used to keep the app silent during the
+    /// initial grace period after an aircraft is detected, so cockpit values that
+    /// happen to differ from their sentinel cache (e.g. altimeter setting) don't
+    /// announce on first detect. Lifted when the grace-period timer fires.
+    /// </summary>
+    public bool Suppressed { get; set; } = false;
+
     // Screen reader integration components
     private TolkWrapper? tolkWrapper;
     private NvdaControllerWrapper? nvdaWrapper;
@@ -25,8 +35,6 @@ public class ScreenReaderAnnouncer : IDisposable
 
         [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-        private const uint WM_USER = 0x0400;
 
         public ScreenReaderAnnouncer(IntPtr handle)
         {
@@ -211,6 +219,9 @@ public class ScreenReaderAnnouncer : IDisposable
         {
             if (string.IsNullOrEmpty(message))
                 return;
+            // Initial-detect grace: drop automatic announcements (not user hotkeys).
+            if (Suppressed)
+                return;
 
             // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Announce called - Mode: {currentMode}, Message: {message}");
 
@@ -338,6 +349,8 @@ public class ScreenReaderAnnouncer : IDisposable
         public void AnnounceWithQueue(string message)
         {
             if (string.IsNullOrEmpty(message))
+                return;
+            if (Suppressed)
                 return;
 
             lock (announcementQueue)

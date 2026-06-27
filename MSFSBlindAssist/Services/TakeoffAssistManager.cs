@@ -68,7 +68,6 @@ public class TakeoffAssistManager : IDisposable
     // Configuration constants - modern mode
     private const double CENTERLINE_TOLERANCE_FEET = 25.0; // Within ±25 feet is "center"
     private const double CENTERLINE_CHANGE_THRESHOLD_FEET = 10.0; // Announce if deviation changes by >10 feet
-    private const double NM_TO_FEET = 6076.12;
     private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° heading deviation for full left/right pan
 
     // Configuration constants - legacy mode
@@ -242,14 +241,16 @@ public class TakeoffAssistManager : IDisposable
             // Stop centerline guidance tone (only exists in modern mode)
             centerlineTone?.Stop();
 
-            // Deactivating - clear non-runway reference (keep teleport reference for next time)
-            if (!hasRunwayReference)
-            {
-                referenceThresholdLat = null;
-                referenceThresholdLon = null;
-                referenceRunwayHeadingTrue = null;
-                referenceRunwayHeadingMagnetic = null;
-            }
+            // Always clear the runway reference on deactivation. Across-session
+            // preservation is unnecessary (process restart resets everything);
+            // within-session preservation is UNSAFE because the next CTRL+T may
+            // be for a different runway after a turnaround flight. Previously
+            // the teleport-set reference was kept "for next time", but that
+            // caused flight 2 of a turnaround to silently reuse flight 1's
+            // runway threshold and heading — the MainForm seeding guard
+            // (`!takeoffAssistManager.HasRunwayReference`) rejected the fresh
+            // taxi-lineup reference because the stale one was still present.
+            ClearRunwayReference();
 
             announcer.AnnounceImmediate("Takeoff assist off");
             System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Deactivated");

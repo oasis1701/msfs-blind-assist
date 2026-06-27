@@ -3,6 +3,7 @@ PMDG 777 HOTKEY REFERENCE
 Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -50,6 +51,8 @@ Altimeter:
 
 Vertical:
   V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
 
 Weather:
   I          Wind Info
@@ -84,7 +87,9 @@ Trim:
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode
-  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
+             Fly mode. Enables the same single-letter quick-access hotkeys
+             Hand Fly mode does, plus F for target VS.
   Ctrl+T     Activate/deactivate Takeoff Assistance
   Ctrl+D     Read Distance to Selected Runway
   Ctrl+I     Read ILS Guidance System Report
@@ -105,7 +110,7 @@ Waypoint Tracking (use Fix Track window or EFB route viewer to add):
 
 AI Display Reading (requires Gemini API key in File > Gemini Settings):
   Alt+P      Read PFD (use Ctrl+2 cockpit view first)
-  Shift+N    Read Navigation Display (use Ctrl+2 cockpit view first)
+  Alt+N      Read Navigation Display (use Ctrl+2 cockpit view first)
   Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)
   Alt+E      Read EICAS display (use Ctrl+2 cockpit view first)
   Alt+D      Describe outside scene
@@ -125,13 +130,17 @@ Traffic and Weather:
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager
   Shift+E    Route viewer, procedure planner and airport lookup
-  Shift+T    PMDG EFB Tablet (SimBrief uplink, Navigraph, preferences)
   Shift+L    Location Info
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
-  Shift+N    Navigation Display
-  Shift+P    PFD Window
+
+INPUT MODE - PMDG EFB Tablet:
+  Shift+T    PMDG EFB Tablet - Captain tablet
+  Ctrl+Shift+T  PMDG EFB Tablet - First Officer tablet
+
+OUTPUT MODE - Cold Temperature Altitude Correction:
+  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
 
 Hand Fly Mode Hotkeys:
   A          Read MSL
@@ -143,8 +152,28 @@ Hand Fly Mode Hotkeys:
   Q          Read AGL
   V          Read VS
 
-Visual Guidance Mode Hotkeys:
+Visual Guidance Mode Hotkeys (same single-letter set as Hand Fly mode, plus F):
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
   F          Read Target VS
+
+Note: both modes share the quick-access hotkeys. Activate Hand Fly mode,
+Visual Guidance mode, or both — the single-letter keys H, V, Q, S, D, B,
+P, A work in either. F is Visual-Guidance-specific (announces "Visual
+guidance not active" if pressed when VG is off).
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
+             In the Access GSX window, press F5 to open the GSX menu, 1-9/0/A-E
+             to choose menu options, C to open GSX Settings, and Escape to hide
+             the window. If multiple GSX services are active, use the Active
+             services combo to choose which service drives tooltip announcements.
 
 INPUT MODE - Press [ to activate
 
@@ -170,6 +199,9 @@ Taxi Guidance:
              touchdown; guidance auto-starts when you land — reuses the ILS
              destination runway if one is set; announces headwind/tailwind on
              runway selection so you can pick an exit that matches the rollout)
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
 
 General:
   Escape     Exit active hotkey mode

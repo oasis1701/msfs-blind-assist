@@ -70,7 +70,7 @@ public static class SettingsManager
                 {
                     System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
-                    Save(defaultSettings);
+                    SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
                     return defaultSettings;
                 }
 
@@ -89,6 +89,7 @@ public static class SettingsManager
                     Debug.WriteLine("[SettingsManager] Settings loaded successfully from JSON");
                 }
 
+                SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
                 return settings;
             }
             catch (Exception ex)
@@ -100,36 +101,78 @@ public static class SettingsManager
         }
 
         /// <summary>
+        /// One-time seed of Fenix vars that should be auto-monitored but NOT spoken by
+        /// default — added to the Fenix disabled-monitor list (the combo/display still
+        /// tracks them; only the spoken call-out is gated off):
+        ///   * CLOCK CHRONO / ELAPSED / UTC and the FenixQuartz chrono/ET counters —
+        ///     raw-seconds counters that tick every second.
+        ///   * the four seat height/distance switches — Continuous so the combo can spring
+        ///     to "Stop" at the travel limit, but silent (the user just wants the value).
+        /// Runs once (guarded by FenixMonitorDefaultsSeeded) so a deliberate re-enable in
+        /// the Ctrl+M monitor is never overwritten.
+        /// </summary>
+        private static void SeedFenixMonitorDefaults(UserSettings s)
+        {
+            if (s.FenixMonitorDefaultsSeeded) return;
+            s.FenixMonitorDefaultsSeeded = true;
+            string[] defaultSilent =
+            {
+                "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED", "N_MIP_CLOCK_UTC",
+                "FNX2PLD_clockChr", "FNX2PLD_clockEt",
+                "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
+                "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
+            };
+            foreach (var key in defaultSilent)
+            {
+                if (!s.FenixDisabledMonitorVariables.Contains(key))
+                    s.FenixDisabledMonitorVariables.Add(key);
+            }
+            Save(s);
+        }
+
+        /// <summary>
         /// Saves settings to disk.
         /// </summary>
         public static void Save(UserSettings settings)
         {
-            lock (_lock)
+            // Hold _lock ONLY for the in-memory work: serializing the mutable,
+            // shared settings object to a string and publishing the reference.
+            // The disk write happens OUTSIDE the lock, against the already-built
+            // string. _lock is the same lock the 30 Hz SimConnect position path
+            // contends for via SettingsManager.Current; holding it across
+            // File.WriteAllText (which can block for the full duration of an
+            // antivirus-scanned %APPDATA% write) would stall audio-guidance frames
+            // whenever an options dialog is OK'd mid-approach. The serialized
+            // string is an immutable snapshot, so writing it after releasing the
+            // lock is race-free even if another thread mutates the settings object
+            // and re-saves concurrently — each Save writes its own snapshot.
+            string json;
+            try
             {
-                try
+                lock (_lock)
                 {
-                    // Ensure directory exists
-                    if (!Directory.Exists(SettingsDirectory))
-                    {
-                        Directory.CreateDirectory(SettingsDirectory);
-                    }
+                    // Serialize to JSON with formatting (reads the mutable shared
+                    // object — must be under the lock).
+                    json = JsonSerializer.Serialize(settings, JsonOptions);
 
-                    // Serialize to JSON with formatting
-                    string json = JsonSerializer.Serialize(settings, JsonOptions);
-
-                    // Write to file
-                    File.WriteAllText(SettingsFilePath, json);
-
-                    // Update current settings reference
+                    // Update current settings reference.
                     _currentSettings = settings;
+                }
 
-                    Debug.WriteLine($"[SettingsManager] Settings saved to {SettingsFilePath}");
-                }
-                catch (Exception ex)
+                // Ensure directory exists, then write — both outside the lock.
+                if (!Directory.Exists(SettingsDirectory))
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error saving settings: {ex.Message}");
-                    throw;
+                    Directory.CreateDirectory(SettingsDirectory);
                 }
+
+                File.WriteAllText(SettingsFilePath, json);
+
+                Debug.WriteLine($"[SettingsManager] Settings saved to {SettingsFilePath}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error saving settings: {ex.Message}");
+                throw;
             }
         }
 

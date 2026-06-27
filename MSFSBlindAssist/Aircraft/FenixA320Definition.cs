@@ -18,6 +18,26 @@ public class FenixA320Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.IncrementDecrement;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.IncrementDecrement;
 
+    // Visual-guidance profile — Fenix A320. Declared explicitly so the math is keyed to this
+    // specific profile rather than inherited from the base default. Approach AoA / Vref /
+    // rate caps are the A320 numbers validated in earlier flight testing on the Fenix and
+    // are left unchanged. The glidepath biases (GlideslopeAltitude / FlareAltitude) are
+    // estimates pending an in-sim coupled-ILS-autoland check.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 6.0,
+        ReferenceVrefKnots        = 140.0,
+        MaxPitchRateDegPerSec     = 2.5,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 60.0,   // estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 12.0,   // estimate
+        FlareTriggerWheelHeightFt = 30.0,   // A320 FCTM: flare initiation at 30 ft RA
+        FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
+    };
+
+    // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
+    public override double TaxiTurnLeadSeconds => 1.3;
+
     // Private fields for FCU readout tracking
     private double? pendingHeadingValue = null;
     private double? pendingHeadingStatus = null;
@@ -45,8 +65,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
+    // Cached variable-definition dictionary (defs are static; rebuilding the whole dict
+    // on every call — and the panel-build loop calls GetVariables() twice per control —
+    // was wasted work. Same proven cache the PMDG defs already use.) Built once, reused.
+    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
+        if (_cachedVariables != null) return _cachedVariables;
         // Start with common base variables (e.g., SIM ON GROUND)
         var variables = GetBaseVariables();
 
@@ -503,7 +528,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_SPEED_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_SPEED_MANAGED",
+                Name = "I_FCU_SPEED_MANAGED", ExcludeFromBatch = true, // FCU readout force-reads this — keep individual def (SimConnect-ceiling batch-skip regression)
                 DisplayName = "FCU SPEED Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -512,7 +537,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_HEADING_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_HEADING_MANAGED",
+                Name = "I_FCU_HEADING_MANAGED", ExcludeFromBatch = true,
                 DisplayName = "FCU HEADING Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -521,7 +546,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_ALTITUDE_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_ALTITUDE_MANAGED",
+                Name = "I_FCU_ALTITUDE_MANAGED", ExcludeFromBatch = true,
                 DisplayName = "FCU ALTITUDE MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -548,7 +573,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_SPEED"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_SPEED",
+                Name = "N_FCU_SPEED", ExcludeFromBatch = true,
                 DisplayName = "FCU SPEED",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -556,7 +581,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_HEADING"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_HEADING",
+                Name = "N_FCU_HEADING", ExcludeFromBatch = true,
                 DisplayName = "FCU HEADING",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -564,7 +589,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_ALTITUDE"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_ALTITUDE",
+                Name = "N_FCU_ALTITUDE", ExcludeFromBatch = true,
                 DisplayName = "FCU ALTITUDE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -572,7 +597,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_VS"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_VS",
+                Name = "N_FCU_VS", ExcludeFromBatch = true,
                 DisplayName = "FCU VERTICAL SPEED",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -598,7 +623,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["B_FCU_VERTICALSPEED_DASHED"] = new SimConnect.SimVarDefinition
             {
-                Name = "B_FCU_VERTICALSPEED_DASHED",
+                Name = "B_FCU_VERTICALSPEED_DASHED", ExcludeFromBatch = true,
                 DisplayName = "FCU VERTICAL SPEED DISPLAY",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1310,7 +1335,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_INCH"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_INCH",
+                Name = "N_FCU_EFIS1_BARO_INCH", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
                 DisplayName = "EFIS1 BARO INHG Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1319,7 +1344,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_HPA"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_HPA",
+                Name = "N_FCU_EFIS1_BARO_HPA", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
                 DisplayName = "EFIS1 BARO HPA Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -4892,6 +4917,41 @@ public class FenixA320Definition : BaseAircraftDefinition
                 }
             },
 
+            // ========== COCKPIT — seats, comfort, standby, gravity gear, DCDU2 brightness ==========
+            // All live-verified settable via the MobiFlight calculator path (SetLVar). Seats are
+            // 3-position direction switches that HOLD the written value: the seat moves while the
+            // switch is Up/Down (0/2) and the model auto-centers to Stop (1) at the travel limit.
+            // Seat height/distance are Continuous+IsAnnounced so the combo auto-updates when the
+            // model springs the 3-position switch back to Stop (1) at the travel limit. The spoken
+            // call-out is silenced by default (seeded into FenixDisabledMonitorVariables — the combo
+            // update runs BEFORE the announce gate in MainForm.OnSimVarUpdated, so the label tracks
+            // the value without speech). The user can re-enable the call-out in the Ctrl+M monitor.
+            ["S_SEAT_HEIGHT_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_SEAT_HEIGHT_CAPT", DisplayName = "Captain Seat Height", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Stop", [2] = "Up"} },
+            ["S_SEAT_DISTANCE_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_SEAT_DISTANCE_CAPT", DisplayName = "Captain Seat Distance", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true, ValueDescriptions = new Dictionary<double, string> {[0] = "Aft", [1] = "Stop", [2] = "Forward"} },
+            ["S_ARMREST_LEFT_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_ARMREST_LEFT_CAPT", DisplayName = "Captain Armrest Left", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
+            ["S_ARMREST_RIGHT_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_ARMREST_RIGHT_CAPT", DisplayName = "Captain Armrest Right", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
+            ["S_SEAT_HEIGHT_FO"] = new SimConnect.SimVarDefinition { Name = "S_SEAT_HEIGHT_FO", DisplayName = "First Officer Seat Height", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Stop", [2] = "Up"} },
+            ["S_SEAT_DISTANCE_FO"] = new SimConnect.SimVarDefinition { Name = "S_SEAT_DISTANCE_FO", DisplayName = "First Officer Seat Distance", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true, ValueDescriptions = new Dictionary<double, string> {[0] = "Aft", [1] = "Stop", [2] = "Forward"} },
+            ["S_ARMREST_LEFT_FO"] = new SimConnect.SimVarDefinition { Name = "S_ARMREST_LEFT_FO", DisplayName = "First Officer Armrest Left", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
+            ["S_ARMREST_RIGHT_FO"] = new SimConnect.SimVarDefinition { Name = "S_ARMREST_RIGHT_FO", DisplayName = "First Officer Armrest Right", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
+            ["S_SUNSHADE_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_SUNSHADE_CAPT", DisplayName = "Captain Sunshade", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Open", [1] = "Closed"} },
+            ["S_SUNSHADE_FO"] = new SimConnect.SimVarDefinition { Name = "S_SUNSHADE_FO", DisplayName = "First Officer Sunshade", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Open", [1] = "Closed"} },
+            ["S_WINDOW_BLINDS_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_WINDOW_BLINDS_CAPT", DisplayName = "Captain Window Blind", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Open", [1] = "Closed"} },
+            ["S_WINDOW_BLINDS_FO"] = new SimConnect.SimVarDefinition { Name = "S_WINDOW_BLINDS_FO", DisplayName = "First Officer Window Blind", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Open", [1] = "Closed"} },
+            ["S_WINDOW_BLINDS_REAR_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_WINDOW_BLINDS_REAR_CAPT", DisplayName = "Captain Rear Window Blind", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Open", [1] = "Closed"} },
+            ["S_WINDOW_BLINDS_REAR_FO"] = new SimConnect.SimVarDefinition { Name = "S_WINDOW_BLINDS_REAR_FO", DisplayName = "First Officer Rear Window Blind", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Open", [1] = "Closed"} },
+            ["S_STANDBY_COMPASS"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_COMPASS", DisplayName = "Standby Compass", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
+            ["S_STANDBY_ATTITUDE_CAGE"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_ATTITUDE_CAGE", DisplayName = "Standby Attitude Cage", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Caged"} },
+            ["S_JUMPSEAT"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT", DisplayName = "Jumpseat", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
+            ["S_JUMPSEAT_HEADREST"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT_HEADREST", DisplayName = "Jumpseat Headrest", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
+            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"} },
+            ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
+            ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
+            // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
+            ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Extended"} },
+            ["S_HYD_GRAVITY_GEAR_EXTEND_ROTATION"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", DisplayName = "Gravity Gear Crank", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"} },
+            ["S_DCDU2_DIM_BRT"] = new SimConnect.SimVarDefinition { Name = "S_DCDU2_DIM_BRT", DisplayName = "First Officer DCDU Brightness", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"} },
+
             // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
             // Brightness Knobs (2 step-based combo boxes)
             ["A_DISPLAY_BRIGHTNESS_ECAM_U"] = new SimConnect.SimVarDefinition
@@ -8409,6 +8469,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
         }
 
+        _cachedVariables = variables;
         return variables;
     }
 
@@ -8471,6 +8532,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "EFIS Left",
                 "EFIS Right",
                 "FCU"
+            },
+
+            ["Cockpit"] = new List<string>
+            {
+                "Captain Seat",
+                "First Officer Seat",
+                "Windows and Shades",
+                "Standby Instruments",
+                "Cockpit Other"
             }
         };
     }
@@ -8828,6 +8898,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_WR_GAIN",           // Gain Knob
                 "S_WR_MODE"            // Image Selector
             },
+
+            // ========== COCKPIT (seats, comfort, standby, gravity gear) ==========
+            ["Captain Seat"] = new List<string> { "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT", "S_ARMREST_LEFT_CAPT", "S_ARMREST_RIGHT_CAPT" },
+            ["First Officer Seat"] = new List<string> { "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO", "S_ARMREST_LEFT_FO", "S_ARMREST_RIGHT_FO" },
+            ["Windows and Shades"] = new List<string> { "S_SUNSHADE_CAPT", "S_SUNSHADE_FO", "S_WINDOW_BLINDS_CAPT", "S_WINDOW_BLINDS_FO", "S_WINDOW_BLINDS_REAR_CAPT", "S_WINDOW_BLINDS_REAR_FO" },
+            ["Standby Instruments"] = new List<string> { "S_STANDBY_COMPASS", "S_STANDBY_ATTITUDE_CAGE" },
+            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_PED_COCKPIT_DOOR_VIDEO", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", "S_DCDU2_DIM_BRT" },
 
             ["ECAM"] = new List<string>
             {
@@ -9239,6 +9316,40 @@ public class FenixA320Definition : BaseAircraftDefinition
     {
         try
         {
+            // ========== COCKPIT (seats, comfort, standby, gravity gear, DCDU2 brightness) ==========
+            // All hold their written value; SetLVar routes through the MobiFlight calc path.
+            // Seats are 3-position direction switches (Down/Stop/Up, Aft/Stop/Forward) that hold —
+            // pick Up/Down to start moving, Stop to halt (the model auto-centers at the travel limit).
+            switch (varKey)
+            {
+                case "S_SEAT_HEIGHT_CAPT":
+                case "S_SEAT_DISTANCE_CAPT":
+                case "S_ARMREST_LEFT_CAPT":
+                case "S_ARMREST_RIGHT_CAPT":
+                case "S_SEAT_HEIGHT_FO":
+                case "S_SEAT_DISTANCE_FO":
+                case "S_ARMREST_LEFT_FO":
+                case "S_ARMREST_RIGHT_FO":
+                case "S_SUNSHADE_CAPT":
+                case "S_SUNSHADE_FO":
+                case "S_WINDOW_BLINDS_CAPT":
+                case "S_WINDOW_BLINDS_FO":
+                case "S_WINDOW_BLINDS_REAR_CAPT":
+                case "S_WINDOW_BLINDS_REAR_FO":
+                case "S_STANDBY_COMPASS":
+                case "S_STANDBY_ATTITUDE_CAGE":
+                case "S_JUMPSEAT":
+                case "S_JUMPSEAT_HEADREST":
+                case "S_PED_COCKPIT_DOOR_VIDEO":
+                case "S_OXYGEN_MASK_COVER_CAPT":
+                case "S_OXYGEN_MASK_COVER_FO":
+                case "S_HYD_GRAVITY_GEAR_EXTEND":
+                case "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION":
+                case "S_DCDU2_DIM_BRT":
+                    simConnect.SetLVar(varKey, value);
+                    return true;
+            }
+
             // ========== COM RADIO FREQUENCIES (standard SimConnect) ==========
             // COM standby frequency set — validate, convert to Hz, send via SimConnect.
             // Return true to prevent MainForm's generic announcement.
@@ -12207,8 +12318,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingHeadingValue = null;
             pendingHeadingStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_HEADING");
-            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_HEADING", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12224,8 +12335,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingSpeedValue = null;
             pendingSpeedStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_SPEED");
-            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_SPEED", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12241,8 +12352,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingAltitudeValue = null;
             pendingAltitudeStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_ALTITUDE");
-            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_ALTITUDE", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12259,8 +12370,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingVSValue = null;
             pendingVSStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_VS");
-            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED");
+            simConnectMgr.RequestVariable("N_FCU_VS", forceUpdate: true);
+            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED", forceUpdate: true);
         }
     }
 
@@ -12280,8 +12391,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             isRequestingBaro = true;
             pendingBaroHpa = null;
             pendingBaroInch = null;
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA");
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH");
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA", forceUpdate: true);
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH", forceUpdate: true);
         }
     }
 
@@ -12327,7 +12438,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                     if (currentInHg == null) continue;
 
                     double currentRounded = Math.Round(currentInHg.Value, 2);
-                    int delta = (int)Math.Round((targetInHg.Value - currentRounded) / 0.01, MidpointRounding.AwayFromZero);
+                    int delta = (int)Math.Round((targetInHg!.Value - currentRounded) / 0.01, MidpointRounding.AwayFromZero);
                     if (delta != 0)
                     {
                         AdjustBaroCounter(counterVar, delta, simConnect);
@@ -13193,70 +13304,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             default:
                 // Let base class handle other actions
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
-        }
-    }
-
-    /// <summary>
-    /// Captures screenshot and analyzes cockpit display using Gemini AI.
-    /// </summary>
-    private async void ReadDisplay(Services.GeminiService.DisplayType displayType,
-                                    string displayName,
-                                    ScreenReaderAnnouncer announcer,
-                                    System.Windows.Forms.Form parentForm)
-    {
-        try
-        {
-            announcer.Announce($"Capturing {displayName}...");
-
-            var screenshotService = new Services.ScreenshotService();
-            var geminiService = new Services.GeminiService();
-
-            // Check if MSFS window is available
-            if (!screenshotService.IsMsfsWindowAvailable())
-            {
-                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
-                return;
-            }
-
-            // Capture screenshot
-            byte[]? screenshot = await screenshotService.CaptureAsync();
-            if (screenshot == null || screenshot.Length == 0)
-            {
-                announcer.Announce($"Failed to capture {displayName} screenshot.");
-                return;
-            }
-
-            // Analyze with Gemini
-            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
-
-            // Show result in window (independent window with synchronous focus)
-            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.ShowForm();
-
-            announcer.Announce($"{displayName} analysis ready.");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
-        {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                "Gemini API key is not configured.\n\n" +
-                "Please configure your API key in:\n" +
-                "File > Gemini Settings\n\n" +
-                "Get a free API key at: https://aistudio.google.com/apikey",
-                "API Key Required",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                $"Error analyzing {displayName}:\n\n{ex.Message}",
-                "Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
         }
     }
 

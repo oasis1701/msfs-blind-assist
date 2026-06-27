@@ -53,6 +53,12 @@ public class TaxiGraph
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
+    // Max perpendicular distance (metres) from a hold-short node to a runway
+    // centerline for the node to be named after that runway. Above a CAT III /
+    // code-F holding-position setback (~107 m) so real hold lines match, below
+    // major-airport parallel-runway spacing so a node binds to its OWN runway.
+    private const double HOLDSHORT_RUNWAY_MATCH_M = 150.0;
+
     // Start at 1 so node ID 0 is a permanent "not set" sentinel. TaxiGuidanceManager
     // uses _destinationNodeId = 0 to mark a cleared route (e.g. after
     // EnterRunwayEndCountdown). If _nextNodeId were 0, the first real node would
@@ -61,6 +67,48 @@ public class TaxiGraph
     private int _nextNodeId = 1;
     private readonly Dictionary<string, List<int>> _spatialHash = new();
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Maps a normalized alias (see TaxiDataMerger.NormalizeTaxiwayName) to the canonical
+    /// taxiway name stored in the graph. Populated during Build from TaxiPath.Aliases.
+    /// Used by ResolveTaxiwayName so pilots can enter alternative names (e.g. "K" for
+    /// a navdata taxiway named "HAWKER") and still find the correct route.
+    /// </summary>
+    public Dictionary<string, string> TaxiwayAliasToCanonical { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Self-describing dropdown labels for online-source aliases — maps the display string
+    /// (e.g. "B (HAWKER)") to the canonical navdata name ("HAWKER"). Surfaced in the taxiway
+    /// dropdowns so a screen-reader user hears "B, HAWKER" and knows it's the SAME pavement;
+    /// selecting one resolves to the canonical via ResolveTaxiwayName (exact match on the label).
+    /// </summary>
+    public Dictionary<string, string> AliasDisplayToCanonical { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Display label (e.g. "B (HAWKER)") → the normalized alias form ("B") captured at Build time.
+    /// GetAllTaxiwayNames' collision skip reads THIS instead of re-parsing the label with
+    /// LastIndexOf(" (") — a canonical name that itself contains " (" (e.g. "RAMP (NORTH)") would
+    /// otherwise split at the wrong paren and mis-classify the alias.
+    /// </summary>
+    private readonly Dictionary<string, string> _aliasDisplayToNormalized = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Normalized forms of every REAL navdata taxiway name. An alias is never allowed to remap a
+    /// name that is itself a real taxiway (that would misroute a legitimate clearance), so
+    /// ResolveTaxiwayName / GetAllTaxiwayNames consult this set as a guard.
+    /// </summary>
+    private readonly HashSet<string> _normalizedRealNames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Normalized bare aliases that map to MORE THAN ONE distinct canonical name (two different
+    /// navdata taxiways online-named the same thing). A bare such alias can't safely pick one
+    /// pavement, so ResolveTaxiwayName refuses to resolve it (returns the entered text unchanged) —
+    /// a miss is safer than guessing. The disambiguated labels ("B (HAWKER)" / "B (FOXTROT)") still
+    /// resolve via AliasDisplayToCanonical.
+    /// </summary>
+    private readonly HashSet<string> _ambiguousNormalizedAliases = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Builds the taxi graph asynchronously — useful at large airports where Build can take
@@ -129,6 +177,52 @@ public class TaxiGraph
             {
                 graph.RegisterTaxiwayNode(name, startNodeId);
                 graph.RegisterTaxiwayNode(name, endNodeId);
+                // Track the normalized real name so an alias can never remap a genuine taxiway.
+                graph._normalizedRealNames.Add(
+                    MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger.NormalizeTaxiwayName(name));
+            }
+
+            // Register any online-source aliases discovered by TaxiDataMerger.
+            // Only affects COMPARISON / routing — never changes what is stored in the graph.
+            if (path.Aliases != null && path.Aliases.Count > 0 && !string.IsNullOrEmpty(name))
+            {
+                foreach (var alias in path.Aliases)
+                {
+                    if (string.IsNullOrWhiteSpace(alias)) continue;
+                    string normalizedAlias = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+                        .NormalizeTaxiwayName(alias);
+                    if (string.IsNullOrEmpty(normalizedAlias)) continue;
+
+                    // Self-describing label "ALIAS (CANONICAL)" for the dropdown so the pilot can
+                    // find + select the ATC/real name and hear which pavement it is. ALWAYS register
+                    // the label (one per distinct canonical), so when two taxiways share an online
+                    // name BOTH "B (HAWKER)" and "B (FOXTROT)" are selectable; resolution is exact on
+                    // the label string. Also store the normalized alias for GetAllTaxiwayNames' skip.
+                    string label = $"{alias.Trim()} ({name})";
+                    graph.AliasDisplayToCanonical[label] = name;
+                    graph._aliasDisplayToNormalized[label] = normalizedAlias;
+
+                    // Bare-alias → canonical map, with ambiguity detection. A second DIFFERENT
+                    // canonical for the same normalized alias makes the bare form ambiguous: remove
+                    // it and never re-add (ResolveTaxiwayName then leaves a bare "B" unresolved).
+                    if (graph._ambiguousNormalizedAliases.Contains(normalizedAlias))
+                    {
+                        // already ambiguous — labels stay, bare form stays unresolved
+                    }
+                    else if (graph.TaxiwayAliasToCanonical.TryGetValue(normalizedAlias, out var existing))
+                    {
+                        if (!string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            graph._ambiguousNormalizedAliases.Add(normalizedAlias);
+                            graph.TaxiwayAliasToCanonical.Remove(normalizedAlias);
+                        }
+                        // same canonical (another segment of the same taxiway) — keep as-is
+                    }
+                    else
+                    {
+                        graph.TaxiwayAliasToCanonical[normalizedAlias] = name;
+                    }
+                }
             }
         }
 
@@ -290,7 +384,22 @@ public class TaxiGraph
                     }
                 }
 
-                if (nearestRunway != null && nearestDist < 500)
+                // Primary: associate by nearest runway CENTERLINE (length-invariant),
+                // so a mid-runway crossing of a long runway is named after the runway,
+                // not the taxiway. Format leads with the runway (the safety cue),
+                // appending the holding-point/taxiway designator when present.
+                string? centerlineRwy = MatchHoldShortRunwayName(
+                    node.Latitude, node.Longitude, graph.RunwayCenterlines, HOLDSHORT_RUNWAY_MATCH_M);
+                if (centerlineRwy != null)
+                {
+                    node.HoldShortName = !string.IsNullOrEmpty(holdPointName)
+                        ? $"runway {centerlineRwy} at {holdPointName}"
+                        : $"runway {centerlineRwy}";
+                }
+                // Fallback (no centerlines built, or none within tolerance): the
+                // existing threshold-distance heuristic, unchanged — preserves
+                // today's output for sparse navdata without reciprocal pairs.
+                else if (nearestRunway != null && nearestDist < 500)
                 {
                     if (!string.IsNullOrEmpty(holdPointName))
                         node.HoldShortName = $"{holdPointName}, Runway {nearestRunway}";
@@ -433,13 +542,13 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Finds the nearest graph node to a given position.
-    /// Uses the spatial hash for fast local lookup (expanding ring if needed),
-    /// falling back to a full scan only if no node is found within ~1km.
-    /// Component-unaware: callers needing component filtering must inspect
-    /// the result's <see cref="TaxiNode.ComponentId"/> themselves.
+    /// Finds the nearest graph node to a given position. When
+    /// <paramref name="requiredComponentId"/> is set, only nodes in that
+    /// connected component are considered (the spatial-hash ring and the
+    /// full-scan fallback both honour it) — used to keep an aircraft's start
+    /// node in the destination's component.
     /// </summary>
-    public TaxiNode? FindNearestNode(double lat, double lon)
+    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null)
     {
         // Fast path: search the spatial hash with an expanding ring of cells.
         // Precision 5 = ~1.1m cells at equator. Rings 1, 3, 10, 30 cover up to ~330m cheaply.
@@ -459,6 +568,8 @@ public class TaxiGraph
                         foreach (int nodeId in nodeIds)
                         {
                             var node = Nodes[nodeId];
+                            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                                continue;
                             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
                             if (dist < bestDist)
                             {
@@ -477,6 +588,8 @@ public class TaxiGraph
         double fallbackDist = double.MaxValue;
         foreach (var node in Nodes.Values)
         {
+            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < fallbackDist)
             {
@@ -791,11 +904,151 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
-    /// Uses equirectangular projection — accurate for taxiway-scale distances.
-    /// Returns the distance to the nearest point on the segment (not the infinite line),
-    /// so endpoints count when the foot of the perpendicular falls outside.
+    /// Detects which runway the aircraft is sitting on, using the same half-width
+    /// tolerance as DescribeLocation but exposing structured data for callers that
+    /// need geometry (threshold lat/lon, true heading, designator) rather than a
+    /// spoken string. Uses the aircraft's true heading to pick the correct
+    /// reciprocal designator (e.g. 27L vs 09R) — the "threshold" is the upwind
+    /// end of the runway, i.e. the end the aircraft is taking off FROM.
     /// </summary>
+    /// <param name="lat">Aircraft latitude (degrees).</param>
+    /// <param name="lon">Aircraft longitude (degrees).</param>
+    /// <param name="aircraftHeadingTrue">
+    /// Aircraft true heading in degrees. Used to pick the reciprocal designator.
+    /// </param>
+    /// <param name="runwayId">
+    /// Out: runway designator (e.g. "27L"), no "Runway " prefix.
+    /// </param>
+    /// <param name="thresholdLat">Out: latitude of the upwind threshold.</param>
+    /// <param name="thresholdLon">Out: longitude of the upwind threshold.</param>
+    /// <param name="runwayHeadingTrue">
+    /// Out: true heading of the runway in the takeoff direction (degrees, 0..360).
+    /// </param>
+    /// <returns>
+    /// True if the aircraft is within half-width of a runway centerline. False
+    /// if the aircraft is not on any runway in this graph's RunwayCenterlines list.
+    /// </returns>
+    public bool TryGetRunwayAtPosition(
+        double lat, double lon, double aircraftHeadingTrue,
+        out string runwayId,
+        out double thresholdLat, out double thresholdLon,
+        out double runwayHeadingTrue)
+    {
+        runwayId = "";
+        thresholdLat = 0; thresholdLon = 0;
+        runwayHeadingTrue = 0;
+
+        foreach (var rwy in RunwayCenterlines)
+        {
+            double perp = PerpendicularDistanceMeters(
+                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
+            // Strict half-width (no +5 m tolerance). Stricter than DescribeLocation
+            // because takeoff-assist centerline math depends on the chosen runway
+            // actually being the one under the aircraft — a 5 m fudge could
+            // mis-attribute when the aircraft is sitting on a high-speed exit
+            // immediately adjacent to a runway.
+            if (perp > rwy.HalfWidthMeters) continue;
+
+            // Pick the end whose takeoff heading is closer to the aircraft's
+            // heading. End 1's takeoff heading is HeadingDeg1; end 2's is
+            // HeadingDeg1 + 180 (mod 360).
+            double hdg1 = NormalizeHeading(rwy.HeadingDeg1);
+            double hdg2 = NormalizeHeading(rwy.HeadingDeg1 + 180.0);
+            double diff1 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg1));
+            double diff2 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg2));
+
+            if (diff1 <= diff2)
+            {
+                runwayId = rwy.Name1;
+                thresholdLat = rwy.Lat1;
+                thresholdLon = rwy.Lon1;
+                runwayHeadingTrue = hdg1;
+            }
+            else
+            {
+                runwayId = rwy.Name2;
+                thresholdLat = rwy.Lat2;
+                thresholdLon = rwy.Lon2;
+                runwayHeadingTrue = hdg2;
+            }
+
+            // Fallback if the chosen end has an empty Name (shouldn't happen
+            // in well-formed navdata, but defensive — an empty designator
+            // would propagate into the spoken callout). When we fall over to
+            // the other end's name, also re-point the threshold + heading to
+            // that other end so the geometry stays consistent with the name.
+            // If both names are empty, leave the geometry on the originally
+            // chosen end — the empty runwayId will be the caller's signal
+            // that data is malformed, but threshold + heading remain valid
+            // approximations.
+            if (string.IsNullOrEmpty(runwayId))
+            {
+                if (rwy.Name1.Length > 0)
+                {
+                    runwayId = rwy.Name1;
+                    thresholdLat = rwy.Lat1;
+                    thresholdLon = rwy.Lon1;
+                    runwayHeadingTrue = hdg1;
+                }
+                else if (rwy.Name2.Length > 0)
+                {
+                    runwayId = rwy.Name2;
+                    thresholdLat = rwy.Lat2;
+                    thresholdLon = rwy.Lon2;
+                    runwayHeadingTrue = hdg2;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static double NormalizeHeading(double deg)
+    {
+        deg = deg % 360.0;
+        if (deg < 0) deg += 360.0;
+        return deg;
+    }
+
+    /// <summary>
+    /// Runway designator a hold-short node holds short of, found by the NEAREST
+    /// runway centerline (full length, perpendicular distance clamped to the
+    /// threshold endpoints). Length-invariant: a hold-short where a taxiway
+    /// crosses a long runway far from either threshold is still matched — unlike a
+    /// distance-to-threshold test. Returns the closer-end designator (same
+    /// convention as DescribeLocation / WhichRunwayContains), or null when no
+    /// centerline is within <paramref name="maxMatchMeters"/> (the caller then
+    /// falls back to the threshold heuristic). Public static for probe coverage.
+    /// </summary>
+    public static string? MatchHoldShortRunwayName(
+        double lat, double lon,
+        IReadOnlyList<RunwayCenterline> centerlines,
+        double maxMatchMeters)
+    {
+        string? best = null;
+        double bestPerp = double.MaxValue;
+        foreach (var rwy in centerlines)
+        {
+            double perp = PerpendicularDistanceMeters(
+                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
+            if (perp > maxMatchMeters || perp >= bestPerp) continue;
+
+            // Closer-end designator (same convention as DescribeLocation): the end
+            // the aircraft is nearer is the one it would line up to depart from.
+            double d1 = FastDistanceMeters(lat, lon, rwy.Lat1, rwy.Lon1);
+            double d2 = FastDistanceMeters(lat, lon, rwy.Lat2, rwy.Lon2);
+            string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
+            if (string.IsNullOrEmpty(name)) name = rwy.Name1;
+            if (string.IsNullOrEmpty(name)) continue; // unnamed centerline — skip
+
+            best = name;
+            bestPerp = perp;
+        }
+        return best;
+    }
+
     /// <summary>
     /// Public wrapper for the internal perpendicular-distance calculation, so
     /// other components (e.g. TaxiGuidanceManager.WhichRunwayContains) can do
@@ -807,6 +1060,12 @@ public class TaxiGraph
         double blat, double blon)
         => PerpendicularDistanceMeters(plat, plon, alat, alon, blat, blon);
 
+    /// <summary>
+    /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
+    /// Uses equirectangular projection — accurate for taxiway-scale distances.
+    /// Returns the distance to the nearest point on the segment (not the infinite line),
+    /// so endpoints count when the foot of the perpendicular falls outside.
+    /// </summary>
     private static double PerpendicularDistanceMeters(
         double plat, double plon,
         double alat, double alon,
@@ -840,7 +1099,57 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Gets all unique taxiway names in the graph, sorted.
+    /// True when the taxi edge (a→b) crosses the runway centerline (t1→t2)
+    /// between the thresholds — a proper segment-segment intersection.
+    ///
+    /// This is the CORRECT "does the route cross this runway" test. A taxiway
+    /// crosses a runway via an EDGE that spans the pavement, with its endpoint
+    /// NODES sitting OFF the runway on either side — so a "is a node ON the
+    /// pavement?" test (perpendicular distance ≤ half-width) silently misses the
+    /// crossing whenever the flanking nodes are more than ~half-width+5 m from
+    /// the centerline. KBOS taxiway C over runway 04L is the motivating case:
+    /// C plainly crosses 04L, but C's nearest node is 35 m from the 04L
+    /// centerline (half-width is 25 m), so the node test found nothing and no
+    /// hold-short was inserted — even though the route clearly traverses the
+    /// runway. The edge-intersection test catches it regardless of node spacing.
+    ///
+    /// "Proper" (strict opposite-sides) intersection by design: a taxiway that
+    /// merely touches a threshold endpoint or runs parallel alongside the runway
+    /// is NOT flagged, avoiding false hold-shorts.
+    /// </summary>
+    public static bool EdgeCrossesRunwayStatic(
+        double aLat, double aLon, double bLat, double bLon,
+        double t1Lat, double t1Lon, double t2Lat, double t2Lon)
+    {
+        // Project the four points to a local planar frame (origin = a, x=east,
+        // y=north, metres) — equirectangular, accurate at taxiway/runway scale.
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double metersPerDegLon =
+            METERS_PER_DEG_LAT * Math.Cos((aLat + bLat) * 0.5 * (Math.PI / 180.0));
+
+        double p1x = 0.0, p1y = 0.0;
+        double p2x = (bLon - aLon) * metersPerDegLon, p2y = (bLat - aLat) * METERS_PER_DEG_LAT;
+        double p3x = (t1Lon - aLon) * metersPerDegLon, p3y = (t1Lat - aLat) * METERS_PER_DEG_LAT;
+        double p4x = (t2Lon - aLon) * metersPerDegLon, p4y = (t2Lat - aLat) * METERS_PER_DEG_LAT;
+
+        // Orientation of (b)/(t1)/(t2) relative to the two directed lines.
+        double d1 = Orient(p3x, p3y, p4x, p4y, p1x, p1y); // p1 vs runway line
+        double d2 = Orient(p3x, p3y, p4x, p4y, p2x, p2y); // p2 vs runway line
+        double d3 = Orient(p1x, p1y, p2x, p2y, p3x, p3y); // t1 vs edge line
+        double d4 = Orient(p1x, p1y, p2x, p2y, p4x, p4y); // t2 vs edge line
+
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+            && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+
+        // Signed area (z of cross product) of (o→a)×(o→b): >0 left, <0 right.
+        static double Orient(double ox, double oy, double ax, double ay, double bx, double by)
+            => (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+    }
+
+    /// <summary>
+    /// Gets all unique taxiway names in the graph, sorted, including alias names so
+    /// pilots can type an alternative name and still see it in dropdowns.
+    /// Alias names are the human-readable forms collected from online sources.
     /// </summary>
     public List<string> GetAllTaxiwayNames()
     {
@@ -853,9 +1162,60 @@ public class TaxiGraph
                     names.Add(edge.TaxiwayName);
             }
         }
+
+        // Include alias display names (the human-readable online-source forms, e.g. "B" for a
+        // navdata "HAWKER") so a pilot can SELECT the ATC/real name from the dropdown — the combo
+        // is DropDownList (no free text), so an alias the pilot can't select would be useless.
+        // Selecting an alias resolves to the canonical name at route time (ResolveTaxiwayName).
+        // Skip any alias whose normalized form collides with a real taxiway name: that real name
+        // is ALREADY in the list and ResolveTaxiwayName routes the bare name to the REAL taxiway
+        // (collision guard), so surfacing e.g. "Z (K)" would be a mislabeled duplicate of the real
+        // taxiway Z that, if selected, mis-routes to K. These collisions are common at rich,
+        // junction-dense airports (OMDB: ~130 such labels) where a navdata segment's midpoint
+        // matches a DIFFERENT-named crossing online segment. The normalized alias is captured at
+        // Build time in _aliasDisplayToNormalized — do NOT re-derive it by parsing the label, since
+        // a canonical name containing " (" (e.g. "RAMP (NORTH)") splits at the wrong paren.
+        foreach (var display in AliasDisplayToCanonical.Keys)
+        {
+            string normAlias = _aliasDisplayToNormalized.TryGetValue(display, out var na) ? na : "";
+            if (!string.IsNullOrEmpty(normAlias) && _normalizedRealNames.Contains(normAlias))
+                continue;
+            names.Add(display);
+        }
+
         var sorted = names.ToList();
         sorted.Sort(StringComparer.OrdinalIgnoreCase);
         return sorted;
+    }
+
+    /// <summary>
+    /// Resolves an entered taxiway name to the canonical navdata name via the alias map.
+    /// If <paramref name="entered"/> (normalized) is a known alias, returns the canonical
+    /// navdata name stored in the graph. Otherwise returns <paramref name="entered"/> unchanged.
+    /// Comparison is normalized (case-insensitive, spaces stripped, TWY/TAXIWAY prefix stripped).
+    /// </summary>
+    public string ResolveTaxiwayName(string entered)
+    {
+        if (string.IsNullOrWhiteSpace(entered))
+            return entered;
+
+        // Exact match on a labeled dropdown alias ("B (HAWKER)") → canonical navdata name.
+        if (AliasDisplayToCanonical.TryGetValue(entered.Trim(), out string? byLabel))
+            return byLabel;
+
+        string normalized = MSFSBlindAssist.Services.TaxiAugment.TaxiDataMerger
+            .NormalizeTaxiwayName(entered);
+
+        // Collision guard: if the entered name IS a real taxiway, never remap it to an alias
+        // canonical — a legitimate "B" clearance must route to the real "B", not to whatever
+        // online source happened to also call "B" by another name.
+        if (!string.IsNullOrEmpty(normalized) && !_normalizedRealNames.Contains(normalized) &&
+            TaxiwayAliasToCanonical.TryGetValue(normalized, out string? canonical))
+        {
+            return canonical;
+        }
+
+        return entered;
     }
 
     /// <summary>
@@ -1037,6 +1397,56 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Returns the node on <paramref name="fromTaxiway"/> that also has an outgoing edge on
+    /// <paramref name="toTaxiway"/> within the given connected component — i.e. the intersection
+    /// node where the two taxiways meet.  Used by the progressive-taxi terminator to locate
+    /// "hold short of taxiway Y while on taxiway X".
+    /// Returns -1 when no such node exists in the component.
+    /// </summary>
+    public int FindTaxiwayIntersectionNode(string fromTaxiway, string toTaxiway, int requiredComponentId)
+    {
+        foreach (var kvp in Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!Nodes.TryGetValue(nodeId, out var node) || node.ComponentId != requiredComponentId)
+                continue;
+            bool onFrom = false, onTo = false;
+            foreach (var e in kvp.Value)
+            {
+                if (e.TaxiwayName.Equals(fromTaxiway, StringComparison.OrdinalIgnoreCase)) onFrom = true;
+                else if (e.TaxiwayName.Equals(toTaxiway, StringComparison.OrdinalIgnoreCase)) onTo = true;
+            }
+            if (onFrom && onTo) return nodeId;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Returns the node on <paramref name="taxiway"/> (in the same connected component as
+    /// <paramref name="fromNodeId"/>) that is farthest — by straight-line distance — from
+    /// <paramref name="fromNodeId"/>.  Used by the progressive-taxi terminator to locate
+    /// the "end of taxiway" destination.
+    /// Returns -1 when <paramref name="fromNodeId"/> is not found or no node on
+    /// <paramref name="taxiway"/> exists in the component.
+    /// </summary>
+    public int FindTaxiwayEndNode(int fromNodeId, string taxiway)
+    {
+        if (!Nodes.TryGetValue(fromNodeId, out var from)) return -1;
+        int comp = from.ComponentId;
+        int best = -1;
+        double bestDist = -1;
+        foreach (var kvp in Adjacency)
+        {
+            int nodeId = kvp.Key;
+            if (!Nodes.TryGetValue(nodeId, out var node) || node.ComponentId != comp) continue;
+            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiway, StringComparison.OrdinalIgnoreCase))) continue;
+            double d = FastDistanceMeters(from.Latitude, from.Longitude, node.Latitude, node.Longitude);
+            if (d > bestDist) { bestDist = d; best = nodeId; }
+        }
+        return best;
+    }
+
+    /// <summary>
     /// Gets the edge between two adjacent nodes on a specific taxiway, or any edge if taxiway is empty.
     /// </summary>
     public TaxiEdge? GetEdge(int fromNodeId, int toNodeId, string? preferredTaxiway = null)
@@ -1188,10 +1598,12 @@ public class TaxiGraph
         // Cutoffs: usable exits lie past the jet touchdown zone and before the runway end.
         // MIN_DIST_FT is a conservative floor (still captures very-early RETs at some
         // airports and "reject take-off" spots; also avoids false positives from
-        // threshold hold-short lines). END_BUFFER_FT cuts off the last stretch so we
-        // don't list turnoffs that require full-length backtrack.
+        // threshold hold-short lines). END_BUFFER_FT is a small margin against nodes
+        // literally on the runway-end markings; the geometric corridor + named-edge
+        // filters are the real protection, so 50 ft is enough (200 ft was excluding
+        // legitimate end-of-runway vacate exits like S7 at EIDW 28L).
         const double MIN_DIST_FT = 500.0;
-        const double END_BUFFER_FT = 200.0;
+        const double END_BUFFER_FT = 50.0;
         const double TOUCHDOWN_AIM_FT = 1000.0;  // typical jet aim point past landing threshold
 
         // Classification thresholds (angle between exit edge and runway axis).
@@ -1237,14 +1649,37 @@ public class TaxiGraph
             double dEn = (n.Longitude - rwy.StartLon) * mPerLon;
             double latM = dEn * cosH - dNn * sinH;
             double aM = dEn * sinH + dNn * cosH;
-            if (Math.Abs(latM) <= lateralToleranceM && aM >= 0 && aM <= lengthM + 50.0)
-            { hasHoldShortOnRunway = true; break; }
+            if (Math.Abs(latM) > lateralToleranceM || aM < 0 || aM > lengthM + 50.0)
+                continue;
+            // Node is geometrically within this runway's corridor. Also require that it
+            // has at least one named edge whose exit angle is meaningful for this landing
+            // direction (≤ NORMAL_MAX_DEG after applying the same backward-RET override
+            // used in the main exit-angle computation). Without this check, a RET that is
+            // designed for the OPPOSITE runway direction (e.g. N4 at EIDW — a 28R RET
+            // whose node physically lies inside the 10L corridor) would set
+            // hasHoldShortOnRunway=true, blocking the Normal-node fallback from finding
+            // the real 10L exits (N1/N2/N3), leaving only that backward RET.
+            if (!Adjacency.TryGetValue(n.NodeId, out var hsEdges)) continue;
+            bool hasForwardExit = false;
+            foreach (var he in hsEdges)
+            {
+                if (string.IsNullOrEmpty(he.TaxiwayName)) continue;
+                double relAngle = Math.Abs(NormalizeAngle(he.BearingDegrees - rwyHeadingTrue));
+                bool peelsBack = relAngle > 90.0;
+                double ea = peelsBack ? 180.0 - relAngle : relAngle;
+                if (peelsBack && ea < 50.0) ea = NORMAL_MAX_DEG + 20.0;
+                if (ea <= NORMAL_MAX_DEG) { hasForwardExit = true; break; }
+            }
+            if (hasForwardExit) { hasHoldShortOnRunway = true; break; }
         }
 
         foreach (var node in Nodes.Values)
         {
             bool isHoldShortNode = node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort;
             bool isImplicitExitNode = false;
+            // For fallback implicit exits: node ID of the first point outside the corridor.
+            // Set by ExitPathLeavesCorridor; used as ApronNodeId for tone re-routing.
+            int implicitApronNodeId = -1;
             if (!isHoldShortNode)
             {
                 // Fallback gate: only consider Normal nodes when THIS runway has
@@ -1267,6 +1702,20 @@ public class TaxiGraph
                     double off = rel > 90.0 ? 180.0 - rel : rel;
                     if (off >= MIN_FALLBACK_EXIT_ANGLE_DEG)
                     { hasOffAxisNamedEdge = true; break; }
+                }
+                // Secondary gate: some scenery packages (e.g. LVFR LEMD) model RETs as
+                // smooth curves whose individual PT-type path segments all run nearly
+                // parallel to the runway (< 20° off-axis), so the angle test above
+                // misses them. A truly parallel holding taxiway stays within the lateral
+                // corridor for its entire length; a real RET must eventually leave the
+                // corridor to reach the apron. Follow named edges up to 600 m and accept
+                // the node if the path demonstrably exits the runway strip.
+                // Also captures the corridor-exit node ID for ApronNodeId (re-routing).
+                if (!hasOffAxisNamedEdge)
+                {
+                    implicitApronNodeId = ExitPathLeavesCorridor(node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
+                    if (implicitApronNodeId < 0) continue;
+                    hasOffAxisNamedEdge = true;
                 }
                 if (!hasOffAxisNamedEdge) continue;
                 isImplicitExitNode = true;
@@ -1304,6 +1753,7 @@ public class TaxiGraph
             // a named path. Compute the angle between that edge and the runway.
             string taxiwayName = "";
             double exitAngle = 90.0; // default to perpendicular if nothing better found
+            double exitBearingTrue = 0.0; // true bearing of best exit edge; 0 = not found
             if (Adjacency.TryGetValue(node.NodeId, out var edges))
             {
                 TaxiEdge? best = null;
@@ -1325,12 +1775,81 @@ public class TaxiGraph
                     bool bestHasDigit = HasLetterAndDigit(best.TaxiwayName);
                     bool curHasDigit  = HasLetterAndDigit(e.TaxiwayName);
                     if (curHasDigit && !bestHasDigit)
+                    {
                         best = e;
+                    }
+                    else if (curHasDigit == bestHasDigit)
+                    {
+                        // Same name priority — prefer the edge that turns most off-axis
+                        // from the runway. Adjacency-list ordering is not guaranteed, so
+                        // without this tie-break a parallel-running named edge can be
+                        // chosen over the actual perpendicular exit edge, producing an
+                        // exit angle of ~0° for exits like EGCC AF/AG on 23R.
+                        double bestRel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
+                        double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
+                        double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
+                        double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
+                        if (curOff > bestOff + 0.01)
+                        {
+                            best = e;
+                        }
+                        else if (Math.Abs(curOff - bestOff) <= 0.01)
+                        {
+                            // Equal off-axis angle (within float tolerance): the adjacency
+                            // list contains both the forward exit edge and the reverse edge
+                            // of the same taxiway segment. Both fold to the same `off`, so
+                            // first-encountered was winning non-deterministically.
+                            // Wrong edge → wrong ExitBearingTrue → FindExitExtensionNode
+                            // routes backward → permanent max-pan tone for any exit angle.
+                            //
+                            // Primary tiebreak — lateral direction.
+                            //   Use the junction node's signed lateral offset from the
+                            //   runway centreline (lateralM: + = right, - = left, already
+                            //   computed above). The correct exit edge moves the aircraft
+                            //   further off-runway on the SAME side as the junction; the
+                            //   reverse edge heads toward the opposite apron or back across
+                            //   the runway. lateralComponent = sin(NormalizeAngle(bearing −
+                            //   rwyHeading)) gives the signed lateral movement of an edge.
+                            //   This criterion is geometrically correct for ALL exit angles:
+                            //     7°  exit: correct edge lat≈+0.12, reverse lat≈-0.12
+                            //     90° exit: correct edge lat=±1.00, reverse lat=∓1.00
+                            //     100° exit: correct edge lat≈±0.98, reverse lat≈∓0.98
+                            //   (hemisphere alone would mis-pick the reverse edge for
+                            //   obtuse exits 90°–180° where the correct edge is in the
+                            //   "backward" hemisphere by the rel≤90 criterion.)
+                            //
+                            // Fallback tiebreak — hemisphere.
+                            //   Applied only when the junction is within 1 m of the
+                            //   centreline and lateral direction can't discriminate.
+                            //   Forward-hemisphere edges (rel ≤ 90°) beat backward edges;
+                            //   correct for acute exits, ambiguous for obtuse exits on the
+                            //   centreline (an inherently rare degenerate case).
+                            if (Math.Abs(lateralM) > 1.0)
+                            {
+                                double bestLatComp = Math.Sin(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
+                                double curLatComp  = Math.Sin(NormalizeAngle(e.BearingDegrees   - rwyHeadingTrue) * Math.PI / 180.0);
+                                bool curMatchesSide  = Math.Sign(curLatComp)  == Math.Sign(lateralM);
+                                bool bestMatchesSide = Math.Sign(bestLatComp) == Math.Sign(lateralM);
+                                if (curMatchesSide && !bestMatchesSide)
+                                    best = e;
+                            }
+                            else
+                            {
+                                // Junction near centreline: fall back to hemisphere.
+                                bool bestForward = bestRel <= 90.0;
+                                bool curForward  = curRel  <= 90.0;
+                                if (curForward && !bestForward)
+                                    best = e;
+                            }
+                        }
+                    }
                 }
 
                 if (best != null)
                 {
                     taxiwayName = best.TaxiwayName;
+                    // Store 360.0 for due-north edges so 0.0 stays unambiguous as "not found".
+                    exitBearingTrue = best.BearingDegrees == 0.0 ? 360.0 : best.BearingDegrees;
                     // Raw relative angle in 0..180 (absolute value of normalized delta).
                     double rel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
 
@@ -1361,6 +1880,88 @@ public class TaxiGraph
                 }
             }
 
+            // For implicit (non-HS) exits whose first named edge is nearly parallel to
+            // the runway (< 20°), the edge bearing gives an inadequate pan cue. The BFS
+            // apron node — first node found outside the corridor — captures the actual
+            // exit direction after the arc, so use node→apron bearing instead when it
+            // gives a wider (more useful) angle.
+            //
+            // Guards (both required):
+            //   (a) apronAngle <= NORMAL_MAX_DEG (110°) — forward direction only. A
+            //       backward apron-bearing (BFS exited toward the approach end) would
+            //       pan the pilot the wrong way.
+            //   (b) apronAngle > currentAngleFwd — only override when apron is MORE
+            //       off-axis than the existing first-edge bearing. Mirrors the HS-style
+            //       override guard at the next block. Without this, an exit whose stub
+            //       points further off-runway than its eventual apron node (a curved-
+            //       back-toward-centreline shape) would have its bearing narrowed by
+            //       the override — a regression vs. the first-edge value.
+            //
+            // Threshold widened from 5° → 20° so EDDB-style implicit
+            // exits with shallow first-edge stubs (e.g. EDDB 24L M3 at 6.9°, LGAV 03R
+            // D8/D9 at 7.6°) are covered. Symmetric with the HS-style override gate at
+            // the next block (also < 20°). EIDW S5 and other hold-short shallow exits
+            // are unaffected — they use the parallel HS-style branch (`isHoldShortNode`
+            // gate). EGNX 27/M (90° normal) is above 20°, also unaffected.
+            if (!isHoldShortNode && exitAngle < 20.0
+                && implicitApronNodeId > 0
+                && Nodes.TryGetValue(implicitApronNodeId, out var apronTaxiNode))
+            {
+                const double MPD_BRG = 111132.0;
+                double latRb = (node.Latitude + apronTaxiNode.Latitude) * 0.5 * Math.PI / 180.0;
+                double mPLb = MPD_BRG * Math.Cos(latRb);
+                double dNb = (apronTaxiNode.Latitude - node.Latitude) * MPD_BRG;
+                double dEb = (apronTaxiNode.Longitude - node.Longitude) * mPLb;
+                double apronBrg = Math.Atan2(dEb, dNb) * 180.0 / Math.PI;
+                if (apronBrg < 0) apronBrg += 360.0;
+                double apronAngle = Math.Abs(NormalizeAngle(apronBrg - rwyHeadingTrue));
+                // Compare against current exitBearingTrue. 0.0 means no bearing found
+                // (sentinel) → treat as -1 so any forward-direction apron wins.
+                double currentAngleFwd = exitBearingTrue != 0.0
+                    ? Math.Abs(NormalizeAngle(exitBearingTrue - rwyHeadingTrue))
+                    : -1.0;
+                if (apronAngle <= NORMAL_MAX_DEG && apronAngle > currentAngleFwd)
+                    exitBearingTrue = apronBrg == 0.0 ? 360.0 : apronBrg;
+            }
+
+            // For HS/IHS exits with shallow angle (<20°), the hold-short marker may sit at
+            // the start of a curved RET whose individual segments each run nearly parallel
+            // to the runway. The first-edge ExitBearingTrue in those cases is close to
+            // runway heading → near-zero tone blend during rollout. Run the same corridor-
+            // BFS used for Normal-node implicit exits to find the first node outside the
+            // runway strip. Two benefits:
+            //   (a) ExitBearingTrue is overridden with the node→apron bearing when it gives
+            //       a wider (more useful) angle — clearer pan cue at the RET turn point.
+            //   (b) ApronNodeId is set to that node → the Taxiing-handoff re-route fires,
+            //       giving A* guidance through the actual curve rather than the apron-network
+            //       route computed at touchdown.
+            // Threshold 20°: captures all real ICAO Cat E RETs; avoids BFS overhead on
+            // standard 60-90° exits where the first-edge bearing is already adequate.
+            int hsApronNodeId = -1;
+            if (isHoldShortNode && exitAngle < 20.0)
+            {
+                int bfsResult = ExitPathLeavesCorridor(node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
+                if (bfsResult > 0 && Nodes.TryGetValue(bfsResult, out var hsApronNode))
+                {
+                    hsApronNodeId = bfsResult;
+                    const double MPD_BRG_HS = 111132.0;
+                    double latRh = (node.Latitude + hsApronNode.Latitude) * 0.5 * Math.PI / 180.0;
+                    double mPLh = MPD_BRG_HS * Math.Cos(latRh);
+                    double dNh = (hsApronNode.Latitude - node.Latitude) * MPD_BRG_HS;
+                    double dEh = (hsApronNode.Longitude - node.Longitude) * mPLh;
+                    double hsApronBrg = Math.Atan2(dEh, dNh) * 180.0 / Math.PI;
+                    if (hsApronBrg < 0) hsApronBrg += 360.0;
+                    double apronAngle = Math.Abs(NormalizeAngle(hsApronBrg - rwyHeadingTrue));
+                    // Compare against current ExitBearingTrue. 0.0 means no bearing found
+                    // (sentinel) → treat as -1 so any forward-direction apron wins.
+                    double currentAngleFwd = exitBearingTrue != 0.0
+                        ? Math.Abs(NormalizeAngle(exitBearingTrue - rwyHeadingTrue))
+                        : -1.0;
+                    if (apronAngle <= NORMAL_MAX_DEG && apronAngle > currentAngleFwd)
+                        exitBearingTrue = hsApronBrg == 0.0 ? 360.0 : hsApronBrg;
+                }
+            }
+
             // End-of-runway classification: if the exit is within the last 15% of the
             // runway, label it "End" regardless of angle — exiting there means rolling
             // out the full length.
@@ -1378,13 +1979,25 @@ public class TaxiGraph
             exits.Add(new LandingExit
             {
                 NodeId = node.NodeId,
+                // HS/IHS exits: normally the hold-short bar is at the junction (apron side).
+                // Exception: shallow HS exits on curved RETs — BFS found a corridor-exit node
+                // further along the curve (hsApronNodeId > 0). That node is used instead so
+                // the Taxiing-handoff re-route drives A* through the actual curve geometry.
+                // Fallback Normal exits: BFS result stored in implicitApronNodeId.
+                ApronNodeId = isHoldShortNode
+                    ? (hsApronNodeId > 0 ? hsApronNodeId : node.NodeId)
+                    : implicitApronNodeId,
                 Latitude = node.Latitude,
                 Longitude = node.Longitude,
                 DistanceFromThresholdFeet = distFromLandingThresholdFt,
                 DistanceFromTouchdownFeet = distFromLandingThresholdFt - TOUCHDOWN_AIM_FT,
                 TaxiwayName = taxiwayName,
                 ExitAngleDegrees = exitAngle,
-                ExitType = exitType
+                ExitBearingTrue = exitBearingTrue,
+                ExitType = exitType,
+                ExitSide = exitBearingTrue != 0.0
+                    ? (NormalizeAngle((exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
+                    : ""
             });
         }
 
@@ -1419,6 +2032,197 @@ public class TaxiGraph
             if (!merged) deduped.Add(e);
         }
 
+        // High-speed RET dedup: a curved RET whose navdata has multiple HS/IHS nodes
+        // along its arc (common in third-party scenery) generates one High-speed entry
+        // per node, all more than 50 ft apart — the window above doesn't catch them.
+        // The threshold-nearest node is the RET entry point; interior curve nodes are not
+        // meaningful separate choices. Normal and End exits keep the 50 ft window only —
+        // a Normal taxiway crossing the runway at 90° twice is a legitimate pair.
+        {
+            var hsSeenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hsDedupedList = new List<LandingExit>(deduped.Count);
+            foreach (var e in deduped)
+            {
+                if (e.ExitType != "High-speed" || string.IsNullOrEmpty(e.TaxiwayName))
+                {
+                    hsDedupedList.Add(e);
+                    continue;
+                }
+                if (hsSeenNames.Add(e.TaxiwayName)) hsDedupedList.Add(e);
+            }
+            deduped = hsDedupedList;
+        }
+
+        // Fallback-mode extra dedup: curved RETs (e.g. LVFR LEMD) generate many Normal
+        // nodes along the same exit curve — all pass ExitPathLeavesCorridor but span
+        // hundreds of feet of runway, far beyond the 50 ft window above. When no
+        // HS/IHS nodes exist for this runway, keep only the first (threshold-nearest)
+        // occurrence per named taxiway. That entry-point node is what matters; interior
+        // curve nodes are not meaningful exit choices.
+        //
+        // Also handles the "HS-only-ends" case: when HS mode yielded only End-type exits,
+        // the hold-short data isn't providing useful pre-end exits for this landing direction.
+        // Typical cause: a curved RET HSND node designed for the opposite runway direction
+        // (e.g. N4 at EIDW — a 28R rapid exit whose node lies inside the 10L corridor) is
+        // the only HS node in range, but its exit angle is backward/End for 10L landings.
+        // In that case we run a second pass collecting Normal-node fallback exits, merge them
+        // with the HS End exits, and return the combined deduplicated list.
+        bool hsOnlyEnds = hasHoldShortOnRunway && deduped.Count > 0
+            && deduped.TrueForAll(e => e.ExitType == "End");
+
+        // HS nodes exist in corridor but every one failed the distance filter
+        // (too close to threshold or beyond END_BUFFER). Treat the same as
+        // hsOnlyEnds — run the Normal-node fallback to find usable exits.
+        bool hsYieldedNothing = hasHoldShortOnRunway && deduped.Count == 0;
+
+        if (!hasHoldShortOnRunway || hsOnlyEnds || hsYieldedNothing)
+        {
+            if (hsOnlyEnds || hsYieldedNothing)
+            {
+                var fallbackExits = new List<LandingExit>();
+                foreach (var node in Nodes.Values)
+                {
+                    if (node.Type != TaxiNodeType.Normal) continue;
+                    if (!Adjacency.TryGetValue(node.NodeId, out var ee)) continue;
+
+                    bool hasOffAxis = false;
+                    int apronNode = -1;
+                    foreach (var ed in ee)
+                    {
+                        if (string.IsNullOrEmpty(ed.TaxiwayName)) continue;
+                        double rel = Math.Abs(NormalizeAngle(ed.BearingDegrees - rwyHeadingTrue));
+                        double off = rel > 90.0 ? 180.0 - rel : rel;
+                        if (off >= MIN_FALLBACK_EXIT_ANGLE_DEG) { hasOffAxis = true; break; }
+                    }
+                    if (!hasOffAxis)
+                    {
+                        apronNode = ExitPathLeavesCorridor(node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
+                        if (apronNode < 0) continue;
+                        hasOffAxis = true;
+                    }
+                    if (!hasOffAxis) continue;
+
+                    const double MPD2 = 111132.0;
+                    double latR2 = (rwy.StartLat + node.Latitude) * 0.5 * Math.PI / 180.0;
+                    double mPL2 = MPD2 * Math.Cos(latR2);
+                    double dN2 = (node.Latitude - rwy.StartLat) * MPD2;
+                    double dE2 = (node.Longitude - rwy.StartLon) * mPL2;
+                    double aM2 = dE2 * sinH + dN2 * cosH;
+                    double lM2 = dE2 * cosH - dN2 * sinH;
+                    if (Math.Abs(lM2) > lateralToleranceM || aM2 < 0 || aM2 > lengthM + 50.0) continue;
+                    double aFt2 = aM2 / 0.3048;
+                    double dft2 = aFt2 - landingThresholdOffsetFt;
+                    if (dft2 < MIN_DIST_FT || aFt2 > maxDistFt) continue;
+
+                    string txName2 = "";
+                    double angle2 = 90.0;
+                    TaxiEdge? best2 = null;
+                    double best2Brg = 0.0; // 0 = not found; due-north stored as 360
+                    foreach (var e in ee)
+                    {
+                        if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)
+                            || string.IsNullOrEmpty(e.TaxiwayName)) continue;
+                        if (best2 == null) { best2 = e; continue; }
+                        bool b2hd = HasLetterAndDigit(best2.TaxiwayName);
+                        bool ehd  = HasLetterAndDigit(e.TaxiwayName);
+                        if (ehd && !b2hd)
+                        {
+                            best2 = e;
+                        }
+                        else if (ehd == b2hd)
+                        {
+                            double b2r = Math.Abs(NormalizeAngle(best2.BearingDegrees - rwyHeadingTrue));
+                            double b2o = b2r > 90.0 ? 180.0 - b2r : b2r;
+                            double er  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
+                            double eo  = er > 90.0 ? 180.0 - er : er;
+                            if (eo > b2o) best2 = e;
+                        }
+                    }
+                    if (best2 != null)
+                    {
+                        txName2 = best2.TaxiwayName;
+                        best2Brg = best2.BearingDegrees == 0.0 ? 360.0 : best2.BearingDegrees;
+                        double rel2 = Math.Abs(NormalizeAngle(best2.BearingDegrees - rwyHeadingTrue));
+                        bool pb2 = rel2 > 90.0;
+                        angle2 = pb2 ? 180.0 - rel2 : rel2;
+                        if (pb2 && angle2 < 50.0) angle2 = NORMAL_MAX_DEG + 20.0;
+                    }
+                    // Same targeted apron-bearing override: only for near-parallel first
+                    // edges (< 5°) and only when the apron is in the forward direction.
+                    if (angle2 < 5.0 && apronNode > 0
+                        && Nodes.TryGetValue(apronNode, out var apronTaxiNode2))
+                    {
+                        const double MPD_BRG2 = 111132.0;
+                        double latRc = (node.Latitude + apronTaxiNode2.Latitude) * 0.5 * Math.PI / 180.0;
+                        double mPLc = MPD_BRG2 * Math.Cos(latRc);
+                        double dNc = (apronTaxiNode2.Latitude - node.Latitude) * MPD_BRG2;
+                        double dEc = (apronTaxiNode2.Longitude - node.Longitude) * mPLc;
+                        double apronBrg2 = Math.Atan2(dEc, dNc) * 180.0 / Math.PI;
+                        if (apronBrg2 < 0) apronBrg2 += 360.0;
+                        if (Math.Abs(NormalizeAngle(apronBrg2 - rwyHeadingTrue)) <= NORMAL_MAX_DEG)
+                            best2Brg = apronBrg2 == 0.0 ? 360.0 : apronBrg2;
+                    }
+
+                    double er2 = aFt2 / rwy.Length;
+                    string et2 = er2 > END_RATIO ? "End"
+                        : angle2 <= HIGH_SPEED_MAX_DEG ? "High-speed"
+                        : angle2 <= NORMAL_MAX_DEG ? "Normal"
+                        : "End";
+
+                    fallbackExits.Add(new LandingExit
+                    {
+                        NodeId = node.NodeId,
+                        ApronNodeId = apronNode,
+                        Latitude = node.Latitude,
+                        Longitude = node.Longitude,
+                        DistanceFromThresholdFeet = dft2,
+                        DistanceFromTouchdownFeet = dft2 - TOUCHDOWN_AIM_FT,
+                        TaxiwayName = txName2,
+                        ExitAngleDegrees = angle2,
+                        ExitBearingTrue = best2Brg,
+                        ExitType = et2,
+                        ExitSide = best2Brg != 0.0
+                            ? (NormalizeAngle((best2Brg == 360.0 ? 0.0 : best2Brg) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
+                            : ""
+                    });
+                }
+
+                if (fallbackExits.Count > 0)
+                {
+                    var merged = new List<LandingExit>(deduped.Count + fallbackExits.Count);
+                    merged.AddRange(deduped);
+                    merged.AddRange(fallbackExits);
+                    merged.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+                    deduped = new List<LandingExit>(merged.Count);
+                    foreach (var e in merged)
+                    {
+                        bool wasMerged = false;
+                        for (int i = deduped.Count - 1; i >= 0; i--)
+                        {
+                            var d = deduped[i];
+                            if (Math.Abs(d.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > DEDUP_WINDOW_FT) break;
+                            if (string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (e.ExitAngleDegrees < d.ExitAngleDegrees) deduped[i] = e;
+                                wasMerged = true; break;
+                            }
+                        }
+                        if (!wasMerged) deduped.Add(e);
+                    }
+                }
+            }
+
+            // Name dedup: keep only first (threshold-nearest) occurrence per taxiway name.
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var dedupedFallback = new List<LandingExit>(deduped.Count);
+            foreach (var e in deduped)
+            {
+                if (string.IsNullOrEmpty(e.TaxiwayName)) { dedupedFallback.Add(e); continue; }
+                if (seenNames.Add(e.TaxiwayName)) dedupedFallback.Add(e);
+            }
+            return dedupedFallback;
+        }
+
         return deduped;
     }
 
@@ -1432,6 +2236,82 @@ public class TaxiGraph
             if (hasL && hasD) return true;
         }
         return false;
+    }
+
+    // BFS from startNodeId. Returns the node ID of the first reachable node that lies
+    // outside the runway lateral corridor (|lateral| > lateralToleranceM) within
+    // MAX_RET_SEARCH_M metres, or -1 if none found.
+    // Used to detect smooth-curve RETs whose individual segments each fall below the
+    // MIN_FALLBACK_EXIT_ANGLE_DEG threshold yet still exit the runway.
+    //
+    // The returned node ID is used as ApronNodeId on the LandingExit so the
+    // LandingRollout → Taxiing handoff can re-route from the pilot's live position
+    // to that corridor-exit point, giving correct tone guidance through the curve.
+    //
+    // Seeding: only named-taxiway edges from the start node (the node must be a real
+    // taxiway junction, not just an unnamed runway surface waypoint).
+    // Traversal: all edges — named and unnamed — so the BFS can cross unnamed connector
+    // segments that some scenery packages insert between the named RET portions.
+    //
+    // A truly parallel taxiway that never leaves the runway strip returns -1. A real
+    // RET — however shallow the departure angle — returns its first corridor-exit node.
+    private int ExitPathLeavesCorridor(
+        int startNodeId,
+        double rwyStartLat, double rwyStartLon,
+        double cosH, double sinH,
+        double lateralToleranceM)
+    {
+        const double MAX_RET_SEARCH_M = 600.0;
+        const double METERS_PER_DEG_LAT = 111132.0;
+
+        if (!Adjacency.TryGetValue(startNodeId, out var initEdges)) return -1;
+
+        // Require at least one named adjacent edge — node must be a taxiway junction.
+        bool hasNamedStart = false;
+        foreach (var e in initEdges)
+            if (!string.IsNullOrEmpty(e.TaxiwayName)) { hasNamedStart = true; break; }
+        if (!hasNamedStart) return -1;
+
+        var visited = new HashSet<int> { startNodeId };
+        var queue = new Queue<(int nodeId, double dist)>();
+
+        // Seed from named edges only.
+        foreach (var e in initEdges)
+        {
+            if (!string.IsNullOrEmpty(e.TaxiwayName))
+                queue.Enqueue((e.ToNodeId, e.DistanceMeters));
+        }
+
+        while (queue.Count > 0)
+        {
+            var (nodeId, dist) = queue.Dequeue();
+            if (visited.Contains(nodeId)) continue;
+            visited.Add(nodeId);
+
+            if (!Nodes.TryGetValue(nodeId, out var node)) continue;
+
+            double latR = (rwyStartLat + node.Latitude) * 0.5 * Math.PI / 180.0;
+            double mPerLon = METERS_PER_DEG_LAT * Math.Cos(latR);
+            double dN = (node.Latitude - rwyStartLat) * METERS_PER_DEG_LAT;
+            double dE = (node.Longitude - rwyStartLon) * mPerLon;
+            double lateralM = Math.Abs(dE * cosH - dN * sinH);
+
+            if (lateralM > lateralToleranceM) return nodeId;
+
+            if (dist >= MAX_RET_SEARCH_M) continue;
+
+            if (!Adjacency.TryGetValue(nodeId, out var edges)) continue;
+            foreach (var e in edges)
+            {
+                // Follow all edges (named and unnamed) so unnamed connector segments
+                // between the named portions of a RET don't break the chain.
+                if (visited.Contains(e.ToNodeId)) continue;
+                double newDist = dist + e.DistanceMeters;
+                if (newDist <= MAX_RET_SEARCH_M)
+                    queue.Enqueue((e.ToNodeId, newDist));
+            }
+        }
+        return -1;
     }
 
     #endregion

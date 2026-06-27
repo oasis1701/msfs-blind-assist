@@ -23,7 +23,6 @@ public partial class TrackFixForm : Form
     private IntPtr _previousWindow;
 
     private List<WaypointFix> _duplicateWaypoints = new List<WaypointFix>();
-    private bool _isDuplicateMode = false;
 
     public TrackFixForm(
         WaypointTracker waypointTracker,
@@ -123,7 +122,6 @@ public partial class TrackFixForm : Form
     private void ShowDuplicateResolution(List<WaypointFix> waypoints, string waypointName, int slotNumber)
     {
         _duplicateWaypoints = waypoints;
-        _isDuplicateMode = true;
 
         // Get current aircraft position to calculate distances
         _simConnectManager.RequestAircraftPositionAsync(position =>
@@ -232,8 +230,6 @@ public partial class TrackFixForm : Form
 
     private void SwitchToSearchMode()
     {
-        _isDuplicateMode = false;
-
         // Show search controls
         waypointLabel.Visible = true;
         waypointTextBox.Visible = true;
@@ -255,8 +251,6 @@ public partial class TrackFixForm : Form
 
     private void SwitchToDuplicateMode()
     {
-        _isDuplicateMode = true;
-
         // Hide search controls
         waypointLabel.Visible = false;
         waypointTextBox.Visible = false;

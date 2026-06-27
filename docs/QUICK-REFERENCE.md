@@ -268,7 +268,7 @@ simConnectManager.RequestVariables(new List<string> { "VAR1", "VAR2" });
 **SimConnect:** `SimConnect/SimConnectManager.cs`
 **Hotkeys:** `Hotkeys/HotkeyManager.cs`
 **Main UI:** `MainForm.cs` + `MainForm.Designer.cs`
-**Forms:** `Forms/` (universal), `Forms/A32NX/` (aircraft-specific)
+**Forms:** `Forms/` (universal), per-aircraft subfolders `Forms/FlyByWireA320/`, `Forms/FBWA320/`, `Forms/FBWA380/`, `Forms/FenixA320/`, `Forms/PMDG737|777|EFB/`, `Forms/HS787/`
 
 ## Key Classes
 

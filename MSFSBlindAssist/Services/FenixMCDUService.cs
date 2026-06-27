@@ -13,6 +13,11 @@ public class MCDUDisplayData
     public string Scratchpad { get; set; } = "";
     public string[] RawLines { get; set; } = new string[14];
 
+    // FBW-specific extras (Fenix leaves these at their defaults — no behavior change).
+    public string Page { get; set; } = "";
+    public bool[] Arrows { get; set; } = new bool[4];
+    public List<string> Annunciators { get; set; } = new List<string>();
+
     public MCDUDisplayData()
     {
         for (int i = 0; i < 6; i++)
@@ -291,7 +296,6 @@ public class FenixMCDUService : IDisposable
 
     private static readonly HashSet<char> ColorCodeSet = new HashSet<char> { 'a', 'c', 'g', 'm', 'w', 'y' };
     private static readonly HashSet<char> SizeCodeSet = new HashSet<char> { 's', 'l' };
-    private static readonly HashSet<char> AllFormatCodes = new HashSet<char> { 'a', 'c', 'g', 'm', 'w', 'y', 's', 'l' };
 
     private static string StripFormatCodes(string text)
     {

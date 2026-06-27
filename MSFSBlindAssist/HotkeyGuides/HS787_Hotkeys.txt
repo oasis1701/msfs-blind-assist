@@ -1,0 +1,200 @@
+HORIZONSIM 787-9 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+MCP Readouts:
+  Shift+H    Read MCP Heading (includes HDG/TRK mode, LNAV/HDG HOLD status)
+  Shift+S    Read MCP Speed (includes FLCH status, shows managed if FMC-controlled)
+  Shift+A    Read MCP Altitude (includes VNAV/FLCH/ALT HOLD status)
+  Shift+V    Read MCP V/S or FPA (includes VS/FPA engaged status)
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+
+Fuel:
+  F          Read Fuel Quantity per tank (pounds)
+  Shift+F    Read Fuel Quantity per tank (kilograms)
+
+Weight:
+  W          Read Gross Weight (pounds)
+  Shift+W    Read Gross Weight (kilograms)
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read Altimeter Setting (hPa and inHg, or Standard)
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Transponder:
+  X          Read Squawk Code
+
+Distance:
+  D          Read Distance to Destination (miles + ETE)
+  Shift+D    Read Distance to Top of Descent (miles + ETE, if FMS has computed a TOD)
+
+Location:
+  C          Read Nearest City
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
+
+Cockpit Display Read-outs:
+  Alt+E      EICAS crew alerts - opens a navigable window listing every active warning,
+             caution and advisory (arrow keys to read, Escape to close; refreshes live).
+             (Per-alert auto-chatter is intentionally off; the Master Caution / Master
+             Warning still auto-announce the moment something posts, so you know to press
+             Alt+E for the specifics.) No API key needed.
+  Alt+S      System Synoptic Display (HYD, ELEC, FUEL, AIR, APU, OXYGEN, status
+             messages) - opens a live, navigable text window (arrow keys to read,
+             F5 refreshes, Escape closes). No API key needed.
+  Alt+N      Read the Navigation Display via AI vision (requires a Gemini API key
+             in File > Gemini Settings; use the Ctrl+2 cockpit view first). The
+             waypoint/distance data is also on D / Shift+D / W / Ctrl+W.
+  Alt+P      Read PFD via AI vision (Gemini key + Ctrl+2 view). Airspeed, altitude,
+             heading and baro are also on B / Shift+S / Shift+H / A / Q.
+  Alt+I      Read the standby instrument via AI vision (Gemini key + Ctrl+2 view).
+  Alt+D      Describe outside scene (AI vision)
+
+Displays and Windows:
+  Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
+  Shift+L    Location Info
+  Shift+M    Show VATSIM METAR Report
+  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
+  Shift+B    SimBrief Briefing
+  Shift+C    Show Checklist
+
+Background Announcements:
+  Ctrl+M     787 Monitor Manager - a checklist of every variable the 787 announces
+             automatically as it changes (master caution/warning, AP modes, hydraulics,
+             anti-ice, IRS, etc.). Uncheck any you don't want spoken; the choice is
+             saved. On-demand read-out hotkeys are unaffected.
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+  Ctrl+0     Read Approach Capability
+
+Waypoint Tracking:
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys:
+  F          Read Target VS
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+MCP Set Values:
+  Ctrl+H     Set Heading (opens dialog with LNAV, HDG Hold, HDG/TRK Mode toggles)
+  Ctrl+S     Set Speed (opens dialog with IAS/Mach Mode, FLCH, Speed INTV toggles)
+  Ctrl+A     Set Altitude (opens dialog with VNAV, Level Change, ALT HOLD, Alt INTV toggles)
+  Ctrl+V     Set Vertical Speed (opens dialog with V/S Engage, V/S/FPA Mode, Approach toggles)
+
+Autopilot Panel:
+  Ctrl+P     Open Autopilot Panel (A/P, A/T, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S, A/P Disconnect)
+             Approach button shows: GS Active / LOC Active / Armed / OFF
+             A/P Disconnect always disconnects (distinct from the A/P toggle)
+             Auto-announces: "Approach armed", "Approach disengaged"
+
+FMC / CDU Windows:
+  Shift+M    Open 787 FMC Window (no mod required; reads the FMC live)
+
+General:
+  Escape     Exit active hotkey mode
+
+FMC Window Navigation:
+  Up/Down        Navigate display lines
+  PageUp         Previous FMC page
+  PageDown       Next FMC page
+  Alt+Up         Previous FMC page (alternative)
+  Alt+Down       Next FMC page (alternative)
+  Ctrl+Enter     EXEC
+  Backspace      CLR (if scratchpad has text) / DEL (if scratchpad empty)
+  Ctrl+Backspace CLR Long (clear entire scratchpad at once)
+
+FMC Page Shortcuts:
+  Alt+I      INIT/REF page
+  Alt+R      RTE page
+  Alt+D      DEP/ARR page
+  Alt+A      ALTN page
+  Alt+V      VNAV page
+  Alt+F      FIX page
+  Alt+G      LEGS page
+  Alt+H      HOLD page
+  Alt+O      FMC/COMM page
+  Alt+P      PROG page
+  Alt+N      NAV/RAD page
+  Alt+E      EXEC (alternative)
+  Alt+C      CLR/DEL (alternative)
+  Alt+S      Focus scratchpad input
+
+FMC Line Select Keys:
+  Ctrl+1-6       Left LSK 1-6
+  Alt+1-6        Right LSK 1-6
+
+Note: in FMC Settings (File > FMC Settings) you can switch to alternate
+line-select keys: F1-F6 for L1-L6 and F7-F12 for R1-R6. With this on,
+the default Ctrl+1-6 / Alt+1-6 chords are disabled.
+
+FMC Text Input:
+  Alt+S          Focus scratchpad input field
+  Enter          Submit typed text to FMC scratchpad
+  Alt+Home       Return focus to display output
