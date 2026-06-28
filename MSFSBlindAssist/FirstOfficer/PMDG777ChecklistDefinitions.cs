@@ -194,11 +194,11 @@ public static class PMDG777ChecklistDefinitions
             Manual("PFCL_FLT_INST", "PREFLIGHT_CL", "Flight Instruments: Set heading and altimeter"),
             Auto("PFCL_PARK_BRAKE", "PREFLIGHT_CL", "Parking Brake: SET",
                 "BRAKES_ParkingBrakeLeverOn", v => v > 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetParkingBrake(1)),
+                action: null),
             Auto("PFCL_FUEL_CTRL", "PREFLIGHT_CL", "Fuel Control Switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5, RevertBehavior.RevertToState,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
-                (e, _) => e.SetFuelControlLevers(0)),
+                null),
         }
     };
 
@@ -262,7 +262,7 @@ public static class PMDG777ChecklistDefinitions
             Reminder("BSCL_DOOR", "BEFORE_START_CL", "Flight Deck Door: Closed and locked"),
             Auto("BSCL_SIGNS", "BEFORE_START_CL", "Passenger Signs: Set",
                 "SIGNS_SeatBeltsSelector", v => v >= 1, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetSeatBelts(1)),
+                action: null),
             Manual("BSCL_MCP", "BEFORE_START_CL", "MCP: Set speed, heading and altitude"),
             Manual("BSCL_V_SPEEDS", "BEFORE_START_CL", "Takeoff Speeds: Set V1, VR and V2 from CDU"),
             Manual("BSCL_CDU_COMPLETE", "BEFORE_START_CL", "CDU Preflight: Complete"),
@@ -270,7 +270,7 @@ public static class PMDG777ChecklistDefinitions
             Reminder("BSCL_BRIEFING", "BEFORE_START_CL", "Taxi and Takeoff Briefing: Complete"),
             Auto("BSCL_BEACON", "BEFORE_START_CL", "Beacon: ON",
                 "LTS_Beacon_Sw_ON", v => v > 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetBeacon(1)),
+                action: null),
         }
     };
 
@@ -325,11 +325,10 @@ public static class PMDG777ChecklistDefinitions
         Items = new()
         {
             Manual("BTCL_ANTI_ICE", "BEFORE_TAXI_CL", "Anti-Ice: As required"),
-            ActionManual("BTCL_RECALL", "BEFORE_TAXI_CL", "Recall: Checked",
-                (e, _) => e.PushCancelRecall()),
+            Manual("BTCL_RECALL", "BEFORE_TAXI_CL", "Recall: Checked"),
             Auto("BTCL_AUTOBRAKE", "BEFORE_TAXI_CL", "Auto Brake: RTO",
                 "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetAutobrake(0)),
+                action: null),
             Manual("BTCL_FCTL", "BEFORE_TAXI_CL", "Flight Controls: Checked"),
             Reminder("BTCL_GND_EQUIP", "BEFORE_TAXI_CL", "Ground Equipment: Clear"),
         }
@@ -362,10 +361,10 @@ public static class PMDG777ChecklistDefinitions
         {
             Auto("ATKOF_GEAR", "AFTER_TKOF_CL", "Landing Gear: UP",
                 "GEAR_Lever", v => v < 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetGearLever(0)),
+                action: null),
             Auto("ATKOF_FLAPS", "AFTER_TKOF_CL", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetFlapsPosition(0)),
+                action: null),
         }
     };
 
@@ -377,8 +376,7 @@ public static class PMDG777ChecklistDefinitions
         Id = "DESCENT_CL", Name = "Descent Checklist",
         Items = new()
         {
-            ActionManual("DSC_RECALL", "DESCENT_CL", "Recall: Checked",
-                (e, _) => e.PushCancelRecall()),
+            Manual("DSC_RECALL", "DESCENT_CL", "Recall: Checked"),
             Manual("DSC_AUTOBRAKE", "DESCENT_CL", "Autobrake: As required"),
             Manual("DSC_LANDING_DATA", "DESCENT_CL", "Landing Data: Set VREF and minimums"),
             Reminder("DSC_BRIEFING", "DESCENT_CL", "Approach Briefing: Complete"),
@@ -407,10 +405,10 @@ public static class PMDG777ChecklistDefinitions
         {
             Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
                 "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetSpeedbrakeArmed()),
+                action: null),
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
                 "GEAR_Lever", v => Math.Abs(v - 1) < 0.1, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetGearLever(1)),
+                action: null),
             // Landing flap target depends on approach — no fixed action value
             Auto("LDG_FLAPS", "LANDING_CL", "Flaps: Set for landing",
                 "FCTL_Flaps_Lever", v => v >= 4, RevertBehavior.RevertToState),
@@ -478,21 +476,20 @@ public static class PMDG777ChecklistDefinitions
         Id = "SHUTDOWN_CL", Name = "Shutdown Checklist",
         Items = new()
         {
-            ActionManual("SDCL_HYD", "SHUTDOWN_CL", "Hydraulic panel: SET",
-                (e, _) => { e.SetEngPumps(0); e.SetElecPumps(0); e.SetDemandPumps(0); }),
+            Manual("SDCL_HYD", "SHUTDOWN_CL", "Hydraulic panel: SET"),
             Auto("SDCL_FUEL_PUMPS", "SHUTDOWN_CL", "Fuel Pumps: OFF",
                 "FUEL_PumpFwd_Sw_0", v => v < 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetWingFuelPumps(0)),
+                action: null),
             Auto("SDCL_FLAPS_UP", "SHUTDOWN_CL", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetFlapsPosition(0)),
+                action: null),
             Auto("SDCL_PARK_BRAKE", "SHUTDOWN_CL", "Parking Brake: SET",
                 "BRAKES_ParkingBrakeLeverOn", v => v > 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetParkingBrake(1)),
+                action: null),
             Auto("SDCL_FUEL_CTRL", "SHUTDOWN_CL", "Fuel Control Switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5, RevertBehavior.RevertToState,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
-                (e, _) => e.SetFuelControlLevers(0)),
+                null),
             Manual("SDCL_WX_RADAR", "SHUTDOWN_CL", "Weather Radar: OFF"),
         }
     };
@@ -527,13 +524,12 @@ public static class PMDG777ChecklistDefinitions
         {
             Auto("SECCL_ADIRU", "SECURE_CL", "ADIRU: OFF",
                 "ADIRU_Sw_On", v => v < 0.5, RevertBehavior.RevertToState,
-                action: (e, _) => e.SetAdiru(0)),
-            ActionManual("SECCL_EMER_LIGHTS", "SECURE_CL", "Emergency Lights: OFF",
-                (e, _) => { e.CloseEmerExitLightGuard(); e.SetEmerExitLights(0); }),
+                action: null),
+            Manual("SECCL_EMER_LIGHTS", "SECURE_CL", "Emergency Lights: OFF"),
             Auto("SECCL_PACKS", "SECURE_CL", "Packs: OFF",
                 "AIR_Pack_Sw_AUTO_0", v => v < 0.5, RevertBehavior.RevertToState,
                 new[] { "AIR_Pack_Sw_AUTO_1" },
-                (e, _) => e.SetPacks(0)),
+                null),
         }
     };
 
