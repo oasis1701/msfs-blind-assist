@@ -178,12 +178,12 @@ public class WaypointFlightDirectorManager : IDisposable
 
     public void Stop(bool announce = true)
     {
+        ClearBug();   // always clear the bug (even if already inactive) so it never leaks into a later session
         if (!isActive && desiredTone == null && currentTone == null)
             return;
 
         DisposeTones();
         isActive = false;
-        ClearBug();   // never let a heading/altitude bug leak into the next slot-mode session
         if (announce)
             announcer.AnnounceImmediate("Flight director off.");
         WaypointFlightDirectorActiveChanged?.Invoke(this, false);
@@ -432,9 +432,9 @@ public class WaypointFlightDirectorManager : IDisposable
         desiredTone?.UpdateVolume(muted ? 0.0 : desiredVolume);
         currentTone?.UpdateVolume(muted ? 0.0 : currentVolume);
 
-        // While muted, keep re-baselining the yaw-rate estimate so it can't carry a stale turn-rate
-        // lead into the first bank command after the autopilot disengages.
-        if (muted) lastRateTime = DateTime.MinValue;
+        // While muted, keep re-baselining the yaw-rate estimate AND zero its value so it can't carry
+        // a stale turn-rate lead into the first bank command after the autopilot disengages.
+        if (muted) { lastRateTime = DateTime.MinValue; yawRateDegPerSec = 0.0; }
 
         // Edge-triggered spoken callout, skipped during the manual-readout grace window so it never
         // talks over a hotkey the pilot just pressed (the state flag still flips so it stays correct).
