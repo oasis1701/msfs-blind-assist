@@ -47,8 +47,8 @@ public static class PMDG737ChecklistDefinitions
         Id = "ELEC_POWER_UP", Name = "Electrical Power Up",
         Items = new()
         {
-            Auto("EPU_BATTERY", "ELEC_POWER_UP", "Battery: ON", "ELEC_BatSelector", v => v > 1.5, RevertBehavior.StayComplete,
-                (e, _) => e.SetBattery(2)),
+            Auto("EPU_BATTERY", "ELEC_POWER_UP", "Battery: ON", "ELEC_BatSelector", v => v > 0.5, RevertBehavior.StayComplete,
+                (e, _) => e.SetBattery(1)),
             Auto("EPU_STBY", "ELEC_POWER_UP", "Standby power: AUTO", "ELEC_StandbyPowerSelector", v => v > 1.5, RevertBehavior.StayComplete,
                 (e, _) => e.SetStandbyPower(2)),
             Auto("EPU_GPU", "ELEC_POWER_UP", "Ground power: ON", "ELEC_GrdPwrSw", v => v > 0.5, RevertBehavior.StayComplete,

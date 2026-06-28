@@ -30,7 +30,7 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // -----------------------------------------------------------------------
     // Electrical
     // -----------------------------------------------------------------------
-    public bool IsBatteryOn()      => IsPosition("ELEC_BatSelector", 2);   // 0=OFF,1=BAT,2=ON
+    public bool IsBatteryOn()      => IsOn("ELEC_BatSelector");   // ON = byte 1 (up detent; byte 2 is an unreachable enum phantom, see PMDG737Definition battery comment)
     public bool IsGen1On()         => IsOn("ELEC_GenSw_0");
     public bool IsGen2On()         => IsOn("ELEC_GenSw_1");
     public bool AreGeneratorsOn()  => IsGen1On() && IsGen2On();

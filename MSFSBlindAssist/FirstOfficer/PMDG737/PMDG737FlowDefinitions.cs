@@ -12,7 +12,7 @@ using Step = Models.FlowStep<AircraftStateEvaluator>;
 /// guarded / directional / selector / fuel-lever / mouse-flag dispatch.
 ///
 /// PMDG 737 value conventions:
-/// - Battery 2=ON; Standby power 2=AUTO; Emergency exit 1=ARMED,2=ON.
+/// - Battery 1=ON (up detent reports byte 1; byte 2 is an unreachable enum phantom); Standby power 2=AUTO; Emergency exit 1=ARMED,2=ON.
 /// - Packs 0=OFF,1=AUTO,2=HIGH; Isolation valve 0=CLOSE,1=AUTO,2=OPEN.
 /// - Engine start selector 0=GRD,1=OFF,2=CONT,3=FLT; ignition 0=IGN L,1=BOTH,2=IGN R.
 /// - Fuel-control levers 1=Run, 0=Cutoff (executor converts to the directional flag).
@@ -51,7 +51,7 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
         Steps = new()
         {
-            Skip(SW("EPU_BAT", "Battery: ON", "EVT_OH_ELEC_BATTERY_SWITCH", 2, "ELEC_BatSelector", v => v > 1.5, "EPU_BATTERY"),
+            Skip(SW("EPU_BAT", "Battery: ON", "EVT_OH_ELEC_BATTERY_SWITCH", 1, "ELEC_BatSelector", v => v > 0.5, "EPU_BATTERY"),
                 s => s.IsBatteryOn()),
             Skip(SW("EPU_STBY", "Standby power: AUTO", "EVT_OH_ELEC_STBY_PWR_SWITCH", 2),
                 s => s.StandbyPower() == 2),
