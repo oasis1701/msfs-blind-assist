@@ -125,6 +125,23 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
                 IsAnnounced = true
             },
+            // Inclinometer ball for the "step on the ball" rudder-coordination cue (SlipCueGenerator).
+            // Streamed at SIM_FRAME (like G_FORCE) so the hard-panned tick's side/rate are smooth.
+            // MUST be IsAnnounced=true to be monitored; MainForm.HandleSpecialAnnouncements routes it
+            // to the slip cue when toggled on (Ctrl+K) and suppresses any generic call-out — cheap
+            // when off (value ignored). Units "Position" (~±127); MainForm normalises + the sign
+            // (positive = ball right = press right rudder) is to be confirmed in-sim (one-line flip).
+            ["TURN_COORDINATOR_BALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "TURN COORDINATOR BALL",
+                DisplayName = "Turn Coordinator Ball",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "Position",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                HighFrequency = true
+            },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
             ["MON_GlideSlopeAlive"] = new SimConnect.SimVarDefinition

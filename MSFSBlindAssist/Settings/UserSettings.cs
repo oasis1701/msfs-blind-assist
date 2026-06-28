@@ -95,6 +95,9 @@ public class UserSettings
         public bool WaypointFdCenteredToneEnabled { get; set; } = false;
         public HandFlyWaveType WaypointFdCenteredToneWaveform { get; set; } = HandFlyWaveType.Square;
 
+        // Rudder-coordination slip cue (Ctrl+K) — hard-panned white-noise tick volume (0..1).
+        public double SlipCueVolume { get; set; } = 0.2;
+
         // Takeoff Assist Tone Settings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
@@ -382,6 +385,7 @@ public class UserSettings
             WaypointFdApAutoMute = WaypointFdApAutoMute,
             WaypointFdCenteredToneEnabled = WaypointFdCenteredToneEnabled,
             WaypointFdCenteredToneWaveform = WaypointFdCenteredToneWaveform,
+            SlipCueVolume = SlipCueVolume,
             TakeoffAssistToneWaveform = TakeoffAssistToneWaveform,
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,

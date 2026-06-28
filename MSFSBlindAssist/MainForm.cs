@@ -101,6 +101,8 @@ public partial class MainForm : Form
     private bool _fdHoldsStream;
     private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
     private MSFSBlindAssist.Services.LandingRateAnnouncer landingRateAnnouncer = null!;
+    private MSFSBlindAssist.Services.SlipCueGenerator slipCueGenerator = null!;
+    private bool _slipCueOn;   // runtime toggle (Ctrl+K); default off, not persisted
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
@@ -447,6 +449,7 @@ public partial class MainForm : Form
         // Captures the last landing's touchdown rate + peak g (the ReadLastLandingRate /
         // ReadLastLandingPeakG output hotkeys). Fed by the always-on G FORCE var.
         landingRateAnnouncer = new MSFSBlindAssist.Services.LandingRateAnnouncer();
+        slipCueGenerator = new MSFSBlindAssist.Services.SlipCueGenerator();
         // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
         altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
 
@@ -1186,6 +1189,19 @@ public partial class MainForm : Form
         if (e.VarName == "G_FORCE")
         {
             landingRateAnnouncer.ProcessG(e.Value);
+            return true;
+        }
+
+        // Inclinometer ball → the "step on the ball" rudder-coordination slip cue (Ctrl+K). Always
+        // streamed; only acted on when the cue is toggled on. Never a generic call-out. Normalise to
+        // ~[-1,1] (the var may report ±127 or ±1 by build); positive = ball right = press right rudder.
+        if (e.VarName == "TURN_COORDINATOR_BALL")
+        {
+            if (_slipCueOn)
+            {
+                double ball = Math.Abs(e.Value) > 2.0 ? e.Value / 127.0 : e.Value;
+                slipCueGenerator.Update(ball, deadband: 0.08, fullScale: 0.5, active: true);
+            }
             return true;
         }
 
@@ -2430,6 +2446,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ToggleWaypointFlightDirector:
                 ToggleWaypointFlightDirector();
+                break;
+            case HotkeyAction.ToggleSlipCue:
+                ToggleSlipCue();
                 break;
             case HotkeyAction.ReadTargetFPM:
                 if (visualGuidanceManager.IsActive)
@@ -4403,6 +4422,21 @@ public partial class MainForm : Form
         }
 
         waypointFdManager.Toggle();
+    }
+
+    private void ToggleSlipCue()
+    {
+        _slipCueOn = !_slipCueOn;
+        if (_slipCueOn)
+        {
+            slipCueGenerator.Start(MSFSBlindAssist.Settings.SettingsManager.Current.SlipCueVolume);
+            announcer.AnnounceImmediate("Rudder coordination ticks on");
+        }
+        else
+        {
+            slipCueGenerator.Stop();
+            announcer.AnnounceImmediate("Rudder coordination ticks off");
+        }
     }
 
     private void OnWaypointFdActiveChanged(object? sender, bool isActive)
