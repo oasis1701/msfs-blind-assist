@@ -42,7 +42,7 @@ public enum FlowStepFailurePolicy
 /// <summary>
 /// A single automated step within a <see cref="FlowDefinition"/>.
 /// </summary>
-public class FlowStep
+public class FlowStep : IFlowStepDispatch
 {
     // -----------------------------------------------------------------------
     // Identity
@@ -76,6 +76,9 @@ public class FlowStep
     /// Each tuple: (EventName from EventIds, target position).
     /// </summary>
     public List<(string EventName, int? TargetValue)> MultiActions { get; set; } = new();
+
+    // Explicit implementation so List<> coexists with the IReadOnlyList<> member on the interface.
+    IReadOnlyList<(string EventName, int? TargetValue)> IFlowStepDispatch.MultiActions => MultiActions;
 
     /// <summary>
     /// For FD/AT Arm switches that require the MOUSE_FLAG_LEFTSINGLE parameter.

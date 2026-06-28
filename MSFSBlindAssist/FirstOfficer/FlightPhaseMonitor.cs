@@ -20,7 +20,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 ///
 /// Thread-safe: Update() can be called from any thread.
 /// </summary>
-public class FlightPhaseMonitor
+public class FlightPhaseMonitor : IFoPhaseMonitor
 {
     private readonly AircraftActionExecutor _executor;
     private readonly AircraftStateEvaluator _state;

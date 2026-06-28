@@ -21,7 +21,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 ///
 /// Thread-safe: Update() can be called from any thread.
 /// </summary>
-public class FOAutoManager
+public class FOAutoManager : IFoAutoManager
 {
     private readonly AircraftActionExecutor _executor;
     private readonly AircraftStateEvaluator _state;

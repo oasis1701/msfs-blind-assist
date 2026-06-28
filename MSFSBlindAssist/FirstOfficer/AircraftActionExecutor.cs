@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// Sends PMDG 777 switch events on behalf of the flow engine.
 /// Uses the same PMDG event IDs and parameter rules as the rest of BA Assist.
 /// </summary>
-public class AircraftActionExecutor
+public class AircraftActionExecutor : IFoActionExecutor
 {
     private SimConnectManager? _simConnect;
 
@@ -45,6 +45,23 @@ public class AircraftActionExecutor
             default:
                 return false; // WaitSeconds, WaitForCondition, etc. are handled by FlowManager
         }
+    }
+
+    /// <summary>
+    /// Interface implementation: dispatches an <see cref="IFlowStepDispatch"/> asynchronously.
+    /// Returns a completed Task because all 777 events are synchronous fire-and-forget.
+    /// </summary>
+    public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
+    {
+        bool ok = step.ActionType switch
+        {
+            Models.FlowStepActionType.SetSwitch =>
+                ExecuteSingle(step.EventName!, step.TargetValue, step.UsesMouseFlag, step.IsMomentary),
+            Models.FlowStepActionType.SetSwitchMultiple =>
+                step.MultiActions.Aggregate(true, (acc, m) => acc & ExecuteSingle(m.EventName, m.TargetValue, false, false)),
+            _ => false
+        };
+        return Task.FromResult(ok);
     }
 
     private bool ExecuteSingle(string eventName, int? targetValue, bool usesMouseFlag, bool isMomentary)

@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// All state-dependent logic in checklist auto-detection and flow condition checks
 /// goes through here so there is a single point of truth.
 /// </summary>
-public class AircraftStateEvaluator
+public class AircraftStateEvaluator : IFoStateEvaluator
 {
     private PMDG777DataManager? _dm;
 
