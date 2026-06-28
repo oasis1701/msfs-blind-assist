@@ -321,6 +321,7 @@ public class FirstOfficerForm<TExec, TState> : Form
         _checklistTree.KeyDown       += ChecklistTree_KeyDown;
         _checklistTree.AfterSelect   += ChecklistTree_AfterSelect;
         _checklistTree.BeforeExpand  += ChecklistTree_BeforeExpand;
+        _checklistTree.AfterExpand   += ChecklistTree_AfterExpand;
 
         layout.Controls.Add(_checklistTree, 0, 0);
 
@@ -541,6 +542,24 @@ public class FirstOfficerForm<TExec, TState> : Form
     private void ChecklistTree_AfterSelect(object? sender, TreeViewEventArgs e)
     {
         UpdateChecklistStatus();
+    }
+
+    // Single-expand: keep only one top-level group open at a time so the tree stays
+    // short and screen-reader navigation is predictable. Leaf/child nodes unaffected.
+    private void ChecklistTree_AfterExpand(object? sender, TreeViewEventArgs e)
+    {
+        if (_suppressTreeEvents) return;
+        var expanded = e.Node;
+        if (expanded == null || expanded.Parent != null) return; // only when a root expands
+
+        _suppressTreeEvents = true;
+        try
+        {
+            foreach (TreeNode root in _checklistTree.Nodes)
+                if (!ReferenceEquals(root, expanded) && root.IsExpanded)
+                    root.Collapse();
+        }
+        finally { _suppressTreeEvents = false; }
     }
 
     // ------------------------------------------------------------------
