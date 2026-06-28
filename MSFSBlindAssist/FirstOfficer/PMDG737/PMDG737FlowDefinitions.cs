@@ -92,8 +92,8 @@ public static class PMDG737FlowDefinitions
             Multi("PF_BLEEDS", "Engine bleeds: ON", ("EVT_OH_BLEED_ENG_1_SWITCH", 1), ("EVT_OH_BLEED_ENG_2_SWITCH", 1)),
             Captain("PF_PRESS", "Set flight and landing altitudes on the pressurization panel."),
             SW("PF_LOGO", "Logo lights: ON", "EVT_OH_LIGHTS_LOGO", 1),
-            MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L"),
-            MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R"),
+            MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", s => s.IsFDLeftOn()),
+            MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", s => s.IsFDRightOn()),
             Momentary("PF_FF", "Fuel flow: RESET", "EVT_MPM_FUEL_FLOW_SWITCH"),
             SW("PF_AB_RTO", "Autobrake: RTO", "EVT_MPM_AUTOBRAKE_SELECTOR", 0),
             SW("PF_XPDR", "Transponder: STBY", "EVT_TCAS_MODE", 0),
@@ -191,7 +191,7 @@ public static class PMDG737FlowDefinitions
         {
             Multi("BTO_LAND", "Landing lights: ON", ("EVT_OH_LIGHTS_L_RETRACT", 2), ("EVT_OH_LIGHTS_R_RETRACT", 2)),
             SW("BTO_STROBE", "Position lights: STROBE & STEADY", "EVT_OH_LIGHTS_POS_STROBE", 2),
-            MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH"),
+            MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", s => s.IsATArmOn()),
             SW("BTO_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4),
             Captain("BTO_BRIEF", "Confirm takeoff runway, trim set, and cabin crew notified."),
         }
@@ -357,12 +357,18 @@ public static class PMDG737FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static Step MouseFlag(string id, string label, string eventName) => new()
+    // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
+    // switch is already in the desired state flips it the wrong way. The skip predicate
+    // is required so the step is no-op'd when already correct — the same guard the panel
+    // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) already apply.
+    private static Step MouseFlag(string id, string label, string eventName,
+        Func<AircraftStateEvaluator, bool> skipWhen) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         UsesMouseFlag = true,
+        SkipCondition = skipWhen,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
