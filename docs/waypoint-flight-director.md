@@ -108,7 +108,8 @@ one-line flip.)
 
 ## Autopilot auto-mute
 
-When **AUTOPILOT MASTER** is engaged the FD tones go silent and resume when it disengages — so you
+When the **autopilot** is engaged the FD tones go silent (and it announces "Autopilot engaged,
+flight director standing by") and resume when you disengage — so you
 hand-fly with the FD, engage the AP for cruise, and the tone steps aside on its own. On by default
 (`WaypointFdApAutoMute`).
 
@@ -154,7 +155,9 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 - **Heading/track wrap (359↔001), reciprocal/180° track error:** normalised to ±180°; the command
   saturates to the bank cap toward the shorter turn.
 - **Steep required climb/descent:** commanded pitch clamps to the per-aircraft pitch cap.
-- **Autopilot engaged:** tones auto-mute (if enabled) and resume on disengage.
+- **Autopilot engaged:** tones auto-mute (if enabled) and resume on disengage. AP detection uses the
+  stock `AUTOPILOT MASTER` (Boeing / 787 / most) OR'd with the FlyByWire `A32NX_AUTOPILOT_1/2_ACTIVE`
+  vars (the FBW Airbuses don't drive the stock simvar), so it works across the fleet.
 - **Touchdown:** auto-deactivates on the airborne→ground edge (taxi/rollout tones take over).
 - **Mutually exclusive with Visual Guidance:** engaging one stops the other; the shared 505 stream
   is reference-counted (with per-feature claim flags so an aborted activation can't stop the other's

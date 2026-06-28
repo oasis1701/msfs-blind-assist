@@ -1611,7 +1611,15 @@ public partial class MainForm : Form
         }
         if (e.VarName == "VISUAL_GUIDANCE_AP_MASTER" && waypointFdManager.IsActive)
         {
-            waypointFdManager.UpdateApMaster(e.Value);
+            // e.Value is the stock AUTOPILOT MASTER simvar (Boeing / WT 787 / most addons). The
+            // FlyByWire Airbuses (A320, A380, A330 fork) DON'T drive the stock simvar — they use
+            // A32NX_AUTOPILOT_1/2_ACTIVE — so the stock value stays 0 with AP1/AP2 engaged and the
+            // FD's auto-mute never fired on those aircraft. OR in the FBW AP-active vars from the
+            // cache (the FBW defs monitor them continuously). PMDG / Fenix / HS787 set the stock var.
+            bool apEngaged = e.Value > 0.5
+                || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_1_ACTIVE") ?? 0.0) > 0.5
+                || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_2_ACTIVE") ?? 0.0) > 0.5;
+            waypointFdManager.UpdateApMaster(apEngaged ? 1.0 : 0.0);
             return true;
         }
 
