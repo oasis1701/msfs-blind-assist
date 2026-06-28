@@ -82,6 +82,14 @@ With no crossing altitude set, the vertical tone holds level (lateral-only FD). 
 top-of-descent cue** — the tone is the instrument, and *when* to start down is the pilot's call
 (especially in VFR, where managing the descent is your prerogative, not the app's).
 
+**Descents arm only when due.** A *climb* to a crossing restriction is commanded straight away (you
+climb to meet a SID's "at or above"), but a *descent* is held until it's geometrically due — the
+required path to the fix reaches a normal ~3° gradient, or you're within ~25 NM of the fix for a
+shallow step. So a far constrained fix (e.g. a STAR fix "at or below 11000" tracked while you're at
+FL350, 150 NM out) does **not** nudge you to descend at cruise; the descent tone simply arms when
+descending is appropriate. This is tone-only — still no spoken TOD callout. (Tunable per aircraft:
+`DescentArmFpaDeg`, `VerticalArmRangeNm`.)
+
 ## Centered tone change (optional)
 
 An optional extra cue, **off by default** (set it in Hand Fly Options). When on, you pick a waveform
@@ -135,10 +143,14 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 ## Normal & abnormal scenarios handled (universal FD)
 
 - **Toggle, default off.** The FD does nothing until you press Ctrl+F; with it off the app behaves
-  exactly as before. On engage it follows slots 1→5; engaging with slot 1 empty says "No waypoints
-  to track" and does not activate.
-- **Empty slot mid-route / final fix:** stops at the first empty slot or after slot 5 ("Final
-  waypoint reached").
+  exactly as before. On engage it starts at the **first filled slot** and follows the filled slots in
+  order; engaging with **no** slots filled says "No waypoints to track" and does not activate.
+- **Gaps in the slots are skipped, not fatal.** If you track into slots 1, 2 and 4 (or slot 3 couldn't
+  be tracked), the FD flies 1 → 2 → 4 — it skips empty interior slots instead of stopping at the first
+  gap. It ends only after the last filled slot or slot 5 ("Final waypoint reached").
+- **A course leg passed wide still sequences.** An inbound course/airway leg now advances on
+  station-passage (abeam) as well as capture-radius, so being blown wide of the fix doesn't strand you
+  on that leg. (A true outbound radial, which starts behind the fix, still uses capture-radius only.)
 - **Engaged while parked or behind a fix:** the abeam (station-passage) arrival only counts when
   actually moving, so it can't cascade through every slot on the first frame; the capture-radius
   arrival still works at any speed.

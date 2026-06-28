@@ -164,6 +164,17 @@ public sealed class WaypointFlightDirectorProfile
     /// <summary>Slew cap (deg/sec) on the commanded PITCH between frames (anti-fluctuation).</summary>
     public double MaxPitchRateDegPerSec { get; init; } = 3.0;
 
+    /// <summary>Descent-arm gate: a crossing-altitude DESCENT is only commanded once the required
+    /// flight-path angle to the fix reaches this (a "normal" descent gradient) — so a far constrained
+    /// fix doesn't nudge a premature descent at cruise. Climbs are never gated. Tone-only, not a spoken
+    /// top-of-descent cue. Below this angle the vertical tone holds level until the descent is due.</summary>
+    public double DescentArmFpaDeg { get; init; } = 3.0;
+
+    /// <summary>Descent-arm fallback range (NM): a shallow descent that never reaches
+    /// <see cref="DescentArmFpaDeg"/> still arms once within this distance of the fix, so a small
+    /// at-or-below step isn't missed. Big descents arm earlier via the angle gate.</summary>
+    public double VerticalArmRangeNm { get; init; } = 25.0;
+
     // Dual-tone mapping — same idiom and defaults as VisualGuidanceProfile so the FD's tones
     // sound consistent with Visual Guidance (the pilot zero-beats desired vs current).
     public float ToneMinFrequencyHz { get; init; } = 200f;

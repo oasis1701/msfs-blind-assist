@@ -77,6 +77,12 @@ public class WaypointFlightDirectorManager : IDisposable
     private bool cmdInit;
     private DateTime lastCmdTime = DateTime.MinValue;
 
+    // Per-leg start distance, captured on the leg's first frame. Distinguishes an INBOUND course leg
+    // (started well outside the fix → enable the abeam station-passage fallback so a leg passed wide
+    // still sequences) from an OUTBOUND radial (starts at/behind the fix, where abeam would misfire).
+    private double legStartDistNm;
+    private bool legStartCaptured;
+
     private DateTime routineSuppressedUntil = DateTime.MinValue;
 
     public WaypointFlightDirectorManager(ScreenReaderAnnouncer screenReaderAnnouncer)
@@ -123,12 +129,15 @@ public class WaypointFlightDirectorManager : IDisposable
         centeredWaveType = centeredWave;
         appliedDesiredWave = desiredWave;
 
+        // Start on the first FILLED slot (the user may have tracked into 2-3, not 1, from the EFB).
         activeSlot = 1;
+        while (activeSlot < 5 && tracker.IsSlotEmpty(activeSlot)) activeSlot++;
         apMutedAnnounced = false;
         hasLat = hasLon = hasAlt = hasTrack = false;
         lastRateTime = DateTime.MinValue;
         yawRateDegPerSec = 0;
         cmdInit = false;   // command slew baseline re-seeds on the first frame
+        legStartCaptured = false;
 
         desiredTone = new AudioToneGenerator();
         currentTone = new AudioToneGenerator();
@@ -197,17 +206,23 @@ public class WaypointFlightDirectorManager : IDisposable
         double distNm = NavigationCalculator.CalculateDistance(lat, lon, slotLat, slotLon);
         double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, slotLat, slotLon, magvar);
 
+        // Record the leg's start distance once (the first frame all caches are fresh) — used to tell an
+        // inbound course leg from an outbound radial below.
+        if (!legStartCaptured) { legStartDistNm = distNm; legStartCaptured = true; }
+
         // Arrival → sequence to the next leg. Inside the capture radius counts at any speed; the
         // abeam test (station passage) only counts when actually MOVING — otherwise engaging the FD
         // while parked next to / behind a fix would cascade through every slot on the first frame.
-        // A COURSE leg sequences on capture-radius ONLY: an outbound radial starts behind the fix,
-        // where abeam would misfire and skip the leg immediately.
+        // A COURSE leg normally sequences on capture-radius only (an OUTBOUND radial starts behind the
+        // fix, where abeam would misfire) — BUT an INBOUND course leg (started well outside the fix,
+        // e.g. an EFB approach/airway CF leg) ALSO sequences on abeam, so a leg passed wide of the fix
+        // doesn't strand the pilot with no way to advance.
         bool withinCapture = distNm <= profile.CaptureRadiusNm;
-        bool arrived = isCourseLeg
-            ? withinCapture
-            : (withinCapture ||
-               (groundSpeedKts >= profile.LowSpeedFloorKts &&
-                G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm)));
+        bool stationPassage = groundSpeedKts >= profile.LowSpeedFloorKts &&
+                              G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm);
+        bool startedFar = legStartDistNm > profile.CaptureRadiusNm * 4.0;   // inbound, not an outbound radial
+        bool arrived = withinCapture
+            || (isCourseLeg ? (startedFar && stationPassage) : stationPassage);
         if (arrived)
         {
             AdvanceLeg();
@@ -255,7 +270,17 @@ public class WaypointFlightDirectorManager : IDisposable
                 // Vertical guidance toward the crossing altitude (no spoken top-of-descent cue —
                 // the tone IS the instrument; the pilot judges when to start down).
                 double reqFpa = G.RequiredFpaDeg(targetAlt, altMsl, distNm);
-                cmdPitch = G.CommandedPitchDeg(reqFpa, aoaDeg, profile.MaxPitchDeg);
+
+                // Descent-arm gate: a CLIMB is commanded immediately (e.g. climb to meet a SID
+                // at-or-above), but a DESCENT only once it's geometrically due — the required angle has
+                // reached a normal gradient (DescentArmFpaDeg), or the fix is within VerticalArmRangeNm
+                // for a shallow step that never gets that steep. Otherwise hold level so a far
+                // constrained fix doesn't nudge a premature descent at cruise. Tone-only, not a TOD cue.
+                bool descentDue = reqFpa >= 0.0
+                                  || -reqFpa >= profile.DescentArmFpaDeg
+                                  || distNm <= profile.VerticalArmRangeNm;
+                if (descentDue)
+                    cmdPitch = G.CommandedPitchDeg(reqFpa, aoaDeg, profile.MaxPitchDeg);
             }
         }
 
@@ -278,7 +303,14 @@ public class WaypointFlightDirectorManager : IDisposable
 
     private void AdvanceLeg()
     {
+        legStartCaptured = false;   // re-measure the start distance for the new leg
+
+        // Skip empty INTERIOR slots so a gap (e.g. the user tracked slots 1, 2, 4 from the EFB, or
+        // slot 3 was a position-less leg that couldn't be tracked) doesn't silently end the route —
+        // fly whatever slots are filled, in order, up to slot 5.
         activeSlot++;
+        while (activeSlot <= 5 && tracker != null && tracker.IsSlotEmpty(activeSlot))
+            activeSlot++;
 
         if (activeSlot > 5 || tracker == null || tracker.IsSlotEmpty(activeSlot))
         {

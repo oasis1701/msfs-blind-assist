@@ -4451,11 +4451,11 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // The FD walks the 5 tracked Shift+F slots in order from slot 1. If slot 1 is empty
-            // there is nothing to track — don't activate a dead tone. Stop(announce:false) because
-            // the public "Flight director off" callout would be misleading after this guard (the
-            // pilot never had a running session). Not hand-holding: the pilot owns route order.
-            if (waypointTracker.IsSlotEmpty(1))
+            // The FD walks the tracked Shift+F slots in order (starting at the first FILLED slot,
+            // skipping gaps). If NO slot holds a waypoint there is nothing to track — don't activate a
+            // dead tone. Stop(announce:false) because the public "Flight director off" callout would be
+            // misleading after this guard (the pilot never had a running session).
+            if (!waypointTracker.HasAnyWaypoint())
             {
                 announcer.Announce("No waypoints to track");
                 waypointFdManager.Stop(announce: false);

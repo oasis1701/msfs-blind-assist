@@ -108,6 +108,14 @@ public class WaypointTracker
         return _slots[index] == null;
     }
 
+    /// <summary>True if at least one slot (1-5) holds a tracked waypoint.</summary>
+    public bool HasAnyWaypoint()
+    {
+        for (int i = 0; i < MAX_SLOTS; i++)
+            if (_slots[i] != null) return true;
+        return false;
+    }
+
     /// <summary>
     /// Clears a tracking slot
     /// </summary>
