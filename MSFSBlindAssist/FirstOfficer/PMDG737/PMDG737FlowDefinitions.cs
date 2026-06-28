@@ -187,7 +187,7 @@ public static class PMDG737FlowDefinitions
     {
         Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
         Description = "Landing lights, strobes, autothrottle arm, transponder TA/RA.",
-        RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF_CL" },
+        RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TAKEOFF_CL" },
         Steps = new()
         {
             Multi("BTO_LAND", "Landing lights: ON", ("EVT_OH_LIGHTS_L_RETRACT", 2), ("EVT_OH_LIGHTS_R_RETRACT", 2)),
@@ -205,7 +205,7 @@ public static class PMDG737FlowDefinitions
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
         Description = "Packs auto, start switches off, turnoff lights off, gear off, autobrake off.",
-        RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF_CL" },
+        RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL" },
         Steps = new()
         {
             Multi("AT_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),

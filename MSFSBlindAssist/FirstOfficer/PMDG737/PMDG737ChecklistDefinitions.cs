@@ -25,7 +25,9 @@ public static class PMDG737ChecklistDefinitions
         BuildEngineStart(),
         BuildBeforeTaxi(),
         BuildBeforeTaxiChecklist(),
+        BuildBeforeTakeoff(),
         BuildBeforeTakeoffChecklist(),
+        BuildAfterTakeoff(),
         BuildAfterTakeoffChecklist(),
         BuildDescentChecklist(),
         BuildApproachChecklist(),
@@ -125,6 +127,33 @@ public static class PMDG737ChecklistDefinitions
             Auto("BT_START", "BEFORE_TAXI", "Engine start switches: CONT", "ENG_StartSelector_0", v => v > 1.5 && v < 2.5, RevertBehavior.StayComplete,
                 new[] { "ENG_StartSelector_1" }, (e, _) => { e.SetEngStartSelector1(2); e.SetEngStartSelector2(2); }),
             Auto("BT_TAXI", "BEFORE_TAXI", "Taxi light: ON", "LTS_TaxiSw", v => v > 0.5, RevertBehavior.StayComplete, (e, _) => e.SetTaxiLights(1)),
+        }
+    };
+
+    private static Group BuildBeforeTakeoff() => new()
+    {
+        Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
+        Items = new()
+        {
+            ActionManual("BTKO_LAND", "BEFORE_TAKEOFF", "Landing lights: ON", (e, _) => e.SetLandingLights(2)),
+            ActionManual("BTKO_STROBE", "BEFORE_TAKEOFF", "Position lights: STROBE & STEADY", (e, _) => e.SetPositionLights(2)),
+            ActionManual("BTKO_AT", "BEFORE_TAKEOFF", "Autothrottle: ARM", (e, s) => e.SetATArm(1, s)),
+            ActionManual("BTKO_XPDR", "BEFORE_TAKEOFF", "Transponder: TA/RA", (e, _) => e.SetTransponderMode(4)),
+            Reminder("BTKO_BRIEF", "BEFORE_TAKEOFF", "Confirm takeoff runway, trim set, cabin crew notified"),
+        }
+    };
+
+    private static Group BuildAfterTakeoff() => new()
+    {
+        Id = "AFTER_TAKEOFF", Name = "After Takeoff",
+        Items = new()
+        {
+            ActionManual("ATKO_PACKS", "AFTER_TAKEOFF", "Packs: AUTO", (e, _) => e.SetPacks(1)),
+            ActionManual("ATKO_START_OFF", "AFTER_TAKEOFF", "Engine start switches: OFF",
+                (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
+            ActionManual("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", (e, _) => e.SetRunwayTurnoff(0)),
+            ActionManual("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF", (e, _) => e.SetGearLever(1)),
+            ActionManual("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", (e, _) => e.SetAutobrake(1)),
         }
     };
 
