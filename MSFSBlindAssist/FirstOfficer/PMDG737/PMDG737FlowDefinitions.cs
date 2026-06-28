@@ -223,7 +223,7 @@ public static class PMDG737FlowDefinitions
     {
         Id = "DESCENT", Name = "Descent",
         Description = "Seatbelt sign on, autobrake, ILS, approach setup.",
-        RelatedChecklistGroupIds = new[] { "DESCENT_CL" },
+        RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
         Steps = new()
         {
             SW("DS_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2),
@@ -240,7 +240,7 @@ public static class PMDG737FlowDefinitions
     {
         Id = "APPROACH", Name = "Approach",
         Description = "EFIS approach mode, range 20, altimeters.",
-        RelatedChecklistGroupIds = new[] { "APPROACH_CL" },
+        RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL" },
         Steps = new()
         {
             SW("AP_EFIS_MODE", "EFIS mode: APP", "EVT_EFIS_CPT_MODE", 0),
@@ -256,7 +256,7 @@ public static class PMDG737FlowDefinitions
     {
         Id = "LANDING", Name = "Landing",
         Description = "Start switches CONT, speedbrake armed, missed approach altitude.",
-        RelatedChecklistGroupIds = new[] { "LANDING_CL" },
+        RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
             Multi("LD_START_CONT", "Engine start switches: CONT", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),

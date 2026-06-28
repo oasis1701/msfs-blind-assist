@@ -29,8 +29,11 @@ public static class PMDG737ChecklistDefinitions
         BuildBeforeTakeoffChecklist(),
         BuildAfterTakeoff(),
         BuildAfterTakeoffChecklist(),
+        BuildDescent(),
         BuildDescentChecklist(),
+        BuildApproach(),
         BuildApproachChecklist(),
+        BuildLanding(),
         BuildLandingChecklist(),
         BuildAfterLanding(),
         BuildShutdown(),
@@ -285,6 +288,41 @@ public static class PMDG737ChecklistDefinitions
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "AIR_PackSwitch_0", v => v > 0.5 && v < 1.5, RevertBehavior.RevertToState, new[] { "AIR_PackSwitch_1" }, action: null),
             Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP and OFF", "MAIN_GearLever", v => v < 0.5, RevertBehavior.RevertToState, action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
+        }
+    };
+
+    private static Group BuildDescent() => new()
+    {
+        Id = "DESCENT", Name = "Descent",
+        Items = new()
+        {
+            ActionManual("DSA_BELTS", "DESCENT", "Seatbelt signs: ON", (e, _) => e.SetSeatBelts(2)),
+            Reminder("DSA_AB", "DESCENT", "Set the landing autobrake"),
+            Reminder("DSA_ILS", "DESCENT", "Set the ILS frequencies and course"),
+            Reminder("DSA_DATA", "DESCENT", "Confirm landing data, VREF and minimums"),
+        }
+    };
+
+    private static Group BuildApproach() => new()
+    {
+        Id = "APPROACH", Name = "Approach",
+        Items = new()
+        {
+            ActionManual("APA_EFIS_MODE", "APPROACH", "EFIS mode: APP", (e, _) => e.SetEFISModeCapt(0)),
+            ActionManual("APA_EFIS_RANGE", "APPROACH", "EFIS range: 20", (e, _) => e.SetEFISRangeCapt(2)),
+            Reminder("APA_ALT", "APPROACH", "Set the altimeters"),
+        }
+    };
+
+    private static Group BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Items = new()
+        {
+            ActionManual("LDA_START", "LANDING", "Engine start switches: CONT",
+                (e, _) => { e.SetEngStartSelector1(2); e.SetEngStartSelector2(2); }),
+            ActionManual("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED", (e, _) => e.SetSpeedbrakeArmed()),
+            Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
         }
     };
 
