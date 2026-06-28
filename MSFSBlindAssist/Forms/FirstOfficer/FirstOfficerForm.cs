@@ -224,12 +224,11 @@ public class FirstOfficerForm<TExec, TState> : Form
                 $"Flight phase monitor: transition altitude {transAltFt} feet, transition level {effectiveTl} feet.");
         }
 
-        // Store takeoff flap setting for use by Before Taxi flow.
-        // The takeoff-flaps store is aircraft-specific; apply it when the evaluator supports it.
+        // Store takeoff flap setting for use by Before Taxi flow (interface method —
+        // works for any aircraft's evaluator, not just the 777).
         if (int.TryParse(ofp.TakeoffFlaps, out int flaps) && flaps > 0)
         {
-            if (_stateEval is AircraftStateEvaluator a777)
-                a777.SetTakeoffFlaps(flaps);
+            _stateEval.SetTakeoffFlaps(flaps);
             _announcer.AnnounceImmediate($"Takeoff flaps: {flaps}");
         }
     }
