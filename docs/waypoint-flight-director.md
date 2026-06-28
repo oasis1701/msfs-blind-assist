@@ -98,7 +98,9 @@ larger capture radius and a longer rate-lead.
 > rate-lead; if the tone chases noise at low speed, raise the speed floor.
 
 Tone settings live in **Hand Fly Options** (`UserSettings.WaypointFd*`): desired/current waveform +
-volume, hard-pan, AP-auto-mute, and the centered tone change (toggle + waveform).
+volume, hard-pan, AP-auto-mute, and the centered tone change (toggle + waveform). A **"Test Flight
+Director Tones"** button there previews the desired + current tones with a left↔right bank sweep,
+applying your hard-pan and centered-tone selections so you can hear both before flying.
 
 ## Normal & abnormal scenarios handled (universal FD)
 

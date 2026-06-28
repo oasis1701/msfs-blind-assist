@@ -82,6 +82,11 @@ public partial class HandFlyOptionsForm : Form
 
     private AudioToneGenerator? testToneGenerator;
 
+    // Flight Director tone test (desired + current dual tone; demonstrates hard-pan + centered).
+    private Button fdTestButton = null!;
+    private AudioToneGenerator? fdTestDesired;
+    private AudioToneGenerator? fdTestCurrent;
+
     // New-option staging values (read from SettingsManager.Current; committed only on OK so Cancel
     // is respected). These ride SettingsManager.Current directly rather than the constructor, to
     // avoid widening the already-large constructor + its MainForm caller.
@@ -841,11 +846,24 @@ public partial class HandFlyOptionsForm : Form
         fdCenteredWaveLabel.Visible = _fdCenteredEnabled;
         fdCenteredWaveCombo.Visible = _fdCenteredEnabled;
 
+        // Test Flight Director Tones button — plays the desired + current dual tone with a
+        // left<->right bank sweep, honouring the FD hard-pan and centered-tone settings above so
+        // you can verify both by ear before flying.
+        fdTestButton = new Button
+        {
+            Text = "Test Flight Director Tones",
+            Location = new Point(20, 1284),
+            Size = new Size(230, 35),
+            AccessibleName = "Test Flight Director Tones",
+            AccessibleDescription = "Plays the Flight Director's desired and current tones with a left-to-right bank sweep, applying the hard-pan and centered tone settings selected above, so you can preview them. Stops automatically after a few seconds."
+        };
+        fdTestButton.Click += FdTestButton_Click;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 1310),
+            Location = new Point(310, 1350),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -857,7 +875,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 1310),
+            Location = new Point(395, 1350),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -888,6 +906,7 @@ public partial class HandFlyOptionsForm : Form
             fdCurrentVolumeLabel, fdCurrentVolumeTrackBar, fdCurrentVolumeValueLabel,
             fdHardPanCheckBox, fdApAutoMuteCheckBox,
             fdCenteredCheckBox, fdCenteredWaveLabel, fdCenteredWaveCombo,
+            fdTestButton,
             okButton, cancelButton
         });
 
@@ -951,8 +970,9 @@ public partial class HandFlyOptionsForm : Form
         fdCenteredCheckBox.TabIndex = 47;
         fdCenteredWaveLabel.TabIndex = 48;
         fdCenteredWaveCombo.TabIndex = 49;
-        okButton.TabIndex = 50;
-        cancelButton.TabIndex = 51;
+        fdTestButton.TabIndex = 50;
+        okButton.TabIndex = 51;
+        cancelButton.TabIndex = 52;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -968,6 +988,7 @@ public partial class HandFlyOptionsForm : Form
         FormClosing += (sender, e) =>
         {
             StopTestTone();
+            StopFdTestTone();
         };
     }
 
@@ -1104,6 +1125,7 @@ public partial class HandFlyOptionsForm : Form
     {
         try
         {
+            StopFdTestTone();   // don't overlap with the Flight Director test tone
             testToneGenerator = new AudioToneGenerator();
             testToneGenerator.Start(SelectedWaveType, SelectedVolume);
 
@@ -1180,9 +1202,112 @@ public partial class HandFlyOptionsForm : Form
         testToneGenerator = null;
     }
 
+    private void FdTestButton_Click(object? sender, EventArgs e)
+    {
+        if (fdTestDesired?.IsPlaying == true)
+        {
+            StopFdTestTone();
+            fdTestButton.Text = "Test Flight Director Tones";
+        }
+        else
+        {
+            PlayFdTestTone();
+            fdTestButton.Text = "Stop";
+        }
+    }
+
+    /// <summary>
+    /// Previews the Flight Director's dual tone using the CURRENT dialog selections (staged
+    /// _fd* values), so it reflects unsaved changes. The desired tone sweeps a commanded bank
+    /// fully left&lt;-&gt;right (so hard-pan's snap vs the proportional pan is audible) and a gentle
+    /// pitch; the current tone holds wings-level/level as the "your attitude" reference. Honours the
+    /// FD hard-pan and centered-tone-change settings exactly as <c>WaypointFlightDirectorManager</c>
+    /// does, so this is a faithful preview. Auto-stops after a few seconds.
+    /// </summary>
+    private void PlayFdTestTone()
+    {
+        try
+        {
+            StopTestTone();   // don't overlap with the hand-fly test tone
+
+            fdTestDesired = new AudioToneGenerator();
+            fdTestCurrent = new AudioToneGenerator();
+            // FD dual-tone mapping defaults (match WaypointFlightDirectorProfile's tone fields).
+            fdTestDesired.Configure(200f, 800f, 6.0, 5.0);
+            fdTestCurrent.Configure(200f, 800f, 6.0, 5.0);
+            fdTestDesired.Start(_fdToneWave, _fdVolume);
+            fdTestCurrent.Start(_fdCurrentWave, _fdCurrentVolume);
+
+            HandFlyWaveType appliedWave = _fdToneWave;
+
+            Task.Run(async () =>
+            {
+                double bank = 0.0, pitch = 0.0;
+                for (int i = 0; i < 90 && fdTestDesired?.IsPlaying == true; i++)
+                {
+                    double targetBank = Math.Sin(i * 0.12) * 30.0;   // ±30° sweep
+                    double targetPitch = Math.Sin(i * 0.05) * 6.0;   // ±6°
+                    bank += Math.Clamp(targetBank - bank, -3.0, 3.0);     // smooth (no crackle)
+                    pitch += Math.Clamp(targetPitch - pitch, -0.6, 0.6);
+
+                    // Desired (command) tone — same hard-pan + centered logic as the manager.
+                    if (_fdHardPan)
+                    {
+                        float pan = Math.Abs(bank) < 1.0 ? 0f : (bank > 0 ? 1f : -1f);
+                        fdTestDesired?.SetPan(pan);
+                    }
+                    else
+                    {
+                        fdTestDesired?.UpdateBank(bank);
+                    }
+                    fdTestDesired?.UpdatePitch(pitch);
+
+                    if (_fdCenteredEnabled)
+                    {
+                        HandFlyWaveType want = Math.Abs(bank) <= 1.5 ? _fdCenteredWave : _fdToneWave;
+                        if (want != appliedWave)
+                        {
+                            fdTestDesired?.UpdateWaveType(want);
+                            appliedWave = want;
+                        }
+                    }
+
+                    // Current (actual-attitude) tone — held level/wings-level as the reference the
+                    // desired tone is matched against. Hard-pan keeps it centred at 0 bank.
+                    fdTestCurrent?.SetPan(0f);
+                    fdTestCurrent?.UpdatePitch(0.0);
+
+                    await Task.Delay(100);
+                }
+
+                if (fdTestDesired?.IsPlaying == true && !IsDisposed)
+                {
+                    try { Invoke(() => { StopFdTestTone(); fdTestButton.Text = "Test Flight Director Tones"; }); }
+                    catch (ObjectDisposedException) { StopFdTestTone(); }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to play test tone: {ex.Message}", "Audio Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void StopFdTestTone()
+    {
+        fdTestDesired?.Stop();
+        fdTestDesired?.Dispose();
+        fdTestDesired = null;
+        fdTestCurrent?.Stop();
+        fdTestCurrent?.Dispose();
+        fdTestCurrent = null;
+    }
+
     private void OkButton_Click(object? sender, EventArgs e)
     {
         StopTestTone();
+        StopFdTestTone();
 
         // Commit the new Visual Guidance centered + Flight Director options directly to settings
         // (these ride SettingsManager.Current rather than the constructor/property round-trip).
@@ -1209,6 +1334,7 @@ public partial class HandFlyOptionsForm : Form
         if (keyData == Keys.Escape)
         {
             StopTestTone();
+            StopFdTestTone();
             DialogResult = DialogResult.Cancel;
             Close();
             return true;
