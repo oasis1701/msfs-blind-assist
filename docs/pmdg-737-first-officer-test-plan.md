@@ -158,6 +158,30 @@ The Before Start flow already turns the primary pumps ON; the checklist now veri
 
 ---
 
+## Part E — position-value corrections (2026-06-28)
+
+A systematic audit cross-referenced every FO flow/checklist position value against the panel's authoritative `ValueDescriptions`. Fixes below. Read switch states via the sim tools (PMDG field in parentheses).
+
+### E1. 777 anti-ice AUTO (was OFF) — **safety-relevant**
+Run **Cockpit Prep** (or tick the Preflight checklist items). Confirm **Wing Anti-Ice** (`ICE_WingAntiIceSw`) and **Engine Anti-Ice 1/2** (`ICE_EngAntiIceSw_0/1`) read **1 = AUTO**, not 0 = Off. (Previously the FO set them OFF.)
+
+### E2. 777 demand pumps AUTO (was ON)
+Run **Before Start**. Confirm the demand pumps (`HYD_DemandElecPump_Selector_0/1`, `HYD_DemandAirPump_Selector_0/1`) read **1 = Auto**, not 2 = On.
+
+### E3. 777 transponder (flow now sets the mode)
+Run **Before Takeoff** → confirm `XPDR_ModeSel` = **4 (TA/RA)**; run **After Landing** / **Shutdown** → confirm `XPDR_ModeSel` = **0 (STBY)**. (Previously the flow fired the wrong event and never changed the mode.)
+
+### E4. 777 strobe / storm / recirc — **VERIFY value 1 actually turns them ON**
+These were changed from 2→1 based on the panel's `{0=Off,1=On}` map, but flagged for live confirmation in case the real switch is 3-position. Run **Before Takeoff** (strobe), **Shutdown** (storm), **Cockpit Prep** (recirc) and confirm `LTS_Strobe_Sw_ON` / `LTS_Storm_Sw_ON` / `AIR_RecircFan_Sw_On_0/1` go to ON. If any does **not** turn on at value 1, tell me — the panel map is then incomplete and the value should be 2.
+
+### E5. 737 battery ON (byte 1, was phantom byte 2)
+Cold-dark → run **Electrical Power Up** → confirm the battery turns ON (`ELEC_BatSelector` = **1**) and the **"Battery: ON"** checklist item auto-ticks. (Previously it commanded byte 2 — a non-existent detent — and never detected ON.)
+
+### E6. 737 Lower DU label — **deferred, needs in-sim name check**
+The flow step `BT_LOWERDU` sends value **1**, which the panel labels **"NORM"**, but the FO announces it as **"SYS"**. Left unchanged (the middle-detent name is itself marked "verify in sim" in the panel def). Tell me the real middle-position name on the 737 lower DU selector and I'll align the label (cosmetic — spoken label only, no functional effect).
+
+---
+
 ## Known limitations (by design / data availability)
 - **Baro-STD has no NG3 state field** — the phase monitor pushes STD/QNH at the transition
   alt/level using its own one-shot latch (it cannot read whether STD is already selected).
