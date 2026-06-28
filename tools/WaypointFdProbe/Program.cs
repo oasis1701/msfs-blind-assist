@@ -68,6 +68,27 @@ Check("course intercept: left of course turns right", Near(G.CourseInterceptTrac
 Check("course intercept: on course holds course", Near(G.CourseInterceptTrackDeg(270, 0, 40, 20), 270));
 Check("course intercept: wraps below 0", Near(G.CourseInterceptTrackDeg(10, 1, 40, 20), 350));
 
+// --- EFB → slot constraint/course mapping (WaypointConstraintMapper) ---
+MSFSBlindAssist.Database.Models.WaypointFix Fix(string restr, int? min, int? max, double? crs, bool trueCrs = false)
+    => new() { Ident = "X", AltitudeRestriction = restr, MinAltitude = min, MaxAltitude = max, Course = crs, IsTrueCourse = trueCrs };
+
+var m1 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT OR ABOVE 5000 FT", 5000, 0, 70));
+Check("EFB map: at-or-above + mag course", m1.constraint == AltitudeConstraintType.AtOrAbove && Near(m1.crossingAltitude ?? -1, 5000) && Near(m1.course ?? -1, 70));
+var m2 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT OR BELOW 6000 FT", 6000, 0, 0));
+Check("EFB map: at-or-below, no course", m2.constraint == AltitudeConstraintType.AtOrBelow && Near(m2.crossingAltitude ?? -1, 6000) && m2.course == null);
+var m3 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("BETWEEN 24000 AND 29000 FT", 29000, 24000, 0));
+Check("EFB map: between -> lower/upper ordered", m3.constraint == AltitudeConstraintType.Between && Near(m3.crossingAltitude ?? -1, 24000) && Near(m3.crossingAltitudeUpper ?? -1, 29000));
+var m4 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT 10000 FT", 10000, 0, 0));
+Check("EFB map: at", m4.constraint == AltitudeConstraintType.At && Near(m4.crossingAltitude ?? -1, 10000));
+var m5 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", null, null, 0));
+Check("EFB map: nothing -> lateral only", m5.constraint == AltitudeConstraintType.None && m5.crossingAltitude == null && m5.course == null);
+var m6 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", null, null, 88));
+Check("EFB map: course only, no altitude", m6.constraint == AltitudeConstraintType.None && Near(m6.course ?? -1, 88));
+var m7 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT 10000 FT", 10000, 0, 120, trueCrs: true));
+Check("EFB map: true course dropped (direct-to)", m7.course == null && m7.constraint == AltitudeConstraintType.At);
+var m8 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", 8000, 0, 0));
+Check("EFB map: bare altitude, blank descriptor -> at", m8.constraint == AltitudeConstraintType.At && Near(m8.crossingAltitude ?? -1, 8000));
+
 // --- Arrival ---
 Check("arrival: inside capture radius", G.HasArrived(0.3, 100, 100, 0.5));
 Check("arrival: abeam (bearing >90 off track)", G.HasArrived(2.0, 200, 100, 0.5));

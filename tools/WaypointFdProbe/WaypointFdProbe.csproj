@@ -8,5 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\MSFSBlindAssist\Navigation\WaypointFlightDirectorGeometry.cs" Link="Linked\WaypointFlightDirectorGeometry.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\WaypointConstraintMapper.cs" Link="Linked\WaypointConstraintMapper.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\WaypointFix.cs" Link="Linked\WaypointFix.cs" />
   </ItemGroup>
 </Project>

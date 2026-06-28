@@ -831,11 +831,28 @@ public partial class ElectronicFlightBagForm : Form
 
         var waypoint = waypoints[selectedIndex];
 
-        // Track the waypoint
-        _waypointTracker.TrackWaypoint(slotNumber, waypoint);
+        // Carry the fix's PUBLISHED altitude constraint + inbound course into the slot, so a waypoint
+        // tracked from a SimBrief/SID/STAR/approach plan flies its real vertical + course automatically
+        // (instead of lateral-only direct-to). The Track Fix window enters these by hand; this derives
+        // them from the fix's own data.
+        var (crossingAlt, crossingAltUpper, constraint, course) = WaypointConstraintMapper.FromFix(waypoint);
+        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, crossingAltUpper, constraint, course);
 
-        // Announce to screen reader
-        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}");
+        // Announce to screen reader (echo what carried through, like the Track Fix window does).
+        string detail = "";
+        if (course.HasValue)
+            detail += $", tracking course {course.Value:F0}";
+        if (crossingAlt.HasValue)
+        {
+            detail += constraint switch
+            {
+                AltitudeConstraintType.AtOrAbove => $", at or above {crossingAlt.Value:F0} feet",
+                AltitudeConstraintType.AtOrBelow => $", at or below {crossingAlt.Value:F0} feet",
+                AltitudeConstraintType.Between   => $", between {crossingAlt.Value:F0} and {crossingAltUpper!.Value:F0} feet",
+                _                                => $", at {crossingAlt.Value:F0} feet"
+            };
+        }
+        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}{detail}");
     }
 
     private void LoadSimBriefFlightPlan()

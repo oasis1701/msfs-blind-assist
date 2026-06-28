@@ -25,7 +25,11 @@ frequencies zero-beat (pitch matched). When they match, you are tracking the leg
 
 1. **Track your fixes.** Open the Track Fix window (input mode → **Shift+F**), enter a waypoint, pick
    a slot (1–5), and Track. Fill slots **1 → 5 in the order you want to fly them** — the FD walks them
-   in order. You can also track from the Electronic Flight Bag route viewer (Shift+E).
+   in order. You can also track straight from the **Electronic Flight Bag route viewer (Shift+E)** —
+   right-click (or the context-menu key) a waypoint and pick "Track Slot N". A waypoint tracked from
+   the EFB **carries its published altitude constraint and inbound course automatically** (e.g. a SID
+   leg "at or above 6000", a STAR fix "between 16000 and 19000", an airway course) — you don't have to
+   re-enter them. (Courses are used when magnetic and present; otherwise the leg flies direct-to.)
 2. **(Optional) Add a crossing altitude.** In the Track Fix window, enter a **Crossing Altitude**
    (feet MSL) and pick a **constraint** (At / At or above / At or below / Between). Leave the altitude
    blank for **lateral-only** guidance at that fix. For *Between*, also enter the **Upper Altitude**.
