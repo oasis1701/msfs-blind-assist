@@ -148,11 +148,11 @@ public static class PMDG777ChecklistDefinitions
                 (e, _) => e.SetCargoFireArm(0)),
             Auto("PF_WING_ANTI_ICE", "PREFLIGHT", "Wing Anti-Ice: AUTO",
                 "ICE_WingAntiIceSw", v => v > 0.5, RevertBehavior.StayComplete,
-                action: (e, _) => e.SetWingAntiIce(0)),  // 0=AUTO on PMDG
+                action: (e, _) => e.SetWingAntiIce(1)),  // 1=Auto (panel ValueDescriptions: 0=Off,1=Auto,2=On)
             Auto("PF_ENG_ANTI_ICE", "PREFLIGHT", "Engine Anti-Ice selectors: AUTO",
                 "ICE_EngAntiIceSw_0", v => v > 0.5, RevertBehavior.StayComplete,
                 new[] { "ICE_EngAntiIceSw_1" },
-                (e, _) => e.SetEngAntiIce(0)),            // 0=AUTO on PMDG
+                (e, _) => e.SetEngAntiIce(1)),            // 1=Auto (panel ValueDescriptions: 0=Off,1=Auto,2=On)
             Auto("PF_NAV_LIGHTS", "PREFLIGHT", "Navigation light: ON",
                 "LTS_NAV_Sw_ON", v => v > 0.5, RevertBehavior.StayComplete,
                 action: (e, _) => e.SetNavLights(1)),
@@ -230,7 +230,7 @@ public static class PMDG777ChecklistDefinitions
                 new[] { "HYD_PrimaryEngPump_Sw_ON_1", "HYD_PrimaryElecPump_Sw_ON_0", "HYD_PrimaryElecPump_Sw_ON_1" },
                 (e, _) => { e.SetEngPumps(1); e.SetElecPumps(1); }),
             ActionManual("BS_HYD_DEMAND", "BEFORE_START", "Demand pump selectors: AUTO",
-                (e, _) => e.SetDemandPumps(2)),  // 2=AUTO
+                (e, _) => e.SetDemandPumps(1)),  // 1=Auto (panel ValueDescriptions: 0=Off,1=Auto,2=On)
             ActionManual("BS_CTR_PUMPS_ON", "BEFORE_START", "Center Electric Primary pump switches: ON (check quantity)",
                 (e, _) => e.SetCenterFuelPumps(1)),
             Auto("BS_WING_PUMPS_ON", "BEFORE_START", "Left and Right Fuel Pump switches: ON",

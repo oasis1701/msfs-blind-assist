@@ -136,14 +136,14 @@ public static class PMDG777FlowDefinitions
             SW("CP_JETT_ARM_OFF", "Jettison arm: OFF",         "EVT_OH_FUEL_JETTISON_ARM",           0),
             Multi("CP_XFEED_OFF", "Crossfeed: OFF",
                 ("EVT_OH_FUEL_CROSSFEED_FORWARD", 0), ("EVT_OH_FUEL_CROSSFEED_AFT", 0)),
-            SW("CP_WING_ANTI_ICE","Wing anti-ice: AUTO",       "EVT_OH_ICE_WING_ANTIICE",            0),
+            SW("CP_WING_ANTI_ICE","Wing anti-ice: AUTO",       "EVT_OH_ICE_WING_ANTIICE",            1),
             Multi("CP_ENG_ANTI_ICE","Engine anti-ice: AUTO",
-                ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
+                ("EVT_OH_ICE_ENGINE_ANTIICE_1", 1), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 1)),
             SW("CP_BEACON_OFF",   "Beacon: OFF",               "EVT_OH_LIGHTS_BEACON",               0),
             SW("CP_WING_LIGHTS",  "Wing lights: ON",           "EVT_OH_LIGHTS_WING",                 1),
             SW("CP_EQUIP_COOL",   "Equipment cooling: AUTO",   "EVT_OH_AIRCOND_EQUIP_COOLING_SWITCH",1),
             SW("CP_GASPER",       "Gasper: ON",                "EVT_OH_AIRCOND_GASPER_SWITCH",       1),
-            SW("CP_RECIRC_FANS",  "Recirculation fans: AUTO",  "EVT_OH_AIRCOND_RECIRC_FANS_SWITCH",  2),
+            SW("CP_RECIRC_FANS",  "Recirculation fans: ON",    "EVT_OH_AIRCOND_RECIRC_FANS_SWITCH",  1),
             Skip(Multi("CP_PACKS",     "Packs: AUTO",
                 ("EVT_OH_AIRCOND_PACK_SWITCH_L", 1), ("EVT_OH_AIRCOND_PACK_SWITCH_R", 1)),
                 s => s.IsPack1Auto() && s.IsPack2Auto()),
@@ -213,8 +213,8 @@ public static class PMDG777FlowDefinitions
                 ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
                 s => s.IsEngPump1On() && s.IsEngPump2On()),
             Multi("BS_DEMAND_AUTO","Demand pumps: AUTO",
-                ("EVT_OH_HYD_DEMAND_ELEC1", 2), ("EVT_OH_HYD_DEMAND_ELEC2", 2),
-                ("EVT_OH_HYD_AIR1", 2), ("EVT_OH_HYD_AIR2", 2)),
+                ("EVT_OH_HYD_DEMAND_ELEC1", 1), ("EVT_OH_HYD_DEMAND_ELEC2", 1),
+                ("EVT_OH_HYD_AIR1", 1), ("EVT_OH_HYD_AIR2", 1)),
             Skip(Multi("BS_FUEL_PUMPS", "Fuel pumps: ON",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 1),     ("EVT_OH_FUEL_PUMP_2_AFT", 1)),
@@ -342,12 +342,11 @@ public static class PMDG777FlowDefinitions
                 s => s.AreLandingLightsOn()),
             Skip(SW("BTKOF_TURNOFF",   "Runway turnoff lights: ON",  "EVT_OH_LIGHTS_LR_TURNOFF",   1),
                 s => s.IsRwyTurnoffLOn() || s.IsRwyTurnoffROn()),
-            Skip(SW("BTKOF_STROBE",    "Strobe lights: ON",          "EVT_OH_LIGHTS_STROBE",        2),
+            Skip(SW("BTKOF_STROBE",    "Strobe lights: ON",          "EVT_OH_LIGHTS_STROBE",        1),
                 s => s.IsStrobeOn()),
             SW("BTKOF_XPNDR",     "Transponder: TA/RA",
-               // Transponder uses standard SimConnect — handled as special case below
-               // Set via SendEvent("XPNDR_SET", 4) — see FirstOfficerForm
-               "EVT_TCAS_XPNDR",                               4),
+               // XPDR_ModeSel via EVT_TCAS_MODE: 0=Stby,1=AltRptgOff,2=Xpndr,3=TA Only,4=TA/RA
+               "EVT_TCAS_MODE",                                4),
             Skip(Momentary("BTKOF_LNAV", "LNAV: ARM", "EVT_MCP_LNAV_SWITCH"),
                 s => s.IsOn("MCP_annunLNAV")),
             Skip(Momentary("BTKOF_VNAV", "VNAV: ARM", "EVT_MCP_VNAV_SWITCH"),
@@ -442,7 +441,7 @@ public static class PMDG777FlowDefinitions
                 s => s.AreFlapsUp()),
             Skip(Momentary("AL_SPEEDBRAKE_DN", "Speedbrake: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "AL_SPEEDBRAKE"),
                 s => s.IsSpeedbrakeDown()),
-            SW("AL_XPNDR_STBY",   "Transponder: STBY",     "EVT_TCAS_XPNDR",              0),
+            SW("AL_XPNDR_STBY",   "Transponder: STBY",     "EVT_TCAS_MODE",               0),
             // APU Start sequence for on-ground power
             SW("AL_APU_ON",       "APU selector: ON",       "EVT_OH_ELEC_APU_SEL_SWITCH",  1),
             Wait("AL_APU_WAIT",   "Waiting for APU selector", 2),
@@ -463,7 +462,7 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN", "SHUTDOWN_CL" },
         Steps = new()
         {
-            SW("SD_STORM",       "Storm lights: ON",         "EVT_OH_LIGHTS_STORM",        2),
+            SW("SD_STORM",       "Storm lights: ON",         "EVT_OH_LIGHTS_STORM",        1),
             Skip(SW("SD_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1,
                "BRAKES_ParkingBrakeLeverOn", v => v > 0.5, "SD_PARK_BRAKE"),
                 s => s.IsParkingBrakeSet()),
@@ -496,7 +495,7 @@ public static class PMDG777FlowDefinitions
             SW("SD_TAXI_OFF",    "Taxi lights: OFF",         "EVT_OH_LIGHTS_TAXI",         0),
             MouseFlag("SD_FD_L", "Left FD: OFF",             "EVT_MCP_FD_SWITCH_L", s => !s.IsFDLeftOn()),
             MouseFlag("SD_FD_R", "Right FD: OFF",            "EVT_MCP_FD_SWITCH_R", s => !s.IsFDRightOn()),
-            SW("SD_XPNDR_STBY",  "Transponder: STBY",        "EVT_TCAS_XPNDR",             0),
+            SW("SD_XPNDR_STBY",  "Transponder: STBY",        "EVT_TCAS_MODE",              0),
         }
     };
 
