@@ -234,6 +234,21 @@ Details: [docs/taxi-guidance.md](docs/taxi-guidance.md).
 
 Details: [docs/visual-guidance.md](docs/visual-guidance.md).
 
+### Waypoint Flight Director (synthetic audio FD, en-route)
+
+**Feature (branch `feat/waypoint-flight-director`):** A synthetic, audio flight director that guides a blind pilot HAND-FLYING to the waypoints they tracked in the 5 Shift+F slots, sequencing them 1→5. The **missing middle** between the takeoff tone and the landing tone — there was previously nothing for the en-route phase, so a blind pilot had to engage the AP immediately after takeoff. Output-mode **Ctrl+F** (joins the Ctrl+H Hand-Fly / Ctrl+V Visual-Guidance family). Spec: `docs/superpowers/specs/2026-06-16-waypoint-flight-director-design.md`; user/maintainer doc: [docs/waypoint-flight-director.md](docs/waypoint-flight-director.md).
+
+**It is COMPLETELY GLOBAL** — computed from stock SimVars only (no aircraft-specific variables/events, no AP, no real FD required), so it works on every aircraft, IFR or VFR. It is the SAME dual-tone "match the two tones" idiom as Visual Landing Guidance, generalised from final approach to the en-route phase: the **desired** tone's stereo pan = commanded bank, its frequency = commanded pitch; the **current** tone mirrors the actual attitude; the pilot zero-beats them.
+
+**Architecture (mirrors VisualGuidanceManager, low-risk — VG was not refactored):**
+- **`Navigation/WaypointFlightDirectorGeometry.cs`** — pure static command math (probe-tested by `tools/WaypointFdProbe`, like `DockingGeometry`): `TrackError` (bearing-to-fix vs **GPS ground track**, so nulling it flies a wind-corrected straight line), `CommandedBankDeg` (proportional roll law `KRoll·(trackErr − yawRate·lead)` clamped to the bank cap — rate-lead off the track derivative kills overshoot), `RequiredFpaDeg` + `CommandedPitchDeg` (`pitch ≈ FPA + live AoA`, the VG nominal-pitch trick — no performance model), `ResolveVerticalTarget` (AT / AT_OR_ABOVE / AT_OR_BELOW / BETWEEN → command or neutral), `ProjectedCrossingAltFt`, `IsTopOfChangeReached` (synthetic TOD/TOC cue), `HasArrived` (capture radius OR abeam > 90° off track). `AltitudeConstraintType` lives here.
+- **`Services/WaypointFlightDirectorManager.cs`** — stateful shell: owns two `AudioToneGenerator`s (deferred Start, follower only if desired started — copied from VG), the leg sequencer (start slot 1, advance on arrival, stop at the first empty slot or after 5), per-frame command + render, the "begin descent/climb" one-shot, the **ground-speed gate** (below the floor, ground track is unreliable → fall back to heading), and **AP auto-mute** (tones silent while AUTOPILOT MASTER engaged). NEVER touches the controls. `StandardBank` negates SimConnect's left-positive bank, same as VG.
+- **Rides the existing `VISUAL_GUIDANCE_DATA` (req 505) stream** — MainForm feeds the FD the same `VISUAL_GUIDANCE_*` events as VG via sibling handler blocks (FD and VG are **mutually exclusive**; activating one stops the other). The stream is now **reference-counted** (`SimConnectManager.Acquire/ReleaseVisualGuidanceMonitoring`) so neither feature stops it out from under the other. `AUTOPILOT MASTER` was added as the last `VisualGuidanceData` field + a `VISUAL_GUIDANCE_AP_MASTER` event (VG ignores it).
+- **Slots** carry an optional crossing altitude + `AltitudeConstraintType` (`WaypointTracker.GetSlot`/extended `TrackWaypoint`); entered in the **Track Fix window** (Shift+F) — an altitude textbox + constraint combo (+ upper box for Between). Blank = lateral-only.
+- **Arbitration:** FD activation stops VG + `handFlyManager.SuppressAudio()`; deactivation resumes HandFly. Auto-deactivates on the airborne→ground touchdown edge (taxi/rollout tones take over). Empty slot 1 → "No waypoints to track", no activation.
+
+**Per-aircraft tuning = `WaypointFlightDirectorProfile` via `IAircraftDefinition.GetWaypointFlightDirectorProfile()`** (KRoll, MaxBank/MaxPitch, capture radius, low-speed floor, rate-lead, AoA fallback, tone Hz/range). A320 baseline (FBW A32NX = NEO, Fenix = CEO); gentler roll gain + larger capture + longer lead for PMDG 777, HS 787 and FBW A380X (they roll slower / cover ground faster). **⚠️ These are best-effort class defaults — the gains/caps/capture-radius need LIVE in-sim tuning** (no AP to verify against; this is hand-flying). Tune like the taxi-turn-lead and VG profiles were: fly each aircraft, adjust the profile values. Settings (`UserSettings.WaypointFd*`): tone waveform/volume (desired + current), hard-pan, AP-auto-mute (default on).
+
 ### Multi-Aircraft Architecture
 
 **Core interfaces:**
@@ -959,6 +974,7 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **Adding or modifying hotkeys** → [Hotkey System](docs/hotkey-system.md)
 - **Fenix rotary encoders (RMP, FCU)** → [Fenix Increment/Decrement](docs/fenix-increment-decrement.md)
 - **Tuning visual guidance PID controller** → [Visual Guidance](docs/visual-guidance.md)
+- **Working on / tuning the en-route Waypoint Flight Director** → [Waypoint Flight Director](docs/waypoint-flight-director.md)
 - **Working on taxi guidance (graph, router, tone, form)** → [Taxi Guidance](docs/taxi-guidance.md)
 - **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
 - **Understanding variable patterns** → [Variable System](docs/variable-system.md)
@@ -972,6 +988,7 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **[Variable System](docs/variable-system.md)** - Three patterns for managing variables (Panel, Monitoring, Hotkey)
 - **[Fenix Increment/Decrement](docs/fenix-increment-decrement.md)** - Counter-based pattern for Fenix rotary encoders
 - **[Visual Guidance](docs/visual-guidance.md)** - PID controller tuning and ground track monitoring
+- **[Waypoint Flight Director](docs/waypoint-flight-director.md)** - Synthetic en-route audio FD to the tracked waypoint slots; dual-tone, crossing-altitude constraints, per-aircraft tuning
 - **[Taxi Guidance](docs/taxi-guidance.md)** - Turn-by-turn taxi assistance, steering tone, ATC-constrained routing
 - **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
 - **[Aircraft Definitions](docs/aircraft-definitions.md)** - Multi-aircraft dictionary system API reference

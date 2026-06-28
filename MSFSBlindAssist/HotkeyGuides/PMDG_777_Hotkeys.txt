@@ -87,6 +87,10 @@ Trim:
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+F     Activate/deactivate Waypoint Flight Director (synthetic audio FD:
+             hand-fly to the tracked waypoint slots in order; stereo pan = bank
+             command, tone pitch = climb/descend). Output mode; no Hand Fly
+             needed. Set crossing altitudes in the Track Fix window (Shift+F).
   Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
              Fly mode. Enables the same single-letter quick-access hotkeys
              Hand Fly mode does, plus F for target VS.
