@@ -225,6 +225,10 @@ public static class PMDG777ChecklistDefinitions
             ActionManual("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
                 (e, _) => { e.PushGroundPowerPrimary(); e.PushGroundPowerSecondary(); }),
             Manual("BS_HYD_PRESSURIZE", "BEFORE_START", "Obtain clearance to pressurize hydraulics"),
+            Auto("BS_HYD_PUMPS_ON", "BEFORE_START", "Engine and Electric primary hydraulic pumps: ON",
+                "HYD_PrimaryEngPump_Sw_ON_0", v => v > 0.5, RevertBehavior.StayComplete,
+                new[] { "HYD_PrimaryEngPump_Sw_ON_1", "HYD_PrimaryElecPump_Sw_ON_0", "HYD_PrimaryElecPump_Sw_ON_1" },
+                (e, _) => { e.SetEngPumps(1); e.SetElecPumps(1); }),
             ActionManual("BS_HYD_DEMAND", "BEFORE_START", "Demand pump selectors: AUTO",
                 (e, _) => e.SetDemandPumps(2)),  // 2=AUTO
             ActionManual("BS_CTR_PUMPS_ON", "BEFORE_START", "Center Electric Primary pump switches: ON (check quantity)",
