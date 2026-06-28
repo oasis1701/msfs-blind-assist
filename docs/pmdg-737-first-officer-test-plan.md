@@ -139,6 +139,25 @@ read-back instrument only.
 
 ---
 
+## Part D — FO coverage + menu visibility (2026-06-28)
+
+### D1. Menu visibility (all aircraft)
+Each PMDG First Officer menu item is now gated to its own aircraft.
+- Load the PMDG 777 → Tools shows **"PMDG 777 First Officer"** and **First Officer Settings**, NOT "PMDG 737 First Officer".
+- Load the PMDG 737 → Tools shows **"PMDG 737 First Officer"** + Settings, NOT the 777 item.
+- Load any other aircraft (A320 / A380 / HS787) → **neither** FO item nor FO Settings appears.
+
+### D2. 737 engine-driven hydraulic pumps (functional-hole fix)
+The 737 FO now manages the engine-driven hyd pumps (previously never set; the 777 already did). PMDG cold-dark starts the EDP switches OFF.
+- Cold-dark → run **Before Start** → the new **"Engine hydraulic pumps: ON"** flow step fires; confirm `HYD_PumpSw_eng_0` / `HYD_PumpSw_eng_1` read ON (via sim tools), and the new Before Start checklist item **"Engine hydraulic pumps: ON"** auto-ticks (alongside the existing electric-pump item).
+- Run **Shutdown** → the new **"Engine hydraulic pumps: OFF"** flow step fires; confirm both read OFF. (No checklist line for the OFF — shutdown keeps the generic "Hydraulic panel: set" reminder.)
+
+### D3. 777 primary hydraulic pump readback
+The Before Start flow already turns the primary pumps ON; the checklist now verifies them.
+- Run **Before Start** → confirm the new checklist item **"Engine and Electric primary hydraulic pumps: ON"** auto-ticks (it reads `HYD_PrimaryEngPump_Sw_ON_0/1` + `HYD_PrimaryElecPump_Sw_ON_0/1`, which the flow's `BS_HYD_ENG` / `BS_HYD_ELEC` set). If you manually switch a primary pump OFF, ticking the item re-commands all four ON.
+
+---
+
 ## Known limitations (by design / data availability)
 - **Baro-STD has no NG3 state field** — the phase monitor pushes STD/QNH at the transition
   alt/level using its own one-shot latch (it cannot read whether STD is already selected).
