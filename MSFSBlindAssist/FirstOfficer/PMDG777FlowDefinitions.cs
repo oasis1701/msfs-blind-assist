@@ -164,9 +164,9 @@ public static class PMDG777FlowDefinitions
             SW("CP_EFIS_MODE_FO", "FO EFIS mode: MAP",         "EVT_EFIS_FO_MODE",                   2),
             SW("CP_EFIS_RANGE_FO","FO EFIS range: 40",         "EVT_EFIS_FO_RANGE",                  2),
             // MCP — FD and AT Arm off for cold preflight state
-            MouseFlag("CP_FD_L",  "Left flight director: OFF", "EVT_MCP_FD_SWITCH_L"),
-            MouseFlag("CP_AT_ARM","AT Arm: OFF",               "EVT_MCP_AT_ARM_SWITCH_L"),
-            MouseFlag("CP_FD_R",  "Right flight director: OFF","EVT_MCP_FD_SWITCH_R"),
+            MouseFlag("CP_FD_L",  "Left flight director: OFF", "EVT_MCP_FD_SWITCH_L",     s => !s.IsFDLeftOn()),
+            MouseFlag("CP_AT_ARM","AT Arm: OFF",               "EVT_MCP_AT_ARM_SWITCH_L", s => !s.IsATArmLeftOn()),
+            MouseFlag("CP_FD_R",  "Right flight director: OFF","EVT_MCP_FD_SWITCH_R",     s => !s.IsFDRightOn()),
             // Autobrake
             Skip(SW("CP_AUTOBRAKE",    "Autobrake: RTO",            "EVT_ABS_AUTOBRAKE_SELECTOR",         0,
                "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1),
@@ -494,8 +494,8 @@ public static class PMDG777FlowDefinitions
                "LTS_Beacon_Sw_ON", v => v < 0.5, "SD_BEACON_OFF"),
                 s => !s.IsBeaconOn()),
             SW("SD_TAXI_OFF",    "Taxi lights: OFF",         "EVT_OH_LIGHTS_TAXI",         0),
-            MouseFlag("SD_FD_L", "Left FD: OFF",             "EVT_MCP_FD_SWITCH_L"),
-            MouseFlag("SD_FD_R", "Right FD: OFF",            "EVT_MCP_FD_SWITCH_R"),
+            MouseFlag("SD_FD_L", "Left FD: OFF",             "EVT_MCP_FD_SWITCH_L", s => !s.IsFDLeftOn()),
+            MouseFlag("SD_FD_R", "Right FD: OFF",            "EVT_MCP_FD_SWITCH_R", s => !s.IsFDRightOn()),
             SW("SD_XPNDR_STBY",  "Transponder: STBY",        "EVT_TCAS_XPNDR",             0),
         }
     };
@@ -550,12 +550,18 @@ public static class PMDG777FlowDefinitions
         string? checklistItemId = null) =>
         SW(id, label, eventName, target, verifyField, verifyCond, checklistItemId, isMomentary);
 
-    private static FlowStep<AircraftStateEvaluator> MouseFlag(string id, string label, string eventName) => new()
+    // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
+    // switch is already in the desired state flips it the wrong way. The skip predicate
+    // is required so the step is no-op'd when already correct — the same guard the panel
+    // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) already apply.
+    private static FlowStep<AircraftStateEvaluator> MouseFlag(string id, string label, string eventName,
+        Func<AircraftStateEvaluator, bool> skipWhen) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         UsesMouseFlag = true,
+        SkipCondition = skipWhen,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
