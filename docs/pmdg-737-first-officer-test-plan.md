@@ -90,6 +90,55 @@ Enable Auto Gear / Auto Flaps / Auto AP in **Tools → First Officer Settings**,
 
 ---
 
+## Part C — FD/AT Arm idempotency (flow ↔ panel parity, 2026-06-28)
+
+The FD and AT Arm switches are driven by `SendPMDGEvent(event, id, MOUSE_FLAG_LEFTSINGLE)`
+on BOTH the panels (`HandleUIVariableSet`) and the FO flows/checklists — the mouse flag is
+the SDK-mandated method because these switches ignore direct position values. It is a
+single-click **toggle**, so a flow step that fired it unconditionally flipped FD/AT the wrong
+way whenever the switch was already in the target state. The flow `MouseFlag(...)` steps now
+require a `SkipCondition` predicate, so `FlowManager` **no-ops** the step (announcing
+"Already set: …") when the switch is already correct — matching the panel's `current==target`
+guard and the checklists' `SetFDLeft(target, state)` path.
+
+### C1. 777 — run each affected flow from BOTH starting states
+Read switch state via the sim tools (PMDG fields `MCP_FD_Sw_On_left` / `_right`,
+`MCP_ATArm_Sw_On_left` / `_right`).
+
+- **Already-correct (the bug case):** with FD L/R and AT Arm **OFF**, run **Preflight**. The
+  three FD/AT steps must announce **"Already set: …"** and the switches **stay OFF**. (Before
+  the fix they flipped **ON**.)
+- **Needs-changing:** with FD L/R **ON**, run **Preflight** → they go **OFF**.
+- **Shutdown:** FDs **ON** → run **Shutdown/Secure** → **OFF**; FDs already **OFF** → run it
+  again → **"Already set"**, stay **OFF**.
+
+### C2. 737 — same check
+Read-back fields: `MCP_FDSw_1` / `MCP_FDSw_2` (FD L/R), `MCP_ATArmSw` (AT Arm).
+
+- FDs **OFF** → run **Preflight** → **ON**; FDs already **ON** → run again → **"Already set"**,
+  stay **ON**.
+- AT **OFF** → run **Before Takeoff** → **ARM**; already **ARM** → run again → **"Already
+  set"**, stay **ARM**.
+
+### C3. 777 flap-detent parameter — PENDING verification
+`AircraftActionExecutor.SetFlapsPosition` sends the per-detent
+`EVT_CONTROL_STAND_FLAPS_LEVER_*` event with **param 1**; the 777 panel sends the same events
+with **MOUSE_FLAG_LEFTSINGLE**. The 737 NG3 is known to accept param 1 (validated by the
+auto-flaps work); the 777 is unconfirmed. To verify: set flaps to **5**, then run the 777
+**Secure/Shutdown** "Flaps: UP" action (which calls `SetFlapsPosition(0)`) and read
+`FCTL_Flaps_Lever`.
+- Reads **0 / UP** → param 1 works on the 777; **no code change** needed (close this item).
+- **Did not move** → change `SetFlapsPosition`'s final dispatch from
+  `ExecuteSingle(eventName, null, false, true)` to `ExecuteSingle(eventName, null, true, false)`
+  (mouse flag), rebuild, and re-test.
+
+The sim tools can READ these PMDG fields but cannot WRITE to actuate this 777 (their event
+transport does not replicate the app's CDA `SetClientData` write — verified 2026-06-28), so all
+toggling above must be driven through the app's FO flows/checklists; the sim tools are the
+read-back instrument only.
+
+---
+
 ## Known limitations (by design / data availability)
 - **Baro-STD has no NG3 state field** — the phase monitor pushes STD/QNH at the transition
   alt/level using its own one-shot latch (it cannot read whether STD is already selected).
