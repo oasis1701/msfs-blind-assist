@@ -215,8 +215,17 @@ public partial class TrackFixForm : Form
 
     private void TrackWaypoint(WaypointFix waypoint, int slotNumber)
     {
-        _waypointTracker.TrackWaypoint(slotNumber, waypoint);
-        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}");
+        var (crossingAlt, upperAlt, constraint) = ParseCrossingConstraint();
+        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, upperAlt, constraint);
+
+        string altText = "";
+        if (crossingAlt.HasValue)
+        {
+            altText = $", {ConstraintPhrase(constraint)} {crossingAlt.Value:F0} feet";
+            if (constraint == AltitudeConstraintType.Between && upperAlt.HasValue)
+                altText += $" and {upperAlt.Value:F0} feet";
+        }
+        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}{altText}");
 
         // Close the form
         Hide();
@@ -228,6 +237,40 @@ public partial class TrackFixForm : Form
         }
     }
 
+    /// <summary>
+    /// Reads the optional crossing-altitude + constraint inputs for the Waypoint Flight Director's
+    /// vertical guidance. Blank/unparseable altitude → lateral-only (constraint forced to None).
+    /// </summary>
+    private (double? crossingAlt, double? upperAlt, AltitudeConstraintType constraint) ParseCrossingConstraint()
+    {
+        double? crossingAlt = null, upperAlt = null;
+        if (double.TryParse(crossingAltTextBox.Text.Trim(), out double ca)) crossingAlt = ca;
+        if (double.TryParse(upperAltTextBox.Text.Trim(), out double ua)) upperAlt = ua;
+
+        var constraint = constraintComboBox.SelectedIndex switch
+        {
+            1 => AltitudeConstraintType.At,
+            2 => AltitudeConstraintType.AtOrAbove,
+            3 => AltitudeConstraintType.AtOrBelow,
+            4 => AltitudeConstraintType.Between,
+            _ => AltitudeConstraintType.None
+        };
+
+        // No altitude entered → lateral-only. Constraint None → drop any stray altitude.
+        if (crossingAlt == null) constraint = AltitudeConstraintType.None;
+        if (constraint == AltitudeConstraintType.None) { crossingAlt = null; upperAlt = null; }
+        return (crossingAlt, upperAlt, constraint);
+    }
+
+    private static string ConstraintPhrase(AltitudeConstraintType c) => c switch
+    {
+        AltitudeConstraintType.At => "at",
+        AltitudeConstraintType.AtOrAbove => "at or above",
+        AltitudeConstraintType.AtOrBelow => "at or below",
+        AltitudeConstraintType.Between => "between",
+        _ => ""
+    };
+
     private void SwitchToSearchMode()
     {
         // Show search controls
@@ -235,6 +278,12 @@ public partial class TrackFixForm : Form
         waypointTextBox.Visible = true;
         slotLabel.Visible = true;
         slotComboBox.Visible = true;
+        crossingAltLabel.Visible = true;
+        crossingAltTextBox.Visible = true;
+        constraintLabel.Visible = true;
+        constraintComboBox.Visible = true;
+        upperAltLabel.Visible = true;
+        upperAltTextBox.Visible = true;
         trackButton.Visible = true;
 
         // Hide duplicate controls
@@ -243,10 +292,13 @@ public partial class TrackFixForm : Form
         selectButton.Visible = false;
 
         // Reset form size
-        ClientSize = new Size(384, 211);
+        ClientSize = new Size(384, 375);
 
-        // Clear waypoint text
+        // Clear inputs
         waypointTextBox.Clear();
+        crossingAltTextBox.Clear();
+        upperAltTextBox.Clear();
+        constraintComboBox.SelectedIndex = 0;
     }
 
     private void SwitchToDuplicateMode()
@@ -256,6 +308,12 @@ public partial class TrackFixForm : Form
         waypointTextBox.Visible = false;
         slotLabel.Visible = false;
         slotComboBox.Visible = false;
+        crossingAltLabel.Visible = false;
+        crossingAltTextBox.Visible = false;
+        constraintLabel.Visible = false;
+        constraintComboBox.Visible = false;
+        upperAltLabel.Visible = false;
+        upperAltTextBox.Visible = false;
         trackButton.Visible = false;
 
         // Show duplicate controls
