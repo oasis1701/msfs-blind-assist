@@ -20,6 +20,7 @@ public class WaypointFix
     // Flight plan data
     public string InboundAirway { get; set; } = ""; // Airway name or "DCT" for direct
     public string AltitudeRestriction { get; set; } = ""; // e.g., "AT 10000", "AT OR ABOVE 5000", "AT OR BELOW 15000"
+    public string AltDescriptor { get; set; } = ""; // Raw ARINC alt_descriptor: "" / "A" (at) / "+" (at or above) / "-" (at or below) / "B" (between). The unambiguous constraint-type source (AltitudeRestriction is a formatted derivative).
     public int? MinAltitude { get; set; }
     public int? MaxAltitude { get; set; }
     public int? SpeedLimit { get; set; } // Speed restriction in knots

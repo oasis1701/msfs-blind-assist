@@ -24,34 +24,63 @@ public static class WaypointConstraintMapper
         double? crossingAltitude = null, crossingAltitudeUpper = null;
         var constraint = AltitudeConstraintType.None;
 
-        // The descriptor (AT / AT OR ABOVE / AT OR BELOW / BETWEEN) survives only on the semantic
-        // AltitudeRestriction string; the numbers come from the robust MinAltitude (=alt1) / MaxAltitude
-        // (=alt2) ints. So derive the TYPE from the string prefix and the VALUES from the ints.
-        string r = (fix.AltitudeRestriction ?? string.Empty).Trim().ToUpperInvariant();
+        // The constraint TYPE comes from the raw ARINC alt_descriptor (the unambiguous source); the
+        // NUMBERS come from the robust MinAltitude (=alt1) / MaxAltitude (=alt2) ints. For a fix that
+        // carries no raw descriptor (non-navdata source) fall back to inferring the type from the
+        // formatted AltitudeRestriction string's prefix.
+        string desc = (fix.AltDescriptor ?? string.Empty).Trim().ToUpperInvariant();
+        if (desc.Length == 0)
+            desc = InferDescriptorFromText(fix.AltitudeRestriction);
+
         double? min = fix.MinAltitude;
         double? max = fix.MaxAltitude;
 
-        if (r.StartsWith("AT OR ABOVE"))
+        switch (desc)
         {
-            constraint = AltitudeConstraintType.AtOrAbove;
-            crossingAltitude = min;
-        }
-        else if (r.StartsWith("AT OR BELOW"))
-        {
-            constraint = AltitudeConstraintType.AtOrBelow;
-            crossingAltitude = min;
-        }
-        else if (r.StartsWith("BETWEEN") && min.HasValue && max.HasValue)
-        {
-            constraint = AltitudeConstraintType.Between;
-            crossingAltitude = System.Math.Min(min.Value, max.Value);        // lower bound
-            crossingAltitudeUpper = System.Math.Max(min.Value, max.Value);   // upper bound
-        }
-        else if (r.StartsWith("AT ") || (min.HasValue && min.Value > 0))
-        {
-            // Explicit "AT", or a bare altitude with a blank descriptor (ARINC blank ≈ "at").
-            constraint = AltitudeConstraintType.At;
-            crossingAltitude = min;
+            case "+":   // at or above alt1
+                constraint = AltitudeConstraintType.AtOrAbove;
+                crossingAltitude = min;
+                break;
+
+            case "-":   // at or below alt1
+                constraint = AltitudeConstraintType.AtOrBelow;
+                crossingAltitude = min;
+                break;
+
+            case "B":   // between (block): alt1/alt2 are the two bounds, order not guaranteed
+            {
+                double? lo = null, hi = null;
+                bool minOk = min.HasValue && min.Value > 0;
+                bool maxOk = max.HasValue && max.Value > 0;
+                if (minOk && maxOk)
+                {
+                    lo = System.Math.Min(min!.Value, max!.Value);
+                    hi = System.Math.Max(min!.Value, max!.Value);
+                }
+                if (lo.HasValue && hi.HasValue && lo.Value < hi.Value)
+                {
+                    constraint = AltitudeConstraintType.Between;
+                    crossingAltitude = lo;
+                    crossingAltitudeUpper = hi;
+                }
+                else if (minOk || maxOk)
+                {
+                    // Single-bounded (or equal-bound) block — treat the present bound as a floor,
+                    // the ARINC convention for a one-sided "B". Never silently drops the altitude.
+                    constraint = AltitudeConstraintType.AtOrAbove;
+                    crossingAltitude = minOk ? min : max;
+                }
+                break;
+            }
+
+            case "A":   // at alt1
+            default:    // blank / unrecognized descriptor with an altitude ≈ "at" (ARINC default)
+                if (min.HasValue && min.Value > 0)
+                {
+                    constraint = AltitudeConstraintType.At;
+                    crossingAltitude = min;
+                }
+                break;
         }
 
         // A zero/absent crossing altitude is lateral-only — drop the constraint entirely.
@@ -70,5 +99,17 @@ public static class WaypointConstraintMapper
             course = c % 360.0;
 
         return (crossingAltitude, crossingAltitudeUpper, constraint, course);
+    }
+
+    /// <summary>Fallback when a fix carries no raw descriptor: infer it from the formatted restriction
+    /// string (the prefixes <c>FormatAltitudeRestriction</c> emits). Returns "" if nothing matches.</summary>
+    private static string InferDescriptorFromText(string? restriction)
+    {
+        string r = (restriction ?? string.Empty).Trim().ToUpperInvariant();
+        if (r.StartsWith("AT OR ABOVE")) return "+";
+        if (r.StartsWith("AT OR BELOW")) return "-";
+        if (r.StartsWith("BETWEEN")) return "B";
+        if (r.StartsWith("AT ")) return "A";
+        return "";   // bare "NNNN FT" / empty → the switch's default treats a present altitude as "at"
     }
 }

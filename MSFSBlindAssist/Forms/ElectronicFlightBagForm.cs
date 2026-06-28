@@ -830,6 +830,22 @@ public partial class ElectronicFlightBagForm : Form
         }
 
         var waypoint = waypoints[selectedIndex];
+        if (waypoint == null)
+        {
+            _announcer.Announce("Invalid waypoint selection");
+            return;
+        }
+
+        // Reject position-less legs. ARINC maneuver legs (CA/VA/VM/FM "to altitude", CI/VI intercept,
+        // CD/VD/CR/VR — ~14% of legs, the initial climb of most SIDs and missed-approach heading legs)
+        // have no fix and parse to (0,0); so does any fix whose coordinates couldn't be resolved.
+        // Tracking one would steer the FD toward (0°N, 0°E). Refuse it (the altitude/course would be
+        // useless without a position anyway).
+        if (waypoint.Latitude == 0.0 && waypoint.Longitude == 0.0)
+        {
+            _announcer.Announce($"{waypoint.Ident} has no position and cannot be tracked");
+            return;
+        }
 
         // Carry the fix's PUBLISHED altitude constraint + inbound course into the slot, so a waypoint
         // tracked from a SimBrief/SID/STAR/approach plan flies its real vertical + course automatically
@@ -848,7 +864,7 @@ public partial class ElectronicFlightBagForm : Form
             {
                 AltitudeConstraintType.AtOrAbove => $", at or above {crossingAlt.Value:F0} feet",
                 AltitudeConstraintType.AtOrBelow => $", at or below {crossingAlt.Value:F0} feet",
-                AltitudeConstraintType.Between   => $", between {crossingAlt.Value:F0} and {crossingAltUpper!.Value:F0} feet",
+                AltitudeConstraintType.Between when crossingAltUpper.HasValue => $", between {crossingAlt.Value:F0} and {crossingAltUpper.Value:F0} feet",
                 _                                => $", at {crossingAlt.Value:F0} feet"
             };
         }

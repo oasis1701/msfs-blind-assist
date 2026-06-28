@@ -69,8 +69,8 @@ Check("course intercept: on course holds course", Near(G.CourseInterceptTrackDeg
 Check("course intercept: wraps below 0", Near(G.CourseInterceptTrackDeg(10, 1, 40, 20), 350));
 
 // --- EFB → slot constraint/course mapping (WaypointConstraintMapper) ---
-MSFSBlindAssist.Database.Models.WaypointFix Fix(string restr, int? min, int? max, double? crs, bool trueCrs = false)
-    => new() { Ident = "X", AltitudeRestriction = restr, MinAltitude = min, MaxAltitude = max, Course = crs, IsTrueCourse = trueCrs };
+MSFSBlindAssist.Database.Models.WaypointFix Fix(string restr, int? min, int? max, double? crs, bool trueCrs = false, string desc = "")
+    => new() { Ident = "X", AltitudeRestriction = restr, AltDescriptor = desc, MinAltitude = min, MaxAltitude = max, Course = crs, IsTrueCourse = trueCrs };
 
 var m1 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT OR ABOVE 5000 FT", 5000, 0, 70));
 Check("EFB map: at-or-above + mag course", m1.constraint == AltitudeConstraintType.AtOrAbove && Near(m1.crossingAltitude ?? -1, 5000) && Near(m1.course ?? -1, 70));
@@ -88,6 +88,18 @@ var m7 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT 100
 Check("EFB map: true course dropped (direct-to)", m7.course == null && m7.constraint == AltitudeConstraintType.At);
 var m8 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", 8000, 0, 0));
 Check("EFB map: bare altitude, blank descriptor -> at", m8.constraint == AltitudeConstraintType.At && Near(m8.crossingAltitude ?? -1, 8000));
+
+// raw-descriptor primary path (the robust source — string is only a fallback)
+var d1 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", 5000, 0, 0, desc: "+"));
+Check("EFB map(desc): + -> at-or-above", d1.constraint == AltitudeConstraintType.AtOrAbove && Near(d1.crossingAltitude ?? -1, 5000));
+var d2 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", 29000, 24000, 0, desc: "B"));
+Check("EFB map(desc): B full block ordered", d2.constraint == AltitudeConstraintType.Between && Near(d2.crossingAltitude ?? -1, 24000) && Near(d2.crossingAltitudeUpper ?? -1, 29000));
+var d3 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", 5000, null, 0, desc: "B"));
+Check("EFB map(desc): B single-bound -> at-or-above floor (not dropped)", d3.constraint == AltitudeConstraintType.AtOrAbove && Near(d3.crossingAltitude ?? -1, 5000));
+var d4 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("AT 9999 FT", 5000, 0, 0, desc: "+"));
+Check("EFB map(desc): raw descriptor wins over conflicting string", d4.constraint == AltitudeConstraintType.AtOrAbove && Near(d4.crossingAltitude ?? -1, 5000));
+var d5 = MSFSBlindAssist.Navigation.WaypointConstraintMapper.FromFix(Fix("", 12000, 0, 0, desc: "A"));
+Check("EFB map(desc): A -> at", d5.constraint == AltitudeConstraintType.At && Near(d5.crossingAltitude ?? -1, 12000));
 
 // --- Arrival ---
 Check("arrival: inside capture radius", G.HasArrived(0.3, 100, 100, 0.5));
