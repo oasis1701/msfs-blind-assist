@@ -75,7 +75,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         MaxBankRateDegPerSec      = 3.0,
         GlideslopeAltitudeBiasFt  = 80.0,   // 777-class estimate — calibrate vs a coupled ILS autoland
         FlareAltitudeBiasFt       = 40.0,   // 777-class estimate
-        FlareTriggerWheelHeightFt = 40.0,
+        FlareTriggerWheelHeightFt = 50.0,   // A380 flares at the 50 ft RA callout (user-confirmed)
         FlareTargetPitchDeg       = 4.5,
         TonePitchRangeDeg         = 10.0
     };

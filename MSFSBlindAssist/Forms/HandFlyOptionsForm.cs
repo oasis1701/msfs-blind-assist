@@ -641,7 +641,12 @@ public partial class HandFlyOptionsForm : Form
             AccessibleName = "Centered tone change for Visual Guidance",
             AccessibleDescription = "Off by default. When on, the Visual Guidance command tone changes to a waveform you choose below while you are laterally centered on the localizer, and changes back to its normal waveform when you drift off centerline. This gives you an extra timbre cue for centered versus not centered, on top of the left or right stereo pan. When off, the tone keeps its normal waveform at all times."
         };
-        vgCenteredCheckBox.CheckedChanged += (s2, e2) => _vgCenteredEnabled = vgCenteredCheckBox.Checked;
+        vgCenteredCheckBox.CheckedChanged += (s2, e2) =>
+        {
+            _vgCenteredEnabled = vgCenteredCheckBox.Checked;
+            vgCenteredWaveLabel.Visible = _vgCenteredEnabled;
+            vgCenteredWaveCombo.Visible = _vgCenteredEnabled;
+        };
 
         vgCenteredWaveLabel = new Label
         {
@@ -804,7 +809,12 @@ public partial class HandFlyOptionsForm : Form
             AccessibleName = "Centered tone change for the Flight Director",
             AccessibleDescription = "Off by default. When on, the Flight Director command tone changes to a waveform you choose below while you are on track (the bank command is near zero), and changes back when you drift off track. An extra timbre cue for on-track versus not, on top of the left or right pan. When off, the tone keeps its normal waveform at all times."
         };
-        fdCenteredCheckBox.CheckedChanged += (s2, e2) => _fdCenteredEnabled = fdCenteredCheckBox.Checked;
+        fdCenteredCheckBox.CheckedChanged += (s2, e2) =>
+        {
+            _fdCenteredEnabled = fdCenteredCheckBox.Checked;
+            fdCenteredWaveLabel.Visible = _fdCenteredEnabled;
+            fdCenteredWaveCombo.Visible = _fdCenteredEnabled;
+        };
 
         fdCenteredWaveLabel = new Label
         {
@@ -824,6 +834,12 @@ public partial class HandFlyOptionsForm : Form
         fdCenteredWaveCombo.Items.AddRange(new object[] { "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Sine (Rich)" });
         fdCenteredWaveCombo.SelectedIndex = (int)_fdCenteredWave;
         fdCenteredWaveCombo.SelectedIndexChanged += (s2, e2) => _fdCenteredWave = (HandFlyWaveType)fdCenteredWaveCombo.SelectedIndex;
+
+        // The centered-tone waveform pickers only appear while their checkbox is checked.
+        vgCenteredWaveLabel.Visible = _vgCenteredEnabled;
+        vgCenteredWaveCombo.Visible = _vgCenteredEnabled;
+        fdCenteredWaveLabel.Visible = _fdCenteredEnabled;
+        fdCenteredWaveCombo.Visible = _fdCenteredEnabled;
 
         // OK Button
         okButton = new Button
