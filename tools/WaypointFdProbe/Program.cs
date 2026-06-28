@@ -55,12 +55,7 @@ Check("BETWEEN neutral inside window", !a5);
 var (a6, t6) = G.ResolveVerticalTarget(AltitudeConstraintType.At, 4000, null, projectedCrossingAltFt: 9000);
 Check("AT always commands toward target", a6 && Near(t6, 4000));
 
-// --- Top of descent + arrival ---
-// Lose 6000 ft at 3 deg: 6000 / (tan(3)*6076.12) ~ 18.85 NM.
-double need = G.DistanceNeededNm(6000, 3.0);
-Check("distance needed 6000ft @3deg ~ 18.85 NM", Near(need, 18.85, 0.2), $"got {need:F2}");
-Check("TOD not reached at 30 NM", !G.IsTopOfChangeReached(35000, 29000, 30, 3.0));
-Check("TOD reached at 15 NM", G.IsTopOfChangeReached(35000, 29000, 15, 3.0));
+// --- Arrival ---
 Check("arrival: inside capture radius", G.HasArrived(0.3, 100, 100, 0.5));
 Check("arrival: abeam (bearing >90 off track)", G.HasArrived(2.0, 200, 100, 0.5));
 Check("arrival: not yet (ahead, outside radius)", !G.HasArrived(2.0, 105, 100, 0.5));

@@ -4324,7 +4324,9 @@ public partial class MainForm : Form
                 settings.VisualGuidanceCurrentToneWaveform,
                 settings.VisualGuidanceCurrentToneVolume,
                 settings.VisualGuidanceHardPanTone,
-                currentAircraft.GetVisualGuidanceProfile());
+                currentAircraft.GetVisualGuidanceProfile(),
+                settings.VisualGuidanceCenteredToneEnabled,
+                settings.VisualGuidanceCenteredToneWaveform);
 
             // PMDG 777: if the FMC has a pilot-entered landing Vref, push it as a live
             // override of the profile-default reference Vref. The PMDG SDK doesn't expose
@@ -4422,7 +4424,8 @@ public partial class MainForm : Form
                 currentAircraft.GetWaypointFlightDirectorProfile(),
                 settings.WaypointFdToneWaveform, settings.WaypointFdToneVolume,
                 settings.WaypointFdCurrentToneWaveform, settings.WaypointFdCurrentToneVolume,
-                settings.WaypointFdHardPanTone, settings.WaypointFdApAutoMute);
+                settings.WaypointFdHardPanTone, settings.WaypointFdApAutoMute,
+                settings.WaypointFdCenteredToneEnabled, settings.WaypointFdCenteredToneWaveform);
 
             // Acquire the shared VISUAL_GUIDANCE_DATA (req 505) stream (ref-counted).
             simConnectManager!.AcquireVisualGuidanceMonitoring();

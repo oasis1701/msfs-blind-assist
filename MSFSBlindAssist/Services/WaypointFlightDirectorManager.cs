@@ -60,8 +60,16 @@ public class WaypointFlightDirectorManager : IDisposable
     private DateTime lastRateTime = DateTime.MinValue;
     private double yawRateDegPerSec;
 
-    private bool todAnnounced;       // synthetic top-of-descent/-climb cue, once per leg
     private bool apMutedAnnounced;   // one-shot AP-auto-mute callout edge
+
+    // Optional "centered tone change": while laterally on track (commanded bank within the
+    // deadband) the desired tone switches to a user-chosen waveform, so the timbre change is an
+    // extra centered/not-centered cue on top of the pan. Off by default (tone stays its normal
+    // waveform always). Only the desired tone changes, so it stays distinct from the current tone.
+    private bool centeredToneEnabled;
+    private HandFlyWaveType centeredWaveType = HandFlyWaveType.Square;
+    private HandFlyWaveType appliedDesiredWave = HandFlyWaveType.Triangle;
+    private const double CenteredDeadbandDeg = 1.5;
     private DateTime routineSuppressedUntil = DateTime.MinValue;
 
     public WaypointFlightDirectorManager(ScreenReaderAnnouncer screenReaderAnnouncer)
@@ -91,7 +99,8 @@ public class WaypointFlightDirectorManager : IDisposable
     public void Initialize(WaypointTracker waypointTracker, WaypointFlightDirectorProfile fdProfile,
         HandFlyWaveType desiredWave, double desiredVol,
         HandFlyWaveType currentWave, double currentVol,
-        bool hardPanTone, bool apAutoMuteEnabled)
+        bool hardPanTone, bool apAutoMuteEnabled,
+        bool centeredToneOn, HandFlyWaveType centeredWave)
     {
         DisposeTones();   // defensive (idempotent re-init)
 
@@ -103,9 +112,11 @@ public class WaypointFlightDirectorManager : IDisposable
         currentVolume = currentVol;
         hardPan = hardPanTone;
         apAutoMute = apAutoMuteEnabled;
+        centeredToneEnabled = centeredToneOn;
+        centeredWaveType = centeredWave;
+        appliedDesiredWave = desiredWave;
 
         activeSlot = 1;
-        todAnnounced = false;
         apMutedAnnounced = false;
         hasLat = hasLon = hasAlt = hasTrack = false;
         lastRateTime = DateTime.MinValue;
@@ -174,8 +185,14 @@ public class WaypointFlightDirectorManager : IDisposable
         double distNm = NavigationCalculator.CalculateDistance(lat, lon, slot.Value.Latitude, slot.Value.Longitude);
         double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, slot.Value.Latitude, slot.Value.Longitude, magvar);
 
-        // Arrival → sequence to the next leg.
-        if (G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm))
+        // Arrival → sequence to the next leg. Inside the capture radius counts at any speed; the
+        // abeam test (station passage) only counts when actually MOVING — otherwise engaging the FD
+        // while parked next to / behind a fix would cascade through every slot on the first frame.
+        bool withinCapture = distNm <= profile.CaptureRadiusNm;
+        bool arrived = withinCapture ||
+            (groundSpeedKts >= profile.LowSpeedFloorKts &&
+             G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm));
+        if (arrived)
         {
             AdvanceLeg();
             return;
@@ -200,14 +217,10 @@ public class WaypointFlightDirectorManager : IDisposable
                 slot.Value.Constraint, slot.Value.CrossingAltitude, slot.Value.CrossingAltitudeUpper, projected);
             if (vActive)
             {
+                // Vertical guidance toward the crossing altitude (no spoken top-of-descent cue —
+                // the tone IS the instrument; the pilot judges when to start down).
                 double reqFpa = G.RequiredFpaDeg(targetAlt, altMsl, distNm);
                 cmdPitch = G.CommandedPitchDeg(reqFpa, aoaDeg, profile.MaxPitchDeg);
-
-                if (!todAnnounced && G.IsTopOfChangeReached(altMsl, targetAlt, distNm, profile.NominalGradientDeg))
-                {
-                    announcer.AnnounceImmediate(targetAlt > altMsl ? "Begin climb." : "Begin descent.");
-                    todAnnounced = true;
-                }
             }
         }
 
@@ -220,13 +233,13 @@ public class WaypointFlightDirectorManager : IDisposable
         ApplyBank(currentTone, StandardBank(actualBankDegSc));
         currentTone.UpdatePitch(actualPitchDeg);
 
+        ApplyCenteredWaveform(cmdBank);
         ApplyApAutoMute();
     }
 
     private void AdvanceLeg()
     {
         activeSlot++;
-        todAnnounced = false;
 
         if (activeSlot > 5 || tracker == null || tracker.IsSlotEmpty(activeSlot))
         {
@@ -275,6 +288,22 @@ public class WaypointFlightDirectorManager : IDisposable
         else
         {
             tone.UpdateBank(bankDegreesStandard);
+        }
+    }
+
+    /// <summary>When the "centered tone change" option is on, swap the DESIRED tone's waveform to
+    /// the user-chosen one while laterally on track (|commanded bank| within the deadband), and back
+    /// to its normal waveform when off track — an extra timbre cue for centered vs not. No-op when
+    /// the option is off (default). Only the desired tone changes, so it stays distinct from the
+    /// current tone (no phase-cancel at the matched state).</summary>
+    private void ApplyCenteredWaveform(double cmdBankDeg)
+    {
+        if (!centeredToneEnabled || desiredTone == null) return;
+        HandFlyWaveType want = Math.Abs(cmdBankDeg) <= CenteredDeadbandDeg ? centeredWaveType : desiredWaveType;
+        if (want != appliedDesiredWave)
+        {
+            desiredTone.UpdateWaveType(want);
+            appliedDesiredWave = want;
         }
     }
 

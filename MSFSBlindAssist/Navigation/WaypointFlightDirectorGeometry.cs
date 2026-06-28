@@ -137,31 +137,6 @@ public static class WaypointFlightDirectorGeometry
     }
 
     /// <summary>
-    /// Horizontal distance (NM) needed to lose/gain <paramref name="altDeltaFt"/> at a nominal
-    /// flight-path gradient. Used for the synthetic top-of-descent / top-of-climb cue.
-    /// </summary>
-    public static double DistanceNeededNm(double altDeltaFt, double nominalGradientDeg)
-    {
-        double g = System.Math.Tan(System.Math.Max(0.1, nominalGradientDeg) * Deg2Rad) * FeetPerNauticalMile;
-        if (g <= 0) return double.MaxValue;
-        return System.Math.Abs(altDeltaFt) / g;
-    }
-
-    /// <summary>
-    /// True at the moment the required descent/climb path crosses the current altitude — i.e. the
-    /// remaining distance has shrunk to the distance needed to make the altitude change at the
-    /// nominal gradient. Sign of (target − current) tells the manager whether to say
-    /// "begin descent" or "begin climb".
-    /// </summary>
-    public static bool IsTopOfChangeReached(double altMslFt, double targetAltFt,
-                                            double distToFixNm, double nominalGradientDeg)
-    {
-        double delta = targetAltFt - altMslFt;
-        if (System.Math.Abs(delta) < 50.0) return false; // already essentially there
-        return distToFixNm <= DistanceNeededNm(delta, nominalGradientDeg);
-    }
-
-    /// <summary>
     /// Fix has been reached: either inside the capture radius, OR the fix has passed abeam
     /// (bearing now more than ~90° off track = station passage). The abeam test sequences a
     /// slight miss that never enters the capture radius.

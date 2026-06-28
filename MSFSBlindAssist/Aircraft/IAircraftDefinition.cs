@@ -149,10 +149,6 @@ public sealed class WaypointFlightDirectorProfile
     /// unavailable / out of band. Live AoA (the normal case) makes this obsolete.</summary>
     public double TypicalApproachAoaDeg { get; init; } = 6.0;
 
-    /// <summary>Nominal flight-path gradient (degrees) used for the synthetic top-of-descent /
-    /// top-of-climb cue ("begin descent"). 3° matches a standard descent profile.</summary>
-    public double NominalGradientDeg { get; init; } = 3.0;
-
     // Dual-tone mapping — same idiom and defaults as VisualGuidanceProfile so the FD's tones
     // sound consistent with Visual Guidance (the pilot zero-beats desired vs current).
     public float ToneMinFrequencyHz { get; init; } = 200f;
