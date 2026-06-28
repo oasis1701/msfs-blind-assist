@@ -259,6 +259,24 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         TypicalApproachAoaDeg = 4.5
     };
 
+    // Visual Landing Guidance: the 787-9 is a heavy widebody and must NOT use the A320 baseline.
+    // Modelled on the MEASURED PMDG 777 widebody profile + 787 published approach performance
+    // (Vref ~150 kt, low approach AoA). The glidepath/flare biases are 777-class ESTIMATES pending
+    // an in-sim coupled-ILS-autoland calibration on the 787. (The installed flight_model.cfg carries
+    // only vestigial stub reference speeds, so these come from type performance, not that file.)
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 4.5,
+        ReferenceVrefKnots        = 150.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,   // 777-class estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 40.0,   // 777-class estimate
+        FlareTriggerWheelHeightFt = 40.0,
+        FlareTargetPitchDeg       = 4.0,
+        TonePitchRangeDeg         = 10.0
+    };
+
     // ---- WT/Asobo Boeing 787 InputEvent (B:) name table -------------------------
     // Several switches on the WT/Asobo B787 panel are wired through B: InputEvents,
     // not K events or L: vars — so K-event writes succeed silently without flipping the

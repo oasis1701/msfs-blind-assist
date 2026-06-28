@@ -62,6 +62,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         TypicalApproachAoaDeg = 4.0
     };
 
+    // Visual Landing Guidance: the A380 is a heavy widebody and must NOT use the A320 baseline
+    // (which flares ~one bias too late and reads high on the glidepath for a big jet). Modelled on
+    // the MEASURED PMDG 777 widebody profile + A380 published approach performance (Vref ~140 kt at
+    // typical landing weight, low approach AoA from the very large wing). The glidepath/flare biases
+    // are 777-class ESTIMATES pending an in-sim coupled-ILS-autoland calibration on the A380.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 4.0,
+        ReferenceVrefKnots        = 140.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,   // 777-class estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 40.0,   // 777-class estimate
+        FlareTriggerWheelHeightFt = 40.0,
+        FlareTargetPitchDeg       = 4.5,
+        TonePitchRangeDeg         = 10.0
+    };
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
