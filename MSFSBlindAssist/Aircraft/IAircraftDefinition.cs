@@ -164,13 +164,6 @@ public sealed class WaypointFlightDirectorProfile
     /// <summary>Slew cap (deg/sec) on the commanded PITCH between frames (anti-fluctuation).</summary>
     public double MaxPitchRateDegPerSec { get; init; } = 3.0;
 
-    /// <summary>Heading/altitude bug mode: altitude-capture vertical speed per foot of error (fpm/ft),
-    /// clamped by <see cref="MaxCaptureVsFpm"/>. 8 fpm/ft → starts tapering within ~190 ft of target.</summary>
-    public double AltCaptureVsPerFt { get; init; } = 8.0;
-
-    /// <summary>Heading/altitude bug mode: max commanded climb/descent rate (fpm) during a capture.</summary>
-    public double MaxCaptureVsFpm { get; init; } = 1500.0;
-
     // Dual-tone mapping — same idiom and defaults as VisualGuidanceProfile so the FD's tones
     // sound consistent with Visual Guidance (the pilot zero-beats desired vs current).
     public float ToneMinFrequencyHz { get; init; } = 200f;

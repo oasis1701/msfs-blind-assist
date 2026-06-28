@@ -71,34 +71,12 @@ public class WaypointFlightDirectorManager : IDisposable
     private HandFlyWaveType appliedDesiredWave = HandFlyWaveType.Triangle;
     private const double CenteredDeadbandDeg = 1.5;
 
-    // Heading/altitude "bug" mode (option 1): fly a target magnetic heading and/or hold a target
-    // altitude with NO waypoint (e.g. an ATC/FMC "fly heading 220"). When a bug is set the FD
-    // ignores the slots and does not sequence. Set/cleared via the FD bug dialog.
-    private double? bugHeading;
-    private double? bugAltitudeFt;
-    public bool BugActive => bugHeading.HasValue || bugAltitudeFt.HasValue;
-    public double? BugHeading => bugHeading;
-    public double? BugAltitude => bugAltitudeFt;
-
     // Command slew limiting (anti-fluctuation): cap how fast the rendered bank/pitch commands move
     // between frames so the tones don't jump on every track/heading wiggle.
     private double lastCmdBank, lastCmdPitch;
     private bool cmdInit;
     private DateTime lastCmdTime = DateTime.MinValue;
 
-    /// <summary>Set the heading/altitude bug (either may be null). Takes effect on the next frame;
-    /// while active the FD flies the bug instead of the slots.</summary>
-    public void SetBug(double? headingMag, double? altitudeFt)
-    {
-        bugHeading = headingMag;
-        bugAltitudeFt = altitudeFt;
-    }
-
-    public void ClearBug()
-    {
-        bugHeading = null;
-        bugAltitudeFt = null;
-    }
     private DateTime routineSuppressedUntil = DateTime.MinValue;
 
     public WaypointFlightDirectorManager(ScreenReaderAnnouncer screenReaderAnnouncer)
@@ -151,8 +129,6 @@ public class WaypointFlightDirectorManager : IDisposable
         lastRateTime = DateTime.MinValue;
         yawRateDegPerSec = 0;
         cmdInit = false;   // command slew baseline re-seeds on the first frame
-        // NOTE: the heading/altitude bug is NOT reset here — it is set by the bug dialog BEFORE the
-        // engage that calls Initialize. Stop() clears it so it never leaks into a later slot session.
 
         desiredTone = new AudioToneGenerator();
         currentTone = new AudioToneGenerator();
@@ -162,23 +138,12 @@ public class WaypointFlightDirectorManager : IDisposable
                               profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
         tonesNeedStart = true;
 
-        if (BugActive)
-        {
-            string msg = "Flight director active";
-            if (bugHeading.HasValue) msg += $", heading {bugHeading.Value:F0}";
-            if (bugAltitudeFt.HasValue) msg += $", altitude {bugAltitudeFt.Value:F0} feet";
-            announcer.AnnounceImmediate(msg + ".");
-        }
-        else
-        {
-            string ident = tracker.GetSlotIdent(activeSlot) ?? "waypoint";
-            announcer.AnnounceImmediate($"Flight director active. Tracking {ident}.");
-        }
+        string ident = tracker.GetSlotIdent(activeSlot) ?? "waypoint";
+        announcer.AnnounceImmediate($"Flight director active. Tracking {ident}.");
     }
 
     public void Stop(bool announce = true)
     {
-        ClearBug();   // always clear the bug (even if already inactive) so it never leaks into a later session
         if (!isActive && desiredTone == null && currentTone == null)
             return;
 
@@ -219,25 +184,6 @@ public class WaypointFlightDirectorManager : IDisposable
 
         double cmdBank, cmdPitch;
 
-        if (BugActive)
-        {
-            // Heading / altitude "bug" mode: fly a target heading and/or hold a target altitude with
-            // no waypoint (e.g. an ATC/FMC "fly heading 220"). No sequencing.
-            UpdateYawRate(hdgMag);   // heading-hold: rate from heading, not ground track
-            cmdBank = bugHeading.HasValue
-                ? G.CommandedBankDeg(G.NormalizeSigned(bugHeading.Value - hdgMag), yawRateDegPerSec,
-                                     profile.KRollDegPerDegTrack, profile.BankRateLeadSec, profile.MaxBankDeg)
-                : 0.0;   // wings level if only an altitude bug is set
-            cmdPitch = G.CommandedPitchDeg(0.0, aoaDeg, profile.MaxPitchDeg);   // nominal level
-            if (bugAltitudeFt.HasValue)
-            {
-                double vs = G.AltitudeCaptureVsFpm(bugAltitudeFt.Value - altMsl,
-                                                   profile.AltCaptureVsPerFt, profile.MaxCaptureVsFpm);
-                cmdPitch = G.CommandedPitchDeg(G.VsToFpaDeg(vs, groundSpeedKts), aoaDeg, profile.MaxPitchDeg);
-            }
-        }
-        else
-        {
         var slot = tracker.GetSlot(activeSlot);
         if (slot == null)   // route ran out from under us
         {
@@ -312,7 +258,6 @@ public class WaypointFlightDirectorManager : IDisposable
                 cmdPitch = G.CommandedPitchDeg(reqFpa, aoaDeg, profile.MaxPitchDeg);
             }
         }
-        }   // end slot (non-bug) branch
 
         // Slew-limit both commands so the tones don't fluctuate frame-to-frame (the bank/pitch
         // commands otherwise jump on every track/heading wiggle). Caps come from the profile.

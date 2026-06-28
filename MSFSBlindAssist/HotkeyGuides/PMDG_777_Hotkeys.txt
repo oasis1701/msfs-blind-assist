@@ -92,7 +92,6 @@ Tools:
              command, tone pitch = climb/descend). Output mode; no Hand Fly
              needed. Set crossing altitudes and an optional course (to track a
              radial / airway through the fix) in the Track Fix window (Shift+F).
-             Input-mode Ctrl+F sets a heading/altitude to fly with NO waypoint.
   Ctrl+K     Toggle rudder coordination ticks: a hard-panned white-noise tick in
              the ear on the side of the rudder to press (step on the ball);
              silent when coordinated. Output mode.

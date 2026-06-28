@@ -60,17 +60,6 @@ the fix is just a point on the line, so the same field covers inbound courses an
 course leg sequences when you reach the fix (capture radius); an outbound radial simply holds until
 you turn the FD off or advance.
 
-## Fly heading / hold altitude — no waypoint (input Ctrl+F)
-
-Sometimes you just need to fly a vector — "fly heading 220" from ATC, or hold an altitude — with no
-fix involved. Press **input-mode Ctrl+F** to open a small dialog and type a **heading** (magnetic)
-and/or a **target altitude** (either optional). The FD then flies it directly: it banks to capture and
-hold the heading, and (if an altitude is set) commands a climb/descent that tapers to level as you
-reach it. This is a "bug" — while set it overrides the waypoint slots. Leave both fields blank and
-press OK to clear the bug and go back to following the slots. No waypoints are needed for this;
-output-mode **Ctrl+F** still toggles the whole FD on/off, and the bug is cleared when you turn the FD
-off.
-
 ## Vertical guidance (crossing altitudes)
 
 Each slot can carry an optional crossing target. Commanded pitch ≈ **required flight-path angle +

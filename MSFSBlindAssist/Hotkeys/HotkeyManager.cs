@@ -94,7 +94,6 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_VISUAL_GUIDANCE = 9076;
         private const int HOTKEY_WAYPOINT_FD = 9252;   // Output mode: Ctrl+F (Waypoint Flight Director)
         private const int HOTKEY_SLIP_CUE = 9253;      // Output mode: Ctrl+K (rudder coordination ticks)
-        private const int HOTKEY_FD_BUG = 9254;        // Input mode: Ctrl+F (set FD heading/altitude bug)
         private const int HOTKEY_MACH_SPEED = 9060;
         private const int HOTKEY_EFB = 9061;
         private const int HOTKEY_TRACK_SLOT_1 = 9062;
@@ -590,9 +589,6 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TRACK_FIX:
                             TriggerHotkey(HotkeyAction.ShowTrackFixWindow);
                             break;
-                        case HOTKEY_FD_BUG:
-                            TriggerHotkey(HotkeyAction.ShowFdHeadingDialog);
-                            break;
                         case HOTKEY_FENIX_MCDU:
                             TriggerHotkey(HotkeyAction.ShowFenixMCDU);
                             break;
@@ -918,7 +914,6 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_NAV_RADIOS_SET, MOD_CONTROL, 0x4E);   // Ctrl+N (Set NAV Radios)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
-            RegisterHotKey(windowHandle, HOTKEY_FD_BUG, MOD_CONTROL, 0x46);          // Ctrl+F (Set FD heading/altitude)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO, MOD_CONTROL | MOD_SHIFT, 0x54); // Ctrl+Shift+T (PMDG EFB First Officer)
@@ -974,7 +969,6 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_NAV_RADIOS_SET);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
-            UnregisterHotKey(windowHandle, HOTKEY_FD_BUG);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO);
@@ -1306,7 +1300,6 @@ public class HotkeyManager : IDisposable
         ToggleVisualGuidance,
         ToggleWaypointFlightDirector,
         ToggleSlipCue,
-        ShowFdHeadingDialog,
         ShowElectronicFlightBag,
         ReadTrackSlot1,
         ReadTrackSlot2,
