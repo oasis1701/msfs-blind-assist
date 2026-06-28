@@ -129,6 +129,35 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsParkingBrakeSet()=> IsOn("PED_annunParkingBrake");
 
     // -----------------------------------------------------------------------
+    // Flaps — actual trailing-edge flap position (closed-loop)
+    //
+    // The NG3 data struct has no flap-LEVER field, but it exposes the TE-flap gauge
+    // needle MAIN_TEFlapsNeedle. We read element 0 and treat it as the flap ANGLE in
+    // degrees — the value the 737 flap indicator displays (0–40) — mapping it to the
+    // nearest lever detent: 0=UP,1=1,2=2,3=5,4=10,5=15,6=25,7=30,8=40. This lets
+    // auto-flaps read the REAL flap position instead of tracking its own commands, so it
+    // is robust to manual flap moves and a wrong takeoff-flap assumption. Returns -1 when
+    // the value is outside the plausible 0–45° band, so the caller can fall back to its
+    // own command tracking. (If in-sim testing shows the needle is on a different scale,
+    // adjust FlapDetentAngles / the band — see the test plan.)
+    // -----------------------------------------------------------------------
+    private static readonly int[] FlapDetentAngles = { 0, 1, 2, 5, 10, 15, 25, 30, 40 };
+
+    public int FlapDetent()
+    {
+        double deg = GetValue("MAIN_TEFlapsNeedle_0");
+        if (deg < -1 || deg > 45) return -1; // not the expected 0–40° scale → caller falls back
+        if (deg < 0.5) return 0;             // UP
+        int best = 0; double bestDiff = double.MaxValue;
+        for (int i = 0; i < FlapDetentAngles.Length; i++)
+        {
+            double d = Math.Abs(deg - FlapDetentAngles[i]);
+            if (d < bestDiff) { bestDiff = d; best = i; }
+        }
+        return best;
+    }
+
+    // -----------------------------------------------------------------------
     // MCP / EFIS / IRS
     // -----------------------------------------------------------------------
     public bool IsFDLeftOn()       => IsOn("MCP_FDSw_0");

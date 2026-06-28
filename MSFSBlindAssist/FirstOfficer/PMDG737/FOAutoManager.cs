@@ -14,9 +14,11 @@ namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 /// Flaps (requires FMC V2 / VREF to be programmed):
 ///   Retraction — one step at a time during climb when IAS exceeds V2-relative thresholds.
 ///   Extension  — one step at a time during descent when IAS drops below VREF-relative thresholds.
-///   The NG3 data struct has no flap-lever state field, so this class tracks its own
-///   _lastCommandedFlapPos (lever index 0–8). Initialised from state.GetTakeoffFlaps() mapped
-///   to a lever index on the first airborne sample.
+///   The CURRENT flap detent is read from the actual flap gauge via state.FlapDetent()
+///   (closed-loop — robust to manual flap moves and a wrong takeoff-flap assumption), falling
+///   back to the internally-tracked _lastCommandedFlapPos only when the gauge read is
+///   unavailable. _lastCommandedFlapPos also debounces repeat commands while the flaps travel;
+///   it is seeded from state.GetTakeoffFlaps() mapped to a lever index on the first airborne sample.
 ///
 /// Autopilot:
 ///   Engages AP CMD A (left seat) when climbing through 500 ft AGL on climbout.
@@ -219,33 +221,36 @@ public class FOAutoManager : IFoAutoManager
 
     private void CheckFlaps(double ias, bool climbing, bool descending)
     {
-        // _lastCommandedFlapPos is our lever-index reference (initialised on first airborne frame)
-        if (_lastCommandedFlapPos < 0) return;
+        // Read the ACTUAL flap detent from the gauge (closed-loop) so we are robust to
+        // manual flap moves and a wrong takeoff-flap assumption; fall back to our own
+        // command tracking only when the gauge read is unavailable/implausible.
+        int current = _state.FlapDetent();
+        if (current < 0) current = _lastCommandedFlapPos;
+        if (current < 0) return; // position not yet known
 
         int v2   = _state.GetV2();
         int vref = _state.GetVRef();
 
-        // Retract on climb (requires FMC V2)
-        if (climbing && v2 > 0 && _lastCommandedFlapPos > 0)
+        // Retract on climb (requires FMC V2). _lastCommandedFlapPos is a debounce so we do
+        // not re-issue the same target while the flaps are still travelling to it.
+        if (climbing && v2 > 0 && current > 0)
         {
-            int targetIdx = RetractionTarget(_lastCommandedFlapPos, ias, v2);
-            if (targetIdx < _lastCommandedFlapPos)
+            int targetIdx = RetractionTarget(current, ias, v2);
+            if (targetIdx < current && targetIdx != _lastCommandedFlapPos)
             {
-                int degrees = LeverIndexToDegrees(targetIdx);
-                _executor.SetFlapsPosition(degrees);
+                _executor.SetFlapsPosition(LeverIndexToDegrees(targetIdx));
                 _announcer.AnnounceImmediate($"Flaps {FlapName(targetIdx)}.");
                 _lastCommandedFlapPos = targetIdx;
             }
         }
 
         // Extend on approach (requires FMC VREF) — lever index 7 = flaps 30 (normal landing)
-        if (descending && vref > 0 && _lastCommandedFlapPos < 7)
+        if (descending && vref > 0 && current < 7)
         {
-            int targetIdx = ExtensionTarget(_lastCommandedFlapPos, ias, vref);
-            if (targetIdx > _lastCommandedFlapPos)
+            int targetIdx = ExtensionTarget(current, ias, vref);
+            if (targetIdx > current && targetIdx != _lastCommandedFlapPos)
             {
-                int degrees = LeverIndexToDegrees(targetIdx);
-                _executor.SetFlapsPosition(degrees);
+                _executor.SetFlapsPosition(LeverIndexToDegrees(targetIdx));
                 _announcer.AnnounceImmediate($"Flaps {FlapName(targetIdx)}.");
                 _lastCommandedFlapPos = targetIdx;
             }
