@@ -59,9 +59,18 @@ live angle of attack** — the live AoA encodes weight/flap/speed, so this needs
   bust above.
 - **Between X, Y** — neutral inside the window; commands toward whichever bound you'd violate.
 
-A synthetic **"begin descent" / "begin climb"** cue fires the moment the required path crosses your
-current altitude (a blind pilot has no other way to judge top-of-descent). With no crossing altitude
-set, the vertical tone holds level (lateral-only FD).
+With no crossing altitude set, the vertical tone holds level (lateral-only FD). There is **no spoken
+top-of-descent cue** — the tone is the instrument, and *when* to start down is the pilot's call
+(especially in VFR, where managing the descent is your prerogative, not the app's).
+
+## Centered tone change (optional)
+
+An optional extra cue, **off by default** (set it in Hand Fly Options). When on, you pick a waveform
+that the command tone switches to **while you are on track** (the bank command is near zero); off
+track it reverts to its normal waveform. So a change in *timbre* — not just the left/right pan — tells
+you whether you're centered. When off, the tone keeps its normal waveform at all times. Visual
+Guidance has the identical option (there "on track" means on the localizer). Only the command tone
+changes waveform, so it stays distinguishable from the current-attitude tone.
 
 ## Autopilot auto-mute
 
@@ -88,7 +97,33 @@ larger capture radius and a longer rate-lead.
 > Visual Guidance profiles were calibrated). If turns overshoot, lower the roll gain or raise the
 > rate-lead; if the tone chases noise at low speed, raise the speed floor.
 
-Tone settings (`UserSettings.WaypointFd*`): desired/current waveform + volume, hard-pan, AP-auto-mute.
+Tone settings live in **Hand Fly Options** (`UserSettings.WaypointFd*`): desired/current waveform +
+volume, hard-pan, AP-auto-mute, and the centered tone change (toggle + waveform).
+
+## Normal & abnormal scenarios handled (universal FD)
+
+- **Toggle, default off.** The FD does nothing until you press Ctrl+F; with it off the app behaves
+  exactly as before. On engage it follows slots 1→5; engaging with slot 1 empty says "No waypoints
+  to track" and does not activate.
+- **Empty slot mid-route / final fix:** stops at the first empty slot or after slot 5 ("Final
+  waypoint reached").
+- **Engaged while parked or behind a fix:** the abeam (station-passage) arrival only counts when
+  actually moving, so it can't cascade through every slot on the first frame; the capture-radius
+  arrival still works at any speed.
+- **Overhead a fix:** bearing spins, but arrival sequences first (capture radius / abeam) and the
+  required-FPA is guarded inside ~0.05 NM, so the command doesn't blow up.
+- **Low speed / on the ground / no GPS track:** below the per-aircraft speed floor the lateral
+  guidance falls back to heading (ground track is unreliable slow).
+- **Crosswind:** lateral nulls to a straight wind-corrected path (uses ground track, not heading).
+- **Heading/track wrap (359↔001), reciprocal/180° track error:** normalised to ±180°; the command
+  saturates to the bank cap toward the shorter turn.
+- **Steep required climb/descent:** commanded pitch clamps to the per-aircraft pitch cap.
+- **Autopilot engaged:** tones auto-mute (if enabled) and resume on disengage.
+- **Touchdown:** auto-deactivates on the airborne→ground edge (taxi/rollout tones take over).
+- **Mutually exclusive with Visual Guidance:** engaging one stops the other; the shared 505 stream
+  is reference-counted so neither stops it out from under the other. Hand-Fly's tone is suppressed
+  while the FD runs and resumes after.
+- **Paused sim:** no data updates arrive, so the tones simply hold; nothing misbehaves.
 
 ## In-sim verification checklist
 
@@ -96,7 +131,7 @@ Tone settings (`UserSettings.WaypointFd*`): desired/current waveform + volume, h
    to each fix and sequences on arrival; confirm graceful behaviour when slot 1 is empty.
 2. **Vertical:** set *At or above* and *At or below* crossing altitudes; confirm the tone is neutral
    when the constraint is already satisfied and commands a climb/descent only when it would be
-   violated; confirm the "begin descent" cue fires at the computed top-of-descent.
+   violated.
 3. **Wind:** confirm the ground-track lateral nulls to a straight path in a crosswind.
 4. **Arbitration:** confirm Hand-Fly mutes while the FD runs; confirm AP-master auto-mute; confirm
    Visual Guidance and the FD never run together (engaging one stops the other).
