@@ -30,6 +30,8 @@ frequencies zero-beat (pitch matched). When they match, you are tracking the leg
    the EFB **carries its published altitude constraint and inbound course automatically** (e.g. a SID
    leg "at or above 6000", a STAR fix "between 16000 and 19000", an airway course) — you don't have to
    re-enter them. (Courses are used when magnetic and present; otherwise the leg flies direct-to.)
+   A position-less leg — an ARINC "maneuver" leg with no fix, e.g. *"Climb heading 071° to 600 feet"* —
+   can't be tracked (it has no point to fly to); the app says so and tracks nothing.
 2. **(Optional) Add a crossing altitude.** In the Track Fix window, enter a **Crossing Altitude**
    (feet MSL) and pick a **constraint** (At / At or above / At or below / Between). Leave the altitude
    blank for **lateral-only** guidance at that fix. For *Between*, also enter the **Upper Altitude**.
