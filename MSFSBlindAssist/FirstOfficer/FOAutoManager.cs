@@ -31,9 +31,10 @@ public class FOAutoManager : IFoAutoManager
     // Settings (toggled by FirstOfficerSettingsForm)
     // -----------------------------------------------------------------------
 
-    public bool AutoGearEnabled  { get; set; }
-    public bool AutoFlapsEnabled { get; set; }
-    public bool AutoApEnabled    { get; set; }
+    public bool AutoGearUpEnabled   { get; set; }
+    public bool AutoGearDownEnabled { get; set; }
+    public bool AutoFlapsEnabled    { get; set; }
+    public bool AutoApEnabled       { get; set; }
 
     // -----------------------------------------------------------------------
     // Gear state tracking
@@ -115,7 +116,7 @@ public class FOAutoManager : IFoAutoManager
         bool climbing   = verticalSpeedFpm >  200;
         bool descending = verticalSpeedFpm < -100;
 
-        if (AutoGearEnabled)
+        if (AutoGearUpEnabled || AutoGearDownEnabled)
             CheckGear(altitudeAgl, climbing, descending);
 
         if (AutoFlapsEnabled)
@@ -134,7 +135,7 @@ public class FOAutoManager : IFoAutoManager
         bool gearDown = _state.IsGearDown();
 
         // Raise: positive rate + safely airborne + gear down + not already raised this leg
-        if (!_gearRaisedThisLeg && gearDown && climbing && agl > 50)
+        if (AutoGearUpEnabled && !_gearRaisedThisLeg && gearDown && climbing && agl > 50)
         {
             _executor.SetGearLever(0); // Up
             _announcer.AnnounceImmediate("Positive rate. Gear up.");
@@ -142,9 +143,9 @@ public class FOAutoManager : IFoAutoManager
         }
 
         // Lower: descending through 2000 ft AGL + gear still up + not already lowered this approach
-        if (!_gearLoweredThisLeg && !gearDown && descending && agl < 2000 && agl > 100)
+        if (AutoGearDownEnabled && !_gearLoweredThisLeg && !gearDown && descending && agl < 2000 && agl > 100)
         {
-            _executor.SetGearLever(1); // Down
+            _executor.SetGearLever(1); // Down (777: 0=Up, 1=Down)
             _announcer.AnnounceImmediate("Two thousand feet. Gear down.");
             _gearLoweredThisLeg = true;
         }

@@ -35,9 +35,10 @@ public sealed class Pmdg737FoProfile : IFoProfile<AircraftActionExecutor, Aircra
         ScreenReaderAnnouncer a, UserSettings s)
         => new FOAutoManager(exec, state, a)
         {
-            AutoGearEnabled  = s.FOAutoGearEnabled,
-            AutoFlapsEnabled = s.FOAutoFlapsEnabled,
-            AutoApEnabled    = s.FOAutoApEnabled,
+            AutoGearUpEnabled   = s.FOAutoGearUpEnabled,
+            AutoGearDownEnabled = s.FOAutoGearDownEnabled,
+            AutoFlapsEnabled    = s.FOAutoFlapsEnabled,
+            AutoApEnabled       = s.FOAutoApEnabled,
         };
 
     public IFoPhaseMonitor CreatePhaseMonitor(

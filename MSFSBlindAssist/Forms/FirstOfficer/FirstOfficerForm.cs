@@ -59,6 +59,9 @@ public class FirstOfficerForm<TExec, TState> : Form
     // Latest one-shot values fed to FOAutoManager
     private double _latestAgl;
     private double _latestIas;
+    // Latest engine N2 (percent) fed to the state evaluator for engine-start detection
+    private double _latestEng1N2;
+    private double _latestEng2N2;
 
     // ------------------------------------------------------------------
     // UI — core
@@ -158,6 +161,7 @@ public class FirstOfficerForm<TExec, TState> : Form
                 _simConnect.RequestAircraftPosition();
                 _simConnect.RequestFOAltitudeAGL();
                 _simConnect.RequestFOAirspeedIndicated();
+                _simConnect.RequestFOEngineN2();
             }
         };
         _autoDetectTimer.Start();
@@ -182,9 +186,10 @@ public class FirstOfficerForm<TExec, TState> : Form
     /// <summary>Apply updated automation settings (call after FirstOfficerSettingsForm saves).</summary>
     public void ApplySettings()
     {
-        _foAutoMgr.AutoGearEnabled  = _settings.FOAutoGearEnabled;
-        _foAutoMgr.AutoFlapsEnabled = _settings.FOAutoFlapsEnabled;
-        _foAutoMgr.AutoApEnabled    = _settings.FOAutoApEnabled;
+        _foAutoMgr.AutoGearUpEnabled   = _settings.FOAutoGearUpEnabled;
+        _foAutoMgr.AutoGearDownEnabled = _settings.FOAutoGearDownEnabled;
+        _foAutoMgr.AutoFlapsEnabled    = _settings.FOAutoFlapsEnabled;
+        _foAutoMgr.AutoApEnabled       = _settings.FOAutoApEnabled;
     }
 
     /// <summary>Update the data manager reference when SimConnect reconnects.</summary>
@@ -247,6 +252,8 @@ public class FirstOfficerForm<TExec, TState> : Form
         {
             case "FO_ALTITUDE_AGL":  _latestAgl = e.Value; break;
             case "FO_AIRSPEED_IAS":  _latestIas = e.Value; break;
+            case "FO_ENG1_N2":       _latestEng1N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
+            case "FO_ENG2_N2":       _latestEng2N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
         }
     }
 

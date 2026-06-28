@@ -224,11 +224,75 @@ Selecting a new action group and pressing **Run Related Flow** starts the matchi
 
 ---
 
+## Part H — reported-bug fixes + gear-split feature (2026-06-28)
+
+All but H2/H8 are code-confident; H2 and H8 are the items to watch in-sim.
+
+### H1. Split auto-gear into climb / descent (BOTH aircraft)  *(feature)*
+First Officer Settings now has **two** gear checkboxes: "Auto-raise gear on positive rate (climb)"
+and "Auto-lower gear at 2000 ft AGL (descent)". Verify:
+- Enable **only climb** → after takeoff the gear auto-raises (announce "Positive rate. Gear up."),
+  and on the approach the gear does **NOT** auto-lower.
+- Enable **only descent** → gear does NOT auto-raise on climb; auto-lowers at 2000 ft AGL on approach.
+- Enable **both** → both behaviours (the pre-existing behaviour).
+- **Migration**: a user who previously had the old single "Auto-manage gear" enabled gets **both**
+  new boxes ticked on first launch after upgrade.
+- **737 gear-down lands in DOWN** (lever position 2 / three green), not the OFF detent — this was the
+  copied-from-777 bug (777 uses 1=Down, 737 uses 2=Down).
+
+### H2. Ground power (Electrical Power Up)  *(verify in sim)*
+With ground power **available** at the stand: run the Electrical Power Up flow / tick "Ground power: ON"
+→ the GRD POWER switch latches and the checklist item ticks. If GPU is **not** available, the flow now
+announces it is **skipping** ground power (verify-fail feedback) instead of silently doing nothing.
+*Cross-check:* if the cockpit-panel GRD PWR works but the FO does not with GPU available, escalate
+(the FO dispatch matches the proven panel path, so that would indicate a deeper issue).
+
+### H3. APU starts (Before Start)
+Tick **"APU: ON line"** (or run the Before Start flow): the APU selector goes **ON → (≈2 s) → START**
+and the APU **spools up** (EGT rises, comes on line). A direct jump to START no longer leaves it un-started.
+
+### H4. Engine start — status + actually starting (cold-and-dark)
+- On a **cold-and-dark** ramp, open the Engine Start group: items read **"Engine 1/2: running"** and are
+  **NOT** auto-ticked (no more false "complete" at engine-off). They tick only once N2 ≥ ~50%.
+- **Run Related Flow** on the Engine Start group (or run the Engine Start flow): each engine motors to
+  ~N2 20% **before** the start lever introduces fuel, then starts normally. Confirm both engines start.
+- *Tunable:* the N2 thresholds (20% fuel-introduction, 50% "running") and the `TURB ENG N2` unit
+  (percent vs ratio) — adjust if the sim reads differently.
+
+### H5. Generators (Before Taxi)
+With the APU generators on, tick **"Generators: ON"** (or run Before Taxi): **BOTH** engine generators
+come on line (the spaced writes no longer lose GEN 1). Checklist "Generators: ON" ticks.
+
+### H6. APU off (Before Taxi)
+After H3/H5, run Before Taxi → the APU selector goes **OFF** and the "APU: OFF" item ticks.
+(Watch this together with H3 — it was a likely downstream symptom of the APU never starting cleanly.)
+
+### H7. Probe heat (Before Taxi)
+Tick **"Probe heat: ON"** (or run Before Taxi): **BOTH** probe-heat switches turn ON (spaced writes),
+and the checklist "Probe heat: ON" ticks.
+
+### H8. Landing gear "UP and OFF" auto-ticks (After Takeoff)
+After takeoff, set the gear lever to **OFF** (via the After Takeoff action group or the flow). The
+**After Takeoff Checklist → "Landing gear: UP and OFF"** item now ticks (detects UP *or* OFF; it used to
+require UP only and never matched once the lever went to OFF).
+
+### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
+Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters
+to STD and announces "Transition altitude. Altimeters set to standard." (the STD push now commits via
+the momentary-toggle dispatch). Descending through the transition level → back to QNH + "set local
+pressure" callout. *Note:* the transition altitude still comes from SimBrief only (no default fallback,
+by design). The **777** is unchanged here (it already read STD state and committed correctly).
+
+---
+
 ## Known limitations (by design / data availability)
-- **Baro-STD has no NG3 state field** — the phase monitor pushes STD/QNH at the transition
-  alt/level using its own one-shot latch (it cannot read whether STD is already selected).
-- **GEN / APU-GEN auto-detect read-back may lag** — these are dispatched by mouse-flag and the
-  PMDG snapshot can lag; the switch still actuates, only the checklist auto-tick may be slow.
+- **Baro-STD has no NG3 state field** — the STD push now COMMITS (momentary-toggle dispatch), but the
+  phase monitor still pushes STD/QNH at the transition alt/level using its own one-shot latch (it cannot
+  read whether STD is already selected). Manually toggling STD mid-flight can desync the latch.
+- **Auto-STD needs a SimBrief transition altitude** — there is no default transition altitude; without a
+  loaded OFP the altimeters are not auto-set (by design — issue 9 chose SimBrief-only sourcing).
+- **GEN / APU-GEN auto-detect read-back may lag** — the PMDG snapshot can lag; the switch still
+  actuates, only the checklist auto-tick may be slow.
 - **Test items (fire test, overhead test, etc.) are captain reminders**, not automated — a blind
   pilot cannot observe the visual test result, so the FO prompts the captain to perform them.
 - **Runtime-data items** (altimeters, trim, MCP courses, ILS frequencies, pressurization

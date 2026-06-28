@@ -1,3 +1,4 @@
+using System.Threading;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
@@ -41,6 +42,24 @@ public class AircraftActionExecutor : IFoActionExecutor
     private SimConnectManager? _sc;
     private const int MouseFlagLeftSingle  = unchecked((int)0x20000000);
     private const int MouseFlagRightSingle = unchecked((int)0x80000000);
+
+    // PMDG CDA control writes are COALESCED when issued in the same frame — only the LAST
+    // survives (documented PMDG gotcha). So every helper that fires more than one switch
+    // (generators, probe heat, fuel pumps, window heat, …) must SPACE its writes, or the
+    // first is silently lost (the "generators / probe heat didn't come on" bugs). Matches
+    // the flow's PostActionDelayMs and the 777 executor's CdaWriteSpacingMs.
+    private const int CdaWriteSpacingMs = 350;
+    // APU selector ON → START needs a dwell so the model registers ON before the momentary
+    // START, otherwise the APU never spools up (same fix as the 777 StartApuAsync).
+    private const int ApuOnToStartMs = 2000;
+
+    // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
+    // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
+    // interleave their writes into the same sim frame — which would re-introduce the exact
+    // same-frame coalescing this executor spaces to avoid. A whole sequence (MultiAsync /
+    // FireSpacedAsync) holds the gate across its inter-write delays; single writes hold it for
+    // their one write. Sequences call DispatchCoreAsync (no gate) to avoid re-entrant deadlock.
+    private readonly SemaphoreSlim _dispatchGate = new(1, 1);
 
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public bool IsAvailable => _sc is { IsConnected: true };
@@ -114,12 +133,35 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     private async Task<bool> MultiAsync(IReadOnlyList<(string EventName, int? TargetValue)> actions)
     {
-        bool ok = true;
-        foreach (var (ev, tv) in actions) ok &= await DispatchAsync(ev, tv);
-        return ok;
+        // Hold the gate across the WHOLE spaced sequence (incl. the inter-write delays) so a
+        // concurrent dispatch can't slip a write into one of our frame gaps and coalesce.
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            bool ok = true;
+            bool first = true;
+            foreach (var (ev, tv) in actions)
+            {
+                if (!first) await Task.Delay(CdaWriteSpacingMs); // frame gap so writes don't coalesce
+                first = false;
+                ok &= await DispatchCoreAsync(ev, tv);
+            }
+            return ok;
+        }
+        finally { _dispatchGate.Release(); }
     }
 
+    // Single-write public entry — gated so it can't land in the same frame as a concurrent
+    // sequence's write. Sequences must NOT call this (they call DispatchCoreAsync) or they
+    // would deadlock re-acquiring the non-reentrant gate.
     private async Task<bool> DispatchAsync(string eventName, int? target)
+    {
+        await _dispatchGate.WaitAsync();
+        try { return await DispatchCoreAsync(eventName, target); }
+        finally { _dispatchGate.Release(); }
+    }
+
+    private async Task<bool> DispatchCoreAsync(string eventName, int? target)
     {
         if (_sc == null || !PMDG737Definition.EventIds.TryGetValue(eventName, out int evId)) return false;
         uint id = (uint)evId;
@@ -166,7 +208,63 @@ public class AircraftActionExecutor : IFoActionExecutor
     // -----------------------------------------------------------------------
 
     private bool Fire(string ev, int? target) { _ = DispatchAsync(ev, target); return true; }
-    private bool FireBoth(string a, string b, int? t) { Fire(a, t); return Fire(b, t); }
+
+    // Fire two or more switch events with a frame gap between each so the PMDG CDA writes
+    // don't coalesce (only the last same-frame write survives). Fire-and-forget: the spaced
+    // sequence runs in the background while the synchronous CheckAction returns.
+    private bool FireBoth(string a, string b, int? t) => FireSpaced((a, t), (b, t));
+
+    private bool FireSpaced(params (string ev, int? target)[] actions)
+    {
+        _ = FireSpacedAsync(actions);
+        return true;
+    }
+
+    private async Task FireSpacedAsync((string ev, int? target)[] actions)
+    {
+        // Same gate as MultiAsync — hold it across the whole sequence (see _dispatchGate).
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            bool first = true;
+            foreach (var (ev, t) in actions)
+            {
+                if (!first) await Task.Delay(CdaWriteSpacingMs);
+                first = false;
+                await DispatchCoreAsync(ev, t);
+            }
+        }
+        finally { _dispatchGate.Release(); }
+    }
+
+    // Momentary MCP / EFIS push-buttons (baro STD, AP CMD) commit on the NG3 ONLY via a
+    // LEFTSINGLE+LEFTRELEASE pair (SendPMDGMomentaryToggle). A bare CDA param=1 plays the
+    // click but never commits — see PMDG737Definition's _simpleEventMap momentary branch.
+    // Routed through the same gate (held across the internal press→release) so it can't
+    // collide with a concurrent dispatch — and so back-to-back Capt+FO baro pushes serialize.
+    private bool FireMomentaryToggle(string eventName)
+    {
+        var sc = _sc;
+        if (sc != null && PMDG737Definition.EventIds.TryGetValue(eventName, out int evId))
+            _ = FireMomentaryToggleAsync(sc, (uint)evId);
+        return true;
+    }
+
+    private async Task FireMomentaryToggleAsync(SimConnectManager sc, uint evId)
+    {
+        await _dispatchGate.WaitAsync();
+        try { await sc.SendPMDGMomentaryToggle(evId, 1); }
+        finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>APU start sequence: selector ON, dwell, then momentary START (springs back to ON).
+    /// A direct write to START without first passing through ON does not spool the APU up.</summary>
+    public async Task StartApuAsync()
+    {
+        SetApuSelector(1);                  // ON
+        await Task.Delay(ApuOnToStartMs);
+        SetApuSelector(2);                  // START
+    }
 
     // Electrical
     public bool SetBattery(int p)        => Fire("EVT_OH_ELEC_BATTERY_SWITCH", p);          // 2=ON
@@ -179,11 +277,9 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetApuSelector(int p)    => Fire("EVT_OH_LIGHTS_APU_START", p);             // 0=OFF,1=ON,2=START
 
     // Fuel
-    public bool SetWingFuelPumps(int p)
-    {
-        Fire("EVT_OH_FUEL_PUMP_1_FORWARD", p); Fire("EVT_OH_FUEL_PUMP_2_FORWARD", p);
-        Fire("EVT_OH_FUEL_PUMP_1_AFT", p);     return Fire("EVT_OH_FUEL_PUMP_2_AFT", p);
-    }
+    public bool SetWingFuelPumps(int p) => FireSpaced(
+        ("EVT_OH_FUEL_PUMP_1_FORWARD", p), ("EVT_OH_FUEL_PUMP_2_FORWARD", p),
+        ("EVT_OH_FUEL_PUMP_1_AFT", p),     ("EVT_OH_FUEL_PUMP_2_AFT", p));
     public bool SetCenterFuelPumps(int p) => FireBoth("EVT_OH_FUEL_PUMP_L_CENTER", "EVT_OH_FUEL_PUMP_R_CENTER", p);
     public bool SetCrossfeed(int p)       => Fire("EVT_OH_FUEL_CROSSFEED", p);
 
@@ -207,11 +303,9 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetRecircFans(int p)     => FireBoth("EVT_OH_BLEED_RECIRC_FAN_L_SWITCH", "EVT_OH_BLEED_RECIRC_FAN_R_SWITCH", p);
 
     // Anti-ice
-    public bool SetWindowHeat(int p)
-    {
-        Fire("EVT_OH_ICE_WINDOW_HEAT_1", p); Fire("EVT_OH_ICE_WINDOW_HEAT_2", p);
-        Fire("EVT_OH_ICE_WINDOW_HEAT_3", p); return Fire("EVT_OH_ICE_WINDOW_HEAT_4", p);
-    }
+    public bool SetWindowHeat(int p) => FireSpaced(
+        ("EVT_OH_ICE_WINDOW_HEAT_1", p), ("EVT_OH_ICE_WINDOW_HEAT_2", p),
+        ("EVT_OH_ICE_WINDOW_HEAT_3", p), ("EVT_OH_ICE_WINDOW_HEAT_4", p));
     public bool SetProbeHeat(int p)      => FireBoth("EVT_OH_ICE_PROBE_HEAT_1", "EVT_OH_ICE_PROBE_HEAT_2", p);
     public bool SetWingAntiIce(int p)    => Fire("EVT_OH_ICE_WING_ANTIICE", p);
     public bool SetEngAntiIce(int p)     => FireBoth("EVT_OH_ICE_ENGINE_ANTIICE_1", "EVT_OH_ICE_ENGINE_ANTIICE_2", p);
@@ -264,13 +358,13 @@ public class AircraftActionExecutor : IFoActionExecutor
         => (state.IsFDRightOn() ? 1 : 0) == targetOn || Fire("EVT_MCP_FD_SWITCH_R", null);
     public bool SetATArm(int targetOn, AircraftStateEvaluator state)
         => (state.IsATArmOn() ? 1 : 0) == targetOn || Fire("EVT_MCP_AT_ARM_SWITCH", null);
-    public bool PushAPCmd()              => Fire("EVT_MCP_CMD_A_SWITCH", 1);
+    public bool PushAPCmd()              => FireMomentaryToggle("EVT_MCP_CMD_A_SWITCH");
     public bool SetEFISModeCapt(int p)   => Fire("EVT_EFIS_CPT_MODE", p);
     public bool SetEFISModeFO(int p)     => Fire("EVT_EFIS_FO_MODE", p);
     public bool SetEFISRangeCapt(int p)  => Fire("EVT_EFIS_CPT_RANGE", p);
     public bool SetEFISRangeFO(int p)    => Fire("EVT_EFIS_FO_RANGE", p);
-    public bool PushBaroSTDCapt()        => Fire("EVT_EFIS_CPT_BARO_STD", 1);
-    public bool PushBaroSTDFO()          => Fire("EVT_EFIS_FO_BARO_STD", 1);
+    public bool PushBaroSTDCapt()        => FireMomentaryToggle("EVT_EFIS_CPT_BARO_STD");
+    public bool PushBaroSTDFO()          => FireMomentaryToggle("EVT_EFIS_FO_BARO_STD");
 
     // IRS / display / transponder
     public bool SetIrsMode(int p)        => FireBoth("EVT_IRU_MSU_LEFT", "EVT_IRU_MSU_RIGHT", p); // 2=NAV

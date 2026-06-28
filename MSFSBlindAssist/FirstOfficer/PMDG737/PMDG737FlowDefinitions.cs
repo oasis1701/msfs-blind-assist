@@ -24,6 +24,10 @@ using Step = Models.FlowStep<AircraftStateEvaluator>;
 /// </summary>
 public static class PMDG737FlowDefinitions
 {
+    // N2 (percent) the engine must reach while motoring before the start lever introduces
+    // fuel (real-procedure ~25%; 20 gives margin). Below this a fuel intro hangs the start.
+    private const double EngStartFuelN2 = 20.0;
+
     public static List<Flow> Build() => new()
     {
         BuildElectricalPowerUp(),
@@ -55,7 +59,11 @@ public static class PMDG737FlowDefinitions
                 s => s.IsBatteryOn()),
             Skip(SW("EPU_STBY", "Standby power: AUTO", "EVT_OH_ELEC_STBY_PWR_SWITCH", 2),
                 s => s.StandbyPower() == 2),
-            Skip(SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1),
+            // Verify the GPU switch actually latched ON (it won't if ground power isn't available
+            // at the stand). Without the verify the step "succeeds" silently even when nothing
+            // happens; with it the FO announces it's skipping ground power so it isn't a silent no-op.
+            Skip(SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1,
+                    verifyField: "ELEC_GrdPwrSw", verifyCond: v => v > 0.5),
                 s => s.IsGpuOn()),
             // IRS to NAV — alignment runs in the background; no wait. "IRS aligned" auto-detects later.
             Multi("EPU_IRS", "IRS mode selectors: NAV", ("EVT_IRU_MSU_LEFT", 2), ("EVT_IRU_MSU_RIGHT", 2)),
@@ -115,7 +123,11 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             Captain("BS_MCP", "Set MCP airspeed, heading and initial altitude."),
-            SW("BS_APU", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
+            // APU start: ON → dwell → momentary START. A direct write to START (skipping ON)
+            // does not spool the APU up. START springs back to ON when self-sustaining.
+            SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
+            Wait("BS_APU_DWELL", "APU spinning up before start", 2),
+            SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
             WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line", "APU_Selector", v => Math.Abs(v - 1) < 0.1, 90),
             Multi("BS_FUELON", "Fuel pumps: ON",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
@@ -142,11 +154,19 @@ public static class PMDG737FlowDefinitions
             Multi("ES_PACKS_OFF", "Packs: OFF", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
             // --- Engine 2 ---
             SW("ES_E2_GRD", "Engine 2 start switch: GRD", "EVT_OH_LIGHTS_R_ENGINE_START", 0),
+            // Introduce fuel ONLY after N2 has spun up (~25%); moving the start lever to IDLE
+            // before that hangs/aborts the start. FO_ENG2_N2 is the timer-fed N2 (percent).
+            // On timeout (starter/bleed failure → N2 never builds) ABORT the flow rather than
+            // introduce fuel into an under-rotating engine (a hung/hot start).
+            WaitForField("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
+                "FO_ENG2_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
             SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1),
             WaitForField("ES_E2_WAIT", "Engine 2 starting — waiting for the start valve to close",
                 "ENG_StartValve_1", v => v < 0.5, 120),
             // --- Engine 1 ---
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
+            WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
+                "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
             WaitForField("ES_E1_WAIT", "Engine 1 starting — waiting for the start valve to close",
                 "ENG_StartValve_0", v => v < 0.5, 120),
@@ -411,14 +431,15 @@ public static class PMDG737FlowDefinitions
         PostActionDelayMs = 0,
     };
 
-    private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec) => new()
+    private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitForCondition,
         ConditionFieldName = field,
         Condition = condition,
         TimeoutSeconds = timeoutSec,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        FailurePolicy = onTimeout,
         PostActionDelayMs = 0,
     };
 

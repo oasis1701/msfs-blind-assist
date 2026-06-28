@@ -298,6 +298,8 @@ public class SimConnectManager
         // FO background data requests — NOT announced by HandleSpecialAnnouncements
         REQUEST_FO_ALTITUDE_AGL  = 380,
         REQUEST_FO_AIRSPEED_IAS  = 381,
+        REQUEST_FO_ENG1_N2       = 382,
+        REQUEST_FO_ENG2_N2       = 383,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -357,6 +359,8 @@ public class SimConnectManager
         // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
         DEF_FO_ALTITUDE_AGL = 380,
         DEF_FO_AIRSPEED_IAS = 381,
+        DEF_FO_ENG1_N2 = 382,
+        DEF_FO_ENG2_N2 = 383,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -1776,6 +1780,26 @@ public class SimConnectManager
                     VarName = "FO_AIRSPEED_IAS",
                     Value = foIasData.value,
                     Description = $"{foIasData.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG1_N2:
+                SingleValue foEng1N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG1_N2",
+                    Value = foEng1N2Data.value,
+                    Description = $"{foEng1N2Data.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG2_N2:
+                SingleValue foEng2N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG2_N2",
+                    Value = foEng2N2Data.value,
+                    Description = $"{foEng2N2Data.value:0}"
                 });
                 break;
 
@@ -3894,6 +3918,45 @@ public class SimConnectManager
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting FO airspeed IAS: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request both engines' N2 for the First Officer background timer. The PMDG NG3 data
+    /// struct exposes no N1/N2, so the FO reads the stock TURB ENG N2 SimVars to reliably
+    /// tell "engine running" from "cold/unpowered" (the fuel-valve byte alone can't).
+    /// Fires SimVarUpdated with VarName "FO_ENG1_N2" / "FO_ENG2_N2" (percent) — NOT announced.
+    /// </summary>
+    public void RequestFOEngineN2()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var def1 = DATA_DEFINITIONS.DEF_FO_ENG1_N2;
+                SafelyClearDataDefinition(def1, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(def1,
+                    "TURB ENG N2:1", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(def1);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG1_N2,
+                    def1, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                var def2 = DATA_DEFINITIONS.DEF_FO_ENG2_N2;
+                SafelyClearDataDefinition(def2, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(def2,
+                    "TURB ENG N2:2", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(def2);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG2_N2,
+                    def2, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO engine N2: {ex.Message}");
             }
         }
     }

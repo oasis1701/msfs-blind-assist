@@ -70,6 +70,7 @@ public static class SettingsManager
                 {
                     System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
+                    MigrateFOGearSplit(defaultSettings);
                     SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
                     return defaultSettings;
                 }
@@ -89,6 +90,7 @@ public static class SettingsManager
                     Debug.WriteLine("[SettingsManager] Settings loaded successfully from JSON");
                 }
 
+                MigrateFOGearSplit(settings);       // one-time: seed split gear flags from the legacy flag
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
                 return settings;
             }
@@ -98,6 +100,28 @@ public static class SettingsManager
                 // Return default settings on error
                 return new UserSettings();
             }
+        }
+
+        /// <summary>
+        /// One-time migration of the legacy single First-Officer auto-gear flag into the
+        /// two split flags (raise on climb / lower on descent). Existing users who had
+        /// auto-gear enabled keep both behaviours; everyone else stays at the false default.
+        /// Guarded by FOAutoGearSplitMigrated so a deliberate single-side choice is never
+        /// overwritten on a later load.
+        /// </summary>
+        private static void MigrateFOGearSplit(UserSettings s)
+        {
+            if (s.FOAutoGearSplitMigrated) return;
+            s.FOAutoGearSplitMigrated = true;
+            if (s.FOAutoGearEnabled)
+            {
+                s.FOAutoGearUpEnabled   = true;
+                s.FOAutoGearDownEnabled = true;
+            }
+            // Persist the guard NOW so the migration doesn't re-run every launch. The
+            // follow-up SeedFenixMonitorDefaults early-returns without saving for any
+            // already-seeded (i.e. upgrading) user, so we cannot rely on its Save.
+            Save(s);
         }
 
         /// <summary>

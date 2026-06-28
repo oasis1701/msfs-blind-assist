@@ -92,7 +92,9 @@ public static class PMDG737ChecklistDefinitions
         Id = "BEFORE_START", Name = "Before Start",
         Items = new()
         {
-            Auto("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, RevertBehavior.StayComplete, (e, _) => e.SetApuSelector(2)),
+            // APU start must go ON → dwell → momentary START (StartApuAsync); writing START
+            // directly never spools the APU up. Auto-detects ON-line from APU_Selector.
+            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, RevertBehavior.StayComplete, (e, _) => e.StartApuAsync()),
             Auto("BS_FUEL", "BEFORE_START", "Fuel pumps: ON", "FUEL_PumpFwdSw_0", v => v > 0.5, RevertBehavior.StayComplete,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(1)),
             Auto("BS_HYD", "BEFORE_START", "Electric hydraulic pumps: ON", "HYD_PumpSw_elec_0", v => v > 0.5, RevertBehavior.StayComplete,
@@ -110,8 +112,12 @@ public static class PMDG737ChecklistDefinitions
         Id = "ENGINE_START", Name = "Engine Start",
         Items = new()
         {
-            Auto("ES_E2", "ENGINE_START", "Engine 2: started", "FUEL_annunENG_VALVE_CLOSED_1", v => v < 0.5, RevertBehavior.StayComplete, action: null),
-            Auto("ES_E1", "ENGINE_START", "Engine 1: started", "FUEL_annunENG_VALVE_CLOSED_0", v => v < 0.5, RevertBehavior.StayComplete, action: null),
+            // Detect a RUNNING engine from real N2 (FO_ENG{1,2}_N2, fed by the FO timer), NOT the
+            // fuel-valve byte: that byte reads 0 both when running AND cold/unpowered, so the old
+            // condition auto-ticked at cold-and-dark and StayComplete latched it falsely complete.
+            // "Run Related Flow" on this group runs the Engine Start flow to actually start them.
+            Auto("ES_E2", "ENGINE_START", "Engine 2: running", "FO_ENG2_N2", v => v >= AircraftStateEvaluator.EngineRunningN2, RevertBehavior.StayComplete, action: null),
+            Auto("ES_E1", "ENGINE_START", "Engine 1: running", "FO_ENG1_N2", v => v >= AircraftStateEvaluator.EngineRunningN2, RevertBehavior.StayComplete, action: null),
         }
     };
 
@@ -286,7 +292,10 @@ public static class PMDG737ChecklistDefinitions
         {
             Auto("ATC_BLEEDS", "AFTER_TAKEOFF_CL", "Engine bleeds: ON", "AIR_BleedAirSwitch_0", v => v > 0.5, RevertBehavior.RevertToState, new[] { "AIR_BleedAirSwitch_1" }, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "AIR_PackSwitch_0", v => v > 0.5 && v < 1.5, RevertBehavior.RevertToState, new[] { "AIR_PackSwitch_1" }, action: null),
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP and OFF", "MAIN_GearLever", v => v < 0.5, RevertBehavior.RevertToState, action: null),
+            // "UP and OFF": after takeoff the lever goes to OFF (1) — accept UP(0) OR OFF(1),
+            // exclude DOWN(2). (The old v<0.5 only matched UP=0, so it never ticked once the
+            // action/flow set the lever to OFF=1.)
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP and OFF", "MAIN_GearLever", v => v < 1.5, RevertBehavior.RevertToState, action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
         }
     };
@@ -414,6 +423,24 @@ public static class PMDG737ChecklistDefinitions
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition, RevertBehavior revert, Act? action) =>
         Auto(id, groupId, label, field, condition, revert, null, action);
+
+    // Auto-detect item whose manual-tick CheckAction is ASYNC (e.g. a spaced StartApuAsync).
+    // ChecklistManager.ToggleItem fires the Task and lets it run; auto-detection still works.
+    private static Item AutoAsync(string id, string groupId, string label,
+        string field, Func<double, bool> condition, RevertBehavior revert,
+        Func<AircraftActionExecutor, AircraftStateEvaluator, Task> action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.AutoDetectable,
+        AutoCompleteAllowed = true,
+        ManualCompletionAllowed = true,
+        StateFieldName = field,
+        StateCondition = condition,
+        RevertBehavior = revert,
+        AdditionalStateFields = Array.Empty<string>(),
+        AdditionalStateCondition = condition,
+        CheckAction = action,
+    };
 
     private static Item Manual(string id, string groupId, string label) => new()
     {

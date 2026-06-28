@@ -10,8 +10,9 @@ public class FirstOfficerSettingsForm : Form
 {
     private readonly UserSettings _settings;
 
-    private CheckBox _autoGearCheck  = null!;
-    private CheckBox _autoFlapsCheck = null!;
+    private CheckBox _autoGearUpCheck   = null!;
+    private CheckBox _autoGearDownCheck = null!;
+    private CheckBox _autoFlapsCheck    = null!;
     private CheckBox _autoApCheck    = null!;
     private Button   _saveBtn        = null!;
     private Button   _cancelBtn      = null!;
@@ -25,8 +26,8 @@ public class FirstOfficerSettingsForm : Form
     private void BuildUI()
     {
         Text           = "First Officer Settings";
-        Width          = 420;
-        Height         = 270;
+        Width          = 460;
+        Height         = 310;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox    = false;
         MinimizeBox    = false;
@@ -37,23 +38,34 @@ public class FirstOfficerSettingsForm : Form
         {
             Dock        = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount    = 5,
+            RowCount    = 6,
             Padding     = new Padding(12),
         };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _autoGearCheck = new CheckBox
+        _autoGearUpCheck = new CheckBox
         {
-            Text           = "Auto-manage gear (raise on positive rate; lower at 2000 ft AGL)",
-            Checked        = _settings.FOAutoGearEnabled,
+            Text           = "Auto-raise gear on positive rate (climb)",
+            Checked        = _settings.FOAutoGearUpEnabled,
             AutoSize       = true,
             Margin         = new Padding(0, 0, 0, 8),
-            AccessibleName = "Auto-manage gear",
-            AccessibleDescription = "Automatically raise gear on positive rate and lower at 2000 feet AGL",
+            AccessibleName = "Auto-raise gear on climb",
+            AccessibleDescription = "Automatically raise the landing gear on positive rate after takeoff",
+        };
+
+        _autoGearDownCheck = new CheckBox
+        {
+            Text           = "Auto-lower gear at 2000 ft AGL (descent)",
+            Checked        = _settings.FOAutoGearDownEnabled,
+            AutoSize       = true,
+            Margin         = new Padding(0, 0, 0, 8),
+            AccessibleName = "Auto-lower gear on descent",
+            AccessibleDescription = "Automatically lower the landing gear when descending through 2000 feet AGL",
         };
 
         _autoFlapsCheck = new CheckBox
@@ -104,11 +116,12 @@ public class FirstOfficerSettingsForm : Form
         btnPanel.Controls.Add(_cancelBtn);
         btnPanel.Controls.Add(_saveBtn);
 
-        layout.Controls.Add(_autoGearCheck,  0, 0);
-        layout.Controls.Add(_autoFlapsCheck, 0, 1);
-        layout.Controls.Add(_autoApCheck,    0, 2);
-        layout.Controls.Add(new Panel(),     0, 3); // spacer
-        layout.Controls.Add(btnPanel,        0, 4);
+        layout.Controls.Add(_autoGearUpCheck,   0, 0);
+        layout.Controls.Add(_autoGearDownCheck, 0, 1);
+        layout.Controls.Add(_autoFlapsCheck,    0, 2);
+        layout.Controls.Add(_autoApCheck,       0, 3);
+        layout.Controls.Add(new Panel(),        0, 4); // spacer
+        layout.Controls.Add(btnPanel,           0, 5);
 
         Controls.Add(layout);
         AcceptButton = _saveBtn;
@@ -117,8 +130,9 @@ public class FirstOfficerSettingsForm : Form
 
     private void ApplySettings()
     {
-        _settings.FOAutoGearEnabled  = _autoGearCheck.Checked;
-        _settings.FOAutoFlapsEnabled = _autoFlapsCheck.Checked;
-        _settings.FOAutoApEnabled    = _autoApCheck.Checked;
+        _settings.FOAutoGearUpEnabled   = _autoGearUpCheck.Checked;
+        _settings.FOAutoGearDownEnabled = _autoGearDownCheck.Checked;
+        _settings.FOAutoFlapsEnabled    = _autoFlapsCheck.Checked;
+        _settings.FOAutoApEnabled       = _autoApCheck.Checked;
     }
 }

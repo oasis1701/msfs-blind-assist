@@ -1,3 +1,4 @@
+using System.Threading;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.FirstOfficer.PMDG737;
@@ -12,13 +13,36 @@ public class AircraftStateEvaluator : IFoStateEvaluator
 {
     private PMDGNG3DataManager? _dm;
 
+    // Engine N2 (percent), pushed from the FO background timer. The PMDG NG3 data struct
+    // exposes no N1/N2, so this is the only reliable "engine running" signal — the fuel-valve
+    // annunciator byte reads 0 both when running AND when cold/unpowered, which is exactly why
+    // the engine-start checklist used to false-complete at cold-and-dark.
+    private double _eng1N2;
+    private double _eng2N2;
+    // N2 (percent) at/above which an engine is treated as RUNNING (≈ stabilised near idle).
+    // Public so the engine-start checklist detection references the same value (tune in-sim).
+    public const double EngineRunningN2 = 50.0;
+
     /// <summary>Update the data-manager reference (called on connect/disconnect).</summary>
     public void SetDataManager(PMDGNG3DataManager? dm) => _dm = dm;
+
+    // Written on the UI thread (FO timer / SimConnect callback); read on a thread-pool thread
+    // by the flow's WaitForCondition loop. Volatile.Read/Write makes the cross-thread handoff
+    // explicit (double can't be `volatile`); the value is monotonic during a start so no torn
+    // intermediate would cross a threshold incorrectly anyway.
+    public void SetEngineN2(double eng1N2, double eng2N2)
+    {
+        Volatile.Write(ref _eng1N2, eng1N2);
+        Volatile.Write(ref _eng2N2, eng2N2);
+    }
 
     public bool IsAvailable => _dm != null;
 
     public double GetValue(string field)
     {
+        // Synthetic FO-only fields (not in the PMDG CDA struct), served from the timer-pushed cache.
+        if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
+        if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
         try { return _dm?.GetFieldValue(field) ?? 0; }
         catch { return 0; }
     }
@@ -58,6 +82,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public int  Eng2StartSelector()=> (int)Math.Round(GetValue("ENG_StartSelector_1"));
     public bool IsStartValve1Open()=> IsOn("ENG_StartValve_0");
     public bool IsStartValve2Open()=> IsOn("ENG_StartValve_1");
+    // "Engine running" is detected by the ENGINE_START checklist directly off the synthetic
+    // FO_ENG{1,2}_N2 fields against EngineRunningN2 (the unreliable valve byte can't tell
+    // running from cold/unpowered). No bool accessor — the checklist reads via GetValue.
 
     // -----------------------------------------------------------------------
     // Hydraulics  (SDK array: elec[0] = pump 2, elec[1] = pump 1)

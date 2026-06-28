@@ -156,10 +156,17 @@ public class UserSettings
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
-        // First Officer (PMDG 777) automation
-        public bool FOAutoGearEnabled  { get; set; } = false;
-        public bool FOAutoFlapsEnabled { get; set; } = false;
-        public bool FOAutoApEnabled    { get; set; } = false;
+        // First Officer (PMDG 777/737) automation.
+        // Gear management is split into two independent toggles: raise on the climb
+        // (positive rate) and lower on the descent (2000 ft AGL). The legacy single
+        // FOAutoGearEnabled flag is kept ONLY so old settings files still deserialize;
+        // SettingsManager.MigrateFOGearSplit seeds the two new flags from it once.
+        public bool FOAutoGearEnabled     { get; set; } = false;  // legacy — migrated, do not read directly
+        public bool FOAutoGearUpEnabled   { get; set; } = false;  // auto-raise gear on positive rate (climb)
+        public bool FOAutoGearDownEnabled { get; set; } = false;  // auto-lower gear at 2000 ft AGL (descent)
+        public bool FOAutoGearSplitMigrated { get; set; } = false; // one-time migration guard
+        public bool FOAutoFlapsEnabled    { get; set; } = false;
+        public bool FOAutoApEnabled       { get; set; } = false;
 
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
@@ -389,7 +396,10 @@ public class UserSettings
             GroundDistanceUnit = GroundDistanceUnit,
             GroundTrafficUseMetres = GroundTrafficUseMetres,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
-            FOAutoGearEnabled  = FOAutoGearEnabled,
+            FOAutoGearEnabled     = FOAutoGearEnabled,
+            FOAutoGearUpEnabled   = FOAutoGearUpEnabled,
+            FOAutoGearDownEnabled = FOAutoGearDownEnabled,
+            FOAutoGearSplitMigrated = FOAutoGearSplitMigrated,
             FOAutoFlapsEnabled = FOAutoFlapsEnabled,
             FOAutoApEnabled    = FOAutoApEnabled,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,

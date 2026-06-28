@@ -235,6 +235,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
 
     /// <summary>
+    /// Store both engines' N2 (interface parity with the 737, which uses it for engine-start
+    /// detection). The 777 reads N1/N3 from its own data struct, so this is currently unused
+    /// here, but the form calls it generically.
+    /// </summary>
+    public void SetEngineN2(double eng1N2, double eng2N2) { /* not used by the 777 evaluator */ }
+
+    /// <summary>
     /// Returns the SimBrief planned takeoff flap setting (degrees: 1, 5, 15, 20, 25, 30).
     /// Defaults to 5 if no SimBrief OFP has been loaded.
     /// </summary>

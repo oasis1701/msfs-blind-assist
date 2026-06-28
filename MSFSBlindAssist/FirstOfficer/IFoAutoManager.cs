@@ -2,7 +2,8 @@ namespace MSFSBlindAssist.FirstOfficer;
 
 public interface IFoAutoManager
 {
-    bool AutoGearEnabled { get; set; }
+    bool AutoGearUpEnabled { get; set; }
+    bool AutoGearDownEnabled { get; set; }
     bool AutoFlapsEnabled { get; set; }
     bool AutoApEnabled { get; set; }
     void Reset();
