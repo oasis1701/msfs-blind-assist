@@ -34,7 +34,9 @@ public static class PMDG777ChecklistDefinitions
         BuildBeforeTakeoffChecklist(),
         BuildAfterTakeoff(),
         BuildAfterTakeoffChecklist(),
+        BuildDescent(),
         BuildDescentChecklist(),
+        BuildApproach(),
         BuildApproachChecklist(),
         BuildLandingChecklist(),
         BuildAfterLanding(),
@@ -410,6 +412,40 @@ public static class PMDG777ChecklistDefinitions
             Auto("ATKOF_FLAPS", "AFTER_TKOF_CL", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5, RevertBehavior.RevertToState,
                 action: null),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Descent (action group — mirrors the Descent Setup flow)
+    // -----------------------------------------------------------------------
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildDescent() => new()
+    {
+        Id = "DESCENT", Name = "Descent",
+        Items = new()
+        {
+            Reminder("DSCA_LNDG_DATA", "DESCENT", "Set landing data in FMC — VREF and minimums"),
+            ActionManual("DSCA_AUTOBRAKE", "DESCENT", "Autobrake: AUTO (medium)",
+                (e, _) => e.SetAutobrake(6)),
+            ActionManual("DSCA_EFIS_FO_MODE", "DESCENT", "FO EFIS: APP mode",
+                (e, _) => e.SetEFISModeFO(0)),
+            ActionManual("DSCA_EFIS_FO_RANGE", "DESCENT", "FO EFIS: 20nm range",
+                (e, _) => e.SetEFISRangeFO(1)),
+            Reminder("DSCA_RECALL", "DESCENT", "Recall: Check no unexpected messages"),
+            Reminder("DSCA_APPROACH_BRIEF", "DESCENT", "Approach briefing: Complete"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Approach (action group — mirrors the Approach Setup flow)
+    // -----------------------------------------------------------------------
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildApproach() => new()
+    {
+        Id = "APPROACH", Name = "Approach",
+        Items = new()
+        {
+            Reminder("APPA_ALTIMETERS", "APPROACH", "Altimeters: Set local QNH / transition"),
+            ActionManual("APPA_SPEEDBRAKE", "APPROACH", "Speedbrake: ARM",
+                (e, _) => e.SetSpeedbrakeArmed()),
         }
     };
 

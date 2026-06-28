@@ -387,7 +387,7 @@ public static class PMDG777FlowDefinitions
         Id = "DESCENT_SETUP",
         Name = "Descent Setup",
         Description = "Prepares FO instruments and autobrake for descent and approach.",
-        RelatedChecklistGroupIds = new[] { "DESCENT_CL" },
+        RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
         Steps = new()
         {
             Captain("DSC_LNDG_DATA",  "Set landing data in FMC — VREF and minimums"),
@@ -407,7 +407,7 @@ public static class PMDG777FlowDefinitions
         Id = "APPROACH_SETUP",
         Name = "Approach Setup",
         Description = "Sets altimeters and confirms configuration for approach.",
-        RelatedChecklistGroupIds = new[] { "APPROACH_CL", "LANDING_CL" },
+        RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL", "LANDING_CL" },
         Steps = new()
         {
             Captain("APP_ALTIMETERS",   "Altimeters: Set local QNH / transition"),
