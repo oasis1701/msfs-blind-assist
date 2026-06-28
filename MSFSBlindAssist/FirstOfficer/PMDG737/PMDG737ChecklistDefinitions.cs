@@ -92,6 +92,8 @@ public static class PMDG737ChecklistDefinitions
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(1)),
             Auto("BS_HYD", "BEFORE_START", "Electric hydraulic pumps: ON", "HYD_PumpSw_elec_0", v => v > 0.5, RevertBehavior.StayComplete,
                 new[] { "HYD_PumpSw_elec_1" }, (e, _) => e.SetElecHydPumps(1)),
+            Auto("BS_HYDENG", "BEFORE_START", "Engine hydraulic pumps: ON", "HYD_PumpSw_eng_0", v => v > 0.5, RevertBehavior.StayComplete,
+                new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(1)),
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed air: ON", "AIR_APUBleedAirSwitch", v => v > 0.5, RevertBehavior.StayComplete, (e, _) => e.SetApuBleed(1)),
             Auto("BS_ANTICOL", "BEFORE_START", "Anti-collision light: ON", "LTS_AntiCollisionSw", v => v > 0.5, RevertBehavior.StayComplete, (e, _) => e.SetBeacon(1)),
             Auto("BS_XPDR", "BEFORE_START", "Transponder: TA/RA", "XPDR_ModeSel", v => v > 3.5, RevertBehavior.StayComplete, (e, _) => e.SetTransponderMode(4)),
