@@ -47,6 +47,17 @@ bank is a proportional roll law (small error → small bank, capped ~25–28°) 
 anticipation** so turns roll out cleanly instead of overshooting. Below a per-aircraft speed floor
 (ground track is unreliable slow/on the ground) it falls back to heading.
 
+## Course / radial tracking (optional)
+
+By default the FD flies **direct to** each fix. If you set a **Course** on a slot (in the Track Fix
+window), that leg instead **captures and holds the course line through the fix** — an airway leg, an
+approach course, or a VOR radial. It works like flying a localizer needle by ear: off the line the
+command banks you to intercept it (steeper the further off, shallowing as you close in); once
+established it holds you on the line, wind-corrected. Enter the course you want to *fly* (magnetic) —
+the fix is just a point on the line, so the same field covers inbound courses and outbound radials. A
+course leg sequences when you reach the fix (capture radius); an outbound radial simply holds until
+you turn the FD off or advance.
+
 ## Vertical guidance (crossing altitudes)
 
 Each slot can carry an optional crossing target. Commanded pitch ≈ **required flight-path angle +
@@ -71,6 +82,16 @@ track it reverts to its normal waveform. So a change in *timbre* — not just th
 you whether you're centered. When off, the tone keeps its normal waveform at all times. Visual
 Guidance has the identical option (there "on track" means on the localizer). Only the command tone
 changes waveform, so it stays distinguishable from the current-attitude tone.
+
+## Rudder coordination cue (Ctrl+K) — independent
+
+A separate aid you can toggle any time you're hand-flying, with or without the FD: **Ctrl+K**. When
+the inclinometer ball is out of centre it plays a **hard-panned white-noise tick** entirely in the ear
+on the side of the rudder to press — ball left → left ear → press left rudder; ball right → right ear →
+press right rudder ("step on the ball"). The tick speeds up the further out the ball is and is silent
+when you're coordinated. Nothing else — no pitch, no proportional pan, no speech. Default off; the tick
+volume is `UserSettings.SlipCueVolume`. (The ball sign is confirmed in-sim; if ever reversed it's a
+one-line flip.)
 
 ## Autopilot auto-mute
 

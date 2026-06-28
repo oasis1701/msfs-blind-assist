@@ -85,7 +85,8 @@ Location:
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
-CTRL+f, Activate/deactivate Waypoint Flight Director, Note, synthetic audio flight director that hand-flies you to the tracked waypoint slots in order; stereo pan is the bank command and tone pitch is climb/descend; output mode, does not require hand fly; set crossing altitudes in the Track Fix window (Shift+F).
+CTRL+f, Activate/deactivate Waypoint Flight Director, Note, synthetic audio flight director that hand-flies you to the tracked waypoint slots in order; stereo pan is the bank command and tone pitch is climb/descend; output mode, does not require hand fly; set crossing altitudes and an optional course (to track a radial or airway through the fix) in the Track Fix window (Shift+F).
+CTRL+k, Toggle rudder coordination ticks, Note, a hard-panned white-noise tick in the ear on the side of the rudder to press (step on the ball); silent when coordinated; output mode.
 CTRL+v, activate/deactivate visual guidance mode, note, does not require hand fly mode. Enables the same single-letter quick-access hotkeys hand fly mode does, plus F for target VS.
 CTRL+T, activate/deactivate Takeoff Assistance
 CTRL+D, read Distance to Selected Runway
