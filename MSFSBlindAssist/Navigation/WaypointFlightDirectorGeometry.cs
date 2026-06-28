@@ -33,7 +33,6 @@ public static class WaypointFlightDirectorGeometry
 {
     public const double FeetPerNauticalMile = 6076.12;
     private const double Rad2Deg = 180.0 / System.Math.PI;
-    private const double Deg2Rad = System.Math.PI / 180.0;
 
     /// <summary>Normalises an angle (degrees) to the range (-180, +180].</summary>
     public static double NormalizeSigned(double degrees)

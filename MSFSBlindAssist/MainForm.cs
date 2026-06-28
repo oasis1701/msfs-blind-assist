@@ -93,6 +93,12 @@ public partial class MainForm : Form
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
     private WaypointFlightDirectorManager waypointFdManager = null!;
+    // Per-feature claims on the ref-counted VISUAL_GUIDANCE_DATA (505) stream. Each feature must
+    // Release only if it actually Acquired — otherwise an aborted activation (VG with no runway, FD
+    // with empty slots) would run its Stop→deactivate path and release a claim it never took,
+    // stopping the OTHER feature's stream. Set true right after Acquire, false right after Release.
+    private bool _vgHoldsStream;
+    private bool _fdHoldsStream;
     private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
     private MSFSBlindAssist.Services.LandingRateAnnouncer landingRateAnnouncer = null!;
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
@@ -4348,6 +4354,7 @@ public partial class MainForm : Form
 
             // Start monitoring position variables (ref-counted: shared with the Waypoint FD).
             simConnectManager!.AcquireVisualGuidanceMonitoring();
+            _vgHoldsStream = true;
 
             // Silence HandFly's tone if it's also active — VG's two tones use the same
             // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
@@ -4369,8 +4376,12 @@ public partial class MainForm : Form
         }
         else
         {
-            // Stop monitoring (ref-counted: only stops the stream if the FD isn't also using it).
-            simConnectManager.ReleaseVisualGuidanceMonitoring();
+            // Stop monitoring (ref-counted) — only if VG actually acquired (not on a validation abort).
+            if (_vgHoldsStream)
+            {
+                simConnectManager.ReleaseVisualGuidanceMonitoring();
+                _vgHoldsStream = false;
+            }
 
             // Release VG's claim on the quick-access hotkey set. If HandFly is still active,
             // its claim keeps the keys registered; if not, this drops the ref count to zero
@@ -4429,10 +4440,17 @@ public partial class MainForm : Form
 
             // Acquire the shared VISUAL_GUIDANCE_DATA (req 505) stream (ref-counted).
             simConnectManager!.AcquireVisualGuidanceMonitoring();
+            _fdHoldsStream = true;
         }
         else
         {
-            simConnectManager.ReleaseVisualGuidanceMonitoring();
+            // Release only if the FD actually acquired (not on the empty-slot validation abort),
+            // so we never stop the stream out from under an active Visual Guidance session.
+            if (_fdHoldsStream)
+            {
+                simConnectManager.ReleaseVisualGuidanceMonitoring();
+                _fdHoldsStream = false;
+            }
 
             // Resume HandFly's tone if HandFly is still active. Idempotent.
             handFlyManager.ResumeAudio();
@@ -4807,6 +4825,17 @@ public partial class MainForm : Form
         // and `currentAircraft` already points at the new aircraft by the time the
         // cleanup block runs.
         var oldAircraft = currentAircraft;
+
+        // Stop Visual Guidance and the Waypoint Flight Director on an aircraft swap. Both were
+        // Initialized with the OLD aircraft's tuning profile (VG also with the old destination
+        // runway), and their tones would otherwise keep sounding on the new — possibly cold-and-dark
+        // — airframe. Stop() is idempotent and releases the ref-counted 505 stream claim through the
+        // flag-guarded ActiveChanged handlers (announce:false — a swap shouldn't speak "… off").
+        if (visualGuidanceManager != null && visualGuidanceManager.IsActive)
+            visualGuidanceManager.Stop(announce: false);
+        if (waypointFdManager != null && waypointFdManager.IsActive)
+            waypointFdManager.Stop(announce: false);
+
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
         // Both FBW defs' StopAllMotion also dispose their TCAS RA compose timer and
