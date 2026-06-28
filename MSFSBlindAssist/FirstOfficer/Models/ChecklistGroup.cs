@@ -1,9 +1,13 @@
+using MSFSBlindAssist.FirstOfficer;
+
 namespace MSFSBlindAssist.FirstOfficer.Models;
 
 /// <summary>
-/// A named phase/section of the PMDG 777 checklist containing <see cref="ChecklistItem"/> entries.
+/// A named phase/section of the PMDG 777 checklist containing <see cref="ChecklistItem{TExec,TState}"/> entries.
 /// </summary>
-public class ChecklistGroup
+public class ChecklistGroup<TExec, TState>
+    where TExec : IFoActionExecutor
+    where TState : IFoStateEvaluator
 {
     /// <summary>Unique ID, e.g. "ELEC_POWER_UP".</summary>
     public string Id { get; set; } = "";
@@ -12,7 +16,7 @@ public class ChecklistGroup
     public string Name { get; set; } = "";
 
     /// <summary>Ordered list of items in this group.</summary>
-    public List<ChecklistItem> Items { get; set; } = new();
+    public List<ChecklistItem<TExec, TState>> Items { get; set; } = new();
 
     // -----------------------------------------------------------------------
     // Computed progress

@@ -1,5 +1,4 @@
 using MSFSBlindAssist.Aircraft;
-using MSFSBlindAssist.FirstOfficer.Models;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.FirstOfficer;
@@ -22,30 +21,6 @@ public class AircraftActionExecutor : IFoActionExecutor
     // -----------------------------------------------------------------------
     // Core dispatch
     // -----------------------------------------------------------------------
-
-    /// <summary>
-    /// Execute a single <see cref="FlowStep"/> switch action.
-    /// Returns true if the event was dispatched successfully.
-    /// </summary>
-    public bool ExecuteStep(FlowStep step)
-    {
-        if (_simConnect == null || !_simConnect.IsConnected) return false;
-
-        switch (step.ActionType)
-        {
-            case FlowStepActionType.SetSwitch:
-                return ExecuteSingle(step.EventName!, step.TargetValue, step.UsesMouseFlag, step.IsMomentary);
-
-            case FlowStepActionType.SetSwitchMultiple:
-                bool ok = true;
-                foreach (var (eventName, targetValue) in step.MultiActions)
-                    ok &= ExecuteSingle(eventName, targetValue, false, false);
-                return ok;
-
-            default:
-                return false; // WaitSeconds, WaitForCondition, etc. are handled by FlowManager
-        }
-    }
 
     /// <summary>
     /// Interface implementation: dispatches an <see cref="IFlowStepDispatch"/> asynchronously.

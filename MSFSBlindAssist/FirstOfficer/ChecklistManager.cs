@@ -6,22 +6,24 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// Manages the runtime state of all PMDG 777 checklist groups.
 /// Handles auto-completion, revert logic, and manual toggle.
 /// </summary>
-public class ChecklistManager
+public class ChecklistManager<TExec, TState>
+    where TExec : IFoActionExecutor
+    where TState : IFoStateEvaluator
 {
-    private readonly AircraftStateEvaluator _state;
-    private readonly AircraftActionExecutor _executor;
-    private readonly List<ChecklistGroup> _groups;
+    private readonly TState _state;
+    private readonly TExec _executor;
+    private readonly List<ChecklistGroup<TExec, TState>> _groups;
 
     // Raised when any item's IsChecked state changes.
-    public event Action<ChecklistGroup, ChecklistItem>? ItemStateChanged;
+    public event Action<ChecklistGroup<TExec, TState>, ChecklistItem<TExec, TState>>? ItemStateChanged;
 
     // Raised when a group's overall progress changes.
-    public event Action<ChecklistGroup>? GroupProgressChanged;
+    public event Action<ChecklistGroup<TExec, TState>>? GroupProgressChanged;
 
-    public IReadOnlyList<ChecklistGroup> Groups => _groups;
+    public IReadOnlyList<ChecklistGroup<TExec, TState>> Groups => _groups;
 
-    public ChecklistManager(AircraftStateEvaluator state, AircraftActionExecutor executor,
-        List<ChecklistGroup> groups)
+    public ChecklistManager(TState state, TExec executor,
+        List<ChecklistGroup<TExec, TState>> groups)
     {
         _state    = state;
         _executor = executor;
@@ -45,7 +47,7 @@ public class ChecklistManager
 
         // If the item is now checked AND has a linked action, execute it.
         if (item.IsChecked && item.CheckAction != null && _executor.IsAvailable)
-            item.CheckAction(_executor, _state);
+            _ = item.CheckAction(_executor, _state);
 
         RaiseChanged(FindGroup(groupId)!, item);
         return item.IsChecked;
@@ -135,17 +137,17 @@ public class ChecklistManager
     // Lookup helpers
     // -----------------------------------------------------------------------
 
-    public ChecklistGroup? FindGroup(string groupId)
+    public ChecklistGroup<TExec, TState>? FindGroup(string groupId)
         => _groups.FirstOrDefault(g => g.Id == groupId);
 
-    public ChecklistItem? FindItem(string groupId, string itemId)
+    public ChecklistItem<TExec, TState>? FindItem(string groupId, string itemId)
         => FindGroup(groupId)?.Items.FirstOrDefault(i => i.Id == itemId);
 
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
 
-    private bool EvaluateItemState(ChecklistItem item)
+    private bool EvaluateItemState(ChecklistItem<TExec, TState> item)
     {
         double primary = _state.GetValue(item.StateFieldName!);
         if (!item.EvaluateState(primary)) return false;
@@ -159,7 +161,7 @@ public class ChecklistManager
         return true;
     }
 
-    private void RaiseChanged(ChecklistGroup group, ChecklistItem item)
+    private void RaiseChanged(ChecklistGroup<TExec, TState> group, ChecklistItem<TExec, TState> item)
     {
         ItemStateChanged?.Invoke(group, item);
         GroupProgressChanged?.Invoke(group);

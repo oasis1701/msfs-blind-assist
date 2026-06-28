@@ -2,6 +2,11 @@ using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer;
 
+// Shorthand for the generic checklist item type this aircraft's definitions build.
+using Item = MSFSBlindAssist.FirstOfficer.Models.ChecklistItem<
+    MSFSBlindAssist.FirstOfficer.AircraftActionExecutor,
+    MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator>;
+
 /// <summary>
 /// Data-driven PMDG 777 checklist definitions.
 ///
@@ -15,7 +20,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// </summary>
 public static class PMDG777ChecklistDefinitions
 {
-    public static List<ChecklistGroup> Build() => new()
+    public static List<ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator>> Build() => new()
     {
         BuildElectricalPowerUp(),
         BuildPreflight(),
@@ -41,7 +46,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 1. Electrical Power Up
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildElectricalPowerUp() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildElectricalPowerUp() => new()
     {
         Id = "ELEC_POWER_UP", Name = "Electrical Power Up",
         Items = new()
@@ -71,7 +76,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 2. Preflight
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildPreflight() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildPreflight() => new()
     {
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
@@ -180,7 +185,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 3. Preflight Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildPreflightChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildPreflightChecklist() => new()
     {
         Id = "PREFLIGHT_CL", Name = "Preflight Checklist",
         Items = new()
@@ -200,7 +205,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 4. Before Start
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildBeforeStart() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildBeforeStart() => new()
     {
         Id = "BEFORE_START", Name = "Before Start",
         Items = new()
@@ -244,7 +249,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 5. Before Start Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildBeforeStartChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildBeforeStartChecklist() => new()
     {
         Id = "BEFORE_START_CL", Name = "Before Start Checklist",
         Items = new()
@@ -267,7 +272,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 6. Engine Start
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildEngineStart() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildEngineStart() => new()
     {
         Id = "ENGINE_START", Name = "Engine Start",
         Items = new()
@@ -290,7 +295,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 7. Before Taxi
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildBeforeTaxi() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildBeforeTaxi() => new()
     {
         Id = "BEFORE_TAXI", Name = "Before Taxi",
         Items = new()
@@ -309,7 +314,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 8. Before Taxi Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildBeforeTaxiChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildBeforeTaxiChecklist() => new()
     {
         Id = "BEFORE_TAXI_CL", Name = "Before Taxi Checklist",
         Items = new()
@@ -328,7 +333,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 9. Before Takeoff Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildBeforeTakeoffChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildBeforeTakeoffChecklist() => new()
     {
         Id = "BEFORE_TKOF_CL", Name = "Before Takeoff Checklist",
         Items = new()
@@ -345,7 +350,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 10. After Takeoff Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildAfterTakeoffChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildAfterTakeoffChecklist() => new()
     {
         Id = "AFTER_TKOF_CL", Name = "After Takeoff Checklist",
         Items = new()
@@ -362,7 +367,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 11. Descent Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildDescentChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildDescentChecklist() => new()
     {
         Id = "DESCENT_CL", Name = "Descent Checklist",
         Items = new()
@@ -378,7 +383,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 12. Approach Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildApproachChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildApproachChecklist() => new()
     {
         Id = "APPROACH_CL", Name = "Approach Checklist",
         Items = new()
@@ -390,7 +395,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 13. Landing Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildLandingChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildLandingChecklist() => new()
     {
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
@@ -410,7 +415,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 14. After Landing
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildAfterLanding() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildAfterLanding() => new()
     {
         Id = "AFTER_LANDING", Name = "After Landing",
         Items = new()
@@ -435,7 +440,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 15. Shutdown
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildShutdown() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
         Items = new()
@@ -463,7 +468,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 16. Shutdown Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildShutdownChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildShutdownChecklist() => new()
     {
         Id = "SHUTDOWN_CL", Name = "Shutdown Checklist",
         Items = new()
@@ -490,7 +495,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 17. Secure
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildSecure() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildSecure() => new()
     {
         Id = "SECURE", Name = "Secure",
         Items = new()
@@ -510,7 +515,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 18. Secure Checklist
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildSecureChecklist() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildSecureChecklist() => new()
     {
         Id = "SECURE_CL", Name = "Secure Checklist",
         Items = new()
@@ -530,7 +535,7 @@ public static class PMDG777ChecklistDefinitions
     // -----------------------------------------------------------------------
     // 19. Electrical Power Down
     // -----------------------------------------------------------------------
-    private static ChecklistGroup BuildElectricalPowerDown() => new()
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildElectricalPowerDown() => new()
     {
         Id = "ELEC_POWER_DOWN", Name = "Electrical Power Down",
         Items = new()
@@ -547,8 +552,18 @@ public static class PMDG777ChecklistDefinitions
     // Builder helpers
     // -----------------------------------------------------------------------
 
+    /// <summary>
+    /// Adapt a synchronous switch action (the original <c>Action</c> form used by every
+    /// call site below) to the model's async <c>Func&lt;...,Task&gt;</c> CheckAction.
+    /// The body runs synchronously to completion and the wrapper returns a completed Task,
+    /// so behaviour is byte-identical to the previous synchronous call.
+    /// </summary>
+    private static Func<AircraftActionExecutor, AircraftStateEvaluator, Task>? AsCheckAction(
+        Action<AircraftActionExecutor, AircraftStateEvaluator>? action)
+        => action == null ? null : (e, s) => { action(e, s); return Task.CompletedTask; };
+
     /// <summary>AutoDetectable item — state is read from sim vars; optional CheckAction fires on manual check.</summary>
-    private static ChecklistItem Auto(string id, string groupId, string label,
+    private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition, RevertBehavior revert,
         string[]? additionalFields = null,
         Action<AircraftActionExecutor, AircraftStateEvaluator>? action = null) => new()
@@ -562,17 +577,17 @@ public static class PMDG777ChecklistDefinitions
         RevertBehavior = revert,
         AdditionalStateFields = additionalFields ?? Array.Empty<string>(),
         AdditionalStateCondition = condition,
-        CheckAction = action,
+        CheckAction = AsCheckAction(action),
     };
 
     /// <summary>Overload without additionalFields — makes call sites cleaner when only action is needed.</summary>
-    private static ChecklistItem Auto(string id, string groupId, string label,
+    private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition, RevertBehavior revert,
         Action<AircraftActionExecutor, AircraftStateEvaluator>? action) =>
         Auto(id, groupId, label, field, condition, revert, null, action);
 
     /// <summary>Manual item with no linked sim action — user ticks after doing it themselves.</summary>
-    private static ChecklistItem Manual(string id, string groupId, string label) => new()
+    private static Item Manual(string id, string groupId, string label) => new()
     {
         Id = id, GroupId = groupId, Label = label,
         Type = ChecklistItemType.Actionable,
@@ -580,17 +595,17 @@ public static class PMDG777ChecklistDefinitions
     };
 
     /// <summary>Manual item WITH a linked sim action — checking the box fires the action.</summary>
-    private static ChecklistItem ActionManual(string id, string groupId, string label,
+    private static Item ActionManual(string id, string groupId, string label,
         Action<AircraftActionExecutor, AircraftStateEvaluator> action) => new()
     {
         Id = id, GroupId = groupId, Label = label,
         Type = ChecklistItemType.Actionable,
         ManualCompletionAllowed = true,
-        CheckAction = action,
+        CheckAction = AsCheckAction(action),
     };
 
     /// <summary>Captain reminder — user reads/confirms and manually ticks. No sim action.</summary>
-    private static ChecklistItem Reminder(string id, string groupId, string text) => new()
+    private static Item Reminder(string id, string groupId, string text) => new()
     {
         Id = id, GroupId = groupId, Label = text,
         Type = ChecklistItemType.CaptainReminder,

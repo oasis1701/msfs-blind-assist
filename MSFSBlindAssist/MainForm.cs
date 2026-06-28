@@ -43,7 +43,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm? flyByWireMCDUForm;
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
     private System.Windows.Forms.Form? pmdgCDUForm;
-    private FirstOfficerForm? pmdg777FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>? pmdg777FirstOfficerForm;
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
     private Forms.FBWA380.FbwEfbForm? fbwEfbForm;
     // No-injection A380X transport: reads/drives the MFD live through the
@@ -3206,7 +3206,8 @@ public partial class MainForm : Form
     {
         if (pmdg777FirstOfficerForm == null || pmdg777FirstOfficerForm.IsDisposed)
         {
-            pmdg777FirstOfficerForm = new FirstOfficerForm(
+            pmdg777FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>(
+                new FirstOfficer.Pmdg777FoProfile(),
                 simConnectManager,
                 announcer,
                 MSFSBlindAssist.Settings.SettingsManager.Current,

@@ -35,14 +35,15 @@ public enum FlowStepFailurePolicy
     /// <summary>Log a warning and continue to the next step.</summary>
     Skip,
 
-    /// <summary>Retry the step up to <see cref="FlowStep.RetryCount"/> times before applying Stop.</summary>
+    /// <summary>Retry the step up to <see cref="FlowStep{TState}.RetryCount"/> times before applying Stop.</summary>
     RetryThenStop,
 }
 
 /// <summary>
-/// A single automated step within a <see cref="FlowDefinition"/>.
+/// A single automated step within a <see cref="FlowDefinition{TState}"/>.
 /// </summary>
-public class FlowStep : IFlowStepDispatch
+public class FlowStep<TState> : IFlowStepDispatch
+    where TState : IFoStateEvaluator
 {
     // -----------------------------------------------------------------------
     // Identity
@@ -156,7 +157,7 @@ public class FlowStep : IFlowStepDispatch
     /// is already in the desired state. Allows flows to resume from mid-state
     /// without re-setting switches that are already correct.
     /// </summary>
-    public Func<AircraftStateEvaluator, bool>? SkipCondition { get; set; }
+    public Func<TState, bool>? SkipCondition { get; set; }
 
     // -----------------------------------------------------------------------
     // Helper

@@ -7,12 +7,17 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777;
+namespace MSFSBlindAssist.Forms.FirstOfficer;
 
 /// <summary>
-/// Main First Officer window for the PMDG 777.
+/// Shared, aircraft-agnostic First Officer window.
 /// Contains two tabs: Checklists and Flows.
 /// Designed for NVDA / JAWS screen reader use — all controls have explicit accessible names.
+///
+/// All aircraft-specific construction (executor, evaluator, data-manager binding,
+/// flow/checklist data, auto/phase managers, window title) is provided by the injected
+/// <see cref="IFoProfile{TExec,TState}"/>. Everything else (tabs, tree, listboxes,
+/// buttons, handlers, SimBrief load, timer, threading) is identical across aircraft.
 ///
 /// Accessibility notes:
 /// - NativeAccessibleTreeView used for checklist (bypasses .NET 9 UIA bug)
@@ -21,11 +26,14 @@ namespace MSFSBlindAssist.Forms.PMDG777;
 /// - Flow steps are displayed in a ListBox (simple, screen-reader friendly)
 /// - All status changes are announced via ScreenReaderAnnouncer
 /// </summary>
-public class FirstOfficerForm : Form
+public class FirstOfficerForm<TExec, TState> : Form
+    where TExec : IFoActionExecutor
+    where TState : IFoStateEvaluator
 {
     // ------------------------------------------------------------------
     // Dependencies
     // ------------------------------------------------------------------
+    private readonly IFoProfile<TExec, TState> _profile;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly UserSettings _settings;
@@ -34,18 +42,18 @@ public class FirstOfficerForm : Form
     // ------------------------------------------------------------------
     // First Officer services
     // ------------------------------------------------------------------
-    private readonly AircraftStateEvaluator _stateEval;
-    private readonly AircraftActionExecutor _actionExec;
-    private readonly ChecklistManager _checklistMgr;
-    private readonly FlowManager _flowMgr;
-    private readonly FlightPhaseMonitor _flightPhaseMon;
-    private readonly FOAutoManager _foAutoMgr;
+    private readonly TState _stateEval;
+    private readonly TExec _actionExec;
+    private readonly ChecklistManager<TExec, TState> _checklistMgr;
+    private readonly FlowManager<TExec, TState> _flowMgr;
+    private readonly IFoPhaseMonitor _flightPhaseMon;
+    private readonly IFoAutoManager _foAutoMgr;
 
     // ------------------------------------------------------------------
     // Data
     // ------------------------------------------------------------------
-    private readonly List<ChecklistGroup> _checklistGroups;
-    private readonly List<FlowDefinition> _flows;
+    private readonly List<ChecklistGroup<TExec, TState>> _checklistGroups;
+    private readonly List<FlowDefinition<TState>> _flows;
     private SimBriefOFP? _loadedOFP;
 
     // Latest one-shot values fed to FOAutoManager
@@ -92,30 +100,27 @@ public class FirstOfficerForm : Form
     // Constructor
     // ------------------------------------------------------------------
     public FirstOfficerForm(
+        IFoProfile<TExec, TState> profile,
         SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer,
         UserSettings settings,
         SimBriefService simBriefService)
     {
+        _profile    = profile;
         _simConnect = simConnect;
         _announcer  = announcer;
         _settings   = settings;
         _simBriefService = simBriefService;
 
-        // Build services
-        _stateEval  = new AircraftStateEvaluator();
-        _actionExec = new AircraftActionExecutor();
-        _checklistGroups = PMDG777ChecklistDefinitions.Build();
-        _flows       = PMDG777FlowDefinitions.Build();
-        _checklistMgr = new ChecklistManager(_stateEval, _actionExec, _checklistGroups);
-        _flowMgr     = new FlowManager(_stateEval, _actionExec, _checklistMgr, announcer);
-        _flightPhaseMon = new FlightPhaseMonitor(_actionExec, _stateEval, announcer);
-        _foAutoMgr   = new FOAutoManager(_actionExec, _stateEval, announcer)
-        {
-            AutoGearEnabled  = settings.FOAutoGearEnabled,
-            AutoFlapsEnabled = settings.FOAutoFlapsEnabled,
-            AutoApEnabled    = settings.FOAutoApEnabled,
-        };
+        // Build services via the injected profile
+        _stateEval  = profile.CreateEvaluator();
+        _actionExec = profile.CreateExecutor();
+        _checklistGroups = profile.BuildChecklists();
+        _flows       = profile.BuildFlows();
+        _checklistMgr = new ChecklistManager<TExec, TState>(_stateEval, _actionExec, _checklistGroups);
+        _flowMgr     = new FlowManager<TExec, TState>(_stateEval, _actionExec, _checklistMgr, announcer);
+        _flightPhaseMon = profile.CreatePhaseMonitor(_actionExec, _stateEval, announcer);
+        _foAutoMgr   = profile.CreateAutoManager(_actionExec, _stateEval, announcer, settings);
 
         // Wire services
         UpdateServicesFromConnection();
@@ -219,10 +224,12 @@ public class FirstOfficerForm : Form
                 $"Flight phase monitor: transition altitude {transAltFt} feet, transition level {effectiveTl} feet.");
         }
 
-        // Store takeoff flap setting for use by Before Taxi flow
+        // Store takeoff flap setting for use by Before Taxi flow.
+        // The takeoff-flaps store is aircraft-specific; apply it when the evaluator supports it.
         if (int.TryParse(ofp.TakeoffFlaps, out int flaps) && flaps > 0)
         {
-            _stateEval.SetTakeoffFlaps(flaps);
+            if (_stateEval is AircraftStateEvaluator a777)
+                a777.SetTakeoffFlaps(flaps);
             _announcer.AnnounceImmediate($"Takeoff flaps: {flaps}");
         }
     }
@@ -249,8 +256,8 @@ public class FirstOfficerForm : Form
 
     private void UpdateServicesFromConnection()
     {
-        _stateEval.SetDataManager(_simConnect.PMDGDataManager as PMDG777DataManager);
-        _actionExec.SetSimConnect(_simConnect.IsConnected ? _simConnect : null);
+        _profile.BindDataManager(_stateEval, _simConnect);
+        _profile.SetExecutorSimConnect(_actionExec, _simConnect.IsConnected ? _simConnect : null);
     }
 
     // ------------------------------------------------------------------
@@ -259,7 +266,7 @@ public class FirstOfficerForm : Form
 
     private void BuildUI()
     {
-        Text = "First Officer — PMDG 777";
+        Text = _profile.Title;
         Width = 720;
         Height = 580;
         MinimumSize = new Size(600, 480);
@@ -541,20 +548,20 @@ public class FirstOfficerForm : Form
     // Checklist change callbacks (from ChecklistManager — may be on any thread)
     // ------------------------------------------------------------------
 
-    private void OnChecklistItemChanged(ChecklistGroup group, ChecklistItem item)
+    private void OnChecklistItemChanged(ChecklistGroup<TExec, TState> group, ChecklistItem<TExec, TState> item)
     {
         if (InvokeRequired) { Invoke(() => OnChecklistItemChanged(group, item)); return; }
         RefreshTreeNodeForItem(group, item);
     }
 
-    private void OnGroupProgressChanged(ChecklistGroup group)
+    private void OnGroupProgressChanged(ChecklistGroup<TExec, TState> group)
     {
         if (InvokeRequired) { Invoke(() => OnGroupProgressChanged(group)); return; }
         RefreshGroupNode(group);
         UpdateChecklistStatus();
     }
 
-    private void RefreshTreeNodeForItem(ChecklistGroup group, ChecklistItem item)
+    private void RefreshTreeNodeForItem(ChecklistGroup<TExec, TState> group, ChecklistItem<TExec, TState> item)
     {
         var parentNode = FindGroupNode(group.Id);
         if (parentNode == null) return;
@@ -571,7 +578,7 @@ public class FirstOfficerForm : Form
         _suppressTreeEvents = false;
     }
 
-    private void RefreshGroupNode(ChecklistGroup group)
+    private void RefreshGroupNode(ChecklistGroup<TExec, TState> group)
     {
         var node = FindGroupNode(group.Id);
         if (node == null) return;
@@ -799,14 +806,14 @@ public class FirstOfficerForm : Form
     // Flow event callbacks (arrive on background thread)
     // ------------------------------------------------------------------
 
-    private void OnFlowStarted(FlowDefinition flow)
+    private void OnFlowStarted(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowStarted(flow)); return; }
         _flowStatusLabel.Text = $"Running: {flow.Name}";
         UpdateFlowButtonStates();
     }
 
-    private void OnFlowCompleted(FlowDefinition flow)
+    private void OnFlowCompleted(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowCompleted(flow)); return; }
         _flowStatusLabel.Text = $"Complete: {flow.Name}";
@@ -814,42 +821,42 @@ public class FirstOfficerForm : Form
         UpdateFlowButtonStates();
     }
 
-    private void OnFlowCancelled(FlowDefinition flow)
+    private void OnFlowCancelled(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowCancelled(flow)); return; }
         _flowStatusLabel.Text = $"Cancelled: {flow.Name}";
         UpdateFlowButtonStates();
     }
 
-    private void OnFlowFailed(FlowDefinition flow, string reason)
+    private void OnFlowFailed(FlowDefinition<TState> flow, string reason)
     {
         if (InvokeRequired) { Invoke(() => OnFlowFailed(flow, reason)); return; }
         _flowStatusLabel.Text = $"Failed: {flow.Name} — {reason}";
         UpdateFlowButtonStates();
     }
 
-    private void OnFlowPaused(FlowDefinition flow)
+    private void OnFlowPaused(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowPaused(flow)); return; }
         _flowStatusLabel.Text = $"Paused: {flow.Name}";
         UpdateFlowButtonStates();
     }
 
-    private void OnFlowResumed(FlowDefinition flow)
+    private void OnFlowResumed(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowResumed(flow)); return; }
         _flowStatusLabel.Text = $"Resumed: {flow.Name}";
         UpdateFlowButtonStates();
     }
 
-    private void OnStepStarted(FlowDefinition flow, FlowStep step, int index)
+    private void OnStepStarted(FlowDefinition<TState> flow, FlowStep<TState> step, int index)
     {
         if (InvokeRequired) { Invoke(() => OnStepStarted(flow, step, index)); return; }
         _currentStepLabel.Text = $"Step {index + 1}: {step.Label}";
         HighlightFlowStep(index);
     }
 
-    private void OnStepCompleted(FlowDefinition flow, FlowStep step, int index)
+    private void OnStepCompleted(FlowDefinition<TState> flow, FlowStep<TState> step, int index)
     {
         if (InvokeRequired) { Invoke(() => OnStepCompleted(flow, step, index)); return; }
         // Mark step as completed in list (prefix ✓)
@@ -861,7 +868,7 @@ public class FirstOfficerForm : Form
         }
     }
 
-    private void OnStepFailed(FlowDefinition flow, FlowStep step, int index, string reason)
+    private void OnStepFailed(FlowDefinition<TState> flow, FlowStep<TState> step, int index, string reason)
     {
         if (InvokeRequired) { Invoke(() => OnStepFailed(flow, step, index, reason)); return; }
         if (index < _stepsListBox.Items.Count)
@@ -872,7 +879,7 @@ public class FirstOfficerForm : Form
         }
     }
 
-    private void OnStepSkipped(FlowDefinition flow, FlowStep step, int index)
+    private void OnStepSkipped(FlowDefinition<TState> flow, FlowStep<TState> step, int index)
     {
         if (InvokeRequired) { Invoke(() => OnStepSkipped(flow, step, index)); return; }
         if (index < _stepsListBox.Items.Count)

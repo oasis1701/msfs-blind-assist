@@ -24,7 +24,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// </summary>
 public static class PMDG777FlowDefinitions
 {
-    public static List<FlowDefinition> Build() => new()
+    public static List<FlowDefinition<AircraftStateEvaluator>> Build() => new()
     {
         BuildElectricalPowerUp(),
         BuildCockpitPrep(),
@@ -43,7 +43,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 1: Electrical Power Up (Cold & Dark)
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildElectricalPowerUp() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildElectricalPowerUp() => new()
     {
         Id = "ELECTRICAL_POWER_UP",
         Name = "Electrical Power Up",
@@ -94,7 +94,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 2: Cockpit Preparation
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildCockpitPrep() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildCockpitPrep() => new()
     {
         Id = "COCKPIT_PREP",
         Name = "Cockpit Preparation",
@@ -173,7 +173,7 @@ public static class PMDG777FlowDefinitions
                 s => s.IsAutobrakRTO()),
             // Fuel control — CUTOFF
             // Note: PMDG lever parameter is inverted: 1=CUTOFF, 0=RUN
-            new FlowStep { Id = "CP_FUEL_CTRL", Label = "Fuel Control: CUTOFF",
+            new FlowStep<AircraftStateEvaluator> { Id = "CP_FUEL_CTRL", Label = "Fuel Control: CUTOFF",
                 ActionType = FlowStepActionType.SetSwitchMultiple,
                 MultiActions = new() {
                     ("EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
@@ -187,7 +187,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 3: Before Start
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildBeforeStart() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildBeforeStart() => new()
     {
         Id = "BEFORE_START",
         Name = "Before Start",
@@ -236,7 +236,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 4: Engine Start
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildEngineStart() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildEngineStart() => new()
     {
         Id = "ENGINE_START",
         Name = "Engine Start",
@@ -254,7 +254,7 @@ public static class PMDG777FlowDefinitions
                "ES_ENG2_START_SEL"),
             Wait("ES_E2_WAIT1", "Cranking Engine 2", 3),
             // Fuel Control 2: RUN — PMDG inverted param: 0=RUN, 1=CUTOFF
-            new FlowStep { Id = "ES_FC2_RUN", Label = "Engine 2 fuel control: RUN",
+            new FlowStep<AircraftStateEvaluator> { Id = "ES_FC2_RUN", Label = "Engine 2 fuel control: RUN",
                 SpokenLabel = "Engine 2 fuel control run",
                 ActionType = FlowStepActionType.SetSwitch,
                 EventName = "EVT_CONTROL_STAND_ENG2_START_LEVER",
@@ -279,7 +279,7 @@ public static class PMDG777FlowDefinitions
                "ENG_Start_Selector_0", v => v < 0.5,
                "ES_ENG1_START_SEL"),
             Wait("ES_E1_WAIT1", "Cranking Engine 1", 3),
-            new FlowStep { Id = "ES_FC1_RUN", Label = "Engine 1 fuel control: RUN",
+            new FlowStep<AircraftStateEvaluator> { Id = "ES_FC1_RUN", Label = "Engine 1 fuel control: RUN",
                 SpokenLabel = "Engine 1 fuel control run",
                 ActionType = FlowStepActionType.SetSwitch,
                 EventName = "EVT_CONTROL_STAND_ENG1_START_LEVER",
@@ -300,7 +300,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 5: Before Taxi
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildBeforeTaxi() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildBeforeTaxi() => new()
     {
         Id = "BEFORE_TAXI",
         Name = "Before Taxi",
@@ -330,7 +330,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 6: Before Takeoff
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildBeforeTakeoff() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildBeforeTakeoff() => new()
     {
         Id = "BEFORE_TAKEOFF",
         Name = "Before Takeoff",
@@ -359,7 +359,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 7: After Takeoff
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildAfterTakeoff() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF",
         Name = "After Takeoff",
@@ -383,7 +383,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 8: Descent Setup
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildDescentSetup() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildDescentSetup() => new()
     {
         Id = "DESCENT_SETUP",
         Name = "Descent Setup",
@@ -403,7 +403,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 9: Approach Setup
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildApproachSetup() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildApproachSetup() => new()
     {
         Id = "APPROACH_SETUP",
         Name = "Approach Setup",
@@ -420,7 +420,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 10: After Landing
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildAfterLanding() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildAfterLanding() => new()
     {
         Id = "AFTER_LANDING",
         Name = "After Landing",
@@ -455,7 +455,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 11: Shutdown
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildShutdown() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildShutdown() => new()
     {
         Id = "SHUTDOWN",
         Name = "Shutdown",
@@ -468,7 +468,7 @@ public static class PMDG777FlowDefinitions
                "BRAKES_ParkingBrakeLeverOn", v => v > 0.5, "SD_PARK_BRAKE"),
                 s => s.IsParkingBrakeSet()),
             // Fuel control: CUTOFF — PMDG inverted: 1=CUTOFF
-            new FlowStep { Id = "SD_FC_CUTOFF", Label = "Fuel Control: CUTOFF",
+            new FlowStep<AircraftStateEvaluator> { Id = "SD_FC_CUTOFF", Label = "Fuel Control: CUTOFF",
                 ActionType = FlowStepActionType.SetSwitchMultiple,
                 MultiActions = new() {
                     ("EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
@@ -503,7 +503,7 @@ public static class PMDG777FlowDefinitions
     // -----------------------------------------------------------------------
     // Flow 12: Secure
     // -----------------------------------------------------------------------
-    private static FlowDefinition BuildSecure() => new()
+    private static FlowDefinition<AircraftStateEvaluator> BuildSecure() => new()
     {
         Id = "SECURE",
         Name = "Secure Aircraft",
@@ -529,7 +529,7 @@ public static class PMDG777FlowDefinitions
     // Step builder helpers
     // -----------------------------------------------------------------------
 
-    private static FlowStep SW(string id, string label, string eventName, int? target,
+    private static FlowStep<AircraftStateEvaluator> SW(string id, string label, string eventName, int? target,
         string? verifyField = null, Func<double, bool>? verifyCond = null,
         string? checklistItemId = null, bool isMomentary = false) => new()
     {
@@ -545,12 +545,12 @@ public static class PMDG777FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static FlowStep SW(string id, string label, string eventName, int? target,
+    private static FlowStep<AircraftStateEvaluator> SW(string id, string label, string eventName, int? target,
         bool isMomentary, string? verifyField = null, Func<double, bool>? verifyCond = null,
         string? checklistItemId = null) =>
         SW(id, label, eventName, target, verifyField, verifyCond, checklistItemId, isMomentary);
 
-    private static FlowStep MouseFlag(string id, string label, string eventName) => new()
+    private static FlowStep<AircraftStateEvaluator> MouseFlag(string id, string label, string eventName) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
@@ -560,7 +560,7 @@ public static class PMDG777FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static FlowStep Momentary(string id, string label, string eventName,
+    private static FlowStep<AircraftStateEvaluator> Momentary(string id, string label, string eventName,
         string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
@@ -572,7 +572,7 @@ public static class PMDG777FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static FlowStep Multi(string id, string label,
+    private static FlowStep<AircraftStateEvaluator> Multi(string id, string label,
         params (string EventName, int? TargetValue)[] actions) => new()
     {
         Id = id, Label = label,
@@ -582,7 +582,7 @@ public static class PMDG777FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static FlowStep Wait(string id, string label, int seconds) => new()
+    private static FlowStep<AircraftStateEvaluator> Wait(string id, string label, int seconds) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitSeconds,
@@ -590,7 +590,7 @@ public static class PMDG777FlowDefinitions
         PostActionDelayMs = 0,
     };
 
-    private static FlowStep WaitForField(string id, string label, string field,
+    private static FlowStep<AircraftStateEvaluator> WaitForField(string id, string label, string field,
         Func<double, bool> condition, int timeoutSec) => new()
     {
         Id = id, Label = label,
@@ -602,7 +602,7 @@ public static class PMDG777FlowDefinitions
         PostActionDelayMs = 0,
     };
 
-    private static FlowStep Captain(string id, string label) => new()
+    private static FlowStep<AircraftStateEvaluator> Captain(string id, string label) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
@@ -615,7 +615,7 @@ public static class PMDG777FlowDefinitions
     /// When the condition returns true, the flow engine skips the step
     /// because the aircraft is already in the desired state.
     /// </summary>
-    private static FlowStep Skip(FlowStep step, Func<AircraftStateEvaluator, bool> cond)
+    private static FlowStep<AircraftStateEvaluator> Skip(FlowStep<AircraftStateEvaluator> step, Func<AircraftStateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
         return step;

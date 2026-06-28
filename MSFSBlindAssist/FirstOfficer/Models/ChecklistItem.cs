@@ -1,8 +1,6 @@
-namespace MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.FirstOfficer;
 
-// Types from the parent namespace — same assembly, no circular dependency.
-using AircraftActionExecutor  = MSFSBlindAssist.FirstOfficer.AircraftActionExecutor;
-using AircraftStateEvaluator  = MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator;
+namespace MSFSBlindAssist.FirstOfficer.Models;
 
 /// <summary>
 /// Whether the checklist item represents an automatable action,
@@ -53,9 +51,11 @@ public enum RevertBehavior
 }
 
 /// <summary>
-/// A single checklist item within a <see cref="ChecklistGroup"/>.
+/// A single checklist item within a <see cref="ChecklistGroup{TExec,TState}"/>.
 /// </summary>
-public class ChecklistItem
+public class ChecklistItem<TExec, TState>
+    where TExec : IFoActionExecutor
+    where TState : IFoStateEvaluator
 {
     // -----------------------------------------------------------------------
     // Identity
@@ -124,12 +124,12 @@ public class ChecklistItem
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// If set, executed by <see cref="ChecklistManager"/> when the user checks this item ON.
+    /// If set, executed by <see cref="ChecklistManager{TExec,TState}"/> when the user checks this item ON.
     /// Does nothing on uncheck — just resets the checkbox state.
     /// The state evaluator is provided so toggle-type actions (FD, AT Arm) can read
     /// current state before deciding to press. Leave null for verify/briefing items.
     /// </summary>
-    public Action<AircraftActionExecutor, AircraftStateEvaluator>? CheckAction { get; set; }
+    public Func<TExec, TState, Task>? CheckAction { get; set; }
 
     // -----------------------------------------------------------------------
     // Linking to flows

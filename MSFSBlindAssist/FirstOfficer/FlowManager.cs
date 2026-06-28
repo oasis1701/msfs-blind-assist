@@ -8,11 +8,13 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// Runs steps in sequence, handles waits and conditions, and raises events
 /// that the UI and announcement service can subscribe to.
 /// </summary>
-public class FlowManager
+public class FlowManager<TExec, TState>
+    where TExec : IFoActionExecutor
+    where TState : IFoStateEvaluator
 {
-    private readonly AircraftStateEvaluator _state;
-    private readonly AircraftActionExecutor _executor;
-    private readonly ChecklistManager _checklist;
+    private readonly TState _state;
+    private readonly TExec _executor;
+    private readonly ChecklistManager<TExec, TState> _checklist;
     private readonly ScreenReaderAnnouncer _announcer;
 
     private CancellationTokenSource? _cts;
@@ -24,17 +26,17 @@ public class FlowManager
     // Events (fired from background task — consumers must marshal to UI thread)
     // -----------------------------------------------------------------------
 
-    public event Action<FlowDefinition>? FlowStarted;
-    public event Action<FlowDefinition>? FlowCompleted;
-    public event Action<FlowDefinition>? FlowCancelled;
-    public event Action<FlowDefinition, string>? FlowFailed;
-    public event Action<FlowDefinition>? FlowPaused;
-    public event Action<FlowDefinition>? FlowResumed;
+    public event Action<FlowDefinition<TState>>? FlowStarted;
+    public event Action<FlowDefinition<TState>>? FlowCompleted;
+    public event Action<FlowDefinition<TState>>? FlowCancelled;
+    public event Action<FlowDefinition<TState>, string>? FlowFailed;
+    public event Action<FlowDefinition<TState>>? FlowPaused;
+    public event Action<FlowDefinition<TState>>? FlowResumed;
 
-    public event Action<FlowDefinition, FlowStep, int>? StepStarted;
-    public event Action<FlowDefinition, FlowStep, int>? StepCompleted;
-    public event Action<FlowDefinition, FlowStep, int, string>? StepFailed;
-    public event Action<FlowDefinition, FlowStep, int>? StepSkipped;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int>? StepStarted;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int>? StepCompleted;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int, string>? StepFailed;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int>? StepSkipped;
     public event Action<string>? CaptainReminderRequired;
 
     // -----------------------------------------------------------------------
@@ -43,7 +45,7 @@ public class FlowManager
 
     public bool IsRunning  => _runTask is { IsCompleted: false };
     public bool IsPaused   => _paused;
-    public FlowDefinition? CurrentFlow { get; private set; }
+    public FlowDefinition<TState>? CurrentFlow { get; private set; }
     public int CurrentStepIndex { get; private set; }
 
     // -----------------------------------------------------------------------
@@ -51,9 +53,9 @@ public class FlowManager
     // -----------------------------------------------------------------------
 
     public FlowManager(
-        AircraftStateEvaluator state,
-        AircraftActionExecutor executor,
-        ChecklistManager checklist,
+        TState state,
+        TExec executor,
+        ChecklistManager<TExec, TState> checklist,
         ScreenReaderAnnouncer announcer)
     {
         _state     = state;
@@ -66,7 +68,7 @@ public class FlowManager
     // Public control API
     // -----------------------------------------------------------------------
 
-    public void StartFlow(FlowDefinition flow)
+    public void StartFlow(FlowDefinition<TState> flow)
     {
         if (IsRunning) Cancel();
         CurrentFlow = flow;
@@ -107,7 +109,7 @@ public class FlowManager
     // Private execution engine
     // -----------------------------------------------------------------------
 
-    private async Task RunFlowAsync(FlowDefinition flow, CancellationToken ct)
+    private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
     {
         FlowStarted?.Invoke(flow);
         _announcer.AnnounceImmediate($"{flow.Name} flow started");
@@ -201,7 +203,7 @@ public class FlowManager
         _announcer.AnnounceImmediate($"{flow.Name} flow complete");
     }
 
-    private async Task<bool> ExecuteStepAsync(FlowDefinition flow, FlowStep step, int index, CancellationToken ct)
+    private async Task<bool> ExecuteStepAsync(FlowDefinition<TState> flow, FlowStep<TState> step, int index, CancellationToken ct)
     {
         try
         {
@@ -261,7 +263,7 @@ public class FlowManager
                     }
 
                     _announcer.Announce(step.AnnounceText);
-                    bool sent = _executor.ExecuteStep(step);
+                    bool sent = await _executor.ExecuteStepAsync(step);
                     if (!sent)
                     {
                         StepFailed?.Invoke(flow, step, index, "Event not sent");
