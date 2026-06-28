@@ -60,8 +60,8 @@ public static class PMDG777ChecklistDefinitions
                 "ELEC_BusTie_Sw_AUTO_0", v => v > 0.5, RevertBehavior.StayComplete,
                 new[] { "ELEC_BusTie_Sw_AUTO_1" },
                 (e, _) => e.SetBusTies(1)),
-            ActionManual("EPU_GND_PWR", "ELEC_POWER_UP", "External power: PUSH (if available)",
-                (e, _) => { e.PushGroundPowerPrimary(); e.PushGroundPowerSecondary(); }),
+            ActionManualAsync("EPU_GND_PWR", "ELEC_POWER_UP", "External power: PUSH (if available)",
+                (e, _) => e.PushBothGroundPowerAsync()),
             ActionManual("EPU_ELEC_PUMPS_OFF", "ELEC_POWER_UP", "Electric primary pump switches: OFF",
                 (e, _) => e.SetElecPumps(0)),
             ActionManual("EPU_DEMAND_PUMPS_OFF", "ELEC_POWER_UP", "Demand pump selectors: OFF",
@@ -221,9 +221,10 @@ public static class PMDG777ChecklistDefinitions
             Auto("BS_SEAT_BELTS", "BEFORE_START", "Seat Belts selector: AUTO",
                 "SIGNS_SeatBeltsSelector", v => v >= 1, RevertBehavior.StayComplete,
                 action: (e, _) => e.SetSeatBelts(1)),
-            Manual("BS_APU_START", "BEFORE_START", "APU: START (ON → START → wait for self-sustaining)"),
-            ActionManual("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
-                (e, _) => { e.PushGroundPowerPrimary(); e.PushGroundPowerSecondary(); }),
+            ActionManualAsync("BS_APU_START", "BEFORE_START", "APU: START (ON then START; wait for self-sustaining)",
+                (e, _) => e.StartApuAsync()),
+            ActionManualAsync("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
+                (e, _) => e.PushBothGroundPowerAsync()),
             Manual("BS_HYD_PRESSURIZE", "BEFORE_START", "Obtain clearance to pressurize hydraulics"),
             Auto("BS_HYD_PUMPS_ON", "BEFORE_START", "Engine and Electric primary hydraulic pumps: ON",
                 "HYD_PrimaryEngPump_Sw_ON_0", v => v > 0.5, RevertBehavior.StayComplete,
@@ -544,8 +545,8 @@ public static class PMDG777ChecklistDefinitions
         Id = "ELEC_POWER_DOWN", Name = "Electrical Power Down",
         Items = new()
         {
-            ActionManual("EPD_APU_GND_OFF", "ELEC_POWER_DOWN", "APU or Ground Power switches: OFF",
-                (e, _) => { e.SetApuSelector(0); e.PushGroundPowerPrimary(); e.PushGroundPowerSecondary(); }),
+            ActionManualAsync("EPD_APU_GND_OFF", "ELEC_POWER_DOWN", "APU or Ground Power switches: OFF",
+                async (e, _) => { e.SetApuSelector(0); await e.PushBothGroundPowerAsync(); }),
             Auto("EPD_BATTERY_OFF", "ELEC_POWER_DOWN", "Battery switch: OFF",
                 "ELEC_Battery_Sw_ON", v => v < 0.5, RevertBehavior.StayComplete,
                 action: (e, _) => e.SetBattery(0)),
@@ -606,6 +607,16 @@ public static class PMDG777ChecklistDefinitions
         Type = ChecklistItemType.Actionable,
         ManualCompletionAllowed = true,
         CheckAction = AsCheckAction(action),
+    };
+
+    /// <summary>Manual item whose linked action is async (time-spaced CDA writes).</summary>
+    private static Item ActionManualAsync(string id, string groupId, string label,
+        Func<AircraftActionExecutor, AircraftStateEvaluator, Task> action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.Actionable,
+        ManualCompletionAllowed = true,
+        CheckAction = action,
     };
 
     /// <summary>Captain reminder — user reads/confirms and manually ticks. No sim action.</summary>

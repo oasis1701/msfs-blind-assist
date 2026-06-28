@@ -81,6 +81,31 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool PushGroundPowerSecondary()
         => ExecuteSingle("EVT_OH_ELEC_GRD_PWR_SEC_SWITCH", null, false, true);
 
+    // PMDG CDA control writes are coalesced when issued in the same frame — only the
+    // LAST survives. So two back-to-back momentary pushes in one lambda lose the first
+    // (the "only one GPU disconnects" bug). Space them, matching the flow's proven
+    // PostActionDelayMs (350 ms). The flow path already spaces these as separate steps.
+    private const int CdaWriteSpacingMs = 350;
+    // APU selector ON → START needs the longer gap the flow uses (BS_APU_ON_WAIT = 2 s)
+    // so the model registers ON before START.
+    private const int ApuOnToStartMs = 2000;
+
+    /// <summary>Push BOTH ground-power buttons with a frame gap so both register.</summary>
+    public async Task PushBothGroundPowerAsync()
+    {
+        PushGroundPowerPrimary();
+        await Task.Delay(CdaWriteSpacingMs);
+        PushGroundPowerSecondary();
+    }
+
+    /// <summary>APU start sequence: selector ON, wait, then START (springs back to ON).</summary>
+    public async Task StartApuAsync()
+    {
+        SetApuSelector(1);                  // ON
+        await Task.Delay(ApuOnToStartMs);
+        SetApuSelector(2);                  // START
+    }
+
     // APU Generator
     public bool SetApuGenerator(int position)
         => ExecuteSingle("EVT_OH_ELEC_APU_GEN_SWITCH", position, false, false);
