@@ -182,16 +182,22 @@ public class WaypointFlightDirectorManager : IDisposable
             return;
         }
 
-        double distNm = NavigationCalculator.CalculateDistance(lat, lon, slot.Value.Latitude, slot.Value.Longitude);
-        double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, slot.Value.Latitude, slot.Value.Longitude, magvar);
+        double slotLat = slot.Value.Latitude, slotLon = slot.Value.Longitude;
+        bool isCourseLeg = slot.Value.Course.HasValue;
+        double distNm = NavigationCalculator.CalculateDistance(lat, lon, slotLat, slotLon);
+        double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, slotLat, slotLon, magvar);
 
         // Arrival → sequence to the next leg. Inside the capture radius counts at any speed; the
         // abeam test (station passage) only counts when actually MOVING — otherwise engaging the FD
         // while parked next to / behind a fix would cascade through every slot on the first frame.
+        // A COURSE leg sequences on capture-radius ONLY: an outbound radial starts behind the fix,
+        // where abeam would misfire and skip the leg immediately.
         bool withinCapture = distNm <= profile.CaptureRadiusNm;
-        bool arrived = withinCapture ||
-            (groundSpeedKts >= profile.LowSpeedFloorKts &&
-             G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm));
+        bool arrived = isCourseLeg
+            ? withinCapture
+            : (withinCapture ||
+               (groundSpeedKts >= profile.LowSpeedFloorKts &&
+                G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm)));
         if (arrived)
         {
             AdvanceLeg();
@@ -203,7 +209,24 @@ public class WaypointFlightDirectorManager : IDisposable
         // Lateral: use wind-corrected ground track above the speed floor; fall back to heading when
         // ground track is unreliable (slow / near the ground).
         double effectiveTrack = groundSpeedKts >= profile.LowSpeedFloorKts ? groundTrack : hdgMag;
-        double trackErr = G.TrackError(brgMag, effectiveTrack);
+        double trackErr;
+        if (isCourseLeg)
+        {
+            // Course / radial tracking: capture and hold the course line THROUGH the fix (airway
+            // leg, approach course, radial) instead of direct-to. Generalised ILS localizer capture.
+            double courseMag = slot.Value.Course!.Value;
+            double courseTrue = courseMag + magvar;                                   // true = mag + var (east +)
+            double brgFixToAcTrue = NavigationCalculator.CalculateBearing(slotLat, slotLon, lat, lon);
+            double xtNm = G.CrossTrackNm(distNm, brgFixToAcTrue, courseTrue);
+            double desiredTrackMag = G.CourseInterceptTrackDeg(courseMag, xtNm,
+                                                               profile.MaxInterceptDeg, profile.InterceptDegPerNm);
+            trackErr = G.NormalizeSigned(desiredTrackMag - effectiveTrack);
+        }
+        else
+        {
+            // Direct-to: steer straight at the fix (wind-corrected via ground track).
+            trackErr = G.TrackError(brgMag, effectiveTrack);
+        }
         double cmdBank = G.CommandedBankDeg(trackErr, yawRateDegPerSec,
                                             profile.KRollDegPerDegTrack, profile.BankRateLeadSec, profile.MaxBankDeg);
 

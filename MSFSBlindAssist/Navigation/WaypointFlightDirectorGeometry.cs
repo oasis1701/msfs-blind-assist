@@ -32,7 +32,9 @@ public enum AltitudeConstraintType
 public static class WaypointFlightDirectorGeometry
 {
     public const double FeetPerNauticalMile = 6076.12;
+    public const double EarthRadiusNm = 3440.065;
     private const double Rad2Deg = 180.0 / System.Math.PI;
+    private const double Deg2Rad = System.Math.PI / 180.0;
 
     /// <summary>Normalises an angle (degrees) to the range (-180, +180].</summary>
     public static double NormalizeSigned(double degrees)
@@ -133,6 +135,35 @@ public static class WaypointFlightDirectorGeometry
             default:
                 return (false, 0.0);
         }
+    }
+
+    /// <summary>
+    /// Signed cross-track distance (NM) of the aircraft from a course line through a reference fix,
+    /// given the great-circle distance + TRUE bearing FROM the fix TO the aircraft and the course's
+    /// TRUE bearing. Positive = aircraft is to the RIGHT of the course line; negative = left.
+    /// (Great-circle cross-track formula; sign matches "right of course".)
+    /// </summary>
+    public static double CrossTrackNm(double distFixToAcNm, double bearingFixToAcTrueDeg, double courseTrueDeg)
+    {
+        double d13 = distFixToAcNm / EarthRadiusNm;                       // angular distance (radians)
+        double dTheta = (bearingFixToAcTrueDeg - courseTrueDeg) * Deg2Rad;
+        return System.Math.Asin(System.Math.Sin(d13) * System.Math.Sin(dTheta)) * EarthRadiusNm;
+    }
+
+    /// <summary>
+    /// Desired track (degrees, same north reference as <paramref name="courseDeg"/>) to capture and
+    /// hold a course line: bias off the course toward the line by an intercept angle that grows with
+    /// the cross-track error (capped). Right of course (xt&gt;0) → fly left of the course; left of
+    /// course → fly right. Nulling the resulting track error flies onto and then along the course
+    /// (wind-corrected, since the manager compares this to GPS ground track). This is the ILS
+    /// localizer-capture idiom generalised to any fix + course.
+    /// </summary>
+    public static double CourseInterceptTrackDeg(double courseDeg, double crossTrackNm,
+                                                 double maxInterceptDeg, double interceptDegPerNm)
+    {
+        double intercept = System.Math.Min(maxInterceptDeg, System.Math.Abs(crossTrackNm) * interceptDegPerNm);
+        double desired = courseDeg - System.Math.Sign(crossTrackNm) * intercept;
+        return (desired % 360.0 + 360.0) % 360.0;
     }
 
     /// <summary>

@@ -55,6 +55,16 @@ Check("BETWEEN neutral inside window", !a5);
 var (a6, t6) = G.ResolveVerticalTarget(AltitudeConstraintType.At, 4000, null, projectedCrossingAltFt: 9000);
 Check("AT always commands toward target", a6 && Near(t6, 4000));
 
+// --- Course / radial tracking ---
+Check("cross-track: east of a north course = right (+)", Near(G.CrossTrackNm(6, 90, 0), 6, 0.05), $"got {G.CrossTrackNm(6,90,0):F2}");
+Check("cross-track: west of a north course = left (-)", Near(G.CrossTrackNm(6, 270, 0), -6, 0.05));
+Check("cross-track: on course = 0", Near(G.CrossTrackNm(6, 0, 0), 0, 0.01));
+// Right of course (xt>0) -> fly left of the 270 course (track < 270); capped at 40.
+Check("course intercept: right of course turns left, capped", Near(G.CourseInterceptTrackDeg(270, 2, 40, 20), 230));
+Check("course intercept: left of course turns right", Near(G.CourseInterceptTrackDeg(270, -1, 40, 20), 290));
+Check("course intercept: on course holds course", Near(G.CourseInterceptTrackDeg(270, 0, 40, 20), 270));
+Check("course intercept: wraps below 0", Near(G.CourseInterceptTrackDeg(10, 1, 40, 20), 350));
+
 // --- Arrival ---
 Check("arrival: inside capture radius", G.HasArrived(0.3, 100, 100, 0.5));
 Check("arrival: abeam (bearing >90 off track)", G.HasArrived(2.0, 200, 100, 0.5));

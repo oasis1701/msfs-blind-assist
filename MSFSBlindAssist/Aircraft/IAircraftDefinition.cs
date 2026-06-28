@@ -149,6 +149,14 @@ public sealed class WaypointFlightDirectorProfile
     /// unavailable / out of band. Live AoA (the normal case) makes this obsolete.</summary>
     public double TypicalApproachAoaDeg { get; init; } = 6.0;
 
+    /// <summary>Course-tracking (option 3): maximum intercept angle (degrees) when far off a course
+    /// line — the FD never commands a track more than this off the course while capturing.</summary>
+    public double MaxInterceptDeg { get; init; } = 40.0;
+
+    /// <summary>Course-tracking: intercept angle added per NM of cross-track error, capped by
+    /// <see cref="MaxInterceptDeg"/>. 20°/NM → full intercept at 2 NM off, ~10° at 0.5 NM.</summary>
+    public double InterceptDegPerNm { get; init; } = 20.0;
+
     // Dual-tone mapping — same idiom and defaults as VisualGuidanceProfile so the FD's tones
     // sound consistent with Visual Guidance (the pilot zero-beats desired vs current).
     public float ToneMinFrequencyHz { get; init; } = 200f;

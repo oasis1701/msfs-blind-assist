@@ -28,6 +28,8 @@ namespace MSFSBlindAssist.Forms
             constraintComboBox = new ComboBox();
             upperAltLabel = new Label();
             upperAltTextBox = new TextBox();
+            courseLabel = new Label();
+            courseTextBox = new TextBox();
             trackButton = new Button();
 
             // Duplicate resolution controls
@@ -141,12 +143,31 @@ namespace MSFSBlindAssist.Forms
             upperAltTextBox.AccessibleName = "Upper Altitude in feet, used only for the Between constraint";
 
             //
+            // courseLabel
+            //
+            courseLabel.AutoSize = true;
+            courseLabel.Location = new Point(20, 320);
+            courseLabel.Name = "courseLabel";
+            courseLabel.Size = new Size(280, 15);
+            courseLabel.TabIndex = 10;
+            courseLabel.Text = "Course to track through fix (magnetic, optional):";
+
+            //
+            // courseTextBox
+            //
+            courseTextBox.Location = new Point(20, 345);
+            courseTextBox.Name = "courseTextBox";
+            courseTextBox.Size = new Size(340, 23);
+            courseTextBox.TabIndex = 11;
+            courseTextBox.AccessibleName = "Course to track through the fix in magnetic degrees, optional. Leave blank to fly direct to the fix; set it to capture and hold this course or radial through the fix.";
+
+            //
             // trackButton
             //
-            trackButton.Location = new Point(20, 325);
+            trackButton.Location = new Point(20, 385);
             trackButton.Name = "trackButton";
             trackButton.Size = new Size(340, 30);
-            trackButton.TabIndex = 10;
+            trackButton.TabIndex = 12;
             trackButton.Text = "Track";
             trackButton.UseVisualStyleBackColor = true;
             trackButton.Click += TrackButton_Click;
@@ -196,11 +217,13 @@ namespace MSFSBlindAssist.Forms
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(384, 375);
+            ClientSize = new Size(384, 435);
             Controls.Add(selectButton);
             Controls.Add(duplicateListView);
             Controls.Add(duplicateLabel);
             Controls.Add(trackButton);
+            Controls.Add(courseTextBox);
+            Controls.Add(courseLabel);
             Controls.Add(upperAltTextBox);
             Controls.Add(upperAltLabel);
             Controls.Add(constraintComboBox);
@@ -234,6 +257,8 @@ namespace MSFSBlindAssist.Forms
         private ComboBox constraintComboBox;
         private Label upperAltLabel;
         private TextBox upperAltTextBox;
+        private Label courseLabel;
+        private TextBox courseTextBox;
         private Button trackButton;
         private Label duplicateLabel;
         private ListView duplicateListView;

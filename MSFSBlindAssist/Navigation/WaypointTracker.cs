@@ -21,9 +21,13 @@ public class WaypointTracker
     ///   Flight Director's vertical guidance. Null = lateral-only (no vertical command at this fix).</param>
     /// <param name="crossingAltitudeUpper">Optional upper bound (feet MSL) for a BETWEEN constraint.</param>
     /// <param name="constraint">How <paramref name="crossingAltitude"/> is interpreted by the FD.</param>
+    /// <param name="course">Optional magnetic course (degrees) for the Waypoint Flight Director to
+    ///   capture and hold THROUGH this fix (airway leg / radial / approach course), instead of a
+    ///   direct-to. Null = direct-to.</param>
     public void TrackWaypoint(int slotNumber, WaypointFix waypoint,
         double? crossingAltitude = null, double? crossingAltitudeUpper = null,
-        AltitudeConstraintType constraint = AltitudeConstraintType.None)
+        AltitudeConstraintType constraint = AltitudeConstraintType.None,
+        double? course = null)
     {
         if (slotNumber < 1 || slotNumber > MAX_SLOTS)
             throw new ArgumentOutOfRangeException(nameof(slotNumber), "Slot number must be between 1 and 5");
@@ -40,7 +44,8 @@ public class WaypointTracker
             Longitude = waypoint.Longitude,
             CrossingAltitude = crossingAltitude,
             CrossingAltitudeUpper = crossingAltitudeUpper,
-            Constraint = constraint
+            Constraint = constraint,
+            Course = course
         };
     }
 
@@ -55,7 +60,7 @@ public class WaypointTracker
         var t = _slots[slotNumber - 1];
         if (t == null) return null;
         return new WaypointSlotData(t.Ident, t.Latitude, t.Longitude,
-            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint);
+            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course);
     }
 
     /// <summary>
@@ -151,6 +156,7 @@ public class WaypointTracker
         public double? CrossingAltitude { get; set; }
         public double? CrossingAltitudeUpper { get; set; }
         public AltitudeConstraintType Constraint { get; set; } = AltitudeConstraintType.None;
+        public double? Course { get; set; }
     }
 }
 
@@ -163,4 +169,5 @@ public readonly record struct WaypointSlotData(
     double Longitude,
     double? CrossingAltitude,
     double? CrossingAltitudeUpper,
-    AltitudeConstraintType Constraint);
+    AltitudeConstraintType Constraint,
+    double? Course);

@@ -216,16 +216,24 @@ public partial class TrackFixForm : Form
     private void TrackWaypoint(WaypointFix waypoint, int slotNumber)
     {
         var (crossingAlt, upperAlt, constraint) = ParseCrossingConstraint();
-        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, upperAlt, constraint);
 
-        string altText = "";
+        // Optional course to capture/hold through the fix (magnetic). Blank → direct-to.
+        double? course = null;
+        if (double.TryParse(courseTextBox.Text.Trim(), out double c) && c >= 0 && c <= 360)
+            course = c % 360.0;
+
+        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, upperAlt, constraint, course);
+
+        string detail = "";
+        if (course.HasValue)
+            detail += $", tracking course {course.Value:F0}";
         if (crossingAlt.HasValue)
         {
-            altText = $", {ConstraintPhrase(constraint)} {crossingAlt.Value:F0} feet";
+            detail += $", {ConstraintPhrase(constraint)} {crossingAlt.Value:F0} feet";
             if (constraint == AltitudeConstraintType.Between && upperAlt.HasValue)
-                altText += $" and {upperAlt.Value:F0} feet";
+                detail += $" and {upperAlt.Value:F0} feet";
         }
-        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}{altText}");
+        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}{detail}");
 
         // Close the form
         Hide();
@@ -284,6 +292,8 @@ public partial class TrackFixForm : Form
         constraintComboBox.Visible = true;
         upperAltLabel.Visible = true;
         upperAltTextBox.Visible = true;
+        courseLabel.Visible = true;
+        courseTextBox.Visible = true;
         trackButton.Visible = true;
 
         // Hide duplicate controls
@@ -298,6 +308,7 @@ public partial class TrackFixForm : Form
         waypointTextBox.Clear();
         crossingAltTextBox.Clear();
         upperAltTextBox.Clear();
+        courseTextBox.Clear();
         constraintComboBox.SelectedIndex = 0;
     }
 
@@ -314,6 +325,8 @@ public partial class TrackFixForm : Form
         constraintComboBox.Visible = false;
         upperAltLabel.Visible = false;
         upperAltTextBox.Visible = false;
+        courseLabel.Visible = false;
+        courseTextBox.Visible = false;
         trackButton.Visible = false;
 
         // Show duplicate controls
