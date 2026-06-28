@@ -44,6 +44,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
     private System.Windows.Forms.Form? pmdgCDUForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>? pmdg777FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.PMDG737.AircraftActionExecutor, FirstOfficer.PMDG737.AircraftStateEvaluator>? pmdg737FirstOfficerForm;
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
     private Forms.FBWA380.FbwEfbForm? fbwEfbForm;
     // No-injection A380X transport: reads/drives the MFD live through the
@@ -657,6 +658,8 @@ public partial class MainForm : Form
             // Notify First Officer form so it can re-wire its data manager reference
             if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
                 pmdg777FirstOfficerForm.OnSimConnectChanged();
+            if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
+                pmdg737FirstOfficerForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -3216,6 +3219,25 @@ public partial class MainForm : Form
         pmdg777FirstOfficerForm.ShowForm();
     }
 
+    private void PMDG737FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowPMDG737FirstOfficerDialog();
+    }
+
+    private void ShowPMDG737FirstOfficerDialog()
+    {
+        if (pmdg737FirstOfficerForm == null || pmdg737FirstOfficerForm.IsDisposed)
+        {
+            pmdg737FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.PMDG737.AircraftActionExecutor, FirstOfficer.PMDG737.AircraftStateEvaluator>(
+                new FirstOfficer.PMDG737.Pmdg737FoProfile(),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        pmdg737FirstOfficerForm.ShowForm();
+    }
+
     private void FOSettingsMenuItem_Click(object? sender, EventArgs e)
     {
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -3226,6 +3248,8 @@ public partial class MainForm : Form
             // Push updated settings into the form if it's already open
             if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
                 pmdg777FirstOfficerForm.ApplySettings();
+            if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
+                pmdg737FirstOfficerForm.ApplySettings();
         }
     }
 
@@ -4894,11 +4918,16 @@ public partial class MainForm : Form
         coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
         coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
 
-        // Dispose PMDG 777 First Officer form when switching aircraft
+        // Dispose PMDG First Officer forms when switching aircraft
         if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
         {
             pmdg777FirstOfficerForm.Dispose();
             pmdg777FirstOfficerForm = null;
+        }
+        if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
+        {
+            pmdg737FirstOfficerForm.Dispose();
+            pmdg737FirstOfficerForm = null;
         }
 
         if (coherentNDClient != null)

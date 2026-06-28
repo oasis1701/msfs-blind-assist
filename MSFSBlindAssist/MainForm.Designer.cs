@@ -22,6 +22,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777FirstOfficerMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem pmdg737FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem foSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
@@ -61,6 +62,7 @@ namespace MSFSBlindAssist
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.pmdg737FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.foSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -95,6 +97,7 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem,
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
+            this.pmdg737FirstOfficerMenuItem,
             this.pmdg777FirstOfficerMenuItem,
             this.foSettingsMenuItem,
             this.taxiGuidanceOptionsMenuItem,
@@ -220,6 +223,15 @@ namespace MSFSBlindAssist
             this.aboutMenuItem.Size = new System.Drawing.Size(220, 26);
             this.aboutMenuItem.Text = "&About";
             this.aboutMenuItem.Click += new System.EventHandler(this.AboutMenuItem_Click);
+            //
+            // pmdg737FirstOfficerMenuItem
+            //
+            this.pmdg737FirstOfficerMenuItem.AccessibleName = "PMDG 737 First Officer";
+            this.pmdg737FirstOfficerMenuItem.AccessibleDescription = "Open the PMDG 737 First Officer checklists and flows window";
+            this.pmdg737FirstOfficerMenuItem.Name = "pmdg737FirstOfficerMenuItem";
+            this.pmdg737FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.pmdg737FirstOfficerMenuItem.Text = "PMDG 737 &First Officer";
+            this.pmdg737FirstOfficerMenuItem.Click += new System.EventHandler(this.PMDG737FirstOfficerMenuItem_Click);
             //
             // pmdg777FirstOfficerMenuItem
             //
