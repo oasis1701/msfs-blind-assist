@@ -182,6 +182,33 @@ The flow step `BT_LOWERDU` sends value **1**, which the panel labels **"NORM"**,
 
 ---
 
+## Part F — checklist bug-fixes + readback/tab UX (2026-06-28)
+
+Read switch states via the sim tools (PMDG field in parentheses). Items F1–F4 are **777-only**; F5–F7 apply to **both** aircraft.
+
+### F1. 777 APU starts when ticked (Before Start)
+Cold-dark, APU off → on the **Checklists** tab open **Before Start** and tick **"APU: START …"**. The selector goes **ON** (`ELEC_APU_Selector` = 1), then ~2 s later **START** (= 2, springs back to 1) and the APU spools up. Previously the item was a no-op. If START does not register, the ON→START gap is too short — tell me and I'll raise `ApuOnToStartMs` (777 `AircraftActionExecutor`).
+
+### F2. 777 BOTH external power disconnect (Before Start)
+With both GPUs connected, tick **"External power: Disconnect when APU available"** → **both** ground-power units disconnect (not just one). Also check the symmetric paths: **Electrical Power Up → "External power: PUSH"** connects both; **Electrical Power Down → "APU or Ground Power switches: OFF"** disconnects both + APU off. Previously only one toggled (two CDA writes collided in the same frame). If still only one, raise `CdaWriteSpacingMs`.
+
+### F3. 777 transponder XPNDR sets the MODE, not squawk 0002 (Before Start)
+Note the squawk code, then tick **"Transponder: XPNDR"** → the transponder MODE goes to XPNDR (`XPDR_ModeSel` = 2) and the **squawk code is UNCHANGED** (previously it was overwritten to `0002`). (This is the checklist executor fix; Part E3 covered the flow's separate TA/RA path.)
+
+### F4. 777 readback `*_CL` checklists are action-free
+Open any readback checklist group (e.g. **Before Start Checklist**, **Landing Checklist**, **Shutdown Checklist**) and tick an item — **no switch should move** (e.g. ticking "Beacon: ON" must NOT toggle the beacon). The item should still **auto-tick on its own** once the real switch reaches position (set it via the matching action group / flow, or by hand in the cockpit). Spot-check that a state-group item (e.g. **Before Start → "Beacon: ON"**) DOES still fire its switch when ticked — only the `*_CL` groups changed.
+
+### F5. Before/After Takeoff action groups (both aircraft)
+On the **Checklists** tab confirm the tree now lists **"Before Takeoff"** and **"After Takeoff"** action groups directly **above** their **"… Checklist"** readback groups (like every other phase). Ticking an action-group item fires the switch (777: landing/turnoff/strobe lights, transponder TA/RA, LNAV/VNAV arm, gear/flaps; 737: landing/position lights, A/T arm, transponder, packs, start switches, turnoff, gear, autobrake). The matching **"… Checklist"** items still auto-tick from state.
+
+### F6. Single-expand tree (both aircraft)
+Expand one top-level checklist group, then expand another → the first **collapses automatically** (only one group open at a time). Child/leaf items are unaffected; NVDA navigation order stays correct.
+
+### F7. Load SimBrief on the Checklists tab (both aircraft)
+The **Checklists** tab now has a **"Load SimBrief"** button (in addition to the Flows tab). Press it → it fetches the OFP and announces transition altitudes, exactly like the Flows-tab button. While a load is in progress both buttons are disabled.
+
+---
+
 ## Known limitations (by design / data availability)
 - **Baro-STD has no NG3 state field** — the phase monitor pushes STD/QNH at the transition
   alt/level using its own one-shot latch (it cannot read whether STD is already selected).
