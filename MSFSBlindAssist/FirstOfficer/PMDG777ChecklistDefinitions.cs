@@ -30,7 +30,9 @@ public static class PMDG777ChecklistDefinitions
         BuildEngineStart(),
         BuildBeforeTaxi(),
         BuildBeforeTaxiChecklist(),
+        BuildBeforeTakeoff(),
         BuildBeforeTakeoffChecklist(),
+        BuildAfterTakeoff(),
         BuildAfterTakeoffChecklist(),
         BuildDescentChecklist(),
         BuildApproachChecklist(),
@@ -294,6 +296,49 @@ public static class PMDG777ChecklistDefinitions
                 "ENG_FuelControl_Sw_RUN_0", v => v > 0.5, RevertBehavior.RevertToState,
                 action: (e, _) => e.SetFuelControl1(1)),  // logical 1=RUN
             Manual("ES_ENG1_OIL_PRESS", "ENGINE_START", "Engine 1 Oil Pressure: Verify increases"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Before Takeoff (action group — mirrors the Before Takeoff flow)
+    // -----------------------------------------------------------------------
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildBeforeTakeoff() => new()
+    {
+        Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
+        Items = new()
+        {
+            ActionManual("BTKO_LANDING", "BEFORE_TAKEOFF", "Landing lights: ON",
+                (e, _) => e.SetLandingLights(1)),
+            ActionManual("BTKO_TURNOFF", "BEFORE_TAKEOFF", "Runway turnoff lights: ON",
+                (e, _) => e.SetRunwayTurnoff(1)),
+            ActionManual("BTKO_STROBE", "BEFORE_TAKEOFF", "Strobe lights: ON",
+                (e, _) => e.SetStrobeLights(1)),
+            ActionManual("BTKO_XPNDR", "BEFORE_TAKEOFF", "Transponder: TA/RA",
+                (e, _) => e.SetTransponderMode(4)),
+            ActionManual("BTKO_LNAV", "BEFORE_TAKEOFF", "LNAV: ARM",
+                (e, _) => e.PushLNAV()),
+            ActionManual("BTKO_VNAV", "BEFORE_TAKEOFF", "VNAV: ARM",
+                (e, _) => e.PushVNAV()),
+            Reminder("BTKO_FLAPS_CONFIRM", "BEFORE_TAKEOFF", "Confirm flap setting for takeoff"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // After Takeoff (action group — mirrors the After Takeoff flow)
+    // -----------------------------------------------------------------------
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildAfterTakeoff() => new()
+    {
+        Id = "AFTER_TAKEOFF", Name = "After Takeoff",
+        Items = new()
+        {
+            ActionManual("ATKO_TURNOFF_OFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF",
+                (e, _) => e.SetRunwayTurnoff(0)),
+            ActionManual("ATKO_LANDING_OFF", "AFTER_TAKEOFF", "Landing lights: OFF",
+                (e, _) => e.SetLandingLights(0)),
+            ActionManual("ATKO_GEAR_UP", "AFTER_TAKEOFF", "Gear: UP",
+                (e, _) => e.SetGearLever(0)),
+            ActionManual("ATKO_FLAPS_UP", "AFTER_TAKEOFF", "Flaps: UP",
+                (e, _) => e.SetFlapsPosition(0)),
         }
     };
 

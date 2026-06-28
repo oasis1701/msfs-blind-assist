@@ -335,7 +335,7 @@ public static class PMDG777FlowDefinitions
         Id = "BEFORE_TAKEOFF",
         Name = "Before Takeoff",
         Description = "Arms lights, transponder, LNAV/VNAV, and FO instruments for runway lineup.",
-        RelatedChecklistGroupIds = new[] { "BEFORE_TKOF_CL" },
+        RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TKOF_CL" },
         Steps = new()
         {
             Skip(SW("BTKOF_LANDING_L", "Landing lights: ON",         "EVT_OH_LIGHTS_LANDING_LNR",  1),
@@ -363,7 +363,7 @@ public static class PMDG777FlowDefinitions
         Id = "AFTER_TAKEOFF",
         Name = "After Takeoff",
         Description = "Cleans up lights and retracts gear/flaps after positive rate of climb.",
-        RelatedChecklistGroupIds = new[] { "AFTER_TKOF_CL" },
+        RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TKOF_CL" },
         Steps = new()
         {
             Skip(SW("ATKOF_TURNOFF_OFF", "Runway turnoff: OFF", "EVT_OH_LIGHTS_LR_TURNOFF",  0),
