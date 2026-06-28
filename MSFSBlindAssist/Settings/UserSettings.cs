@@ -70,6 +70,19 @@ public class UserSettings
         // generally do not need this. Default OFF.
         public bool VisualGuidanceHardPanTone { get; set; } = false;
 
+        // Waypoint Flight Director Settings (en-route hand-fly to the 5 tracked Shift+F slots).
+        // Same dual-tone idiom as Visual Guidance: desired (commanded) vs current (actual) attitude;
+        // pilot zero-beats them. Defaults mirror Visual Guidance so the two features sound alike.
+        public HandFlyWaveType WaypointFdToneWaveform { get; set; } = HandFlyWaveType.Triangle;
+        public double WaypointFdToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+        public HandFlyWaveType WaypointFdCurrentToneWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double WaypointFdCurrentToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+        public bool WaypointFdHardPanTone { get; set; } = false;
+        // When ON, the FD tones go silent while the autopilot master is engaged and resume when it
+        // disengages — so the pilot hand-flies with the FD, engages the AP for cruise, and the tone
+        // steps aside on its own. Default ON.
+        public bool WaypointFdApAutoMute { get; set; } = true;
+
         // Takeoff Assist Tone Settings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
@@ -347,6 +360,12 @@ public class UserSettings
             VisualGuidanceCurrentToneWaveform = VisualGuidanceCurrentToneWaveform,
             VisualGuidanceCurrentToneVolume = VisualGuidanceCurrentToneVolume,
             VisualGuidanceHardPanTone = VisualGuidanceHardPanTone,
+            WaypointFdToneWaveform = WaypointFdToneWaveform,
+            WaypointFdToneVolume = WaypointFdToneVolume,
+            WaypointFdCurrentToneWaveform = WaypointFdCurrentToneWaveform,
+            WaypointFdCurrentToneVolume = WaypointFdCurrentToneVolume,
+            WaypointFdHardPanTone = WaypointFdHardPanTone,
+            WaypointFdApAutoMute = WaypointFdApAutoMute,
             TakeoffAssistToneWaveform = TakeoffAssistToneWaveform,
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,
