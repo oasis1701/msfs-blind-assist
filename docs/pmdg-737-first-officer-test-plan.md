@@ -209,6 +209,21 @@ The **Checklists** tab now has a **"Load SimBrief"** button (in addition to the 
 
 ---
 
+## Part G — action groups for remaining flow phases (2026-06-28)
+
+On the **Checklists** tab the action/readback pairing now covers every phase that has a flow.
+
+### G1. 777 Descent + Approach action groups
+Confirm the tree shows **"Descent"** above **"Descent Checklist"**, and **"Approach"** above **"Approach Checklist"**. Tick **Descent** items → Autobrake AUTO (`BRAKES_AutobrakeSelector` = 6), FO EFIS APP and FO EFIS 20nm range actuate. Tick **Approach → Speedbrake: ARM** → `FCTL_Speedbrake_Lever` arms. Reminders (landing data, recall, approach brief, altimeters) just tick. 777 **Landing** remains readback-only (no Landing flow).
+
+### G2. 737 Descent + Approach + Landing action groups
+Confirm **"Descent"/"Approach"/"Landing"** action groups appear above their `… Checklist` readbacks. Tick: **Descent → Seatbelt signs: ON** (`COMM_FastenBeltsSelector` = 2); **Approach → EFIS mode: APP** + **range 20** (Captain EFIS); **Landing → Engine start switches: CONT** (`ENG_StartSelector_0/1` = 2) + **Speedbrake: ARMED**. Reminders tick only.
+
+### G3. Run Related Flow from the new groups
+Selecting a new action group and pressing **Run Related Flow** starts the matching flow (Descent Setup / Approach Setup on the 777; Descent / Approach / Landing on the 737).
+
+---
+
 ## Known limitations (by design / data availability)
 - **Baro-STD has no NG3 state field** — the phase monitor pushes STD/QNH at the transition
   alt/level using its own one-shot latch (it cannot read whether STD is already selected).
