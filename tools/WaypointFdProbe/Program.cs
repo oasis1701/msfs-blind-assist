@@ -68,6 +68,15 @@ Check("course intercept: left of course turns right", Near(G.CourseInterceptTrac
 Check("course intercept: on course holds course", Near(G.CourseInterceptTrackDeg(270, 0, 40, 20), 270));
 Check("course intercept: wraps below 0", Near(G.CourseInterceptTrackDeg(10, 1, 40, 20), 350));
 
+// --- Heading / altitude bug mode ---
+Check("alt capture: climb proportional", Near(G.AltitudeCaptureVsFpm(100, 8, 1500), 800));
+Check("alt capture: clamps to max climb", Near(G.AltitudeCaptureVsFpm(1000, 8, 1500), 1500));
+Check("alt capture: descent clamps to -max", Near(G.AltitudeCaptureVsFpm(-1000, 8, 1500), -1500));
+Check("alt capture: at altitude = 0", Near(G.AltitudeCaptureVsFpm(0, 8, 1500), 0));
+// 1500 fpm at 180 kt: atan(25 fps / 303.8 fps) ~ 4.7 deg climb.
+Check("VS->FPA: +1500 fpm @180kt ~ +4.7", Near(G.VsToFpaDeg(1500, 180), 4.7, 0.2), $"got {G.VsToFpaDeg(1500,180):F2}");
+Check("VS->FPA: guarded at low GS = 0", Near(G.VsToFpaDeg(1500, 0), 0));
+
 // --- Arrival ---
 Check("arrival: inside capture radius", G.HasArrived(0.3, 100, 100, 0.5));
 Check("arrival: abeam (bearing >90 off track)", G.HasArrived(2.0, 200, 100, 0.5));

@@ -2450,6 +2450,9 @@ public partial class MainForm : Form
             case HotkeyAction.ToggleSlipCue:
                 ToggleSlipCue();
                 break;
+            case HotkeyAction.ShowFdHeadingDialog:
+                ShowFdHeadingDialog();
+                break;
             case HotkeyAction.ReadTargetFPM:
                 if (visualGuidanceManager.IsActive)
                 {
@@ -4424,6 +4427,52 @@ public partial class MainForm : Form
         waypointFdManager.Toggle();
     }
 
+    private void ShowFdHeadingDialog()
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+        using var form = new Forms.FdBugForm(waypointFdManager.BugHeading, waypointFdManager.BugAltitude);
+        if (form.ShowDialog(this) == DialogResult.OK)
+            SetFdBug(form.Heading, form.Altitude);
+    }
+
+    private void SetFdBug(double? heading, double? altitude)
+    {
+        if (!heading.HasValue && !altitude.HasValue)
+        {
+            // Both blank → clear the bug. If active, revert to the slots (or stop if none left).
+            bool wasBug = waypointFdManager.BugActive;
+            waypointFdManager.ClearBug();
+            if (waypointFdManager.IsActive && wasBug)
+            {
+                if (waypointTracker.IsSlotEmpty(1))
+                    waypointFdManager.Stop();   // nothing left to fly
+                else
+                    announcer.AnnounceImmediate("Flight director bug cleared. Following waypoints.");
+            }
+            return;
+        }
+
+        waypointFdManager.SetBug(heading, altitude);
+        if (!waypointFdManager.IsActive)
+        {
+            // Engage in bug mode — the empty-slot guard allows it because a bug is set; Initialize
+            // announces the heading/altitude.
+            waypointFdManager.Toggle();
+        }
+        else
+        {
+            // Live switch while already active (Initialize won't run) — announce here.
+            string msg = "Flight director";
+            if (heading.HasValue) msg += $", heading {heading.Value:F0}";
+            if (altitude.HasValue) msg += $", altitude {altitude.Value:F0} feet";
+            announcer.AnnounceImmediate(msg);
+        }
+    }
+
     private void ToggleSlipCue()
     {
         _slipCueOn = !_slipCueOn;
@@ -4447,7 +4496,7 @@ public partial class MainForm : Form
             // there is nothing to track — don't activate a dead tone. Stop(announce:false) because
             // the public "Flight director off" callout would be misleading after this guard (the
             // pilot never had a running session). Not hand-holding: the pilot owns route order.
-            if (waypointTracker.IsSlotEmpty(1))
+            if (waypointTracker.IsSlotEmpty(1) && !waypointFdManager.BugActive)
             {
                 announcer.Announce("No waypoints to track");
                 waypointFdManager.Stop(announce: false);

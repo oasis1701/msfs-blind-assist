@@ -70,6 +70,35 @@ public class WaypointFlightDirectorManager : IDisposable
     private HandFlyWaveType centeredWaveType = HandFlyWaveType.Square;
     private HandFlyWaveType appliedDesiredWave = HandFlyWaveType.Triangle;
     private const double CenteredDeadbandDeg = 1.5;
+
+    // Heading/altitude "bug" mode (option 1): fly a target magnetic heading and/or hold a target
+    // altitude with NO waypoint (e.g. an ATC/FMC "fly heading 220"). When a bug is set the FD
+    // ignores the slots and does not sequence. Set/cleared via the FD bug dialog.
+    private double? bugHeading;
+    private double? bugAltitudeFt;
+    public bool BugActive => bugHeading.HasValue || bugAltitudeFt.HasValue;
+    public double? BugHeading => bugHeading;
+    public double? BugAltitude => bugAltitudeFt;
+
+    // Command slew limiting (anti-fluctuation): cap how fast the rendered bank/pitch commands move
+    // between frames so the tones don't jump on every track/heading wiggle.
+    private double lastCmdBank, lastCmdPitch;
+    private bool cmdInit;
+    private DateTime lastCmdTime = DateTime.MinValue;
+
+    /// <summary>Set the heading/altitude bug (either may be null). Takes effect on the next frame;
+    /// while active the FD flies the bug instead of the slots.</summary>
+    public void SetBug(double? headingMag, double? altitudeFt)
+    {
+        bugHeading = headingMag;
+        bugAltitudeFt = altitudeFt;
+    }
+
+    public void ClearBug()
+    {
+        bugHeading = null;
+        bugAltitudeFt = null;
+    }
     private DateTime routineSuppressedUntil = DateTime.MinValue;
 
     public WaypointFlightDirectorManager(ScreenReaderAnnouncer screenReaderAnnouncer)
@@ -121,6 +150,9 @@ public class WaypointFlightDirectorManager : IDisposable
         hasLat = hasLon = hasAlt = hasTrack = false;
         lastRateTime = DateTime.MinValue;
         yawRateDegPerSec = 0;
+        cmdInit = false;   // command slew baseline re-seeds on the first frame
+        // NOTE: the heading/altitude bug is NOT reset here — it is set by the bug dialog BEFORE the
+        // engage that calls Initialize. Stop() clears it so it never leaks into a later slot session.
 
         desiredTone = new AudioToneGenerator();
         currentTone = new AudioToneGenerator();
@@ -130,8 +162,18 @@ public class WaypointFlightDirectorManager : IDisposable
                               profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
         tonesNeedStart = true;
 
-        string ident = tracker.GetSlotIdent(activeSlot) ?? "waypoint";
-        announcer.AnnounceImmediate($"Flight director active. Tracking {ident}.");
+        if (BugActive)
+        {
+            string msg = "Flight director active";
+            if (bugHeading.HasValue) msg += $", heading {bugHeading.Value:F0}";
+            if (bugAltitudeFt.HasValue) msg += $", altitude {bugAltitudeFt.Value:F0} feet";
+            announcer.AnnounceImmediate(msg + ".");
+        }
+        else
+        {
+            string ident = tracker.GetSlotIdent(activeSlot) ?? "waypoint";
+            announcer.AnnounceImmediate($"Flight director active. Tracking {ident}.");
+        }
     }
 
     public void Stop(bool announce = true)
@@ -141,6 +183,7 @@ public class WaypointFlightDirectorManager : IDisposable
 
         DisposeTones();
         isActive = false;
+        ClearBug();   // never let a heading/altitude bug leak into the next slot-mode session
         if (announce)
             announcer.AnnounceImmediate("Flight director off.");
         WaypointFlightDirectorActiveChanged?.Invoke(this, false);
@@ -174,6 +217,27 @@ public class WaypointFlightDirectorManager : IDisposable
         if (!isActive || tracker == null) return;
         if (!hasLat || !hasLon || !hasAlt || !hasTrack) return;
 
+        double cmdBank, cmdPitch;
+
+        if (BugActive)
+        {
+            // Heading / altitude "bug" mode: fly a target heading and/or hold a target altitude with
+            // no waypoint (e.g. an ATC/FMC "fly heading 220"). No sequencing.
+            UpdateYawRate(hdgMag);   // heading-hold: rate from heading, not ground track
+            cmdBank = bugHeading.HasValue
+                ? G.CommandedBankDeg(G.NormalizeSigned(bugHeading.Value - hdgMag), yawRateDegPerSec,
+                                     profile.KRollDegPerDegTrack, profile.BankRateLeadSec, profile.MaxBankDeg)
+                : 0.0;   // wings level if only an altitude bug is set
+            cmdPitch = G.CommandedPitchDeg(0.0, aoaDeg, profile.MaxPitchDeg);   // nominal level
+            if (bugAltitudeFt.HasValue)
+            {
+                double vs = G.AltitudeCaptureVsFpm(bugAltitudeFt.Value - altMsl,
+                                                   profile.AltCaptureVsPerFt, profile.MaxCaptureVsFpm);
+                cmdPitch = G.CommandedPitchDeg(G.VsToFpaDeg(vs, groundSpeedKts), aoaDeg, profile.MaxPitchDeg);
+            }
+        }
+        else
+        {
         var slot = tracker.GetSlot(activeSlot);
         if (slot == null)   // route ran out from under us
         {
@@ -229,12 +293,12 @@ public class WaypointFlightDirectorManager : IDisposable
             // Direct-to: steer straight at the fix (wind-corrected via ground track).
             trackErr = G.TrackError(brgMag, effectiveTrack);
         }
-        double cmdBank = G.CommandedBankDeg(trackErr, yawRateDegPerSec,
-                                            profile.KRollDegPerDegTrack, profile.BankRateLeadSec, profile.MaxBankDeg);
+        cmdBank = G.CommandedBankDeg(trackErr, yawRateDegPerSec,
+                                     profile.KRollDegPerDegTrack, profile.BankRateLeadSec, profile.MaxBankDeg);
 
         // Vertical: nominal (hold-level: pitch ≈ AoA) unless an active crossing constraint commands
         // a climb/descent. Live AoA encodes weight/flap/speed so this needs no performance model.
-        double cmdPitch = G.CommandedPitchDeg(0.0, aoaDeg, profile.MaxPitchDeg);
+        cmdPitch = G.CommandedPitchDeg(0.0, aoaDeg, profile.MaxPitchDeg);
         if (slot.Value.Constraint != AltitudeConstraintType.None && slot.Value.CrossingAltitude.HasValue)
         {
             double projected = G.ProjectedCrossingAltFt(altMsl, vsFpm, distNm, groundSpeedKts);
@@ -248,6 +312,11 @@ public class WaypointFlightDirectorManager : IDisposable
                 cmdPitch = G.CommandedPitchDeg(reqFpa, aoaDeg, profile.MaxPitchDeg);
             }
         }
+        }   // end slot (non-bug) branch
+
+        // Slew-limit both commands so the tones don't fluctuate frame-to-frame (the bank/pitch
+        // commands otherwise jump on every track/heading wiggle). Caps come from the profile.
+        SlewCommands(ref cmdBank, ref cmdPitch);
 
         StartTonesIfNeeded();
         if (desiredTone == null || currentTone == null) return;
@@ -297,6 +366,31 @@ public class WaypointFlightDirectorManager : IDisposable
         }
         lastTrackForRate = track;
         lastRateTime = now;
+    }
+
+    /// <summary>Rate-limit the rendered bank/pitch commands (deg/sec caps from the profile) so the
+    /// tones don't fluctuate frame-to-frame on track/heading jitter. Re-seeds on the first frame of
+    /// a session (cmdInit).</summary>
+    private void SlewCommands(ref double cmdBank, ref double cmdPitch)
+    {
+        DateTime now = DateTime.UtcNow;
+        if (!cmdInit)
+        {
+            lastCmdBank = cmdBank;
+            lastCmdPitch = cmdPitch;
+            lastCmdTime = now;
+            cmdInit = true;
+            return;
+        }
+        double dt = (now - lastCmdTime).TotalSeconds;
+        lastCmdTime = now;
+        if (dt <= 0 || dt > 1.0) dt = 1.0 / 30.0;   // fallback ~one frame on a gap
+        double maxBankStep = profile.MaxBankRateDegPerSec * dt;
+        double maxPitchStep = profile.MaxPitchRateDegPerSec * dt;
+        cmdBank = lastCmdBank + Math.Clamp(cmdBank - lastCmdBank, -maxBankStep, maxBankStep);
+        cmdPitch = lastCmdPitch + Math.Clamp(cmdPitch - lastCmdPitch, -maxPitchStep, maxPitchStep);
+        lastCmdBank = cmdBank;
+        lastCmdPitch = cmdPitch;
     }
 
     /// <summary>Apply commanded/actual bank to a tone, honouring the hard-pan setting (snap to

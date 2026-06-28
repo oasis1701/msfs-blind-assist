@@ -167,6 +167,27 @@ public static class WaypointFlightDirectorGeometry
     }
 
     /// <summary>
+    /// Altitude-capture vertical speed (fpm) for the heading/altitude "bug" mode: proportional to
+    /// the altitude error, clamped to a max climb/descent rate. Positive = climb. The proportional
+    /// law tapers naturally toward 0 as the error closes, so it captures without a separate flare.
+    /// </summary>
+    public static double AltitudeCaptureVsFpm(double altErrorFt, double vsPerFt, double maxVsFpm)
+        => System.Math.Clamp(altErrorFt * vsPerFt, -maxVsFpm, maxVsFpm);
+
+    /// <summary>
+    /// Flight-path angle (degrees, + = climb) that produces the requested vertical speed at the
+    /// current ground speed. Used to turn an altitude-capture VS into a commanded pitch
+    /// (pitch ≈ FPA + AoA). Guarded for very low ground speed (returns 0 — no vertical command).
+    /// </summary>
+    public static double VsToFpaDeg(double vsFpm, double groundSpeedKts)
+    {
+        if (groundSpeedKts < 1.0) return 0.0;
+        double vsFps = vsFpm / 60.0;
+        double gsFps = groundSpeedKts * 1.68780986;   // knots → ft/s
+        return System.Math.Atan2(vsFps, gsFps) * Rad2Deg;
+    }
+
+    /// <summary>
     /// Fix has been reached: either inside the capture radius, OR the fix has passed abeam
     /// (bearing now more than ~90° off track = station passage). The abeam test sequences a
     /// slight miss that never enters the capture radius.
