@@ -23,7 +23,6 @@ public static class PMDG737ChecklistDefinitions
         BuildBeforeStart(),
         BuildBeforeStartChecklist(),
         BuildEngineStart(),
-        BuildAfterStart(),
         BuildBeforeTaxi(),
         BuildBeforeTaxiChecklist(),
         BuildBeforeTakeoffChecklist(),
@@ -109,22 +108,15 @@ public static class PMDG737ChecklistDefinitions
         }
     };
 
-    private static Group BuildAfterStart() => new()
-    {
-        Id = "AFTER_START", Name = "After Start",
-        Items = new()
-        {
-            Auto("AS_GEN", "AFTER_START", "Generators: ON", "ELEC_GenSw_0", v => v > 0.5, RevertBehavior.StayComplete,
-                new[] { "ELEC_GenSw_1" }, (e, _) => e.SetGenerators(1)),
-            Auto("AS_APU", "AFTER_START", "APU: OFF", "APU_Selector", v => v < 0.5, RevertBehavior.StayComplete, (e, _) => e.SetApuSelector(0)),
-        }
-    };
-
     private static Group BuildBeforeTaxi() => new()
     {
         Id = "BEFORE_TAXI", Name = "Before Taxi",
         Items = new()
         {
+            // After-start power transfer (folded in from the former After Start group)
+            Auto("BT_GEN", "BEFORE_TAXI", "Generators: ON", "ELEC_GenSw_0", v => v > 0.5, RevertBehavior.StayComplete,
+                new[] { "ELEC_GenSw_1" }, (e, _) => e.SetGenerators(1)),
+            Auto("BT_APU", "BEFORE_TAXI", "APU: OFF", "APU_Selector", v => v < 0.5, RevertBehavior.StayComplete, (e, _) => e.SetApuSelector(0)),
             Auto("BT_PROBE", "BEFORE_TAXI", "Probe heat: ON", "ICE_ProbeHeatSw_0", v => v > 0.5, RevertBehavior.StayComplete,
                 new[] { "ICE_ProbeHeatSw_1" }, (e, _) => e.SetProbeHeat(1)),
             Auto("BT_ISO", "BEFORE_TAXI", "Isolation valve: AUTO", "AIR_IsolationValveSwitch", v => v > 0.5 && v < 1.5, RevertBehavior.StayComplete, (e, _) => e.SetIsolationValve(1)),

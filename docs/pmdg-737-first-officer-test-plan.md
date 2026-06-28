@@ -44,8 +44,7 @@ Pre-condition for the ground flows: start cold-and-dark (or at the matching phas
 | Preflight | Walk-around pause announced; yaw damper ON; window heat ON; wing/eng anti-ice OFF; packs AUTO; isolation OPEN; eng bleeds ON; both FDs ON; autobrake RTO; transponder STBY; EFIS MAP/40; captain reminders for pressurization, altimeters, tests |
 | Before Start | Captain MCP reminder; **APU → START then waits for it to come on line**; fuel pumps ON; elec hyd pumps ON; APU bleed ON; anti-collision ON; transponder TA/RA |
 | Engine Start | Packs OFF; ENG 2 start switch GRD + start lever IDLE → **waits for ENG 2 start valve to close**; then ENG 1 the same |
-| After Start | Generators ON; APU bleed OFF; APU OFF |
-| Before Taxi | Probe heat ON; packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU SYS; captain reminders for anti-ice and takeoff flaps |
+| Before Taxi | **After-start power transfer first** (generators ON, APU bleed OFF, APU OFF), then probe heat ON; packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU SYS; captain reminders for anti-ice and takeoff flaps |
 | Before Takeoff | Landing lights ON; strobes ON; **A/T arm**; transponder TA/RA |
 | After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; gear lever OFF; autobrake OFF |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
@@ -59,7 +58,7 @@ Verify **Pause / Resume / Stop** mid-flow, and that **"Run Related Flow"** from 
 group starts the matching flow.
 
 ### B3. Checklists (Checklists tab) — auto-fire parity with the 777
-- The tab lists 20 groups in flight order (10 auto-detect state groups + 10 readback checklists).
+- The tab lists 19 groups in flight order (9 auto-detect state groups + 10 readback checklists).
 - As you run the flows (or set switches manually), the matching state-group items **auto-tick**.
 - `RevertToState` items (gear, autobrake, landing gear in the readback checklists) **un-tick**
   when the state no longer matches.

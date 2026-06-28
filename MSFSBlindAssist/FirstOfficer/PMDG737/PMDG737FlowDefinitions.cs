@@ -30,7 +30,6 @@ public static class PMDG737FlowDefinitions
         BuildPreflight(),
         BuildBeforeStart(),
         BuildEngineStart(),
-        BuildAfterStart(),
         BuildBeforeTaxi(),
         BuildBeforeTakeoff(),
         BuildAfterTakeoff(),
@@ -154,31 +153,20 @@ public static class PMDG737FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 5. After Start
-    // -----------------------------------------------------------------------
-    private static Flow BuildAfterStart() => new()
-    {
-        Id = "AFTER_START", Name = "After Start",
-        Description = "Generators on, APU and APU bleed off after the engines stabilise.",
-        RelatedChecklistGroupIds = new[] { "AFTER_START" },
-        Steps = new()
-        {
-            Multi("AS_GEN", "Generators: ON", ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
-            SW("AS_APUBLEED_OFF", "APU bleed air: OFF", "EVT_OH_BLEED_APU_SWITCH", 0),
-            SW("AS_APU_OFF", "APU selector: OFF", "EVT_OH_LIGHTS_APU_START", 0),
-        }
-    };
-
-    // -----------------------------------------------------------------------
-    // 6. Before Taxi
+    // 5. Before Taxi (includes the after-start power transfer)
     // -----------------------------------------------------------------------
     private static Flow BuildBeforeTaxi() => new()
     {
         Id = "BEFORE_TAXI", Name = "Before Taxi",
-        Description = "Probe heat, packs/isolation auto, start switches CONT, taxi lights, flaps, recall.",
+        Description = "After-start power transfer (generators on, APU off), then probe heat, packs/isolation auto, start switches CONT, taxi lights, flaps.",
         RelatedChecklistGroupIds = new[] { "BEFORE_TAXI" },
         Steps = new()
         {
+            // --- After-start power transfer (folded in from the former After Start flow) ---
+            Multi("BT_GEN", "Generators: ON", ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
+            SW("BT_APUBLEED_OFF", "APU bleed air: OFF", "EVT_OH_BLEED_APU_SWITCH", 0),
+            SW("BT_APU_OFF", "APU selector: OFF", "EVT_OH_LIGHTS_APU_START", 0),
+            // --- Before-taxi setup ---
             Multi("BT_PROBE", "Probe heat: ON", ("EVT_OH_ICE_PROBE_HEAT_1", 1), ("EVT_OH_ICE_PROBE_HEAT_2", 1)),
             Multi("BT_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
             SW("BT_ISO", "Isolation valve: AUTO", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 1),
