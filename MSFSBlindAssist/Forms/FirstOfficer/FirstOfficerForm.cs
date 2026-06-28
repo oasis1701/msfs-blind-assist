@@ -76,6 +76,7 @@ public class FirstOfficerForm<TExec, TState> : Form
     private Button _resetSectionBtn = null!;
     private Button _resetAllBtn = null!;
     private Button _runRelatedFlowBtn = null!;
+    private Button _loadSimBriefChecklistBtn = null!;
 
     // ------------------------------------------------------------------
     // UI — Flows tab
@@ -349,8 +350,9 @@ public class FirstOfficerForm<TExec, TState> : Form
         _resetSectionBtn = MakeButton("Reset Section", "Reset all items in the selected section", ResetSection);
         _resetAllBtn     = MakeButton("Reset All", "Reset all checklist items", ResetAll);
         _runRelatedFlowBtn = MakeButton("Run Related Flow", "Run the flow associated with the selected section", RunRelatedFlow);
+        _loadSimBriefChecklistBtn = MakeButton("Load SimBrief", "Load SimBrief flight plan and set transition altitudes", LoadSimBrief);
 
-        btnPanel.Controls.AddRange(new Control[] { _toggleItemBtn, _resetSectionBtn, _resetAllBtn, _runRelatedFlowBtn });
+        btnPanel.Controls.AddRange(new Control[] { _toggleItemBtn, _resetSectionBtn, _resetAllBtn, _runRelatedFlowBtn, _loadSimBriefChecklistBtn });
         layout.Controls.Add(btnPanel, 0, 2);
 
         _checklistTab.Controls.Add(layout);
@@ -773,6 +775,7 @@ public class FirstOfficerForm<TExec, TState> : Form
     private async void LoadSimBrief()
     {
         _loadSimBriefBtn.Enabled = false;
+        if (_loadSimBriefChecklistBtn != null) _loadSimBriefChecklistBtn.Enabled = false;
 
         try
         {
@@ -804,7 +807,11 @@ public class FirstOfficerForm<TExec, TState> : Form
         finally
         {
             if (IsHandleCreated && !IsDisposed)
-                BeginInvoke(() => { _loadSimBriefBtn.Enabled = true; });
+                BeginInvoke(() =>
+                {
+                    _loadSimBriefBtn.Enabled = true;
+                    if (_loadSimBriefChecklistBtn != null) _loadSimBriefChecklistBtn.Enabled = true;
+                });
         }
     }
 
