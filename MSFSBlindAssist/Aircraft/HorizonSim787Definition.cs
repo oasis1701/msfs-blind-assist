@@ -246,6 +246,19 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     public override string AircraftName => "HorizonSim 787-9";
     public override string AircraftCode => "HS_787";
 
+    // Waypoint Flight Director: heavy widebody (Boeing 787) — same gentle-roll / larger-capture
+    // class profile as the 777. Best-effort defaults; calibrate in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack = 0.9,
+        MaxBankDeg          = 27.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.8,
+        LowSpeedFloorKts    = 60.0,
+        BankRateLeadSec     = 1.3,
+        TypicalApproachAoaDeg = 4.5
+    };
+
     // ---- WT/Asobo Boeing 787 InputEvent (B:) name table -------------------------
     // Several switches on the WT/Asobo B787 panel are wired through B: InputEvents,
     // not K events or L: vars — so K-event writes succeed silently without flipping the

@@ -49,6 +49,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // yaw inertia in the fleet needs the most lead. 1.8 s; re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.8;
 
+    // Waypoint Flight Director: very heavy quad — the gentlest roll gain, largest capture radius
+    // and longest rate-lead of the fleet (it rolls the slowest). Best-effort defaults; tune in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack = 0.85,
+        MaxBankDeg          = 28.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.9,
+        LowSpeedFloorKts    = 60.0,
+        BankRateLeadSec     = 1.5,
+        TypicalApproachAoaDeg = 4.0
+    };
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
