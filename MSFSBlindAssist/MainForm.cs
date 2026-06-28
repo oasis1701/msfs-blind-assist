@@ -5080,6 +5080,13 @@ public partial class MainForm : Form
         bool isHs787 = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
         fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
+
+        // First Officer items are aircraft-specific: each shows only for its own PMDG aircraft.
+        bool isPmdg777 = currentAircraft?.AircraftCode == "PMDG_777";
+        bool isPmdg737 = currentAircraft?.AircraftCode == "PMDG_737";
+        pmdg777FirstOfficerMenuItem.Visible = isPmdg777;
+        pmdg737FirstOfficerMenuItem.Visible = isPmdg737;
+        foSettingsMenuItem.Visible = isPmdg777 || isPmdg737;
     }
 
     /// <summary>
