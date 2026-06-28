@@ -146,8 +146,9 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 - **Mutually exclusive with Visual Guidance:** engaging one stops the other; the shared 505 stream
   is reference-counted (with per-feature claim flags so an aborted activation can't stop the other's
   stream). Hand-Fly's tone is suppressed while the FD runs and resumes after.
-- **Aircraft swap:** the FD (and Visual Guidance) are stopped when you change aircraft, so a tone
-  tuned for the old airframe never carries onto the new one.
+- **Aircraft swap:** the FD, Visual Guidance, and the rudder-coordination slip cue are all stopped
+  when you change aircraft, so a tone/tick tuned for the old airframe never carries onto the new one
+  (the slip cue owns its own audio device and is also disposed on app close).
 - **Paused sim:** no data updates arrive, so the tones simply hold; nothing misbehaves.
 
 ## In-sim verification checklist

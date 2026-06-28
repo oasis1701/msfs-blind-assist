@@ -59,6 +59,9 @@ Check("AT always commands toward target", a6 && Near(t6, 4000));
 Check("cross-track: east of a north course = right (+)", Near(G.CrossTrackNm(6, 90, 0), 6, 0.05), $"got {G.CrossTrackNm(6,90,0):F2}");
 Check("cross-track: west of a north course = left (-)", Near(G.CrossTrackNm(6, 270, 0), -6, 0.05));
 Check("cross-track: on course = 0", Near(G.CrossTrackNm(6, 0, 0), 0, 0.01));
+// Non-zero course: aircraft bearing 360 (north) from a fix on a 270 course is to the RIGHT of it.
+Check("cross-track: right of a 270 course = +", G.CrossTrackNm(6, 360, 270) > 0, $"got {G.CrossTrackNm(6,360,270):F2}");
+Check("cross-track: left of a 270 course = -", G.CrossTrackNm(6, 180, 270) < 0);
 // Right of course (xt>0) -> fly left of the 270 course (track < 270); capped at 40.
 Check("course intercept: right of course turns left, capped", Near(G.CourseInterceptTrackDeg(270, 2, 40, 20), 230));
 Check("course intercept: left of course turns right", Near(G.CourseInterceptTrackDeg(270, -1, 40, 20), 290));

@@ -4869,6 +4869,13 @@ public partial class MainForm : Form
             visualGuidanceManager.Stop(announce: false);
         if (waypointFdManager != null && waypointFdManager.IsActive)
             waypointFdManager.Stop(announce: false);
+        // Silence the rudder-coordination slip cue too — its white-noise tick would otherwise keep
+        // sounding on the new airframe (it owns its own WaveOut, independent of the managers above).
+        if (_slipCueOn)
+        {
+            slipCueGenerator?.Stop();
+            _slipCueOn = false;
+        }
 
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
@@ -7143,6 +7150,7 @@ public partial class MainForm : Form
         hs787CasClient = null;
 
         // Clean up managers and resources
+        slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();

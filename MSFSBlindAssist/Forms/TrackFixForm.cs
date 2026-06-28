@@ -301,8 +301,8 @@ public partial class TrackFixForm : Form
         duplicateListView.Visible = false;
         selectButton.Visible = false;
 
-        // Reset form size
-        ClientSize = new Size(384, 375);
+        // Reset form size — must fit the Course field (to y=368) + the Track button (to y=415).
+        ClientSize = new Size(384, 425);
 
         // Clear inputs
         waypointTextBox.Clear();

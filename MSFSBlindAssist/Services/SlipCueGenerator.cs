@@ -47,7 +47,8 @@ public sealed class SlipCueGenerator : IDisposable
         {
             lock (_l)
             {
-                for (int i = 0; i < count; i += 2)
+                // Step by stereo frame; guard the +1 so an odd count never writes past the buffer.
+                for (int i = 0; i + 1 < count; i += 2)
                 {
                     float s = 0f;
                     if (_side != 0 && _vol > 0.0)

@@ -204,11 +204,13 @@ public class WaypointFlightDirectorManager : IDisposable
             return;
         }
 
-        UpdateYawRate();
-
         // Lateral: use wind-corrected ground track above the speed floor; fall back to heading when
         // ground track is unreliable (slow / near the ground).
         double effectiveTrack = groundSpeedKts >= profile.LowSpeedFloorKts ? groundTrack : hdgMag;
+
+        // Derive the turn rate from the SAME signal the error uses, so below the speed floor the
+        // rate-lead doesn't ride the noisy ground-track derivative while the error is on heading.
+        UpdateYawRate(effectiveTrack);
         double trackErr;
         if (isCourseLeg)
         {
@@ -279,7 +281,7 @@ public class WaypointFlightDirectorManager : IDisposable
         announcer.AnnounceImmediate($"Next, {s.Value.Ident}, {distNm:F0} miles, bearing {brgMag:F0}.");
     }
 
-    private void UpdateYawRate()
+    private void UpdateYawRate(double track)
     {
         DateTime now = DateTime.UtcNow;
         if (lastRateTime != DateTime.MinValue)
@@ -287,13 +289,13 @@ public class WaypointFlightDirectorManager : IDisposable
             double dt = (now - lastRateTime).TotalSeconds;
             if (dt > 0.01 && dt < 2.0)
             {
-                double raw = G.NormalizeSigned(groundTrack - lastTrackForRate) / dt;
+                double raw = G.NormalizeSigned(track - lastTrackForRate) / dt;
                 raw = Math.Clamp(raw, -15.0, 15.0);
                 // light EMA so a single noisy track sample doesn't whip the rate-lead
                 yawRateDegPerSec = 0.7 * yawRateDegPerSec + 0.3 * raw;
             }
         }
-        lastTrackForRate = groundTrack;
+        lastTrackForRate = track;
         lastRateTime = now;
     }
 
@@ -335,6 +337,10 @@ public class WaypointFlightDirectorManager : IDisposable
         bool muted = apAutoMute && apMaster;
         desiredTone?.UpdateVolume(muted ? 0.0 : desiredVolume);
         currentTone?.UpdateVolume(muted ? 0.0 : currentVolume);
+
+        // While muted, keep re-baselining the yaw-rate estimate so it can't carry a stale turn-rate
+        // lead into the first bank command after the autopilot disengages.
+        if (muted) lastRateTime = DateTime.MinValue;
 
         // Edge-triggered spoken callout, skipped during the manual-readout grace window so it never
         // talks over a hotkey the pilot just pressed (the state flag still flips so it stays correct).
