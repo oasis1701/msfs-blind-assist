@@ -374,14 +374,11 @@ public class AircraftActionExecutor : IFoActionExecutor
     // Parking brake
     public bool SetParkingBrake(int position) => ExecuteSingle("EVT_CONTROL_STAND_PARK_BRAKE_LEVER", position, false, false);
 
-    // Transponder mode (standard SimConnect event — not PMDG SDK)
-    // 0=STBY, 1=ALT-OFF, 2=ON, 3=TA, 4=TA/RA
+    // Transponder mode via the PMDG TCAS-mode event (NOT the stock XPNDR_SET, which
+    // sets the squawk CODE — mode 2 there wrote squawk 0002). Values:
+    // 0=STBY, 1=ALT-OFF, 2=XPNDR, 3=TA, 4=TA/RA
     public bool SetTransponderMode(int mode)
-    {
-        if (_simConnect == null) return false;
-        _simConnect.SendEvent("XPNDR_SET", (uint)mode);
-        return true;
-    }
+        => ExecuteSingle("EVT_TCAS_MODE", mode, false, false);
 
     // Wipers
     public bool SetWipers(int position)
