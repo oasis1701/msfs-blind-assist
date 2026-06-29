@@ -66,6 +66,9 @@ public class FbwEfbForm : Form
     private List<EFBElement> _elements = new();
     private string _currentPage = "";
     private string _previousAnnouncedPage = "";
+    // Last alert/confirmation card text we spoke, so a popped-up alert announces once (not every poll);
+    // cleared when no alert is present so re-showing the same alert announces again.
+    private string _lastAnnouncedAlert = "";
 
     // Browser mode = WebView2 semantic document; otherwise the native list.
     private bool _useBrowser = true;
@@ -338,6 +341,18 @@ public class FbwEfbForm : Form
     private void ApplyElements()
     {
         _pageLabel.Text = $"Page: {(string.IsNullOrEmpty(_currentPage) ? "(unknown)" : _currentPage)}";
+
+        // Auto-announce a popped-up alert/confirmation card (e.g. "Success: Tablet preferences were
+        // updated.") the moment it appears. The agent flags it kind 'alert'; the browser/list render
+        // still SHOWS it (+ its OK button stays clickable), but a screen reader won't reliably speak
+        // a dynamically-injected alert, so we announce it app-side — immediate (it interrupts), once
+        // per appearance. Cleared when the alert is gone so re-showing it speaks again.
+        var alert = _elements.FirstOrDefault(e => e.Kind == "alert" && !string.IsNullOrWhiteSpace(e.Text));
+        if (alert != null)
+        {
+            if (alert.Text != _lastAnnouncedAlert) { _announcer.AnnounceImmediate(alert.Text); _lastAnnouncedAlert = alert.Text; }
+        }
+        else { _lastAnnouncedAlert = ""; }
 
         if (_useBrowser && !_webViewFailed)
         {
