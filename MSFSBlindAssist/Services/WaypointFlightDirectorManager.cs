@@ -440,8 +440,13 @@ public class WaypointFlightDirectorManager : IDisposable
 
         if (desiredTone == null || !desiredTone.IsPlaying)
         {
-            // No reference tone → don't start a meaningless constant follower.
-            DisposeTones();
+            // The reference tone failed to start (audio device busy/unavailable). The FD is an audio
+            // feature, so it cannot function — fail LOUDLY and shut down rather than the old
+            // DisposeTones()-and-return, which left the FD "active" with no tones AND no retry
+            // (tonesNeedStart cleared, the null-tone guard short-circuits every later frame), i.e.
+            // silently dead for the whole session. Stop() disposes the tones + releases the stream.
+            announcer.AnnounceImmediate("Flight director audio unavailable.");
+            Stop(announce: false);
             return;
         }
 

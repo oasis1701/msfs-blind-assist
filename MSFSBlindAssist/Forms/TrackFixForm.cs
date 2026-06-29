@@ -252,8 +252,11 @@ public partial class TrackFixForm : Form
     private (double? crossingAlt, double? upperAlt, AltitudeConstraintType constraint) ParseCrossingConstraint()
     {
         double? crossingAlt = null, upperAlt = null;
-        if (double.TryParse(crossingAltTextBox.Text.Trim(), out double ca)) crossingAlt = ca;
-        if (double.TryParse(upperAltTextBox.Text.Trim(), out double ua)) upperAlt = ua;
+        // Only a POSITIVE altitude is a real constraint (matches WaypointConstraintMapper, which drops
+        // <= 0). A typed 0 / negative would otherwise leave the constraint set and make the FD's
+        // vertical guidance command a descent toward sea level.
+        if (double.TryParse(crossingAltTextBox.Text.Trim(), out double ca) && ca > 0) crossingAlt = ca;
+        if (double.TryParse(upperAltTextBox.Text.Trim(), out double ua) && ua > 0) upperAlt = ua;
 
         var constraint = constraintComboBox.SelectedIndex switch
         {
