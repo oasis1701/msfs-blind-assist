@@ -26,9 +26,10 @@ public class ClaudeService : IAiProvider
     // flagship Opus; the AI Settings dropdown lets the user pick a cheaper model (Sonnet/Haiku).
     private const string DEFAULT_MODEL = "claude-opus-4-8";
 
-    // web_search server tool for route-briefing NOTAM grounding. The basic variant is the most
-    // broadly compatible across the models the live list returns; it carries no beta header.
-    private const string WEB_SEARCH_TOOL_TYPE = "web_search_20250305";
+    // web_search server tool for route-briefing NOTAM grounding (no beta header). The dated variant
+    // is supported on current models (Opus 4.6+/Sonnet 4.6 — including the default Opus 4.8). If the
+    // selected model rejects it (e.g. Haiku 4.5), DescribeRouteAsync degrades to an ungrounded briefing.
+    private const string WEB_SEARCH_TOOL_TYPE = "web_search_20260209";
 
     // Generous enough for a 300-500 word route briefing; display/scene reads use far fewer.
     private const int MAX_TOKENS = 2048;
@@ -69,7 +70,18 @@ public class ClaudeService : IAiProvider
     {
         string prompt = GeminiService.GetRouteDescriptionPrompt(flightData);
         bool enableSearch = SettingsManager.Current.ClaudeWebSearch;
-        return await SendTextRequestAsync(prompt, enableSearch);
+        try
+        {
+            return await SendTextRequestAsync(prompt, enableSearch);
+        }
+        catch (HttpRequestException ex) when (enableSearch &&
+            (ex.Message.Contains("web_search", StringComparison.OrdinalIgnoreCase) ||
+             ex.Message.Contains("tool", StringComparison.OrdinalIgnoreCase)))
+        {
+            // The selected model doesn't support the web_search tool — degrade to an
+            // ungrounded briefing rather than failing the whole request.
+            return await SendTextRequestAsync(prompt, false);
+        }
     }
 
     private static string ResolveModel()
@@ -283,7 +295,7 @@ public class ClaudeService : IAiProvider
         string? afterId = null;
         do
         {
-            string url = MODELS_URL + "?limit=1000";
+            string url = MODELS_URL + "?limit=100"; // Anthropic list endpoints cap limit at 100
             if (!string.IsNullOrEmpty(afterId))
             {
                 url += "&after_id=" + Uri.EscapeDataString(afterId);
