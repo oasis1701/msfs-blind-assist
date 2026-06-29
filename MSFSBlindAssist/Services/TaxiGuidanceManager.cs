@@ -1141,8 +1141,6 @@ public class TaxiGuidanceManager : IDisposable
         {
             // Store for recalculation
             _dataProvider = dataProvider;
-            // Set fresh so a normal (non-progressive) route always resets it to null.
-            _progressiveTerminator = progressiveTerminator;
             _destinationNodeId = destinationNodeId;
             _destinationName = destinationName;
             _icao = icao ?? "";
@@ -2181,7 +2179,14 @@ public class TaxiGuidanceManager : IDisposable
             bool stillOnRunway = false;
             if (_rolloutRunway != null && _rolloutRunwayHeadingTrue != 0.0 && alongRemainingM > 0.0)
             {
-                double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 60.0) * 0.5;
+                // Runway.Width is in FEET (matches the halfWidthFt usages elsewhere in
+                // this file, e.g. the overshoot-gate lateral check); convert to a metre
+                // half-width before comparing against the metre lateral offset. A bare
+                // Width * 0.5 treated as metres made the band ~3x too wide and suppressed
+                // the "off the runway" arrival long after the aircraft had cleared.
+                // Fallback 200 ft ≈ 60 m, same as the sibling code.
+                double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0)
+                                    * 0.5 / METERS_TO_FEET;
                 double lateralM = AbsLateralFromRunwayMeters(
                     lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
                     _rolloutRunwayHeadingTrue);
