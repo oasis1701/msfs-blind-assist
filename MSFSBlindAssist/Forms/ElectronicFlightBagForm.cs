@@ -38,7 +38,6 @@ public partial class ElectronicFlightBagForm : Form
     private Button refreshPositionButton = null!;
     private Button describeRouteButton = null!;
     private TextBox routeDescriptionTextBox = null!;
-    private readonly IAiProvider _aiProvider = AiProviderFactory.Create();
 
     // Other tab controls
     private TextBox departureIcaoTextBox = null!;
@@ -879,7 +878,12 @@ public partial class ElectronicFlightBagForm : Form
             describeRouteButton.Enabled = false;
             UpdateStatus("Generating route description...");
 
-            string description = await _aiProvider.DescribeRouteAsync(
+            // Resolve the AI provider fresh on each briefing. The EFB form is REUSED across opens
+            // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
+            // keep calling whichever backend was active when the form was first created — ignoring a
+            // later switch in AI Settings. Display/scene reads already resolve per-call; match that.
+            var aiProvider = AiProviderFactory.Create();
+            string description = await aiProvider.DescribeRouteAsync(
                 _flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
