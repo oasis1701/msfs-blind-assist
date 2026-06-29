@@ -461,7 +461,13 @@
         // form label — capture it (with its sibling unit) instead of skipping it as a <label>.
         // It is tagged _isValue below so it can never be paired AS a control's label (the unit
         // makes it letter-bearing, so the letter-guard alone would not exclude it).
-        var isMeasure = (el.matches && el.matches('label.pmdg_measurement'));
+        // EXCEPT a label OWNED by a dedicated output pass (.groundops_ui_outputlabel / .opt-output):
+        // those also carry pmdg_measurement, and the dedicated pass emits them as a NAMED line
+        // ("Target Fuel: 5400 kg"). Capturing them here too produced an orphan bare "5400 kg"
+        // duplicate (issue #113 — masked while the value was the single-char "0", which the
+        // glyph-skip above drops). Treat them as non-measurement so the label-skip below owns them.
+        var isMeasure = (el.matches && el.matches('label.pmdg_measurement') &&
+                         !el.matches('.groundops_ui_outputlabel, .opt-output'));
         if (!isMeasure && el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
         if (isMeasure) {
           var mu = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.output-unit') : null;
@@ -652,8 +658,10 @@
       var ahTxt = ah ? A.txt(ah) : '';
       // The message packs multiple sentences with no separating space ("updated.Hoppie ID …")
       // because the source <p> joins separate text nodes; re-insert a space after .!? before a
-      // capital so the screen reader reads "updated. Hoppie ID …" instead of one run-on token.
-      var amTxt = am ? A.txt(am).replace(/([.!?])([A-Z0-9])/g, '$1 $2') : '';
+      // capital LETTER (a new sentence) so the screen reader reads "updated. Hoppie ID …" instead
+      // of one run-on token. Only [A-Z] — a digit after a dot is a decimal ("12.5"), never a new
+      // sentence, so it must not be split into "12. 5".
+      var amTxt = am ? A.txt(am).replace(/([.!?])([A-Z])/g, '$1 $2') : '';
       var alertLabel = ahTxt && amTxt ? (ahTxt + ': ' + amTxt) : (ahTxt || amTxt);
       if (alertLabel) { idx++; out.push({ idx: idx, type: 'alert', tag: 'DIV', label: alertLabel, src: 'alert-card' }); }
     }

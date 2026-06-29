@@ -18,3 +18,15 @@ test('EFB alert card -> one assertive alert item; OK kept; no duplicate text', (
   assert.ok(!els.some(e => e.kind !== 'alert' && /Tablet preferences/.test(e.text || '')),
     'no duplicate message line outside the alert item');
 });
+
+// The sentence-boundary space re-insertion must fire only before a CAPITAL letter (a new sentence),
+// never inside a number — "Fuel set to 12.5 tonnes.Confirm ..." must keep "12.5" intact while still
+// spacing "tonnes. Confirm".
+test('EFB alert card -> decimal in message is preserved, sentence boundary still spaced', () => {
+  const alerts = scrape('alertcard_number').filter(e => e.kind === 'alert');
+  assert.equal(alerts.length, 1, 'exactly one alert item');
+  assert.equal(
+    alerts[0].text,
+    'Notice: Fuel set to 12.5 tonnes. Confirm before departure.',
+    'decimal kept, sentence boundary spaced');
+});
