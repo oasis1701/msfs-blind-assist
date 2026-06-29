@@ -53,6 +53,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // unsigned bytes the panel never sets to 0 deliberately.
     // ---------------------------------------------------------------------
     private double _lastAnnouncedAltimeter = double.NaN;
+    // Last-announced FLT/LAND ALT window values (feet). NaN = no sample yet
+    // (seed silently). A panel-initiated set pre-loads these so the monitor
+    // does not double-announce after HandleUIVariableSet already confirmed.
+    private double _lastFltAltWindow = double.NaN;
+    private double _lastLandAltWindow = double.NaN;
     private double _lastCom1Active = double.NaN;
     private double _lastCom2Active = double.NaN;
     private double _lastCom1Standby = double.NaN;
@@ -870,6 +875,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             UpdateFrequency = SimConnect.UpdateFrequency.Never,
             IsAnnounced = false,
         };
+
+        // Background monitors for FLT/LAND ALT — the numeric "window" values
+        // that track the knob live (the char[6] display strings are obsolete
+        // per the SDK; the uint windows update reliably — verified). Continuous
+        // + IsAnnounced so a change from ANY source (knob, add-on, state load)
+        // is spoken via ProcessSimVarUpdate. NOT placed on any panel.
+        d["AIR_FltAltWindow"]  = Numeric("AIR_FltAltWindow",  "Flight Altitude");
+        d["AIR_LandAltWindow"] = Numeric("AIR_LandAltWindow", "Landing Altitude");
 
         // Pressurization, duct-pressure, and cabin-temperature readouts —
         // continuous-numeric SDK fields rendered as read-only TextBoxes on
@@ -3953,6 +3966,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 simConnect.SendPMDGEvent(evtName, (uint)pressEvId, feet);
                 string label = isFlt ? "Flight altitude" : "Landing altitude";
                 announcer.Announce($"{label} set to {feet} feet");
+                // Pre-load the monitor guard so the imminent window change does
+                // not re-announce the value we just confirmed.
+                if (isFlt) _lastFltAltWindow = feet; else _lastLandAltWindow = feet;
             }
             return true;
         }
@@ -4687,6 +4703,29 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true;
                 _lastAnnouncedStabTrim = rounded;
                 announcer.Announce($"Trim {rounded:F1}");
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // Pressurization FLT ALT / LAND ALT — auto-announce on change from
+            // any source. Seed silently on the first sample; a panel-initiated
+            // set pre-loads _last* (see HandleUIVariableSet) so this does not
+            // double-announce the value the panel already confirmed.
+            // -------------------------------------------------------------
+            case "AIR_FltAltWindow":
+            {
+                if (double.IsNaN(_lastFltAltWindow)) { _lastFltAltWindow = value; return true; }
+                if (value == _lastFltAltWindow) return true;
+                _lastFltAltWindow = value;
+                announcer.Announce($"Flight altitude {(int)Math.Round(value)} feet");
+                return true;
+            }
+            case "AIR_LandAltWindow":
+            {
+                if (double.IsNaN(_lastLandAltWindow)) { _lastLandAltWindow = value; return true; }
+                if (value == _lastLandAltWindow) return true;
+                _lastLandAltWindow = value;
+                announcer.Announce($"Landing altitude {(int)Math.Round(value)} feet");
                 return true;
             }
 
