@@ -34,6 +34,15 @@ public class ClaudeService : IAiProvider
     // Generous enough for a 300-500 word route briefing; display/scene reads use far fewer.
     private const int MAX_TOKENS = 2048;
 
+    // Route-briefing system prompt (text path only). With web_search enabled the model otherwise
+    // emits process narration ("Let me search for NOTAMs… Now I'll compose the briefing.") before
+    // the answer; this tells it to output only the briefing. ParseResponse also structurally drops
+    // any narration that precedes the final answer (text after the last tool block).
+    private const string ROUTE_SYSTEM_PROMPT =
+        "You are a flight-briefing generator for a blind flight-simulator pilot. Output ONLY the " +
+        "briefing itself, beginning directly with the first section heading. Never include any " +
+        "preamble, sign-off, or commentary about searching, tools, or your own process.";
+
     private readonly string apiKey;
 
     static ClaudeService()
@@ -128,6 +137,7 @@ public class ClaudeService : IAiProvider
             {
                 model = ResolveModel(),
                 max_tokens = MAX_TOKENS,
+                system = ROUTE_SYSTEM_PROMPT,
                 messages = new[] { new { role = "user", content = prompt } },
                 tools = new object[]
                 {
@@ -138,6 +148,7 @@ public class ClaudeService : IAiProvider
             {
                 model = ResolveModel(),
                 max_tokens = MAX_TOKENS,
+                system = ROUTE_SYSTEM_PROMPT,
                 messages = new[] { new { role = "user", content = prompt } }
             };
         return await SendRequestAsync(requestBody);
@@ -258,8 +269,20 @@ public class ClaudeService : IAiProvider
             throw new InvalidOperationException("Claude API returned no content in response.");
         }
 
-        // Join EVERY text block — a web-search response interleaves server-tool blocks with text.
+        // With web_search grounding the model emits "process narration" text blocks BETWEEN the
+        // search tool calls ("Let me search for NOTAMs…", "Now I'll compose the briefing.") — the
+        // real answer is the text AFTER the last tool block (server_tool_use / web_search_tool_result).
+        // Find the last non-text (tool) block and keep only text after it; a plain vision/text
+        // response has no tool blocks (lastToolIndex stays -1), so every text block is kept.
+        int lastToolIndex = -1;
+        for (int i = 0; i < result.Content.Length; i++)
+        {
+            if (!string.Equals(result.Content[i].Type, "text", StringComparison.Ordinal))
+                lastToolIndex = i;
+        }
+
         string combined = string.Concat(result.Content
+            .Skip(lastToolIndex + 1)
             .Where(b => b.Type == "text" && !string.IsNullOrEmpty(b.Text))
             .Select(b => b.Text));
         return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
