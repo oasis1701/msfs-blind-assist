@@ -849,6 +849,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["AIR_PressurizationModeSelector"] = Selector("AIR_PressurizationModeSelector",
             "Pressurization Mode", "AUTO", "ALTN", "MAN");
 
+        // Pressurization flight/landing altitude ENTRY (numeric _SET inputs).
+        // Dispatched in HandleUIVariableSet to the PMDG "Direct Control" events
+        // EVT_OH_PRESS_FLT_ALT_SET / _LAND_ALT_SET (literal feet). Synthetic
+        // Name (not a struct field) + Never frequency, mirroring the existing
+        // EFIS_MinsValueFt_*_SET inputs.
+        d["AIR_FltAlt_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_AIR_FltAlt",
+            DisplayName = "Flight Altitude",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+        d["AIR_LandAlt_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_AIR_LandAlt",
+            DisplayName = "Landing Altitude",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+
         // Pressurization, duct-pressure, and cabin-temperature readouts —
         // continuous-numeric SDK fields rendered as read-only TextBoxes on
         // the Air Systems panel. IsAnnounced=false (no auto-announce every
@@ -1883,6 +1905,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
                 "AIR_IsolationValveSwitch",
                 "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
+                "AIR_FltAlt_SET", "AIR_LandAlt_SET",
                 "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM",
                 // Continuous readouts (pressurization, duct pressure, cabin temp)
                 "AIR_CabinAltNeedle", "AIR_CabinDPNeedle", "AIR_CabinVSNeedle",
@@ -3903,6 +3926,34 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
             simConnect.SendEvent(varDef.Name);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // Pressurization FLT ALT / LAND ALT direct-set (numeric _SET inputs).
+        //   The PMDG "Direct Control" events take the literal altitude in feet.
+        //   The panel knob rounds DOWN — FLT ALT to 500 ft, LAND ALT to 50 ft —
+        //   and clamps; we mirror that so the spoken confirmation equals what the
+        //   cockpit window shows. Below-sea-level LAND ALT is out of scope (min 0).
+        // ------------------------------------------------------------------
+        if (varKey == "AIR_FltAlt_SET" || varKey == "AIR_LandAlt_SET")
+        {
+            bool isFlt = varKey == "AIR_FltAlt_SET";
+            string evtName = isFlt ? "EVT_OH_PRESS_FLT_ALT_SET" : "EVT_OH_PRESS_LAND_ALT_SET";
+            int step = isFlt ? 500 : 50;
+            int maxFt = isFlt ? 42000 : 14000;
+
+            int feet = (int)Math.Round(value);
+            if (feet < 0) feet = 0;
+            if (feet > maxFt) feet = maxFt;
+            feet = (feet / step) * step;   // round DOWN to the knob's step
+
+            if (EventIds.TryGetValue(evtName, out int pressEvId))
+            {
+                simConnect.SendPMDGEvent(evtName, (uint)pressEvId, feet);
+                string label = isFlt ? "Flight altitude" : "Landing altitude";
+                announcer.Announce($"{label} set to {feet} feet");
+            }
             return true;
         }
 
