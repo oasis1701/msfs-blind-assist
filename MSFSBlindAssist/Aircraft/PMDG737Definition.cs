@@ -875,6 +875,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             UpdateFrequency = SimConnect.UpdateFrequency.Never,
             IsAnnounced = false,
         };
+        d["AIR_FltAlt_SET"].CurrentValueSourceKey  = "AIR_FltAltWindow";
+        d["AIR_LandAlt_SET"].CurrentValueSourceKey = "AIR_LandAltWindow";
 
         // Background monitors for FLT/LAND ALT — the numeric "window" values
         // that track the knob live (the char[6] display strings are obsolete
