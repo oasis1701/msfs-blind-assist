@@ -38,7 +38,7 @@ public partial class ElectronicFlightBagForm : Form
     private Button refreshPositionButton = null!;
     private Button describeRouteButton = null!;
     private TextBox routeDescriptionTextBox = null!;
-    private readonly GeminiService _geminiService = new();
+    private readonly IAiProvider _aiProvider = AiProviderFactory.Create();
 
     // Other tab controls
     private TextBox departureIcaoTextBox = null!;
@@ -879,7 +879,7 @@ public partial class ElectronicFlightBagForm : Form
             describeRouteButton.Enabled = false;
             UpdateStatus("Generating route description...");
 
-            string description = await _geminiService.DescribeRouteAsync(
+            string description = await _aiProvider.DescribeRouteAsync(
                 _flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
@@ -892,8 +892,8 @@ public partial class ElectronicFlightBagForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            _announcer.Announce("Gemini API key not configured. Please configure it in File menu, Gemini Settings.");
-            UpdateStatus("Gemini API key not configured");
+            _announcer.Announce("AI provider API key not configured. Please configure it in File menu, AI Settings.");
+            UpdateStatus("AI provider API key not configured");
         }
         catch (Exception ex)
         {
