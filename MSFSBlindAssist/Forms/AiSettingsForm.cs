@@ -281,7 +281,7 @@ public partial class AiSettingsForm : Form
     {
         if (_populatingModels) return;
         _populatingModels = true;
-        refreshModelsButton.Enabled = false;
+        if (!IsDisposed) refreshModelsButton.Enabled = false;
         try
         {
             bool claude = _shownProvider == AiProvider.Claude;
@@ -302,6 +302,11 @@ public partial class AiSettingsForm : Form
                     models = null; // fall back to the curated list below
                 }
             }
+
+            // The dialog may have been closed (disposed) while the async fetch was in flight —
+            // the continuation resumes on the UI thread, so bail before touching disposed controls
+            // (the fetch is started fire-and-forget on Load and on every provider switch).
+            if (IsDisposed || !IsHandleCreated) return;
 
             modelComboBox.BeginUpdate();
             try
@@ -337,7 +342,7 @@ public partial class AiSettingsForm : Form
         finally
         {
             _populatingModels = false;
-            refreshModelsButton.Enabled = true;
+            if (!IsDisposed) refreshModelsButton.Enabled = true;
         }
     }
 
