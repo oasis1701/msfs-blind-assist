@@ -31,6 +31,11 @@ public class ClaudeService : IAiProvider
     // selected model rejects it (e.g. Haiku 4.5), DescribeRouteAsync degrades to an ungrounded briefing.
     private const string WEB_SEARCH_TOOL_TYPE = "web_search_20260209";
 
+    // Cap searches per briefing. Without this the model can run 10+ searches for a multi-airport
+    // NOTAM/weather briefing, which is slow (risking the HttpClient timeout) and costs $10/1000
+    // searches. ~5 covers departure + arrival NOTAMs + weather + SIGMETs without runaway latency.
+    private const int WEB_SEARCH_MAX_USES = 5;
+
     // Generous enough for a 300-500 word route briefing; display/scene reads use far fewer.
     private const int MAX_TOKENS = 2048;
 
@@ -141,7 +146,7 @@ public class ClaudeService : IAiProvider
                 messages = new[] { new { role = "user", content = prompt } },
                 tools = new object[]
                 {
-                    new { type = WEB_SEARCH_TOOL_TYPE, name = "web_search" }
+                    new { type = WEB_SEARCH_TOOL_TYPE, name = "web_search", max_uses = WEB_SEARCH_MAX_USES }
                 }
             }
             : new
