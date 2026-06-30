@@ -267,6 +267,15 @@ public partial class MainForm : Form
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
 
+    // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
+    // airborne edge but only PERFORMED after these confirm a real rotation, so a
+    // spurious airborne sample (high-speed roll bump / oleo flicker, or low-speed
+    // false-airborne from pushback/slope/replay) can't drop centerline guidance
+    // during the roll. See docs/superpowers/specs/2026-06-30-liftoff-handfly-handoff-guard-design.md.
+    private System.Windows.Forms.Timer? _liftoffHandoffTimer;
+    private const double LIFTOFF_HANDOFF_MIN_GS_KTS = 40.0; // reject pushback/slope/replay; every supported airframe rotates well above this
+    private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1000; // must stay airborne this long before handing off
+
     // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
     // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
     // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle.
@@ -431,6 +440,11 @@ public partial class MainForm : Form
         _bridgeProbeTimer = new System.Windows.Forms.Timer { Interval = 1500 };
         _bridgeProbeTimer.Tick += BridgeProbeTimer_Tick;
         _bridgeProbeTimer.Start();
+
+        // One-shot debounce for the liftoff → Hand Fly handoff (started on the
+        // liftoff edge, stopped on touchdown; ticks once after the confirm window).
+        _liftoffHandoffTimer = new System.Windows.Forms.Timer { Interval = LIFTOFF_HANDOFF_CONFIRM_MS };
+        _liftoffHandoffTimer.Tick += (s, e) => PerformLiftoffHandoffIfValid();
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and
@@ -708,6 +722,9 @@ public partial class MainForm : Form
 
         _sdAutoRefreshTimer?.Stop();
         _sdAutoRefreshTimer?.Dispose();
+
+        _liftoffHandoffTimer?.Stop();
+        _liftoffHandoffTimer?.Dispose();
 
         _displayRepaintDebounce?.Stop();
         _displayRepaintDebounce?.Dispose();

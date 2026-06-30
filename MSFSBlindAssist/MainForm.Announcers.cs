@@ -597,34 +597,34 @@ public partial class MainForm
                     simConnectManager.GetCachedVariableValue("G_FORCE") ?? 1.0);
             }
 
+            // A touchdown edge cancels any pending liftoff handoff — this is the
+            // flicker-settled case (the aircraft came back to ground inside the
+            // confirm window), so the roll-bump never hands off.
+            if (justTouchedDown)
+            {
+                _liftoffHandoffTimer?.Stop();
+            }
+
             // Auto hand-off at rotation: when the pilot lifts off WHILE Takeoff
-            // Assist is running, hand control to Hand Fly mode — deactivate
-            // Takeoff Assist and activate Hand Fly — so guidance continues
-            // seamlessly from centerline-tracking to attitude hand-flying.
-            // Gated on the user setting + TA active + HandFly not already on.
-            // Naturally one-shot: once airborne TA is off, so a stray oleo
-            // bounce during the initial climb can't re-trigger it. Placed beside
-            // justTouchedDown so it shares the same (UI-thread) context those
-            // sibling Toggle calls already rely on.
+            // Assist is running, hand control to Hand Fly mode (deactivate TA,
+            // activate HandFly) so guidance continues seamlessly from centerline-
+            // tracking to attitude hand-flying. We do NOT act on the raw edge — a
+            // spurious airborne sample would otherwise drop centerline guidance
+            // during the roll. Gate on the setting + TA active + HandFly off + a
+            // minimum ground speed (rejects low-speed false-airborne; GROUND_VELOCITY
+            // is a cached continuous base var, read like G_FORCE above — fail OPEN if
+            // it's null, the debounce backstops it), then ARM the debounce timer.
+            // PerformLiftoffHandoffIfValid runs ~1 s later and re-checks the gates.
+            // Naturally one-shot: the handoff turns TA off, so it can't re-fire until
+            // TA is re-armed on the ground.
             if (justLiftedOff
                 && SettingsManager.Current.HandFlyAutoActivateOnTakeoff
                 && takeoffAssistManager.IsActive
-                && !handFlyManager.IsActive)
+                && !handFlyManager.IsActive
+                && (simConnectManager.GetCachedVariableValue("GROUND_VELOCITY") ?? double.MaxValue) >= LIFTOFF_HANDOFF_MIN_GS_KTS)
             {
-                // Toggle()'s deactivation branch ignores its position args
-                // (the !isActive path reads none of lat/lon/heading/magVar),
-                // so 0s are correct here.
-                takeoffAssistManager.Toggle(0, 0, 0, 0);   // "Takeoff assist off" (clipped below)
-                handFlyManager.Toggle();                    // "Hand fly mode active" (clipped below)
-
-                // Both Toggles AnnounceImmediate, and AnnounceImmediate
-                // interrupts — so speak ONE clean breadcrumb LAST to supersede
-                // both. The pilot pressed no key, so this single cue is the
-                // spoken source of truth for the handoff. The Toggles'
-                // non-speech side effects (tone stop/start, monitoring
-                // start/stop, hotkey registration, ActiveChanged events) all
-                // still run.
-                announcer.AnnounceImmediate("Airborne. Takeoff assist off, hand fly active.");
+                _liftoffHandoffTimer?.Stop();   // reset the debounce interval
+                _liftoffHandoffTimer?.Start();
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
@@ -841,6 +841,43 @@ public partial class MainForm
         }
 
         return false; // Not a special case, continue normal processing
+    }
+
+    /// <summary>
+    /// Performs the Takeoff Assist → Hand Fly handoff, fired by
+    /// <c>_liftoffHandoffTimer</c> after the liftoff edge has been sustained for
+    /// <c>LIFTOFF_HANDOFF_CONFIRM_MS</c>. Runs on the UI thread (WinForms Timer
+    /// tick) — the same context the SIM_ON_GROUND handler and these Toggle calls
+    /// rely on. Re-checks every gate at fire time so a setting / TA / HandFly
+    /// change during the confirm window is honored.
+    /// </summary>
+    private void PerformLiftoffHandoffIfValid()
+    {
+        _liftoffHandoffTimer?.Stop(); // one-shot
+
+        // Re-check at fire time. !_lastOnGround confirms we are still airborne
+        // (a flicker that settled back to ground sets _lastOnGround = true and
+        // also stops the timer on the touchdown edge).
+        if (_lastOnGround
+            || !SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+            || !takeoffAssistManager.IsActive
+            || handFlyManager.IsActive)
+        {
+            return;
+        }
+
+        // Toggle()'s deactivation branch ignores its position args (the !isActive
+        // path of TakeoffAssistManager.Toggle reads none of lat/lon/heading/magVar),
+        // so 0s are correct here.
+        takeoffAssistManager.Toggle(0, 0, 0, 0);   // "Takeoff assist off" (clipped below)
+        handFlyManager.Toggle();                    // "Hand fly mode active" (clipped below)
+
+        // Both Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
+        // ONE clean breadcrumb LAST to supersede both. The pilot pressed no key, so
+        // this single cue is the spoken source of truth for the handoff. The Toggles'
+        // non-speech side effects (tone stop/start, monitoring start/stop, hotkey
+        // registration, ActiveChanged events) all still run.
+        announcer.AnnounceImmediate("Airborne. Takeoff assist off, hand fly active.");
     }
 
     /// <summary>
