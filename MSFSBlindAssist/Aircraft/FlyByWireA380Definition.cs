@@ -584,6 +584,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A380_CPT_FOOTREST", "Captain Footrest", stowedDeployed);
         Sel("A380_FO_FOOTREST", "First Officer Footrest", stowedDeployed);
         Sel("A380_LGPIN_DOOR", "Landing Gear Pins Compartment", closedOpenC);
+        // ---- MSFS-2024-native-rebuild additions (interactive-parts.xml, #10758). Same
+        // boolean-toggle family as the table/footrest/oxygen above ((L:VAR) ! (>L:VAR)),
+        // so they route through the prefix-less calc-path allowlist in HandleUIVariableSet.
+        // The model GATES meal table behind the table being deployed and the keyboard behind
+        // the meal table, but the L:var itself is directly settable — the pilot just opens
+        // table -> meal table -> keyboard in order. Stow polarity (0/1) is unverified visually;
+        // flip the value dict if a control reads inverted in the sim.
+        Sel("A380_CPT_MEALTABLE", "Captain Meal Table", stowedDeployed);
+        Sel("A380_FO_MEALTABLE", "First Officer Meal Table", stowedDeployed);
+        Sel("A380_CPT_KEYBOARD", "Captain Keyboard Tray", stowedDeployed);
+        Sel("A380_FO_KEYBOARD", "First Officer Keyboard Tray", stowedDeployed);
+        Sel("CAS_LH_OPENING", "Left CAS Panel", closedOpenC);
+        Sel("CAS_RH_OPENING", "Right CAS Panel", closedOpenC);
+        Sel("AFT_OIT_OPENING", "OIT Panel", closedOpenC);
+        Sel("COCKPITDOOR_OPEN", "Cockpit Door (open/close)", closedOpenC);
+        var deployedStowed = new Dictionary<double, string> { [0] = "Deployed", [1] = "Stowed" };
+        Sel("BIGARMREST_CPT_STOW", "Captain Armrest Stow", deployedStowed);
+        Sel("BIGARMREST_FO_STOW", "First Officer Armrest Stow", deployedStowed);
+        Sel("SMALLARMREST_CPT_STOW", "Captain Small Armrest Stow", deployedStowed);
+        Sel("SMALLARMREST_FO_STOW", "First Officer Small Armrest Stow", deployedStowed);
         // ---- COCKPIT axis controls as ACCESSIBLE SLIDERS (the 0..100 drag-axis items that used
         // to be skipped — seats, forward/aft windshield sunshades). A WinForms TrackBar that
         // writes the L-var live as the user arrows/drags it (live-verified the writes stick:
@@ -2826,6 +2846,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
             "A380_LGPIN_DOOR",
+            // ---- MSFS-2024-native-rebuild openables (meal tables, keyboard trays, CAS/OIT
+            // panels, physical cockpit-door open — distinct from the door LOCK above) ----
+            "A380_CPT_MEALTABLE", "A380_FO_MEALTABLE",
+            "A380_CPT_KEYBOARD", "A380_FO_KEYBOARD",
+            "CAS_LH_OPENING", "CAS_RH_OPENING", "AFT_OIT_OPENING", "COCKPITDOOR_OPEN",
             // ---- Crew seats (start/stop motor toggle BUTTONS only) + armrests ----
             // The 4 SEAT_*_MOVE_* position read-outs were REMOVED from the panel (user request):
             // the moving buttons + the spoken position-on-stop are enough. The position L:vars stay
@@ -2834,7 +2859,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "SEATBTN_CPT_UP", "SEATBTN_CPT_DOWN", "SEATBTN_CPT_FWD", "SEATBTN_CPT_AFT",
             "SEATBTN_FO_UP", "SEATBTN_FO_DOWN", "SEATBTN_FO_FWD", "SEATBTN_FO_AFT",
             "BIGARMREST_CPT_UP_DOWN", "BIGARMREST_CPT_TILT", "SMALLARMREST_CPT_FWD",
-            "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD"
+            "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD",
+            // Armrest STOW toggles (fold the armrest away) — 2024-native-rebuild additions.
+            "BIGARMREST_CPT_STOW", "BIGARMREST_FO_STOW",
+            "SMALLARMREST_CPT_STOW", "SMALLARMREST_FO_STOW"
         };
         p["Signs"] = new List<string>
         {
@@ -4940,7 +4968,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             || varKey == "CPT_OXY_FWD_OPENING" || varKey == "AFT_OXY_OPENING"
             || varKey == "A380_CPT_TABLE" || varKey == "A380_FO_TABLE"
             || varKey == "A380_CPT_FOOTREST" || varKey == "A380_FO_FOOTREST"
-            || varKey == "A380_LGPIN_DOOR")
+            || varKey == "A380_LGPIN_DOOR"
+            // MSFS-2024-native-rebuild openables (interactive-parts.xml bool toggles).
+            || varKey == "A380_CPT_MEALTABLE" || varKey == "A380_FO_MEALTABLE"
+            || varKey == "A380_CPT_KEYBOARD" || varKey == "A380_FO_KEYBOARD"
+            || varKey == "CAS_LH_OPENING" || varKey == "CAS_RH_OPENING"
+            || varKey == "AFT_OIT_OPENING" || varKey == "COCKPITDOOR_OPEN"
+            || varKey == "BIGARMREST_CPT_STOW" || varKey == "BIGARMREST_FO_STOW"
+            || varKey == "SMALLARMREST_CPT_STOW" || varKey == "SMALLARMREST_FO_STOW")
         {
             // Write the RAW value (not rounded) so 0..1 slider positions (sliding windows, side
             // sunshades) carry their fraction; the 0/1 combo items still write 0.0/1.0 fine.
