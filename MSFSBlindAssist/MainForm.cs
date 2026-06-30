@@ -255,6 +255,15 @@ public partial class MainForm : Form
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
+
+    // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
+    // airborne edge but only PERFORMED after these confirm a real rotation, so a
+    // spurious airborne sample (high-speed roll bump / oleo flicker, or low-speed
+    // false-airborne from pushback/slope/replay) can't drop centerline guidance
+    // during the roll. See docs/superpowers/specs/2026-06-30-liftoff-handfly-handoff-guard-design.md.
+    private System.Windows.Forms.Timer? _liftoffHandoffTimer;
+    private const double LIFTOFF_HANDOFF_MIN_GS_KTS = 40.0; // reject pushback/slope/replay; every supported airframe rotates well above this
+    private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1000; // must stay airborne this long before handing off
     private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
@@ -394,6 +403,11 @@ public partial class MainForm : Form
         _bridgeProbeTimer = new System.Windows.Forms.Timer { Interval = 1500 };
         _bridgeProbeTimer.Tick += BridgeProbeTimer_Tick;
         _bridgeProbeTimer.Start();
+
+        // One-shot debounce for the liftoff → Hand Fly handoff (started on the
+        // liftoff edge, stopped on touchdown; ticks once after the confirm window).
+        _liftoffHandoffTimer = new System.Windows.Forms.Timer { Interval = LIFTOFF_HANDOFF_CONFIRM_MS };
+        _liftoffHandoffTimer.Tick += (s, e) => PerformLiftoffHandoffIfValid();
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and
@@ -1361,6 +1375,7 @@ public partial class MainForm : Form
         {
             bool onGround = e.Value >= 0.5;
             bool justTouchedDown = onGround && !_lastOnGround;
+            bool justLiftedOff = !onGround && _lastOnGround;
             _lastOnGround = onGround;
             // Mirror to SimConnectManager so other components (LandingExitForm,
             // etc.) that have a SimConnectManager reference can read the latest
@@ -1386,6 +1401,36 @@ public partial class MainForm : Form
             {
                 landingRateAnnouncer.OnTouchdown(
                     simConnectManager.GetCachedVariableValue("G_FORCE") ?? 1.0);
+            }
+
+            // A touchdown edge cancels any pending liftoff handoff — this is the
+            // flicker-settled case (the aircraft came back to ground inside the
+            // confirm window), so the roll-bump never hands off.
+            if (justTouchedDown)
+            {
+                _liftoffHandoffTimer?.Stop();
+            }
+
+            // Auto hand-off at rotation: when the pilot lifts off WHILE Takeoff
+            // Assist is running, hand control to Hand Fly mode (deactivate TA,
+            // activate HandFly) so guidance continues seamlessly from centerline-
+            // tracking to attitude hand-flying. We do NOT act on the raw edge — a
+            // spurious airborne sample would otherwise drop centerline guidance
+            // during the roll. Gate on the setting + TA active + HandFly off + a
+            // minimum ground speed (rejects low-speed false-airborne; GROUND_VELOCITY
+            // is a cached continuous base var, read like G_FORCE above — fail OPEN if
+            // it's null, the debounce backstops it), then ARM the debounce timer.
+            // PerformLiftoffHandoffIfValid runs ~1 s later and re-checks the gates.
+            // Naturally one-shot: the handoff turns TA off, so it can't re-fire until
+            // TA is re-armed on the ground.
+            if (justLiftedOff
+                && SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+                && takeoffAssistManager.IsActive
+                && !handFlyManager.IsActive
+                && (simConnectManager.GetCachedVariableValue("GROUND_VELOCITY") ?? double.MaxValue) >= LIFTOFF_HANDOFF_MIN_GS_KTS)
+            {
+                _liftoffHandoffTimer?.Stop();   // reset the debounce interval
+                _liftoffHandoffTimer?.Start();
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
@@ -1602,6 +1647,43 @@ public partial class MainForm : Form
         }
 
         return false; // Not a special case, continue normal processing
+    }
+
+    /// <summary>
+    /// Performs the Takeoff Assist → Hand Fly handoff, fired by
+    /// <c>_liftoffHandoffTimer</c> after the liftoff edge has been sustained for
+    /// <c>LIFTOFF_HANDOFF_CONFIRM_MS</c>. Runs on the UI thread (WinForms Timer
+    /// tick) — the same context the SIM_ON_GROUND handler and these Toggle calls
+    /// rely on. Re-checks every gate at fire time so a setting / TA / HandFly
+    /// change during the confirm window is honored.
+    /// </summary>
+    private void PerformLiftoffHandoffIfValid()
+    {
+        _liftoffHandoffTimer?.Stop(); // one-shot
+
+        // Re-check at fire time. !_lastOnGround confirms we are still airborne
+        // (a flicker that settled back to ground sets _lastOnGround = true and
+        // also stops the timer on the touchdown edge).
+        if (_lastOnGround
+            || !SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+            || !takeoffAssistManager.IsActive
+            || handFlyManager.IsActive)
+        {
+            return;
+        }
+
+        // Toggle()'s deactivation branch ignores its position args (the !isActive
+        // path of TakeoffAssistManager.Toggle reads none of lat/lon/heading/magVar),
+        // so 0s are correct here.
+        takeoffAssistManager.Toggle(0, 0, 0, 0);   // "Takeoff assist off" (clipped below)
+        handFlyManager.Toggle();                    // "Hand fly mode active" (clipped below)
+
+        // Both Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
+        // ONE clean breadcrumb LAST to supersede both. The pilot pressed no key, so
+        // this single cue is the spoken source of truth for the handoff. The Toggles'
+        // non-speech side effects (tone stop/start, monitoring start/stop, hotkey
+        // registration, ActiveChanged events) all still run.
+        announcer.AnnounceImmediate("Airborne. Takeoff assist off, hand fly active.");
     }
 
     /// <summary>
@@ -4450,7 +4532,8 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistHeadingToneThreshold,
             currentSettings.TakeoffAssistLegacyMode,
             currentSettings.TakeoffAssistEnableCallouts,
-            currentSettings.TakeoffAssistAutoActivateOnLineup))
+            currentSettings.TakeoffAssistAutoActivateOnLineup,
+            currentSettings.HandFlyAutoActivateOnTakeoff))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -4474,6 +4557,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
                 currentSettings.TakeoffAssistEnableCallouts = settingsForm.TakeoffAssistEnableCallouts;
                 currentSettings.TakeoffAssistAutoActivateOnLineup = settingsForm.TakeoffAssistAutoActivateOnLineup;
+                currentSettings.HandFlyAutoActivateOnTakeoff = settingsForm.HandFlyAutoActivateOnTakeoff;
                 SettingsManager.Save();
 
                 // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
@@ -6910,6 +6994,9 @@ public partial class MainForm : Form
 
         _sdAutoRefreshTimer?.Stop();
         _sdAutoRefreshTimer?.Dispose();
+
+        _liftoffHandoffTimer?.Stop();
+        _liftoffHandoffTimer?.Dispose();
 
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
