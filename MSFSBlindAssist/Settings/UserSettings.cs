@@ -125,6 +125,18 @@ public class UserSettings
         /// </summary>
         public bool TakeoffAssistAutoActivateOnLineup { get; set; } = true;
 
+        /// <summary>
+        /// When true (default), Hand Fly mode auto-activates the moment the
+        /// aircraft lifts off IF Takeoff Assist is currently active — Takeoff
+        /// Assist is deactivated and Hand Fly turns on in the same handoff.
+        /// Completes the taxi-lineup → Takeoff Assist → Hand Fly hands-free
+        /// chain. A pilot who doesn't want the auto-handoff disables this in
+        /// Hand Fly Options. Naturally one-shot per takeoff: once airborne,
+        /// Takeoff Assist is off, so the handoff can't re-fire until it is
+        /// re-armed on the ground.
+        /// </summary>
+        public bool HandFlyAutoActivateOnTakeoff { get; set; } = true;
+
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
 
@@ -385,6 +397,7 @@ public class UserSettings
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,
             TakeoffAssistEnableCallouts = TakeoffAssistEnableCallouts,
             TakeoffAssistAutoActivateOnLineup = TakeoffAssistAutoActivateOnLineup,
+            HandFlyAutoActivateOnTakeoff = HandFlyAutoActivateOnTakeoff,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,
