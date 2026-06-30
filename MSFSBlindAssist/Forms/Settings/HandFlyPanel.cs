@@ -58,6 +58,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private CheckBox legacyTakeoffCheckBox = null!;
     private CheckBox enableCalloutsCheckBox = null!;
     private CheckBox autoActivateOnLineupCheckBox = null!;
+    private CheckBox handFlyAutoActivateOnTakeoffCheckBox = null!;
 
     private AudioToneGenerator? testToneGenerator;
 
@@ -492,6 +493,17 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, Takeoff Assist activates automatically when taxi guidance reaches a stable runway lineup, so you don't have to press control T. One-shot per route: if you disable Takeoff Assist after it auto-activates, it won't re-engage until the next taxi route."
         };
 
+        // Auto-Activate Hand Fly on Takeoff Checkbox — completes the
+        // taxi → Takeoff Assist → Hand Fly hands-free chain.
+        handFlyAutoActivateOnTakeoffCheckBox = new CheckBox
+        {
+            Text = "Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)",
+            Location = new Point(20, 890),
+            Size = new Size(450, 25),
+            AccessibleName = "Auto-activate Hand Fly on takeoff",
+            AccessibleDescription = "When enabled, the moment the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. Only fires when Takeoff Assist is active at liftoff; liftoffs without Takeoff Assist are unaffected."
+        };
+
         // Add controls to panel
         Controls.AddRange(new Control[]
         {
@@ -507,7 +519,8 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             muteCenterlineCheckBox, steerTowardToneCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
-            legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox
+            legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
+            handFlyAutoActivateOnTakeoffCheckBox
         });
 
         // Update control states based on feedback mode (defaults to TonesOnly disabled state
@@ -551,6 +564,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         legacyTakeoffCheckBox.TabIndex = 30;
         enableCalloutsCheckBox.TabIndex = 31;
         autoActivateOnLineupCheckBox.TabIndex = 32;
+        handFlyAutoActivateOnTakeoffCheckBox.TabIndex = 33;
     }
 
     private void UpdateControlStates()
@@ -744,6 +758,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         legacyTakeoffCheckBox.Checked = settings.TakeoffAssistLegacyMode;
         enableCalloutsCheckBox.Checked = settings.TakeoffAssistEnableCallouts;
         autoActivateOnLineupCheckBox.Checked = settings.TakeoffAssistAutoActivateOnLineup;
+        handFlyAutoActivateOnTakeoffCheckBox.Checked = settings.HandFlyAutoActivateOnTakeoff;
 
         UpdateControlStates();
     }
@@ -780,6 +795,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         settings.TakeoffAssistLegacyMode = legacyTakeoffCheckBox.Checked;
         settings.TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
         settings.TakeoffAssistAutoActivateOnLineup = autoActivateOnLineupCheckBox.Checked;
+        settings.HandFlyAutoActivateOnTakeoff = handFlyAutoActivateOnTakeoffCheckBox.Checked;
     }
 
     /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on
