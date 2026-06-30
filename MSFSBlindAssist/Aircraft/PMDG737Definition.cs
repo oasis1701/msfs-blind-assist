@@ -53,9 +53,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // unsigned bytes the panel never sets to 0 deliberately.
     // ---------------------------------------------------------------------
     private double _lastAnnouncedAltimeter = double.NaN;
-    // Last-announced FLT/LAND ALT window values (feet). NaN = no sample yet
-    // (seed silently). A panel-initiated set pre-loads these so the monitor
-    // does not double-announce after HandleUIVariableSet already confirmed.
+    // Last-announced FLT/LAND ALT window values (feet). NaN = nothing announced
+    // yet; since `value == NaN` is always false, the FIRST change announces (the
+    // connect baseline never reaches ProcessSimVarUpdate — MainForm absorbs it on
+    // the initial-snapshot early-return). A panel-initiated set pre-loads these so
+    // the monitor does not double-announce after HandleUIVariableSet confirmed.
     private double _lastFltAltWindow = double.NaN;
     private double _lastLandAltWindow = double.NaN;
     private double _lastCom1Active = double.NaN;
@@ -4710,13 +4712,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // -------------------------------------------------------------
             // Pressurization FLT ALT / LAND ALT — auto-announce on change from
-            // any source. Seed silently on the first sample; a panel-initiated
-            // set pre-loads _last* (see HandleUIVariableSet) so this does not
-            // double-announce the value the panel already confirmed.
+            // any source. NO NaN-seed-and-swallow here: the connect baseline is
+            // absorbed upstream by MainForm.OnSimVarUpdated's initial-snapshot
+            // early-return (it caches the value and returns BEFORE calling
+            // ProcessSimVarUpdate), so this case only ever sees genuine changes —
+            // including the FIRST one, which must announce. _last* starts NaN and
+            // `value == NaN` is false, so the first change falls through and
+            // announces; a panel-initiated set pre-loads _last* (see
+            // HandleUIVariableSet) so this does not double-announce it. Do NOT
+            // re-add a `double.IsNaN(_last) -> seed; return` guard: with the
+            // baseline already absorbed it would silently eat the FIRST real
+            // change — and these are rare, discrete values, so that is the only
+            // callout the pilot gets.
             // -------------------------------------------------------------
             case "AIR_FltAltWindow":
             {
-                if (double.IsNaN(_lastFltAltWindow)) { _lastFltAltWindow = value; return true; }
                 if (value == _lastFltAltWindow) return true;
                 _lastFltAltWindow = value;
                 announcer.Announce($"Flight altitude {(int)Math.Round(value)} feet");
@@ -4724,7 +4734,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
             case "AIR_LandAltWindow":
             {
-                if (double.IsNaN(_lastLandAltWindow)) { _lastLandAltWindow = value; return true; }
                 if (value == _lastLandAltWindow) return true;
                 _lastLandAltWindow = value;
                 announcer.Announce($"Landing altitude {(int)Math.Round(value)} feet");
