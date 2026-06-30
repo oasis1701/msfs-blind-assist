@@ -1361,6 +1361,7 @@ public partial class MainForm : Form
         {
             bool onGround = e.Value >= 0.5;
             bool justTouchedDown = onGround && !_lastOnGround;
+            bool justLiftedOff = !onGround && _lastOnGround;
             _lastOnGround = onGround;
             // Mirror to SimConnectManager so other components (LandingExitForm,
             // etc.) that have a SimConnectManager reference can read the latest
@@ -1386,6 +1387,36 @@ public partial class MainForm : Form
             {
                 landingRateAnnouncer.OnTouchdown(
                     simConnectManager.GetCachedVariableValue("G_FORCE") ?? 1.0);
+            }
+
+            // Auto hand-off at rotation: when the pilot lifts off WHILE Takeoff
+            // Assist is running, hand control to Hand Fly mode — deactivate
+            // Takeoff Assist and activate Hand Fly — so guidance continues
+            // seamlessly from centerline-tracking to attitude hand-flying.
+            // Gated on the user setting + TA active + HandFly not already on.
+            // Naturally one-shot: once airborne TA is off, so a stray oleo
+            // bounce during the initial climb can't re-trigger it. Placed beside
+            // justTouchedDown so it shares the same (UI-thread) context those
+            // sibling Toggle calls already rely on.
+            if (justLiftedOff
+                && SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+                && takeoffAssistManager.IsActive
+                && !handFlyManager.IsActive)
+            {
+                // Toggle()'s deactivation branch ignores its position args
+                // (the !isActive path reads none of lat/lon/heading/magVar),
+                // so 0s are correct here.
+                takeoffAssistManager.Toggle(0, 0, 0, 0);   // "Takeoff assist off" (clipped below)
+                handFlyManager.Toggle();                    // "Hand fly mode active" (clipped below)
+
+                // Both Toggles AnnounceImmediate, and AnnounceImmediate
+                // interrupts — so speak ONE clean breadcrumb LAST to supersede
+                // both. The pilot pressed no key, so this single cue is the
+                // spoken source of truth for the handoff. The Toggles'
+                // non-speech side effects (tone stop/start, monitoring
+                // start/stop, hotkey registration, ActiveChanged events) all
+                // still run.
+                announcer.AnnounceImmediate("Airborne. Takeoff assist off, hand fly active.");
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
