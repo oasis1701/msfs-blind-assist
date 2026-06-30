@@ -4450,7 +4450,8 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistHeadingToneThreshold,
             currentSettings.TakeoffAssistLegacyMode,
             currentSettings.TakeoffAssistEnableCallouts,
-            currentSettings.TakeoffAssistAutoActivateOnLineup))
+            currentSettings.TakeoffAssistAutoActivateOnLineup,
+            currentSettings.HandFlyAutoActivateOnTakeoff))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -4474,6 +4475,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
                 currentSettings.TakeoffAssistEnableCallouts = settingsForm.TakeoffAssistEnableCallouts;
                 currentSettings.TakeoffAssistAutoActivateOnLineup = settingsForm.TakeoffAssistAutoActivateOnLineup;
+                currentSettings.HandFlyAutoActivateOnTakeoff = settingsForm.HandFlyAutoActivateOnTakeoff;
                 SettingsManager.Save();
 
                 // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
