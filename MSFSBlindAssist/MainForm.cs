@@ -255,6 +255,11 @@ public partial class MainForm : Form
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
+    // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
+    // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
+    // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle. The
+    // schedule restarts this timer per push, so a burst settles into a SINGLE repaint.
+    private System.Windows.Forms.Timer? _displayRepaintDebounce;
     private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
@@ -990,14 +995,13 @@ public partial class MainForm : Form
                 pendingDisplayRequests[e.VarName].TrySetResult(true);
             }
 
-            // Update display list if visible
-            if (currentControls.ContainsKey("_DISPLAY_"))
+            // Repaint the display list if visible — COALESCED. During the auto-refresh tick the
+            // whole panel is force-read at once, so N responses land in quick succession; without
+            // debouncing, each would rebuild + reconcile the entire list (O(N) × N). Schedule one
+            // repaint instead.
+            if (currentControls.ContainsKey("_DISPLAY_") && currentControls["_DISPLAY_"] is ListBox)
             {
-                ListBox? displayBox = currentControls["_DISPLAY_"] as ListBox;
-                if (displayBox != null)
-                {
-                    UpdateDisplayText(displayBox);
-                }
+                ScheduleDisplayRepaint();
             }
             // DON'T return - continue processing for announcements if needed
         }
@@ -1947,69 +1951,38 @@ public partial class MainForm : Form
 
             // Split any multi-line entries (the SD-page override block is one display var
             // whose value is a multi-row block) into one list item per row, then update only
-            // the items whose text changed — preserving the selected row so the reader stays
-            // put. This is what replaced the multiline TextBox + caret-preserving rewrite: a
-            // per-item list update never moves a caret, so NVDA's cursor never jumps.
+            // the items whose text changed — preserving the selected ROW (by content) so the
+            // reader stays put. A per-item list update never moves a caret, so NVDA's cursor
+            // never jumps. Shared with the MCDU/CDU display forms via Forms.DisplayList.
             var lines = new List<string>();
             foreach (var v in values)
                 lines.AddRange((v ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
-            UpdateStatusListItems(displayBox, lines);
+            Forms.DisplayList.UpdateInPlace(displayBox, lines);
         }
     }
 
     /// <summary>
-    /// Update a status-display ListBox in place: rewrite ONLY the items whose text changed and
-    /// never alter the selection, so the screen reader keeps its place on the row the user is
-    /// reading (a stable value is never re-touched, so it never re-announces; only a row whose
-    /// value actually changed re-announces while focused). A changed item COUNT (page switch /
-    /// rows added or removed) rebuilds the list and restores the selected index if still valid.
+    /// Request a status-list repaint, COALESCED via a short one-shot debounce. Restarting the timer
+    /// on every display-var push collapses a force-read burst (the auto-refresh tick reads the whole
+    /// panel at once) into a single <see cref="UpdateDisplayText(ListBox)"/> pass instead of one per
+    /// response. The repaint reads the current cache, so the single late pass shows the freshest data.
     /// </summary>
-    private static void UpdateStatusListItems(ListBox lb, List<string> lines)
+    private void ScheduleDisplayRepaint()
     {
-        if (lb == null || lb.IsDisposed) return;
-        int n = lines.Count;
-
-        // First populate.
-        if (lb.Items.Count == 0)
+        if (_displayRepaintDebounce == null)
         {
-            if (n == 0) return;
-            lb.BeginUpdate();
-            try { for (int i = 0; i < n; i++) lb.Items.Add(lines[i]); }
-            finally { lb.EndUpdate(); }
-            return;
+            _displayRepaintDebounce = new System.Windows.Forms.Timer { Interval = 120 };
+            _displayRepaintDebounce.Tick += (s, e) =>
+            {
+                _displayRepaintDebounce!.Stop();
+                if (currentControls != null &&
+                    currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is ListBox lb)
+                    UpdateDisplayText(lb);
+            };
         }
-
-        // Nothing changed? Don't touch the list at all — no NVDA re-read, no flicker.
-        if (lb.Items.Count == n)
-        {
-            bool anyDiff = false;
-            for (int i = 0; i < n; i++)
-                if (!string.Equals(lb.Items[i] as string, lines[i], StringComparison.Ordinal)) { anyDiff = true; break; }
-            if (!anyDiff) return;
-        }
-
-        int sel = lb.SelectedIndex;
-        int top = lb.TopIndex;
-        lb.BeginUpdate();
-        try
-        {
-            // Grow/shrink the tail IN PLACE — never Clear (that drops the selection and makes
-            // NVDA re-read from the top). Then rewrite ONLY the rows whose text changed, which
-            // leaves the selection on its row. Mirrors the proven MCDU/CDU list-update pattern.
-            while (lb.Items.Count > n) lb.Items.RemoveAt(lb.Items.Count - 1);
-            while (lb.Items.Count < n) lb.Items.Add("");
-            for (int i = 0; i < n; i++)
-                if (!string.Equals(lb.Items[i] as string, lines[i], StringComparison.Ordinal))
-                    lb.Items[i] = lines[i];
-        }
-        finally
-        {
-            lb.EndUpdate();
-            // Restore selection + scroll (setting SelectedIndex to its current value is a no-op,
-            // so an undisturbed selection fires no SelectedIndexChanged and never re-announces).
-            try { if (sel >= 0 && sel < lb.Items.Count) lb.SelectedIndex = sel; } catch { }
-            try { if (top >= 0 && top < lb.Items.Count) lb.TopIndex = top; } catch { }
-        }
+        // Restart: a new push within the window pushes the single repaint out to after the burst.
+        _displayRepaintDebounce.Stop();
+        _displayRepaintDebounce.Start();
     }
 
 
@@ -6645,13 +6618,14 @@ public partial class MainForm : Form
         if (!hasDisplay)
         {
             _sdAutoRefreshTimer?.Stop();
+            _displayRepaintDebounce?.Stop();   // no pending repaint into a panel that's gone
             return;
         }
         if (_sdAutoRefreshTimer == null)
         {
-            // 1s for live monitoring. The tick force-reads the page vars and repaints the list
-            // directly (no TaskCompletionSource/2s-timeout dance), so ticks can't stack and a
-            // changed value surfaces within ~one read round-trip instead of several seconds.
+            // 1s for live monitoring. The tick force-reads the page vars and schedules a single
+            // coalesced repaint (no TaskCompletionSource/2s-timeout dance), so ticks can't stack
+            // and a changed value surfaces within ~one read round-trip instead of several seconds.
             _sdAutoRefreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
             _sdAutoRefreshTimer.Tick += SdAutoRefreshTimer_Tick;
         }
@@ -6692,17 +6666,17 @@ public partial class MainForm : Form
             try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
 
             // (b) Force-read the panel's own display vars so the cache is fresh (covers the
-            //     non-override panels whose display vars ARE the content), then repaint the list
-            //     from the current cache. No 2s TaskCompletionSource wait — the force-read
-            //     responses also push their own UpdateDisplayText via OnSimVarUpdated, so a
-            //     changed row appears within ~one read round-trip.
+            //     non-override panels whose display vars ARE the content). Each force-read response
+            //     pushes through OnSimVarUpdated, which schedules a COALESCED repaint — so the whole
+            //     burst of responses collapses into ONE list rebuild (instead of one per var), and a
+            //     changed row appears within ~one read round-trip. We also schedule once here so the
+            //     list still repaints when no value changed (e.g. the very first populate).
             if (currentAircraft.GetPanelDisplayVariables().TryGetValue(currentPanel, out var liveVars))
                 foreach (var vk in liveVars)
                     if (currentAircraft.GetVariables().ContainsKey(vk))
                         simConnectManager.RequestVariable(vk, forceUpdate: true);
 
-            if (currentControls.TryGetValue("_DISPLAY_", out var lbc) && lbc is ListBox lb)
-                UpdateDisplayText(lb);
+            ScheduleDisplayRepaint();
         }
         catch { /* best-effort live refresh; never let a tick crash the UI */ }
     }
