@@ -82,7 +82,14 @@ public static class PMDG737ChecklistDefinitions
                 new[] { "AIR_BleedAirSwitch_1" }, (e, _) => e.SetEngBleeds(1)),
             Auto("PF_FD", "PREFLIGHT", "Flight directors: ON", "MCP_FDSw_0", v => v > 0.5, RevertBehavior.StayComplete, new[] { "MCP_FDSw_1" }, action: null),
             Auto("PF_AB", "PREFLIGHT", "Autobrake: RTO", "MAIN_AutobrakeSelector", v => v < 0.5, RevertBehavior.RevertToState, (e, _) => e.SetAutobrake(0)),
-            Reminder("PF_PRESS", "PREFLIGHT", "Flight and landing altitudes: SET"),
+            // Auto-ticks when both FLT/LAND ALT windows match the SimBrief plan (synthetic
+            // field — see AircraftStateEvaluator); ticking fires both direct-set events,
+            // SPACED (two CDA writes must not share a frame). RevertToState: it is a value
+            // check, so dialing away from the plan should untick it (the PF_AB pattern).
+            // No plan loaded → the action no-ops and it behaves like the old reminder.
+            AutoAsync("PF_PRESS", "PREFLIGHT", "Flight and landing altitudes: SET",
+                "FO_PRESS_ALTS_MATCH", v => v > 0.5, RevertBehavior.RevertToState,
+                (e, s) => e.SetPressurizationAltitudesAsync(s)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
         }
     };
@@ -233,7 +240,8 @@ public static class PMDG737ChecklistDefinitions
             Reminder("PFC_OXY", "PREFLIGHT_CL", "Oxygen: TESTED, 100%"),
             Auto("PFC_WINHEAT", "PREFLIGHT_CL", "Window heat: ON", "ICE_WindowHeatSw_0", v => v > 0.5, RevertBehavior.RevertToState,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, action: null),
-            Reminder("PFC_PRESS", "PREFLIGHT_CL", "Pressurization mode selector: AUTO"),
+            Auto("PFC_PRESS", "PREFLIGHT_CL", "Pressurization mode selector: AUTO",
+                "AIR_PressurizationModeSelector", v => v < 0.5, RevertBehavior.RevertToState, action: null),
             Reminder("PFC_INST", "PREFLIGHT_CL", "Flight instruments: heading and altimeter checked"),
             Auto("PFC_PARK", "PREFLIGHT_CL", "Parking brake: SET", "PED_annunParkingBrake", v => v > 0.5, RevertBehavior.RevertToState, action: null),
             Auto("PFC_LEVERS", "PREFLIGHT_CL", "Engine start levers: CUTOFF", "FUEL_annunENG_VALVE_CLOSED_0", v => v > 0.5, RevertBehavior.RevertToState,
@@ -340,7 +348,10 @@ public static class PMDG737ChecklistDefinitions
         Id = "DESCENT_CL", Name = "Descent Checklist",
         Items = new()
         {
-            Reminder("DC_PRESS", "DESCENT_CL", "Pressurization: landing altitude set"),
+            // Auto-verifies (action-free, per the *_CL invariant): ticks when the LAND ALT
+            // window matches the SimBrief destination elevation. No plan → manual tick.
+            Auto("DC_PRESS", "DESCENT_CL", "Pressurization: landing altitude set",
+                "FO_PRESS_LAND_ALT_MATCH", v => v > 0.5, RevertBehavior.RevertToState, action: null),
             Reminder("DC_RECALL", "DESCENT_CL", "Recall: checked"),
             Reminder("DC_AB", "DESCENT_CL", "Autobrake: as required"),
             Reminder("DC_DATA", "DESCENT_CL", "Landing data: VREF and minimums set"),

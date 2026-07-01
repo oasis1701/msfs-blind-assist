@@ -266,6 +266,19 @@ public class AircraftActionExecutor : IFoActionExecutor
         SetApuSelector(2);                  // START
     }
 
+    /// <summary>Set pressurization FLT ALT + LAND ALT from the stored SimBrief plan
+    /// (values pre-rounded/clamped at evaluator storage; the direct-control events take
+    /// literal feet). SPACED — two CDA writes must not share a sim frame. A missing plan
+    /// value is skipped; with no plan at all this is a no-op (the checklist item then
+    /// behaves like the old manual reminder).</summary>
+    public async Task SetPressurizationAltitudesAsync(AircraftStateEvaluator state)
+    {
+        var actions = new List<(string ev, int? target)>();
+        if (state.PlannedFltAltFt  is int f) actions.Add(("EVT_OH_PRESS_FLT_ALT_SET", f));
+        if (state.PlannedLandAltFt is int l) actions.Add(("EVT_OH_PRESS_LAND_ALT_SET", l));
+        if (actions.Count > 0) await FireSpacedAsync(actions.ToArray());
+    }
+
     // Electrical
     public bool SetBattery(int p)        => Fire("EVT_OH_ELEC_BATTERY_SWITCH", p);          // 2=ON
     public bool SetStandbyPower(int p)   => Fire("EVT_OH_ELEC_STBY_PWR_SWITCH", p);         // 2=AUTO
