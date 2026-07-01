@@ -7,7 +7,9 @@ organized by cockpit AREA / PANEL in roughly **overhead → glareshield → inst
 
 - The **FCU is intentionally EXCLUDED** (out of scope) per request.
 - Sources: local clone `docs/a380-simvars.md`, the model-behaviour XML under
-  `SimObjects/AirPlanes/FlyByWire_A380_842/model/behaviour/**` and `model/A380_COCKPIT.xml`,
+  `SimObjects/AirPlanes/FlyByWire_A380X/attachments/flybywire/Part_Interior_Cockpit/model/behaviour/**`
+  (the MSFS-2024-native modular rebuild #10758 relocated these from the old
+  `SimObjects/AirPlanes/FlyByWire_A380_842/model/behaviour/**`) and `model/A380_COCKPIT.xml`,
   and the FBW docs site (`a380x-flight-deck-api`, `a380x-systems-api`).
 - Prefix legend per entry: `A380X_` = A380-specific FBW var, `A32NX_` = var reused from the A32NX
   codebase (same name carried over to the A380), `FBW_` = framework/shared FBW var, bare names

@@ -53,6 +53,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // unsigned bytes the panel never sets to 0 deliberately.
     // ---------------------------------------------------------------------
     private double _lastAnnouncedAltimeter = double.NaN;
+    // Last-announced FLT/LAND ALT window values (feet). NaN = nothing announced
+    // yet; since `value == NaN` is always false, the FIRST change announces (the
+    // connect baseline never reaches ProcessSimVarUpdate — MainForm absorbs it on
+    // the initial-snapshot early-return). A panel-initiated set pre-loads these so
+    // the monitor does not double-announce after HandleUIVariableSet confirmed.
+    private double _lastFltAltWindow = double.NaN;
+    private double _lastLandAltWindow = double.NaN;
     private double _lastCom1Active = double.NaN;
     private double _lastCom2Active = double.NaN;
     private double _lastCom1Standby = double.NaN;
@@ -848,6 +855,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "CLOSE", "Neutral", "OPEN");
         d["AIR_PressurizationModeSelector"] = Selector("AIR_PressurizationModeSelector",
             "Pressurization Mode", "AUTO", "ALTN", "MAN");
+
+        // Pressurization flight/landing altitude ENTRY (numeric _SET inputs).
+        // Dispatched in HandleUIVariableSet to the PMDG "Direct Control" events
+        // EVT_OH_PRESS_FLT_ALT_SET / _LAND_ALT_SET (literal feet). Synthetic
+        // Name (not a struct field) + Never frequency, mirroring the existing
+        // EFIS_MinsValueFt_*_SET inputs.
+        d["AIR_FltAlt_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_AIR_FltAlt",
+            DisplayName = "Flight Altitude",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+        d["AIR_LandAlt_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_AIR_LandAlt",
+            DisplayName = "Landing Altitude",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+        d["AIR_FltAlt_SET"].CurrentValueSourceKey  = "AIR_FltAltWindow";
+        d["AIR_LandAlt_SET"].CurrentValueSourceKey = "AIR_LandAltWindow";
+
+        // Background monitors for FLT/LAND ALT — the numeric "window" values
+        // that track the knob live (the char[6] display strings are obsolete
+        // per the SDK; the uint windows update reliably — verified). Continuous
+        // + IsAnnounced so a change from ANY source (knob, add-on, state load)
+        // is spoken via ProcessSimVarUpdate. NOT placed on any panel.
+        d["AIR_FltAltWindow"]  = Numeric("AIR_FltAltWindow",  "Flight Altitude");
+        d["AIR_LandAltWindow"] = Numeric("AIR_LandAltWindow", "Landing Altitude");
 
         // Pressurization, duct-pressure, and cabin-temperature readouts —
         // continuous-numeric SDK fields rendered as read-only TextBoxes on
@@ -1883,6 +1922,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
                 "AIR_IsolationValveSwitch",
                 "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
+                "AIR_FltAlt_SET", "AIR_LandAlt_SET",
                 "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM",
                 // Continuous readouts (pressurization, duct pressure, cabin temp)
                 "AIR_CabinAltNeedle", "AIR_CabinDPNeedle", "AIR_CabinVSNeedle",
@@ -3907,6 +3947,37 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // Pressurization FLT ALT / LAND ALT direct-set (numeric _SET inputs).
+        //   The PMDG "Direct Control" events take the literal altitude in feet.
+        //   The panel knob rounds DOWN — FLT ALT to 500 ft, LAND ALT to 50 ft —
+        //   and clamps; we mirror that so the spoken confirmation equals what the
+        //   cockpit window shows. Below-sea-level LAND ALT is out of scope (min 0).
+        // ------------------------------------------------------------------
+        if (varKey == "AIR_FltAlt_SET" || varKey == "AIR_LandAlt_SET")
+        {
+            bool isFlt = varKey == "AIR_FltAlt_SET";
+            string evtName = isFlt ? "EVT_OH_PRESS_FLT_ALT_SET" : "EVT_OH_PRESS_LAND_ALT_SET";
+            int step = isFlt ? 500 : 50;
+            int maxFt = isFlt ? 42000 : 14000;
+
+            int feet = (int)Math.Round(value);
+            if (feet < 0) feet = 0;
+            if (feet > maxFt) feet = maxFt;
+            feet = (feet / step) * step;   // round DOWN to the knob's step
+
+            if (EventIds.TryGetValue(evtName, out int pressEvId))
+            {
+                simConnect.SendPMDGEvent(evtName, (uint)pressEvId, feet);
+                string label = isFlt ? "Flight altitude" : "Landing altitude";
+                announcer.Announce($"{label} set to {feet} feet");
+                // Pre-load the monitor guard so the imminent window change does
+                // not re-announce the value we just confirmed.
+                if (isFlt) _lastFltAltWindow = feet; else _lastLandAltWindow = feet;
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 0-cabin. Cabin & cockpit furniture (see the CABIN & COCKPIT
         //     FURNITURE region in GetVariables). All dispatch shapes below
         //     were live-verified closed-loop with PMDGDispatchTester
@@ -4636,6 +4707,36 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true;
                 _lastAnnouncedStabTrim = rounded;
                 announcer.Announce($"Trim {rounded:F1}");
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // Pressurization FLT ALT / LAND ALT — auto-announce on change from
+            // any source. NO NaN-seed-and-swallow here: the connect baseline is
+            // absorbed upstream by MainForm.OnSimVarUpdated's initial-snapshot
+            // early-return (it caches the value and returns BEFORE calling
+            // ProcessSimVarUpdate), so this case only ever sees genuine changes —
+            // including the FIRST one, which must announce. _last* starts NaN and
+            // `value == NaN` is false, so the first change falls through and
+            // announces; a panel-initiated set pre-loads _last* (see
+            // HandleUIVariableSet) so this does not double-announce it. Do NOT
+            // re-add a `double.IsNaN(_last) -> seed; return` guard: with the
+            // baseline already absorbed it would silently eat the FIRST real
+            // change — and these are rare, discrete values, so that is the only
+            // callout the pilot gets.
+            // -------------------------------------------------------------
+            case "AIR_FltAltWindow":
+            {
+                if (value == _lastFltAltWindow) return true;
+                _lastFltAltWindow = value;
+                announcer.Announce($"Flight altitude {(int)Math.Round(value)} feet");
+                return true;
+            }
+            case "AIR_LandAltWindow":
+            {
+                if (value == _lastLandAltWindow) return true;
+                _lastLandAltWindow = value;
+                announcer.Announce($"Landing altitude {(int)Math.Round(value)} feet");
                 return true;
             }
 

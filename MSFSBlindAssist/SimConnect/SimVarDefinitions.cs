@@ -104,6 +104,13 @@ public class SimVarDefinition
     public string Arinc429NotAvailableText { get; set; } = "not available";
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
     /// <summary>
+    /// For a "_SET" numeric-input control: the variable KEY whose cached current
+    /// value pre-fills this input field (seeded on creation and on focus-in, then
+    /// selected so the user can overtype). Lets an entry field double as a live
+    /// readout. Empty (default) = the field starts blank, as before.
+    /// </summary>
+    public string CurrentValueSourceKey { get; set; } = string.Empty;
+    /// <summary>
     /// When true, the panel renderer skips the ComboBox/Button path and renders a read-only TextBox
     /// whose Text mirrors the current ValueDescriptions mapping for the cached value. Used for
     /// annunciators and other status-only variables that have ValueDescriptions but are not

@@ -6165,7 +6165,28 @@ public partial class MainForm : Form
                 textBox.Location = new Point(0, 0);
                 textBox.Size = new Size(100, 25);
                 textBox.AccessibleName = $"{varDef.DisplayName} value";
-                
+
+                // If this _SET field declares a current-value source, pre-fill it
+                // from the cached value on creation AND on focus-in, then select
+                // all, so a screen reader reads the current value when the user
+                // tabs in and overtyping replaces it. Refreshing only on focus-in
+                // (not continuously) avoids clobbering text the user is typing.
+                if (!string.IsNullOrEmpty(varDef.CurrentValueSourceKey))
+                {
+                    string srcKey = varDef.CurrentValueSourceKey;
+                    Action seedFromCurrent = () =>
+                    {
+                        if (currentSimVarValues.TryGetValue(srcKey, out double cur))
+                        {
+                            textBox.Text = ((int)Math.Round(cur)).ToString(
+                                System.Globalization.CultureInfo.InvariantCulture);
+                            textBox.SelectAll();
+                        }
+                    };
+                    seedFromCurrent();
+                    textBox.GotFocus += (s3, e3) => seedFromCurrent();
+                }
+
                 Button button = new Button();
                 button.Text = "Set";
                 button.Location = new Point(110, 0);
