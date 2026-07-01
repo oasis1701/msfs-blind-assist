@@ -242,6 +242,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public void SetEngineN2(double eng1N2, double eng2N2) { /* not used by the 777 evaluator */ }
 
     /// <summary>
+    /// Interface parity with the 737 (which sets pressurization FLT/LAND ALT from the
+    /// SimBrief plan). The 777's pressurization is automatic (FMC landing altitude) —
+    /// nothing to store.
+    /// </summary>
+    public void SetPlannedPressurizationAltitudes(int? cruiseAltFt, int? destElevFt) { }
+
+    /// <summary>
     /// Returns the SimBrief planned takeoff flap setting (degrees: 1, 5, 15, 20, 25, 30).
     /// Defaults to 5 if no SimBrief OFP has been loaded.
     /// </summary>

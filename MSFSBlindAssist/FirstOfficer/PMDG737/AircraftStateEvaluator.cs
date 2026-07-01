@@ -40,9 +40,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
 
     public double GetValue(string field)
     {
-        // Synthetic FO-only fields (not in the PMDG CDA struct), served from the timer-pushed cache.
+        // Synthetic FO-only fields (not in the PMDG CDA struct). N2 from the timer-pushed
+        // cache; the FO_PRESS_* keys compare the live FLT/LAND ALT windows to the stored
+        // SimBrief plan (checklist auto-detect reads them — see the plan block below).
         if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
         if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
+        if (field == "FO_PRESS_ALTS_MATCH")     return AllPressAltsMatch() ? 1 : 0;
+        if (field == "FO_PRESS_LAND_ALT_MATCH") return LandAltMatches() ? 1 : 0;
         try { return _dm?.GetFieldValue(field) ?? 0; }
         catch { return 0; }
     }
@@ -218,4 +222,49 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     private int _takeoffFlaps = 5;
     public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
     public int  GetTakeoffFlaps() => _takeoffFlaps;
+
+    // -----------------------------------------------------------------------
+    // SimBrief pressurization plan (set when an OFP is loaded). Rounded to the panel
+    // knob steps + clamped AT STORAGE — FLT ALT nearest 500 ft (0..42000), LAND ALT
+    // nearest 50 ft (0..14000) — so every consumer (the Preflight flow's target
+    // providers, the FO_PRESS_* synthetic match fields, the checklist CheckAction)
+    // reads the exact value the cockpit window will show. PR #120's panel path rounds
+    // DOWN to mirror the knob; a stored value is already a step multiple, so the
+    // event-side round-down is a no-op and the two paths cannot disagree.
+    // -1 sentinel = that value not available (no plan / unparseable OFP field).
+    // -----------------------------------------------------------------------
+    private int _plannedFltAltFt = -1;
+    private int _plannedLandAltFt = -1;
+
+    public void SetPlannedPressurizationAltitudes(int? cruiseAltFt, int? destElevFt)
+    {
+        _plannedFltAltFt  = cruiseAltFt is int c ? RoundToStep(c, 500, 42000) : -1;
+        _plannedLandAltFt = destElevFt  is int d ? RoundToStep(d, 50, 14000)  : -1;
+    }
+
+    private static int RoundToStep(int feet, int step, int maxFt)
+    {
+        if (feet < 0) feet = 0;           // below-sea-level LAND ALT out of scope (PR #120)
+        if (feet > maxFt) feet = maxFt;
+        return (int)Math.Round(feet / (double)step, MidpointRounding.AwayFromZero) * step;
+    }
+
+    /// <summary>Planned FLT ALT (rounded/clamped), or null when no SimBrief plan.</summary>
+    public int? PlannedFltAltFt  => _plannedFltAltFt  >= 0 ? _plannedFltAltFt  : null;
+    /// <summary>Planned LAND ALT (rounded/clamped), or null when no SimBrief plan.</summary>
+    public int? PlannedLandAltFt => _plannedLandAltFt >= 0 ? _plannedLandAltFt : null;
+    /// <summary>At least one planned pressurization value is available.</summary>
+    public bool HasPressurizationPlan => _plannedFltAltFt >= 0 || _plannedLandAltFt >= 0;
+
+    // Window-vs-plan match, strictly less than one knob step: window values are
+    // step-quantized, so a full-step difference is a DIFFERENT setting, not a match;
+    // strict-less still absorbs float fuzz.
+    public bool FltAltMatches()  => _plannedFltAltFt  >= 0 && Math.Abs(GetValue("AIR_FltAltWindow")  - _plannedFltAltFt)  < 500;
+    public bool LandAltMatches() => _plannedLandAltFt >= 0 && Math.Abs(GetValue("AIR_LandAltWindow") - _plannedLandAltFt) < 50;
+
+    // Every AVAILABLE planned value matches its window (a partial plan checks what exists).
+    private bool AllPressAltsMatch() =>
+        HasPressurizationPlan
+        && (_plannedFltAltFt  < 0 || FltAltMatches())
+        && (_plannedLandAltFt < 0 || LandAltMatches());
 }

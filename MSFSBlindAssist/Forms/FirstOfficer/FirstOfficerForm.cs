@@ -237,6 +237,21 @@ public class FirstOfficerForm<TExec, TState> : Form
             _stateEval.SetTakeoffFlaps(flaps);
             _announcer.AnnounceImmediate($"Takeoff flaps: {flaps}");
         }
+
+        // Pressurization plan: FLT ALT = SimBrief cruise, LAND ALT = destination field
+        // elevation (interface method — the 737 evaluator stores it rounded to the panel
+        // knob steps; the 777 no-ops, its pressurization is automatic). DestElevation may
+        // legitimately parse to 0 (sea level), so no > 0 gate on it.
+        int? cruiseFt   = int.TryParse(ofp.InitialAltitude, out int crz) && crz > 0 ? crz : null;
+        int? destElevFt = int.TryParse(ofp.DestElevation, out int elev) ? elev : null;
+        _stateEval.SetPlannedPressurizationAltitudes(cruiseFt, destElevFt);
+        if (cruiseFt != null || destElevFt != null)
+        {
+            var pressParts = new List<string>();
+            if (cruiseFt != null)   pressParts.Add($"flight altitude {cruiseFt} feet");
+            if (destElevFt != null) pressParts.Add($"landing altitude {destElevFt} feet");
+            _announcer.AnnounceImmediate($"Pressurization plan: {string.Join(", ", pressParts)}.");
+        }
     }
 
     private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition pos)
