@@ -139,11 +139,11 @@ namespace MSFSBlindAssist
             //
             // geminiSettingsMenuItem
             //
-            this.geminiSettingsMenuItem.AccessibleName = "Gemini Settings";
-            this.geminiSettingsMenuItem.AccessibleDescription = "Configure Google Gemini settings";
+            this.geminiSettingsMenuItem.AccessibleName = "AI Settings";
+            this.geminiSettingsMenuItem.AccessibleDescription = "Choose the AI provider (Gemini or Claude) and configure its API key, model, and route grounding";
             this.geminiSettingsMenuItem.Name = "geminiSettingsMenuItem";
             this.geminiSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.geminiSettingsMenuItem.Text = "Ge&mini Settings";
+            this.geminiSettingsMenuItem.Text = "&AI Settings";
             this.geminiSettingsMenuItem.Click += new System.EventHandler(this.GeminiSettingsMenuItem_Click);
             //
             // handFlyOptionsMenuItem

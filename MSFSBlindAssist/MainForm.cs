@@ -4019,9 +4019,9 @@ public partial class MainForm : Form
         {
             announcer.AnnounceImmediate("Capturing scene...");
 
-            // Create screenshot and Gemini services
+            // Create screenshot service + the user-selected AI provider (Gemini or Claude)
             var screenshotService = new ScreenshotService();
-            var geminiService = new GeminiService();
+            var aiProvider = AiProviderFactory.Create();
 
             // Check if MSFS window is available
             if (!screenshotService.IsMsfsWindowAvailable())
@@ -4038,8 +4038,8 @@ public partial class MainForm : Form
                 return;
             }
 
-            // Analyze scene with Gemini
-            string analysis = await geminiService.AnalyzeSceneAsync(screenshot);
+            // Analyze scene with the selected AI provider
+            string analysis = await aiProvider.AnalyzeSceneAsync(screenshot);
 
             // Show result in form (independent window with synchronous focus)
             var resultForm = new DisplayReadingResultForm("Scene", analysis, "Description");
@@ -4049,7 +4049,7 @@ public partial class MainForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.AnnounceImmediate("Gemini API key not configured. Please configure it in File menu, Gemini Settings.");
+            announcer.AnnounceImmediate("AI provider API key not configured. Please configure it in File menu, AI Settings.");
         }
         catch (Exception ex)
         {
@@ -4418,12 +4418,12 @@ public partial class MainForm : Form
 
     private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
     {
-        using (var settingsForm = new Forms.GeminiSettingsForm())
+        using (var settingsForm = new Forms.AiSettingsForm())
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                statusLabel.Text = "Gemini settings saved successfully";
-                announcer.Announce("Gemini settings saved successfully");
+                statusLabel.Text = "AI settings saved successfully";
+                announcer.Announce("AI settings saved successfully");
             }
         }
     }
