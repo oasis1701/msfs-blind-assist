@@ -98,7 +98,19 @@ public static class PMDG737FlowDefinitions
             Multi("PF_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
             SW("PF_ISO", "Isolation valve: OPEN", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 2),
             Multi("PF_BLEEDS", "Engine bleeds: ON", ("EVT_OH_BLEED_ENG_1_SWITCH", 1), ("EVT_OH_BLEED_ENG_2_SWITCH", 1)),
-            Captain("PF_PRESS", "Set flight and landing altitudes on the pressurization panel."),
+            // Pressurization FLT/LAND ALT from the SimBrief plan (PMDG Direct Control
+            // events take literal feet; values pre-rounded to the knob steps at storage —
+            // see AircraftStateEvaluator.SetPlannedPressurizationAltitudes). Quietly
+            // skipped when no plan is loaded — the Captain fallback below announces
+            // instead. Two separate steps keep the CDA writes in separate sim frames.
+            // The PR #120 window monitors announce the resulting values automatically.
+            DynSW("PF_FLT_ALT", "Flight altitude: set", "EVT_OH_PRESS_FLT_ALT_SET",
+                s => s.PlannedFltAltFt, skipWhen: s => s.FltAltMatches()),
+            DynSW("PF_LAND_ALT", "Landing altitude: set", "EVT_OH_PRESS_LAND_ALT_SET",
+                s => s.PlannedLandAltFt, skipWhen: s => s.LandAltMatches()),
+            Skip(Captain("PF_PRESS", "Flight and landing altitudes",
+                    "Set flight and landing altitudes on the pressurization panel."),
+                s => s.HasPressurizationPlan),
             SW("PF_LOGO", "Logo lights: ON", "EVT_OH_LIGHTS_LOGO", 1),
             MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", s => s.IsFDLeftOn()),
             MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", s => s.IsFDRightOn()),
@@ -379,6 +391,22 @@ public static class PMDG737FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
+    // SetSwitch whose target resolves at DISPATCH time from evaluator state — for
+    // SimBrief-derived values unknown when these static definitions are built. A null
+    // provider result quietly skips the step (see FlowStep.TargetValueProvider).
+    private static Step DynSW(string id, string label, string eventName,
+        Func<AircraftStateEvaluator, int?> provider,
+        Func<AircraftStateEvaluator, bool>? skipWhen = null) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = eventName,
+        TargetValueProvider = provider,
+        SkipCondition = skipWhen,
+        PostActionDelayMs = 350,
+        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
     // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
     // switch is already in the desired state flips it the wrong way. The skip predicate
     // is required so the step is no-op'd when already correct — the same guard the panel
@@ -443,11 +471,14 @@ public static class PMDG737FlowDefinitions
         PostActionDelayMs = 0,
     };
 
-    private static Step Captain(string id, string label) => new()
+    // reminderText: what "Captain action required: …" speaks (defaults to label). A
+    // separate short label matters when the step can be SKIPPED — the skip path reads
+    // "Already set: {label}", where an imperative sentence would compose badly.
+    private static Step Captain(string id, string label, string? reminderText = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = label,
+        ReminderText = reminderText ?? label,
         PostActionDelayMs = 200,
     };
 
