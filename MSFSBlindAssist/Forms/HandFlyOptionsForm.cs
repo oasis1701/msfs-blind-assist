@@ -54,10 +54,52 @@ public partial class HandFlyOptionsForm : Form
     private CheckBox enableCalloutsCheckBox = null!;
     private CheckBox autoActivateOnLineupCheckBox = null!;
 
+    // Visual Guidance — optional "centered tone change".
+    private CheckBox vgCenteredCheckBox = null!;
+    private Label vgCenteredWaveLabel = null!;
+    private ComboBox vgCenteredWaveCombo = null!;
+
+    // Waypoint Flight Director (en-route) tone options.
+    private Label fdSectionLabel = null!;
+    private Label fdToneLabel = null!;
+    private ComboBox fdToneCombo = null!;
+    private Label fdVolumeLabel = null!;
+    private TrackBar fdVolumeTrackBar = null!;
+    private Label fdVolumeValueLabel = null!;
+    private Label fdCurrentToneLabel = null!;
+    private ComboBox fdCurrentToneCombo = null!;
+    private Label fdCurrentVolumeLabel = null!;
+    private TrackBar fdCurrentVolumeTrackBar = null!;
+    private Label fdCurrentVolumeValueLabel = null!;
+    private CheckBox fdHardPanCheckBox = null!;
+    private CheckBox fdApAutoMuteCheckBox = null!;
+    private CheckBox fdCenteredCheckBox = null!;
+    private Label fdCenteredWaveLabel = null!;
+    private ComboBox fdCenteredWaveCombo = null!;
+
     private Button okButton = null!;
     private Button cancelButton = null!;
 
     private AudioToneGenerator? testToneGenerator;
+
+    // Flight Director tone test (desired + current dual tone; demonstrates hard-pan + centered).
+    private Button fdTestButton = null!;
+    private AudioToneGenerator? fdTestDesired;
+    private AudioToneGenerator? fdTestCurrent;
+
+    // New-option staging values (read from SettingsManager.Current; committed only on OK so Cancel
+    // is respected). These ride SettingsManager.Current directly rather than the constructor, to
+    // avoid widening the already-large constructor + its MainForm caller.
+    private bool _vgCenteredEnabled;
+    private HandFlyWaveType _vgCenteredWave;
+    private HandFlyWaveType _fdToneWave;
+    private double _fdVolume;
+    private HandFlyWaveType _fdCurrentWave;
+    private double _fdCurrentVolume;
+    private bool _fdHardPan;
+    private bool _fdApAutoMute;
+    private bool _fdCenteredEnabled;
+    private HandFlyWaveType _fdCenteredWave;
 
     public HandFlyFeedbackMode SelectedFeedbackMode { get; private set; }
     public HandFlyWaveType SelectedWaveType { get; private set; }
@@ -118,12 +160,28 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 975);
+        Size = new Size(500, 1000);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
+        // The dialog has grown past a typical screen height; scroll rather than clip on OK/Cancel.
+        AutoScroll = true;
+
+        // Stage the new (Visual Guidance centered + Flight Director) options from settings. They are
+        // committed back to SettingsManager.Current in OkButton_Click (so Cancel discards them).
+        var s = SettingsManager.Current;
+        _vgCenteredEnabled = s.VisualGuidanceCenteredToneEnabled;
+        _vgCenteredWave = s.VisualGuidanceCenteredToneWaveform;
+        _fdToneWave = s.WaypointFdToneWaveform;
+        _fdVolume = s.WaypointFdToneVolume;
+        _fdCurrentWave = s.WaypointFdCurrentToneWaveform;
+        _fdCurrentVolume = s.WaypointFdCurrentToneVolume;
+        _fdHardPan = s.WaypointFdHardPanTone;
+        _fdApAutoMute = s.WaypointFdApAutoMute;
+        _fdCenteredEnabled = s.WaypointFdCenteredToneEnabled;
+        _fdCenteredWave = s.WaypointFdCenteredToneWaveform;
 
         // Title Label
         titleLabel = new Label
@@ -578,11 +636,234 @@ public partial class HandFlyOptionsForm : Form
         };
         autoActivateOnLineupCheckBox.CheckedChanged += AutoActivateOnLineupCheckBox_CheckedChanged;
 
+        // ── Visual Guidance — centered tone change (optional) ──
+        vgCenteredCheckBox = new CheckBox
+        {
+            Text = "Centered tone change (Visual Guidance)",
+            Location = new Point(20, 900),
+            Size = new Size(450, 25),
+            Checked = _vgCenteredEnabled,
+            AccessibleName = "Centered tone change for Visual Guidance",
+            AccessibleDescription = "Off by default. When on, the Visual Guidance command tone changes to a waveform you choose below while you are laterally centered on the localizer, and changes back to its normal waveform when you drift off centerline. This gives you an extra timbre cue for centered versus not centered, on top of the left or right stereo pan. When off, the tone keeps its normal waveform at all times."
+        };
+        vgCenteredCheckBox.CheckedChanged += (s2, e2) =>
+        {
+            _vgCenteredEnabled = vgCenteredCheckBox.Checked;
+            vgCenteredWaveLabel.Visible = _vgCenteredEnabled;
+            vgCenteredWaveCombo.Visible = _vgCenteredEnabled;
+        };
+
+        vgCenteredWaveLabel = new Label
+        {
+            Text = "Centered tone type:",
+            Location = new Point(20, 933),
+            Size = new Size(250, 20),
+            AccessibleName = "Visual Guidance centered tone type Label"
+        };
+        vgCenteredWaveCombo = new ComboBox
+        {
+            Location = new Point(280, 931),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Visual Guidance centered tone type",
+            AccessibleDescription = "The waveform the Visual Guidance command tone switches to while centered, when the centered tone change option above is enabled. Pick one clearly different from the normal guidance tone so the change is obvious."
+        };
+        vgCenteredWaveCombo.Items.AddRange(new object[] { "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Sine (Rich)" });
+        vgCenteredWaveCombo.SelectedIndex = (int)_vgCenteredWave;
+        vgCenteredWaveCombo.SelectedIndexChanged += (s2, e2) => _vgCenteredWave = (HandFlyWaveType)vgCenteredWaveCombo.SelectedIndex;
+
+        // ── Waypoint Flight Director (en-route) tones ──
+        fdSectionLabel = new Label
+        {
+            Text = "Flight Director (en-route) tones:",
+            Location = new Point(20, 968),
+            Size = new Size(450, 20),
+            AccessibleName = "Flight Director tones section"
+        };
+
+        fdToneLabel = new Label
+        {
+            Text = "Flight Director tone:",
+            Location = new Point(20, 998),
+            Size = new Size(250, 20),
+            AccessibleName = "Flight Director tone type Label"
+        };
+        fdToneCombo = new ComboBox
+        {
+            Location = new Point(280, 996),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Flight Director tone type",
+            AccessibleDescription = "Waveform of the Waypoint Flight Director's command tone (the one whose pan is the bank command and whose pitch is the climb or descend command)."
+        };
+        fdToneCombo.Items.AddRange(new object[] { "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Sine (Rich)" });
+        fdToneCombo.SelectedIndex = (int)_fdToneWave;
+        fdToneCombo.SelectedIndexChanged += (s2, e2) => _fdToneWave = (HandFlyWaveType)fdToneCombo.SelectedIndex;
+
+        fdVolumeLabel = new Label
+        {
+            Text = "Flight Director Volume:",
+            Location = new Point(20, 1033),
+            Size = new Size(100, 20),
+            AccessibleName = "Flight Director volume Label"
+        };
+        fdVolumeTrackBar = new TrackBar
+        {
+            Location = new Point(120, 1028),
+            Size = new Size(300, 45),
+            Minimum = 0,
+            Maximum = 100,
+            TickFrequency = 10,
+            Value = (int)(_fdVolume * 100),
+            AccessibleName = "Flight Director volume level",
+            AccessibleDescription = "Adjust the Waypoint Flight Director command-tone volume from 0 to 100 percent."
+        };
+        fdVolumeValueLabel = new Label
+        {
+            Text = $"{fdVolumeTrackBar.Value}%",
+            Location = new Point(430, 1033),
+            Size = new Size(40, 20),
+            AccessibleName = "Flight Director volume value",
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        fdVolumeTrackBar.ValueChanged += (s2, e2) =>
+        {
+            _fdVolume = fdVolumeTrackBar.Value / 100.0;
+            fdVolumeValueLabel.Text = $"{fdVolumeTrackBar.Value}%";
+        };
+
+        fdCurrentToneLabel = new Label
+        {
+            Text = "Flight Director current-attitude tone:",
+            Location = new Point(20, 1078),
+            Size = new Size(250, 20),
+            AccessibleName = "Flight Director current attitude tone type Label"
+        };
+        fdCurrentToneCombo = new ComboBox
+        {
+            Location = new Point(280, 1076),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Flight Director current attitude tone type",
+            AccessibleDescription = "Waveform of the Flight Director's second tone, which tracks your actual attitude. Pick a waveform different from the command tone above so the two stay distinguishable when their pitches match."
+        };
+        fdCurrentToneCombo.Items.AddRange(new object[] { "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Sine (Rich)" });
+        fdCurrentToneCombo.SelectedIndex = (int)_fdCurrentWave;
+        fdCurrentToneCombo.SelectedIndexChanged += (s2, e2) => _fdCurrentWave = (HandFlyWaveType)fdCurrentToneCombo.SelectedIndex;
+
+        fdCurrentVolumeLabel = new Label
+        {
+            Text = "FD current-attitude Volume:",
+            Location = new Point(20, 1113),
+            Size = new Size(100, 20),
+            AccessibleName = "Flight Director current attitude tone volume Label"
+        };
+        fdCurrentVolumeTrackBar = new TrackBar
+        {
+            Location = new Point(120, 1108),
+            Size = new Size(300, 45),
+            Minimum = 0,
+            Maximum = 100,
+            TickFrequency = 10,
+            Value = (int)(_fdCurrentVolume * 100),
+            AccessibleName = "Flight Director current attitude tone volume level",
+            AccessibleDescription = "Adjust the Flight Director's current-attitude (follower) tone volume from 0 to 100 percent."
+        };
+        fdCurrentVolumeValueLabel = new Label
+        {
+            Text = $"{fdCurrentVolumeTrackBar.Value}%",
+            Location = new Point(430, 1113),
+            Size = new Size(40, 20),
+            AccessibleName = "Flight Director current attitude tone volume value",
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        fdCurrentVolumeTrackBar.ValueChanged += (s2, e2) =>
+        {
+            _fdCurrentVolume = fdCurrentVolumeTrackBar.Value / 100.0;
+            fdCurrentVolumeValueLabel.Text = $"{fdCurrentVolumeTrackBar.Value}%";
+        };
+
+        fdHardPanCheckBox = new CheckBox
+        {
+            Text = "Hard-pan Flight Director tones (speaker-friendly)",
+            Location = new Point(20, 1158),
+            Size = new Size(450, 25),
+            Checked = _fdHardPan,
+            AccessibleName = "Hard-pan Flight Director tones",
+            AccessibleDescription = "When enabled, both Flight Director tones snap to full left or full right once the bank command exceeds about one degree, instead of a proportional pan. Useful on stereo speakers where partial pan is hard to distinguish from centred. Headphone users normally leave this off. Default off."
+        };
+        fdHardPanCheckBox.CheckedChanged += (s2, e2) => _fdHardPan = fdHardPanCheckBox.Checked;
+
+        fdApAutoMuteCheckBox = new CheckBox
+        {
+            Text = "Flight Director auto-mute with autopilot",
+            Location = new Point(20, 1188),
+            Size = new Size(450, 25),
+            Checked = _fdApAutoMute,
+            AccessibleName = "Flight Director auto-mute with autopilot",
+            AccessibleDescription = "When enabled, the Flight Director tones go silent while the autopilot master is engaged and resume when you disengage it, so you can hand-fly with the Flight Director, engage the autopilot for cruise, and have the tone step aside on its own. Default on."
+        };
+        fdApAutoMuteCheckBox.CheckedChanged += (s2, e2) => _fdApAutoMute = fdApAutoMuteCheckBox.Checked;
+
+        fdCenteredCheckBox = new CheckBox
+        {
+            Text = "Centered tone change (Flight Director)",
+            Location = new Point(20, 1218),
+            Size = new Size(450, 25),
+            Checked = _fdCenteredEnabled,
+            AccessibleName = "Centered tone change for the Flight Director",
+            AccessibleDescription = "Off by default. When on, the Flight Director command tone changes to a waveform you choose below while you are on track (the bank command is near zero), and changes back when you drift off track. An extra timbre cue for on-track versus not, on top of the left or right pan. When off, the tone keeps its normal waveform at all times."
+        };
+        fdCenteredCheckBox.CheckedChanged += (s2, e2) =>
+        {
+            _fdCenteredEnabled = fdCenteredCheckBox.Checked;
+            fdCenteredWaveLabel.Visible = _fdCenteredEnabled;
+            fdCenteredWaveCombo.Visible = _fdCenteredEnabled;
+        };
+
+        fdCenteredWaveLabel = new Label
+        {
+            Text = "Centered tone type:",
+            Location = new Point(20, 1251),
+            Size = new Size(250, 20),
+            AccessibleName = "Flight Director centered tone type Label"
+        };
+        fdCenteredWaveCombo = new ComboBox
+        {
+            Location = new Point(280, 1249),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Flight Director centered tone type",
+            AccessibleDescription = "The waveform the Flight Director command tone switches to while on track, when the centered tone change option above is enabled. Pick one clearly different from the normal Flight Director tone so the change is obvious."
+        };
+        fdCenteredWaveCombo.Items.AddRange(new object[] { "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Sine (Rich)" });
+        fdCenteredWaveCombo.SelectedIndex = (int)_fdCenteredWave;
+        fdCenteredWaveCombo.SelectedIndexChanged += (s2, e2) => _fdCenteredWave = (HandFlyWaveType)fdCenteredWaveCombo.SelectedIndex;
+
+        // The centered-tone waveform pickers only appear while their checkbox is checked.
+        vgCenteredWaveLabel.Visible = _vgCenteredEnabled;
+        vgCenteredWaveCombo.Visible = _vgCenteredEnabled;
+        fdCenteredWaveLabel.Visible = _fdCenteredEnabled;
+        fdCenteredWaveCombo.Visible = _fdCenteredEnabled;
+
+        // Test Flight Director Tones button — plays the desired + current dual tone with a
+        // left<->right bank sweep, honouring the FD hard-pan and centered-tone settings above so
+        // you can verify both by ear before flying.
+        fdTestButton = new Button
+        {
+            Text = "Test Flight Director Tones",
+            Location = new Point(20, 1284),
+            Size = new Size(230, 35),
+            AccessibleName = "Test Flight Director Tones",
+            AccessibleDescription = "Plays the Flight Director's desired and current tones with a left-to-right bank sweep, applying the hard-pan and centered tone settings selected above, so you can preview them. Stops automatically after a few seconds."
+        };
+        fdTestButton.Click += FdTestButton_Click;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 905),
+            Location = new Point(310, 1350),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -594,7 +875,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 905),
+            Location = new Point(395, 1350),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -617,6 +898,15 @@ public partial class HandFlyOptionsForm : Form
             muteCenterlineCheckBox, invertPanningCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
             legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
+            vgCenteredCheckBox, vgCenteredWaveLabel, vgCenteredWaveCombo,
+            fdSectionLabel,
+            fdToneLabel, fdToneCombo,
+            fdVolumeLabel, fdVolumeTrackBar, fdVolumeValueLabel,
+            fdCurrentToneLabel, fdCurrentToneCombo,
+            fdCurrentVolumeLabel, fdCurrentVolumeTrackBar, fdCurrentVolumeValueLabel,
+            fdHardPanCheckBox, fdApAutoMuteCheckBox,
+            fdCenteredCheckBox, fdCenteredWaveLabel, fdCenteredWaveCombo,
+            fdTestButton,
             okButton, cancelButton
         });
 
@@ -663,8 +953,26 @@ public partial class HandFlyOptionsForm : Form
         legacyTakeoffCheckBox.TabIndex = 30;
         enableCalloutsCheckBox.TabIndex = 31;
         autoActivateOnLineupCheckBox.TabIndex = 32;
-        okButton.TabIndex = 33;
-        cancelButton.TabIndex = 34;
+        vgCenteredCheckBox.TabIndex = 33;
+        vgCenteredWaveLabel.TabIndex = 34;
+        vgCenteredWaveCombo.TabIndex = 35;
+        fdSectionLabel.TabIndex = 36;
+        fdToneLabel.TabIndex = 37;
+        fdToneCombo.TabIndex = 38;
+        fdVolumeLabel.TabIndex = 39;
+        fdVolumeTrackBar.TabIndex = 40;
+        fdCurrentToneLabel.TabIndex = 41;
+        fdCurrentToneCombo.TabIndex = 42;
+        fdCurrentVolumeLabel.TabIndex = 43;
+        fdCurrentVolumeTrackBar.TabIndex = 44;
+        fdHardPanCheckBox.TabIndex = 45;
+        fdApAutoMuteCheckBox.TabIndex = 46;
+        fdCenteredCheckBox.TabIndex = 47;
+        fdCenteredWaveLabel.TabIndex = 48;
+        fdCenteredWaveCombo.TabIndex = 49;
+        fdTestButton.TabIndex = 50;
+        okButton.TabIndex = 51;
+        cancelButton.TabIndex = 52;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -680,6 +988,7 @@ public partial class HandFlyOptionsForm : Form
         FormClosing += (sender, e) =>
         {
             StopTestTone();
+            StopFdTestTone();
         };
     }
 
@@ -816,6 +1125,7 @@ public partial class HandFlyOptionsForm : Form
     {
         try
         {
+            StopFdTestTone();   // don't overlap with the Flight Director test tone
             testToneGenerator = new AudioToneGenerator();
             testToneGenerator.Start(SelectedWaveType, SelectedVolume);
 
@@ -892,9 +1202,128 @@ public partial class HandFlyOptionsForm : Form
         testToneGenerator = null;
     }
 
+    private void FdTestButton_Click(object? sender, EventArgs e)
+    {
+        if (fdTestDesired?.IsPlaying == true)
+        {
+            StopFdTestTone();
+            fdTestButton.Text = "Test Flight Director Tones";
+        }
+        else
+        {
+            PlayFdTestTone();
+            fdTestButton.Text = "Stop";
+        }
+    }
+
+    /// <summary>
+    /// Previews the Flight Director's dual tone using the CURRENT dialog selections (staged
+    /// _fd* values), so it reflects unsaved changes. The desired tone sweeps a commanded bank
+    /// fully left&lt;-&gt;right (so hard-pan's snap vs the proportional pan is audible) and a gentle
+    /// pitch; the current tone holds wings-level/level as the "your attitude" reference. Honours the
+    /// FD hard-pan and centered-tone-change settings exactly as <c>WaypointFlightDirectorManager</c>
+    /// does, so this is a faithful preview. Auto-stops after a few seconds.
+    /// </summary>
+    private void PlayFdTestTone()
+    {
+        try
+        {
+            StopTestTone();   // don't overlap with the hand-fly test tone
+
+            fdTestDesired = new AudioToneGenerator();
+            fdTestCurrent = new AudioToneGenerator();
+            // FD dual-tone mapping defaults (match WaypointFlightDirectorProfile's tone fields).
+            fdTestDesired.Configure(200f, 800f, 6.0, 5.0);
+            fdTestCurrent.Configure(200f, 800f, 6.0, 5.0);
+            fdTestDesired.Start(_fdToneWave, _fdVolume);
+            fdTestCurrent.Start(_fdCurrentWave, _fdCurrentVolume);
+
+            HandFlyWaveType appliedWave = _fdToneWave;
+
+            Task.Run(async () =>
+            {
+                double bank = 0.0, pitch = 0.0;
+                for (int i = 0; i < 90 && fdTestDesired?.IsPlaying == true; i++)
+                {
+                    double targetBank = Math.Sin(i * 0.12) * 30.0;   // ±30° sweep
+                    double targetPitch = Math.Sin(i * 0.05) * 6.0;   // ±6°
+                    bank += Math.Clamp(targetBank - bank, -3.0, 3.0);     // smooth (no crackle)
+                    pitch += Math.Clamp(targetPitch - pitch, -0.6, 0.6);
+
+                    // Desired (command) tone — same hard-pan + centered logic as the manager.
+                    if (_fdHardPan)
+                    {
+                        float pan = Math.Abs(bank) < 1.0 ? 0f : (bank > 0 ? 1f : -1f);
+                        fdTestDesired?.SetPan(pan);
+                    }
+                    else
+                    {
+                        fdTestDesired?.UpdateBank(bank);
+                    }
+                    fdTestDesired?.UpdatePitch(pitch);
+
+                    if (_fdCenteredEnabled)
+                    {
+                        HandFlyWaveType want = Math.Abs(bank) <= 1.5 ? _fdCenteredWave : _fdToneWave;
+                        if (want != appliedWave)
+                        {
+                            fdTestDesired?.UpdateWaveType(want);
+                            appliedWave = want;
+                        }
+                    }
+
+                    // Current (actual-attitude) tone — held level/wings-level as the reference the
+                    // desired tone is matched against. Hard-pan keeps it centred at 0 bank.
+                    fdTestCurrent?.SetPan(0f);
+                    fdTestCurrent?.UpdatePitch(0.0);
+
+                    await Task.Delay(100);
+                }
+
+                if (fdTestDesired?.IsPlaying == true && !IsDisposed)
+                {
+                    try { Invoke(() => { StopFdTestTone(); fdTestButton.Text = "Test Flight Director Tones"; }); }
+                    catch (ObjectDisposedException) { StopFdTestTone(); }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to play test tone: {ex.Message}", "Audio Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void StopFdTestTone()
+    {
+        fdTestDesired?.Stop();
+        fdTestDesired?.Dispose();
+        fdTestDesired = null;
+        fdTestCurrent?.Stop();
+        fdTestCurrent?.Dispose();
+        fdTestCurrent = null;
+    }
+
     private void OkButton_Click(object? sender, EventArgs e)
     {
         StopTestTone();
+        StopFdTestTone();
+
+        // Commit the new Visual Guidance centered + Flight Director options directly to settings
+        // (these ride SettingsManager.Current rather than the constructor/property round-trip).
+        // MainForm calls SettingsManager.Save() after this dialog returns OK.
+        var s = SettingsManager.Current;
+        s.VisualGuidanceCenteredToneEnabled = _vgCenteredEnabled;
+        s.VisualGuidanceCenteredToneWaveform = _vgCenteredWave;
+        s.WaypointFdToneWaveform = _fdToneWave;
+        s.WaypointFdToneVolume = _fdVolume;
+        s.WaypointFdCurrentToneWaveform = _fdCurrentWave;
+        s.WaypointFdCurrentToneVolume = _fdCurrentVolume;
+        s.WaypointFdHardPanTone = _fdHardPan;
+        s.WaypointFdApAutoMute = _fdApAutoMute;
+        s.WaypointFdCenteredToneEnabled = _fdCenteredEnabled;
+        s.WaypointFdCenteredToneWaveform = _fdCenteredWave;
+
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -905,6 +1334,7 @@ public partial class HandFlyOptionsForm : Form
         if (keyData == Keys.Escape)
         {
             StopTestTone();
+            StopFdTestTone();
             DialogResult = DialogResult.Cancel;
             Close();
             return true;

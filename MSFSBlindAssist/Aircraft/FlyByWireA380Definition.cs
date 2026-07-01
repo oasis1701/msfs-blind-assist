@@ -49,6 +49,37 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // yaw inertia in the fleet needs the most lead. 1.8 s; re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.8;
 
+    // Waypoint Flight Director: very heavy quad — the gentlest roll gain, largest capture radius
+    // and longest rate-lead of the fleet (it rolls the slowest). Best-effort defaults; tune in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack = 0.85,
+        MaxBankDeg          = 28.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.9,
+        LowSpeedFloorKts    = 60.0,
+        BankRateLeadSec     = 1.5,
+        TypicalApproachAoaDeg = 4.0
+    };
+
+    // Visual Landing Guidance: the A380 is a heavy widebody and must NOT use the A320 baseline
+    // (which flares ~one bias too late and reads high on the glidepath for a big jet). Modelled on
+    // the MEASURED PMDG 777 widebody profile + A380 published approach performance (Vref ~140 kt at
+    // typical landing weight, low approach AoA from the very large wing). The glidepath/flare biases
+    // are 777-class ESTIMATES pending an in-sim coupled-ILS-autoland calibration on the A380.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 4.0,
+        ReferenceVrefKnots        = 140.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,   // 777-class estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 40.0,   // 777-class estimate
+        FlareTriggerWheelHeightFt = 50.0,   // A380 flares at the 50 ft RA callout (user-confirmed)
+        FlareTargetPitchDeg       = 4.5,
+        TonePitchRangeDeg         = 10.0
+    };
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;

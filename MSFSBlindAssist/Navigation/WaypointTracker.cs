@@ -15,9 +15,19 @@ public class WaypointTracker
     }
 
     /// <summary>
-    /// Tracks a waypoint in the specified slot (1-5)
+    /// Tracks a waypoint in the specified slot (1-5).
     /// </summary>
-    public void TrackWaypoint(int slotNumber, WaypointFix waypoint)
+    /// <param name="crossingAltitude">Optional crossing-altitude target (feet MSL) for the Waypoint
+    ///   Flight Director's vertical guidance. Null = lateral-only (no vertical command at this fix).</param>
+    /// <param name="crossingAltitudeUpper">Optional upper bound (feet MSL) for a BETWEEN constraint.</param>
+    /// <param name="constraint">How <paramref name="crossingAltitude"/> is interpreted by the FD.</param>
+    /// <param name="course">Optional magnetic course (degrees) for the Waypoint Flight Director to
+    ///   capture and hold THROUGH this fix (airway leg / radial / approach course), instead of a
+    ///   direct-to. Null = direct-to.</param>
+    public void TrackWaypoint(int slotNumber, WaypointFix waypoint,
+        double? crossingAltitude = null, double? crossingAltitudeUpper = null,
+        AltitudeConstraintType constraint = AltitudeConstraintType.None,
+        double? course = null)
     {
         if (slotNumber < 1 || slotNumber > MAX_SLOTS)
             throw new ArgumentOutOfRangeException(nameof(slotNumber), "Slot number must be between 1 and 5");
@@ -31,8 +41,26 @@ public class WaypointTracker
             Ident = waypoint.Ident,
             Section = waypoint.Section,
             Latitude = waypoint.Latitude,
-            Longitude = waypoint.Longitude
+            Longitude = waypoint.Longitude,
+            CrossingAltitude = crossingAltitude,
+            CrossingAltitudeUpper = crossingAltitudeUpper,
+            Constraint = constraint,
+            Course = course
         };
+    }
+
+    /// <summary>
+    /// Returns a snapshot of the slot's data for the Waypoint Flight Director, or null if empty.
+    /// </summary>
+    public WaypointSlotData? GetSlot(int slotNumber)
+    {
+        if (slotNumber < 1 || slotNumber > MAX_SLOTS)
+            throw new ArgumentOutOfRangeException(nameof(slotNumber), "Slot number must be between 1 and 5");
+
+        var t = _slots[slotNumber - 1];
+        if (t == null) return null;
+        return new WaypointSlotData(t.Ident, t.Latitude, t.Longitude,
+            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course);
     }
 
     /// <summary>
@@ -80,6 +108,14 @@ public class WaypointTracker
         return _slots[index] == null;
     }
 
+    /// <summary>True if at least one slot (1-5) holds a tracked waypoint.</summary>
+    public bool HasAnyWaypoint()
+    {
+        for (int i = 0; i < MAX_SLOTS; i++)
+            if (_slots[i] != null) return true;
+        return false;
+    }
+
     /// <summary>
     /// Clears a tracking slot
     /// </summary>
@@ -124,5 +160,22 @@ public class WaypointTracker
         public FlightPlanSection Section { get; set; }
         public double Latitude { get; set; }
         public double Longitude { get; set; }
+        // Optional vertical guidance for the Waypoint Flight Director.
+        public double? CrossingAltitude { get; set; }
+        public double? CrossingAltitudeUpper { get; set; }
+        public AltitudeConstraintType Constraint { get; set; } = AltitudeConstraintType.None;
+        public double? Course { get; set; }
     }
 }
+
+/// <summary>
+/// Public read-only snapshot of a tracked slot, consumed by the Waypoint Flight Director.
+/// </summary>
+public readonly record struct WaypointSlotData(
+    string Ident,
+    double Latitude,
+    double Longitude,
+    double? CrossingAltitude,
+    double? CrossingAltitudeUpper,
+    AltitudeConstraintType Constraint,
+    double? Course);

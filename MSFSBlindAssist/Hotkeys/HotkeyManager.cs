@@ -92,6 +92,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9075;
         private const int HOTKEY_VISUAL_GUIDANCE = 9076;
+        private const int HOTKEY_WAYPOINT_FD = 9252;   // Output mode: Ctrl+F (Waypoint Flight Director)
+        private const int HOTKEY_SLIP_CUE = 9253;      // Output mode: Ctrl+K (rudder coordination ticks)
         private const int HOTKEY_MACH_SPEED = 9060;
         private const int HOTKEY_EFB = 9061;
         private const int HOTKEY_TRACK_SLOT_1 = 9062;
@@ -425,6 +427,16 @@ public class HotkeyManager : IDisposable
                             DeactivateOutputHotkeyMode();
                             TriggerHotkey(HotkeyAction.ToggleVisualGuidance);
                             return true;
+                        case HOTKEY_WAYPOINT_FD:
+                            // The FD does NOT grab the quick-access key set (it just runs in the
+                            // background), so unlike Hand-Fly/VG it needs no DeactivateOutputHotkeyMode()
+                            // dance — the pilot can keep reading slots/altitudes in output mode while
+                            // it runs. Plain trigger + the normal post-switch mode handling.
+                            TriggerHotkey(HotkeyAction.ToggleWaypointFlightDirector);
+                            break;
+                        case HOTKEY_SLIP_CUE:
+                            TriggerHotkey(HotkeyAction.ToggleSlipCue);
+                            break;
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
                             break;
@@ -722,6 +734,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER, MOD_CONTROL, 0x4D); // Ctrl+M (Monitor Manager - per-aircraft)
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
             RegisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE, MOD_CONTROL, 0x56); // Ctrl+V (Visual Guidance)
+            RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_FD, MOD_CONTROL, 0x46); // Ctrl+F (Waypoint Flight Director)
+            RegisterHotKey(windowHandle, HOTKEY_SLIP_CUE, MOD_CONTROL, 0x4B); // Ctrl+K (rudder coordination ticks)
             RegisterHotKey(windowHandle, HOTKEY_EFB, MOD_SHIFT, 0x45); // Shift+E (Electronic Flight Bag)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1, MOD_NONE, 0x31);  // 1 (Track Slot 1)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2, MOD_NONE, 0x32);  // 2 (Track Slot 2)
@@ -829,6 +843,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER);
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
+            UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_FD);
+            UnregisterHotKey(windowHandle, HOTKEY_SLIP_CUE);
             UnregisterHotKey(windowHandle, HOTKEY_EFB);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2);
@@ -1282,6 +1298,8 @@ public class HotkeyManager : IDisposable
         MonitorManager,
         ToggleHandFlyMode,
         ToggleVisualGuidance,
+        ToggleWaypointFlightDirector,
+        ToggleSlipCue,
         ShowElectronicFlightBag,
         ReadTrackSlot1,
         ReadTrackSlot2,

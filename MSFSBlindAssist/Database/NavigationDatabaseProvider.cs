@@ -744,6 +744,7 @@ public class NavigationDatabaseProvider
         {
             waypoint.MinAltitude = (int?)alt1;
             waypoint.MaxAltitude = (int?)alt2;
+            waypoint.AltDescriptor = altDesc ?? "";   // raw ARINC descriptor — the unambiguous type source
 
             if (!string.IsNullOrEmpty(altDesc))
             {

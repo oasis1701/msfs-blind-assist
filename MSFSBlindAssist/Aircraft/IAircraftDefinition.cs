@@ -113,6 +113,77 @@ public sealed class VisualGuidanceProfile
 }
 
 /// <summary>
+/// Per-aircraft tunables for the synthetic Waypoint Flight Director (en-route hand-fly to the
+/// tracked Shift+F slots). Defaults are A320 numbers; heavier/faster jets roll more slowly and
+/// cover ground faster, so they use a gentler roll gain, larger capture radius and a longer
+/// rate-lead. Override <see cref="IAircraftDefinition.GetWaypointFlightDirectorProfile"/> on those.
+/// All fields feed <c>WaypointFlightDirectorGeometry</c> and the dual-tone renderer; the feature is
+/// otherwise 100% stock-SimVar and aircraft-agnostic (no per-airframe code).
+/// </summary>
+public sealed class WaypointFlightDirectorProfile
+{
+    /// <summary>Degrees of commanded bank per degree of lateral track error (proportional roll
+    /// law). Heavier jets roll slower → smaller gain to avoid overshoot. Capped by <see cref="MaxBankDeg"/>.</summary>
+    public double KRollDegPerDegTrack { get; init; } = 1.1;
+
+    /// <summary>Maximum commanded bank (degrees). A real FD caps around 25–30°.</summary>
+    public double MaxBankDeg { get; init; } = 25.0;
+
+    /// <summary>Maximum commanded pitch (degrees), nose-up positive. Clamps the FPA+AoA command.</summary>
+    public double MaxPitchDeg { get; init; } = 12.0;
+
+    /// <summary>Capture radius (NM) at which a fix counts as reached and the FD sequences to the
+    /// next slot. Scales with speed (a fast jet covers more ground per second).</summary>
+    public double CaptureRadiusNm { get; init; } = 0.5;
+
+    /// <summary>Ground-speed floor (knots) below which GPS ground track is unreliable; the FD
+    /// falls back to heading / holds the lateral command (taxi, very slow flight).</summary>
+    public double LowSpeedFloorKts { get; init; } = 40.0;
+
+    /// <summary>Rate-lead time (seconds) for the roll command: the track error is projected this
+    /// far ahead by the yaw rate so turns roll out cleanly instead of overshooting. Mirrors the
+    /// per-aircraft taxi-tone turn lead; heavier jets need more.</summary>
+    public double BankRateLeadSec { get; init; } = 1.0;
+
+    /// <summary>Fallback approach AoA (degrees) used only if the live INCIDENCE ALPHA reading is
+    /// unavailable / out of band. Live AoA (the normal case) makes this obsolete.</summary>
+    public double TypicalApproachAoaDeg { get; init; } = 6.0;
+
+    /// <summary>Course-tracking (option 3): maximum intercept angle (degrees) when far off a course
+    /// line — the FD never commands a track more than this off the course while capturing.</summary>
+    public double MaxInterceptDeg { get; init; } = 40.0;
+
+    /// <summary>Course-tracking: intercept angle added per NM of cross-track error, capped by
+    /// <see cref="MaxInterceptDeg"/>. 20°/NM → full intercept at 2 NM off, ~10° at 0.5 NM.</summary>
+    public double InterceptDegPerNm { get; init; } = 20.0;
+
+    /// <summary>Slew cap (deg/sec) on the commanded BANK between frames — stops the pan fluctuating
+    /// on every track/heading wiggle. Larger = snappier but jumpier.</summary>
+    public double MaxBankRateDegPerSec { get; init; } = 5.0;
+
+    /// <summary>Slew cap (deg/sec) on the commanded PITCH between frames (anti-fluctuation).</summary>
+    public double MaxPitchRateDegPerSec { get; init; } = 3.0;
+
+    /// <summary>Descent-arm gate: a crossing-altitude DESCENT is only commanded once the required
+    /// flight-path angle to the fix reaches this (a "normal" descent gradient) — so a far constrained
+    /// fix doesn't nudge a premature descent at cruise. Climbs are never gated. Tone-only, not a spoken
+    /// top-of-descent cue. Below this angle the vertical tone holds level until the descent is due.</summary>
+    public double DescentArmFpaDeg { get; init; } = 3.0;
+
+    /// <summary>Descent-arm fallback range (NM): a shallow descent that never reaches
+    /// <see cref="DescentArmFpaDeg"/> still arms once within this distance of the fix, so a small
+    /// at-or-below step isn't missed. Big descents arm earlier via the angle gate.</summary>
+    public double VerticalArmRangeNm { get; init; } = 25.0;
+
+    // Dual-tone mapping — same idiom and defaults as VisualGuidanceProfile so the FD's tones
+    // sound consistent with Visual Guidance (the pilot zero-beats desired vs current).
+    public float ToneMinFrequencyHz { get; init; } = 200f;
+    public float ToneMaxFrequencyHz { get; init; } = 800f;
+    public double TonePitchRangeDeg { get; init; } = 6.0;
+    public double ToneBankRangeDeg { get; init; } = 5.0;
+}
+
+/// <summary>
 /// Interface for aircraft-specific definitions including variables, panels, and behavior.
 /// Each supported aircraft should implement this interface to provide its configuration.
 /// </summary>
@@ -312,6 +383,13 @@ public interface IAircraftDefinition
     /// or smaller airframes (e.g., 777, 747) to bias the nominal commanded pitch and rate limits.
     /// </summary>
     VisualGuidanceProfile GetVisualGuidanceProfile();
+
+    /// <summary>
+    /// Returns the per-aircraft Waypoint Flight Director tunables (roll gain, bank/pitch caps,
+    /// capture radius, low-speed floor, rate-lead, tone mapping). Default in
+    /// <c>BaseAircraftDefinition</c> is the A320 baseline; heavier/faster jets override.
+    /// </summary>
+    WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile();
 
     /// <summary>
     /// Taxi-turn rollout-anticipation lead, seconds. The steering tone's

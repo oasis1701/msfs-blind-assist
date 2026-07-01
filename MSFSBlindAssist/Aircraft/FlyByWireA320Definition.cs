@@ -54,6 +54,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
+    // Waypoint Flight Director: A320neo uses the baseline profile (narrowbody, agile roll).
+    // Explicit override for discoverability; values equal BaseAircraftDefinition's defaults.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+
     // Cached variable-definition dictionary. The definitions are static, but this method
     // rebuilds the whole dict (huge literal + the SD auto-register loops); the panel-build
     // loop calls GetVariables() twice per control, so without this cache a panel switch

@@ -478,6 +478,10 @@ public class SimConnectManager
         // TypicalApproachAoaDeg estimate. With autothrust holding Vref this is a near-constant;
         // gusts and configuration changes shift it transiently.
         public double AlphaRadians;
+        // Autopilot master engaged (0/1). Consumed only by the Waypoint Flight Director for its
+        // optional AP auto-mute (silence the FD tones while the AP is flying). VG ignores it.
+        // MUST stay the LAST field so existing field offsets are unchanged.
+        public double AutopilotMaster;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -807,6 +811,9 @@ public class SimConnectManager
         // nominal converges on the actual stabilized-approach pitch automatically.
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "INCIDENCE ALPHA", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
+        // AUTOPILOT MASTER — last def line (matches the last struct field) for the FD's AP auto-mute.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AUTOPILOT MASTER", "Bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)12);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register takeoff assist data (consolidated position + pitch + heading + airspeed)
@@ -2244,6 +2251,14 @@ public class SimConnectManager
                 {
                     VarName = "VISUAL_GUIDANCE_AOA",
                     Value = vgData.AlphaRadians,
+                    Description = ""
+                });
+                // Autopilot master (0/1) — consumed only by the Waypoint Flight Director's
+                // optional AP auto-mute. Emitted before AGL so it's applied for this frame.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_AP_MASTER",
+                    Value = vgData.AutopilotMaster,
                     Description = ""
                 });
 
@@ -5094,6 +5109,34 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping hand fly mode monitoring: {ex.Message}");
+        }
+    }
+
+    // Reference-counted access to the shared VISUAL_GUIDANCE_DATA (req 505) stream. Both Visual
+    // Guidance and the Waypoint Flight Director ride it; they are mutually exclusive today, but
+    // ref-counting guarantees one feature never stops the stream out from under the other (mirrors
+    // the AcquireQuickAccessHotkeys pattern). Prefer Acquire/Release over the raw Start/Stop below.
+    private int _visualGuidanceRefCount = 0;
+    private readonly object _visualGuidanceMonitorLock = new object();
+
+    public void AcquireVisualGuidanceMonitoring()
+    {
+        lock (_visualGuidanceMonitorLock)
+        {
+            if (_visualGuidanceRefCount == 0)
+                StartVisualGuidanceMonitoring();
+            _visualGuidanceRefCount++;
+        }
+    }
+
+    public void ReleaseVisualGuidanceMonitoring()
+    {
+        lock (_visualGuidanceMonitorLock)
+        {
+            if (_visualGuidanceRefCount == 0) return;   // defensive: never go negative
+            _visualGuidanceRefCount--;
+            if (_visualGuidanceRefCount == 0)
+                StopVisualGuidanceMonitoring();
         }
     }
 

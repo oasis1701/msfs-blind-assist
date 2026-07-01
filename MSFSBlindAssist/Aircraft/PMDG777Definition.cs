@@ -75,6 +75,22 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         TonePitchRangeDeg         = 10.0
     };
 
+    // Waypoint Flight Director: heavy widebody — gentler roll gain + longer rate-lead to avoid
+    // overshoot, larger capture radius (covers ~0.8 NM in ~16 s at cruise/descent speeds),
+    // higher low-speed floor (it taxis/flies slow above 40 kt where ground track is noisy).
+    // Best-effort class defaults; calibrate in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack = 0.9,
+        MaxBankDeg          = 27.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.8,
+        LowSpeedFloorKts    = 60.0,
+        BankRateLeadSec     = 1.3,
+        TypicalApproachAoaDeg = 4.5,
+        TonePitchRangeDeg   = 10.0
+    };
+
     // MEASURED 2026-06-11 (KSFO, B77W, 6 turns): the 1.0 s prior over-led —
     // 5 of 6 rollouts stopped 5.5–10.5° SHORT (median correction −0.97 s).
     // Same pattern as the 737: the pilot self-anticipates Boeing rollouts, so

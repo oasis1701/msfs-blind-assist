@@ -92,8 +92,17 @@ public partial class MainForm : Form
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
+    private WaypointFlightDirectorManager waypointFdManager = null!;
+    // Per-feature claims on the ref-counted VISUAL_GUIDANCE_DATA (505) stream. Each feature must
+    // Release only if it actually Acquired — otherwise an aborted activation (VG with no runway, FD
+    // with empty slots) would run its Stop→deactivate path and release a claim it never took,
+    // stopping the OTHER feature's stream. Set true right after Acquire, false right after Release.
+    private bool _vgHoldsStream;
+    private bool _fdHoldsStream;
     private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
     private MSFSBlindAssist.Services.LandingRateAnnouncer landingRateAnnouncer = null!;
+    private MSFSBlindAssist.Services.SlipCueGenerator slipCueGenerator = null!;
+    private bool _slipCueOn;   // runtime toggle (Ctrl+K); default off, not persisted
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
@@ -430,6 +439,9 @@ public partial class MainForm : Form
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
 
+        waypointFdManager = new WaypointFlightDirectorManager(announcer);
+        waypointFdManager.WaypointFlightDirectorActiveChanged += OnWaypointFdActiveChanged;
+
         // Global ground-speed announcer — fed by the always-on GROUND_VELOCITY continuous
         // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
         // not just while taxi guidance is active.
@@ -437,6 +449,7 @@ public partial class MainForm : Form
         // Captures the last landing's touchdown rate + peak g (the ReadLastLandingRate /
         // ReadLastLandingPeakG output hotkeys). Fed by the always-on G FORCE var.
         landingRateAnnouncer = new MSFSBlindAssist.Services.LandingRateAnnouncer();
+        slipCueGenerator = new MSFSBlindAssist.Services.SlipCueGenerator();
         // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
         altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
 
@@ -1179,6 +1192,19 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Inclinometer ball → the "step on the ball" rudder-coordination slip cue (Ctrl+K). Always
+        // streamed; only acted on when the cue is toggled on. Never a generic call-out. Normalise to
+        // ~[-1,1] (the var may report ±127 or ±1 by build); positive = ball right = press right rudder.
+        if (e.VarName == "TURN_COORDINATOR_BALL")
+        {
+            if (_slipCueOn)
+            {
+                double ball = Math.Abs(e.Value) > 2.0 ? e.Value / 127.0 : e.Value;
+                slipCueGenerator.Update(ball, deadband: 0.08, fullScale: 0.5, active: true);
+            }
+            return true;
+        }
+
         // Touchdown vertical speed is monitored only so the ReadLastLandingRate hotkey can
         // read it from the cache (it's latched by the sim at touchdown). It must never be
         // spoken as a generic "value changed" call-out — swallow it here.
@@ -1378,6 +1404,12 @@ public partial class MainForm : Form
             {
                 visualGuidanceManager.Toggle();
             }
+            // Same rationale for the Waypoint Flight Director: at touchdown the rollout/taxi tones
+            // take over, so the en-route FD has no useful job and would compete audibly.
+            if (justTouchedDown && waypointFdManager.IsActive)
+            {
+                waypointFdManager.Toggle();
+            }
 
             // Open the peak-g capture window at the touchdown edge, seeded with the g at contact,
             // so the ReadLastLandingPeakG hotkey reports the impact spike. The landing RATE itself
@@ -1532,6 +1564,62 @@ public partial class MainForm : Form
             // it consumer-side; we just convert and forward.
             double aoaDegrees = e.Value * (180.0 / Math.PI);
             visualGuidanceManager.UpdateAoA(aoaDegrees);
+            return true;
+        }
+
+        // Waypoint Flight Director — rides the SAME VISUAL_GUIDANCE_DATA (req 505) stream as VG.
+        // FD and VG are mutually exclusive, so these sibling blocks only run when VG is inactive
+        // (the VG blocks above already returned true when VG owns the stream). Pitch/bank/AoA use
+        // the identical radian→degree + sign conventions as the VG blocks above.
+        if (e.VarName == "VISUAL_GUIDANCE_POSITION" && waypointFdManager.IsActive && e.PositionData != null)
+        {
+            var pos = e.PositionData.Value;
+            waypointFdManager.UpdateLatitude(pos.Latitude);
+            waypointFdManager.UpdateLongitude(pos.Longitude);
+            waypointFdManager.UpdateAltitudeMSL(pos.Altitude);
+            waypointFdManager.UpdateHeading(pos.HeadingMagnetic);
+            waypointFdManager.UpdateGroundSpeed(pos.GroundSpeedKnots);
+            waypointFdManager.UpdateVerticalSpeed(pos.VerticalSpeedFPM);
+            waypointFdManager.UpdateMagVar(pos.MagneticVariation);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_AGL" && waypointFdManager.IsActive)
+        {
+            // AGL arrives last → all caches fresh → drive the FD for this frame.
+            waypointFdManager.ProcessUpdate();
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_GROUND_TRACK" && waypointFdManager.IsActive)
+        {
+            waypointFdManager.UpdateGroundTrack(e.Value);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_PITCH" && waypointFdManager.IsActive)
+        {
+            waypointFdManager.UpdatePitch(-(e.Value * (180.0 / Math.PI))); // standard: + = nose up
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_BANK" && waypointFdManager.IsActive)
+        {
+            waypointFdManager.UpdateBank(e.Value * (180.0 / Math.PI)); // raw SimConnect (left-positive); manager negates
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_AOA" && waypointFdManager.IsActive)
+        {
+            waypointFdManager.UpdateAoA(e.Value * (180.0 / Math.PI));
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_AP_MASTER" && waypointFdManager.IsActive)
+        {
+            // e.Value is the stock AUTOPILOT MASTER simvar (Boeing / WT 787 / most addons). The
+            // FlyByWire Airbuses (A320, A380, A330 fork) DON'T drive the stock simvar — they use
+            // A32NX_AUTOPILOT_1/2_ACTIVE — so the stock value stays 0 with AP1/AP2 engaged and the
+            // FD's auto-mute never fired on those aircraft. OR in the FBW AP-active vars from the
+            // cache (the FBW defs monitor them continuously). PMDG / Fenix / HS787 set the stock var.
+            bool apEngaged = e.Value > 0.5
+                || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_1_ACTIVE") ?? 0.0) > 0.5
+                || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_2_ACTIVE") ?? 0.0) > 0.5;
+            waypointFdManager.UpdateApMaster(apEngaged ? 1.0 : 0.0);
             return true;
         }
 
@@ -2111,6 +2199,10 @@ public partial class MainForm : Form
         {
             visualGuidanceManager.NotifyManualQuery();
         }
+        if (waypointFdManager.IsActive && IsManualReadoutAction(e.Action))
+        {
+            waypointFdManager.NotifyManualQuery();
+        }
 
         // Try aircraft-specific handler first
         bool handledByAircraft = currentAircraft.HandleHotkeyAction(e.Action, simConnectManager, announcer, this, hotkeyManager);
@@ -2359,6 +2451,12 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ToggleVisualGuidance:
                 ToggleVisualGuidance();
+                break;
+            case HotkeyAction.ToggleWaypointFlightDirector:
+                ToggleWaypointFlightDirector();
+                break;
+            case HotkeyAction.ToggleSlipCue:
+                ToggleSlipCue();
                 break;
             case HotkeyAction.ReadTargetFPM:
                 if (visualGuidanceManager.IsActive)
@@ -3463,7 +3561,10 @@ public partial class MainForm : Form
         if (electronicFlightBagForm == null || electronicFlightBagForm.IsDisposed)
         {
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker, settings.SimbriefUsername ?? "");
+            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, settings.SimbriefUsername ?? "");
+            // "Track Slot N" on a route waypoint opens the Track Fix dialog pre-populated (so the
+            // mapped altitude/constraint/course is visible + editable) instead of tracking silently.
+            electronicFlightBagForm.TrackToSlotRequested += OnEfbTrackToSlotRequested;
         }
 
         // Show the form (reuses same instance to preserve flight plan data)
@@ -3728,16 +3829,32 @@ public partial class MainForm : Form
         hotkeyManager.ExitInputHotkeyMode();
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // Create form if it doesn't exist or has been disposed
+        EnsureTrackFixForm();
+        trackFixForm!.ShowForm();
+    }
+
+    /// <summary>Lazily creates the Track Fix dialog (shared by the Shift+F path and the EFB
+    /// "Track Slot N" pre-fill path).</summary>
+    private void EnsureTrackFixForm()
+    {
         if (trackFixForm == null || trackFixForm.IsDisposed)
         {
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
             string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
             trackFixForm = new TrackFixForm(waypointTracker, simConnectManager, announcer, navigationDatabasePath);
         }
+    }
 
-        // Show the form
-        trackFixForm.ShowForm();
+    /// <summary>EFB "Track Slot N" → open the Track Fix dialog pre-populated with the fix, slot, and its
+    /// mapped altitude constraint + course, so the pilot reviews/edits before committing (the constraint
+    /// is then visible and editable, unlike a silent direct-track).</summary>
+    private void OnEfbTrackToSlotRequested(Database.Models.WaypointFix fix, int slotNumber)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        EnsureTrackFixForm();
+        trackFixForm!.ShowFormPrefilled(fix, slotNumber);
     }
 
     private void ReadTrackedWaypoint(int slotNumber)
@@ -4236,6 +4353,12 @@ public partial class MainForm : Form
                 return;
             }
 
+            // Mutual exclusion: Visual Guidance and the Waypoint Flight Director share the
+            // dual-tone engine and the 505 stream; only one runs at a time. Stop the FD if active
+            // (its Stop releases its stream claim + resumes HandFly; we re-suppress below).
+            if (waypointFdManager.IsActive)
+                waypointFdManager.Stop(announce: false);
+
             // Task 1 — Destination prefetch (silent, fire-and-forget)
             if (_augmentPrefetched.Add(airport.ICAO))
                 _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
@@ -4253,7 +4376,9 @@ public partial class MainForm : Form
                 settings.VisualGuidanceCurrentToneWaveform,
                 settings.VisualGuidanceCurrentToneVolume,
                 settings.VisualGuidanceHardPanTone,
-                currentAircraft.GetVisualGuidanceProfile());
+                currentAircraft.GetVisualGuidanceProfile(),
+                settings.VisualGuidanceCenteredToneEnabled,
+                settings.VisualGuidanceCenteredToneWaveform);
 
             // PMDG 777: if the FMC has a pilot-entered landing Vref, push it as a live
             // override of the profile-default reference Vref. The PMDG SDK doesn't expose
@@ -4273,8 +4398,9 @@ public partial class MainForm : Form
                 }
             }
 
-            // Start monitoring position variables at 1 Hz
-            simConnectManager!.StartVisualGuidanceMonitoring();
+            // Start monitoring position variables (ref-counted: shared with the Waypoint FD).
+            simConnectManager!.AcquireVisualGuidanceMonitoring();
+            _vgHoldsStream = true;
 
             // Silence HandFly's tone if it's also active — VG's two tones use the same
             // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
@@ -4296,8 +4422,12 @@ public partial class MainForm : Form
         }
         else
         {
-            // Stop monitoring
-            simConnectManager.StopVisualGuidanceMonitoring();
+            // Stop monitoring (ref-counted) — only if VG actually acquired (not on a validation abort).
+            if (_vgHoldsStream)
+            {
+                simConnectManager.ReleaseVisualGuidanceMonitoring();
+                _vgHoldsStream = false;
+            }
 
             // Release VG's claim on the quick-access hotkey set. If HandFly is still active,
             // its claim keeps the keys registered; if not, this drops the ref count to zero
@@ -4306,6 +4436,84 @@ public partial class MainForm : Form
 
             // Resume HandFly's tone if HandFly is still active and its feedback mode wants
             // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
+            handFlyManager.ResumeAudio();
+        }
+    }
+
+    private void ToggleWaypointFlightDirector()
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        waypointFdManager.Toggle();
+    }
+
+    private void ToggleSlipCue()
+    {
+        _slipCueOn = !_slipCueOn;
+        if (_slipCueOn)
+        {
+            slipCueGenerator.Start(MSFSBlindAssist.Settings.SettingsManager.Current.SlipCueVolume);
+            announcer.AnnounceImmediate("Rudder coordination ticks on");
+        }
+        else
+        {
+            slipCueGenerator.Stop();
+            announcer.AnnounceImmediate("Rudder coordination ticks off");
+        }
+    }
+
+    private void OnWaypointFdActiveChanged(object? sender, bool isActive)
+    {
+        if (isActive)
+        {
+            // The FD walks the tracked Shift+F slots in order (starting at the first FILLED slot,
+            // skipping gaps). If NO slot holds a waypoint there is nothing to track — don't activate a
+            // dead tone. Stop(announce:false) because the public "Flight director off" callout would be
+            // misleading after this guard (the pilot never had a running session).
+            if (!waypointTracker.HasAnyWaypoint())
+            {
+                announcer.Announce("No waypoints to track");
+                waypointFdManager.Stop(announce: false);
+                return;
+            }
+
+            // Mutual exclusion: stop Visual Guidance if it's running (shared dual-tone + 505 stream).
+            if (visualGuidanceManager.IsActive)
+                visualGuidanceManager.Stop(announce: false);
+
+            // Silence HandFly's single tone while the FD runs — the FD's two tones use the same
+            // Hz/pan mapping; three tones together are impossible to follow. Idempotent.
+            handFlyManager.SuppressAudio();
+
+            // Initialize with the aircraft's FD tuning profile + the user's tone preferences.
+            var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+            waypointFdManager.Initialize(
+                waypointTracker,
+                currentAircraft.GetWaypointFlightDirectorProfile(),
+                settings.WaypointFdToneWaveform, settings.WaypointFdToneVolume,
+                settings.WaypointFdCurrentToneWaveform, settings.WaypointFdCurrentToneVolume,
+                settings.WaypointFdHardPanTone, settings.WaypointFdApAutoMute,
+                settings.WaypointFdCenteredToneEnabled, settings.WaypointFdCenteredToneWaveform);
+
+            // Acquire the shared VISUAL_GUIDANCE_DATA (req 505) stream (ref-counted).
+            simConnectManager!.AcquireVisualGuidanceMonitoring();
+            _fdHoldsStream = true;
+        }
+        else
+        {
+            // Release only if the FD actually acquired (not on the empty-slot validation abort),
+            // so we never stop the stream out from under an active Visual Guidance session.
+            if (_fdHoldsStream)
+            {
+                simConnectManager.ReleaseVisualGuidanceMonitoring();
+                _fdHoldsStream = false;
+            }
+
+            // Resume HandFly's tone if HandFly is still active. Idempotent.
             handFlyManager.ResumeAudio();
         }
     }
@@ -4678,6 +4886,24 @@ public partial class MainForm : Form
         // and `currentAircraft` already points at the new aircraft by the time the
         // cleanup block runs.
         var oldAircraft = currentAircraft;
+
+        // Stop Visual Guidance and the Waypoint Flight Director on an aircraft swap. Both were
+        // Initialized with the OLD aircraft's tuning profile (VG also with the old destination
+        // runway), and their tones would otherwise keep sounding on the new — possibly cold-and-dark
+        // — airframe. Stop() is idempotent and releases the ref-counted 505 stream claim through the
+        // flag-guarded ActiveChanged handlers (announce:false — a swap shouldn't speak "… off").
+        if (visualGuidanceManager != null && visualGuidanceManager.IsActive)
+            visualGuidanceManager.Stop(announce: false);
+        if (waypointFdManager != null && waypointFdManager.IsActive)
+            waypointFdManager.Stop(announce: false);
+        // Silence the rudder-coordination slip cue too — its white-noise tick would otherwise keep
+        // sounding on the new airframe (it owns its own WaveOut, independent of the managers above).
+        if (_slipCueOn)
+        {
+            slipCueGenerator?.Stop();
+            _slipCueOn = false;
+        }
+
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
         // Both FBW defs' StopAllMotion also dispose their TCAS RA compose timer and
@@ -6972,6 +7198,7 @@ public partial class MainForm : Form
         hs787CasClient = null;
 
         // Clean up managers and resources
+        slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
