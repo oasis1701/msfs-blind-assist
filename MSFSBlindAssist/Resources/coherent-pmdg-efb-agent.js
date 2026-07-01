@@ -405,6 +405,12 @@
       // Map control buttons + the source select are SIBLINGS of .leaflet-container, so kept.
       var clsLeaf = (typeof el.className === 'string' ? el.className : '');
       if (clsLeaf.indexOf('leaflet-container') >= 0 || clsLeaf.indexOf('leaflet-marker-icon') >= 0) { skipUnder = el; continue; }
+      // The EFB alert/confirmation card (#alert_card: heading + message + OK button — e.g.
+      // "Success / Tablet preferences were updated.") is emitted as ONE announce-flagged 'alert'
+      // item by a dedicated pass below, so the screen reader speaks it the moment it pops up
+      // (it otherwise rendered as silent text and was never read). Skip the card's heading/message
+      // here to avoid a duplicate; KEEP the OK button (#alert_card_button) so it stays clickable.
+      if (el.id !== 'alert_card_button') { try { if (el.closest && el.closest('#alert_card')) continue; } catch (eac) {} }
       // Preformatted block (the SimBrief OFP is ONE <pre> of 800+ fragments). Emit its OWN
       // line breaks verbatim — that's the briefing exactly as a sighted pilot reads it
       // (aligned columns, fuel table, NOTAMs) — and skip its children so they don't fragment.
@@ -455,7 +461,13 @@
         // form label — capture it (with its sibling unit) instead of skipping it as a <label>.
         // It is tagged _isValue below so it can never be paired AS a control's label (the unit
         // makes it letter-bearing, so the letter-guard alone would not exclude it).
-        var isMeasure = (el.matches && el.matches('label.pmdg_measurement'));
+        // EXCEPT a label OWNED by a dedicated output pass (.groundops_ui_outputlabel / .opt-output):
+        // those also carry pmdg_measurement, and the dedicated pass emits them as a NAMED line
+        // ("Target Fuel: 5400 kg"). Capturing them here too produced an orphan bare "5400 kg"
+        // duplicate (issue #113 — masked while the value was the single-char "0", which the
+        // glyph-skip above drops). Treat them as non-measurement so the label-skip below owns them.
+        var isMeasure = (el.matches && el.matches('label.pmdg_measurement') &&
+                         !el.matches('.groundops_ui_outputlabel, .opt-output'));
         if (!isMeasure && el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
         if (isMeasure) {
           var mu = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.output-unit') : null;
@@ -585,6 +597,73 @@
       var ounit = unitEl ? A.txt(unitEl) : '';
       idx++;
       out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: oval ? (onm + ': ' + oval + (ounit ? ' ' + ounit : '')) : onm, src: 'output-row' });
+    }
+    // GROUND OPS output values (Automated Ground Ops + every ground-ops sub-page): the live
+    // readouts — Turn Time, Turn Time Remaining, Fuel Uplift Remaining, Target Fuel, Uplift, ... —
+    // render as <label class="groundops_ui_outputlabel">value, preceded by a sibling
+    // <label class="groundops_ui_label">name (and a <br>), with an optional <span class="output-unit">.
+    // Like .opt-output above, the generic <label> text-skip dropped ALL of these, so the page showed
+    // only the settable Plan-Fuel input + the section headings — issue #113 ("turnaround time … not
+    // there"). Emit each visible one as a readable "Name: value unit" line. Skip empty values so a
+    // not-yet-running turn doesn't read a wall of blanks.
+    var gouts = document.querySelectorAll('.groundops_ui_outputlabel');
+    for (var gi = 0; gi < gouts.length; gi++) {
+      var gv = gouts[gi];
+      if (!A.isVisible(gv)) continue;
+      var gval = A.txt(gv);
+      if (!gval) continue;
+      // Name = the nearest PRECEDING .groundops_ui_label sibling (skip <br>/text between them).
+      var gnm = '';
+      var ps = gv.previousElementSibling;
+      while (ps) { if (ps.className && String(ps.className).indexOf('groundops_ui_label') >= 0) { gnm = A.txt(ps).replace(/:\s*$/, ''); break; } if (ps.tagName !== 'BR') { var pn = A.txt(ps); if (pn) break; } ps = ps.previousElementSibling; }
+      if (!gnm) gnm = gv.id ? A.idToLabel(gv.id) : '';
+      if (!gnm) continue;
+      // Unit = a following .output-unit sibling, else one inside the parent.
+      var gu = '';
+      var ns = gv.nextElementSibling;
+      if (ns && ns.className && String(ns.className).indexOf('output-unit') >= 0) gu = A.txt(ns);
+      if (!gu && gv.parentElement && gv.parentElement.querySelector) { var gue = gv.parentElement.querySelector('.output-unit'); if (gue) gu = A.txt(gue); }
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: gnm + ': ' + gval + (gu ? ' ' + gu : ''), src: 'groundops-output' });
+    }
+    // GROUND OPS progress bars (Turnaround / per-service): <div class="progress_bar"> holds a
+    // <label class="progress_label">Name<span>- NN%</span>. Emit "Name: NN%" so the screen reader
+    // gets the turnaround/service completion percentage (the visual bar alone is meaningless).
+    var pbars = document.querySelectorAll('.progress_bar');
+    for (var pbi = 0; pbi < pbars.length; pbi++) {
+      var pb = pbars[pbi];
+      if (!A.isVisible(pb)) continue;
+      var plab = pb.querySelector ? pb.querySelector('.progress_label') : null;
+      if (!plab) continue;
+      var pfull = A.txt(plab);                 // e.g. "Turnaround - 0%"
+      var pspan = plab.querySelector ? plab.querySelector('span') : null;
+      var ppct = pspan ? A.txt(pspan) : '';    // e.g. "- 0%"
+      var pname = pfull;
+      if (ppct) { pname = pfull.replace(ppct, '').trim(); }      // strip the % off the name
+      var pclean = ppct.replace(/^[\s\-]+/, '').trim();          // "- 0%" -> "0%"
+      if (!pname) pname = (pb.id ? A.idToLabel(pb.id) : 'Progress');
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: pname + (pclean ? ': ' + pclean : ''), src: 'groundops-progress' });
+    }
+    // ALERT / confirmation card (#alert_card: heading + message + OK button). These pop up on
+    // Save Preferences, errors, etc. ("Success — Tablet preferences were updated.") and previously
+    // rendered as silent text that was never announced — issue: the screen reader didn't read them.
+    // Emit ONE item flagged for ASSERTIVE announcement (type 'alert'); the host form speaks it the
+    // moment it appears (see FbwEfbForm). The card's heading/message are skipped in the main loop
+    // (above) so this is the single representation; the OK button is emitted separately + clickable.
+    var alertCard = document.getElementById('alert_card');
+    if (alertCard && A.isVisible(alertCard)) {
+      var ah = document.getElementById('alert_card_heading');
+      var am = document.getElementById('alert_card_message');
+      var ahTxt = ah ? A.txt(ah) : '';
+      // The message packs multiple sentences with no separating space ("updated.Hoppie ID …")
+      // because the source <p> joins separate text nodes; re-insert a space after .!? before a
+      // capital LETTER (a new sentence) so the screen reader reads "updated. Hoppie ID …" instead
+      // of one run-on token. Only [A-Z] — a digit after a dot is a decimal ("12.5"), never a new
+      // sentence, so it must not be split into "12. 5".
+      var amTxt = am ? A.txt(am).replace(/([.!?])([A-Z])/g, '$1 $2') : '';
+      var alertLabel = ahTxt && amTxt ? (ahTxt + ': ' + amTxt) : (ahTxt || amTxt);
+      if (alertLabel) { idx++; out.push({ idx: idx, type: 'alert', tag: 'DIV', label: alertLabel, src: 'alert-card' }); }
     }
     // Drop standalone text that duplicates a control's label, and UPGRADE a weak id-derived
     // control label to a fuller standalone text that contains it ("Brightness" -> "Tablet
@@ -722,6 +801,7 @@
       case 'link': o.kind = 'link'; break;
       case 'heading': o.kind = 'heading'; o.level = it.level || 0; break;
       case 'status': o.kind = 'static'; o.live = 'polite'; break;
+      case 'alert': o.kind = 'alert'; o.live = 'assertive'; break;
       case 'text': case 'number': o.controlType = 'text'; o.value = String(it.value || ''); break;
       case 'range':
         o.controlType = 'range'; o.value = String(it.value || '');

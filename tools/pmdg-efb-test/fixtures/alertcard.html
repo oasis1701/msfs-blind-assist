@@ -1,0 +1,12 @@
+<!-- EFB alert / confirmation card (live DOM 2026-06): #alert_card holds a heading, a message, and
+     an OK button. It pops up on Save Preferences / errors. It rendered as silent text that was never
+     announced. The agent emits ONE assertive 'alert' item (heading + spaced message), skips the
+     heading/message in the main pass (no dup), and keeps the OK button clickable.
+     data-rect = "top,left,right,bottom" (keep bottom>top, right>left). -->
+<div data-vis="1" data-rect="0,0,800,600">
+  <div id="alert_card" class="row" data-vis="1" data-rect="0,0,400,200">
+    <p id="alert_card_heading" data-vis="1" data-rect="0,0,400,30">Success</p>
+    <p id="alert_card_message" data-vis="1" data-rect="40,0,400,80">Tablet preferences were updated.Hoppie ID is invalid and was cleared.</p>
+    <button id="alert_card_button" class="btn btn-primary" data-vis="1" data-rect="100,0,200,140">OK</button>
+  </div>
+</div>
