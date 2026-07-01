@@ -256,6 +256,15 @@ public class FlowManager<TExec, TState>
                 case FlowStepActionType.SetSwitch:
                 case FlowStepActionType.SetSwitchMultiple:
                 {
+                    // Resolve a dynamic target (e.g. SimBrief-derived) just before dispatch.
+                    // Null = required data unavailable → quiet skip (see TargetValueProvider).
+                    if (step.TargetValueProvider != null)
+                    {
+                        int? resolved = step.TargetValueProvider(_state);
+                        if (resolved is null) return true;
+                        step.TargetValue = resolved;
+                    }
+
                     if (!_executor.IsAvailable)
                     {
                         _announcer.Announce($"Sim not connected — cannot perform: {step.AnnounceText}");

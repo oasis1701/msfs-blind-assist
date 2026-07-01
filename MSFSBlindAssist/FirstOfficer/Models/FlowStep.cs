@@ -73,6 +73,19 @@ public class FlowStep<TState> : IFlowStepDispatch
     public int? TargetValue { get; set; }
 
     /// <summary>
+    /// Resolves <see cref="TargetValue"/> dynamically at dispatch time — for values
+    /// unknown when the static flow definitions are built (e.g. SimBrief-derived
+    /// pressurization altitudes). When non-null, FlowManager writes the resolved value
+    /// into <see cref="TargetValue"/> immediately before dispatch (re-resolved on every
+    /// run, so the mutation never goes stale). Returning null means the required data is
+    /// unavailable → the step is QUIETLY skipped: success result, NO announcement (the
+    /// generic "Already set:"/"Skipping:" wordings would be wrong for "no flight plan").
+    /// Pair such steps with a fallback CaptainReminder that is SkipCondition'd away when
+    /// the data IS available, so the pilot still hears something in the no-data case.
+    /// </summary>
+    public Func<TState, int?>? TargetValueProvider { get; set; }
+
+    /// <summary>
     /// For <see cref="FlowStepActionType.SetSwitchMultiple"/>.
     /// Each tuple: (EventName from EventIds, target position).
     /// </summary>
