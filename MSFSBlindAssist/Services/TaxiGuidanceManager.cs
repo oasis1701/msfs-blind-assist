@@ -6165,19 +6165,25 @@ public class TaxiGuidanceManager : IDisposable
                 : "";
         }
 
-        // Count explicit hold-shorts the pilot asked for (or real intermediate
-        // runway crossings). For runway destinations, TruncateToHoldShort tags
-        // the last segment as a hold-short purely as an internal safety rail so
-        // the 300/150/50 ft countdown fires — it is NOT an ATC-assigned hold
-        // point and must not be counted. Including it produced confusing
-        // summaries like "…, 1 hold short point" when ATC never issued one.
-        int holdShorts = route.Segments.Count(s => s.IsHoldShortPoint);
-        if (isRunwayDestination && route.Segments.Count > 0 &&
-            route.Segments[^1].IsHoldShortPoint)
-        {
-            holdShorts--;
-        }
-        string holdStr = holdShorts > 0 ? $", {holdShorts} hold short point{(holdShorts > 1 ? "s" : "")}" : "";
+        // Describe the hold-short points. Runway crossings are NAMED, not just
+        // counted — "2 hold short points" told the pilot nothing about the
+        // route's shape, and at KSFO (2026-07-01, "Q hold short 10R" from D
+        // between the 28s) the only route onto Q re-crossed 28R twice; the
+        // pilot heard two unexplained "hold short of runway 10L" callouts and
+        // perceived a giant loop. "crossing runway 10L twice" up front makes
+        // the route's runway crossings audible before the pilot starts rolling.
+        // For runway destinations, TruncateToHoldShort tags the last segment
+        // purely as an internal countdown rail — it is NOT an ATC-assigned hold
+        // point and is excluded (same exclusion the old bare count applied).
+        bool excludeLastHold = isRunwayDestination && route.Segments.Count > 0 &&
+            route.Segments[^1].IsHoldShortPoint;
+        var (crossingClause, otherHolds) =
+            RouteRunwayCrossings.Describe(route.Segments, excludeLastHold);
+        string holdStr = "";
+        if (crossingClause.Length > 0)
+            holdStr += $", {crossingClause}";
+        if (otherHolds > 0)
+            holdStr += $", {otherHolds} hold short point{(otherHolds > 1 ? "s" : "")}";
 
         string fallbackStr = "";
         if (!string.IsNullOrEmpty(route.ConstrainedFallbackReason))

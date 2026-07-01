@@ -2215,85 +2215,13 @@ public class TaxiAssistForm : Form
         if (!_crossRunwayMap.TryGetValue($"Runway {runwayDesignator}", out var runway))
             return null;
 
-        double hdgRad = runway.Heading * Math.PI / 180.0;
-        double rwEast = Math.Sin(hdgRad);
-        double rwNorth = Math.Cos(hdgRad);
-
-        const double DEG_TO_M_LAT = 111320.0;
-        double degToMLon = DEG_TO_M_LAT * Math.Cos(_aircraftLat * Math.PI / 180.0);
-
-        double SignedCT(double lat, double lon)
-        {
-            double pDy = (lat - runway.StartLat) * DEG_TO_M_LAT;
-            double pDx = (lon - runway.StartLon) * degToMLon;
-            return rwEast * pDy - rwNorth * pDx;
-        }
-
-        double halfWidthM = runway.Width > 0 ? runway.Width / 2.0 : 30.0;
-        double minLateralM = Math.Max(halfWidthM, 15.0);
-
-        double acSignedCT = SignedCT(_aircraftLat, _aircraftLon);
-
-        // Near side = the aircraft's own side. If the aircraft is ON the runway,
-        // use its heading to pick the side it is coming FROM (opposite the exit
-        // side the far-side finder would pick).
-        int nearSign;
-        if (Math.Abs(acSignedCT) >= minLateralM)
-        {
-            nearSign = Math.Sign(acSignedCT);
-        }
-        else
-        {
-            double perpComp = Math.Sin((runway.HeadingMag - _aircraftHeading) * Math.PI / 180.0);
-            nearSign = perpComp >= 0 ? -1 : 1;
-        }
-
-        double runwayLengthM = runway.Length > 0
-            ? runway.Length * 0.3048
-            : TaxiGraph.CalculateDistanceMeters(
-                runway.StartLat, runway.StartLon, runway.EndLat, runway.EndLon);
-
-        const double MAX_LATERAL_M = 600.0;
-        const double MAX_ALONG_PAST_END_M = 500.0;
-
-        int? aircraftComponentId = _graph.FindNearestNode(_aircraftLat, _aircraftLon)?.ComponentId;
-
-        // Prefer a candidate that actually lies on the last cleared taxiway (where
-        // the clearance ends); fall back to the global nearest-centerline node when
-        // none qualifies, so this is never worse than the prior unanchored scan.
-        bool OnLastTaxiway(int nodeId) =>
-            _graph.Adjacency.TryGetValue(nodeId, out var es) &&
-            es.Any(e => e.TaxiwayName.Equals(lastTaxiway, StringComparison.OrdinalIgnoreCase));
-
-        TaxiNode? bestNode = null;   double bestLateral = double.MaxValue;     // any taxiway (fallback)
-        TaxiNode? bestOnTw = null;   double bestLateralTw = double.MaxValue;   // on lastTaxiway (preferred)
-
-        foreach (var node in _graph.Nodes.Values)
-        {
-            if (aircraftComponentId.HasValue && node.ComponentId != aircraftComponentId.Value) continue;
-
-            double nodeSignedCT = SignedCT(node.Latitude, node.Longitude);
-            if (Math.Sign(nodeSignedCT) != nearSign) continue;
-            double lateralAbs = Math.Abs(nodeSignedCT);
-            if (lateralAbs < minLateralM) continue;
-            if (lateralAbs > MAX_LATERAL_M) continue;
-
-            double nPDx = (node.Longitude - runway.StartLon) * degToMLon;
-            double nPDy = (node.Latitude - runway.StartLat) * DEG_TO_M_LAT;
-            double along = rwEast * nPDx + rwNorth * nPDy;
-            if (along < -MAX_ALONG_PAST_END_M) continue;
-            if (along > runwayLengthM + MAX_ALONG_PAST_END_M) continue;
-
-            // Closest to the centerline on the near side = the hold-short point.
-            if (lateralAbs < bestLateral) { bestLateral = lateralAbs; bestNode = node; }
-            if (lateralAbs < bestLateralTw && OnLastTaxiway(node.NodeId))
-            {
-                bestLateralTw = lateralAbs;
-                bestOnTw = node;
-            }
-        }
-
-        return bestOnTw ?? bestNode;
+        // Delegated to the pure Navigation helper (probe-tested) so the scenery's
+        // DESIGNATED hold-short nodes are preferred over the geometric scan.
+        // KSFO 2026-07-01: the geometric scan held the pilot at a plain Q node
+        // ~157 m from the 28L centerline while the scenery's HSND hold line sits
+        // at ~97 m; the helper picks the designated node closest to the runway.
+        return HoldShortNodeResolver.ResolveNearSide(
+            _graph, runway, _aircraftLat, _aircraftLon, _aircraftHeading, lastTaxiway);
     }
 
     /// <summary>
@@ -2342,6 +2270,12 @@ public class TaxiAssistForm : Form
             return rwEast * pDy - rwNorth * pDx;
         }
 
+        // NOTE: Runway.Width is in FEET; dividing by 2 and reading the result as
+        // METRES is a DELIBERATE conservative setback (~1.64 × the physical
+        // half-width — a 200 ft runway → ~97 m), approximating real hold-line
+        // placement so the far-side target clears the runway safety area. Do NOT
+        // "fix" the units to ft→m — that would put the target at the pavement
+        // edge with the tail still over the runway.
         double halfWidthM = runway.Width > 0 ? runway.Width / 2.0 : 30.0;
         double minLateralM = Math.Max(halfWidthM, 15.0);
 
