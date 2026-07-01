@@ -232,14 +232,17 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // DOWN to mirror the knob; a stored value is already a step multiple, so the
     // event-side round-down is a no-op and the two paths cannot disagree.
     // -1 sentinel = that value not available (no plan / unparseable OFP field).
+    //
+    // Written on the UI thread (SimBrief load); read on a thread-pool thread by the
+    // checklist auto-detect. Volatile.Read/Write makes the cross-thread handoff explicit.
     // -----------------------------------------------------------------------
     private int _plannedFltAltFt = -1;
     private int _plannedLandAltFt = -1;
 
     public void SetPlannedPressurizationAltitudes(int? cruiseAltFt, int? destElevFt)
     {
-        _plannedFltAltFt  = cruiseAltFt is int c ? RoundToStep(c, 500, 42000) : -1;
-        _plannedLandAltFt = destElevFt  is int d ? RoundToStep(d, 50, 14000)  : -1;
+        Volatile.Write(ref _plannedFltAltFt, cruiseAltFt is int c ? RoundToStep(c, 500, 42000) : -1);
+        Volatile.Write(ref _plannedLandAltFt, destElevFt  is int d ? RoundToStep(d, 50, 14000)  : -1);
     }
 
     private static int RoundToStep(int feet, int step, int maxFt)
@@ -250,21 +253,54 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     }
 
     /// <summary>Planned FLT ALT (rounded/clamped), or null when no SimBrief plan.</summary>
-    public int? PlannedFltAltFt  => _plannedFltAltFt  >= 0 ? _plannedFltAltFt  : null;
+    public int? PlannedFltAltFt
+    {
+        get
+        {
+            int val = Volatile.Read(ref _plannedFltAltFt);
+            return val >= 0 ? val : null;
+        }
+    }
     /// <summary>Planned LAND ALT (rounded/clamped), or null when no SimBrief plan.</summary>
-    public int? PlannedLandAltFt => _plannedLandAltFt >= 0 ? _plannedLandAltFt : null;
+    public int? PlannedLandAltFt
+    {
+        get
+        {
+            int val = Volatile.Read(ref _plannedLandAltFt);
+            return val >= 0 ? val : null;
+        }
+    }
     /// <summary>At least one planned pressurization value is available.</summary>
-    public bool HasPressurizationPlan => _plannedFltAltFt >= 0 || _plannedLandAltFt >= 0;
+    public bool HasPressurizationPlan
+    {
+        get
+        {
+            int flt = Volatile.Read(ref _plannedFltAltFt);
+            int land = Volatile.Read(ref _plannedLandAltFt);
+            return flt >= 0 || land >= 0;
+        }
+    }
 
     // Window-vs-plan match, strictly less than one knob step: window values are
     // step-quantized, so a full-step difference is a DIFFERENT setting, not a match;
     // strict-less still absorbs float fuzz.
-    public bool FltAltMatches()  => _plannedFltAltFt  >= 0 && Math.Abs(GetValue("AIR_FltAltWindow")  - _plannedFltAltFt)  < 500;
-    public bool LandAltMatches() => _plannedLandAltFt >= 0 && Math.Abs(GetValue("AIR_LandAltWindow") - _plannedLandAltFt) < 50;
+    public bool FltAltMatches()
+    {
+        int flt = Volatile.Read(ref _plannedFltAltFt);
+        return flt >= 0 && Math.Abs(GetValue("AIR_FltAltWindow") - flt) < 500;
+    }
+    public bool LandAltMatches()
+    {
+        int land = Volatile.Read(ref _plannedLandAltFt);
+        return land >= 0 && Math.Abs(GetValue("AIR_LandAltWindow") - land) < 50;
+    }
 
     // Every AVAILABLE planned value matches its window (a partial plan checks what exists).
     private bool AllPressAltsMatch() =>
         HasPressurizationPlan
-        && (_plannedFltAltFt  < 0 || FltAltMatches())
-        && (_plannedLandAltFt < 0 || LandAltMatches());
+        && (!HasFltAltPlan() || FltAltMatches())
+        && (!HasLandAltPlan() || LandAltMatches());
+
+    private bool HasFltAltPlan() => Volatile.Read(ref _plannedFltAltFt) >= 0;
+    private bool HasLandAltPlan() => Volatile.Read(ref _plannedLandAltFt) >= 0;
 }

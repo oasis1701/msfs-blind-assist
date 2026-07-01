@@ -241,9 +241,10 @@ public class FirstOfficerForm<TExec, TState> : Form
         // Pressurization plan: FLT ALT = SimBrief cruise, LAND ALT = destination field
         // elevation (interface method — the 737 evaluator stores it rounded to the panel
         // knob steps; the 777 no-ops, its pressurization is automatic). DestElevation may
-        // legitimately parse to 0 (sea level), so no > 0 gate on it.
+        // legitimately parse to 0 (sea level), so no > 0 gate on it. Clamp negative
+        // elevations to 0 to match the evaluator's RoundToStep clamping.
         int? cruiseFt   = int.TryParse(ofp.InitialAltitude, out int crz) && crz > 0 ? crz : null;
-        int? destElevFt = int.TryParse(ofp.DestElevation, out int elev) ? elev : null;
+        int? destElevFt = int.TryParse(ofp.DestElevation, out int elev) ? Math.Max(0, elev) : null;  // below-sea-level out of scope (min 0, matches evaluator clamp)
         _stateEval.SetPlannedPressurizationAltitudes(cruiseFt, destElevFt);
         if (cruiseFt != null || destElevFt != null)
         {
