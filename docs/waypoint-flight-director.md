@@ -26,15 +26,19 @@ frequencies zero-beat (pitch matched). When they match, you are tracking the leg
 1. **Track your fixes.** Open the Track Fix window (input mode → **Shift+F**), enter a waypoint, pick
    a slot (1–5), and Track. Fill slots **1 → 5 in the order you want to fly them** — the FD walks them
    in order. You can also track straight from the **Electronic Flight Bag route viewer (Shift+E)** —
-   right-click (or the context-menu key) a waypoint and pick "Track Slot N". A waypoint tracked from
-   the EFB **carries its published altitude constraint and inbound course automatically** (e.g. a SID
-   leg "at or above 6000", a STAR fix "between 16000 and 19000", an airway course) — you don't have to
-   re-enter them. (Courses are used when magnetic and present; otherwise the leg flies direct-to.)
-   A position-less leg — an ARINC "maneuver" leg with no fix, e.g. *"Climb heading 071° to 600 feet"* —
-   can't be tracked (it has no point to fly to); the app says so and tracks nothing.
+   right-click (or the context-menu key) a waypoint and pick "Track Slot N". Instead of tracking
+   silently, that **opens the Track Fix window pre-filled** with the fix, the slot, and the altitude
+   constraint + course **mapped from the fix's own navdata** (e.g. a SID leg "at or above 6000", a STAR
+   fix "between 16000 and 19000", an airway course) — you just review and press **Track**, or tweak
+   anything first (add an altitude the navdata didn't carry, change the constraint, clear the course).
+   So the auto-filled constraint is always visible and editable, not hidden. (Courses are used when
+   magnetic and present; otherwise the leg flies direct-to.) A position-less leg — an ARINC "maneuver"
+   leg with no fix, e.g. *"Climb heading 071° to 600 feet"* — can't be tracked (no point to fly to); the
+   app says so and opens nothing.
 2. **(Optional) Add a crossing altitude.** In the Track Fix window, enter a **Crossing Altitude**
    (feet MSL) and pick a **constraint** (At / At or above / At or below / Between). Leave the altitude
-   blank for **lateral-only** guidance at that fix. For *Between*, also enter the **Upper Altitude**.
+   blank for **lateral-only** guidance at that fix. The **Upper Altitude** box appears **only when you
+   select "Between"** (it's not used by the other constraints).
 3. **Engage.** Output mode → **Ctrl+F**. The FD starts on slot 1 and announces the active leg. If slot
    1 is empty it says "No waypoints to track" and does nothing.
 4. **Hand-fly** to match the tones. On reaching each fix the FD announces the next leg

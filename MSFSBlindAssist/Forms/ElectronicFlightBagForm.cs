@@ -24,7 +24,6 @@ public partial class ElectronicFlightBagForm : Form
     private readonly FlightPlanManager _flightPlanManager;
     private readonly SimConnectManager _simConnectManager;
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly WaypointTracker _waypointTracker;
     private readonly string _simbriefUsername;
     private SimConnectManager.AircraftPosition? _lastKnownPosition;
     private IntPtr previousWindow;
@@ -77,12 +76,11 @@ public partial class ElectronicFlightBagForm : Form
     private SimBriefPlannerForm? _simbriefPlannerForm;
 
     public ElectronicFlightBagForm(FlightPlanManager flightPlanManager, SimConnectManager simConnectManager,
-                                   ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername)
+                                   ScreenReaderAnnouncer announcer, string simbriefUsername)
     {
         _flightPlanManager = flightPlanManager;
         _simConnectManager = simConnectManager;
         _announcer = announcer;
-        _waypointTracker = waypointTracker;
         _simbriefUsername = simbriefUsername;
 
         InitializeComponent();
@@ -806,6 +804,12 @@ public partial class ElectronicFlightBagForm : Form
         }
     }
 
+    /// <summary>Raised when the pilot picks "Track Slot N" on a route waypoint. The host (MainForm)
+    /// opens the Track Fix dialog pre-populated (ident, slot, and the altitude/constraint/course mapped
+    /// from the fix) for review + edit, rather than tracking silently — so the tracked constraint is
+    /// visible and editable. Args: the selected fix and the 1-based slot number.</summary>
+    public event Action<Database.Models.WaypointFix, int>? TrackToSlotRequested;
+
     private void TrackSlotMenuItem_Click(object? sender, EventArgs e)
     {
         var menuItem = sender as ToolStripMenuItem;
@@ -847,28 +851,11 @@ public partial class ElectronicFlightBagForm : Form
             return;
         }
 
-        // Carry the fix's PUBLISHED altitude constraint + inbound course into the slot, so a waypoint
-        // tracked from a SimBrief/SID/STAR/approach plan flies its real vertical + course automatically
-        // (instead of lateral-only direct-to). The Track Fix window enters these by hand; this derives
-        // them from the fix's own data.
-        var (crossingAlt, crossingAltUpper, constraint, course) = WaypointConstraintMapper.FromFix(waypoint);
-        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, crossingAltUpper, constraint, course);
-
-        // Announce to screen reader (echo what carried through, like the Track Fix window does).
-        string detail = "";
-        if (course.HasValue)
-            detail += $", tracking course {course.Value:F0}";
-        if (crossingAlt.HasValue)
-        {
-            detail += constraint switch
-            {
-                AltitudeConstraintType.AtOrAbove => $", at or above {crossingAlt.Value:F0} feet",
-                AltitudeConstraintType.AtOrBelow => $", at or below {crossingAlt.Value:F0} feet",
-                AltitudeConstraintType.Between when crossingAltUpper.HasValue => $", between {crossingAlt.Value:F0} and {crossingAltUpper.Value:F0} feet",
-                _                                => $", at {crossingAlt.Value:F0} feet"
-            };
-        }
-        _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}{detail}");
+        // Hand off to the Track Fix dialog PRE-POPULATED with this fix + slot + its mapped altitude
+        // constraint / course, so the pilot can review and edit before committing — the tracked
+        // constraint is then visible and modifiable, instead of a silent direct-track the Shift+F
+        // dialog couldn't show. The host (MainForm) opens the dialog; the mapping happens there.
+        TrackToSlotRequested?.Invoke(waypoint, slotNumber);
     }
 
     private void LoadSimBriefFlightPlan()
