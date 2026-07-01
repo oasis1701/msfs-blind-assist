@@ -91,7 +91,7 @@ Item changes (all in `PMDG737ChecklistDefinitions`):
 ## 6. Verification
 
 - No automated test project (SimConnect-driven app). Build `MSFSBlindAssist.sln` x64.
-- Add **Part H** to `docs/pmdg-737-first-officer-test-plan.md`: SimBrief-loaded preflight
+- Add **Part I** to `docs/pmdg-737-first-officer-test-plan.md`: SimBrief-loaded preflight
   flow sets both values (spoken window announcements match the OFP), no-SimBrief fallback
   reminder, checklist tick-fires-set, preflight auto-tick, descent auto-verify,
   PFC_PRESS mode-selector auto-tick.

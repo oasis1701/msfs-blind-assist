@@ -111,15 +111,20 @@ public class ChecklistManager<TExec, TState>
             {
                 if (!item.IsAutoDetectable) continue;
 
-                bool stateMatches = EvaluateItemState(item);
+                bool? stateMatches = EvaluateItemState(item);
 
-                if (stateMatches && !item.IsChecked)
+                // null = indeterminate (e.g. no SimBrief plan loaded, CDA not yet ready).
+                // Skip BOTH auto-tick AND auto-revert so a manual tick is never disturbed
+                // by a state that cannot currently be evaluated.
+                if (stateMatches is null) continue;
+
+                if (stateMatches.Value && !item.IsChecked)
                 {
                     item.IsChecked = true;
                     ItemStateChanged?.Invoke(group, item);
                     groupChanged = true;
                 }
-                else if (!stateMatches && item.IsChecked
+                else if (!stateMatches.Value && item.IsChecked
                     && item.RevertBehavior == RevertBehavior.RevertToState)
                 {
                     item.IsChecked = false;
@@ -147,14 +152,16 @@ public class ChecklistManager<TExec, TState>
     // Private helpers
     // -----------------------------------------------------------------------
 
-    private bool EvaluateItemState(ChecklistItem<TExec, TState> item)
+    private bool? EvaluateItemState(ChecklistItem<TExec, TState> item)
     {
         double primary = _state.GetValue(item.StateFieldName!);
+        if (double.IsNaN(primary)) return null;
         if (!item.EvaluateState(primary)) return false;
 
         foreach (var field in item.AdditionalStateFields)
         {
             double v = _state.GetValue(field);
+            if (double.IsNaN(v)) return null;
             if (!item.EvaluateAdditionalState(v)) return false;
         }
 

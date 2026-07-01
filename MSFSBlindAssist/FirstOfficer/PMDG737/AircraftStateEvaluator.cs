@@ -43,10 +43,15 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // Synthetic FO-only fields (not in the PMDG CDA struct). N2 from the timer-pushed
         // cache; the FO_PRESS_* keys compare the live FLT/LAND ALT windows to the stored
         // SimBrief plan (checklist auto-detect reads them — see the plan block below).
+        // NaN = INDETERMINATE (no plan to compare against, or the CDA hasn't delivered
+        // its first snapshot): ChecklistManager skips both auto-tick AND revert on NaN,
+        // so a manual tick HOLDS — the no-plan degradation to a plain reminder.
         if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
         if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
-        if (field == "FO_PRESS_ALTS_MATCH")     return AllPressAltsMatch() ? 1 : 0;
-        if (field == "FO_PRESS_LAND_ALT_MATCH") return LandAltMatches() ? 1 : 0;
+        if (field == "FO_PRESS_ALTS_MATCH")
+            return !HasPressurizationPlan || !CdaReady ? double.NaN : (AllPressAltsMatch() ? 1 : 0);
+        if (field == "FO_PRESS_LAND_ALT_MATCH")
+            return !HasLandAltPlan() || !CdaReady ? double.NaN : (LandAltMatches() ? 1 : 0);
         try { return _dm?.GetFieldValue(field) ?? 0; }
         catch { return 0; }
     }
@@ -281,18 +286,24 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         }
     }
 
+    // First CDA snapshot received — before it, GetFieldValue reads 0 for EVERY field
+    // (interface contract), which would false-match a sea-level (0 ft) planned LAND ALT
+    // and let a preflight-flow SkipCondition report "Already set" on a not-ready sim.
+    private bool CdaReady => _dm is { IsReady: true };
+
     // Window-vs-plan match, strictly less than one knob step: window values are
     // step-quantized, so a full-step difference is a DIFFERENT setting, not a match;
-    // strict-less still absorbs float fuzz.
+    // strict-less still absorbs float fuzz. Gated on CdaReady — false (never "matches")
+    // until the first snapshot, so flow steps set rather than skip.
     public bool FltAltMatches()
     {
         int flt = Volatile.Read(ref _plannedFltAltFt);
-        return flt >= 0 && Math.Abs(GetValue("AIR_FltAltWindow") - flt) < 500;
+        return CdaReady && flt >= 0 && Math.Abs(GetValue("AIR_FltAltWindow") - flt) < 500;
     }
     public bool LandAltMatches()
     {
         int land = Volatile.Read(ref _plannedLandAltFt);
-        return land >= 0 && Math.Abs(GetValue("AIR_LandAltWindow") - land) < 50;
+        return CdaReady && land >= 0 && Math.Abs(GetValue("AIR_LandAltWindow") - land) < 50;
     }
 
     // Every AVAILABLE planned value matches its window (a partial plan checks what exists).

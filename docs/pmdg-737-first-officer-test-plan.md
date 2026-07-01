@@ -332,3 +332,8 @@ initial/cruise altitude and destination field elevation.
    "Pressurization plan: …" announce IS expected (it lives in the shared form; the 777
    evaluator no-ops the stored value). The key checks: no new 777 flow steps or checklist
    items, the 777 Preflight flow and checklists behave exactly as before, no errors.
+10. **No-SimBrief manual ticks hold** — fresh session WITHOUT SimBrief: Checklists →
+    Preflight → manually tick "Flight and landing altitudes: SET", and Descent
+    Checklist → "Pressurization: landing altitude set". Both ticks must HOLD (no
+    auto-revert on the next poll) — with no plan the match fields are indeterminate
+    (NaN) and the checklist manager skips both auto-tick and revert.
