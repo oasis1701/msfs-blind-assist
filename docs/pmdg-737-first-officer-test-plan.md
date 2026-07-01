@@ -297,3 +297,38 @@ by design). The **777** is unchanged here (it already read STD state and committ
   pilot cannot observe the visual test result, so the FO prompts the captain to perform them.
 - **Runtime-data items** (altimeters, trim, MCP courses, ILS frequencies, pressurization
   altitudes) are captain reminders — they depend on data the FO cannot set blind.
+
+## Part I — pressurization FLT/LAND ALT from SimBrief (2026-07-01)
+
+Setup: PMDG 737 at a gate, powered, MSFSBA connected. A SimBrief OFP filed — note its
+initial/cruise altitude and destination field elevation.
+
+1. **SimBrief load announce** — First Officer window → Load SimBrief. Alongside the
+   existing transition/flaps announcements, expect: "Pressurization plan: flight altitude
+   <cruise> feet, landing altitude <destination elevation> feet."
+2. **Preflight flow sets both** — run the Preflight flow. After "Engine bleeds: ON" expect
+   "Flight altitude: set" followed by the PR #120 monitor callout "Flight altitude
+   <cruise, rounded to 500> feet", then "Landing altitude: set" + "Landing altitude
+   <destination elevation, rounded to 50> feet". The captain pressurization reminder must
+   NOT fire — instead "Already set: Flight and landing altitudes". Confirm the values on
+   the Air Systems panel (Flight/Landing Altitude fields read them back on focus).
+3. **Idempotent re-run** — run Preflight again: both steps announce "Already set: …" and
+   send nothing.
+4. **No-SimBrief fallback** — fresh session WITHOUT loading SimBrief; run Preflight:
+   no "Flight altitude: set"/"Landing altitude: set" announcements at all (quiet skip),
+   and the reminder fires: "Captain action required: Set flight and landing altitudes on
+   the pressurization panel."
+5. **Checklist tick fires the set** — SimBrief loaded, then dial FLT ALT wrong via the
+   Air Systems panel. Checklists → Preflight → "Flight and landing altitudes: SET" shows
+   unticked; tick it → both values set (two callouts, ~350 ms apart) and it re-ticks.
+6. **Auto-tick from panel** — untick state (dial a window off-plan), then hand-set both
+   windows to the planned values via the Air Systems panel: item auto-ticks.
+7. **Descent auto-verify** — Descent Checklist → "Pressurization: landing altitude set"
+   auto-ticks while LAND ALT matches destination elevation; dial LAND ALT 500 ft off →
+   it unticks (RevertToState).
+8. **Mode-selector readback** — Preflight Checklist → "Pressurization mode selector:
+   AUTO" auto-ticks with the selector in AUTO; select MAN → unticks.
+9. **777 regression** — load the 777, open its FO window, Load SimBrief. The
+   "Pressurization plan: …" announce IS expected (it lives in the shared form; the 777
+   evaluator no-ops the stored value). The key checks: no new 777 flow steps or checklist
+   items, the 777 Preflight flow and checklists behave exactly as before, no errors.
