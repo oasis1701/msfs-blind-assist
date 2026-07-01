@@ -4659,8 +4659,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             //     rewrites them from the real switch state every frame, same
             //     family as the xBAW switches, so a raw SetLVar reverts; the
             //     EVT_*_ARMREST_* event is the actuator and the L:var then
-            //     follows for display) and foot heaters (proper SDK struct
-            //     field AIR_FootHeaterSelector + EVT_FWD_*_FOOT_HEATER).
+            //     follows for display). (Foot heaters were REMOVED — the xBAW
+            //     Boris soundpack repurposes the CA FOOT HEATER knob / SDK
+            //     switch 319 as its hydraulic-pump gate, so they cross-wired.)
             //
             // (b) Cockpit-model anim L:vars that ARE the pilot input (from
             //     77W_Cockpit_Behavior.xml): visors, worktables, shoulder
