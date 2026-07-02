@@ -387,9 +387,13 @@ public sealed class FBWA380ChecklistForm : Form
 
         // The ECL deliberately follows the FWS sim cursor — this OVERRIDES the reconcile's
         // keep-the-user's-row restore, exactly as the old rebuild did. Keep caller-side.
-        if (selIdx >= 0 && selIdx < _list.Items.Count) _list.SelectedIndex = selIdx;
-        else if (keep >= 0 && keep < _list.Items.Count) _list.SelectedIndex = keep;
-        else if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+        // Compute the target first and only assign when it actually differs, so a
+        // redundant set can't fire an extra native selection-change notification.
+        int target = (selIdx >= 0 && selIdx < _list.Items.Count) ? selIdx
+                    : (keep >= 0 && keep < _list.Items.Count) ? keep
+                    : (_list.Items.Count > 0 ? 0 : -1);
+        if (target >= 0 && _list.SelectedIndex != target)
+            _list.SelectedIndex = target;
     }
 
     // The text the screen reader speaks for one ECL line. Screen-reader-first: no
