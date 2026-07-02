@@ -188,7 +188,10 @@ One commit per section so anything reverts independently:
      the reading row (type-ahead suppressed) and the entry row updates in place.
   2. **CDU regression, one per family:** FBW A320 MCDU, PMDG 777 CDU, DCDU — page
      through, confirm title-change selection behavior and braille line stability
-     match today's behavior exactly.
+     match today's behavior exactly. On the A380 MCDU, also arrow BELOW a
+     collapsing MFD dropdown's option rows and confirm the selection clamps to
+     the new last row (the new helper behavior — the old code left the
+     selection cleared/stranded).
   3. **E/WD (Alt+E)** on either jet: arrow onto an engine row, change thrust,
      confirm the row updates without the cursor jumping.
   4. **ECL (Ctrl+Shift+C):** tick items through a checklist; confirm the cursor

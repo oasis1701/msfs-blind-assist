@@ -97,7 +97,8 @@ namespace MSFSBlindAssist.Forms
                     newSel = Math.Min(sel, n - 1);
                 }
 
-                // SelectedIndex is range-checked, so the assignment can't throw; only set it when it
+                // Range-check newSel first — ListBox.SelectedIndex itself throws on an out-of-range
+                // set, so this guard is what makes the assignment below safe. Only set it when it
                 // actually moves, so an undisturbed selection fires no SelectedIndexChanged.
                 if (newSel >= 0 && newSel < lb.Items.Count && newSel != lb.SelectedIndex)
                     lb.SelectedIndex = newSel;

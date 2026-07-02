@@ -5,10 +5,11 @@ namespace MSFSBlindAssist.Forms.HS787;
 
 /// <summary>
 /// On-demand EICAS crew-alert window for the HorizonSim 787 (Alt+E, output mode). Shows the active
-/// warnings / cautions / advisories as a navigable read-only text box (arrow keys to read, Escape to
+/// warnings / cautions / advisories as a navigable read-only list (arrow keys to read, Escape to
 /// close) instead of a one-shot spoken read-back. A 1 s timer refreshes the text so newly-posted
-/// alerts appear while the window is open; the caret position is preserved so a reader isn't yanked
-/// to the top on refresh. The text comes from the always-on CoherentHS787CasClient.
+/// alerts appear while the window is open; the refresh reconciles the list in place (via
+/// DisplayListBox, which wraps DisplayList.UpdateInPlace) so the reader's selected row is preserved
+/// instead of being reset to the top. The text comes from the always-on CoherentHS787CasClient.
 /// </summary>
 public class HS787EicasForm : Form
 {
