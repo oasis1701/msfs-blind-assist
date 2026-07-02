@@ -500,3 +500,25 @@ Test (777, cold-and-dark → shutdown):
    disconnect with APU running (disconnects); ticking disconnect with no GPU
    connected does NOT connect one.
 7. LNAV/VNAV: tick when already armed — no press fires (annunciator guard).
+
+---
+
+## Part M — captain-action parity in the checklist groups (2026-07-02)
+
+Every CaptainReminder step in the flows now has a matching reminder item in the flow's
+related checklist group, positioned in flow order.
+
+- **737**: Preflight gains "Perform the overhead and fire tests as required" (last);
+  Before Start gains "Set MCP airspeed, heading and initial altitude" (first) and
+  "Confirm ground power and chocks removed, doors closed, and taxi clearance" (last);
+  Before Taxi gains "Set engine and wing anti-ice as required" (after start switches
+  CONT), and the takeoff-flaps reminder moved to flow order (after the turnoff lights,
+  before the lower DU).
+- **777**: Preflight gains "Reset checklists and obtain IFR clearance" and "Obtain ATIS"
+  (end, matching the Cockpit Prep flow tail); Before Start gains "Obtain taxi clearance"
+  and "Start ACARS if required" (end), and the three trim items moved up to follow the
+  MCP/LNAV-VNAV block (flow order); Before Taxi gains "Set stabiliser trim for takeoff"
+  (after the flight-controls check).
+
+Test: expand each group listed above and confirm the reminders appear at the stated
+positions; tick them (manual tick holds — reminders have no action and no auto-detect).

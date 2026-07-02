@@ -123,6 +123,7 @@ public static class PMDG737ChecklistDefinitions
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "EFIS_ModeSel_0", v => v > 1.5 && v < 2.5, (e, _) => e.SetEFISModeCapt(2)),
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "EFIS_RangeSel_0", v => v > 2.5 && v < 3.5, (e, _) => e.SetEFISRangeCapt(3)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
+            Reminder("PF_TESTS", "PREFLIGHT", "Perform the overhead and fire tests as required"),
         }
     };
 
@@ -131,6 +132,7 @@ public static class PMDG737ChecklistDefinitions
         Id = "BEFORE_START", Name = "Before Start",
         Items = new()
         {
+            Reminder("BS_MCP", "BEFORE_START", "Set MCP airspeed, heading and initial altitude"),
             // APU start must go ON → dwell → momentary START (StartApuAsync); writing START
             // directly never spools the APU up. Auto-detects ON-line from APU_Selector.
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
@@ -143,6 +145,7 @@ public static class PMDG737ChecklistDefinitions
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed air: ON", "AIR_APUBleedAirSwitch", v => v > 0.5, (e, _) => e.SetApuBleed(1)),
             Auto("BS_ANTICOL", "BEFORE_START", "Anti-collision light: ON", "LTS_AntiCollisionSw", v => v > 0.5, (e, _) => e.SetBeacon(1)),
             Auto("BS_XPDR", "BEFORE_START", "Transponder: TA/RA", "XPDR_ModeSel", v => v > 3.5, (e, _) => e.SetTransponderMode(4)),
+            Reminder("BS_GND", "BEFORE_START", "Confirm ground power and chocks removed, doors closed, and taxi clearance"),
         }
     };
 
@@ -185,14 +188,15 @@ public static class PMDG737ChecklistDefinitions
             Auto("BT_ISO", "BEFORE_TAXI", "Isolation valve: AUTO", "AIR_IsolationValveSwitch", v => v > 0.5 && v < 1.5, (e, _) => e.SetIsolationValve(1)),
             Auto("BT_START", "BEFORE_TAXI", "Engine start switches: CONT", "ENG_StartSelector_0", v => v > 1.5 && v < 2.5,
                 new[] { "ENG_StartSelector_1" }, (e, _) => { e.SetEngStartSelector1(2); e.SetEngStartSelector2(2); }),
+            Reminder("BT_ANTIICE", "BEFORE_TAXI", "Set engine and wing anti-ice as required for conditions"),
             Auto("BT_TAXI", "BEFORE_TAXI", "Taxi light: ON", "LTS_TaxiSw", v => v > 0.5, (e, _) => e.SetTaxiLights(1)),
             Auto("BT_TURNOFF", "BEFORE_TAXI", "Runway turnoff lights: ON", "LTS_RunwayTurnoffSw_0", v => v > 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(1)),
+            Reminder("BT_FLAPS", "BEFORE_TAXI", "Set the takeoff flaps"),
             ActionManual("BT_LOWERDU", "BEFORE_TAXI", "Lower display unit: SYS", (e, _) => e.SetLowerDUCapt(1)),
             // Presses the six-pack: every active annunciator + master caution latch on and
             // are announced by the app's monitors; the captain resets with Master Caution.
             ActionManual("BT_RECALL", "BEFORE_TAXI", "Recall: checked", (e, _) => e.PressRecall()),
-            Reminder("BT_FLAPS", "BEFORE_TAXI", "Set the takeoff flaps"),
         }
     };
 

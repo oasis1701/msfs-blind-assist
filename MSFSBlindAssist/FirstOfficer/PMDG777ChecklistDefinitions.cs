@@ -258,6 +258,8 @@ public static class PMDG777ChecklistDefinitions
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
             Reminder("PF_OXYGEN", "PREFLIGHT", "Oxygen: Tested 100%"),
             Manual("PF_BARO_SET", "PREFLIGHT", "Barometric reference: Set local setting"),
+            Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
+            Reminder("PF_ATIS", "PREFLIGHT", "Obtain ATIS"),
         }
     };
 
@@ -295,6 +297,11 @@ public static class PMDG777ChecklistDefinitions
             Manual("BS_LNAV_SET", "BEFORE_START", "LNAV: Arm as needed"),
             Manual("BS_INIT_HDG", "BEFORE_START", "Initial heading or track: Set"),
             Manual("BS_INIT_ALT", "BEFORE_START", "Initial altitude: Set"),
+            // Trim follows the MCP setup here — the flow briefs MCP → LNAV/VNAV → trim,
+            // and the trim wheel is easier to reach before the start clutter begins.
+            Manual("BS_STAB_TRIM", "BEFORE_START", "Stabilizer trim: Set for takeoff, verify green band"),
+            Manual("BS_AIL_TRIM", "BEFORE_START", "Aileron trim: 0 degrees"),
+            Manual("BS_RUD_TRIM", "BEFORE_START", "Rudder trim: 0 degrees"),
             Reminder("BS_DOORS_VERIFY", "BEFORE_START", "Exterior doors: Verify closed"),
             Reminder("BS_WINDOWS", "BEFORE_START", "Flight deck windows: Closed and locked"),
             Auto("BS_SEAT_BELTS", "BEFORE_START", "Seat Belts selector: AUTO",
@@ -336,9 +343,8 @@ public static class PMDG777ChecklistDefinitions
             Auto("BS_TRANSPONDER", "BEFORE_START", "Transponder: XPNDR",
                 "XPDR_ModeSel", v => v > 1.5 && v < 2.5,
                 action: (e, _) => e.SetTransponderMode(2)),
-            Manual("BS_STAB_TRIM", "BEFORE_START", "Stabilizer trim: Set for takeoff, verify green band"),
-            Manual("BS_AIL_TRIM", "BEFORE_START", "Aileron trim: 0 degrees"),
-            Manual("BS_RUD_TRIM", "BEFORE_START", "Rudder trim: 0 degrees"),
+            Reminder("BS_TAXI_CLR", "BEFORE_START", "Obtain taxi clearance"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS if required"),
         }
     };
 
@@ -418,6 +424,7 @@ public static class PMDG777ChecklistDefinitions
                 new[] { "AIR_Pack_Sw_AUTO_1" },
                 (e, _) => e.SetPacks(1)),
             Manual("BT_FCTL_CHECK", "BEFORE_TAXI", "Flight controls: CHECK"),
+            Reminder("BT_SET_TRIM", "BEFORE_TAXI", "Set stabiliser trim for takeoff"),
             ActionManual("BT_RECALL", "BEFORE_TAXI", "Recall: Check",
                 (e, _) => e.PushCancelRecall()),
         }
