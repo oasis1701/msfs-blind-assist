@@ -162,6 +162,15 @@ public class FirstOfficerForm<TExec, TState> : Form
                 _simConnect.RequestFOAltitudeAGL();
                 _simConnect.RequestFOAirspeedIndicated();
                 _simConnect.RequestFOEngineN2();
+
+                // LVar-based profiles (Fenix/FBW): poll OnRequest-registered control vars
+                // onto the cache so checklist auto-detection can read them. PMDG evaluators
+                // are not LVarStateEvaluator, so this is a no-op for them.
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.Generic.LVarStateEvaluator lvarEval)
+                {
+                    foreach (string field in lvarEval.OnRequestPollFields)
+                        _simConnect.RequestVariable(field);
+                }
             }
         };
         _autoDetectTimer.Start();
