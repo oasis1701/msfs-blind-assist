@@ -59,14 +59,16 @@ public static class PMDG737FlowDefinitions
                 s => s.IsBatteryOn()),
             Skip(SW("EPU_STBY", "Standby power: AUTO", "EVT_OH_ELEC_STBY_PWR_SWITCH", 2),
                 s => s.StandbyPower() == 2),
-            // Ground power detection reads the FO_GPU_ON synthetic (GRD POWER AVAILABLE +
-            // ground-service buses hot) — NEVER the raw ELEC_GrdPwrSw struct bool, which
-            // reads TRUE with no GPU at the stand (live-verified 2026-07-02) and made this
-            // step skip as "Already set" so external power never came on. The follow-up
-            // wait announces a timeout when no GPU is available, so a stand without ground
-            // power is never a silent no-op.
-            Skip(SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1),
-                s => s.IsGpuOn()),
+            // Ground power ON is pressed UNCONDITIONALLY — the NG3 exposes no reliable
+            // "ext power on bus" signal to skip on. The raw ELEC_GrdPwrSw bool lies (TRUE
+            // with no GPU at the stand), and even the FO_GPU_ON composite (AVAILABLE +
+            // ground-svc buses hot) false-positives whenever a GPU is plugged in while the
+            // APU/engines power the buses (both live-verified 2026-07-02) — the old skip
+            // announced "Already set" and external power never came on. The directional ON
+            // press is idempotent when already connected, so pressing always is safe. The
+            // follow-up wait announces a timeout when no GPU exists at the stand (skipped
+            // when FO_GPU_ON already reads on — benign either way in the power-up context).
+            SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1),
             Skip(WaitForField("EPU_GPU_WAIT", "Ground power on the buses", "FO_GPU_ON", v => v > 0.5, 10),
                 s => s.IsGpuOn()),
             // IRS to NAV — alignment runs in the background; no wait. "IRS aligned" auto-detects later.

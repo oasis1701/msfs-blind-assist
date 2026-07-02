@@ -67,10 +67,14 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => e.SetBattery(1)),
             Auto("EPU_STBY", "ELEC_POWER_UP", "Standby power: AUTO", "ELEC_StandbyPowerSelector", v => v > 1.5,
                 (e, _) => e.SetStandbyPower(2)),
-            // FO_GPU_ON = GRD POWER AVAILABLE annun + ground-service buses hot. The raw
-            // ELEC_GrdPwrSw struct bool LIES (reads TRUE with no GPU at the stand —
-            // live-verified 2026-07-02), which used to false-tick this item.
-            Auto("EPU_GPU", "ELEC_POWER_UP", "Ground power: ON", "FO_GPU_ON", v => v > 0.5,
+            // STATELESS press, like the panel's "Ground Power On" button: the NG3 exposes
+            // NO reliable "ext power on bus" signal. The raw ELEC_GrdPwrSw bool lies
+            // (TRUE with no GPU at the stand), and the FO_GPU_ON composite false-POSITIVES
+            // whenever a GPU is plugged in while the APU/engines power the buses (live-
+            // verified 2026-07-02 at the gate: available + buses hot on APU power) — which
+            // pre-checked this item so ticking it never pressed anything. Tick = press ON
+            // (directional press, idempotent if already connected).
+            ActionManual("EPU_GPU", "ELEC_POWER_UP", "Ground power: ON",
                 (e, _) => e.SetGroundPower(1)),
             Auto("EPU_IRS", "ELEC_POWER_UP", "IRS mode selectors: NAV", "IRS_ModeSelector_0", v => v > 1.5,
                 new[] { "IRS_ModeSelector_1" }, (e, _) => e.SetIrsMode(2)),
@@ -138,9 +142,9 @@ public static class PMDG737ChecklistDefinitions
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
             // Electrical transfer to the APU. The APU GEN switches are stateless momentary
             // push pairs (no readable per-switch state) — action-only, like the panel.
+            // Ground power OFF is stateless too (see EPU_GPU: no reliable on-bus signal).
             ActionManual("BS_APUGEN", "BEFORE_START", "APU generators: ON", (e, _) => e.SetApuGenerators(1)),
-            Auto("BS_GPU_OFF", "BEFORE_START", "Ground power: OFF", "FO_GPU_ON", v => v < 0.5,
-                (e, _) => e.SetGroundPower(0)),
+            ActionManual("BS_GPU_OFF", "BEFORE_START", "Ground power: OFF", (e, _) => e.SetGroundPower(0)),
             Auto("BS_FUEL", "BEFORE_START", "Fuel pumps: ON", "FUEL_PumpFwdSw_0", v => v > 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(1)),
             Auto("BS_HYD", "BEFORE_START", "Electric hydraulic pumps: ON", "HYD_PumpSw_elec_0", v => v > 0.5,

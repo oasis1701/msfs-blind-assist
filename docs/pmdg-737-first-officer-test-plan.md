@@ -551,3 +551,29 @@ Test (737):
 4. **Shutdown** — the "APU generators: ON" step presses BOTH buttons; after the start
    levers go to CUTOFF, both transfer buses stay powered by the APU (no partial
    power drop on bus 2).
+
+---
+
+## Part O — 737 ground power items are stateless presses (2026-07-02)
+
+Follow-up to Parts J/N: even the FO_GPU_ON composite false-positives when a GPU is
+plugged in while the APU (or engines) power the buses — AVAILABLE is lit and the
+ground-service buses are hot, so "Ground power: ON" pre-checked / the flow skipped it as
+"Already set" and external power still never came on (live-verified at a gate with APU
+running). The NG3 exposes NO reliable "ext power on bus" signal — same reason the panel
+uses stateless Ground Power On/Off buttons. Now: the checklist "Ground power: ON"
+(Electrical Power Up) and "Ground power: OFF" (Before Start) items are stateless press
+actions — every tick presses (directional, idempotent on repeats) — and the power-up
+flow presses ON unconditionally (its 10 s wait still announces a timeout when no GPU
+exists at the stand).
+
+Test (737, at a gate with ground power available and the APU RUNNING):
+1. Checklists → Electrical Power Up → "Ground power: ON" shows UNTICKED (no more
+   pre-check). Tick it: external power takes the transfer buses (APU GEN OFF BUS
+   annunciators light, APU still running).
+2. Run the Electrical Power Up flow in the same state: "Ground power: ON" is PRESSED
+   (no "Already set" skip).
+3. Before Start → "Ground power: OFF" tick: external power drops, APU generators carry
+   the buses again (after "APU generators: ON").
+4. No-GPU stand: the flow's wait announces the 10 s timeout; ticking the checklist item
+   presses harmlessly and simply stays ticked (stateless).
