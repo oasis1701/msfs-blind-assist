@@ -32,6 +32,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
 
+    // Coherent GT view title-needle hosting the MCDU instrument, used by the
+    // D / Shift+D FMS flight-info eval (CoherentEvalClient → coherent-a32nx-flightinfo.js).
+    // Overridden by the Headwind A330 fork, whose view is "A339X_MCDU".
+    public virtual string FlightInfoMcduView => "A32NX_MCDU";
+
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
