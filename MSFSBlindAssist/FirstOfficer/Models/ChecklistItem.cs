@@ -79,6 +79,14 @@ public class ChecklistItem<TExec, TState>
     /// <summary>Whether the user has manually ticked this item or a flow has completed it.</summary>
     public bool IsChecked { get; set; }
 
+    /// <summary>
+    /// UTC time of the last manual tick TO checked (set by ChecklistManager.ToggleItem).
+    /// EvaluateAutoDetection suppresses RevertToState un-ticking within a short grace
+    /// window of this, so a tick whose CheckAction is still writing frame-spaced switch
+    /// events isn't reverted before the aircraft state has had a chance to catch up.
+    /// </summary>
+    public DateTime? LastManualCheckUtc { get; set; }
+
     /// <summary>Whether the user can tick/untick this item manually via the TreeView.</summary>
     public bool ManualCompletionAllowed { get; set; } = true;
 

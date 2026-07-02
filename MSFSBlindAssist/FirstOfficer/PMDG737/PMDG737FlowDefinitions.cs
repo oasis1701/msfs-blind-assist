@@ -25,8 +25,8 @@ using Step = Models.FlowStep<AircraftStateEvaluator>;
 public static class PMDG737FlowDefinitions
 {
     // N2 (percent) the engine must reach while motoring before the start lever introduces
-    // fuel (real-procedure ~25%; 20 gives margin). Below this a fuel intro hangs the start.
-    private const double EngStartFuelN2 = 20.0;
+    // fuel — shared with the checklist's StartEngineAsync (see the evaluator const).
+    private const double EngStartFuelN2 = AircraftStateEvaluator.EngStartFuelN2;
 
     public static List<Flow> Build() => new()
     {
@@ -59,11 +59,15 @@ public static class PMDG737FlowDefinitions
                 s => s.IsBatteryOn()),
             Skip(SW("EPU_STBY", "Standby power: AUTO", "EVT_OH_ELEC_STBY_PWR_SWITCH", 2),
                 s => s.StandbyPower() == 2),
-            // Verify the GPU switch actually latched ON (it won't if ground power isn't available
-            // at the stand). Without the verify the step "succeeds" silently even when nothing
-            // happens; with it the FO announces it's skipping ground power so it isn't a silent no-op.
-            Skip(SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1,
-                    verifyField: "ELEC_GrdPwrSw", verifyCond: v => v > 0.5),
+            // Ground power detection reads the FO_GPU_ON synthetic (GRD POWER AVAILABLE +
+            // ground-service buses hot) — NEVER the raw ELEC_GrdPwrSw struct bool, which
+            // reads TRUE with no GPU at the stand (live-verified 2026-07-02) and made this
+            // step skip as "Already set" so external power never came on. The follow-up
+            // wait announces a timeout when no GPU is available, so a stand without ground
+            // power is never a silent no-op.
+            Skip(SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1),
+                s => s.IsGpuOn()),
+            Skip(WaitForField("EPU_GPU_WAIT", "Ground power on the buses", "FO_GPU_ON", v => v > 0.5, 10),
                 s => s.IsGpuOn()),
             // IRS to NAV — alignment runs in the background; no wait. "IRS aligned" auto-detects later.
             Multi("EPU_IRS", "IRS mode selectors: NAV", ("EVT_IRU_MSU_LEFT", 2), ("EVT_IRU_MSU_RIGHT", 2)),
@@ -163,9 +167,21 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "ENGINE_START" },
         Steps = new()
         {
+            // Starter air insurance: the start NEEDS bleed pressure (normally the APU).
+            // Without it the GRD position motors nothing and the old flow sat in a
+            // confusing 60 s N2 wait. Skipped quietly when APU bleed is already on
+            // (crossbleed starts still work — the start-valve waits below are the gate).
+            Skip(SW("ES_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1),
+                s => s.IsApuBleedOn()),
             Multi("ES_PACKS_OFF", "Packs: OFF", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
             // --- Engine 2 ---
             SW("ES_E2_GRD", "Engine 2 start switch: GRD", "EVT_OH_LIGHTS_R_ENGINE_START", 0),
+            // Prove the starter actually engaged (start valve OPEN) before anything else.
+            // If GRD didn't latch or there's no duct pressure, this aborts within 15 s with
+            // a clear announcement instead of a 60 s silent N2 wait — and, critically,
+            // instead of ever introducing fuel.
+            WaitForField("ES_E2_VALVE", "Engine 2 start valve open",
+                "ENG_StartValve_1", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
             // Introduce fuel ONLY after N2 has spun up (~25%); moving the start lever to IDLE
             // before that hangs/aborts the start. FO_ENG2_N2 is the timer-fed N2 (percent).
             // On timeout (starter/bleed failure → N2 never builds) ABORT the flow rather than
@@ -177,6 +193,8 @@ public static class PMDG737FlowDefinitions
                 "ENG_StartValve_1", v => v < 0.5, 120),
             // --- Engine 1 ---
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
+            WaitForField("ES_E1_VALVE", "Engine 1 start valve open",
+                "ENG_StartValve_0", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
             WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1),

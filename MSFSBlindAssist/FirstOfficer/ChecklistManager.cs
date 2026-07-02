@@ -46,8 +46,15 @@ public class ChecklistManager<TExec, TState>
         item.IsChecked = !item.IsChecked;
 
         // If the item is now checked AND has a linked action, execute it.
-        if (item.IsChecked && item.CheckAction != null && _executor.IsAvailable)
-            _ = item.CheckAction(_executor, _state);
+        if (item.IsChecked)
+        {
+            // Stamp the manual tick so auto-detection grants the fired action a grace
+            // window before RevertToState can un-tick it (frame-spaced writes + the CDA
+            // snapshot cadence mean the state can lag the tick by several seconds).
+            item.LastManualCheckUtc = DateTime.UtcNow;
+            if (item.CheckAction != null && _executor.IsAvailable)
+                _ = item.CheckAction(_executor, _state);
+        }
 
         RaiseChanged(FindGroup(groupId)!, item);
         return item.IsChecked;
@@ -125,7 +132,8 @@ public class ChecklistManager<TExec, TState>
                     groupChanged = true;
                 }
                 else if (!stateMatches.Value && item.IsChecked
-                    && item.RevertBehavior == RevertBehavior.RevertToState)
+                    && item.RevertBehavior == RevertBehavior.RevertToState
+                    && !WithinManualTickGrace(item))
                 {
                     item.IsChecked = false;
                     ItemStateChanged?.Invoke(group, item);
@@ -137,6 +145,15 @@ public class ChecklistManager<TExec, TState>
                 GroupProgressChanged?.Invoke(group);
         }
     }
+
+    // Grace window after a manual tick during which RevertToState does not un-tick the
+    // item — the tick's CheckAction may still be issuing frame-spaced writes, and the CDA
+    // snapshot lags. Auto-TICKING is never delayed (an early truth is fine); only the
+    // revert is. 10 s covers the slowest multi-write actions (4-switch window heat).
+    private static readonly TimeSpan ManualTickGrace = TimeSpan.FromSeconds(10);
+
+    private static bool WithinManualTickGrace(ChecklistItem<TExec, TState> item)
+        => item.LastManualCheckUtc is DateTime t && DateTime.UtcNow - t < ManualTickGrace;
 
     // -----------------------------------------------------------------------
     // Lookup helpers

@@ -61,6 +61,20 @@ public class AircraftActionExecutor : IFoActionExecutor
     // their one write. Sequences call DispatchCoreAsync (no gate) to avoid re-entrant deadlock.
     private readonly SemaphoreSlim _dispatchGate = new(1, 1);
 
+    // UTC of the last write sent through DispatchCoreAsync. PaceAsync (called at the top of
+    // every dispatch, INSIDE the gate) delays until CdaWriteSpacingMs has elapsed since the
+    // previous write — so ANY two consecutive writes are frame-spaced, including two
+    // back-to-back single Fire() calls from one CheckAction lambda (e.g. "start switches:
+    // CONT" firing both selectors), which previously shared a frame and coalesced.
+    private DateTime _lastWriteUtc = DateTime.MinValue;
+
+    private async Task PaceAsync()
+    {
+        var since = DateTime.UtcNow - _lastWriteUtc;
+        var gap = TimeSpan.FromMilliseconds(CdaWriteSpacingMs);
+        if (since < gap) await Task.Delay(gap - since);
+    }
+
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public bool IsAvailable => _sc is { IsConnected: true };
 
@@ -133,19 +147,15 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     private async Task<bool> MultiAsync(IReadOnlyList<(string EventName, int? TargetValue)> actions)
     {
-        // Hold the gate across the WHOLE spaced sequence (incl. the inter-write delays) so a
-        // concurrent dispatch can't slip a write into one of our frame gaps and coalesce.
+        // Hold the gate across the WHOLE sequence so a concurrent dispatch can't slip a
+        // write into one of our frame gaps and coalesce. Inter-write spacing comes from
+        // PaceAsync inside DispatchCoreAsync.
         await _dispatchGate.WaitAsync();
         try
         {
             bool ok = true;
-            bool first = true;
             foreach (var (ev, tv) in actions)
-            {
-                if (!first) await Task.Delay(CdaWriteSpacingMs); // frame gap so writes don't coalesce
-                first = false;
                 ok &= await DispatchCoreAsync(ev, tv);
-            }
             return ok;
         }
         finally { _dispatchGate.Release(); }
@@ -169,36 +179,56 @@ public class AircraftActionExecutor : IFoActionExecutor
         Dispatch kind = spec?.Kind ?? Dispatch.Simple;
         int t = target ?? 1;
 
-        switch (kind)
+        // Frame-space EVERY write relative to the previous one (see _lastWriteUtc) —
+        // callers no longer need their own inter-write delays.
+        await PaceAsync();
+        try
         {
-            case Dispatch.Simple:
-                _sc.SendPMDGEvent(eventName, id, target);
-                return true;
+            switch (kind)
+            {
+                case Dispatch.Simple:
+                    _sc.SendPMDGEvent(eventName, id, target);
+                    return true;
 
-            case Dispatch.MouseFlag:
-                _sc.SendPMDGEvent(eventName, id, MouseFlagLeftSingle);
-                return true;
+                case Dispatch.MouseFlag:
+                    _sc.SendPMDGEvent(eventName, id, MouseFlagLeftSingle);
+                    return true;
 
-            case Dispatch.Directional:
-                _sc.SendPMDGEvent(eventName, id, t > 0 ? MouseFlagLeftSingle : MouseFlagRightSingle);
-                return true;
+                case Dispatch.Directional:
+                    _sc.SendPMDGEvent(eventName, id, t > 0 ? MouseFlagLeftSingle : MouseFlagRightSingle);
+                    // Engine GEN 1/2 state is locally tracked in PMDGNG3DataManager (PMDG's
+                    // raw ELEC_GenSw bool lies — always ~1 at rest). The panel path notifies
+                    // it on every dispatch; without this mirror the FO's generator writes were
+                    // invisible to the checklist auto-detect (BT_GEN never ticked) and to the
+                    // panel combos. GPU / APU GENs are stateless push pairs — nothing to track.
+                    if (eventName == "EVT_OH_ELEC_GEN1_SWITCH" || eventName == "EVT_OH_ELEC_GEN2_SWITCH")
+                        (_sc.PMDGDataManager as PMDGNG3DataManager)?.NotifyLocalSwitchState(
+                            eventName == "EVT_OH_ELEC_GEN1_SWITCH" ? "ELEC_GenSw_0" : "ELEC_GenSw_1", t > 0);
+                    return true;
 
-            case Dispatch.AbsoluteSelector:
-                _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(target ?? 0));
-                return true;
+                case Dispatch.AbsoluteSelector:
+                    _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(target ?? 0));
+                    return true;
 
-            case Dispatch.FuelLever:
-                _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(t != 0 ? MouseFlagLeftSingle : MouseFlagRightSingle));
-                return true;
+                case Dispatch.FuelLever:
+                    _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(t != 0 ? MouseFlagLeftSingle : MouseFlagRightSingle));
+                    return true;
 
-            case Dispatch.Guarded:
-                if (spec?.Guard != null && PMDG737Definition.EventIds.TryGetValue(spec.Guard, out int gId))
-                    await _sc.SendPMDGGuardedSet(spec.Guard, (uint)gId, eventName, id, target ?? 0);
-                return true;
+                case Dispatch.Guarded:
+                    if (spec?.Guard != null && PMDG737Definition.EventIds.TryGetValue(spec.Guard, out int gId))
+                        await _sc.SendPMDGGuardedSet(spec.Guard, (uint)gId, eventName, id, target ?? 0);
+                    return true;
 
-            default:
-                _sc.SendPMDGEvent(eventName, id, target);
-                return true;
+                default:
+                    _sc.SendPMDGEvent(eventName, id, target);
+                    return true;
+            }
+        }
+        finally
+        {
+            // Stamp AFTER the dispatch so multi-write mechanisms (guarded sequences) get a
+            // full frame gap from their LAST write, not their first.
+            _lastWriteUtc = DateTime.UtcNow;
         }
     }
 
@@ -223,16 +253,12 @@ public class AircraftActionExecutor : IFoActionExecutor
     private async Task FireSpacedAsync((string ev, int? target)[] actions)
     {
         // Same gate as MultiAsync — hold it across the whole sequence (see _dispatchGate).
+        // Inter-write spacing comes from PaceAsync inside DispatchCoreAsync.
         await _dispatchGate.WaitAsync();
         try
         {
-            bool first = true;
             foreach (var (ev, t) in actions)
-            {
-                if (!first) await Task.Delay(CdaWriteSpacingMs);
-                first = false;
                 await DispatchCoreAsync(ev, t);
-            }
         }
         finally { _dispatchGate.Release(); }
     }
@@ -253,8 +279,16 @@ public class AircraftActionExecutor : IFoActionExecutor
     private async Task FireMomentaryToggleAsync(SimConnectManager sc, uint evId)
     {
         await _dispatchGate.WaitAsync();
-        try { await sc.SendPMDGMomentaryToggle(evId, 1); }
-        finally { _dispatchGate.Release(); }
+        try
+        {
+            await PaceAsync();
+            await sc.SendPMDGMomentaryToggle(evId, 1);
+        }
+        finally
+        {
+            _lastWriteUtc = DateTime.UtcNow;
+            _dispatchGate.Release();
+        }
     }
 
     /// <summary>APU start sequence: selector ON, dwell, then momentary START (springs back to ON).
@@ -265,6 +299,50 @@ public class AircraftActionExecutor : IFoActionExecutor
         await Task.Delay(ApuOnToStartMs);
         SetApuSelector(2);                  // START
     }
+
+    /// <summary>Both flight directors to a target state — the checklist-tick equivalent of
+    /// the Preflight flow's PF_FD1/PF_FD2 mouse-flag steps. FD switches are TOGGLES, so each
+    /// side is pressed only when its current state differs from the target (the same guard
+    /// the flow's SkipCondition applies); presses are frame-spaced via the paced gate.</summary>
+    public async Task SetFlightDirectorsAsync(int targetOn, AircraftStateEvaluator state)
+    {
+        var presses = new List<(string ev, int? target)>();
+        if ((state.IsFDLeftOn()  ? 1 : 0) != targetOn) presses.Add(("EVT_MCP_FD_SWITCH_L", null));
+        if ((state.IsFDRightOn() ? 1 : 0) != targetOn) presses.Add(("EVT_MCP_FD_SWITCH_R", null));
+        if (presses.Count > 0) await FireSpacedAsync(presses.ToArray());
+    }
+
+    /// <summary>Single-engine start for a checklist tick — mirrors the Engine Start flow's
+    /// per-engine sequence: start switch GRD, motor until N2 reaches the fuel-introduction
+    /// threshold, then start lever to IDLE. Safety guards: no-ops on an already-running
+    /// engine (unticking + rechecking must never move a live engine's start lever), and
+    /// NEVER introduces fuel if N2 fails to build (starter/bleed failure) — the item then
+    /// simply stays unticked, which is the honest signal. engine: 1 or 2.</summary>
+    public async Task StartEngineAsync(int engine, AircraftStateEvaluator state)
+    {
+        string grdEv   = engine == 1 ? "EVT_OH_LIGHTS_L_ENGINE_START"       : "EVT_OH_LIGHTS_R_ENGINE_START";
+        string leverEv = engine == 1 ? "EVT_CONTROL_STAND_ENG1_START_LEVER" : "EVT_CONTROL_STAND_ENG2_START_LEVER";
+        string n2Field = engine == 1 ? "FO_ENG1_N2"                          : "FO_ENG2_N2";
+
+        if (state.GetValue(n2Field) >= AircraftStateEvaluator.EngineRunningN2) return; // already running
+
+        await DispatchAsync(grdEv, 0);      // GRD — starter engages (needs bleed air)
+        for (int s = 0; s < 60; s++)        // motor up to 60 s for fuel-intro N2
+        {
+            await Task.Delay(1000);
+            if (state.GetValue(n2Field) >= AircraftStateEvaluator.EngStartFuelN2)
+            {
+                await DispatchAsync(leverEv, 1); // start lever IDLE — fuel + ignition
+                return;
+            }
+        }
+        // N2 never built — starter not engaged or no bleed air. Do NOT introduce fuel.
+    }
+
+    /// <summary>Press the System Annunciator six-pack (RECALL) — latches every active
+    /// annunciator + master caution so the app's annunciator monitors announce them; the
+    /// captain resets with the Master Caution light (panel control WARN_ResetMasterCaution).</summary>
+    public bool PressRecall() => FireMomentaryToggle("EVT_SYSTEM_ANNUNCIATOR_PANEL_LEFT");
 
     /// <summary>Set pressurization FLT ALT + LAND ALT from the stored SimBrief plan
     /// (values pre-rounded/clamped at evaluator storage; the direct-control events take

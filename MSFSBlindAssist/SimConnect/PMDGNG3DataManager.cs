@@ -241,6 +241,13 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // Cache for derived-field values so we can detect change deltas
     // independently of PMDG's lying source fields. Keyed by the user-facing
     // varKey (e.g. "ELEC_GrdPwrSw"), value is the most recent derived bool.
+    //
+    // THREADING: guarded by _derivedLock. The snapshot pass writes on the UI
+    // thread, but NotifyLocalSwitchState is also called from the First
+    // Officer executor's thread-pool dispatch, and GetFieldValue reads from
+    // the FO flow engine's WaitForCondition pool thread — unsynchronized
+    // Dictionary access across those would be a data race.
+    private readonly object _derivedLock = new();
     private readonly Dictionary<string, bool> _lastDerivedValues = new();
 
     // Local-state tracking for switches where PMDG exposes no reliable
@@ -266,10 +273,14 @@ public class PMDGNG3DataManager : IPMDGDataManager
     /// </summary>
     public void NotifyLocalSwitchState(string varKey, bool newState)
     {
-        if (!_localSwitchStates.ContainsKey(varKey)) return;
-        _localSwitchStates[varKey] = newState;
+        lock (_derivedLock)
+        {
+            if (!_localSwitchStates.ContainsKey(varKey)) return;
+            _localSwitchStates[varKey] = newState;
+        }
         // Fire a synthetic event immediately so the UI updates without
-        // waiting for the next 1Hz snapshot.
+        // waiting for the next 1Hz snapshot. (May arrive on a non-UI thread —
+        // MainForm.OnSimVarUpdated queues cross-thread events safely.)
         RaiseDerivedIfChanged(varKey, newState, isFirstSnapshot: false);
     }
 
@@ -310,8 +321,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // "Ground Power Off"), so nothing to publish here.
         //
         // Engine GEN 1/2 still use locally-tracked state with cold-and-dark
-        // default. Updated via NotifyLocalSwitchState from the dispatch path.
-        foreach (var kvp in _localSwitchStates)
+        // default. Updated via NotifyLocalSwitchState from the dispatch path
+        // (UI thread or FO executor pool thread — snapshot under the lock).
+        KeyValuePair<string, bool>[] localStates;
+        lock (_derivedLock) localStates = _localSwitchStates.ToArray();
+        foreach (var kvp in localStates)
             RaiseDerivedIfChanged(kvp.Key, kvp.Value, isFirstSnapshot);
 
         // Engine fuel control levers (ENG_StartLever_0/1): derived from
@@ -340,11 +354,15 @@ public class PMDGNG3DataManager : IPMDGDataManager
     private void RaiseDerivedIfChanged(string fieldName, bool newVal, bool isFirstSnapshot)
     {
         bool fire = isFirstSnapshot;
-        if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
-            fire = true;
-        _lastDerivedValues[fieldName] = newVal;
+        lock (_derivedLock)
+        {
+            if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
+                fire = true;
+            _lastDerivedValues[fieldName] = newVal;
+        }
         if (fire)
         {
+            // Outside the lock — handlers must never run under _derivedLock.
             RaiseVariableChanged(fieldName, newVal ? 1.0 : 0.0, isFirstSnapshot);
         }
     }
@@ -492,9 +510,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // the panel-refresh path at MainForm.cs:4640+ overwrites our
         // synthetic-event-populated cache with PMDG's lying value, and the
         // combo flips to ON.
-        if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+        lock (_derivedLock)
         {
-            return derived ? 1.0 : 0.0;
+            if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+            {
+                return derived ? 1.0 : 0.0;
+            }
         }
 
         // Plain field

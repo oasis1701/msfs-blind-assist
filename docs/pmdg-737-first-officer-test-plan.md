@@ -337,3 +337,73 @@ initial/cruise altitude and destination field elevation.
     Checklist → "Pressurization: landing altitude set". Both ticks must HOLD (no
     auto-revert on the next poll) — with no plan the match fields are indeterminate
     (NaN) and the checklist manager skips both auto-tick and revert.
+
+---
+
+## Part J — flow↔checklist parity audit + reported-bug fixes (2026-07-02)
+
+Root-caused and fixed in one pass: external power never coming on (the raw `ELEC_GrdPwrSw`
+struct bool reads TRUE even with no GPU at the stand — live-verified — so the power-up flow
+skipped the step as "Already set"), flight directors not settable from the checklist
+(`action: null`), items falsely showing checked (StayComplete latched cold-and-dark
+coincidences), generators never auto-ticking from FO actions (locally-tracked state the FO
+never notified), and unreliable engine starts. All state-group items are now live state
+mirrors (RevertToState) and every flow switch step has a same-dispatch checklist item.
+
+Setup: PMDG 737 cold-and-dark at a gate, MSFSBA connected, FO window open.
+
+1. **Ground power — no GPU at the stand** — with NO ground power unit connected (PMDG FMC
+   ground connections / GSX GPU absent): run Electrical Power Up. After battery + standby,
+   expect "Ground power: ON", then "Waiting for: Ground power on the buses" and after ~10 s
+   "Timed out waiting for: Ground power on the buses" + "Skipping" — NOT the old silent
+   "Already set". The Checklists → Electrical Power Up → "Ground power: ON" item must stay
+   UNTICKED (previously it false-ticked).
+2. **Ground power — GPU available** — connect ground power (CDU MENU → FS ACTIONS → GROUND
+   CONNECTIONS, or GSX). Run the flow (or tick the checklist item): the GRD PWR switch
+   actuates, ground power comes on the buses, and the checklist item auto-ticks. Re-run of
+   the flow now says "Already set: Ground power: ON".
+3. **Flight directors from the checklist** — with both FDs off, tick Preflight →
+   "Flight directors: ON": both FD switches move (frame-spaced) and the item stays ticked.
+   With FD L already on, tick again after unticking: only FD R is pressed (no wrong-way
+   toggle). Same via the Preflight flow (regression).
+4. **False-check elimination (the Before Taxi report)** — cold-and-dark, fresh window:
+   expand Before Taxi. "Isolation valve: AUTO" may show ticked ONLY while the valve is
+   actually at AUTO; after the Preflight flow sets it OPEN, the item must UNTICK (it used
+   to stay falsely checked). Same for "APU: OFF" once the APU is started in Before Start.
+   Spot-check Shutdown/Secure groups no longer show complete at session start once switches
+   move to non-matching states.
+5. **Manual-tick grace** — tick a multi-switch item whose state is wrong (e.g. Preflight →
+   "Window heat: ON" from cold): the tick must HOLD while the four spaced writes land
+   (~1.5 s) and then stay ticked from live state. No visible untick/retick flicker beyond
+   a brief window.
+6. **Generators auto-tick** — after engine start, tick Before Taxi → "Generators: ON" (or
+   run the Before Taxi flow): both GEN switches actuate AND the item + the Before Taxi
+   Checklist readback "Generators: ON" tick. (Previously they never ticked from FO paths.)
+7. **Engine start from the checklist** — Before Start complete (APU bleed ON), packs OFF via
+   the new Engine Start → "Packs: OFF" item. Tick "Engine 2: START": start switch → GRD,
+   engine motors, start lever moves to IDLE only after N2 ≥ 20%, item auto-ticks at N2 ≥ 50%.
+   Then "Engine 1: START" the same. Ticking an item for an ALREADY-RUNNING engine must do
+   nothing (no lever/selector movement).
+8. **Engine start flow reliability** — run the Engine Start flow with APU bleed OFF and APU
+   running: the flow first sets APU bleed ON (insurance step), then packs OFF, then per
+   engine: GRD → "Engine 2 start valve open" wait → N2 wait → lever IDLE → valve-close wait.
+   Negative test: pull the APU bleed OFF mid-motoring (or start with no air source at all):
+   the start-valve wait times out within ~15 s and the flow STOPS with a clear announcement —
+   fuel is never introduced.
+9. **Recall items** — Before Taxi → "Recall: checked" and Descent → "Recall: checked":
+   ticking presses the six-pack (System Annunciator); any latched annunciators + master
+   caution light and are announced by the app's monitors; reset via the panel's Master
+   Caution control.
+10. **Parity additions spot-check** — new items actuate and auto-tick: Preflight (fuel pumps
+    OFF incl. center, probe heat OFF, engine anti-ice OFF, recirc AUTO, logo ON, transponder
+    STBY, EFIS MAP/40), Before Taxi (APU bleed OFF, packs AUTO, runway turnoff lights ON,
+    lower DU SYS), Before Takeoff / After Takeoff / Descent / Approach / Landing items now
+    auto-detect (e.g. "Landing lights: ON" ticks from the switches), After Landing (landing
+    lights RETRACT, turnoff ON, position STEADY, engine anti-ice OFF, start switches OFF),
+    Shutdown (APU generators ON, taxi/logo OFF, APU bleed ON, hydraulic pumps OFF, turnoff
+    OFF, engine anti-ice OFF).
+11. **IRS align removal** — Electrical Power Up no longer lists "IRS aligned" (alignment
+    runs in the background; "IRS mode selectors: NAV" remains and auto-ticks).
+12. **777 regression** — the shared ChecklistManager gained only the manual-tick revert
+    grace; confirm 777 checklists still auto-tick/revert as before and manual ticks on
+    RevertToState readbacks still un-tick (after ~10 s) when the state genuinely mismatches.

@@ -22,6 +22,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // N2 (percent) at/above which an engine is treated as RUNNING (≈ stabilised near idle).
     // Public so the engine-start checklist detection references the same value (tune in-sim).
     public const double EngineRunningN2 = 50.0;
+    // N2 (percent) the engine must reach while motoring before the start lever introduces
+    // fuel (real-procedure ~25%; 20 gives margin). Below this a fuel intro hangs the start.
+    // Shared by the Engine Start flow AND the checklist StartEngineAsync so the two paths
+    // can never disagree on when fuel is introduced.
+    public const double EngStartFuelN2 = 20.0;
 
     /// <summary>Update the data-manager reference (called on connect/disconnect).</summary>
     public void SetDataManager(PMDGNG3DataManager? dm) => _dm = dm;
@@ -52,8 +57,31 @@ public class AircraftStateEvaluator : IFoStateEvaluator
             return !HasPressurizationPlan || !CdaReady ? double.NaN : (AllPressAltsMatch() ? 1 : 0);
         if (field == "FO_PRESS_LAND_ALT_MATCH")
             return !HasLandAltPlan() || !CdaReady ? double.NaN : (LandAltMatches() ? 1 : 0);
-        try { return _dm?.GetFieldValue(field) ?? 0; }
-        catch { return 0; }
+        // Ground power ON BUS. The raw ELEC_GrdPwrSw struct bool LIES — live-verified
+        // 2026-07-02 reading TRUE with ELEC_annunGRD_POWER_AVAILABLE false (it does not
+        // reflect bus connectivity; see PMDGNG3DataManager.RaiseDerivedFieldOverrides).
+        // Truthful composite: GPU plugged in (AVAILABLE annun) AND the AC GROUND SVC
+        // buses hot (BusPowered 9/10). The bus check alone is NOT enough — those buses
+        // are also fed from the transfer buses when engine/APU power is up (live-verified
+        // powered on engine power with no GPU), so AVAILABLE is the discriminator.
+        if (field == "FO_GPU_ON")
+            return !CdaReady ? double.NaN
+                : (RawFieldOn("ELEC_annunGRD_POWER_AVAILABLE")
+                   && (RawFieldOn("ELEC_BusPowered_9") || RawFieldOn("ELEC_BusPowered_10")) ? 1 : 0);
+        // CDA fields: INDETERMINATE (NaN) until the first snapshot arrives — GetFieldValue
+        // returns 0.0 for EVERY field before then (interface contract), which false-matched
+        // every OFF/closed checklist condition at startup and latched items complete.
+        if (!CdaReady) return double.NaN;
+        try { return _dm?.GetFieldValue(field) ?? double.NaN; }
+        catch { return double.NaN; }
+    }
+
+    // Raw CDA read for composing synthetic fields — bypasses the synthetic-key routing
+    // above. Only call when CdaReady.
+    private bool RawFieldOn(string field)
+    {
+        try { return (_dm?.GetFieldValue(field) ?? 0) > 0.5; }
+        catch { return false; }
     }
 
     public bool IsOn(string field) => GetValue(field) > 0.5;
@@ -71,7 +99,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsApuGen2On()      => IsOn("ELEC_APUGenSw_1");
     public bool AreApuGensOn()     => IsApuGen1On() && IsApuGen2On();
     public bool IsGpuAvailable()   => IsOn("ELEC_annunGRD_POWER_AVAILABLE");
-    public bool IsGpuOn()          => IsOn("ELEC_GrdPwrSw");
+    // Reads the FO_GPU_ON synthetic (available && ground-svc bus powered) — NEVER the raw
+    // ELEC_GrdPwrSw struct bool, which reads TRUE even with no GPU at the stand (live-
+    // verified 2026-07-02) and caused the power-up flow to skip ground power entirely.
+    public bool IsGpuOn()          => IsOn("FO_GPU_ON");
     public int  StandbyPower()     => (int)Math.Round(GetValue("ELEC_StandbyPowerSelector")); // 0=BAT,1=OFF,2=AUTO
     public int  ApuSelector()      => (int)Math.Round(GetValue("APU_Selector"));              // 0=OFF,1=ON,2=START
     public bool IsApuRunning()     => ApuSelector() == 1; // START springs back to ON when available
@@ -182,6 +213,7 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public int FlapDetent()
     {
         double deg = GetValue("MAIN_TEFlapsNeedle_0");
+        if (double.IsNaN(deg)) return -1;    // CDA not ready → caller falls back
         if (deg < -1 || deg > 45) return -1; // not the expected 0–40° scale → caller falls back
         if (deg < 0.5) return 0;             // UP
         int best = 0; double bestDiff = double.MaxValue;
