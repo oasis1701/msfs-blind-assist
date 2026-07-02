@@ -23,7 +23,7 @@ public sealed class FBWA380OansForm : Form
     // Map / BTV
     private ComboBox _btvRunway = null!, _btvExit = null!;
     private Button _armRunway = null!, _armExit = null!, _btvClear = null!;
-    private TextBox _btvReadout = null!;
+    private DisplayListBox _btvReadout = null!;
     private Label _manualHeader = null!, _runwayLengthLabel = null!, _fmsHint = null!;
     private TextBox _manualStop = null!;
     private Button _manualStopApply = null!;
@@ -34,7 +34,7 @@ public sealed class FBWA380OansForm : Form
     private TextBox _airportInfo = null!;
 
     // Status
-    private TextBox _statusInfo = null!;
+    private DisplayListBox _statusInfo = null!;
 
     private Snap _s = new();
     private bool _subscribed, _firstPush = true;
@@ -79,10 +79,9 @@ public sealed class FBWA380OansForm : Form
         _btvClear = new Button { Text = "&Clear BTV", Location = new Point(12, 42), Size = new Size(110, 26), AccessibleName = "Clear BTV selection" };
         _btvClear.Click += (_, _) => _client.EnqueueCommand("oans_clear");
 
-        _btvReadout = new TextBox
+        _btvReadout = new DisplayListBox
         {
-            Location = new Point(12, 76), Size = new Size(562, 230), Multiline = true, ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 10), AccessibleName = "BTV status"
+            Location = new Point(12, 76), Size = new Size(562, 230), AccessibleName = "BTV status"
         };
 
         _manualHeader = new Label { Text = "Manual BTV (no Navigraph maps):", Location = new Point(12, 316), Size = new Size(560, 18), Font = new Font(Font, FontStyle.Bold) };
@@ -127,10 +126,9 @@ public sealed class FBWA380OansForm : Form
     private void BuildStatusTab(TabPage tp)
     {
         var infoLabel = new Label { Text = "Database &status:", Location = new Point(12, 14), Size = new Size(200, 18) };
-        _statusInfo = new TextBox
+        _statusInfo = new DisplayListBox
         {
-            Location = new Point(12, 34), Size = new Size(562, 400), Multiline = true, ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 10), AccessibleName = "Database status"
+            Location = new Point(12, 34), Size = new Size(562, 400), AccessibleName = "Database status"
         };
         tp.Controls.AddRange(new Control[] { infoLabel, _statusInfo });
     }
@@ -199,7 +197,7 @@ public sealed class FBWA380OansForm : Form
         _btvExit.Enabled = armed && _btvExit.Items.Count > 0;
         _armExit.Enabled = armed && _btvExit.Items.Count > 0;
         _btvClear.Enabled = armed;
-        DisplayText.SetPreserveCaret(_btvReadout, BtvReadoutBlock());
+        _btvReadout.SetText(BtvReadoutBlock());
 
         // Manual tier visible only without Navigraph maps.
         bool manual = !_s.Available;
@@ -226,7 +224,7 @@ public sealed class FBWA380OansForm : Form
         sb.AppendLine(_s.Available ? "Airport database: loaded" : "Airport database: NOT loaded (no Navigraph)");
         if (!string.IsNullOrEmpty(_s.Airac)) sb.AppendLine($"AIRAC cycle: {_s.Airac}");
         if (_s.Failed) sb.AppendLine("OANS: FAILED");
-        DisplayText.SetPreserveCaret(_statusInfo, sb.ToString().TrimEnd());
+        _statusInfo.SetText(sb.ToString().TrimEnd());
     }
 
     private string Dist(int metres) => _s.Metric ? $"{metres} m" : $"{(int)Math.Round(metres * 3.280839895)} ft";
