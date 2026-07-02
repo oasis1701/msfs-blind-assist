@@ -42,6 +42,27 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
+    /// Returns the reciprocal runway designator: adds 18 (mod 36, 1-based)
+    /// and swaps L↔R suffix (C stays C). "09" → "27", "27L" → "09R", "36" → "18".
+    /// Returns <paramref name="designator"/> unchanged if it is blank or does
+    /// not parse as a runway heading number. Shared by the crossing-clause
+    /// reciprocal merge below, HoldShortNodeResolver's designated-node runway
+    /// gate, and TaxiGuidanceManager.RunwayDesignatorsMatch.
+    /// </summary>
+    public static string Reciprocal(string designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return designator;
+        string d = designator.Trim().ToUpperInvariant();
+        string suffix = "";
+        if (d.EndsWith("L"))      { suffix = "R"; d = d[..^1]; }
+        else if (d.EndsWith("R")) { suffix = "L"; d = d[..^1]; }
+        else if (d.EndsWith("C")) { suffix = "C"; d = d[..^1]; }
+        if (!int.TryParse(d, out int num)) return designator;
+        int recip = ((num - 1 + 18) % 36) + 1;  // 1-based 1–36; +18 mod 36
+        return $"{recip:D2}{suffix}";
+    }
+
+    /// <summary>
     /// Scans the hold-short-tagged segments and splits them into runway crossings
     /// (composed into a spoken clause) and plain hold-short points (returned as a
     /// count for the existing "N hold short points" wording).
@@ -79,14 +100,25 @@ public static class RouteRunwayCrossings
                 nonRunway++;
                 continue;
             }
-            if (counts.TryGetValue(designator, out int c))
+            // Reciprocal designators name the SAME pavement: the auto-detector
+            // labels each crossing by its closer-end designator, so one runway
+            // crossed near opposite ends arrives here as e.g. "10L" + "28R".
+            // Merge onto the first-encountered designator — "crossing runways
+            // 10L and 28R" would misstate one crossing-twice as two runways.
+            string key = designator;
+            if (!counts.ContainsKey(key))
             {
-                counts[designator] = c + 1;
+                string recip = Reciprocal(designator);
+                if (counts.ContainsKey(recip)) key = recip;
+            }
+            if (counts.TryGetValue(key, out int c))
+            {
+                counts[key] = c + 1;
             }
             else
             {
-                counts[designator] = 1;
-                order.Add(designator);
+                counts[key] = 1;
+                order.Add(key);
             }
         }
 

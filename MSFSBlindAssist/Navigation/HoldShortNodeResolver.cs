@@ -7,82 +7,119 @@ namespace MSFSBlindAssist.Navigation;
 /// terminator should end the route: the hold point on the aircraft's own (near)
 /// side of the runway.
 ///
-/// Two-pass design:
+/// The scenery's own hold-short markers (navdata HS/HSND/IHS/IHSND →
+/// TaxiNodeType.HoldShort / ILSHoldShort) are authoritative for where the hold
+/// line actually is. Motivating incident (KSFO 2026-07-01, "Q, hold short
+/// 10R"): taxiway Q carries two HSND nodes on the 28L approach, ~97 m and
+/// ~157 m from the centerline; the purely geometric scan picked the 157 m node
+/// and the pilot held ~60 m before the real hold line.
 ///
-/// PASS 1 — designated hold-short nodes. The scenery's own hold-short markers
-/// (navdata HS/HSND/IHS/IHSND → TaxiNodeType.HoldShort / ILSHoldShort) are
-/// authoritative for where the hold line actually is. Motivating incident
-/// (KSFO 2026-07-01, "Q, hold short 10R"): taxiway Q carries two HSND nodes on
-/// the 28L approach, ~97 m and ~157 m from the centerline; the purely geometric
-/// scan (pass 2) picked the 157 m node and the pilot held ~60 m before the real
-/// hold line. Pass 1 picks the designated node CLOSEST to the runway — the same
-/// convention TruncateToHoldShort uses for runway destinations ("the latest,
-/// closest-to-runway hold of either type").
+/// Candidates are ranked in TIERS so a designated node can never hijack the
+/// route away from the cleared taxiway (the 2026-07 review fix — a blanket
+/// "designated first" let an HSND kilometres down the runway on a DIFFERENT
+/// taxiway beat a plain node on the cleared one):
 ///
-/// PASS 2 — geometric fallback (sparse navdata with no hold-short markers).
-/// Behaviour is intentionally IDENTICAL to the pre-2026-07 scan, including its
-/// setback: Runway.Width is in FEET, and dividing by 2 and reading the result
-/// as METRES gives ~1.64 × the physical half-width (a 200 ft runway → ~97 m
-/// setback), which approximates real-world hold-line placement (FAA hold lines
-/// sit 125–280 ft from the centerline). Do NOT "fix" the units to ft→m here —
-/// that would place the fallback hold at the pavement edge, INSIDE any real
-/// hold line. Designated nodes (pass 1) override this heuristic entirely.
+///   1. Designated node ON the cleared last taxiway (closest to the runway —
+///      the same convention TruncateToHoldShort uses for runway destinations).
+///   2. Designated node at the cleared taxiway's runway junction (within
+///      HS_JUNCTION_ALONG_M along-track of the taxiway's own closest plain
+///      candidate) — covers the common scenery shape where the final approach
+///      stub from taxiway to hold line is an unnamed connector, so the HSND
+///      doesn't carry the taxiway name.
+///   3. Plain node on the cleared taxiway — the legacy geometric pick, with
+///      its deliberate setback: Runway.Width is in FEET, and dividing by 2 and
+///      reading the result as METRES gives ~1.64 × the physical half-width
+///      (a 200 ft runway → ~97 m), approximating real hold-line placement
+///      (FAA hold lines sit 125–280 ft from the centerline). Do NOT "fix" the
+///      units — see <see cref="LegacySetbackMetres"/>.
+///   4. Designated node on any taxiway (no cleared-taxiway candidate exists).
+///   5. Plain node on any taxiway (legacy last resort).
+///
+/// Designated candidates are additionally gated by the node's own
+/// <see cref="TaxiNode.HoldShortName"/>: when it names a runway (reciprocal-
+/// aware), it must be THIS runway — TaxiGraph names hold nodes after their
+/// runway precisely to disambiguate closely spaced parallels, whose
+/// between-the-pair hold nodes can sit inside the geometric window.
 ///
 /// Pure static (graph + runway + aircraft state in, node out) so
-/// tools/ProgressiveTaxiProbe can assert both passes on a synthetic graph.
+/// tools/ProgressiveTaxiProbe can assert the tiers on a synthetic graph.
 /// </summary>
 public static class HoldShortNodeResolver
 {
-    private const double DEG_TO_M_LAT = 111320.0;
     private const double MAX_LATERAL_M = 600.0;        // max lateral distance from runway centerline
     private const double MAX_ALONG_PAST_END_M = 500.0; // buffer past each runway end
 
     // A designated hold-short node is trusted as belonging to THIS runway only
     // within the same tolerance TaxiGraph uses to NAME hold nodes after a runway
     // (HOLDSHORT_RUNWAY_MATCH_M). Beyond that, an HS node inside the geometric
-    // window could belong to a parallel runway (KSFO: 28R hold nodes sit ~450 m
-    // from the 28L centerline — well inside MAX_LATERAL_M).
+    // window could belong to a parallel runway.
     private const double HS_NODE_MATCH_M = 150.0;
+
+    // A designated node closer to the centerline than the true pavement
+    // half-width PLUS this buffer is treated as a misplaced scenery marker,
+    // not a hold line — real hold lines never hug the pavement edge (FAA
+    // minimum hold-line offset is 125 ft ≈ 38 m from the centerline; the
+    // buffer keeps a heavy jet's nose out of the runway safety area when a
+    // third-party scenery drops an HSND a metre off the pavement).
+    private const double HS_MIN_SETBACK_BUFFER_M = 15.0;
+
+    // Tier-2 window: how far along the runway a designated node may sit from
+    // the cleared taxiway's own closest plain candidate and still be treated
+    // as "this taxiway's hold line on an unnamed stub". Kept below typical
+    // parallel-taxiway junction spacing (~100 m+) so an adjacent taxiway's
+    // hold node doesn't hijack the route.
+    private const double HS_JUNCTION_ALONG_M = 75.0;
+
+    /// <summary>
+    /// The legacy geometric hold setback. Runway.Width is in FEET; dividing by
+    /// 2 and reading the result as METRES is a DELIBERATE conservative setback
+    /// (~1.64 × the physical half-width — a 200 ft runway → ~97 m),
+    /// approximating real hold-line placement so a geometric hold target
+    /// clears the runway safety area. Do NOT "fix" the units to ft→m — that
+    /// would put the target at the pavement edge with the tail still over the
+    /// runway. Shared with TaxiAssistForm.FindFarSideRunwayNode so the
+    /// near-side and far-side finders can never diverge on the setback.
+    /// </summary>
+    public static double LegacySetbackMetres(Runway runway) =>
+        Math.Max(runway.Width > 0 ? runway.Width / 2.0 : 30.0, 15.0);
+
+    /// <summary>
+    /// TRUE physical half-width in metres (Runway.Width is FEET) — the
+    /// pavement edge, used for on-runway detection and as the base of the
+    /// designated-node sanity floor.
+    /// </summary>
+    public static double TrueHalfWidthMetres(Runway runway) =>
+        runway.Width > 0 ? runway.Width * 0.3048 / 2.0 : 23.0;
 
     /// <summary>
     /// Finds the hold-short node on the aircraft's side of <paramref name="runway"/>,
-    /// preferring the scenery's designated hold-short nodes (closest to the runway,
-    /// on <paramref name="lastTaxiway"/> when possible), falling back to the legacy
-    /// geometric closest-to-centerline scan.
+    /// preferring the scenery's designated hold-short nodes per the tier order
+    /// in the class remarks, falling back to the legacy geometric
+    /// closest-to-centerline scan.
     /// </summary>
     public static TaxiNode? ResolveNearSide(
         TaxiGraph graph, Runway runway,
         double aircraftLat, double aircraftLon, double aircraftHeadingMag,
         string lastTaxiway)
     {
-        double hdgRad = runway.Heading * Math.PI / 180.0;
-        double rwEast = Math.Sin(hdgRad);
-        double rwNorth = Math.Cos(hdgRad);
+        var frame = RunwayFrame.For(runway, aircraftLat);
 
-        double degToMLon = DEG_TO_M_LAT * Math.Cos(aircraftLat * Math.PI / 180.0);
+        double legacyMinLateralM = LegacySetbackMetres(runway);
+        double halfWidthTrueM = TrueHalfWidthMetres(runway);
+        double hsFloorM = halfWidthTrueM + HS_MIN_SETBACK_BUFFER_M;
 
-        double SignedCT(double lat, double lon)
-        {
-            double pDy = (lat - runway.StartLat) * DEG_TO_M_LAT;
-            double pDx = (lon - runway.StartLon) * degToMLon;
-            return rwEast * pDy - rwNorth * pDx;
-        }
+        double acSignedCT = frame.SignedCrossTrack(aircraftLat, aircraftLon);
 
-        // Legacy setback (feet-as-metres heuristic — see class remarks; pass 2 only).
-        double legacyMinLateralM = Math.Max(runway.Width > 0 ? runway.Width / 2.0 : 30.0, 15.0);
-        // TRUE physical half-width in metres (Runway.Width is FEET) — pass 1's
-        // sanity floor: a "designated" node on the runway pavement itself is a
-        // scenery bug, not a hold line.
-        double halfWidthTrueM = runway.Width > 0 ? runway.Width * 0.3048 / 2.0 : 23.0;
-
-        double acSignedCT = SignedCT(aircraftLat, aircraftLon);
-
-        // Near side = the aircraft's own side. If the aircraft is ON the runway,
-        // use its heading to pick the side it is coming FROM (opposite the exit
-        // side the far-side finder would pick). Uses the legacy setback so the
-        // on-runway determination matches the pre-refactor behaviour exactly.
+        // Near side = the aircraft's own side. The threshold is the TRUE
+        // pavement edge, not the legacy setback: designated hold lines sit
+        // INSIDE the legacy floor (KSFO: line at ~90 m, floor 97 m), so a
+        // pilot legitimately stopped AT the hold line is off the pavement and
+        // physically on a side — use it. Only an aircraft actually ON the
+        // pavement needs the heading heuristic (which picks the side it is
+        // coming FROM, opposite the exit side the far-side finder would pick,
+        // and hard-codes a side for runway-parallel headings).
         int nearSign;
-        if (Math.Abs(acSignedCT) >= legacyMinLateralM)
+        if (Math.Abs(acSignedCT) >= halfWidthTrueM)
         {
             nearSign = Math.Sign(acSignedCT);
         }
@@ -92,80 +129,98 @@ public static class HoldShortNodeResolver
             nearSign = perpComp >= 0 ? -1 : 1;
         }
 
-        double runwayLengthM = runway.Length > 0
-            ? runway.Length * 0.3048   // stored in feet
-            : TaxiGraph.CalculateDistanceMeters(
-                runway.StartLat, runway.StartLon, runway.EndLat, runway.EndLon);
-
         // Restrict candidates to the aircraft's connected component so the
         // resolved node is actually reachable (mirrors FindFarSideRunwayNode).
         int? aircraftComponentId = graph.FindNearestNode(aircraftLat, aircraftLon)?.ComponentId;
 
-        bool InWindow(TaxiNode node, out double lateralAbs)
+        bool InWindow(TaxiNode node, out double lateralAbs, out double along)
         {
             lateralAbs = 0;
+            along = 0;
             if (aircraftComponentId.HasValue && node.ComponentId != aircraftComponentId.Value)
                 return false;
 
-            double nodeSignedCT = SignedCT(node.Latitude, node.Longitude);
+            double nodeSignedCT = frame.SignedCrossTrack(node.Latitude, node.Longitude);
             if (Math.Sign(nodeSignedCT) != nearSign) return false;
             lateralAbs = Math.Abs(nodeSignedCT);
             if (lateralAbs > MAX_LATERAL_M) return false;
 
-            double nPDx = (node.Longitude - runway.StartLon) * degToMLon;
-            double nPDy = (node.Latitude - runway.StartLat) * DEG_TO_M_LAT;
-            double along = rwEast * nPDx + rwNorth * nPDy;
+            along = frame.Along(node.Latitude, node.Longitude);
             if (along < -MAX_ALONG_PAST_END_M) return false;
-            if (along > runwayLengthM + MAX_ALONG_PAST_END_M) return false;
+            if (along > frame.LengthM + MAX_ALONG_PAST_END_M) return false;
             return true;
         }
 
         bool OnLastTaxiway(TaxiNode node) => node.TaxiwayNames.Contains(lastTaxiway);
 
-        // ---- PASS 1: designated hold-short nodes ----
-        TaxiNode? hsBest = null;     double hsBestLateral = double.MaxValue;
-        TaxiNode? hsBestOnTw = null; double hsBestLateralTw = double.MaxValue;
+        // The target runway's two designators, for the HoldShortName gate.
+        string targetId = runway.RunwayID ?? "";
+        string targetRecip = RouteRunwayCrossings.Reciprocal(targetId);
+
+        // ---- Single scan: collect designated candidates + track plain bests ----
+        var designated = new List<(TaxiNode node, double lateral, double along)>();
+
+        TaxiNode? bestNode = null;   double bestLateral = double.MaxValue;     // plain, any taxiway
+        TaxiNode? bestOnTw = null;   double bestLateralTw = double.MaxValue;   // plain, on lastTaxiway
+        double bestOnTwAlong = 0;
 
         foreach (var node in graph.Nodes.Values)
         {
-            if (node.Type != TaxiNodeType.HoldShort && node.Type != TaxiNodeType.ILSHoldShort)
-                continue;
-            if (!InWindow(node, out double lateralAbs)) continue;
-            if (lateralAbs < halfWidthTrueM) continue;   // on the pavement — bogus
-            if (lateralAbs > HS_NODE_MATCH_M) continue;  // likely another runway's hold
+            if (!InWindow(node, out double lateralAbs, out double along)) continue;
 
-            if (lateralAbs < hsBestLateral) { hsBestLateral = lateralAbs; hsBest = node; }
-            if (lateralAbs < hsBestLateralTw && OnLastTaxiway(node))
+            if ((node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort) &&
+                lateralAbs >= hsFloorM && lateralAbs <= HS_NODE_MATCH_M)
             {
-                hsBestLateralTw = lateralAbs;
-                hsBestOnTw = node;
+                // Runway gate: when the node's own name says which runway it
+                // guards, it must be this one (or its reciprocal — same
+                // pavement). A bare/unparseable name stays geometric-only.
+                string? named = RouteRunwayCrossings.ExtractRunwayDesignator(node.HoldShortName);
+                if (named == null ||
+                    named.Equals(targetId, StringComparison.OrdinalIgnoreCase) ||
+                    named.Equals(targetRecip, StringComparison.OrdinalIgnoreCase))
+                {
+                    designated.Add((node, lateralAbs, along));
+                }
             }
-        }
 
-        if (hsBestOnTw != null || hsBest != null)
-            return hsBestOnTw ?? hsBest;
-
-        // ---- PASS 2: legacy geometric scan (verbatim behaviour) ----
-        // Prefer a candidate that actually lies on the last cleared taxiway (where
-        // the clearance ends); fall back to the global nearest-centerline node when
-        // none qualifies.
-        TaxiNode? bestNode = null;   double bestLateral = double.MaxValue;     // any taxiway (fallback)
-        TaxiNode? bestOnTw = null;   double bestLateralTw = double.MaxValue;   // on lastTaxiway (preferred)
-
-        foreach (var node in graph.Nodes.Values)
-        {
-            if (!InWindow(node, out double lateralAbs)) continue;
+            // Legacy geometric tracking (a designated node past the legacy
+            // floor also counts here, exactly as the old single-pass scan did).
             if (lateralAbs < legacyMinLateralM) continue;
-
-            // Closest to the centerline on the near side = the hold-short point.
             if (lateralAbs < bestLateral) { bestLateral = lateralAbs; bestNode = node; }
             if (lateralAbs < bestLateralTw && OnLastTaxiway(node))
             {
                 bestLateralTw = lateralAbs;
                 bestOnTw = node;
+                bestOnTwAlong = along;
             }
         }
 
-        return bestOnTw ?? bestNode;
+        static TaxiNode? ClosestToRunway(IEnumerable<(TaxiNode node, double lateral, double along)> c)
+        {
+            TaxiNode? best = null; double bestLat = double.MaxValue;
+            foreach (var (node, lateral, _) in c)
+                if (lateral < bestLat) { bestLat = lateral; best = node; }
+            return best;
+        }
+
+        // Tier 1: designated node on the cleared taxiway.
+        var tier1 = ClosestToRunway(designated.Where(d => OnLastTaxiway(d.node)));
+        if (tier1 != null) return tier1;
+
+        if (bestOnTw != null)
+        {
+            // Tier 2: designated node at the cleared taxiway's runway junction
+            // (unnamed-stub shape).
+            var tier2 = ClosestToRunway(designated.Where(d =>
+                Math.Abs(d.along - bestOnTwAlong) <= HS_JUNCTION_ALONG_M));
+            if (tier2 != null) return tier2;
+
+            // Tier 3: plain node on the cleared taxiway (legacy behaviour).
+            return bestOnTw;
+        }
+
+        // Tiers 4/5: no cleared-taxiway candidate at all — best designated
+        // node anywhere, else the legacy any-taxiway geometric pick.
+        return ClosestToRunway(designated) ?? bestNode;
     }
 }
