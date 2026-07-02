@@ -335,10 +335,8 @@ public class NavigationDatabaseProvider
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
-                if (!runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
-                {
-                    command.Parameters.AddWithValue("@runwayName", runwayName);
-                }
+                // No @runwayName parameter: the runway match is done in C# (ProcedureServesRunway) so
+                // arinc_name-tagged runways are honoured; the SQL selects all suffix-'D' rows.
 
                 using (var reader = command.ExecuteReader())
                 {
@@ -490,10 +488,8 @@ public class NavigationDatabaseProvider
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
-                if (!runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
-                {
-                    command.Parameters.AddWithValue("@runwayName", runwayName);
-                }
+                // No @runwayName parameter: the runway match is done in C# (ProcedureServesRunway) so
+                // arinc_name-tagged runways are honoured; the SQL selects all suffix-'A' rows.
 
                 using (var reader = command.ExecuteReader())
                 {
