@@ -349,6 +349,9 @@ public static class PMDG737FlowDefinitions
             Wait("AL_APU_DWELL", "APU spinning up before start", 2),
             SW("AL_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
             Multi("AL_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
+            // Flaps UP — was missing entirely (the flow description always promised it).
+            // The per-detent event routes through the executor's MouseFlag dispatch.
+            Momentary("AL_FLAPS_UP", "Flaps: UP", "EVT_CONTROL_STAND_FLAPS_LEVER_0"),
             SW("AL_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
         }
     };

@@ -577,3 +577,38 @@ Test (737, at a gate with ground power available and the APU RUNNING):
    the buses again (after "APU generators: ON").
 4. No-GPU stand: the flow's wait announces the 10 s timeout; ticking the checklist item
    presses harmlessly and simply stays ticked (stateless).
+
+---
+
+## Part P — transition-altitude STD, after-landing flaps, GPU item removal (2026-07-02)
+
+1. **STD at transition altitude (BOTH aircraft)** — two fixes:
+   (a) Crossing hardening: the direction gate on the transition (and 10k) crossings could
+   miss the one 1 Hz tick that first sees the aircraft past the band if VS momentarily
+   lulled (altitude capture) — the latch still flipped, permanently burning the crossing.
+   Gates are now "not descending"/"not climbing" so a crossed band always fires.
+   (b) No-SimBrief fallback: with no transition altitude loaded the monitor now announces
+   once, climbing through 18,000: "No transition altitude loaded — set standard
+   altimeters as required. Load SimBrief in the First Officer window..." (speech only —
+   deliberately NO default STD push: a wrong-region default would toggle correctly-set
+   altimeters the wrong way on the 737, which has no STD readback).
+   Test: load SimBrief in the FO window (expect the "Flight phase monitor: transition
+   altitude ..." announce), fly a climb through the TA → "Transition altitude. Altimeters
+   set to standard." and both altimeters flip to STD. Then a flight WITHOUT loading
+   SimBrief → the passing-18,000 reminder fires instead, no switch is touched.
+2. **737 after-landing flaps** — the flow never had a flaps-up step (its description
+   claimed one) and the checklist group had no flaps item. Added: flow retracts flaps
+   after the start switches go OFF; checklist "Flaps: UP" auto-detects off the TE-flap
+   gauge (MAIN_TEFlapsNeedle) and ticking it retracts. (The 777 already had both.)
+   Test: land with flaps 30, run the After Landing flow → lever to UP, gauge runs to 0,
+   checklist item ticks.
+3. **"Ground power: OFF" removed from the Before Start checklist** (user decision) — the
+   flow still drops ground power right after the APU generator transfer, and the BS_GND
+   reminder covers confirmation.
+4. **APU generators wiring re-verified (code audit)** — both paths press BOTH buttons,
+   frame-paced: the flow BS_APUGEN is a Multi over EVT_OH_ELEC_APU_GEN1_SWITCH +
+   EVT_OH_ELEC_APU_GEN2_SWITCH (Directional/LEFTSINGLE, ids base+28/29, identical to the
+   panel's proven APU Gen On buttons), and the checklist item fires SetApuGenerators(1)
+   through the same paced gate. In-sim check: with the APU on line, run Before Start (or
+   tick "APU generators: ON") → BOTH transfer buses move to the APU (no SOURCE OFF
+   annunciator remains lit on either side).

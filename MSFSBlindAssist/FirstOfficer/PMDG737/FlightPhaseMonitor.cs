@@ -105,6 +105,30 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
 
         if (_transAltFt > 0)
             CheckTransitionCrossing(altitudeFt, climbing, descending);
+        else
+            CheckNoTransitionReminder(altitudeFt, climbing);
+    }
+
+    // One-shot reminder when climbing with NO transition altitude loaded: without
+    // SimBrief the monitor cannot know the real TA (deliberately no default push —
+    // a wrong-region default would toggle correctly-set altimeters the wrong way on
+    // the 737, which has no STD readback), but a silent miss left pilots past 18,000
+    // on QNH with no cue. 18,000 is the US standard; elsewhere the reminder is late
+    // but it is speech-only. Reset when descending back below (next climb reminds again).
+    private bool _noTransReminderFired;
+
+    private void CheckNoTransitionReminder(double alt, bool climbing)
+    {
+        if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
+        {
+            _noTransReminderFired = true;
+            _announcer.AnnounceImmediate(
+                "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
+        }
+        else if (_noTransReminderFired && alt < 17_000)
+        {
+            _noTransReminderFired = false;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -146,7 +170,13 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         bool nowAboveTrans = alt > transAltHigh;
         bool nowBelowTrans = alt < transLvlLow;
 
-        if (climbing && nowAboveTrans && _prevInStd == false)
+        // Direction gates are "!descending"/"!climbing" (NOT "climbing"/"descending"):
+        // the fire check and the latch update run in the same tick, so if the 1 Hz
+        // sample that first sees the aircraft past the band happens to catch VS in a
+        // momentary lull (autopilot altitude capture, turbulence), a strict VS gate
+        // skipped the push while the latch below still flipped — permanently burning
+        // the crossing. That silent miss is one way "altimeters never went to STD".
+        if (!descending && nowAboveTrans && _prevInStd == false)
         {
             // Climbing through transition altitude — set both altimeters to STD.
             // The 737 NG3 struct has no baro-STD state field, so we push unconditionally.
@@ -156,7 +186,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
             _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
             _prevInStd = true;
         }
-        else if (descending && nowBelowTrans && _prevInStd == true)
+        else if (!climbing && nowBelowTrans && _prevInStd == true)
         {
             // Descending through transition level — return both altimeters to local QNH.
             // Pushing the STD button again toggles it back to QNH mode on the 737 MCP.

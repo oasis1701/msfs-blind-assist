@@ -104,6 +104,27 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         // ---- Transition altitude / level (altimeters) ----
         if (_transAltFt > 0)
             CheckTransitionCrossing(altitudeFt, climbing, descending);
+        else
+            CheckNoTransitionReminder(altitudeFt, climbing);
+    }
+
+    // One-shot reminder when climbing with NO transition altitude loaded (see the 737
+    // monitor for rationale): the monitor cannot know the real TA without SimBrief,
+    // so it says so instead of silently doing nothing. Speech-only, no switch action.
+    private bool _noTransReminderFired;
+
+    private void CheckNoTransitionReminder(double alt, bool climbing)
+    {
+        if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
+        {
+            _noTransReminderFired = true;
+            _announcer.AnnounceImmediate(
+                "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
+        }
+        else if (_noTransReminderFired && alt < 17_000)
+        {
+            _noTransReminderFired = false;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -141,7 +162,11 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         bool nowAboveTrans = alt > transAltHigh;
         bool nowBelowTrans = alt < transLvlLow;
 
-        if (climbing && nowAboveTrans && _prevInStd == false)
+        // Direction gates are "!descending"/"!climbing" (NOT "climbing"/"descending") —
+        // a momentary VS lull on the tick that first sees the aircraft past the band
+        // used to skip the push while the latch below still flipped, permanently
+        // burning the crossing (see the 737 monitor for the full note).
+        if (!descending && nowAboveTrans && _prevInStd == false)
         {
             // Climbing through transition altitude — set both altimeters to STD
             bool captIsStd = _state.IsBaroSTDCapt();
@@ -151,7 +176,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
             _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
             _prevInStd = true;
         }
-        else if (descending && nowBelowTrans && _prevInStd == true)
+        else if (!climbing && nowBelowTrans && _prevInStd == true)
         {
             // Descending through transition level — deselect STD, announce QNH
             bool captIsStd = _state.IsBaroSTDCapt();

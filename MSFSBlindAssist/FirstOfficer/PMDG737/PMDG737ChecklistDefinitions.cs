@@ -142,9 +142,9 @@ public static class PMDG737ChecklistDefinitions
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
             // Electrical transfer to the APU. The APU GEN switches are stateless momentary
             // push pairs (no readable per-switch state) — action-only, like the panel.
-            // Ground power OFF is stateless too (see EPU_GPU: no reliable on-bus signal).
+            // (No separate "Ground power: OFF" item by user decision — the flow drops
+            // ground power as part of this transfer, and BS_GND confirms it below.)
             ActionManual("BS_APUGEN", "BEFORE_START", "APU generators: ON", (e, _) => e.SetApuGenerators(1)),
-            ActionManual("BS_GPU_OFF", "BEFORE_START", "Ground power: OFF", (e, _) => e.SetGroundPower(0)),
             Auto("BS_FUEL", "BEFORE_START", "Fuel pumps: ON", "FUEL_PumpFwdSw_0", v => v > 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(1)),
             Auto("BS_HYD", "BEFORE_START", "Electric hydraulic pumps: ON", "HYD_PumpSw_elec_0", v => v > 0.5,
@@ -304,6 +304,10 @@ public static class PMDG737ChecklistDefinitions
             Auto("AL_START_OFF", "AFTER_LANDING", "Engine start switches: OFF", "ENG_StartSelector_0", v => v > 0.5 && v < 1.5,
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
+            // Detects off the TE-flap gauge needle (degrees) — the NG3 struct has no
+            // flap-lever field. <0.5° = fully up.
+            Auto("AL_FLAPS", "AFTER_LANDING", "Flaps: UP", "MAIN_TEFlapsNeedle_0", v => v < 0.5,
+                (e, _) => e.SetFlapsPosition(0)),
             Auto("AL_AB", "AFTER_LANDING", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }
