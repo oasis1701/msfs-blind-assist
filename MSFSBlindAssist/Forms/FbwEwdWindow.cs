@@ -9,8 +9,9 @@ namespace MSFSBlindAssist.Forms;
 //
 // The window is content-agnostic: each aircraft passes an async text builder (the
 // A380 decodes its SimVars, the A32NX scrapes its live EWD view), so this one form
-// serves both. The reading position (caret) is preserved across refreshes so the
-// auto-update doesn't yank a user who is reading line by line.
+// serves both. Refreshes reconcile the list in place (via DisplayListBox, which
+// wraps DisplayList.UpdateInPlace), so the reader's selected row and scroll
+// position are preserved instead of being reset to the top on every auto-update.
 public sealed class FbwEwdWindow : Form
 {
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();

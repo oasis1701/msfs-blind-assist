@@ -10,11 +10,13 @@ namespace MSFSBlindAssist.Forms
     /// <see cref="ListBox.ObjectCollection.Clear"/>, which would drop the selection and make NVDA
     /// re-read from the top), and restores the selection by ROW CONTENT — so a row inserted or
     /// removed ABOVE the user's cursor doesn't silently leave them reading a different parameter.
-    /// Parallel to <see cref="DisplayText.SetPreserveCaret"/> (the TextBox equivalent). NOTE: the
-    /// MCDU/CDU/DCDU display forms still carry their own hand-rolled copies of this pattern (with
-    /// per-form selection semantics) — the only caller today is MainForm's status display. If you
-    /// fix a reconcile bug here, check those forms too; migrating them onto this helper is the
-    /// intended end state but has NOT happened yet.
+    /// Parallel to <see cref="DisplayText.SetPreserveCaret"/> (the TextBox equivalent, now used
+    /// only by single-line/blob boxes). This IS the single home for the list-update pattern:
+    /// MainForm's status display, every DisplayListBox window (E/WD, OANS, RMP, HS787 display +
+    /// EICAS, GSX menu), the ECL checklist, and all MCDU/CDU/DCDU forms reconcile through it.
+    /// Per-form selection semantics (title/page force-select, positional index restore for CDU
+    /// screens, the ECL's FWS cursor-follow) run CALLER-SIDE after this call and override the
+    /// content-based restore below — keep it that way.
     /// </summary>
     public static class DisplayList
     {
