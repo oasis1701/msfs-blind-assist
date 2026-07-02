@@ -10,8 +10,11 @@ namespace MSFSBlindAssist.Forms
     /// <see cref="ListBox.ObjectCollection.Clear"/>, which would drop the selection and make NVDA
     /// re-read from the top), and restores the selection by ROW CONTENT — so a row inserted or
     /// removed ABOVE the user's cursor doesn't silently leave them reading a different parameter.
-    /// Parallel to <see cref="DisplayText.SetPreserveCaret"/> (the TextBox equivalent); this is the
-    /// single home for the list-update pattern hand-copied across the MCDU/CDU/DCDU display forms.
+    /// Parallel to <see cref="DisplayText.SetPreserveCaret"/> (the TextBox equivalent). NOTE: the
+    /// MCDU/CDU/DCDU display forms still carry their own hand-rolled copies of this pattern (with
+    /// per-form selection semantics) — the only caller today is MainForm's status display. If you
+    /// fix a reconcile bug here, check those forms too; migrating them onto this helper is the
+    /// intended end state but has NOT happened yet.
     /// </summary>
     public static class DisplayList
     {
@@ -65,23 +68,31 @@ namespace MSFSBlindAssist.Forms
 
                 // Restore selection by CONTENT. If the row still at the old index holds the same
                 // text, the list didn't shift under the cursor → keep it (no SelectedIndexChanged).
-                // Otherwise follow that text to its new index; only when the text is gone entirely
-                // (the selected value itself changed AND its row moved) fall back to the old index.
+                // Otherwise follow that text to the occurrence NEAREST the old index — status lists
+                // legitimately contain duplicate rows (blank separators, repeated "--"), and a
+                // first-match scan could teleport the cursor to an unrelated section. When the text
+                // is gone entirely, CLAMP to the old index (or the new last row if the list shrank
+                // past it) — never drop the selection to -1 and strand the reader at the top; the
+                // old TextBox path clamped the caret the same way (DisplayText.SetPreserveCaret).
                 int newSel = -1;
                 if (selText != null)
                 {
                     if (sel >= 0 && sel < n && string.Equals(lines[sel], selText, StringComparison.Ordinal))
+                    {
                         newSel = sel;
+                    }
                     else
                     {
                         for (int i = 0; i < n; i++)
-                            if (string.Equals(lines[i], selText, StringComparison.Ordinal)) { newSel = i; break; }
-                        if (newSel < 0 && sel >= 0 && sel < n) newSel = sel;
+                            if (string.Equals(lines[i], selText, StringComparison.Ordinal) &&
+                                (newSel < 0 || Math.Abs(i - sel) < Math.Abs(newSel - sel)))
+                                newSel = i;
+                        if (newSel < 0 && sel >= 0) newSel = Math.Min(sel, n - 1);
                     }
                 }
-                else if (sel >= 0 && sel < n)
+                else if (sel >= 0)
                 {
-                    newSel = sel;
+                    newSel = Math.Min(sel, n - 1);
                 }
 
                 // SelectedIndex is range-checked, so the assignment can't throw; only set it when it

@@ -257,9 +257,23 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
     // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
     // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
-    // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle. The
-    // schedule restarts this timer per push, so a burst settles into a SINGLE repaint.
+    // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle.
+    // The timer is armed by the FIRST push and NOT restarted by later ones, so the repaint fires
+    // a bounded 120 ms after the burst began. (A restart-per-push trailing debounce starved here:
+    // hand-fly/takeoff-assist stream PLANE_PITCH/BANK/HEADING per SIM_FRAME — ~30-60 Hz — and
+    // those are PFD/ISIS display vars, so the repaint deadline was pushed out forever and the
+    // "live" list froze exactly while the aircraft was being hand-flown.)
     private System.Windows.Forms.Timer? _displayRepaintDebounce;
+    // Cached view of currentAircraft.GetPanelDisplayVariables(). The aircraft defs rebuild that
+    // dictionary from scratch on EVERY call (hundreds of interpolated strings on the FBW jets —
+    // the same lag class GetVariables' _varCache fixed), and OnSimVarUpdated consults it PER
+    // EVENT: with the 1 s display force-read firing an event per panel var per second, the
+    // uncached call was thousands of allocations per second on the UI thread. Panel display sets
+    // are static per aircraft-definition instance, so cache both the dict and a flat name set,
+    // keyed on the aircraft instance (an aircraft switch invalidates automatically).
+    private Dictionary<string, List<string>>? _panelDisplayVarsCache;
+    private HashSet<string>? _displayVarNameCache;
+    private IAircraftDefinition? _displayVarCacheOwner;
     private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
@@ -854,7 +868,7 @@ public partial class MainForm : Form
             // Also mirror to displayValues so panel display textboxes have
             // the right initial content when first rendered.
             if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
-                currentAircraft.GetPanelDisplayVariables().Values.Any(list => list.Contains(e.VarName)))
+                GetDisplayVarNamesCached().Contains(e.VarName))
             {
                 displayValues[e.VarName] = e.Value;
             }
@@ -984,8 +998,9 @@ public partial class MainForm : Form
 
         // Step 3: Update display values (if this variable is used in any panel display)
         // This happens silently without announcements - users read the display manually
+        // (cached name set — this gate runs PER EVENT; see GetDisplayVarNamesCached)
         if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
-            currentAircraft.GetPanelDisplayVariables().Values.Any(list => list.Contains(e.VarName)))
+            GetDisplayVarNamesCached().Contains(e.VarName))
         {
             displayValues[e.VarName] = e.Value;
 
@@ -1841,33 +1856,32 @@ public partial class MainForm : Form
 
     private void UpdateDisplayText(ListBox displayBox)
     {
-        if (currentAircraft.GetPanelDisplayVariables().ContainsKey(currentPanel))
+        if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var displayVars))
         {
-            var displayVars = currentAircraft.GetPanelDisplayVariables()[currentPanel];
+            var allVars = currentAircraft.GetVariables();
             List<string> values = new List<string>();
 
             foreach (var varKey in displayVars)
             {
-                if (currentAircraft.GetVariables().ContainsKey(varKey))
+                if (allVars.TryGetValue(varKey, out var varDef))
                 {
-                    var varDef = currentAircraft.GetVariables()[varKey];
-
-                    // Fall back to SimConnectManager's lastVariableValues cache
-                    // when displayValues lacks an entry. lastVariableValues is
-                    // populated in ProcessIndividualVariableResponse BEFORE the
-                    // announced-var "unchanged" suppression at line 2215, so it
-                    // holds the current value even when SimVarUpdated was
-                    // suppressed and never reached MainForm's displayValues
-                    // sink. Without this fallback, panel display fields for
-                    // stable continuous announced vars (e.g. IRS POS_SET held
-                    // at 1, IRS minutes held at -1) silently render as "--".
-                    if (!displayValues.ContainsKey(varKey))
+                    // ALWAYS prefer SimConnectManager's lastVariableValues cache over the
+                    // displayValues entry. The cache is written unconditionally, BEFORE any
+                    // suppression, on every individual response AND every continuous-batch
+                    // delivery — so it is at least as fresh as displayValues for every
+                    // deliverable var. displayValues alone goes STALE for def-handled vars:
+                    // when ProcessSimVarUpdate returns true, OnSimVarUpdated exits before the
+                    // Step-3 displayValues write, so those rows (A32NX COM frequencies, A380
+                    // EFIS baro, HS787 flight data) would freeze at their first-painted value
+                    // forever — the old 3 s tick masked this by clearing displayValues every
+                    // cycle via the Refresh button, which the live 1 s tick no longer does.
+                    // displayValues remains the fallback for values delivered through paths
+                    // that don't populate the cache, and covers stable continuous announced
+                    // vars whose SimVarUpdated was suppressed (e.g. IRS POS_SET held at 1).
+                    double? cached = simConnectManager?.GetCachedVariableValue(varKey);
+                    if (cached.HasValue)
                     {
-                        double? cached = simConnectManager?.GetCachedVariableValue(varKey);
-                        if (cached.HasValue)
-                        {
-                            displayValues[varKey] = cached.Value;
-                        }
+                        displayValues[varKey] = cached.Value;
                     }
 
                     if (displayValues.ContainsKey(varKey))
@@ -1953,7 +1967,7 @@ public partial class MainForm : Form
             // whose value is a multi-row block) into one list item per row, then update only
             // the items whose text changed — preserving the selected ROW (by content) so the
             // reader stays put. A per-item list update never moves a caret, so NVDA's cursor
-            // never jumps. Shared with the MCDU/CDU display forms via Forms.DisplayList.
+            // never jumps. The reconcile lives in Forms.DisplayList.UpdateInPlace.
             var lines = new List<string>();
             foreach (var v in values)
                 lines.AddRange((v ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
@@ -1962,10 +1976,15 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Request a status-list repaint, COALESCED via a short one-shot debounce. Restarting the timer
-    /// on every display-var push collapses a force-read burst (the auto-refresh tick reads the whole
-    /// panel at once) into a single <see cref="UpdateDisplayText(ListBox)"/> pass instead of one per
-    /// response. The repaint reads the current cache, so the single late pass shows the freshest data.
+    /// Request a status-list repaint, COALESCED via a short one-shot debounce: the FIRST push arms
+    /// the 120 ms timer and later pushes leave it running, so a force-read burst (the auto-refresh
+    /// tick reads the whole panel at once) collapses into a single
+    /// <see cref="UpdateDisplayText(ListBox)"/> pass a bounded 120 ms after the burst began. The
+    /// repaint reads the current cache, so the single pass shows the freshest data; a straggler
+    /// landing after the tick simply arms the next window. Do NOT switch this to a
+    /// restart-per-push trailing debounce — sustained sub-120 ms pushes (hand-fly's per-SIM_FRAME
+    /// PLANE_PITCH/BANK/HEADING, which are PFD/ISIS display vars) starve a trailing debounce and
+    /// freeze the "live" list exactly while values change fastest.
     /// </summary>
     private void ScheduleDisplayRepaint()
     {
@@ -1980,9 +1999,32 @@ public partial class MainForm : Form
                     UpdateDisplayText(lb);
             };
         }
-        // Restart: a new push within the window pushes the single repaint out to after the burst.
-        _displayRepaintDebounce.Stop();
-        _displayRepaintDebounce.Start();
+        if (!_displayRepaintDebounce.Enabled)
+            _displayRepaintDebounce.Start();
+    }
+
+    /// <summary>
+    /// Cached <c>currentAircraft.GetPanelDisplayVariables()</c> (see the cache fields for why:
+    /// the defs rebuild the dictionary per call and the per-event Step-3 gate made that a
+    /// per-second allocation storm). Self-invalidates when the aircraft instance changes.
+    /// </summary>
+    private Dictionary<string, List<string>> GetPanelDisplayVarsCached()
+    {
+        if (_panelDisplayVarsCache == null || !ReferenceEquals(_displayVarCacheOwner, currentAircraft))
+        {
+            _panelDisplayVarsCache = currentAircraft.GetPanelDisplayVariables();
+            _displayVarNameCache = new HashSet<string>(_panelDisplayVarsCache.Values.SelectMany(l => l));
+            _displayVarCacheOwner = currentAircraft;
+        }
+        return _panelDisplayVarsCache;
+    }
+
+    /// <summary>Flat set of every display-var name across all panels — the O(1) form of
+    /// "is this var used in any panel display" for the per-event OnSimVarUpdated gate.</summary>
+    private HashSet<string> GetDisplayVarNamesCached()
+    {
+        GetPanelDisplayVarsCached();
+        return _displayVarNameCache!;
     }
 
 
@@ -6357,7 +6399,7 @@ public partial class MainForm : Form
         }
 
         // Add display field if this panel has display variables
-        if (currentAircraft.GetPanelDisplayVariables().ContainsKey(currentPanel))
+        if (GetPanelDisplayVarsCached().ContainsKey(currentPanel))
         {
             // Standard display for other panels
             // Add separator row
@@ -6437,7 +6479,7 @@ public partial class MainForm : Form
                 displayValues.Clear();  // Clear old values for this panel
 
                 // Get the display variables for this panel
-                var displayVars = currentAircraft.GetPanelDisplayVariables()[currentPanel];
+                var displayVars = GetPanelDisplayVarsCached()[currentPanel];
 
                 // Create a task completion source for each variable
                 var pendingValues = new Dictionary<string, TaskCompletionSource<bool>>();
@@ -6647,9 +6689,10 @@ public partial class MainForm : Form
             if (simConnectManager == null || !simConnectManager.IsConnected) return;
 
             // We refresh while the user is reading the status LIST now — full live monitoring.
-            // UpdateStatusListItems rewrites only the rows whose value actually changed and never
-            // touches the selection, so the screen-reader cursor stays on the row being read; a
-            // stable value is never re-touched (so it never re-announces).
+            // The reconcile (UpdateDisplayText -> Forms.DisplayList.UpdateInPlace) rewrites only
+            // the rows whose value actually changed and never disturbs the selection, so the
+            // screen-reader cursor stays on the row being read; a stable value is never
+            // re-touched (so it never re-announces).
 
             // Skip ONLY while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
             // picker). The refresh re-requests the page var — UpdateControlFromSimVar can then
@@ -6671,7 +6714,7 @@ public partial class MainForm : Form
             //     burst of responses collapses into ONE list rebuild (instead of one per var), and a
             //     changed row appears within ~one read round-trip. We also schedule once here so the
             //     list still repaints when no value changed (e.g. the very first populate).
-            if (currentAircraft.GetPanelDisplayVariables().TryGetValue(currentPanel, out var liveVars))
+            if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var liveVars))
                 foreach (var vk in liveVars)
                     if (currentAircraft.GetVariables().ContainsKey(vk))
                         simConnectManager.RequestVariable(vk, forceUpdate: true);
@@ -6939,6 +6982,8 @@ public partial class MainForm : Form
         _sdAutoRefreshTimer?.Stop();
         _sdAutoRefreshTimer?.Dispose();
 
+        _displayRepaintDebounce?.Stop();
+        _displayRepaintDebounce?.Dispose();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
