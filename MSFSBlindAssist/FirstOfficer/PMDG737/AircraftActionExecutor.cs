@@ -401,7 +401,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetWingLights(int p)     => Fire("EVT_OH_LIGHTS_WING", p);
     public bool SetTaxiLights(int p)     => Fire("EVT_OH_LIGHTS_TAXI", p);
     public bool SetRunwayTurnoff(int p)  => FireBoth("EVT_OH_LIGHTS_L_TURNOFF", "EVT_OH_LIGHTS_R_TURNOFF", p);
-    public bool SetLandingLights(int p)  => FireBoth("EVT_OH_LIGHTS_L_RETRACT", "EVT_OH_LIGHTS_R_RETRACT", p); // 0=RETRACT,1=EXTEND,2=ON
+    // ALL FOUR landing lights: the two retractables (0=RETRACT,1=EXTEND,2=ON) get p,
+    // the two FIXED inboard lights (2-position bool) get ON only when p==2. The fixed
+    // pair was previously never touched by any FO path — "landing lights on/off" left
+    // the inboards wherever they were.
+    public bool SetLandingLights(int p)  => FireSpaced(
+        ("EVT_OH_LIGHTS_L_RETRACT", p), ("EVT_OH_LIGHTS_R_RETRACT", p),
+        ("EVT_OH_LIGHTS_L_FIXED", p >= 2 ? 1 : 0), ("EVT_OH_LIGHTS_R_FIXED", p >= 2 ? 1 : 0));
 
     // Signs
     public bool SetSeatBelts(int p)      => Fire("EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", p);    // 0=OFF,1=AUTO,2=ON

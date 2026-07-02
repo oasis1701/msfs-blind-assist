@@ -343,7 +343,16 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetWingLights(int position)     => ExecuteSingle("EVT_OH_LIGHTS_WING", position, false, false);
     public bool SetStormLights(int position)    => ExecuteSingle("EVT_OH_LIGHTS_STORM", position, false, false);
     public bool SetTaxiLights(int position)     => ExecuteSingle("EVT_OH_LIGHTS_TAXI", position, false, false);
-    public bool SetLandingLights(int position)  => ExecuteSingle("EVT_OH_LIGHTS_LANDING_LNR", position, false, false);
+    // All THREE landing lights via the individual per-switch events the panel's proven
+    // controls use (EVT_OH_LIGHTS_LANDING_L/NOSE/R) — the ganged LANDING_LNR event was
+    // never live-verified. Paced by the dispatch gate.
+    public bool SetLandingLights(int position)
+    {
+        bool ok = ExecuteSingle("EVT_OH_LIGHTS_LANDING_L", position, false, false);
+        ok &= ExecuteSingle("EVT_OH_LIGHTS_LANDING_NOSE", position, false, false);
+        ok &= ExecuteSingle("EVT_OH_LIGHTS_LANDING_R", position, false, false);
+        return ok;
+    }
     public bool SetRunwayTurnoff(int position)  => ExecuteSingle("EVT_OH_LIGHTS_LR_TURNOFF", position, false, false);
     public bool SetMasterLights(int position)   => ExecuteSingle("EVT_OH_LIGHTS_IND_LTS_SWITCH", position, false, false);
 

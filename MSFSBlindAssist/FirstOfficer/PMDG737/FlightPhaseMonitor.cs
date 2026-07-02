@@ -142,14 +142,18 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         bool nowAbove = alt > LandingLightThresholdFt + HysteresisFt;  // above 10,300
         bool nowBelow = alt < LandingLightThresholdFt - HysteresisFt;  // below  9,700
 
-        if (climbing && nowAbove && _prevAbove10k == false)
+        // Same direction-tolerant gates as the transition crossing (a VS lull on the
+        // crossing tick must not burn the latch without firing).
+        if (!descending && nowAbove && _prevAbove10k == false)
         {
-            _executor.SetLandingLights(0);  // RETRACT
+            _executor.SetLandingLights(0);  // all four OFF (retractables RETRACT, fixed off)
             _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
         }
-        else if (descending && nowBelow && _prevAbove10k == true)
+        else if (!climbing && nowBelow && _prevAbove10k == true)
         {
-            _executor.SetLandingLights(1);  // EXTEND / ON
+            // 2 = ON for the retractables (1 was EXTEND — deployed but DARK, the old
+            // below-10k bug) and lights the fixed inboards via SetLandingLights.
+            _executor.SetLandingLights(2);
             _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
         }
 

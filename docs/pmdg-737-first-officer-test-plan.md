@@ -636,3 +636,30 @@ Test (737, at a gate with ground power available and the APU RUNNING):
    steps); the 737's start-valve wait (an instant no-op) is removed too.
    Test: run each shutdown flow with engines running — after "Fuel Control: CUTOFF" /
    "Engine start levers: CUTOFF" the next step announces within a second or two.
+
+---
+
+## Part R — landing lights at the 10k crossing, ALL lights, both aircraft (2026-07-02)
+
+Audit findings, all fixed:
+- **737**: `SetLandingLights` only drove the two RETRACTABLE lights — the two FIXED
+  inboard lights were never touched by any FO path. Worse, the below-10k crossing set
+  the retractables to 1 = EXTEND (deployed but DARK); ON is 2. Now every landing-light
+  action drives all four (retractables to the target, fixed to on only for ON), the
+  10k monitor uses 2 below ten thousand, and the Before Takeoff / After Landing flows
+  fire all four events. After Landing's OFF detection reads all four switches.
+- **777**: everything went through the ganged EVT_OH_LIGHTS_LANDING_LNR event, which
+  was never live-verified — the executor and all three flow steps now fire the three
+  individual per-switch events (L / NOSE / R), the same events the panel's proven
+  landing-light controls use.
+- **Both**: the 10k crossing gained the same direction-tolerant gates as the
+  transition crossing (a momentary VS lull on the crossing tick can no longer burn
+  the latch without firing).
+
+Test (each aircraft, FO window open):
+1. Climb through 10,300 ft → "Above ten thousand. Landing lights off." — verify ALL
+   landing lights go off (737: both retractables to RETRACT AND both fixed inboards
+   off; 777: L, NOSE and R all off).
+2. Descend through 9,700 ft → "Below ten thousand. Landing lights on." — verify ALL
+   lights come ON and actually illuminate (737 retractables at ON, not just extended).
+3. Before Takeoff flow/item and After Landing flow/item: all lights on / all off.

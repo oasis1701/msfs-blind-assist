@@ -343,7 +343,10 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TKOF_CL" },
         Steps = new()
         {
-            Skip(SW("BTKOF_LANDING_L", "Landing lights: ON",         "EVT_OH_LIGHTS_LANDING_LNR",  1),
+            // Individual per-switch events (panel-proven) — the ganged LANDING_LNR event
+            // was never live-verified.
+            Skip(Multi("BTKOF_LANDING_L", "Landing lights: ON",
+                ("EVT_OH_LIGHTS_LANDING_L", 1), ("EVT_OH_LIGHTS_LANDING_NOSE", 1), ("EVT_OH_LIGHTS_LANDING_R", 1)),
                 s => s.AreLandingLightsOn()),
             Skip(SW("BTKOF_TURNOFF",   "Runway turnoff lights: ON",  "EVT_OH_LIGHTS_LR_TURNOFF",   1),
                 s => s.IsRwyTurnoffLOn() || s.IsRwyTurnoffROn()),
@@ -373,7 +376,8 @@ public static class PMDG777FlowDefinitions
         {
             Skip(SW("ATKOF_TURNOFF_OFF", "Runway turnoff: OFF", "EVT_OH_LIGHTS_LR_TURNOFF",  0),
                 s => !s.IsRwyTurnoffLOn() && !s.IsRwyTurnoffROn()),
-            Skip(SW("ATKOF_LANDING_OFF", "Landing lights: OFF", "EVT_OH_LIGHTS_LANDING_LNR", 0),
+            Skip(Multi("ATKOF_LANDING_OFF", "Landing lights: OFF",
+                ("EVT_OH_LIGHTS_LANDING_L", 0), ("EVT_OH_LIGHTS_LANDING_NOSE", 0), ("EVT_OH_LIGHTS_LANDING_R", 0)),
                 s => !s.AreLandingLightsOn()),
             Skip(SW("ATKOF_GEAR_UP",     "Gear: UP",            "EVT_GEAR_LEVER",             0,
                "GEAR_Lever", v => v < 0.5, "ATKOF_GEAR"),
@@ -434,7 +438,8 @@ public static class PMDG777FlowDefinitions
         {
             Skip(SW("AL_TURNOFF_OFF",  "Runway turnoff: OFF",    "EVT_OH_LIGHTS_LR_TURNOFF",    0),
                 s => !s.IsRwyTurnoffLOn() && !s.IsRwyTurnoffROn()),
-            Skip(SW("AL_LANDING_OFF",  "Landing lights: OFF",    "EVT_OH_LIGHTS_LANDING_LNR",   0),
+            Skip(Multi("AL_LANDING_OFF",  "Landing lights: OFF",
+                ("EVT_OH_LIGHTS_LANDING_L", 0), ("EVT_OH_LIGHTS_LANDING_NOSE", 0), ("EVT_OH_LIGHTS_LANDING_R", 0)),
                 s => !s.AreLandingLightsOn()),
             Skip(SW("AL_STROBE_OFF",   "Strobe: OFF",            "EVT_OH_LIGHTS_STROBE",        0),
                 s => !s.IsStrobeOn()),

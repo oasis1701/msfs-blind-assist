@@ -138,13 +138,15 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         bool nowAbove = alt > LandingLightThresholdFt + HysteresisFt;   // > 10300
         bool nowBelow = alt < LandingLightThresholdFt - HysteresisFt;   // < 9700
 
-        if (climbing && nowAbove && _prevAbove10k == false)
+        // Same direction-tolerant gates as the transition crossing (a VS lull on the
+        // crossing tick must not burn the latch without firing).
+        if (!descending && nowAbove && _prevAbove10k == false)
         {
             // Climbed through 10,000 ft — lights OFF
             _executor.SetLandingLights(0);
             _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
         }
-        else if (descending && nowBelow && _prevAbove10k == true)
+        else if (!climbing && nowBelow && _prevAbove10k == true)
         {
             // Descended through 10,000 ft — lights ON
             _executor.SetLandingLights(1);

@@ -250,7 +250,10 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TAKEOFF_CL" },
         Steps = new()
         {
-            Multi("BTO_LAND", "Landing lights: ON", ("EVT_OH_LIGHTS_L_RETRACT", 2), ("EVT_OH_LIGHTS_R_RETRACT", 2)),
+            // All FOUR landing lights (retractables to ON=2, fixed inboards to 1).
+            Multi("BTO_LAND", "Landing lights: ON",
+                ("EVT_OH_LIGHTS_L_RETRACT", 2), ("EVT_OH_LIGHTS_R_RETRACT", 2),
+                ("EVT_OH_LIGHTS_L_FIXED", 1), ("EVT_OH_LIGHTS_R_FIXED", 1)),
             SW("BTO_STROBE", "Position lights: STROBE & STEADY", "EVT_OH_LIGHTS_POS_STROBE", 2),
             MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", s => s.IsATArmOn()),
             SW("BTO_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4),
@@ -335,7 +338,9 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
         Steps = new()
         {
-            Multi("AL_LAND_OFF", "Landing lights: RETRACT", ("EVT_OH_LIGHTS_L_RETRACT", 0), ("EVT_OH_LIGHTS_R_RETRACT", 0)),
+            Multi("AL_LAND_OFF", "Landing lights: OFF",
+                ("EVT_OH_LIGHTS_L_RETRACT", 0), ("EVT_OH_LIGHTS_R_RETRACT", 0),
+                ("EVT_OH_LIGHTS_L_FIXED", 0), ("EVT_OH_LIGHTS_R_FIXED", 0)),
             Multi("AL_TURNOFF", "Runway turnoff lights: ON", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
             SW("AL_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1),
             SW("AL_STROBE_OFF", "Position lights: STEADY", "EVT_OH_LIGHTS_POS_STROBE", 0),

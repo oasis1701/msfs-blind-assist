@@ -301,8 +301,13 @@ public static class PMDG737ChecklistDefinitions
         Id = "AFTER_LANDING", Name = "After Landing",
         Items = new()
         {
-            Auto("AL_LAND_OFF", "AFTER_LANDING", "Landing lights: RETRACT", "LTS_LandingLtRetractableSw_0", v => v < 0.5,
-                new[] { "LTS_LandingLtRetractableSw_1" }, (e, _) => e.SetLandingLights(0)),
+            // OFF detection covers all four lights (same <0.5 condition works for the
+            // 3-position retractables at RETRACT and the fixed bools at off). The ON
+            // item (BTKO_LAND) detects on the retractables only — the fixed bools top
+            // out at 1 so the >1.5 ON condition can't include them.
+            Auto("AL_LAND_OFF", "AFTER_LANDING", "Landing lights: OFF", "LTS_LandingLtRetractableSw_0", v => v < 0.5,
+                new[] { "LTS_LandingLtRetractableSw_1", "LTS_LandingLtFixedSw_0", "LTS_LandingLtFixedSw_1" },
+                (e, _) => e.SetLandingLights(0)),
             Auto("AL_TURNOFF", "AFTER_LANDING", "Runway turnoff lights: ON", "LTS_RunwayTurnoffSw_0", v => v > 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(1)),
             Auto("AL_TAXI", "AFTER_LANDING", "Taxi light: ON", "LTS_TaxiSw", v => v > 0.5, (e, _) => e.SetTaxiLights(1)),
