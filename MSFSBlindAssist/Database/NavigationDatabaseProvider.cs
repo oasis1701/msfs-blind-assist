@@ -421,14 +421,18 @@ public class NavigationDatabaseProvider
     }
 
     /// <summary>Does a procedure (its <paramref name="runwayName"/> + <paramref name="arincName"/>) serve
-    /// the concrete <paramref name="targetRunway"/>? Direct runway_name match, or ARINC coverage where a
-    /// "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
+    /// the concrete <paramref name="targetRunway"/>? A populated <c>runway_name</c> is AUTHORITATIVE (exact
+    /// match only — it names the one runway this procedure serves); only when it's NULL/empty do we fall back
+    /// to the ARINC tag, where a "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
     private static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
     {
-        if (!string.IsNullOrEmpty(runwayName) &&
-            string.Equals(runwayName.Trim(), targetRunway.Trim(), StringComparison.OrdinalIgnoreCase))
-            return true;
+        // A concrete runway_name is the definitive runway for this procedure row. Do NOT also consult
+        // arinc_name — a specific-runway procedure (runway_name "25L") that happens to carry a broad
+        // arinc tag ("RW25B") must not leak into a different side ("25R").
+        if (!string.IsNullOrEmpty(runwayName))
+            return string.Equals(runwayName.Trim(), targetRunway.Trim(), StringComparison.OrdinalIgnoreCase);
 
+        // runway_name is NULL (Jeppesen-style field) — the runway lives in the ARINC tag.
         var a = ParseArincRunway(arincName);
         var t = SplitRunwayDesignator(targetRunway);
         if (a == null || t == null) return false;
