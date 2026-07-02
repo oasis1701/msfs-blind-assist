@@ -5564,10 +5564,25 @@ public class TaxiGuidanceManager : IDisposable
             // runway, which is the end of segment i-1.
             var holdSeg = route.Segments[i - 1];
             holdSeg.IsHoldShortPoint = true;
-            // Don't overwrite an existing HoldShortRunway label (a user-configured
-            // taxiway hold-short or DB-derived hold-short name).
             if (string.IsNullOrEmpty(holdSeg.HoldShortRunway))
+            {
                 holdSeg.HoldShortRunway = $"runway {crossedRwy}";
+            }
+            else if (RouteRunwayCrossings.ExtractRunwayDesignator(holdSeg.HoldShortRunway) == null &&
+                     !holdSeg.HoldShortRunway.StartsWith("end of taxiway", StringComparison.OrdinalIgnoreCase))
+            {
+                // A DB-derived hold-node name that names NO runway (bare
+                // holding-point/taxiway name from sparse navdata, e.g. "A5")
+                // sits at what we just detected geometrically as a genuine
+                // runway crossing — upgrade it to the standard "runway X at
+                // <holdPoint>" shape so the tactical callout AND the route
+                // summary's crossing clause both name the runway (otherwise
+                // the crossing is silently demoted to an anonymous "hold
+                // short point"). User labels are preserved: "end of taxiway"
+                // is skipped explicitly, and user runway picks already name
+                // a runway so the extractor guard leaves them alone.
+                holdSeg.HoldShortRunway = $"runway {crossedRwy} at {holdSeg.HoldShortRunway}";
+            }
             lastTaggedRunway = crossedRwy;
         }
     }
@@ -6165,19 +6180,25 @@ public class TaxiGuidanceManager : IDisposable
                 : "";
         }
 
-        // Count explicit hold-shorts the pilot asked for (or real intermediate
-        // runway crossings). For runway destinations, TruncateToHoldShort tags
-        // the last segment as a hold-short purely as an internal safety rail so
-        // the 300/150/50 ft countdown fires — it is NOT an ATC-assigned hold
-        // point and must not be counted. Including it produced confusing
-        // summaries like "…, 1 hold short point" when ATC never issued one.
-        int holdShorts = route.Segments.Count(s => s.IsHoldShortPoint);
-        if (isRunwayDestination && route.Segments.Count > 0 &&
-            route.Segments[^1].IsHoldShortPoint)
-        {
-            holdShorts--;
-        }
-        string holdStr = holdShorts > 0 ? $", {holdShorts} hold short point{(holdShorts > 1 ? "s" : "")}" : "";
+        // Describe the hold-short points. Runway crossings are NAMED, not just
+        // counted — "2 hold short points" told the pilot nothing about the
+        // route's shape, and at KSFO (2026-07-01, "Q hold short 10R" from D
+        // between the 28s) the only route onto Q re-crossed 28R twice; the
+        // pilot heard two unexplained "hold short of runway 10L" callouts and
+        // perceived a giant loop. "crossing runway 10L twice" up front makes
+        // the route's runway crossings audible before the pilot starts rolling.
+        // For runway destinations, TruncateToHoldShort tags the last segment
+        // purely as an internal countdown rail — it is NOT an ATC-assigned hold
+        // point and is excluded (same exclusion the old bare count applied).
+        bool excludeLastHold = isRunwayDestination && route.Segments.Count > 0 &&
+            route.Segments[^1].IsHoldShortPoint;
+        var (crossingClause, otherHolds) =
+            RouteRunwayCrossings.Describe(route.Segments, excludeLastHold);
+        string holdStr = "";
+        if (crossingClause.Length > 0)
+            holdStr += $", {crossingClause}";
+        if (otherHolds > 0)
+            holdStr += $", {otherHolds} hold short point{(otherHolds > 1 ? "s" : "")}";
 
         string fallbackStr = "";
         if (!string.IsNullOrEmpty(route.ConstrainedFallbackReason))
@@ -6323,30 +6344,16 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     private static bool RunwayDesignatorsMatch(string tagged, string target)
     {
-        // Strip the "runway " prefix that InsertRunwayCrossingHoldShorts prepends.
-        string a = tagged.Replace("runway", "", StringComparison.OrdinalIgnoreCase).Trim();
+        // Parse the designator out of the label with the shared extractor —
+        // labels carry more than a bare "runway " prefix ("runway 15R at N",
+        // "D5, Runway 22R"), which the old Replace-based strip mangled into
+        // never-matching strings. Fall back to the strip for a bare designator
+        // with no "runway" word at all.
+        string a = RouteRunwayCrossings.ExtractRunwayDesignator(tagged)
+            ?? tagged.Replace("runway", "", StringComparison.OrdinalIgnoreCase).Trim();
         string b = target.Trim();
         if (a.Equals(b, StringComparison.OrdinalIgnoreCase)) return true;
-        return Reciprocal(a).Equals(b, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Returns the reciprocal runway designator: adds 18 (mod 36, 1-based)
-    /// and swaps L↔R suffix (C stays C). "09" → "27", "27L" → "09R", "36" → "18".
-    /// Returns <paramref name="designator"/> unchanged if it is blank or does
-    /// not parse as a runway heading number.
-    /// </summary>
-    private static string Reciprocal(string designator)
-    {
-        if (string.IsNullOrWhiteSpace(designator)) return designator;
-        string d = designator.Trim().ToUpperInvariant();
-        string suffix = "";
-        if (d.EndsWith("L"))      { suffix = "R"; d = d[..^1]; }
-        else if (d.EndsWith("R")) { suffix = "L"; d = d[..^1]; }
-        else if (d.EndsWith("C")) { suffix = "C"; d = d[..^1]; }
-        if (!int.TryParse(d, out int num)) return designator;
-        int recip = ((num - 1 + 18) % 36) + 1;  // 1-based 1–36; +18 mod 36
-        return $"{recip:D2}{suffix}";
+        return RouteRunwayCrossings.Reciprocal(a).Equals(b, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
