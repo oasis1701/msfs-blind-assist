@@ -11,9 +11,14 @@ namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 ///   DOWN — when descending through 2000 ft AGL AND gear is up.
 ///          Fires once per approach leg; resets when aircraft climbs back above 3000 ft (go-around).
 ///
-/// Flaps (requires FMC V2 / VREF to be programmed):
-///   Retraction — one step at a time during climb when IAS exceeds V2-relative thresholds.
-///   Extension  — one step at a time during descent when IAS drops below VREF-relative thresholds.
+/// Flaps (requires FMC V2 / VREF — CACHED from the last non-zero read, since PMDG only
+/// populates the live fields around their phase):
+///   Retraction — one step at a time while NOT descending (climb + level acceleration)
+///                when IAS exceeds V2-relative thresholds; suppressed once approach
+///                extension has begun (_approachPhase).
+///   Extension  — one step at a time while NOT climbing and below 5000 ft AGL
+///                (level deceleration + descent) when IAS drops below VREF-relative
+///                thresholds.
 ///   The CURRENT flap detent is read from the actual flap gauge via state.FlapDetent()
 ///   (closed-loop — robust to manual flap moves and a wrong takeoff-flap assumption), falling
 ///   back to the internally-tracked _lastCommandedFlapPos only when the gauge read is
@@ -60,6 +65,24 @@ public class FOAutoManager : IFoAutoManager
     // Lever index of the last commanded flap position (-1 = not yet initialised).
     // Initialised from GetTakeoffFlaps() on the first airborne frame.
     private int _lastCommandedFlapPos = -1;
+
+    // Last plausible FMC V2 / VREF (knots), cached from the live fields whenever they
+    // read non-zero. PMDG only POPULATES these around their phase — V2 is entered
+    // during preflight and cleared by the FMC after the takeoff phase, VREF only
+    // exists once selected on APPROACH REF (both live-read 0 at cruise) — so gating
+    // the schedule on the LIVE value silently killed retraction the moment the FMC
+    // dropped V2. The cache is captured on the ground / early climb and survives the
+    // whole leg; reset at touchdown so a stale value never leaks into the next leg.
+    private int _cachedV2;
+    private int _cachedVref;
+
+    // Latched on the first auto-extension of the leg: from then on the wing is being
+    // configured for approach, so the (takeoff-V2-based) retraction schedule is
+    // suppressed — with both schedules eligible in level flight, a leg where
+    // vref+80 ≈ v2+70 would otherwise oscillate extend/retract at the boundary
+    // speed. Cleared at touchdown, and on an established go-around climb
+    // (climbing above 3000 ft AGL) so clean-up retraction works again.
+    private bool _approachPhase;
 
     // -----------------------------------------------------------------------
     // Takeoff-flaps degree → lever-index mapping
@@ -123,6 +146,9 @@ public class FOAutoManager : IFoAutoManager
         _apEngagedThisLeg     = false;
         _wasOnGround          = true;
         _lastCommandedFlapPos = -1;
+        _cachedV2             = 0;
+        _cachedVref           = 0;
+        _approachPhase        = false;
     }
 
     /// <summary>
@@ -132,6 +158,10 @@ public class FOAutoManager : IFoAutoManager
     public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
     {
         if (!_executor.IsAvailable) return;
+
+        // Capture V2/VREF whenever the FMC exposes them (preflight, climbout, descent
+        // prep) — runs on the ground too, so the takeoff V2 is banked before liftoff.
+        CaptureVSpeeds();
 
         bool onGround = altitudeAgl < 20;
 
@@ -144,6 +174,9 @@ public class FOAutoManager : IFoAutoManager
                 _gearRaisedThisLeg    = false;
                 _apEngagedThisLeg     = false;
                 _lastCommandedFlapPos = -1;
+                _cachedV2             = 0;   // next leg's V-speeds must be re-captured
+                _cachedVref           = 0;
+                _approachPhase        = false;
             }
             _wasOnGround = true;
             return;
@@ -166,14 +199,29 @@ public class FOAutoManager : IFoAutoManager
         bool climbing   = verticalSpeedFpm >  200;
         bool descending = verticalSpeedFpm < -100;
 
+        // Established go-around climb — leave approach phase so retraction resumes
+        if (_approachPhase && climbing && altitudeAgl > 3000)
+            _approachPhase = false;
+
         if (AutoGearUpEnabled || AutoGearDownEnabled)
             CheckGear(altitudeAgl, climbing, descending);
 
         if (AutoFlapsEnabled)
-            CheckFlaps(airspeedKts, climbing, descending);
+            CheckFlaps(airspeedKts, altitudeAgl, climbing, descending);
 
         if (AutoApEnabled)
             CheckAp(altitudeAgl, climbing);
+    }
+
+    // Bank the live FMC V2/VREF whenever they read a plausible airspeed. The sanity
+    // band guards against pre-snapshot garbage (evaluator reads are NaN-gated, but
+    // (int)NaN is platform-noise) and impossible entries.
+    private void CaptureVSpeeds()
+    {
+        int v2 = _state.GetV2();
+        if (v2 > 80 && v2 < 250) _cachedV2 = v2;
+        int vref = _state.GetVRef();
+        if (vref > 80 && vref < 250) _cachedVref = vref;
     }
 
     // -----------------------------------------------------------------------
@@ -222,7 +270,7 @@ public class FOAutoManager : IFoAutoManager
     // Flap logic
     // -----------------------------------------------------------------------
 
-    private void CheckFlaps(double ias, bool climbing, bool descending)
+    private void CheckFlaps(double ias, double agl, bool climbing, bool descending)
     {
         // Read the ACTUAL flap detent from the gauge (closed-loop) so we are robust to
         // manual flap moves and a wrong takeoff-flap assumption; fall back to our own
@@ -231,12 +279,18 @@ public class FOAutoManager : IFoAutoManager
         if (current < 0) current = _lastCommandedFlapPos;
         if (current < 0) return; // position not yet known
 
-        int v2   = _state.GetV2();
-        int vref = _state.GetVRef();
+        // Cached V-speeds (see CaptureVSpeeds) — the LIVE fields read 0 outside their
+        // FMC phase, which used to kill the schedule mid-leg.
+        int v2   = _cachedV2;
+        int vref = _cachedVref;
 
-        // Retract on climb (requires FMC V2). _lastCommandedFlapPos is a debounce so we do
-        // not re-issue the same target while the flaps are still travelling to it.
-        if (climbing && v2 > 0 && current > 0)
+        // Retract while not descending (requires a captured V2). "Not descending"
+        // rather than "climbing": the clean-up schedule must keep working through
+        // level acceleration segments (noise-abatement level-offs). Retraction on a
+        // clean wing is a no-op (current == 0), so cruise is safe.
+        // _lastCommandedFlapPos is a debounce so we do not re-issue the same target
+        // while the flaps are still travelling to it.
+        if (!descending && !_approachPhase && v2 > 0 && current > 0)
         {
             int targetIdx = RetractionTarget(current, ias, v2);
             if (targetIdx < current && targetIdx != _lastCommandedFlapPos)
@@ -247,8 +301,13 @@ public class FOAutoManager : IFoAutoManager
             }
         }
 
-        // Extend on approach (requires FMC VREF) — lever index 7 = flaps 30 (normal landing)
-        if (descending && vref > 0 && current < 7)
+        // Extend on approach (requires a captured VREF) — lever index 7 = flaps 30
+        // (normal landing). "Not climbing AND below 5000 AGL" rather than
+        // "descending": approach flaps are mostly taken in LEVEL deceleration
+        // segments (downwind, glideslope intercept), which the old descending-only
+        // gate skipped entirely; the AGL gate keeps a slow high-altitude descent
+        // from ever extending flaps out of the approach environment.
+        if (!climbing && agl < 5000 && vref > 0 && current < 7)
         {
             int targetIdx = ExtensionTarget(current, ias, vref);
             if (targetIdx > current && targetIdx != _lastCommandedFlapPos)
@@ -256,6 +315,7 @@ public class FOAutoManager : IFoAutoManager
                 _executor.SetFlapsPosition(LeverIndexToDegrees(targetIdx));
                 _announcer.AnnounceImmediate($"Flaps {FlapName(targetIdx)}.");
                 _lastCommandedFlapPos = targetIdx;
+                _approachPhase = true; // wing is configuring for approach — stop clean-up retraction
             }
         }
     }

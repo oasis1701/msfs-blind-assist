@@ -128,6 +128,21 @@ public class AircraftActionExecutor : IFoActionExecutor
         ["EVT_MCP_FD_SWITCH_L"]              = new(Dispatch.MouseFlag),
         ["EVT_MCP_FD_SWITCH_R"]              = new(Dispatch.MouseFlag),
         ["EVT_MCP_AT_ARM_SWITCH"]            = new(Dispatch.MouseFlag),
+
+        // --- Flap-lever per-detent clicks ---
+        // SDK mouse-click events: the CDA parameter must be MOUSE_FLAG_LEFTSINGLE
+        // (the 777 panel's live-verified convention for this same event family —
+        // see PMDG777Definition.HandleUIVariableSet 2f). A plain param=1 is
+        // silently ignored, which is why FO auto-flaps never moved the lever.
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_0"]  = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_1"]  = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_2"]  = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_5"]  = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_10"] = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_15"] = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_25"] = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_30"] = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_FLAPS_LEVER_40"] = new(Dispatch.MouseFlag),
     };
 
     // -----------------------------------------------------------------------

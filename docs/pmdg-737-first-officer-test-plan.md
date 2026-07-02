@@ -407,3 +407,40 @@ Setup: PMDG 737 cold-and-dark at a gate, MSFSBA connected, FO window open.
 12. **777 regression** — the shared ChecklistManager gained only the manual-tick revert
     grace; confirm 777 checklists still auto-tick/revert as before and manual ticks on
     RevertToState readbacks still un-tick (after ~10 s) when the state genuinely mismatches.
+
+---
+
+## Part K — auto-flaps fixes, BOTH aircraft (2026-07-02)
+
+Auto-flaps was non-operational on the 737 AND 777 for three stacked reasons, all fixed:
+(1) the per-detent `EVT_CONTROL_STAND_FLAPS_LEVER_*` events were dispatched with CDA
+param 1, but they are SDK mouse-click events that only commit with MOUSE_FLAG_LEFTSINGLE
+(the 777 panel's proven flap-control convention) — the lever never moved even when the
+schedule fired; (2) the schedule hard-gated on the LIVE `FMC_V2`/`FMC_LandingVREF`, which
+PMDG only populates around their phase (both live-read 0 at cruise) — now cached from the
+last plausible read, per leg; (3) extension only ran while descending and retraction only
+while climbing — level acceleration/deceleration segments never moved flaps. Now:
+retraction while not descending (suppressed once approach extension begins), extension
+while not climbing below 5000 ft AGL.
+
+Enable "Automatic flaps" in First Officer Settings. SimBrief loaded, V-speeds entered in
+the CDU (TAKEOFF REF). Repeat the full sequence on BOTH the 737 and the 777.
+
+1. **Retraction on climbout** — take off with planned flaps; after gear-up, as IAS
+   accelerates past the V2-relative thresholds, expect one-step "Flaps ..." callouts AND
+   the physical lever moving each step until clean. Verify it keeps stepping through a
+   LEVEL acceleration segment (e.g. altitude capture at 3000 ft AGL).
+2. **V2 disappearing is survivable** — confirm retraction still works late in the climbout
+   even after the FMC has cleared the takeoff V-speeds from the CDU (the cached V2 drives
+   the schedule).
+3. **No cruise interference** — at cruise, no flap commands, no announcements.
+4. **Extension on approach** — select VREF on APPROACH REF during descent prep. Below
+   5000 ft AGL, decelerating (including LEVEL deceleration on downwind/intercept), expect
+   one-step extensions as IAS drops through the VREF-relative thresholds, down to landing
+   flaps (737: 30 / 777: 30). Above 5000 ft AGL nothing extends regardless of speed.
+5. **No extend/retract oscillation** — during the approach deceleration, confirm no
+   spurious retraction fires between extension steps (approach-phase latch).
+6. **Go-around** — go around, climb above 3000 ft AGL: retraction schedule resumes
+   (flaps clean up as speed builds); on touchdown all per-leg state resets.
+7. **Manual override respected (737)** — move flaps manually mid-schedule; the manager
+   reads the real gauge detent and continues from the actual position.

@@ -374,7 +374,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     // 0=Up, 1=Down
     public bool SetGearLever(int position) => ExecuteSingle("EVT_GEAR_LEVER", position, false, false);
 
-    // Flap lever (use position-specific events)
+    // Flap lever (use position-specific events). The per-detent
+    // EVT_CONTROL_STAND_FLAPS_LEVER_<deg> events are SDK mouse-click events that
+    // expect MOUSE_FLAG_LEFTSINGLE as the CDA parameter — the same convention the
+    // panel's proven FCTL_Flaps dispatch uses (PMDG777Definition.HandleUIVariableSet
+    // 2f: "they expect MOUSE_FLAG_LEFTSINGLE ... matching the SDK's mouse-click
+    // convention"). The old isMomentary param=1 shape was silently ignored by the
+    // SDK, which is why FO auto-flaps never moved the lever.
     public bool SetFlapsPosition(int position)
     {
         string? eventName = position switch
@@ -389,7 +395,7 @@ public class AircraftActionExecutor : IFoActionExecutor
             _ => null
         };
         if (eventName == null) return false;
-        return ExecuteSingle(eventName, null, false, true);
+        return ExecuteSingle(eventName, null, usesMouseFlag: true, isMomentary: false);
     }
 
     // Speedbrake lever
