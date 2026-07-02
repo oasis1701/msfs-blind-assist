@@ -522,3 +522,32 @@ related checklist group, positioned in flow order.
 
 Test: expand each group listed above and confirm the reminders appear at the stated
 positions; tick them (manual tick holds — reminders have no action and no auto-detect).
+
+---
+
+## Part N — 737 APU electrical transfer (2026-07-02)
+
+The 737 Before Start never transferred the electrical load to the APU: the APU GEN 1/2
+bus-transfer buttons (momentary on the 737, unlike the 777 where the gen switch is armed
+in preflight) were never pressed and ground power was never dropped. Also fixed while in
+the same power chain: the Shutdown flow only pressed APU GEN 1, and the After Landing
+APU step only set the selector to ON without ever pressing START (the arrival APU never
+actually started).
+
+Test (737):
+1. **Before Start flow** — cold-and-dark on ground power, run Electrical Power Up +
+   Preflight + Before Start. After "Waiting for the APU to come on line", expect
+   "APU generators: ON" (both transfer-bus source annunciators move to the APU) followed
+   by "Ground power: OFF" (buses stay powered, now by the APU; GRD POWER AVAILABLE stays
+   lit as long as the GPU is still connected). With no GPU connected, the Ground power
+   step reads "Already set: Ground power: OFF".
+2. **Checklist parity** — Before Start group: "APU generators: ON" (tick fires both
+   buttons; action-only, no auto-detect — the switches are stateless) and "Ground power:
+   OFF" (auto-ticks once no external power is on the buses) sit right after "APU: ON
+   line".
+3. **After Landing** — flow (or ticking "APU: ON line" in the After Landing group)
+   actually STARTS the APU: selector ON → 2 s → START, START springs back to ON and the
+   APU spools up. Previously it only reached ON and never started.
+4. **Shutdown** — the "APU generators: ON" step presses BOTH buttons; after the start
+   levers go to CUTOFF, both transfer buses stay powered by the APU (no partial
+   power drop on bus 2).

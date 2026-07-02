@@ -136,6 +136,11 @@ public static class PMDG737ChecklistDefinitions
             // APU start must go ON → dwell → momentary START (StartApuAsync); writing START
             // directly never spools the APU up. Auto-detects ON-line from APU_Selector.
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
+            // Electrical transfer to the APU. The APU GEN switches are stateless momentary
+            // push pairs (no readable per-switch state) — action-only, like the panel.
+            ActionManual("BS_APUGEN", "BEFORE_START", "APU generators: ON", (e, _) => e.SetApuGenerators(1)),
+            Auto("BS_GPU_OFF", "BEFORE_START", "Ground power: OFF", "FO_GPU_ON", v => v < 0.5,
+                (e, _) => e.SetGroundPower(0)),
             Auto("BS_FUEL", "BEFORE_START", "Fuel pumps: ON", "FUEL_PumpFwdSw_0", v => v > 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(1)),
             Auto("BS_HYD", "BEFORE_START", "Electric hydraulic pumps: ON", "HYD_PumpSw_elec_0", v => v > 0.5,
@@ -290,7 +295,8 @@ public static class PMDG737ChecklistDefinitions
             Auto("AL_WAI", "AFTER_LANDING", "Wing anti-ice: OFF", "ICE_WingAntiIceSw", v => v < 0.5, (e, _) => e.SetWingAntiIce(0)),
             Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: OFF", "ICE_ProbeHeatSw_0", v => v < 0.5,
                 new[] { "ICE_ProbeHeatSw_1" }, (e, _) => e.SetProbeHeat(0)),
-            Auto("AL_APU", "AFTER_LANDING", "APU: ON", "APU_Selector", v => v > 0.5, (e, _) => e.SetApuSelector(1)),
+            // Full ON → dwell → START sequence — selector ON alone never spools the APU up.
+            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
             Auto("AL_START_OFF", "AFTER_LANDING", "Engine start switches: OFF", "ENG_StartSelector_0", v => v > 0.5 && v < 1.5,
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),

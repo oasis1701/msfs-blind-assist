@@ -145,6 +145,14 @@ public static class PMDG737FlowDefinitions
             Wait("BS_APU_DWELL", "APU spinning up before start", 2),
             SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
             WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line", "APU_Selector", v => Math.Abs(v - 1) < 0.1, 90),
+            // Transfer the electrical load to the APU: the 737's APU GEN switches are
+            // momentary bus-transfer buttons that must be pressed AFTER the APU is on
+            // line (unlike the 777, whose gen switch is armed during preflight). Then
+            // drop ground power — skipped when no GPU was ever connected.
+            Multi("BS_APUGEN", "APU generators: ON",
+                ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
+            Skip(SW("BS_GPU_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
+                s => !s.IsGpuOn()),
             Multi("BS_FUELON", "Fuel pumps: ON",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 1), ("EVT_OH_FUEL_PUMP_2_AFT", 1)),
@@ -332,7 +340,12 @@ public static class PMDG737FlowDefinitions
             Multi("AL_EAI_OFF", "Engine anti-ice: OFF", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
             SW("AL_WAI_OFF", "Wing anti-ice: OFF", "EVT_OH_ICE_WING_ANTIICE", 0),
             Multi("AL_PROBE_OFF", "Probe heat: OFF", ("EVT_OH_ICE_PROBE_HEAT_1", 0), ("EVT_OH_ICE_PROBE_HEAT_2", 0)),
-            SW("AL_APU", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
+            // APU START for gate power — ON alone never spools it up (same ON → dwell →
+            // momentary START sequence as Before Start; no on-line wait, the aircraft is
+            // taxiing in and the Shutdown flow's gen transfer happens minutes later).
+            SW("AL_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
+            Wait("AL_APU_DWELL", "APU spinning up before start", 2),
+            SW("AL_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
             Multi("AL_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
             SW("AL_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
         }
@@ -348,7 +361,10 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
-            SW("SD_APUGEN", "APU generators: ON", "EVT_OH_ELEC_APU_GEN1_SWITCH", 1),
+            // BOTH APU generator transfer buttons (the old single-event step left
+            // transfer bus 2 on its engine generator until the levers cut it off).
+            Multi("SD_APUGEN", "APU generators: ON",
+                ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
             Multi("SD_LEVERS", "Engine start levers: CUTOFF",
                 ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)),
             WaitForField("SD_ENG_OFF", "Waiting for the engines to spool down", "ENG_StartValve_0", v => v < 0.5, 60),
