@@ -1462,15 +1462,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            ["I_OH_ELEC_APU_START_U"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_ELEC_APU_START_U",
-                DisplayName = "Electrical APU Start Upper",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
             ["I_OH_ELEC_COMMERCIAL_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_COMMERCIAL_U",
@@ -5316,26 +5307,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-
-            // Weather Radar System Knob
-            ["S_WR_SYS"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_WR_SYS",
-                DisplayName = "Weather Radar System",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "1", [1] = "Off", [2] = "2"}
-            },
-
-            // Predictive Windshear
-            ["S_WR_PRED_WS"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_WR_PRED_WS",
-                DisplayName = "Predictive Windshear",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Auto"}
             },
 
             // TCAS Traffic/Range Knob
