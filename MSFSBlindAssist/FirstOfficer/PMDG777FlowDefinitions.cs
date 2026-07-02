@@ -480,7 +480,9 @@ public static class PMDG777FlowDefinitions
                 VerifyFieldName = "ENG_FuelControl_Sw_RUN_0", VerifyCondition = v => v < 0.5,
                 CompletesChecklistItemId = "SD_FUEL_CTRL",
                 PostActionDelayMs = 500 },
-            Wait("SD_ENG_SPOOL", "Engines spooling down", 60),
+            // (No spool-down wait — the engines wind down on their own and nothing in the
+            // remaining steps needs them stopped; the old fixed 60 s pause just stalled
+            // the flow after cutoff. Removed 2026-07-02, user request.)
             SW("SD_SEAT_BELTS",  "Seat belts: OFF",          "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0,
                "SIGNS_SeatBeltsSelector", v => v < 0.5, "SD_SEAT_BELTS_OFF"),
             Multi("SD_ENG_PUMPS","Engine pumps: OFF",

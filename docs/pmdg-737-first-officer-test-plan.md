@@ -612,3 +612,27 @@ Test (737, at a gate with ground power available and the APU RUNNING):
    through the same paced gate. In-sim check: with the APU on line, run Before Start (or
    tick "APU generators: ON") → BOTH transfer buses move to the APU (no SOURCE OFF
    annunciator remains lit on either side).
+
+---
+
+## Part Q — pilot-paced 737 engine start + shutdown wait removal (2026-07-02)
+
+1. **737 Engine Start checklist is now pilot-paced (777 convention).** The old
+   "Engine 1/2: START" tick ran a silent background sequence (GRD, then a wordless wait
+   of up to 60 s for N2, then the lever) — after the starter moved it felt frozen. The
+   group now has per-engine items the pilot drives:
+   - "Engine 2 start switch: GRD" — tick moves the start switch (action-only; the GRD
+     detent is solenoid-held and springs back at starter cutout).
+   - "Engine 2 start lever: IDLE (at 25 percent N2)" — tick moves the lever; the pilot
+     times the fuel introduction. Also auto-ticks if the lever is moved in the cockpit
+     or via the app panels (derived lever field).
+   - "Engine 2: running" — auto-verifies at N2 ≥ 50%.
+   (Same trio for engine 1; "Packs: OFF" unchanged at the top.)
+   Test: start both engines purely from the checklist, timing the levers yourself; then
+   start via "Run Related Flow" (still fully automated with spoken waits and the
+   start-valve/N2 abort guards) and confirm the lever + running items auto-tick.
+2. **Shutdown flows no longer stall after cutoff.** The 777's fixed 60 s "Engines
+   spooling down" wait is removed (flow proceeds straight from fuel cutoff to the next
+   steps); the 737's start-valve wait (an instant no-op) is removed too.
+   Test: run each shutdown flow with engines running — after "Fuel Control: CUTOFF" /
+   "Engine start levers: CUTOFF" the next step announces within a second or two.

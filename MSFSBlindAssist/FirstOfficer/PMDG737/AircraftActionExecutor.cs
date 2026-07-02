@@ -327,32 +327,10 @@ public class AircraftActionExecutor : IFoActionExecutor
         if (presses.Count > 0) await FireSpacedAsync(presses.ToArray());
     }
 
-    /// <summary>Single-engine start for a checklist tick — mirrors the Engine Start flow's
-    /// per-engine sequence: start switch GRD, motor until N2 reaches the fuel-introduction
-    /// threshold, then start lever to IDLE. Safety guards: no-ops on an already-running
-    /// engine (unticking + rechecking must never move a live engine's start lever), and
-    /// NEVER introduces fuel if N2 fails to build (starter/bleed failure) — the item then
-    /// simply stays unticked, which is the honest signal. engine: 1 or 2.</summary>
-    public async Task StartEngineAsync(int engine, AircraftStateEvaluator state)
-    {
-        string grdEv   = engine == 1 ? "EVT_OH_LIGHTS_L_ENGINE_START"       : "EVT_OH_LIGHTS_R_ENGINE_START";
-        string leverEv = engine == 1 ? "EVT_CONTROL_STAND_ENG1_START_LEVER" : "EVT_CONTROL_STAND_ENG2_START_LEVER";
-        string n2Field = engine == 1 ? "FO_ENG1_N2"                          : "FO_ENG2_N2";
-
-        if (state.GetValue(n2Field) >= AircraftStateEvaluator.EngineRunningN2) return; // already running
-
-        await DispatchAsync(grdEv, 0);      // GRD — starter engages (needs bleed air)
-        for (int s = 0; s < 60; s++)        // motor up to 60 s for fuel-intro N2
-        {
-            await Task.Delay(1000);
-            if (state.GetValue(n2Field) >= AircraftStateEvaluator.EngStartFuelN2)
-            {
-                await DispatchAsync(leverEv, 1); // start lever IDLE — fuel + ignition
-                return;
-            }
-        }
-        // N2 never built — starter not engaged or no bleed air. Do NOT introduce fuel.
-    }
+    // (The former StartEngineAsync monolithic checklist start was removed 2026-07-02:
+    // the checklist Engine Start group is now pilot-paced — separate start-switch and
+    // start-lever items, 777 convention — and the FLOW remains the automated path with
+    // its own N2/start-valve guards and spoken waits.)
 
     /// <summary>Press the System Annunciator six-pack (RECALL) — latches every active
     /// annunciator + master caution so the app's annunciator monitors announce them; the

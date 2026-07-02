@@ -372,7 +372,8 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
             Multi("SD_LEVERS", "Engine start levers: CUTOFF",
                 ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)),
-            WaitForField("SD_ENG_OFF", "Waiting for the engines to spool down", "ENG_StartValve_0", v => v < 0.5, 60),
+            // (No spool-down wait — mirrors the 777 shutdown: nothing downstream needs the
+            // engines stopped, and the old start-valve wait was an instant no-op anyway.)
             SW("SD_BELTS", "Seatbelt signs: OFF", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0),
             Multi("SD_TURNOFF", "Runway turnoff lights: OFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
             SW("SD_TAXI_OFF", "Taxi light: OFF", "EVT_OH_LIGHTS_TAXI", 0),

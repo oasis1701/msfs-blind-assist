@@ -165,16 +165,30 @@ public static class PMDG737ChecklistDefinitions
         {
             Auto("ES_PACKS", "ENGINE_START", "Packs: OFF", "AIR_PackSwitch_0", v => v < 0.5,
                 new[] { "AIR_PackSwitch_1" }, (e, _) => e.SetPacks(0)),
-            // Ticking an engine item RUNS the start (StartEngineAsync: GRD → motor to
-            // fuel-intro N2 → start lever IDLE; no-ops on an already-running engine, and
-            // never introduces fuel if N2 fails to build). Auto-ticks from real N2
-            // (FO_ENG{1,2}_N2, fed by the FO timer), NOT the fuel-valve byte: that byte
-            // reads 0 both when running AND cold/unpowered, so the old condition
-            // auto-ticked at cold-and-dark. "Run Related Flow" runs the full flow instead.
-            AutoAsync("ES_E2", "ENGINE_START", "Engine 2: START", "FO_ENG2_N2",
-                v => v >= AircraftStateEvaluator.EngineRunningN2, (e, s) => e.StartEngineAsync(2, s)),
-            AutoAsync("ES_E1", "ENGINE_START", "Engine 1: START", "FO_ENG1_N2",
-                v => v >= AircraftStateEvaluator.EngineRunningN2, (e, s) => e.StartEngineAsync(1, s)),
+            // PILOT-PACED start, 777 convention (user request 2026-07-02): separate items
+            // for the start switch and the start lever, each firing its own switch — the
+            // pilot times the fuel introduction (~25% N2) themselves. The old monolithic
+            // "Engine 2: START" tick ran a silent 60 s background sequence that felt
+            // frozen after the starter moved. "Run Related Flow" still automates the
+            // whole start with the N2/start-valve guards and spoken waits.
+            //
+            // Start-switch items are action-only: the GRD position is held by the starter
+            // solenoid and springs back at cutout, so a state condition would untick.
+            // The lever items detect off the derived ENG_StartLever fields (1 = RUN,
+            // from the fuel-valve annunciator), so a lever moved in the cockpit or via
+            // the panels auto-ticks too. "Running" verification reads real N2.
+            ActionManual("ES_E2_GRD", "ENGINE_START", "Engine 2 start switch: GRD",
+                (e, _) => e.SetEngStartSelector2(0)),
+            Auto("ES_E2_RUN", "ENGINE_START", "Engine 2 start lever: IDLE (at 25 percent N2)",
+                "ENG_StartLever_1", v => v > 0.5, (e, _) => e.SetFuelControl2(1)),
+            Auto("ES_E2_STAB", "ENGINE_START", "Engine 2: running", "FO_ENG2_N2",
+                v => v >= AircraftStateEvaluator.EngineRunningN2, action: null),
+            ActionManual("ES_E1_GRD", "ENGINE_START", "Engine 1 start switch: GRD",
+                (e, _) => e.SetEngStartSelector1(0)),
+            Auto("ES_E1_RUN", "ENGINE_START", "Engine 1 start lever: IDLE (at 25 percent N2)",
+                "ENG_StartLever_0", v => v > 0.5, (e, _) => e.SetFuelControl1(1)),
+            Auto("ES_E1_STAB", "ENGINE_START", "Engine 1: running", "FO_ENG1_N2",
+                v => v >= AircraftStateEvaluator.EngineRunningN2, action: null),
         }
     };
 
