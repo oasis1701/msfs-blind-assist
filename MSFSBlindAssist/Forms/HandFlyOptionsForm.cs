@@ -46,7 +46,7 @@ public partial class HandFlyOptionsForm : Form
     private Label takeoffVolumeValueLabel = null!;
 
     private CheckBox muteCenterlineCheckBox = null!;
-    private CheckBox invertPanningCheckBox = null!;
+    private CheckBox steerTowardToneCheckBox = null!;
     private CheckBox hardPanCheckBox = null!;
     private Label headingToneThresholdLabel = null!;
     private ComboBox headingToneThresholdCombo = null!;
@@ -483,17 +483,20 @@ public partial class HandFlyOptionsForm : Form
         };
         muteCenterlineCheckBox.CheckedChanged += MuteCenterlineCheckBox_CheckedChanged;
 
-        // Invert Heading Track Panning Checkbox
-        invertPanningCheckBox = new CheckBox
+        // Steer-toward-the-tone checkbox. CHECKED = the tone plays on the side you
+        // should steer toward (steer INTO it to centre). The stored setting is the
+        // inverse: TakeoffAssistInvertPanning == true means steer AWAY, so the
+        // checkbox Checked state is !TakeoffAssistInvertPanning.
+        steerTowardToneCheckBox = new CheckBox
         {
-            Text = "Invert heading track panning",
+            Text = "Steer toward the tone to stay on the centerline",
             Location = new Point(20, 700),
-            Size = new Size(450, 25),
-            Checked = TakeoffAssistInvertPanning,
-            AccessibleName = "Invert heading track panning",
-            AccessibleDescription = "When enabled, reverses the audio panning direction. Heading right of runway pans tone to left ear instead of right."
+            Size = new Size(550, 25),
+            Checked = !TakeoffAssistInvertPanning,
+            AccessibleName = "Steer toward the tone to stay on the centerline",
+            AccessibleDescription = "Checked (default): the tone plays on the side you should steer toward, so you steer into the tone to return to the centerline, and it goes silent when you are tracking straight down the runway. Uncheck only to reverse the panning, so you steer away from the tone instead."
         };
-        invertPanningCheckBox.CheckedChanged += InvertPanningCheckBox_CheckedChanged;
+        steerTowardToneCheckBox.CheckedChanged += SteerTowardToneCheckBox_CheckedChanged;
 
         // Hard-pan tone checkbox. Forces the centerline tone to full ±1
         // instead of the proportional headingDiff/5° curve. For users on
@@ -614,7 +617,7 @@ public partial class HandFlyOptionsForm : Form
             visualGuidanceHardPanCheckBox,
             takeoffToneLabel, takeoffToneCombo,
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
-            muteCenterlineCheckBox, invertPanningCheckBox, hardPanCheckBox,
+            muteCenterlineCheckBox, steerTowardToneCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
             legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
             okButton, cancelButton
@@ -656,7 +659,7 @@ public partial class HandFlyOptionsForm : Form
         takeoffVolumeLabel.TabIndex = 23;
         takeoffVolumeTrackBar.TabIndex = 24;
         muteCenterlineCheckBox.TabIndex = 25;
-        invertPanningCheckBox.TabIndex = 26;
+        steerTowardToneCheckBox.TabIndex = 26;
         hardPanCheckBox.TabIndex = 27;
         headingToneThresholdLabel.TabIndex = 28;
         headingToneThresholdCombo.TabIndex = 29;
@@ -773,9 +776,10 @@ public partial class HandFlyOptionsForm : Form
         TakeoffAssistMuteCenterlineAnnouncements = muteCenterlineCheckBox.Checked;
     }
 
-    private void InvertPanningCheckBox_CheckedChanged(object? sender, EventArgs e)
+    private void SteerTowardToneCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
-        TakeoffAssistInvertPanning = invertPanningCheckBox.Checked;
+        // Checked = steer TOWARD the tone = NOT inverted.
+        TakeoffAssistInvertPanning = !steerTowardToneCheckBox.Checked;
     }
 
     private void HeadingToneThresholdCombo_SelectedIndexChanged(object? sender, EventArgs e)
