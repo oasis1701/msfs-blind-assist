@@ -24,12 +24,32 @@ public class AircraftStateEvaluator : IFoStateEvaluator
 
     /// <summary>
     /// Read a raw value from the PMDG data struct by field name.
-    /// Returns 0 if the data manager is unavailable or the field is unknown.
+    /// Returns NaN (INDETERMINATE) until the first CDA snapshot has arrived —
+    /// GetFieldValue reads 0.0 for EVERY field before then (interface contract),
+    /// which false-matched every OFF/closed checklist condition at startup and
+    /// latched items complete (the same fix as the 737 evaluator).
+    /// ChecklistManager treats NaN as "skip both auto-tick and revert".
     /// </summary>
     public double GetValue(string fieldName)
     {
-        try { return _dm?.GetFieldValue(fieldName) ?? 0; }
-        catch { return 0; }
+        // Synthetic FO-only field: ANY external power on bus (the two annunciators
+        // are OR'd — a single StateFieldName can't express OR).
+        if (fieldName == "FO_ANY_GPU_ON")
+            return !CdaReady ? double.NaN
+                : (RawOn("ELEC_annunExtPowr_ON_0") || RawOn("ELEC_annunExtPowr_ON_1") ? 1 : 0);
+        if (!CdaReady) return double.NaN;
+        try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
+        catch { return double.NaN; }
+    }
+
+    // First CDA snapshot received — see GetValue.
+    private bool CdaReady => _dm is { IsReady: true };
+
+    // Raw CDA read for composing synthetic fields. Only call when CdaReady.
+    private bool RawOn(string fieldName)
+    {
+        try { return (_dm?.GetFieldValue(fieldName) ?? 0) > 0.5; }
+        catch { return false; }
     }
 
     /// <summary>Returns true if the given field is non-zero.</summary>
@@ -53,6 +73,8 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsApuGenOn()          => IsOn("ELEC_APUGen_Sw_ON");
     public bool IsBusTie1Auto()       => IsOn("ELEC_BusTie_Sw_AUTO_0");
     public bool IsBusTie2Auto()       => IsOn("ELEC_BusTie_Sw_AUTO_1");
+    public bool IsGen1On()            => IsOn("ELEC_Gen_Sw_ON_0");   // MAIN generator control switches
+    public bool IsGen2On()            => IsOn("ELEC_Gen_Sw_ON_1");
     public bool IsBackupGen1On()      => IsOn("ELEC_BackupGen_Sw_ON_0");
     public bool IsBackupGen2On()      => IsOn("ELEC_BackupGen_Sw_ON_1");
     public bool IsIFEPassSeatsOn()    => IsOn("ELEC_IFEPassSeatsSw");

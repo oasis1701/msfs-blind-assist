@@ -444,3 +444,59 @@ the CDU (TAKEOFF REF). Repeat the full sequence on BOTH the 737 and the 777.
    (flaps clean up as speed builds); on touchdown all per-leg state resets.
 7. **Manual override respected (737)** — move flaps manually mid-schedule; the manager
    reads the real gauge detent and continues from the actual position.
+
+---
+
+## Part L — 777 flow-vs-checklist parity audit + systemic fixes (2026-07-02)
+
+The 737 Part J pass applied to the 777, plus 777-specific defects found during the audit:
+
+**777-specific bugs fixed:**
+- **Multi() flow steps coalesced** — the 777 executor fired every SetSwitchMultiple
+  bundle (bus ties, engine anti-ice, demand pumps ×4, fuel pumps, crossfeed, EEC,
+  packs, trim air, outflow valves, jettison...) in ONE sim frame, so only the LAST
+  switch of each bundle actually moved. The executor now serializes + frame-paces
+  every write (the 737 pattern).
+- **Flap flow steps were dead** — the Before Taxi takeoff-flap steps, After
+  Takeoff/After Landing flaps-up steps were built as momentary (param 1), which the
+  SDK ignores for the per-detent flap click events. The executor now forces
+  MOUSE_FLAG_LEFTSINGLE for every EVT_CONTROL_STAND_FLAPS_LEVER_* dispatch.
+- **Battery flow step never ticked its checklist item** (CompletesChecklistItemId
+  pointed at a nonexistent id).
+- **Cockpit Prep generators step skipped on the wrong field** (checked the BACKUP
+  generator switches instead of the mains) — now reads ELEC_Gen_Sw_ON.
+- **GPU pushes could toggle the wrong way** — connect/disconnect items now press
+  only the side whose ext-power annunciator disagrees with the target.
+
+**Systemic (same as the 737):** all state-group items are RevertToState; CDA reads are
+indeterminate until the first snapshot; detection reads the new FO_ANY_GPU_ON synthetic
+for external power; LNAV/VNAV tick-actions are annunciator-guarded toggles.
+
+**Parity additions/upgrades:** Electrical Power Up gains storm lights, parking brake,
+nav/logo lights, ADIRU, thrust asym comp (all auto-detect); Preflight gains no-smoking,
+master lights, jettison off, crossfeed off, wing lights, equip cooling, gasper, recirc
+fans (and ~a dozen former tick-only items now auto-detect: generators, backup gens,
+engine pumps, center pumps off, demand pumps, cargo fire, cab utility); Before Start
+demand/center-pumps/transponder now auto-detect; Before Taxi gains taxi lights ON,
+storm OFF, packs AUTO (auto-detect) and a SimBrief-driven takeoff-flap action; Before
+Takeoff / After Takeoff / Descent / Approach / After Landing items upgraded to
+auto-detect; Shutdown gains storm ON, engine/electric/demand pump OFF, taxi lights OFF,
+FD OFF, transponder STBY, and center pumps in the fuel-pump item; the duplicate
+preflight fuel-control item was removed.
+
+Test (777, cold-and-dark → shutdown):
+1. Run each flow; verify every switch in a Multi bundle now moves (spot-check: both
+   bus ties, both engine anti-ice selectors, all four demand pumps, both crossfeeds).
+2. Before Taxi flow sets the SimBrief takeoff flaps — the lever MOVES now; After
+   Takeoff / After Landing flows retract it.
+3. Electrical Power Up flow ticks "Battery: ON" in the checklist group.
+4. Cockpit Prep with backup gens ON but main gens OFF: the generators step fires
+   (previously skipped as "Already set").
+5. Checklists: tick every new/upgraded item and confirm the switch moves + the item
+   holds; confirm no item shows checked while its switch is elsewhere (cold-start
+   false-latch gone — e.g. Shutdown/Secure groups no longer show complete at session
+   start once switches move).
+6. External power items: tick connect with GPU available (connects, ticks), tick
+   disconnect with APU running (disconnects); ticking disconnect with no GPU
+   connected does NOT connect one.
+7. LNAV/VNAV: tick when already armed — no press fires (annunciator guard).

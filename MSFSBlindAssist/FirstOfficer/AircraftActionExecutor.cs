@@ -1,3 +1,4 @@
+using System.Threading;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
@@ -6,12 +7,20 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// <summary>
 /// Sends PMDG 777 switch events on behalf of the flow engine.
 /// Uses the same PMDG event IDs and parameter rules as the rest of BA Assist.
+///
+/// THREADING/PACING (2026-07-02, mirrors the 737 executor): PMDG polls the control
+/// CDA once per frame, so two writes in the same frame COALESCE — only the last
+/// survives. Every dispatch goes through a serializing gate that frame-spaces each
+/// write from the previous one. Before this, every Multi() flow step (bus ties,
+/// engine anti-ice, demand pumps, fuel pumps, …) and every multi-write convenience
+/// method fired its events in ONE frame, silently applying only the LAST switch.
 /// </summary>
 public class AircraftActionExecutor : IFoActionExecutor
 {
     private SimConnectManager? _simConnect;
 
-    // MOUSE_FLAG_LEFTSINGLE — required for FD and AT Arm switches (see CLAUDE.md)
+    // MOUSE_FLAG_LEFTSINGLE — required for FD/AT Arm switches and the per-detent
+    // flap-lever click events (see CLAUDE.md).
     private const int MouseFlagLeftSingle = 0x20000000;
 
     public void SetSimConnect(SimConnectManager? sc) => _simConnect = sc;
@@ -19,47 +28,94 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool IsAvailable => _simConnect is { IsConnected: true };
 
     // -----------------------------------------------------------------------
-    // Core dispatch
+    // Core dispatch — serialized + frame-paced (see class doc)
     // -----------------------------------------------------------------------
 
-    /// <summary>
-    /// Interface implementation: dispatches an <see cref="IFlowStepDispatch"/> asynchronously.
-    /// Returns a completed Task because all 777 events are synchronous fire-and-forget.
-    /// </summary>
-    public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
+    private readonly SemaphoreSlim _dispatchGate = new(1, 1);
+    private DateTime _lastWriteUtc = DateTime.MinValue;
+
+    private async Task PaceAsync()
     {
-        bool ok = step.ActionType switch
-        {
-            Models.FlowStepActionType.SetSwitch =>
-                ExecuteSingle(step.EventName!, step.TargetValue, step.UsesMouseFlag, step.IsMomentary),
-            Models.FlowStepActionType.SetSwitchMultiple =>
-                step.MultiActions.Aggregate(true, (acc, m) => acc & ExecuteSingle(m.EventName, m.TargetValue, false, false)),
-            _ => false
-        };
-        return Task.FromResult(ok);
+        var since = DateTime.UtcNow - _lastWriteUtc;
+        var gap = TimeSpan.FromMilliseconds(CdaWriteSpacingMs);
+        if (since < gap) await Task.Delay(gap - since);
     }
 
-    private bool ExecuteSingle(string eventName, int? targetValue, bool usesMouseFlag, bool isMomentary)
+    /// <summary>Interface implementation: dispatches an <see cref="IFlowStepDispatch"/>,
+    /// awaited by the flow engine so steps stay ordered and paced.</summary>
+    public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
     {
-        if (!PMDG777Definition.EventIds.TryGetValue(eventName, out int evId)) return false;
+        if (!IsAvailable) return Task.FromResult(false);
+        return step.ActionType switch
+        {
+            Models.FlowStepActionType.SetSwitch =>
+                DispatchAsync(step.EventName!, step.TargetValue, step.UsesMouseFlag, step.IsMomentary),
+            Models.FlowStepActionType.SetSwitchMultiple => MultiAsync(step.MultiActions),
+            _ => Task.FromResult(false),
+        };
+    }
+
+    private async Task<bool> MultiAsync(IReadOnlyList<(string EventName, int? TargetValue)> actions)
+    {
+        // Hold the gate across the whole sequence so a concurrent dispatch can't slip a
+        // write into one of our frame gaps; inter-write spacing comes from PaceAsync.
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            bool ok = true;
+            foreach (var (ev, tv) in actions)
+                ok &= await DispatchCoreAsync(ev, tv, false, false);
+            return ok;
+        }
+        finally { _dispatchGate.Release(); }
+    }
+
+    private async Task<bool> DispatchAsync(string eventName, int? target, bool usesMouseFlag, bool isMomentary)
+    {
+        await _dispatchGate.WaitAsync();
+        try { return await DispatchCoreAsync(eventName, target, usesMouseFlag, isMomentary); }
+        finally { _dispatchGate.Release(); }
+    }
+
+    private async Task<bool> DispatchCoreAsync(string eventName, int? targetValue, bool usesMouseFlag, bool isMomentary)
+    {
+        if (_simConnect == null || !PMDG777Definition.EventIds.TryGetValue(eventName, out int evId)) return false;
         uint eventId = (uint)evId;
 
-        if (usesMouseFlag)
+        // Per-detent flap-lever events are SDK mouse-click events that ONLY commit with
+        // MOUSE_FLAG_LEFTSINGLE (the panel's proven FCTL_Flaps convention). Force the
+        // flag here so EVERY caller shape is corrected — the flows' takeoff-flap and
+        // flaps-up steps were built as IsMomentary (param 1) and silently did nothing.
+        if (eventName.StartsWith("EVT_CONTROL_STAND_FLAPS_LEVER_", StringComparison.Ordinal))
         {
-            _simConnect!.SendPMDGEvent(eventName, eventId, MouseFlagLeftSingle);
+            usesMouseFlag = true;
+            isMomentary = false;
         }
-        else if (isMomentary)
+
+        await PaceAsync();
+        try
         {
-            _simConnect!.SendPMDGEvent(eventName, eventId, 1);
+            if (usesMouseFlag)
+                _simConnect.SendPMDGEvent(eventName, eventId, MouseFlagLeftSingle);
+            else if (isMomentary)
+                _simConnect.SendPMDGEvent(eventName, eventId, 1);
+            else if (targetValue.HasValue)
+                _simConnect.SendPMDGEvent(eventName, eventId, targetValue.Value);
+            else
+                _simConnect.SendPMDGEvent(eventName, eventId);
+            return true;
         }
-        else if (targetValue.HasValue)
-        {
-            _simConnect!.SendPMDGEvent(eventName, eventId, targetValue.Value);
-        }
-        else
-        {
-            _simConnect!.SendPMDGEvent(eventName, eventId);
-        }
+        finally { _lastWriteUtc = DateTime.UtcNow; }
+    }
+
+    // Synchronous entry used by the ~60 convenience methods below (checklist
+    // CheckAction lambdas are synchronous). Queues a gated, paced write and returns:
+    // sequential calls queue in order (SemaphoreSlim async waiters are FIFO), so a
+    // lambda firing several switches gets them written one frame apart.
+    private bool ExecuteSingle(string eventName, int? targetValue, bool usesMouseFlag, bool isMomentary)
+    {
+        if (!PMDG777Definition.EventIds.ContainsKey(eventName)) return false;
+        _ = DispatchAsync(eventName, targetValue, usesMouseFlag, isMomentary);
         return true;
     }
 
@@ -81,16 +137,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool PushGroundPowerSecondary()
         => ExecuteSingle("EVT_OH_ELEC_GRD_PWR_SEC_SWITCH", null, false, true);
 
-    // PMDG CDA control writes are coalesced when issued in the same frame — only the
-    // LAST survives. So two back-to-back momentary pushes in one lambda lose the first
-    // (the "only one GPU disconnects" bug). Space them, matching the flow's proven
-    // PostActionDelayMs (350 ms). The flow path already spaces these as separate steps.
+    // Minimum gap between CDA writes (same-frame writes coalesce — see class doc).
     private const int CdaWriteSpacingMs = 350;
     // APU selector ON → START needs the longer gap the flow uses (BS_APU_ON_WAIT = 2 s)
     // so the model registers ON before START.
     private const int ApuOnToStartMs = 2000;
 
-    /// <summary>Push BOTH ground-power buttons with a frame gap so both register.</summary>
+    /// <summary>Push BOTH ground-power buttons — the paced gate frame-spaces them.</summary>
     public async Task PushBothGroundPowerAsync()
     {
         PushGroundPowerPrimary();
@@ -426,4 +479,30 @@ public class AircraftActionExecutor : IFoActionExecutor
     // Display select panel — only the buttons BA Assist can reliably control
     // CANC/RCL (useful for flow completion check)
     public bool PushCancelRecall() => ExecuteSingle("EVT_DSP_CANC_RCL_SWITCH", null, false, true);
+
+    // Fuel jettison — nozzles + arm OFF (mirrors the Cockpit Prep flow's CP_JETT
+    // steps; the paced gate frame-spaces the three writes).
+    public bool SetFuelJettisonOff()
+    {
+        bool ok = ExecuteSingle("EVT_OH_FUEL_JETTISON_NOZZLE_L", 0, false, false);
+        ok &= ExecuteSingle("EVT_OH_FUEL_JETTISON_NOZZLE_R", 0, false, false);
+        ok &= ExecuteSingle("EVT_OH_FUEL_JETTISON_ARM", 0, false, false);
+        return ok;
+    }
+
+    // Fuel crossfeed valves (forward + aft)
+    public bool SetCrossfeeds(int position)
+    {
+        bool ok = ExecuteSingle("EVT_OH_FUEL_CROSSFEED_FORWARD", position, false, false);
+        ok &= ExecuteSingle("EVT_OH_FUEL_CROSSFEED_AFT", position, false, false);
+        return ok;
+    }
+
+    /// <summary>Map SimBrief takeoff-flap DEGREES (1/5/15/20/25) to the 777 lever
+    /// position index SetFlapsPosition takes (0=UP,1=1,2=5,3=15,4=20,5=25,6=30).</summary>
+    public static int FlapDegreesToPosition(int degrees) => degrees switch
+    {
+        1 => 1, 5 => 2, 15 => 3, 20 => 4, 25 => 5, 30 => 6,
+        _ => 2, // default: flaps 5 — the common 777 takeoff setting
+    };
 }

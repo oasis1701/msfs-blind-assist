@@ -51,7 +51,9 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
         Steps = new()
         {
-            Skip(SW("EPU_BATTERY",     "Battery: ON",             "EVT_OH_ELEC_BATTERY_SWITCH",         1, "ELEC_Battery_Sw_ON",       v => v > 0.5, "ELEC_POWER_UP_BATTERY"),
+            // CompletesChecklistItemId must be the ITEM id ("EPU_BATTERY") — the old
+            // "ELEC_POWER_UP_BATTERY" matched nothing and MarkComplete silently no-op'd.
+            Skip(SW("EPU_BATTERY",     "Battery: ON",             "EVT_OH_ELEC_BATTERY_SWITCH",         1, "ELEC_Battery_Sw_ON",       v => v > 0.5, "EPU_BATTERY"),
                 s => s.IsBatteryOn()),
             SW("EPU_STORM_OFF",   "Storm lights: OFF",        "EVT_OH_LIGHTS_STORM",                0),
             Skip(Multi("EPU_ELEC_PUMPS_OFF", "Electric pumps: OFF",
@@ -110,9 +112,12 @@ public static class PMDG777FlowDefinitions
             Skip(Multi("CP_BUS_TIES",  "Bus ties: AUTO",
                 ("EVT_OH_ELEC_BUS_TIE1_SWITCH", 1), ("EVT_OH_ELEC_BUS_TIE2_SWITCH", 1)),
                 s => s.IsBusTie1Auto() && s.IsBusTie2Auto()),
+            // Skip reads the MAIN generator switches (ELEC_Gen_Sw_ON) — the old predicate
+            // checked the BACKUP generator fields, so this step wrongly skipped whenever
+            // the backup gens happened to be on while the mains were off.
             Skip(Multi("CP_GENERATORS","Generators: ON",
                 ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
-                s => s.IsBackupGen1On() && s.IsBackupGen2On()),
+                s => s.IsGen1On() && s.IsGen2On()),
             Multi("CP_BACKUP_GENS","Backup generators: ON",
                 ("EVT_OH_ELEC_BACKUP_GEN1_SWITCH", 1), ("EVT_OH_ELEC_BACKUP_GEN2_SWITCH", 1)),
             SW("CP_WINDOW_HEAT_1","Window heat 1: ON",         "EVT_OH_ICE_WINDOW_HEAT_1",           1),
