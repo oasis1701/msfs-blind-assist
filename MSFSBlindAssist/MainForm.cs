@@ -255,6 +255,11 @@ public partial class MainForm : Form
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
+    // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
+    // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
+    // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle. The
+    // schedule restarts this timer per push, so a burst settles into a SINGLE repaint.
+    private System.Windows.Forms.Timer? _displayRepaintDebounce;
     private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
@@ -990,14 +995,13 @@ public partial class MainForm : Form
                 pendingDisplayRequests[e.VarName].TrySetResult(true);
             }
 
-            // Update display textbox if visible
-            if (currentControls.ContainsKey("_DISPLAY_"))
+            // Repaint the display list if visible — COALESCED. During the auto-refresh tick the
+            // whole panel is force-read at once, so N responses land in quick succession; without
+            // debouncing, each would rebuild + reconcile the entire list (O(N) × N). Schedule one
+            // repaint instead.
+            if (currentControls.ContainsKey("_DISPLAY_") && currentControls["_DISPLAY_"] is ListBox)
             {
-                TextBox? displayBox = currentControls["_DISPLAY_"] as TextBox;
-                if (displayBox != null)
-                {
-                    UpdateDisplayText(displayBox);
-                }
+                ScheduleDisplayRepaint();
             }
             // DON'T return - continue processing for announcements if needed
         }
@@ -1835,7 +1839,7 @@ public partial class MainForm : Form
         }
     }
 
-    private void UpdateDisplayText(TextBox displayBox)
+    private void UpdateDisplayText(ListBox displayBox)
     {
         if (currentAircraft.GetPanelDisplayVariables().ContainsKey(currentPanel))
         {
@@ -1945,19 +1949,41 @@ public partial class MainForm : Form
                 }
             }
 
-            SetDisplayTextPreserveCaret(displayBox, string.Join("\r\n", values));
+            // Split any multi-line entries (the SD-page override block is one display var
+            // whose value is a multi-row block) into one list item per row, then update only
+            // the items whose text changed — preserving the selected ROW (by content) so the
+            // reader stays put. A per-item list update never moves a caret, so NVDA's cursor
+            // never jumps. Shared with the MCDU/CDU display forms via Forms.DisplayList.
+            var lines = new List<string>();
+            foreach (var v in values)
+                lines.AddRange((v ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
+            Forms.DisplayList.UpdateInPlace(displayBox, lines);
         }
     }
 
     /// <summary>
-    /// Writes new text into a (read-only) status display box WITHOUT yanking the
-    /// screen-reader review cursor back to the top on every refresh. Delegates to the
-    /// shared <see cref="Forms.DisplayText.SetPreserveCaret"/>, which rewrites only the
-    /// characters that changed (so NVDA sees a localized edit, not a full content
-    /// replacement) and keeps the caret on the same line. No-ops when unchanged.
+    /// Request a status-list repaint, COALESCED via a short one-shot debounce. Restarting the timer
+    /// on every display-var push collapses a force-read burst (the auto-refresh tick reads the whole
+    /// panel at once) into a single <see cref="UpdateDisplayText(ListBox)"/> pass instead of one per
+    /// response. The repaint reads the current cache, so the single late pass shows the freshest data.
     /// </summary>
-    private void SetDisplayTextPreserveCaret(TextBox box, string text)
-        => Forms.DisplayText.SetPreserveCaret(box, text);
+    private void ScheduleDisplayRepaint()
+    {
+        if (_displayRepaintDebounce == null)
+        {
+            _displayRepaintDebounce = new System.Windows.Forms.Timer { Interval = 120 };
+            _displayRepaintDebounce.Tick += (s, e) =>
+            {
+                _displayRepaintDebounce!.Stop();
+                if (currentControls != null &&
+                    currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is ListBox lb)
+                    UpdateDisplayText(lb);
+            };
+        }
+        // Restart: a new push within the window pushes the single repaint out to after the burst.
+        _displayRepaintDebounce.Stop();
+        _displayRepaintDebounce.Start();
+    }
 
 
     /// <summary>
@@ -5339,15 +5365,15 @@ public partial class MainForm : Form
         // Ctrl+2 panel-nav already relies on against FCU Pull-Heading/Pull-Altitude.
         else if (keyData == (Keys.Control | Keys.D3))
         {
-            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is TextBox dispBox)
+            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is ListBox dispBox)
             {
                 dispBox.Focus();
-                // If the field is empty (OnRequest display vars don't auto-update until a
+                // If the list is empty (OnRequest display vars don't auto-update until a
                 // refresh), pull live content so the user lands on real status rather than a
-                // blank box. The refresh is silent; the screen reader reads the field itself.
+                // blank list. The refresh is silent; the screen reader reads the list itself.
                 // If it already has content (continuously-monitored vars / a prior refresh),
                 // leave it untouched so NVDA reads the current value immediately.
-                if (string.IsNullOrWhiteSpace(dispBox.Text) &&
+                if (dispBox.Items.Count == 0 &&
                     currentControls.TryGetValue("_REFRESH_", out var refreshOnJump) &&
                     refreshOnJump is Button jumpRefreshBtn && jumpRefreshBtn.Enabled)
                 {
@@ -6361,7 +6387,7 @@ public partial class MainForm : Form
 
             // Add display row
             int displayRow = layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
 
             Label displayLabel = new Label();
             displayLabel.Text = "Status Display:";
@@ -6370,29 +6396,36 @@ public partial class MainForm : Form
             displayLabel.Size = new Size(140, 25);
             layout.Controls.Add(displayLabel, 0, displayRow);
 
-            // Panel to hold textbox and button
+            // Panel to hold the status list + refresh button
             Panel displayPanel = new Panel();
-            displayPanel.Size = new Size(240, 55);
+            displayPanel.Size = new Size(240, 150);
 
-            // Read-only multiline textbox for display
-            TextBox displayTextBox = new TextBox();
-            displayTextBox.Multiline = true;
-            displayTextBox.ReadOnly = true;
-            displayTextBox.Size = new Size(240, 30);
-            displayTextBox.Location = new Point(0, 0);
-            displayTextBox.AccessibleName = "Status display (press F5 to refresh)";
-            displayTextBox.Text = "";  // Empty by default
+            // Read-only NAVIGABLE LIST for the status display — one row per item. A live
+            // refresh updates ONLY the items whose value changed, and a ListBox item-text
+            // update never touches a caret or selection, so the screen-reader cursor stays
+            // on the row the user is reading. (A multiline TextBox couldn't do this: every
+            // in-place edit has to move the selection to replace text, and NVDA follows
+            // those caret events, throwing the review cursor around.) Arrow up/down reads
+            // each row; only a row whose value actually changes re-announces while focused.
+            ListBox displayList = new ListBox();
+            displayList.Size = new Size(240, 120);
+            displayList.Location = new Point(0, 0);
+            displayList.IntegralHeight = false;
+            displayList.SelectionMode = SelectionMode.One;
+            displayList.HorizontalScrollbar = true;
+            displayList.TabStop = true;
+            displayList.AccessibleName = "Status display, updates live (F5 to refresh now)";
 
             // Refresh button
             Button refreshButton = new Button();
             refreshButton.Text = "Refresh";
             refreshButton.Size = new Size(80, 23);
-            refreshButton.Location = new Point(0, 32);
+            refreshButton.Location = new Point(0, 122);
             refreshButton.AccessibleName = "Refresh status";
 
-            // F5 on the read-only display triggers the same refresh action as the
-            // button — convenient for blind users who don't want to tab to the button.
-            displayTextBox.KeyDown += (s2, e2) =>
+            // F5 on the list triggers the same refresh action as the button — convenient
+            // for blind users who don't want to tab to the button.
+            displayList.KeyDown += (s2, e2) =>
             {
                 if (e2.KeyCode == Keys.F5)
                 {
@@ -6401,14 +6434,12 @@ public partial class MainForm : Form
                 }
             };
 
-            // When the user moves focus TO the status box, refresh it to the current selection.
-            // The auto-refresh timer deliberately skips while a selector combo (or the box) is
-            // focused — that periodic mid-navigation update was interrupting NVDA's combo
-            // announcements — so this GotFocus refresh is what brings the box current when the
-            // user goes to read it. It updates once on focus-in (review cursor at the top, which
-            // is what you want when you start reading), then the box-focused guard above keeps it
-            // stable. SetDisplayTextPreserveCaret no-ops when the content is unchanged.
-            displayTextBox.GotFocus += (s2, e2) =>
+            // When the user moves focus TO the list, pull current content. The live auto-refresh
+            // timer keeps it current while focused too (updating only the changed rows, so the
+            // cursor stays put), but it skips while a SELECTOR COMBO is focused so it can't fight
+            // the combo's announcement — so this GotFocus pull is what brings the list current the
+            // instant the user moves from the page combo onto it to read.
+            displayList.GotFocus += (s2, e2) =>
             {
                 try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
             };
@@ -6416,17 +6447,14 @@ public partial class MainForm : Form
             refreshButton.Click += async (s2, e2) =>
             {
                 // Where to return focus when the refresh finishes (set by the F5 handler
-                // before PerformClick moves focus onto this button). Fall back to the box
+                // before PerformClick moves focus onto this button). Fall back to the list
                 // if it's somehow still focused here.
-                Control? focusReturn = _refreshFocusReturn ?? (displayTextBox.Focused ? displayTextBox : null);
+                Control? focusReturn = _refreshFocusReturn ?? (displayList.Focused ? displayList : null);
                 _refreshFocusReturn = null;
 
-                // Only show the "Loading..." placeholder on the FIRST populate (empty box).
-                // On subsequent refreshes — manual F5 or the periodic auto-refresh timer —
-                // keep the existing content visible so the box doesn't flash/blank every
-                // cycle; the new values simply overwrite it when they arrive.
-                if (string.IsNullOrEmpty(displayTextBox.Text))
-                    displayTextBox.Text = "Loading...";
+                // First populate only (empty list): show a Loading placeholder so it isn't silent.
+                if (displayList.Items.Count == 0)
+                    displayList.Items.Add("Loading...");
                 displayValues.Clear();  // Clear old values for this panel
 
                 // Get the display variables for this panel
@@ -6442,7 +6470,7 @@ public partial class MainForm : Form
                 // Store the pending values temporarily
                 pendingDisplayRequests = pendingValues;
 
-                // Rebuild any aircraft-managed SNAPSHOT content (the A380/A32NX SD-page
+                // Rebuild any aircraft-managed SNAPSHOT content (the A380/A32NX/PMDG SD-page
                 // box). That content lives in the aircraft def's _sdPageContent and is ONLY
                 // regenerated by OnDisplayPanelShown -> RefreshSdPageDisplayAsync, which
                 // re-reads the underlying SimVars (FOB, engine N1-N3, per-tank fuel, …).
@@ -6475,22 +6503,22 @@ public partial class MainForm : Form
                 pendingDisplayRequests = null;
 
                 // Update display - NO announcement, user will read with NVDA
-                UpdateDisplayText(displayTextBox);
+                UpdateDisplayText(displayList);
 
-                // Restore focus to the status box if the refresh moved it (onto the Refresh
+                // Restore focus to the status list if the refresh moved it (onto the Refresh
                 // button). Only refocuses when it actually left — a deliberate click on the
-                // Refresh button won't bounce focus back to the box.
+                // Refresh button won't bounce focus back to the list.
                 if (focusReturn != null && focusReturn.IsHandleCreated && focusReturn.CanFocus && !focusReturn.Focused)
                     focusReturn.Focus();
             };
 
-            displayPanel.Controls.Add(displayTextBox);
+            displayPanel.Controls.Add(displayList);
             displayPanel.Controls.Add(refreshButton);
             layout.Controls.Add(displayPanel, 1, displayRow);
 
-            // Store reference to display textbox + refresh button (F5 in ProcessCmdKey
+            // Store reference to display list + refresh button (F5 in ProcessCmdKey
             // performs the refresh from anywhere in the panel).
-            currentControls["_DISPLAY_"] = displayTextBox;
+            currentControls["_DISPLAY_"] = displayList;
             currentControls["_REFRESH_"] = refreshButton;
         }
 
@@ -6611,12 +6639,15 @@ public partial class MainForm : Form
         if (!hasDisplay)
         {
             _sdAutoRefreshTimer?.Stop();
+            _displayRepaintDebounce?.Stop();   // no pending repaint into a panel that's gone
             return;
         }
         if (_sdAutoRefreshTimer == null)
         {
-            // 3s: longer than the Refresh handler's 2s response timeout so ticks don't stack.
-            _sdAutoRefreshTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            // 1s for live monitoring. The tick force-reads the page vars and schedules a single
+            // coalesced repaint (no TaskCompletionSource/2s-timeout dance), so ticks can't stack
+            // and a changed value surfaces within ~one read round-trip instead of several seconds.
+            _sdAutoRefreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
             _sdAutoRefreshTimer.Tick += SdAutoRefreshTimer_Tick;
         }
         _sdAutoRefreshTimer.Stop();
@@ -6636,40 +6667,37 @@ public partial class MainForm : Form
             }
             if (simConnectManager == null || !simConnectManager.IsConnected) return;
 
-            // DON'T refresh the status box WHILE THE USER IS READING IT. Replacing a
-            // read-only multiline TextBox's .Text fires an MSAA value-change that resets
-            // NVDA's review cursor to the top even though the system caret is preserved
-            // (SetDisplayTextPreserveCaret can't stop the review-cursor reset). So if the
-            // display box currently has focus, skip this auto tick entirely — the content
-            // the user is reading stays frozen and stable. Ticks resume the moment they
-            // move focus away (combo/another control), and manual F5 always refreshes.
-            if (currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is TextBox dtb
-                && dtb.IsHandleCreated && dtb.Focused)
-                return;
+            // We refresh while the user is reading the status LIST now — full live monitoring.
+            // UpdateStatusListItems rewrites only the rows whose value actually changed and never
+            // touches the selection, so the screen-reader cursor stays on the row being read; a
+            // stable value is never re-touched (so it never re-announces).
 
-            // Also skip while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
+            // Skip ONLY while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
             // picker). The refresh re-requests the page var — UpdateControlFromSimVar can then
             // re-set the combo's SelectedIndex to a lagging value, fighting the user's arrowing —
-            // and it replaces the box .Text (the MSAA interference noted above). Either one steps
-            // on NVDA's page-selection announcement, which is why arrowing the combo "frequently"
-            // didn't announce the landed page. The box is brought current when the user moves
-            // focus TO it (the display box's GotFocus refresh).
+            // which steps on NVDA's page-selection announcement. The list is brought current when
+            // the user moves focus TO it (the list's GotFocus refresh).
             foreach (var kv in currentControls)
                 if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
                     return;
 
-            // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, etc.) — silent,
-            //     no speech, pushes into the box via the page-index display var.
+            // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
+            //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
+            //     which drives UpdateDisplayText -> the list updates its changed rows in place.
             try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
 
-            // (b) Re-pull the panel's OnRequest display vars for the generic status box.
-            //     The handler keeps existing content (no "Loading..." flash) and overwrites
-            //     in place when the fresh values arrive.
-            if (currentControls.TryGetValue("_REFRESH_", out var rc) && rc is Button rb &&
-                rb.Enabled && rb.IsHandleCreated)
-            {
-                rb.PerformClick();
-            }
+            // (b) Force-read the panel's own display vars so the cache is fresh (covers the
+            //     non-override panels whose display vars ARE the content). Each force-read response
+            //     pushes through OnSimVarUpdated, which schedules a COALESCED repaint — so the whole
+            //     burst of responses collapses into ONE list rebuild (instead of one per var), and a
+            //     changed row appears within ~one read round-trip. We also schedule once here so the
+            //     list still repaints when no value changed (e.g. the very first populate).
+            if (currentAircraft.GetPanelDisplayVariables().TryGetValue(currentPanel, out var liveVars))
+                foreach (var vk in liveVars)
+                    if (currentAircraft.GetVariables().ContainsKey(vk))
+                        simConnectManager.RequestVariable(vk, forceUpdate: true);
+
+            ScheduleDisplayRepaint();
         }
         catch { /* best-effort live refresh; never let a tick crash the UI */ }
     }
