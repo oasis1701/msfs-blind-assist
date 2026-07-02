@@ -79,6 +79,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _transAltFt = transAltFt;
         _transLvlFt = transLevelFt > 0 ? transLevelFt : transAltFt;
+        PhaseLog.Write($"737 SetThresholds transAlt={_transAltFt} transLvl={_transLvlFt}");
     }
 
     /// <summary>
@@ -122,6 +123,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
+            PhaseLog.Write($"737 no-TA reminder fired alt={alt:F0} (no SimBrief thresholds loaded)");
             _announcer.AnnounceImmediate(
                 "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
         }
@@ -181,6 +183,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
             // Climbing through transition altitude — set both altimeters to STD.
             // The 737 NG3 struct has no baro-STD state field, so we push unconditionally.
             // The _prevInStd latch prevents a repeated push on subsequent Update() calls.
+            PhaseLog.Write($"737 STD push fired alt={alt:F0} climbing={climbing} descending={descending}");
             _executor.PushBaroSTDCapt();
             _executor.PushBaroSTDFO();
             _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
@@ -190,6 +193,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         {
             // Descending through transition level — return both altimeters to local QNH.
             // Pushing the STD button again toggles it back to QNH mode on the 737 MCP.
+            PhaseLog.Write($"737 QNH push fired alt={alt:F0} climbing={climbing} descending={descending}");
             _executor.PushBaroSTDCapt();
             _executor.PushBaroSTDFO();
             _announcer.AnnounceImmediate("Transition level. Altimeters set to local QNH. Set local pressure now.");
@@ -197,8 +201,11 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         }
 
         // Update latch only when outside the hysteresis band
+        bool? before = _prevInStd;
         if (nowAboveTrans)      _prevInStd = true;
         else if (nowBelowTrans) _prevInStd = false;
         // Inside the band: latch holds its previous value
+        if (_prevInStd != before)
+            PhaseLog.Write($"737 trans latch {(before?.ToString() ?? "null")} -> {_prevInStd} alt={alt:F0} climbing={climbing} descending={descending}");
     }
 }

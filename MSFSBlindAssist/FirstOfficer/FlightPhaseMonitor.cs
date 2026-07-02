@@ -74,6 +74,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _transAltFt = transAltFt;
         _transLvlFt  = transLevelFt > 0 ? transLevelFt : transAltFt;
+        PhaseLog.Write($"777 SetThresholds transAlt={_transAltFt} transLvl={_transLvlFt}");
     }
 
     /// <summary>
@@ -118,6 +119,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
+            PhaseLog.Write($"777 no-TA reminder fired alt={alt:F0} (no SimBrief thresholds loaded)");
             _announcer.AnnounceImmediate(
                 "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
         }
@@ -169,6 +171,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         if (!descending && nowAboveTrans && _prevInStd == false)
         {
             // Climbing through transition altitude — set both altimeters to STD
+            PhaseLog.Write($"777 STD push fired alt={alt:F0} climbing={climbing} descending={descending}");
             bool captIsStd = _state.IsBaroSTDCapt();
             bool foIsStd   = _state.IsBaroSTDFO();
             if (!captIsStd) _executor.PushBaroSTDCapt();
@@ -179,6 +182,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         else if (!climbing && nowBelowTrans && _prevInStd == true)
         {
             // Descending through transition level — deselect STD, announce QNH
+            PhaseLog.Write($"777 QNH push fired alt={alt:F0} climbing={climbing} descending={descending}");
             bool captIsStd = _state.IsBaroSTDCapt();
             bool foIsStd   = _state.IsBaroSTDFO();
             if (captIsStd) _executor.PushBaroSTDCapt();
@@ -188,7 +192,10 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         }
 
         // Update stable state (only outside the band)
+        bool? before = _prevInStd;
         if (nowAboveTrans)       _prevInStd = true;
         else if (nowBelowTrans)  _prevInStd = false;
+        if (_prevInStd != before)
+            PhaseLog.Write($"777 trans latch {(before?.ToString() ?? "null")} -> {_prevInStd} alt={alt:F0} climbing={climbing} descending={descending}");
     }
 }
