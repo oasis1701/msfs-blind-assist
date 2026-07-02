@@ -18,7 +18,7 @@ public sealed class FbwEwdWindow : Form
 
     private readonly Func<Task<string>> _build;
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly TextBox _text;
+    private readonly DisplayListBox _text;
     private System.Windows.Forms.Timer? _timer;
     private readonly IntPtr _previousWindow;
     private bool _busy;
@@ -36,19 +36,15 @@ public sealed class FbwEwdWindow : Form
         ShowInTaskbar = false;
         KeyPreview = true;
 
-        _text = new TextBox
+        _text = new DisplayListBox
         {
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
             Font = new Font("Consolas", 11, FontStyle.Regular),
-            WordWrap = false,
             TabIndex = 0,
             AccessibleName = title,
             AccessibleDescription = "Engine and Warning Display. Read with the arrow keys. F5 refreshes; Escape closes. Auto-refreshes.",
-            Text = "Loading E/WD..."
         };
+        _text.SetText("Loading E/WD...");
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
         var refreshButton = new Button { Text = "&Refresh (F5)", Location = new Point(560, 8), Size = new Size(90, 30), TabIndex = 1, AccessibleName = "Refresh" };
@@ -82,9 +78,9 @@ public sealed class FbwEwdWindow : Form
             string txt = await _build();
             if (IsDisposed) return;
             if (string.IsNullOrWhiteSpace(txt)) txt = "(E/WD content not available — power up the displays / try again)";
-            // Rewrite only the changed span and keep the reader on the same line (no-ops when
-            // unchanged) so a refresh doesn't reset the screen-reader review cursor to the top.
-            DisplayText.SetPreserveCaret(_text, txt);
+            // Reconcile in place (no-ops when unchanged) so a refresh doesn't reset the
+            // screen-reader review cursor to the top.
+            _text.SetText(txt);
             if (announce) _announcer.Announce("E W D refreshed");
         }
         catch { /* best-effort; keep the last good content */ }
