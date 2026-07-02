@@ -2034,11 +2034,22 @@ public partial class ElectronicFlightBagForm : Form
                             sb.AppendLine("ILS INFORMATION:");
                             sb.AppendLine($"  ILS Ident:    {ilsIdent}");
 
-                            // Query ILS table for detailed information
-                            var ilsSql = "SELECT * FROM ils WHERE ident = @IlsIdent LIMIT 1";
+                            // Query ILS table for detailed info. ILS idents are NOT unique across
+                            // airports (498 shared in fs2024), so an unscoped LIMIT 1 returns whichever
+                            // airport was imported first — the WRONG ILS for every other airport that
+                            // shares the ident. Prefer this airport+runway's row, then this airport's,
+                            // then fall back to ident-only (covers rows with unpopulated join columns).
+                            var ilsSql = @"SELECT * FROM ils WHERE ident = @IlsIdent
+                                           ORDER BY (CASE
+                                               WHEN UPPER(loc_airport_ident) = UPPER(@ICAO) AND UPPER(loc_runway_name) = UPPER(@RunwayId) THEN 0
+                                               WHEN UPPER(loc_airport_ident) = UPPER(@ICAO) THEN 1
+                                               ELSE 2 END)
+                                           LIMIT 1";
                             using (var ilsCmd = new SqliteCommand(ilsSql, connection))
                             {
                                 ilsCmd.Parameters.AddWithValue("@IlsIdent", ilsIdent);
+                                ilsCmd.Parameters.AddWithValue("@ICAO", icao);
+                                ilsCmd.Parameters.AddWithValue("@RunwayId", runwayId);
                                 using (var ilsReader = ilsCmd.ExecuteReader())
                                 {
                                     if (ilsReader.Read())
@@ -2088,8 +2099,32 @@ public partial class ElectronicFlightBagForm : Form
                         }
                         else
                         {
+                            // runway_end.ils_ident is empty. Most such runways genuinely have no ILS —
+                            // but fs2024 has ~219 "orphan" ILS rows whose join columns (loc_airport_ident
+                            // / loc_runway_name / loc_runway_end_id) were left NULL, so the ident never
+                            // reached the runway end even though the ILS exists (e.g. KPHX 07R).
+                            // GetILSForRunway recovers those via a spatial+heading fallback — show what it
+                            // finds instead of a false "No ILS available".
                             sb.AppendLine("ILS INFORMATION:");
-                            sb.AppendLine("  No ILS available");
+                            var recoveredIls = new LittleNavMapProvider(dbPath, simulatorVersion).GetILSForRunway(icao, runwayId);
+                            if (recoveredIls != null)
+                            {
+                                sb.AppendLine($"  ILS Ident:            {recoveredIls.Ident}");
+                                sb.AppendLine($"  ILS Frequency:        {recoveredIls.Frequency:F2} MHz");
+                                sb.AppendLine($"  Loc Heading:          {recoveredIls.LocalizerHeading:F1}°");
+                                sb.AppendLine($"  Loc Width:            {recoveredIls.LocalizerWidth:F1}°");
+                                if (recoveredIls.Range > 0)
+                                    sb.AppendLine($"  Range:                {recoveredIls.Range} NM");
+                                if (recoveredIls.GlideslopeRange > 0)
+                                {
+                                    sb.AppendLine($"  GS Range:             {recoveredIls.GlideslopeRange} NM");
+                                    sb.AppendLine($"  GS Pitch:             {recoveredIls.GlideslopePitch:F1}°");
+                                }
+                            }
+                            else
+                            {
+                                sb.AppendLine("  No ILS available");
+                            }
                             sb.AppendLine();
                         }
 
