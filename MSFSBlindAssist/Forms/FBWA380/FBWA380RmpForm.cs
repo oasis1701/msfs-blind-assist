@@ -47,7 +47,7 @@ public sealed class FBWA380RmpForm : Form
     private string _lastStandbyAnnounced = "";           // dedup key "row:freq" so it speaks once
 
     private ComboBox _side = null!;
-    private TextBox _display = null!;
+    private DisplayListBox _display = null!;
     private Label _status = null!;
 
     public FBWA380RmpForm(ScreenReaderAnnouncer announcer, FlyByWireA380Definition def, SimConnectManager sim)
@@ -75,14 +75,14 @@ public sealed class FBWA380RmpForm : Form
         _status = new Label { Location = new Point(240, 14), Size = new Size(360, 22), Text = "Connecting…", AccessibleName = "Status" };
 
         // The RMP SCREEN — read with the arrows AND type the digits for the CURRENT page (VHF freq or SQWK).
-        _display = new TextBox
+        _display = new DisplayListBox
         {
             Location = new Point(12, 44), Size = new Size(584, 312),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            SuppressTypeAhead = true,   // character keys are RADIO INPUT here, not list navigation
             Font = new Font("Consolas", 11),
             AccessibleName = "RMP screen — type the digits for the current page",
-            Text = "Loading…"
         };
+        _display.SetText("Loading…");
         _display.KeyPress += OnDisplayKeyPress;
         _display.KeyDown += OnDisplayKeyDown;
 
@@ -573,7 +573,7 @@ public sealed class FBWA380RmpForm : Form
         if (_message.Length > 0) sb.AppendLine($"Message: {_message}");
 
         string text = sb.ToString().TrimEnd();
-        DisplayText.SetPreserveCaret(_display, text);
+        _display.SetText(text);
     }
 
     private static string Token(string row, string after)
