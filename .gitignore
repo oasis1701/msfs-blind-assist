@@ -157,3 +157,4 @@ tools/taxi-census/
 
 # Superpowers SDD scratch (briefs, reports, review packages, ledger)
 .superpowers/
+*.zip
