@@ -661,6 +661,8 @@ public partial class MainForm : Form
                 pmdg777FirstOfficerForm.OnSimConnectChanged();
             if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
                 pmdg737FirstOfficerForm.OnSimConnectChanged();
+            if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
+                fenixFirstOfficerForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
