@@ -695,6 +695,43 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
     }
 
+    // Closed-loop walk pacing: detented rotaries are far slower to accept clicks
+    // than CLICK_GAP_MS — and the gap must also cover the data broadcast
+    // refreshing between the re-reads (see WalkSelectorClosedLoop).
+    private const int CLOSED_LOOP_CLICK_GAP_MS = 300;
+    // Attempt budget: the widest walked selector spans 4 detents; the headroom
+    // absorbs dropped clicks and stale-read re-decisions.
+    private const int CLOSED_LOOP_MAX_CLICKS = 12;
+
+    /// <summary>
+    /// Closed-loop click-walk for detented rotaries whose CDA position write AND
+    /// transmit-with-target dispatch are both silent no-ops — live-probed
+    /// 2026-07-03 on <c>EVT_TCAS_MODE</c> (the transponder mode selector), the
+    /// only known member so far. Two deliberate differences from
+    /// <see cref="WalkSelectorViaClicks"/>:
+    ///   1. The click DIRECTION is inverted vs the TFM convention: RIGHTSINGLE
+    ///      steps UP (toward higher positions, e.g. TA/RA) and LEFTSINGLE steps
+    ///      DOWN (toward STBY) — both directions verified in-sim.
+    ///   2. The walk re-reads the live CDA field before EVERY click: PMDG drops
+    ///      detent clicks probabilistically (4 clicks at 80 ms moved the selector
+    ///      only 3 detents, and even at 300 ms one of 4 was eaten), so an
+    ///      open-loop fire-N-clicks sequence lands short. Re-reading makes every
+    ///      dropped click self-correct; the loop ends when the target reads back
+    ///      or the attempt budget runs out.
+    /// </summary>
+    public async Task WalkSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
+    {
+        for (int i = 0; i < CLOSED_LOOP_MAX_CLICKS; i++)
+        {
+            if (!IsReady) return;
+            int current = (int)Math.Round(GetFieldValue(fieldName));
+            if (current == targetPosition) return;
+            SendEventViaTransmitWithTarget(eventId,
+                current < targetPosition ? MOUSE_FLAG_RIGHTSINGLE : MOUSE_FLAG_LEFTSINGLE);
+            await Task.Delay(CLOSED_LOOP_CLICK_GAP_MS);
+        }
+    }
+
     /// <summary>
     /// Guarded set: open guard (param=1) → set switch (param=targetPosition) → close guard (param=0).
     /// 150 ms gaps so PMDG's frame loop processes each transition. The guard-close runs inside
