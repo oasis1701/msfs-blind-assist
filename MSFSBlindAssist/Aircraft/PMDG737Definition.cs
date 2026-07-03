@@ -4592,6 +4592,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             if (_xpdrWalkOp is { IsCompleted: false })
             {
+                // Queue the newest pick (last one wins) — the running walk
+                // chains to it when its current leg lands, so a mid-walk
+                // correction is honored instead of silently discarded.
+                Interlocked.Exchange(ref _xpdrPendingTarget, (int)value);
                 announcer.AnnounceImmediate("Still setting transponder, please wait.");
                 return true;
             }
@@ -4604,38 +4608,86 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (EventIds.TryGetValue("EVT_TCAS_MODE", out int xpdrEvId))
             {
                 int target = (int)value;
-                int current = (int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel"));
-                if (current == target) return true; // already at target — no-op
-                // Per-detent monitor callouts are suppressed for the walk's
-                // duration via PMDGNG3DataManager.AnyWalkInProgress (see the
-                // XPDR_ModeSel case in ProcessSimVarUpdate). The readback
-                // below is the single authoritative confirmation: it speaks
-                // the LANDED position from a fresh read — ground truth even
-                // when the walk gives up short of the target, so a failure is
-                // audible as the wrong mode name rather than silence.
+                Interlocked.Exchange(ref _xpdrPendingTarget, -1);
+                // Gate up BEFORE the walk starts: the XPDR_ModeSel case in
+                // ProcessSimVarUpdate returns this flag, swallowing the
+                // per-detent callouts AND the combo churn while the walk runs
+                // (PMDG change events are delivered synchronously from
+                // ProcessClientData, so every mid-walk detent event fires
+                // while the flag is up). No walk-completion announce on
+                // success: the screen reader already spoke the combo pick and
+                // the combo already shows it — matching every other walked
+                // selector in this def. A walk that lands OFF target re-raises
+                // the field through the standard pipeline below, which
+                // re-syncs the combo to the real mode and announces it as a
+                // background change — the audible failure signal.
+                _xpdrWalkSuppress = true;
                 async Task RunWalkAsync()
                 {
                     try
                     {
-                        await simConnect.WalkPMDGSelectorClosedLoop(
-                            (uint)xpdrEvId, "XPDR_ModeSel", target);
-                        // If the aircraft — and thus the PMDG data manager — was
-                        // swapped out during the walk, xpdrDm is a disposed
-                        // instance whose IsReady stays latched true; don't read a
-                        // stale mode or announce it into whatever aircraft is now
-                        // loaded.
-                        if (!ReferenceEquals(simConnect.PMDGDataManager, xpdrDm)) return;
-                        int landed = (int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel"));
-                        string label = varDef.ValueDescriptions.TryGetValue(landed, out var text)
-                            ? text
-                            : landed.ToString();
-                        announcer.AnnounceImmediate($"Transponder: {label}.");
+                        int? landed = null;
+                        int currentTarget = target;
+                        while (true)
+                        {
+                            landed = await simConnect.WalkPMDGSelectorClosedLoop(
+                                (uint)xpdrEvId, "XPDR_ModeSel", currentTarget);
+                            // If the aircraft — and thus the PMDG data manager —
+                            // was swapped out during the walk, xpdrDm is a
+                            // disposed instance; don't read its dead cache,
+                            // chain another leg, or re-raise into whatever
+                            // aircraft is now loaded.
+                            if (!ReferenceEquals(simConnect.PMDGDataManager, xpdrDm)) return;
+                            // A pick made while this leg walked chains into a
+                            // follow-up leg (the busy branch queued it).
+                            int next = Interlocked.Exchange(ref _xpdrPendingTarget, -1);
+                            if (next >= 0 && next != currentTarget)
+                            {
+                                currentTarget = next;
+                                continue;
+                            }
+                            // Verified on target: silent success (rule: never
+                            // re-announce a combo pick; the combo already shows
+                            // the target).
+                            if (landed == currentTarget) return;
+                            if (landed is null)
+                            {
+                                // Unverified — a snapshot request timed out with a
+                                // click possibly still in flight. The ambient poll
+                                // has resumed (the walk released its gate); give it
+                                // one cycle to refresh the cache, then re-check
+                                // before declaring failure.
+                                await Task.Delay(1300);
+                                if (!ReferenceEquals(simConnect.PMDGDataManager, xpdrDm)) return;
+                                if ((int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel")) == currentTarget) return;
+                                // A pick made during the wait chains too.
+                                next = Interlocked.Exchange(ref _xpdrPendingTarget, -1);
+                                if (next >= 0 && next != currentTarget)
+                                {
+                                    currentTarget = next;
+                                    continue;
+                                }
+                            }
+                            // Landed off target: open the gate FIRST, then replay
+                            // the field's landed state through the standard
+                            // pipeline (the walk swallowed its natural change
+                            // event and the value won't change again on its own).
+                            // MainForm re-syncs the combo to the REAL mode and the
+                            // monitor announces it — the pilot hears a transponder
+                            // mode other than their pick, which is the failure.
+                            _xpdrWalkSuppress = false;
+                            (xpdrDm as SimConnect.PMDGNG3DataManager)?.RaiseFieldChanged("XPDR_ModeSel");
+                            return;
+                        }
                     }
                     catch
                     {
                         // SimConnect drop mid-walk — never fault the
-                        // fire-and-forget task; the combo re-syncs from the
-                        // next monitor update.
+                        // fire-and-forget task.
+                    }
+                    finally
+                    {
+                        _xpdrWalkSuppress = false;
                     }
                 }
                 _xpdrWalkOp = RunWalkAsync();
@@ -4755,18 +4807,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         switch (varName)
         {
             // -------------------------------------------------------------
-            // Transponder mode: swallow the per-detent callouts produced by a
+            // Transponder mode: swallow the per-detent events produced by a
             // transponder click-walk — walking STBY→TA/RA passes ALT RPTG
-            // OFF/XPNDR/TA and each detent would otherwise announce, when the
-            // walk speaks for itself (the panel path reads back the landed
-            // mode when the walk ends; a First Officer flow announces its own
-            // step label). Gate = walk-ACTIVE, not a detent count: the walk's
-            // try/finally clears it on every exit path, so leftover state can
-            // never mute a later genuine background change — a knob turned in
-            // the VC announces normally.
+            // OFF/XPNDR/TA and each detent would otherwise announce AND churn
+            // the combo (return-true also skips MainForm's combo re-sync,
+            // which is desired mid-walk: the combo holds the user's pick
+            // until the outcome). Gate = THIS def's _xpdrWalkSuppress, set by
+            // the 4b dispatch and cleared in the walk task's finally on every
+            // exit path, so leftover state can never mute a later genuine
+            // background change — a knob turned in the VC announces normally.
+            // A walk that lands off target replays the final state through
+            // RaiseFieldChanged after clearing the gate, so the combo re-syncs
+            // and the failure announces via the standard monitor path.
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
-                return SimConnect.PMDGNG3DataManager.AnyWalkInProgress;
+                return _xpdrWalkSuppress;
 
             // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
@@ -5982,6 +6037,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Transponder-mode closed-loop walk re-entrancy guard (HandleUIVariableSet
     // 4b; the walk itself is PMDGNG3DataManager.WalkSelectorClosedLoop).
     private Task? _xpdrWalkOp;
+    // True while a transponder walk owns XPDR_ModeSel — the ProcessSimVarUpdate
+    // case returns it to swallow per-detent events. Set on dispatch (UI thread),
+    // cleared in the walk task's finally (pool thread).
+    private volatile bool _xpdrWalkSuppress;
+    // Target queued by a combo pick made while a walk is running (-1 = none).
+    // Written on the UI thread, consumed by the walk task via Interlocked.
+    private int _xpdrPendingTarget = -1;
 
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
