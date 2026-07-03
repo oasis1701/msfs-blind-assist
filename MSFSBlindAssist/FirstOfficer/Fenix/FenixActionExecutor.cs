@@ -10,13 +10,22 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 ///
 /// Fire tests are HELD switches (1 → 3 s → 0), not pulses. The FCU managed pushes go
 /// through an atomic read-modify-write calculator string rather than an app-side counter:
-/// the def's panel keeps its own rmpCounters for the same L:vars, and a second independent
-/// counter would desync deltas (a stale absolute write reads as the WRONG direction).
+/// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING_PUSH/PULL)
+/// ALSO writes these same L:vars via its own atomic RPN read-modify-write
+/// (AdjustFcuPushPullCounter) rather than its rmpCounters absolute counter — both writers
+/// now read the live sim value before modifying, so they stay coherent no matter which one
+/// fires. Each call's RPN string is prefixed with a per-instance sequence number
+/// ("{seq} 0 *", a numeric no-op) so MobiFlight's command channel — which coalesces two
+/// consecutive IDENTICAL calc strings — never drops a repeated push (same anti-dedup idiom
+/// as FlyByWireA380Definition.SendRmpKey).
 /// </summary>
 public sealed class FenixActionExecutor : LVarActionExecutor
 {
     private const int FireTestHoldMs = 3000;
     private const int ApuMasterToStartMs = 3000;
+
+    // Anti-dedup sequence for the FCU push/pull atomic RPN write (see PushFcuManaged).
+    private long _fcuPushSeq;
 
     private static readonly Dictionary<string, LVarDispatchKind> Table = new()
     {
@@ -95,14 +104,18 @@ public sealed class FenixActionExecutor : LVarActionExecutor
 
     /// <summary>Push an FCU knob to managed (Fenix convention: push = value decrement on
     /// the knob L:var, e.g. "S_FCU_SPEED" or "S_FCU_HEADING"). Atomic read-modify-write in
-    /// ONE calculator string so it can never desync against the def's own counter.</summary>
+    /// ONE calculator string so it can never desync against the def's own panel handler
+    /// (which now uses the same atomic-RPN mechanism — see the class doc comment). The
+    /// leading "{seq} 0 *" makes the string unique per call so MobiFlight's identical-string
+    /// coalescing can't drop a repeated push.</summary>
     public async Task<bool> PushFcuManaged(string knobLVar)
     {
         var sc = Sc;
         if (sc is not { IsConnected: true }) return false;
         await RunGatedAsync(() =>
         {
-            sc.ExecuteCalculatorCode($"(L:{knobLVar}) 1 - (>L:{knobLVar})");
+            long seq = ++_fcuPushSeq;
+            sc.ExecuteCalculatorCode($"{seq} 0 * (L:{knobLVar}) 1 - (>L:{knobLVar})");
             return Task.CompletedTask;
         });
         return true;

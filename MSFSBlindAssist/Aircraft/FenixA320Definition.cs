@@ -11870,15 +11870,22 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // S_FCU_HEADING push/pull: atomic RPN read-modify-write, NOT the app-side
+            // rmpCounters Increment/DecrementCounter. FenixActionExecutor.PushFcuManaged (the
+            // First Officer) writes this same L:var independently via its own atomic RPN
+            // write; two independent absolute-counter writers on one relative-encoder var
+            // desync (a stale counter write can swallow or double the FO's push). See
+            // AdjustFcuPushPullCounter / AdjustBaroCounter for the same fix applied earlier
+            // to the baro knobs.
             if (varKey == "S_FCU_HEADING_PUSH" && value == 1)
             {
-                DecrementCounter("S_FCU_HEADING", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_HEADING", -1, simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_HEADING_PULL" && value == 1)
             {
-                IncrementCounter("S_FCU_HEADING", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_HEADING", 1, simConnect);
                 return true;
             }
 
@@ -11895,15 +11902,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // S_FCU_SPEED push/pull: same atomic RPN fix as S_FCU_HEADING above (the First
+            // Officer's PushFcuManaged writes this L:var independently).
             if (varKey == "S_FCU_SPEED_PUSH" && value == 1)
             {
-                DecrementCounter("S_FCU_SPEED", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_SPEED", -1, simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_SPEED_PULL" && value == 1)
             {
-                IncrementCounter("S_FCU_SPEED", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_SPEED", 1, simConnect);
                 return true;
             }
 
@@ -12541,6 +12550,30 @@ public class FenixA320Definition : BaseAircraftDefinition
         System.Diagnostics.Debug.WriteLine($"[FenixA320] AdjustBaroCounter: {counterVar} delta={delta}");
     }
 
+    /// <summary>
+    /// Adjusts an FCU push/pull knob (S_FCU_SPEED / S_FCU_HEADING) by +/-1 using an atomic
+    /// RPN read-modify-write, same reasoning as AdjustBaroCounter: the First Officer
+    /// (FenixActionExecutor.PushFcuManaged) writes these same L:vars independently of this
+    /// panel's rmpCounters, so two absolute-counter writers would desync (a stale app-side
+    /// counter overwrites the FO's push, producing a swallowed or doubled delta). Reading
+    /// the live sim value on every call keeps both writers coherent.
+    ///
+    /// The leading "{seq} 0 *" makes each call's RPN string textually unique — MobiFlight's
+    /// command channel coalesces two consecutive IDENTICAL calc strings, and a push/pull is
+    /// always the same fixed delta (+1/-1), so back-to-back presses would otherwise collapse
+    /// into one (same anti-dedup idiom as FlyByWireA380Definition.SendRmpKey).
+    /// </summary>
+    private void AdjustFcuPushPullCounter(string counterVar, int delta, SimConnect.SimConnectManager simConnect)
+    {
+        if (delta == 0) return;
+
+        string op = delta > 0 ? $"{delta} +" : $"{Math.Abs(delta)} -";
+        string rpn = $"{++_fcuPushSeq} 0 * (L:{counterVar}) {op} (>L:{counterVar})";
+        simConnect.ExecuteCalculatorCode(rpn);
+
+        System.Diagnostics.Debug.WriteLine($"[FenixA320] AdjustFcuPushPullCounter: {counterVar} delta={delta}");
+    }
+
     private void RequestGearPosition(SimConnect.SimConnectManager simConnectMgr)
     {
         var simConnect = simConnectMgr.SimConnectInstance;
@@ -12742,6 +12775,9 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     // Counter tracking for RMP frequency knobs
     private Dictionary<string, int> rmpCounters = new Dictionary<string, int>();
+
+    // Anti-dedup sequence for FCU push/pull atomic RPN writes (see AdjustFcuPushPullCounter).
+    private long _fcuPushSeq;
 
     /// <summary>
     /// Increments a counter variable for RMP frequency controls.
