@@ -4736,15 +4736,19 @@ public class SimConnectManager
     /// <summary>
     /// Closed-loop click-walk for NG3 detented rotaries that ignore both the CDA
     /// position write and transmit-with-target (currently the transponder mode
-    /// selector, EVT_TCAS_MODE). Re-reads the live CDA field before every click so
-    /// PMDG's probabilistically-dropped detent clicks self-correct; click direction
-    /// is inverted vs <see cref="WalkPMDGSelector"/>'s TFM convention. See
+    /// selector, EVT_TCAS_MODE). Awaits a FRESH Data-CDA snapshot before every
+    /// re-read (the ambient poll is 1 Hz — too stale to steer clicks) so PMDG's
+    /// probabilistically-dropped detent clicks self-correct without overshoot;
+    /// click direction is inverted vs <see cref="WalkPMDGSelector"/>'s TFM
+    /// convention. Returns true when the selector landed on the target; false
+    /// for a non-NG3 manager, timeout, or budget exhaustion. See
     /// <see cref="PMDGNG3DataManager.WalkSelectorClosedLoop"/> for the probe history.
     /// </summary>
-    public async Task WalkPMDGSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
+    public async Task<bool> WalkPMDGSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
     {
         if (pmdgDataManager is PMDGNG3DataManager ng3)
-            await ng3.WalkSelectorClosedLoop(eventId, fieldName, targetPosition);
+            return await ng3.WalkSelectorClosedLoop(eventId, fieldName, targetPosition);
+        return false;
     }
 
     /// <summary>

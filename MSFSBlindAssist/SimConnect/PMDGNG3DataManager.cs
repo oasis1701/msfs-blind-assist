@@ -217,6 +217,10 @@ public class PMDGNG3DataManager : IPMDGDataManager
                     DetectAndRaiseChanges(newData);
                     _lastDataSnapshot = newData;
                     _hasSnapshot      = true;
+                    // Wake any closed-loop walk awaiting a fresh snapshot —
+                    // AFTER the snapshot fields update, so the awaiter's
+                    // GetFieldValue read is guaranteed post-refresh.
+                    _snapshotTcs?.TrySetResult(true);
                     break;
                 }
                 case PMDG_DATA_REQUEST_ID.CDU_0:
@@ -695,9 +699,46 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
     }
 
+    // ------------------------------------------------------------------
+    // Fresh-snapshot handshake + walk-active state (closed-loop walks)
+    // ------------------------------------------------------------------
+
+    // Completed by ProcessClientData's Data case when a snapshot lands.
+    // Swapped fresh by RequestFreshSnapshotAsync before each one-shot request.
+    private volatile TaskCompletionSource<bool>? _snapshotTcs;
+
+    // Count of in-flight closed-loop walks (any selector). STATIC because the
+    // consumer — PMDG737Definition.ProcessSimVarUpdate's XPDR_ModeSel suppress
+    // check — has no SimConnectManager reference to reach this instance, and
+    // only one NG3 manager exists per process. Unlike a detent-count suppress
+    // field, this is self-clearing by construction: the walk's try/finally
+    // decrements on every exit path (target reached, budget exhausted,
+    // snapshot timeout, exception), so no residue can ever mute a later
+    // genuine background change.
+    private static int s_walksInProgress;
+    public static bool AnyWalkInProgress => Volatile.Read(ref s_walksInProgress) > 0;
+
+    /// <summary>
+    /// Requests a one-shot Data-CDA refresh and completes when the response
+    /// has been applied to the snapshot (false on timeout / no SimConnect).
+    /// The ambient 1 Hz poll is far too slow for closed-loop walks — this is
+    /// the walk's per-iteration freshness guarantee.
+    /// </summary>
+    public async Task<bool> RequestFreshSnapshotAsync(int timeoutMs = 1500)
+    {
+        if (_simConnect == null) return false;
+        var tcs = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _snapshotTcs = tcs;
+        RequestData();
+        var done = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
+        return done == tcs.Task;
+    }
+
     // Closed-loop walk pacing: detented rotaries are far slower to accept clicks
-    // than CLICK_GAP_MS — and the gap must also cover the data broadcast
-    // refreshing between the re-reads (see WalkSelectorClosedLoop).
+    // than CLICK_GAP_MS. Snapshot freshness between clicks is handled separately
+    // by the awaited RequestFreshSnapshotAsync — this gap only paces PMDG's
+    // click acceptance.
     private const int CLOSED_LOOP_CLICK_GAP_MS = 300;
     // Attempt budget: the widest walked selector spans 4 detents; the headroom
     // absorbs dropped clicks and stale-read re-decisions.
@@ -707,28 +748,45 @@ public class PMDGNG3DataManager : IPMDGDataManager
     /// Closed-loop click-walk for detented rotaries whose CDA position write AND
     /// transmit-with-target dispatch are both silent no-ops — live-probed
     /// 2026-07-03 on <c>EVT_TCAS_MODE</c> (the transponder mode selector), the
-    /// only known member so far. Two deliberate differences from
+    /// only known member so far. Three deliberate differences from
     /// <see cref="WalkSelectorViaClicks"/>:
     ///   1. The click DIRECTION is inverted vs the TFM convention: RIGHTSINGLE
     ///      steps UP (toward higher positions, e.g. TA/RA) and LEFTSINGLE steps
     ///      DOWN (toward STBY) — both directions verified in-sim.
-    ///   2. The walk re-reads the live CDA field before EVERY click: PMDG drops
-    ///      detent clicks probabilistically (4 clicks at 80 ms moved the selector
-    ///      only 3 detents, and even at 300 ms one of 4 was eaten), so an
-    ///      open-loop fire-N-clicks sequence lands short. Re-reading makes every
-    ///      dropped click self-correct; the loop ends when the target reads back
-    ///      or the attempt budget runs out.
+    ///   2. Every iteration AWAITS a fresh Data-CDA snapshot
+    ///      (<see cref="RequestFreshSnapshotAsync"/>) before reading. The
+    ///      ambient poll is only 1 Hz, so an unawaited re-read is stale most of
+    ///      the time — and a stale read fires an extra click past the target
+    ///      (overshoot, oscillation, budget exhaustion on middle detents).
+    ///   3. PMDG drops detent clicks probabilistically (4 clicks at 80 ms moved
+    ///      the selector only 3 detents, and even at 300 ms one of 4 was eaten);
+    ///      the fresh re-read makes every dropped click self-correct.
+    /// Returns true when the selector landed on the target — callers announce
+    /// the outcome themselves. <see cref="AnyWalkInProgress"/> is true for the
+    /// duration so ProcessSimVarUpdate can suppress per-detent monitor callouts.
     /// </summary>
-    public async Task WalkSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
+    public async Task<bool> WalkSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
     {
-        for (int i = 0; i < CLOSED_LOOP_MAX_CLICKS; i++)
+        Interlocked.Increment(ref s_walksInProgress);
+        try
         {
-            if (!IsReady) return;
-            int current = (int)Math.Round(GetFieldValue(fieldName));
-            if (current == targetPosition) return;
-            SendEventViaTransmitWithTarget(eventId,
-                current < targetPosition ? MOUSE_FLAG_RIGHTSINGLE : MOUSE_FLAG_LEFTSINGLE);
-            await Task.Delay(CLOSED_LOOP_CLICK_GAP_MS);
+            for (int i = 0; i < CLOSED_LOOP_MAX_CLICKS; i++)
+            {
+                if (!IsReady) return false;
+                if (!await RequestFreshSnapshotAsync()) return false;
+                int current = (int)Math.Round(GetFieldValue(fieldName));
+                if (current == targetPosition) return true;
+                SendEventViaTransmitWithTarget(eventId,
+                    current < targetPosition ? MOUSE_FLAG_RIGHTSINGLE : MOUSE_FLAG_LEFTSINGLE);
+                await Task.Delay(CLOSED_LOOP_CLICK_GAP_MS);
+            }
+            // Budget exhausted — one last fresh read for the verdict.
+            if (!await RequestFreshSnapshotAsync()) return false;
+            return (int)Math.Round(GetFieldValue(fieldName)) == targetPosition;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref s_walksInProgress);
         }
     }
 
