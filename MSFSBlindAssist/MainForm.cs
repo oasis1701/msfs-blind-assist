@@ -4480,6 +4480,14 @@ public partial class MainForm : Form
                 // The manager's mode is set at construction time
                 if (takeoffAssistManager != null)
                 {
+                    // Preserve a teleport/taxi-lineup runway reference across the
+                    // recreate — Reset() clears it, and losing it here silently
+                    // downgraded the next Ctrl+T to "no runway selected". Restore
+                    // is silent (SetRunwayReference only Debug-logs).
+                    bool hadRunwayRef = takeoffAssistManager.TryGetRunwayReference(
+                        out double refLat, out double refLon, out double refHdgTrue,
+                        out double refHdgMag, out string refRunwayId, out string refIcao);
+
                     takeoffAssistManager.Reset();
                     takeoffAssistManager.Dispose();
                     takeoffAssistManager = new TakeoffAssistManager(announcer,
@@ -4489,6 +4497,12 @@ public partial class MainForm : Form
                         currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode,
                         currentSettings.TakeoffAssistEnableCallouts);
                     takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+
+                    if (hadRunwayRef)
+                    {
+                        takeoffAssistManager.SetRunwayReference(refLat, refLon,
+                            refHdgTrue, refHdgMag, refRunwayId, refIcao);
+                    }
                 }
 
                 // Update HandFlyManager if it's active

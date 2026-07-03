@@ -165,6 +165,34 @@ public class TakeoffAssistManager : IDisposable
     }
 
     /// <summary>
+    /// Snapshot of the current teleport/taxi-lineup runway reference, so MainForm
+    /// can carry it across the settings-dialog manager recreate (Reset() clears it;
+    /// without this, teleport → Hand Fly Options OK → Ctrl+T lost the runway and
+    /// silently fell back to "no runway selected").
+    /// </summary>
+    public bool TryGetRunwayReference(out double thresholdLat, out double thresholdLon,
+        out double headingTrue, out double headingMagnetic,
+        out string runwayId, out string airportIcao)
+    {
+        if (hasRunwayReference &&
+            referenceThresholdLat.HasValue && referenceThresholdLon.HasValue &&
+            referenceRunwayHeadingTrue.HasValue && referenceRunwayHeadingMagnetic.HasValue &&
+            referenceRunwayID != null && referenceAirportICAO != null)
+        {
+            thresholdLat = referenceThresholdLat.Value;
+            thresholdLon = referenceThresholdLon.Value;
+            headingTrue = referenceRunwayHeadingTrue.Value;
+            headingMagnetic = referenceRunwayHeadingMagnetic.Value;
+            runwayId = referenceRunwayID;
+            airportIcao = referenceAirportICAO;
+            return true;
+        }
+        thresholdLat = thresholdLon = headingTrue = headingMagnetic = 0;
+        runwayId = airportIcao = string.Empty;
+        return false;
+    }
+
+    /// <summary>
     /// Clears the runway reference (e.g., when aircraft changes or disconnects)
     /// </summary>
     public void ClearRunwayReference()
