@@ -480,28 +480,11 @@ public class FenixMCDUForm : Form
         // Update display - update individual items to trigger Braille display refresh
         int savedIndex = mcduDisplay.SelectedIndex;
 
-        if (mcduDisplay.Items.Count == 0)
-        {
-            // First update: populate the list
-            foreach (var line in lines)
-                mcduDisplay.Items.Add(line);
-        }
-        else
-        {
-            // Update only changed items (triggers screen reader refresh per item)
-            mcduDisplay.BeginUpdate();
-            while (mcduDisplay.Items.Count > lines.Count)
-                mcduDisplay.Items.RemoveAt(mcduDisplay.Items.Count - 1);
-            while (mcduDisplay.Items.Count < lines.Count)
-                mcduDisplay.Items.Add("");
-
-            for (int idx = 0; idx < lines.Count; idx++)
-            {
-                if (mcduDisplay.Items[idx].ToString() != lines[idx])
-                    mcduDisplay.Items[idx] = lines[idx];
-            }
-            mcduDisplay.EndUpdate();
-        }
+        // Shared in-place reconcile (grow/shrink tail + rewrite changed rows, incl. first
+        // populate). This form's own selection semantics run BELOW and override the helper's
+        // content-based restore — CDU screens are positional (LSK rows), so index restore /
+        // page force-select wins.
+        Forms.DisplayList.UpdateInPlace(mcduDisplay, lines);
 
         // Announce page title changes and reset selection to first line
         string trimmedTitle = data.Title.Trim();
@@ -519,7 +502,7 @@ public class FenixMCDUForm : Form
         else
         {
             // Restore selection on same-page updates
-            if (savedIndex >= 0 && savedIndex < mcduDisplay.Items.Count)
+            if (savedIndex >= 0 && savedIndex < mcduDisplay.Items.Count && mcduDisplay.SelectedIndex != savedIndex)
                 mcduDisplay.SelectedIndex = savedIndex;
         }
 

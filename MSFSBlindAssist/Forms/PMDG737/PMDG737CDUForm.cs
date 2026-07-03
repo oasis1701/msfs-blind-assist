@@ -158,18 +158,10 @@ public partial class PMDG737CDUForm : Form
         // Update ListBox items efficiently
         int savedIndex = cduDisplay.SelectedIndex;
 
-        cduDisplay.BeginUpdate();
-        while (cduDisplay.Items.Count > lines.Count)
-            cduDisplay.Items.RemoveAt(cduDisplay.Items.Count - 1);
-        while (cduDisplay.Items.Count < lines.Count)
-            cduDisplay.Items.Add("");
-
-        for (int i = 0; i < lines.Count; i++)
-        {
-            if (cduDisplay.Items[i]?.ToString() != lines[i])
-                cduDisplay.Items[i] = lines[i];
-        }
-        cduDisplay.EndUpdate();
+        // Shared in-place reconcile (grow/shrink tail + rewrite changed rows). This form's own
+        // selection semantics run BELOW and override the helper's content-based restore —
+        // CDU screens are positional (LSK rows), so index restore / page force-select wins.
+        Forms.DisplayList.UpdateInPlace(cduDisplay, lines);
 
         // Announce title change
         bool titleChanged = !string.IsNullOrWhiteSpace(title) &&
@@ -180,7 +172,7 @@ public partial class PMDG737CDUForm : Form
             if (cduDisplay.Items.Count > 0)
                 cduDisplay.SelectedIndex = 0;
         }
-        else if (savedIndex >= 0 && savedIndex < cduDisplay.Items.Count)
+        else if (savedIndex >= 0 && savedIndex < cduDisplay.Items.Count && cduDisplay.SelectedIndex != savedIndex)
         {
             cduDisplay.SelectedIndex = savedIndex;
         }
