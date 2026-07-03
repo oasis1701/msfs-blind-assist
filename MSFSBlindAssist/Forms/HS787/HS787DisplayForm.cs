@@ -23,7 +23,7 @@ public sealed class HS787DisplayForm : Form
 
     private readonly CoherentDisplayClient _client;
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly TextBox _text;
+    private readonly DisplayListBox _text;
     private readonly string _title;
     private readonly IntPtr _previousWindow;
     private bool _disposed;
@@ -41,19 +41,15 @@ public sealed class HS787DisplayForm : Form
         ShowInTaskbar = false;
         KeyPreview = true;
 
-        _text = new TextBox
+        _text = new DisplayListBox
         {
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
             Font = new Font("Consolas", 11, FontStyle.Regular),
-            WordWrap = false,
             TabIndex = 0,
             AccessibleName = title,
             AccessibleDescription = title + ". Read with the arrow keys. F5 refreshes; Escape closes. Auto-updates.",
-            Text = "Connecting to the display..."
         };
+        _text.SetText("Connecting to the display...");
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
         var refreshButton = new Button { Text = "&Refresh (F5)", Location = new Point(560, 8), Size = new Size(90, 30), TabIndex = 1, AccessibleName = "Refresh" };
@@ -84,17 +80,17 @@ public sealed class HS787DisplayForm : Form
     private void OnRowsUpdated(List<string> rows)
     {
         if (_disposed) return;
-        string txt = (rows == null || rows.Count == 0)
-            ? "(no display content — power up the aircraft displays, or press F5)"
-            : string.Join(Environment.NewLine, rows);
+        IReadOnlyList<string> lines = (rows == null || rows.Count == 0)
+            ? new[] { "(no display content — power up the aircraft displays, or press F5)" }
+            : rows;
         if (InvokeRequired)
         {
-            try { BeginInvoke(new Action(() => { if (!_disposed) DisplayText.SetPreserveCaret(_text, txt); })); }
+            try { BeginInvoke(new Action(() => { if (!_disposed) _text.SetLines(lines); })); }
             catch (InvalidOperationException) { /* handle destroyed mid-swap */ }
         }
         else
         {
-            DisplayText.SetPreserveCaret(_text, txt);
+            _text.SetLines(lines);
         }
     }
 

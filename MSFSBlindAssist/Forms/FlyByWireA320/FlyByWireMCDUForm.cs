@@ -345,21 +345,11 @@ public class FlyByWireMCDUForm : Form
         lines.Add($"Scratchpad: {data.Scratchpad}");
 
         int savedIndex = mcduDisplay.SelectedIndex;
-        if (mcduDisplay.Items.Count == 0)
-        {
-            foreach (var line in lines) { mcduDisplay.Items.Add(line); }
-        }
-        else
-        {
-            mcduDisplay.BeginUpdate();
-            while (mcduDisplay.Items.Count > lines.Count) { mcduDisplay.Items.RemoveAt(mcduDisplay.Items.Count - 1); }
-            while (mcduDisplay.Items.Count < lines.Count) { mcduDisplay.Items.Add(""); }
-            for (int idx = 0; idx < lines.Count; idx++)
-            {
-                if (mcduDisplay.Items[idx].ToString() != lines[idx]) { mcduDisplay.Items[idx] = lines[idx]; }
-            }
-            mcduDisplay.EndUpdate();
-        }
+        // Shared in-place reconcile (grow/shrink tail + rewrite changed rows, incl. first
+        // populate). This form's own selection semantics run BELOW and override the helper's
+        // content-based restore — CDU screens are positional (LSK rows), so index restore /
+        // page force-select wins.
+        Forms.DisplayList.UpdateInPlace(mcduDisplay, lines);
 
         string trimmedTitle = data.Title.Trim();
         bool titleChanged = !string.IsNullOrEmpty(trimmedTitle) && trimmedTitle != _lastAnnouncedTitle;
@@ -369,7 +359,7 @@ public class FlyByWireMCDUForm : Form
             _announcer.Announce(trimmedTitle);
             if (mcduDisplay.Items.Count > 1) { mcduDisplay.SelectedIndex = 1; }
         }
-        else if (savedIndex >= 0 && savedIndex < mcduDisplay.Items.Count)
+        else if (savedIndex >= 0 && savedIndex < mcduDisplay.Items.Count && mcduDisplay.SelectedIndex != savedIndex)
         {
             mcduDisplay.SelectedIndex = savedIndex;
         }

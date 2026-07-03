@@ -375,22 +375,25 @@ public sealed class FBWA380ChecklistForm : Form
         _rows = rows;
         int keep = _list.SelectedIndex;
         // Rebuild the ListBox items ONLY when the content actually changed. A pure cursor
-        // move (Up/Down with identical content) skips the Clear/re-add entirely — just the
+        // move (Up/Down with identical content) skips the reconcile entirely — just the
         // SelectedIndex moves below — so the screen reader follows the cursor smoothly
         // instead of the whole list being torn down and rebuilt under it on every arrow.
         if (contentChanged)
         {
-            _list.BeginUpdate();
-            _list.Items.Clear();
-            foreach (var r in rows) _list.Items.Add(Format(r));
-            _list.EndUpdate();
+            // In-place reconcile — only changed rows are rewritten, so NVDA is not torn off the
+            // list on every checklist update (the old Items.Clear()+re-add reset the reader).
+            Forms.DisplayList.UpdateInPlace(_list, rows.Select(Format).ToList());
         }
 
-        // Mirror the FWS cursor: land the list selection on the selected line so the
-        // screen reader follows the real ECL cursor; else preserve the prior row.
-        if (selIdx >= 0) _list.SelectedIndex = selIdx;
-        else if (keep >= 0 && keep < _list.Items.Count) _list.SelectedIndex = keep;
-        else if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+        // The ECL deliberately follows the FWS sim cursor — this OVERRIDES the reconcile's
+        // keep-the-user's-row restore, exactly as the old rebuild did. Keep caller-side.
+        // Compute the target first and only assign when it actually differs, so a
+        // redundant set can't fire an extra native selection-change notification.
+        int target = (selIdx >= 0 && selIdx < _list.Items.Count) ? selIdx
+                    : (keep >= 0 && keep < _list.Items.Count) ? keep
+                    : (_list.Items.Count > 0 ? 0 : -1);
+        if (target >= 0 && _list.SelectedIndex != target)
+            _list.SelectedIndex = target;
     }
 
     // The text the screen reader speaks for one ECL line. Screen-reader-first: no

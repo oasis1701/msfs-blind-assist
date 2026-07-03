@@ -226,18 +226,18 @@ public class FlyByWireDcduForm : Form
         _lastText = text;
         string[] newItems = text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
         int saved = _display.SelectedIndex;
-        _display.BeginUpdate();
-        while (_display.Items.Count > newItems.Length) { _display.Items.RemoveAt(_display.Items.Count - 1); }
-        while (_display.Items.Count < newItems.Length) { _display.Items.Add(""); }
-        for (int i = 0; i < newItems.Length; i++)
-        {
-            if (_display.Items[i]?.ToString() != newItems[i]) { _display.Items[i] = newItems[i]; }
-        }
-        _display.EndUpdate();
+        Forms.DisplayList.UpdateInPlace(_display, newItems);
         // First populate (saved == -1): anchor on line 1 so a focused display
         // reads immediately; later updates keep the user's selected line.
-        if (saved < 0 && _display.Items.Count > 0) { _display.SelectedIndex = 0; }
-        else if (saved >= 0 && saved < _display.Items.Count) { _display.SelectedIndex = saved; }
+        if (saved < 0)
+        {
+            if (_display.Items.Count > 0 && _display.SelectedIndex != 0)
+                _display.SelectedIndex = 0;
+        }
+        else if (saved < _display.Items.Count && _display.SelectedIndex != saved)
+        {
+            _display.SelectedIndex = saved;
+        }
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)

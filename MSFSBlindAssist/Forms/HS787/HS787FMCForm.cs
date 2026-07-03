@@ -217,15 +217,10 @@ public partial class HS787FMCForm : Form
         // Update ListBox
         int savedIndex = fmcDisplay.SelectedIndex;
 
-        fmcDisplay.BeginUpdate();
-        while (fmcDisplay.Items.Count > lines.Count) fmcDisplay.Items.RemoveAt(fmcDisplay.Items.Count - 1);
-        while (fmcDisplay.Items.Count < lines.Count) fmcDisplay.Items.Add("");
-        for (int i = 0; i < lines.Count; i++)
-        {
-            if (fmcDisplay.Items[i]?.ToString() != lines[i])
-                fmcDisplay.Items[i] = lines[i];
-        }
-        fmcDisplay.EndUpdate();
+        // Shared in-place reconcile (grow/shrink tail + rewrite changed rows). This form's own
+        // selection semantics run BELOW and override the helper's content-based restore —
+        // CDU screens are positional (LSK rows), so index restore / page force-select wins.
+        Forms.DisplayList.UpdateInPlace(fmcDisplay, lines);
 
         // Announce title change
         string title = rows[0].Trim();
@@ -236,7 +231,7 @@ public partial class HS787FMCForm : Form
             if (fmcDisplay.Items.Count > 0)
                 fmcDisplay.SelectedIndex = 0;
         }
-        else if (savedIndex >= 0 && savedIndex < fmcDisplay.Items.Count)
+        else if (savedIndex >= 0 && savedIndex < fmcDisplay.Items.Count && fmcDisplay.SelectedIndex != savedIndex)
         {
             fmcDisplay.SelectedIndex = savedIndex;
         }

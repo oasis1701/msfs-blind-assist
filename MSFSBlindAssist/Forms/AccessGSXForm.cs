@@ -25,7 +25,7 @@ public sealed class AccessGSXForm : Form
     private const string MENU_TIMEOUT_PROMPT = "[GSX Menu] Timeout. Press F5 to re-open.";
 
     private TextBox _statusTextBox = null!;
-    private TextBox _menuTextBox = null!;
+    private DisplayListBox _menuList = null!;
     private TextBox _tooltipTextBox = null!;
     private ComboBox _activeServicesCombo = null!;
     private Label _activeServicesLabel = null!;
@@ -76,23 +76,25 @@ public sealed class AccessGSXForm : Form
             AccessibleName = "GSX status"
         };
 
-        // Read-only multiline TextBox: the screen reader reads the whole
-        // menu in one pass each time the text refreshes (which is what we
-        // do after MenuChanged), matching the upstream AccessGSX UX. The
-        // keyboard shortcuts below (1..9, 0, A..E) pick options; the user
-        // doesn't need to navigate the text by line.
-        _menuTextBox = new TextBox
+        // Navigable list: each GSX menu row is its own accessible item, so
+        // arrow keys read one row at a time and the reconcile-in-place
+        // update (DisplayListBox) keeps the reading row put across a
+        // MenuChanged refresh instead of yanking focus back to the top.
+        // The keyboard shortcuts below (1..9, 0, A..E) pick options directly
+        // — those same character keys are menu-selection INPUT here, not
+        // list navigation, so SuppressTypeAhead stops the native ListBox
+        // incremental-search from hijacking them and moving the reading row
+        // out from under the user (mirrors FBWA380RmpForm's screen list).
+        _menuList = new DisplayListBox
         {
             Dock = DockStyle.Fill,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            AccessibleName = "GSX menu",
-            // No AccessibleDescription — the textbox content itself always
+            SuppressTypeAhead = true,
+            AccessibleName = "GSX menu"
+            // No AccessibleDescription — the list content itself always
             // contains an actionable prompt ("Press F5 to open it"), so a
             // separate hint would be redundant noise for screen readers.
-            Text = MENU_HIDDEN_PROMPT
         };
+        _menuList.SetText(MENU_HIDDEN_PROMPT);
 
         var menuLabel = new Label
         {
@@ -158,7 +160,7 @@ public sealed class AccessGSXForm : Form
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40f));
 
         var menuPanel = new Panel { Dock = DockStyle.Fill };
-        menuPanel.Controls.Add(_menuTextBox);
+        menuPanel.Controls.Add(_menuList);
         menuPanel.Controls.Add(menuLabel);
 
         var tooltipPanel = new Panel { Dock = DockStyle.Fill };
@@ -345,14 +347,17 @@ public sealed class AccessGSXForm : Form
 
     private void OnMenuChangedUi()
     {
-        RepopulateMenu();
-        // Speak the rendered menu in one pass — matches the upstream
-        // AccessGSX "speak menu" behavior. The text in _menuTextBox is the
-        // title + every option, so a single Announce gives the user the
-        // full picture without having to navigate line-by-line.
-        if (!string.IsNullOrWhiteSpace(_menuTextBox.Text))
+        // RepopulateMenu returns exactly what it just wrote into _menuList
+        // (a DisplayListBox — its own .Text property reflects the selected
+        // item, not the joined content, so we can't read it back from the
+        // control). Speak the rendered menu in one pass — matches the
+        // upstream AccessGSX "speak menu" behavior: title + every option, so
+        // a single Announce gives the user the full picture without having
+        // to navigate line-by-line.
+        string menuText = RepopulateMenu();
+        if (!string.IsNullOrWhiteSpace(menuText))
         {
-            try { _announcer.Announce(_menuTextBox.Text); }
+            try { _announcer.Announce(menuText); }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] menu announce failed: {ex.Message}");
@@ -372,7 +377,7 @@ public sealed class AccessGSXForm : Form
         // Replace menu content with the same reopen prompt AccessGSX uses.
         // Keeps the textbox useful instead of blank, and obviates a
         // separate AccessibleDescription hint.
-        _menuTextBox.Text = MENU_HIDDEN_PROMPT;
+        _menuList.SetText(MENU_HIDDEN_PROMPT);
     }
 
     private void OnMenuTimedOut(object? sender, EventArgs e)
@@ -387,7 +392,7 @@ public sealed class AccessGSXForm : Form
         // MenuHidden fires first and writes the regular hide prompt; overwrite
         // with the timeout-specific version so the user sees they need to
         // re-open rather than that GSX closed the menu on demand.
-        _menuTextBox.Text = MENU_TIMEOUT_PROMPT;
+        _menuList.SetText(MENU_TIMEOUT_PROMPT);
         try { _announcer.Announce("GSX menu timeout"); }
         catch (Exception ex)
         {
@@ -554,18 +559,25 @@ public sealed class AccessGSXForm : Form
     // ─────────────────────────────────────────────────────────────────────
     private void UpdateStatus()
     {
-        _statusTextBox.Text = _gsxService.StatusText;
+        string text = _gsxService.StatusText;
+        if (_statusTextBox.Text != text)
+            _statusTextBox.Text = text;
     }
 
-    private void RepopulateMenu()
+    /// <summary>Repopulates the menu list and returns the text that was written into it
+    /// (either the hidden prompt or the rendered title+options block), so callers that
+    /// need to speak the content (OnMenuChangedUi) don't have to read it back from the
+    /// control — a DisplayListBox's own .Text reflects the selected item, not the joined
+    /// content.</summary>
+    private string RepopulateMenu()
     {
         // No options means we're in the hidden/initial state. Show the
         // reopen prompt instead of an empty textbox so the user always sees
         // (and the screen reader always reads) something useful.
         if (_gsxService.MenuOptions.Count == 0)
         {
-            _menuTextBox.Text = MENU_HIDDEN_PROMPT;
-            return;
+            _menuList.SetText(MENU_HIDDEN_PROMPT);
+            return MENU_HIDDEN_PROMPT;
         }
         // Render menu as plain multi-line text — same layout as AccessGSX:
         // title on its own line, then each option as "key - text". The
@@ -579,12 +591,20 @@ public sealed class AccessGSXForm : Form
         {
             sb.Append(option.Key.PadLeft(2)).Append(" - ").AppendLine(option.Text);
         }
-        _menuTextBox.Text = sb.ToString();
+        string text = sb.ToString();
+        // Trim the trailing AppendLine newline before handing to the list —
+        // otherwise the reconcile would show a spurious blank last row (the
+        // announced text below still uses the untrimmed value, matching
+        // exactly what was previously read back from the TextBox).
+        _menuList.SetText(text.TrimEnd());
+        return text;
     }
 
     private void UpdateTooltip()
     {
-        _tooltipTextBox.Text = _gsxService.LastTooltip;
+        string text = _gsxService.LastTooltip;
+        if (_tooltipTextBox.Text != text)
+            _tooltipTextBox.Text = text;
     }
 
     protected override void Dispose(bool disposing)
