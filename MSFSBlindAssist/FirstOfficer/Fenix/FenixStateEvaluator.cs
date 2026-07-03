@@ -61,9 +61,6 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         {
             case "FO_ENG1_N2": value = Eng1N2; return true;
             case "FO_ENG2_N2": value = Eng2N2; return true;
-            case "FO_ENGINES_RUNNING":
-                value = (Eng1N2 >= EngineRunningN2 && Eng2N2 >= EngineRunningN2) ? 1 : 0;
-                return true;
             case "FO_ENGINES_OFF":
                 value = (Eng1N2 < 20 && Eng2N2 < 20) ? 1 : 0;
                 return true;
@@ -73,8 +70,8 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         }
     }
 
-    /// <summary>Gear lever position (S_MIP_GEAR 1 = Down). NaN-safe: unknown reads as down
-    /// (never auto-raise on missing data).</summary>
+    /// <summary>Gear lever position (S_MIP_GEAR 1 = Down). NaN-safe: unknown reads as down,
+    /// so auto-gear-up never fires on missing data (auto-gear-down would be a no-op).</summary>
     public bool IsGearDown()
     {
         double v = GetValue("S_MIP_GEAR");

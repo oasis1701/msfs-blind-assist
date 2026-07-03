@@ -25,8 +25,9 @@ public static class FenixFlowDefinitions
     /// <summary>N2 percent at/above which an engine counts as started (CFM56 idle ~58-60).</summary>
     private const double EngRunningN2 = FenixStateEvaluator.EngineRunningN2;
 
-    // [RADAR] Weather radar OFF/ON values — confirm against Task 4's discovered
-    // ValueDescriptions before shipping (assumed: 1=Off on the 3-position SYS switch).
+    // [RADAR] Weather radar OFF/ON values — confirmed against the def's registered
+    // ValueDescriptions (FenixA320Definition.cs: S_WR_SYS {0="1",1="Off",2="2"},
+    // S_WR_PRED_WS {0="Off",1="Auto"}).
     private const int WxOff = 1;
     private const int WxSys1 = 0;
     private const int PwsOff = 0;

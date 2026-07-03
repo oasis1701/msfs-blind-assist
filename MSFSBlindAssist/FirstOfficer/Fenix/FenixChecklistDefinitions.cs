@@ -57,9 +57,11 @@ public static class FenixChecklistDefinitions
             Auto("EPU_BAT2", "ELEC_POWER_UP", "Battery 2: ON", "S_OH_ELEC_BAT2", v => v > 0.5,
                 (e, _) => e.Set("S_OH_ELEC_BAT2", 1)),
             // Momentary pushbutton; the blue ON light is the readable on-bus state.
+            // Guarded: a retick while already on-bus must not re-pulse (that would
+            // disconnect external power) — act only when the light disagrees.
             Auto("EPU_EXTPWR", "ELEC_POWER_UP", "External power: ON (if available)",
                 "I_OH_ELEC_EXT_PWR_L", v => v > 0.5,
-                (e, _) => e.Pulse("S_OH_ELEC_EXT_PWR")),
+                (e, s) => s.IsOn("I_OH_ELEC_EXT_PWR_L") ? Task.CompletedTask : e.Pulse("S_OH_ELEC_EXT_PWR")),
             Auto("EPU_NAVLOGO", "ELEC_POWER_UP", "Nav and logo lights: ON",
                 "S_OH_EXT_LT_NAV_LOGO", v => v > 0.5,
                 (e, _) => e.Set("S_OH_EXT_LT_NAV_LOGO", 1)),
@@ -71,8 +73,10 @@ public static class FenixChecklistDefinitions
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
         {
+            // Guarded: momentary pulse on a latching light — act only when off.
             Auto("PF_GNDCTL", "PREFLIGHT", "Recorder ground control: ON",
-                "I_OH_RCRD_GND_CTL_L", v => v > 0.5, (e, _) => e.Pulse("S_OH_RCRD_GND_CTL")),
+                "I_OH_RCRD_GND_CTL_L", v => v > 0.5,
+                (e, s) => s.IsOn("I_OH_RCRD_GND_CTL_L") ? Task.CompletedTask : e.Pulse("S_OH_RCRD_GND_CTL")),
             ActionManual("PF_CVR", "PREFLIGHT", "CVR test (listen for the test tone)",
                 (e, _) => e.Set("S_OH_RCRD_TEST", 1)),
             Auto("PF_IRS", "PREFLIGHT", "IRS 1, 2 and 3: NAV",
@@ -150,8 +154,13 @@ public static class FenixChecklistDefinitions
                     await e.Set("S_OH_FUEL_RIGHT_1", 1);
                     await e.Set("S_OH_FUEL_RIGHT_2", 1);
                 }),
+            // Guarded: a retick while already off must not re-pulse (that would
+            // reconnect external power) — act only when the light disagrees. The
+            // !IsOn guard also no-ops during the NaN window (unknown state), the
+            // safe direction for a target of OFF.
             Auto("BS_EXTPWR_OFF", "BEFORE_START", "External power: OFF",
-                "I_OH_ELEC_EXT_PWR_L", v => v < 0.5, (e, _) => e.Pulse("S_OH_ELEC_EXT_PWR")),
+                "I_OH_ELEC_EXT_PWR_L", v => v < 0.5,
+                (e, s) => !s.IsOn("I_OH_ELEC_EXT_PWR_L") ? Task.CompletedTask : e.Pulse("S_OH_ELEC_EXT_PWR")),
             Auto("BS_SEATBELTS", "BEFORE_START", "Seatbelt signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
             Auto("BS_BEACON", "BEFORE_START", "Beacon: ON",
@@ -220,8 +229,11 @@ public static class FenixChecklistDefinitions
         Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
         Items = new()
         {
+            // Guarded: momentary pulse on a latching light — act only when not armed
+            // (mirrors the BT_AUTOBRAKE flow step's own skip guard).
             Auto("BT_AUTOBRAKE", "BEFORE_TAKEOFF", "Autobrake: MAX",
-                "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5, (e, _) => e.Pulse("S_MIP_AUTOBRAKE_MAX")),
+                "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5,
+                (e, s) => s.IsOn("I_MIP_AUTOBRAKE_MAX_L") ? Task.CompletedTask : e.Pulse("S_MIP_AUTOBRAKE_MAX")),
             Auto("BT_WXR", "BEFORE_TAKEOFF", "Weather radar: ON",                      // [RADAR]
                 "S_WR_SYS", v => v < 0.5, (e, _) => e.Set("S_WR_SYS", 0)),             // [RADAR]
             Auto("BT_PWS", "BEFORE_TAKEOFF", "Predictive windshear: AUTO",             // [RADAR]
@@ -270,8 +282,10 @@ public static class FenixChecklistDefinitions
         Id = "DESCENT", Name = "Descent",
         Items = new()
         {
+            // Guarded: momentary pulse on a latching light — act only when not armed.
             Auto("DC_AUTOBRAKE", "DESCENT", "Autobrake: MED",
-                "I_MIP_AUTOBRAKE_MED_L", v => v > 0.5, (e, _) => e.Pulse("S_MIP_AUTOBRAKE_MED")),
+                "I_MIP_AUTOBRAKE_MED_L", v => v > 0.5,
+                (e, s) => s.IsOn("I_MIP_AUTOBRAKE_MED_L") ? Task.CompletedTask : e.Pulse("S_MIP_AUTOBRAKE_MED")),
             Auto("DC_SEATBELTS", "DESCENT", "Seatbelt signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
             Reminder("DC_ARRPERF", "DESCENT", "Calculate arrival performance on the EFB"),
@@ -285,10 +299,14 @@ public static class FenixChecklistDefinitions
         Id = "APPROACH", Name = "Approach",
         Items = new()
         {
+            // Guarded: momentary pulse on a latching light — act only when not lit
+            // (a retick on an already-lit side must not turn LS back off).
             Auto("AP_LS1", "APPROACH", "LS captain: ON",
-                "I_FCU_EFIS1_LS", v => v > 0.5, (e, _) => e.Pulse("S_FCU_EFIS1_LS_PRESS")),
+                "I_FCU_EFIS1_LS", v => v > 0.5,
+                (e, s) => s.IsOn("I_FCU_EFIS1_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS1_LS_PRESS")),
             Auto("AP_LS2", "APPROACH", "LS first officer: ON",
-                "I_FCU_EFIS2_LS", v => v > 0.5, (e, _) => e.Pulse("S_FCU_EFIS2_LS_PRESS")),
+                "I_FCU_EFIS2_LS", v => v > 0.5,
+                (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS_PRESS")),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
             Reminder("AP_BARO", "APPROACH", "Confirm QNH set at transition level"),
             Reminder("AP_ENGMODE", "APPROACH", "Set engine mode selector as required"),
