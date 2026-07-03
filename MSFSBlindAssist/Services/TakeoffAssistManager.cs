@@ -8,7 +8,7 @@ public class TakeoffAssistManager : IDisposable
 {
     private readonly ScreenReaderAnnouncer announcer;
     private readonly bool muteCenterlineAnnouncements;
-    private readonly bool invertPanning;
+    private readonly bool steerTowardTone;
     private readonly int headingToneThreshold;
     private readonly bool legacyMode;
     private readonly bool enableCallouts;
@@ -102,7 +102,7 @@ public class TakeoffAssistManager : IDisposable
 
     public TakeoffAssistManager(ScreenReaderAnnouncer screenReaderAnnouncer,
         HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.05,
-        bool muteCenterline = false, bool useInvertPanning = false,
+        bool muteCenterline = false, bool steerTowardTone = true,
         int useHeadingToneThreshold = 0, bool useLegacyMode = false,
         bool useEnableCallouts = true)
     {
@@ -111,7 +111,7 @@ public class TakeoffAssistManager : IDisposable
         toneVolume = volume;
         muteCenterlineAnnouncements = muteCenterline;
         enableCallouts = useEnableCallouts;
-        invertPanning = useInvertPanning;
+        this.steerTowardTone = steerTowardTone;
         headingToneThreshold = useHeadingToneThreshold;
         legacyMode = useLegacyMode;
 
@@ -350,26 +350,29 @@ public class TakeoffAssistManager : IDisposable
             // on centerline, not merely on runway heading — so a pilot pointed
             // straight but drifting off-CL still gets a steer cue. Within the
             // deadband we command no crab so a dead-on-centerline roll stays steady.
-            double desiredCrabDeg = 0.0;
-            double absCt = Math.Abs(crossTrackFeet);
-            if (absCt > CROSSTRACK_INTERCEPT_DEADBAND_FEET)
-            {
-                double mag = Math.Min(
-                    (absCt - CROSSTRACK_INTERCEPT_DEADBAND_FEET) * CROSSTRACK_INTERCEPT_DEG_PER_FOOT,
-                    CROSSTRACK_MAX_INTERCEPT_DEG);
-                desiredCrabDeg = mag * Math.Sign(crossTrackFeet);
-            }
+            // Crab command: 0 inside the deadband (the negative pre-clamp value
+            // falls out of the 0 lower bound), then linear per foot, capped.
+            double desiredCrabDeg = Math.Clamp(
+                (Math.Abs(crossTrackFeet) - CROSSTRACK_INTERCEPT_DEADBAND_FEET)
+                    * CROSSTRACK_INTERCEPT_DEG_PER_FOOT,
+                0.0, CROSSTRACK_MAX_INTERCEPT_DEG) * Math.Sign(crossTrackFeet);
 
             // steerError > 0 = steer RIGHT to reach the intercept heading; < 0 =
-            // steer LEFT. Matches the taxi steering-tone convention exactly: the
-            // tone pans in the direction you should TURN, and you steer TOWARD the
-            // tone to centre it (InvertPanning flips to steer-away, mirroring taxi).
+            // steer LEFT. Matches the taxi steering-tone convention: the tone pans
+            // in the direction you should TURN and you steer TOWARD it to centre
+            // (steerTowardTone=false flips to steer-away for users trained on the
+            // pre-#111 heading-deviation tone).
             double steerError = desiredCrabDeg - headingDiff;
+            // headingDiff is normalized to ±180 but adding the crab can push the sum
+            // past it (e.g. -175° heading error + 10° crab = 185°); re-wrap so a
+            // near-reciprocal activation still pans toward the SHORTER turn.
+            while (steerError > 180.0) steerError -= 360.0;
+            while (steerError < -180.0) steerError += 360.0;
             // ------------------------------------------------------------------
 
             // Audio pan in the steer direction - silent/centred tone = on the
             // heading that converges on centerline. Positive steerError = steer
-            // right → pan RIGHT (unless inverted). Hard-pan mode forces ±1 (one
+            // right → pan RIGHT (unless steerTowardTone is false). Hard-pan mode forces ±1 (one
             // speaker only) for stereo-speaker users; proportional curve otherwise.
             float pan;
             if (hardPanTone)
@@ -382,7 +385,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 pan = (float)Math.Clamp(steerError / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
             }
-            if (invertPanning) pan = -pan;
+            if (!steerTowardTone) pan = -pan;
             centerlineTone?.SetPan(pan);
 
             // Apply threshold - mute tone when the steer error is below threshold
