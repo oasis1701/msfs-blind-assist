@@ -4698,15 +4698,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // walk start can't race a decrement.
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
-            {
-                while (true)
-                {
-                    int c = Volatile.Read(ref XpdrWalkSuppressCount);
-                    if (c <= 0) return false; // background change → generic announce path
-                    if (Interlocked.CompareExchange(ref XpdrWalkSuppressCount, c - 1, c) == c)
-                        return true;          // suppress this walk-driven detent change
-                }
-            }
+                return SimConnect.PMDGNG3DataManager.AnyWalkInProgress;
 
             // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
@@ -5922,13 +5914,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Self-draining suppress count for transponder-mode click-walks. Whichever
     // path starts a walk — the panel combo (HandleUIVariableSet 4b) or a First
     // Officer executor's walked-selector dispatch — sets it to the number of
-    // detents the walk will traverse; ProcessSimVarUpdate's XPDR_ModeSel case
-    // drains one per walk-driven CDA change so the pass-through positions never
-    // announce (the walk's initiator already spoke). STATIC because the FO
-    // executor has no reference to the def instance; Interlocked because walks
-    // run off the UI thread.
-    internal static int XpdrWalkSuppressCount;
-
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
     /// SimVar writes get re-asserted every frame), so this dialog sets the altimeter by

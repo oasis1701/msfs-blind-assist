@@ -71,10 +71,8 @@ public class AircraftActionExecutor : IFoActionExecutor
     // while clicks 250 ms apart all registered. The walk re-reads the CDA position
     // before every click, so the gap must also cover the data broadcast refreshing
     // after the previous click.
-    private const int WalkClickGapMs = 300;
     // Iteration budget for a closed-loop walk: the widest selector span is 4 detents;
     // the headroom absorbs dropped clicks and stale-read re-decisions.
-    private const int MaxWalkClicks = 12;
 
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
@@ -269,33 +267,23 @@ public class AircraftActionExecutor : IFoActionExecutor
 
                 case Dispatch.WalkedSelector:
                 {
-                    // CLOSED-LOOP walk: re-read the live CDA position before every click
-                    // and step one detent toward the target — RIGHTSINGLE = up /
-                    // LEFTSINGLE = down (live-probed on EVT_TCAS_MODE; inverted vs
-                    // WalkSelectorViaClicks, see the enum doc). Open-loop walking is NOT
-                    // enough: PMDG silently drops detent clicks fired faster than ~4/s
-                    // (see WalkClickGapMs), and a dropped click in a blind sequence left
-                    // the selector one short. The re-read makes every drop self-correct.
+                    // CLOSED-LOOP walk, shared with the panel path (see
+                    // PMDGNG3DataManager.WalkSelectorClosedLoop): every
+                    // iteration awaits a FRESH Data-CDA snapshot — the ambient
+                    // poll is only 1 Hz, so unawaited re-reads steered clicks
+                    // off stale data — then steps one detent toward the target
+                    // (RIGHTSINGLE = up / LEFTSINGLE = down, live-probed on
+                    // EVT_TCAS_MODE; inverted vs WalkSelectorViaClicks). PMDG
+                    // drops detent clicks probabilistically; the fresh re-read
+                    // self-corrects every drop. Per-detent monitor chatter is
+                    // suppressed for the walk's duration via
+                    // PMDGNG3DataManager.AnyWalkInProgress (checked in
+                    // PMDG737Definition.ProcessSimVarUpdate); the flow
+                    // announces its own step label, so nothing extra here.
                     var dm = _sc.PMDGDataManager;
                     if (spec?.StateField == null || dm is not { IsReady: true } || target == null)
                         return false;
-                    // Swallow the per-detent monitor callouts this walk will produce —
-                    // walking STBY→TA/RA passes ALT RPTG OFF/XPNDR/TA and each detent
-                    // spoke (user report 2026-07-03); the flow/checklist announces its
-                    // own step label, so the pass-through chatter is pure noise. The
-                    // count drains in PMDG737Definition.ProcessSimVarUpdate.
-                    if (spec.StateField == "XPDR_ModeSel")
-                        Interlocked.Exchange(ref PMDG737Definition.XpdrWalkSuppressCount,
-                            Math.Abs(target.Value - (int)Math.Round(dm.GetFieldValue(spec.StateField))));
-                    for (int i = 0; i < MaxWalkClicks; i++)
-                    {
-                        int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));
-                        if (current == target.Value) return true;
-                        _sc.SendPMDGEventViaTransmitWithTarget(
-                            id, target.Value > current ? 0x80000000u : 0x20000000u);
-                        await Task.Delay(WalkClickGapMs);
-                    }
-                    return (int)Math.Round(dm.GetFieldValue(spec.StateField)) == target.Value;
+                    return await _sc.WalkPMDGSelectorClosedLoop(id, spec.StateField, target.Value);
                 }
 
                 case Dispatch.FuelLever:
