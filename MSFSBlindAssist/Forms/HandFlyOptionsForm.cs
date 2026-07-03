@@ -46,7 +46,7 @@ public partial class HandFlyOptionsForm : Form
     private Label takeoffVolumeValueLabel = null!;
 
     private CheckBox muteCenterlineCheckBox = null!;
-    private CheckBox invertPanningCheckBox = null!;
+    private CheckBox steerTowardToneCheckBox = null!;
     private CheckBox hardPanCheckBox = null!;
     private Label headingToneThresholdLabel = null!;
     private ComboBox headingToneThresholdCombo = null!;
@@ -72,7 +72,7 @@ public partial class HandFlyOptionsForm : Form
     public HandFlyWaveType TakeoffToneWaveform { get; private set; }
     public double TakeoffToneVolume { get; private set; }
     public bool TakeoffAssistMuteCenterlineAnnouncements { get; private set; }
-    public bool TakeoffAssistInvertPanning { get; private set; }
+    public bool TakeoffAssistSteerTowardTone { get; private set; }
     public bool TakeoffAssistHardPanTone { get; private set; }
     public int TakeoffAssistHeadingToneThreshold { get; private set; }
     public bool TakeoffAssistLegacyMode { get; private set; }
@@ -86,7 +86,7 @@ public partial class HandFlyOptionsForm : Form
         double visualGuidanceCurrentToneVolume,
         bool visualGuidanceHardPanTone,
         HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
-        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning,
+        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistSteerTowardTone,
         bool takeoffAssistHardPanTone,
         int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode,
         bool takeoffAssistEnableCallouts,
@@ -105,7 +105,7 @@ public partial class HandFlyOptionsForm : Form
         TakeoffToneWaveform = takeoffToneWaveform;
         TakeoffToneVolume = takeoffToneVolume;
         TakeoffAssistMuteCenterlineAnnouncements = takeoffAssistMuteCenterlineAnnouncements;
-        TakeoffAssistInvertPanning = takeoffAssistInvertPanning;
+        TakeoffAssistSteerTowardTone = takeoffAssistSteerTowardTone;
         TakeoffAssistHardPanTone = takeoffAssistHardPanTone;
         TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
         TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
@@ -483,17 +483,19 @@ public partial class HandFlyOptionsForm : Form
         };
         muteCenterlineCheckBox.CheckedChanged += MuteCenterlineCheckBox_CheckedChanged;
 
-        // Invert Heading Track Panning Checkbox
-        invertPanningCheckBox = new CheckBox
+        // Steer-toward-the-tone checkbox. CHECKED = the tone plays on the side you
+        // should steer toward (steer INTO it to centre) — binds 1:1 to
+        // UserSettings.TakeoffAssistSteerTowardTone, no negation anywhere.
+        steerTowardToneCheckBox = new CheckBox
         {
-            Text = "Invert heading track panning",
+            Text = "Steer toward the tone to stay on the centerline",
             Location = new Point(20, 700),
-            Size = new Size(450, 25),
-            Checked = TakeoffAssistInvertPanning,
-            AccessibleName = "Invert heading track panning",
-            AccessibleDescription = "When enabled, reverses the audio panning direction. Heading right of runway pans tone to left ear instead of right."
+            Size = new Size(550, 25),
+            Checked = TakeoffAssistSteerTowardTone,
+            AccessibleName = "Steer toward the tone to stay on the centerline",
+            AccessibleDescription = "Checked (default for new installs): the tone plays on the side you should steer toward, so you steer into the tone to return to the centerline. With a tone threshold of 1 degree or higher it goes silent when you are tracking straight; at Always it plays continuously, centred when on track. Uncheck to reverse the panning, so you steer away from the tone instead."
         };
-        invertPanningCheckBox.CheckedChanged += InvertPanningCheckBox_CheckedChanged;
+        steerTowardToneCheckBox.CheckedChanged += SteerTowardToneCheckBox_CheckedChanged;
 
         // Hard-pan tone checkbox. Forces the centerline tone to full ±1
         // instead of the proportional headingDiff/5° curve. For users on
@@ -515,10 +517,10 @@ public partial class HandFlyOptionsForm : Form
         // Heading Tone Threshold Label
         headingToneThresholdLabel = new Label
         {
-            Text = "Play heading deviation tone:",
+            Text = "Play steering tone:",
             Location = new Point(20, 765),
             Size = new Size(250, 20),
-            AccessibleName = "Heading Tone Threshold Label"
+            AccessibleName = "Steering Tone Threshold Label"
         };
 
         // Heading Tone Threshold ComboBox
@@ -527,8 +529,8 @@ public partial class HandFlyOptionsForm : Form
             Location = new Point(280, 763),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Play heading deviation tone",
-            AccessibleDescription = "Select when the heading deviation tone plays. Always plays continuously, or only when deviation exceeds selected threshold."
+            AccessibleName = "Play steering tone",
+            AccessibleDescription = "Select when the steering tone plays. Always plays continuously, or only when the required steering correction (heading error plus centerline correction) exceeds the selected threshold."
         };
         headingToneThresholdCombo.Items.AddRange(new object[]
         {
@@ -614,7 +616,7 @@ public partial class HandFlyOptionsForm : Form
             visualGuidanceHardPanCheckBox,
             takeoffToneLabel, takeoffToneCombo,
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
-            muteCenterlineCheckBox, invertPanningCheckBox, hardPanCheckBox,
+            muteCenterlineCheckBox, steerTowardToneCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
             legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
             okButton, cancelButton
@@ -656,7 +658,7 @@ public partial class HandFlyOptionsForm : Form
         takeoffVolumeLabel.TabIndex = 23;
         takeoffVolumeTrackBar.TabIndex = 24;
         muteCenterlineCheckBox.TabIndex = 25;
-        invertPanningCheckBox.TabIndex = 26;
+        steerTowardToneCheckBox.TabIndex = 26;
         hardPanCheckBox.TabIndex = 27;
         headingToneThresholdLabel.TabIndex = 28;
         headingToneThresholdCombo.TabIndex = 29;
@@ -773,9 +775,9 @@ public partial class HandFlyOptionsForm : Form
         TakeoffAssistMuteCenterlineAnnouncements = muteCenterlineCheckBox.Checked;
     }
 
-    private void InvertPanningCheckBox_CheckedChanged(object? sender, EventArgs e)
+    private void SteerTowardToneCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
-        TakeoffAssistInvertPanning = invertPanningCheckBox.Checked;
+        TakeoffAssistSteerTowardTone = steerTowardToneCheckBox.Checked;
     }
 
     private void HeadingToneThresholdCombo_SelectedIndexChanged(object? sender, EventArgs e)
