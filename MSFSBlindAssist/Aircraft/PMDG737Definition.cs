@@ -3574,7 +3574,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // CARGO_ArmedSw_0/1 are guarded — see _guardedMap
             ["XPDR_XpndrSelector_2"]       = "EVT_TCAS_XPNDR",
             ["XPDR_AltSourceSel_2"]        = "EVT_TCAS_ALTSOURCE",
-            ["XPDR_ModeSel"]               = "EVT_TCAS_MODE",
+            // XPDR_ModeSel is deliberately ABSENT: the mode rotary ignores the
+            // CDA position write this map dispatches — it is handled by the
+            // closed-loop click-walk branch (4b) in HandleUIVariableSet, which
+            // looks up EVT_TCAS_MODE directly. Do not re-add it here.
             ["XPDR_TcasTest"]              = "EVT_TCAS_TEST",
             ["XPDR_Ident"]                 = "EVT_TCAS_IDENT",
             // Overhead — Oxygen TEST (spring-loaded; release returns to NORMAL)
@@ -4603,13 +4606,33 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 int target = (int)value;
                 int current = (int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel"));
                 if (current == target) return true; // already at target — no-op
-                // Swallow the per-detent monitor callouts the walk will produce
-                // (one CDA change per successful click — the screen reader
-                // already spoke the combo selection). See the XPDR_ModeSel case
-                // in ProcessSimVarUpdate.
-                Interlocked.Exchange(ref XpdrWalkSuppressCount, Math.Abs(target - current));
-                _xpdrWalkOp = simConnect.WalkPMDGSelectorClosedLoop(
-                    (uint)xpdrEvId, "XPDR_ModeSel", target);
+                // Per-detent monitor callouts are suppressed for the walk's
+                // duration via PMDGNG3DataManager.AnyWalkInProgress (see the
+                // XPDR_ModeSel case in ProcessSimVarUpdate). The readback
+                // below is the single authoritative confirmation: it speaks
+                // the LANDED position from a fresh read — ground truth even
+                // when the walk gives up short of the target, so a failure is
+                // audible as the wrong mode name rather than silence.
+                async Task RunWalkAsync()
+                {
+                    try
+                    {
+                        await simConnect.WalkPMDGSelectorClosedLoop(
+                            (uint)xpdrEvId, "XPDR_ModeSel", target);
+                        int landed = (int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel"));
+                        string label = varDef.ValueDescriptions.TryGetValue(landed, out var text)
+                            ? text
+                            : landed.ToString();
+                        announcer.AnnounceImmediate($"Transponder: {label}.");
+                    }
+                    catch
+                    {
+                        // SimConnect drop mid-walk — never fault the
+                        // fire-and-forget task; the combo re-syncs from the
+                        // next monitor update.
+                    }
+                }
+                _xpdrWalkOp = RunWalkAsync();
             }
             return true;
         }
@@ -4729,23 +4752,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // Transponder mode: swallow the per-detent callouts produced by a
             // transponder click-walk — walking STBY→TA/RA passes ALT RPTG
             // OFF/XPNDR/TA and each detent would otherwise announce, when the
-            // walk's initiator already spoke (the screen reader read the combo
-            // pick; a First Officer flow announces its own step label).
-            // Self-draining COUNT (not a value latch) so it can never
-            // permanently mute a later background change — a knob turned in
-            // the VC still announces normally. CAS drain so an off-UI-thread
-            // walk start can't race a decrement.
+            // walk speaks for itself (the panel path reads back the landed
+            // mode when the walk ends; a First Officer flow announces its own
+            // step label). Gate = walk-ACTIVE, not a detent count: the walk's
+            // try/finally clears it on every exit path, so leftover state can
+            // never mute a later genuine background change — a knob turned in
+            // the VC announces normally.
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
-            {
-                while (true)
-                {
-                    int c = Volatile.Read(ref XpdrWalkSuppressCount);
-                    if (c <= 0) return false; // background change → generic announce path
-                    if (Interlocked.CompareExchange(ref XpdrWalkSuppressCount, c - 1, c) == c)
-                        return true;          // suppress this walk-driven detent change
-                }
-            }
+                return SimConnect.PMDGNG3DataManager.AnyWalkInProgress;
 
             // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
@@ -5961,16 +5976,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Transponder-mode closed-loop walk re-entrancy guard (HandleUIVariableSet
     // 4b; the walk itself is PMDGNG3DataManager.WalkSelectorClosedLoop).
     private Task? _xpdrWalkOp;
-
-    // Self-draining suppress count for transponder-mode click-walks. Whichever
-    // path starts a walk — the panel combo (HandleUIVariableSet 4b) or a First
-    // Officer executor's walked-selector dispatch — sets it to the number of
-    // detents the walk will traverse; ProcessSimVarUpdate's XPDR_ModeSel case
-    // drains one per walk-driven CDA change so the pass-through positions never
-    // announce (the walk's initiator already spoke). STATIC because the FO
-    // executor has no reference to the def instance; Interlocked because walks
-    // run off the UI thread.
-    internal static int XpdrWalkSuppressCount;
 
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
