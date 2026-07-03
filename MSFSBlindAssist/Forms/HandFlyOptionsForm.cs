@@ -72,7 +72,7 @@ public partial class HandFlyOptionsForm : Form
     public HandFlyWaveType TakeoffToneWaveform { get; private set; }
     public double TakeoffToneVolume { get; private set; }
     public bool TakeoffAssistMuteCenterlineAnnouncements { get; private set; }
-    public bool TakeoffAssistInvertPanning { get; private set; }
+    public bool TakeoffAssistSteerTowardTone { get; private set; }
     public bool TakeoffAssistHardPanTone { get; private set; }
     public int TakeoffAssistHeadingToneThreshold { get; private set; }
     public bool TakeoffAssistLegacyMode { get; private set; }
@@ -86,7 +86,7 @@ public partial class HandFlyOptionsForm : Form
         double visualGuidanceCurrentToneVolume,
         bool visualGuidanceHardPanTone,
         HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
-        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning,
+        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistSteerTowardTone,
         bool takeoffAssistHardPanTone,
         int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode,
         bool takeoffAssistEnableCallouts,
@@ -105,7 +105,7 @@ public partial class HandFlyOptionsForm : Form
         TakeoffToneWaveform = takeoffToneWaveform;
         TakeoffToneVolume = takeoffToneVolume;
         TakeoffAssistMuteCenterlineAnnouncements = takeoffAssistMuteCenterlineAnnouncements;
-        TakeoffAssistInvertPanning = takeoffAssistInvertPanning;
+        TakeoffAssistSteerTowardTone = takeoffAssistSteerTowardTone;
         TakeoffAssistHardPanTone = takeoffAssistHardPanTone;
         TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
         TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
@@ -484,17 +484,16 @@ public partial class HandFlyOptionsForm : Form
         muteCenterlineCheckBox.CheckedChanged += MuteCenterlineCheckBox_CheckedChanged;
 
         // Steer-toward-the-tone checkbox. CHECKED = the tone plays on the side you
-        // should steer toward (steer INTO it to centre). The stored setting is the
-        // inverse: TakeoffAssistInvertPanning == true means steer AWAY, so the
-        // checkbox Checked state is !TakeoffAssistInvertPanning.
+        // should steer toward (steer INTO it to centre) — binds 1:1 to
+        // UserSettings.TakeoffAssistSteerTowardTone, no negation anywhere.
         steerTowardToneCheckBox = new CheckBox
         {
             Text = "Steer toward the tone to stay on the centerline",
             Location = new Point(20, 700),
             Size = new Size(550, 25),
-            Checked = !TakeoffAssistInvertPanning,
+            Checked = TakeoffAssistSteerTowardTone,
             AccessibleName = "Steer toward the tone to stay on the centerline",
-            AccessibleDescription = "Checked (default): the tone plays on the side you should steer toward, so you steer into the tone to return to the centerline, and it goes silent when you are tracking straight down the runway. Uncheck only to reverse the panning, so you steer away from the tone instead."
+            AccessibleDescription = "Checked (default for new installs): the tone plays on the side you should steer toward, so you steer into the tone to return to the centerline. With a tone threshold of 1 degree or higher it goes silent when you are tracking straight; at Always it plays continuously, centred when on track. Uncheck to reverse the panning, so you steer away from the tone instead."
         };
         steerTowardToneCheckBox.CheckedChanged += SteerTowardToneCheckBox_CheckedChanged;
 
@@ -778,8 +777,7 @@ public partial class HandFlyOptionsForm : Form
 
     private void SteerTowardToneCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
-        // Checked = steer TOWARD the tone = NOT inverted.
-        TakeoffAssistInvertPanning = !steerTowardToneCheckBox.Checked;
+        TakeoffAssistSteerTowardTone = steerTowardToneCheckBox.Checked;
     }
 
     private void HeadingToneThresholdCombo_SelectedIndexChanged(object? sender, EventArgs e)

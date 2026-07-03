@@ -417,7 +417,7 @@ public partial class MainForm : Form
         takeoffAssistManager = new TakeoffAssistManager(announcer,
             takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume,
             takeoffSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            takeoffSettings.TakeoffAssistInvertPanning,
+            takeoffSettings.TakeoffAssistSteerTowardTone,
             takeoffSettings.TakeoffAssistHeadingToneThreshold, takeoffSettings.TakeoffAssistLegacyMode,
             takeoffSettings.TakeoffAssistEnableCallouts);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
@@ -4445,7 +4445,7 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistToneWaveform,
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            currentSettings.TakeoffAssistInvertPanning,
+            currentSettings.TakeoffAssistSteerTowardTone,
             currentSettings.TakeoffAssistHardPanTone,
             currentSettings.TakeoffAssistHeadingToneThreshold,
             currentSettings.TakeoffAssistLegacyMode,
@@ -4468,7 +4468,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
-                currentSettings.TakeoffAssistInvertPanning = settingsForm.TakeoffAssistInvertPanning;
+                currentSettings.TakeoffAssistSteerTowardTone = settingsForm.TakeoffAssistSteerTowardTone;
                 currentSettings.TakeoffAssistHardPanTone = settingsForm.TakeoffAssistHardPanTone;
                 currentSettings.TakeoffAssistHeadingToneThreshold = settingsForm.TakeoffAssistHeadingToneThreshold;
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
@@ -4485,7 +4485,7 @@ public partial class MainForm : Form
                     takeoffAssistManager = new TakeoffAssistManager(announcer,
                         currentSettings.TakeoffAssistToneWaveform, currentSettings.TakeoffAssistToneVolume,
                         currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-                        currentSettings.TakeoffAssistInvertPanning,
+                        currentSettings.TakeoffAssistSteerTowardTone,
                         currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode,
                         currentSettings.TakeoffAssistEnableCallouts);
                     takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
