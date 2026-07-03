@@ -758,7 +758,14 @@ public partial class MainForm : Form
     // ANY OTHER source (flyPad, ground crew, failure, systems-host) still announces,
     // because only the matching value within the short window is consumed.
     private readonly Dictionary<string, (double value, long tick)> _uiSetEcho = new();
-    private const int UiSetEchoSuppressMs = 1500;
+    // Window sized for the SLOWEST echo path: the PMDG 777 CDA is POLLED at 1000 ms
+    // (PMDG777DataManager._pollTimer), and a GUARDED switch (alt vent etc.) adds a
+    // 150+150 ms guard-open/set/close sequence before the value even changes — so the
+    // echo can land ~1.2-1.5 s after the combo commit and escaped the old 1500 ms
+    // window (reported live on the 777 alt vent, 2026-07). Both gates below stay
+    // consumed-once (+ the generic one value-matched), so a wider window does not eat
+    // genuine later changes.
+    private const int UiSetEchoSuppressMs = 3000;
     private void MarkUiSet(string? varName, double value)
     {
         if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);
