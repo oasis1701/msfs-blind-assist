@@ -41,6 +41,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         ["S_FCU_EFIS1_LS_PRESS"]   = LVarDispatchKind.LVarPulse,
         ["S_FCU_EFIS2_LS_PRESS"]   = LVarDispatchKind.LVarPulse,
         ["S_FC_RUDDER_TRIM_RESET"] = LVarDispatchKind.LVarPulse,
+        ["S_ECAM_TO"]              = LVarDispatchKind.LVarPulse,   // TO config test
     };
 
     protected override IReadOnlyDictionary<string, LVarDispatchKind> DispatchTable => Table;
@@ -58,6 +59,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
                 case "FIRE_TEST_APU":            return FireTest("S_OH_FIRE_APU_TEST");
                 case "FIRE_TEST_ENG1":           return FireTest("S_OH_FIRE_ENG1_TEST");
                 case "FIRE_TEST_ENG2":           return FireTest("S_OH_FIRE_ENG2_TEST");
+                case "LANDING_LIGHTS_BOTH":      return SetLandingLights(step.TargetValue ?? 2);
             }
         }
         return base.ExecuteStepAsync(step);
