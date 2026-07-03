@@ -279,6 +279,14 @@ public class AircraftActionExecutor : IFoActionExecutor
                     var dm = _sc.PMDGDataManager;
                     if (spec?.StateField == null || dm is not { IsReady: true } || target == null)
                         return false;
+                    // Swallow the per-detent monitor callouts this walk will produce —
+                    // walking STBY→TA/RA passes ALT RPTG OFF/XPNDR/TA and each detent
+                    // spoke (user report 2026-07-03); the flow/checklist announces its
+                    // own step label, so the pass-through chatter is pure noise. The
+                    // count drains in PMDG737Definition.ProcessSimVarUpdate.
+                    if (spec.StateField == "XPDR_ModeSel")
+                        Interlocked.Exchange(ref PMDG737Definition.XpdrWalkSuppressCount,
+                            Math.Abs(target.Value - (int)Math.Round(dm.GetFieldValue(spec.StateField))));
                     for (int i = 0; i < MaxWalkClicks; i++)
                     {
                         int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));

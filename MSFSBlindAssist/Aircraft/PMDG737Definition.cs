@@ -4687,6 +4687,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         switch (varName)
         {
             // -------------------------------------------------------------
+            // Transponder mode: swallow the per-detent callouts produced by a
+            // transponder click-walk — walking STBY→TA/RA passes ALT RPTG
+            // OFF/XPNDR/TA and each detent would otherwise announce, when the
+            // walk's initiator already spoke (the screen reader read the combo
+            // pick; a First Officer flow announces its own step label).
+            // Self-draining COUNT (not a value latch) so it can never
+            // permanently mute a later background change — a knob turned in
+            // the VC still announces normally. CAS drain so an off-UI-thread
+            // walk start can't race a decrement.
+            // -------------------------------------------------------------
+            case "XPDR_ModeSel":
+            {
+                while (true)
+                {
+                    int c = Volatile.Read(ref XpdrWalkSuppressCount);
+                    if (c <= 0) return false; // background change → generic announce path
+                    if (Interlocked.CompareExchange(ref XpdrWalkSuppressCount, c - 1, c) == c)
+                        return true;          // suppress this walk-driven detent change
+                }
+            }
+
+            // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
             // ElevTrimTT (see GetPMDGVariables) because the NG3 does not drive
             // the stock ELEVATOR TRIM POSITION SimVar. Gated by the shared
@@ -5896,6 +5918,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // so no synchronization is needed.
     private Task? _baroKnobOp;
     private Task? _minsKnobOp;
+
+    // Self-draining suppress count for transponder-mode click-walks. Whichever
+    // path starts a walk — the panel combo (HandleUIVariableSet 4b) or a First
+    // Officer executor's walked-selector dispatch — sets it to the number of
+    // detents the walk will traverse; ProcessSimVarUpdate's XPDR_ModeSel case
+    // drains one per walk-driven CDA change so the pass-through positions never
+    // announce (the walk's initiator already spoke). STATIC because the FO
+    // executor has no reference to the def instance; Interlocked because walks
+    // run off the UI thread.
+    internal static int XpdrWalkSuppressCount;
 
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
