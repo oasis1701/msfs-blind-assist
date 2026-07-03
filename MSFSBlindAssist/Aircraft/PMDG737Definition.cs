@@ -4619,6 +4619,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     {
                         await simConnect.WalkPMDGSelectorClosedLoop(
                             (uint)xpdrEvId, "XPDR_ModeSel", target);
+                        // If the aircraft — and thus the PMDG data manager — was
+                        // swapped out during the walk, xpdrDm is a disposed
+                        // instance whose IsReady stays latched true; don't read a
+                        // stale mode or announce it into whatever aircraft is now
+                        // loaded.
+                        if (!ReferenceEquals(simConnect.PMDGDataManager, xpdrDm)) return;
                         int landed = (int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel"));
                         string label = varDef.ValueDescriptions.TryGetValue(landed, out var text)
                             ? text
