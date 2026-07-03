@@ -178,6 +178,15 @@ public class UserSettings
         // after the user deliberately re-enables one.
         public bool FenixMonitorDefaultsSeeded { get; set; } = false;
 
+        // One-time seed marker (SettingsManager.SeedPmdgMonitorDefaults). The 737's
+        // window-heat ON annunciators (ICE_annunON_0..3) are added to
+        // PMDGDisabledMonitorVariables by default: the window-heat controller cycles
+        // them thermostatically (especially on the ground), so every cycle spoke
+        // "Window N Heat On: on/off" with no switch moving. They stay toggleable in
+        // the PMDG Announcement Monitor; this flag stops re-seeding after a
+        // deliberate re-enable.
+        public bool PmdgMonitorDefaultsSeeded { get; set; } = false;
+
         // PMDG Announcement Monitor Settings — variable keys that the user has
         // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-
         // monitoring branch consults this list when the loaded aircraft's
@@ -403,6 +412,7 @@ public class UserSettings
             FOAutoFlapsEnabled = FOAutoFlapsEnabled,
             FOAutoApEnabled    = FOAutoApEnabled,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
+            PmdgMonitorDefaultsSeeded = PmdgMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             HS787DisabledMonitorVariables = new List<string>(HS787DisabledMonitorVariables),

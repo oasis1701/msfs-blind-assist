@@ -173,7 +173,7 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildEngineStart() => new()
     {
         Id = "ENGINE_START", Name = "Engine Start",
-        Description = "Starts engines 2 then 1 with condition waits on the start valve.",
+        Description = "Starts engines 2 then 1, waiting for each start switch to cut out before continuing.",
         RelatedChecklistGroupIds = new[] { "ENGINE_START" },
         Steps = new()
         {
@@ -199,8 +199,13 @@ public static class PMDG737FlowDefinitions
             WaitForField("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG2_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
             SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1),
-            WaitForField("ES_E2_WAIT", "Engine 2 starting — waiting for the start valve to close",
-                "ENG_StartValve_1", v => v < 0.5, 120),
+            // Starter cutout: the GRD position is solenoid-held and springs back to OFF
+            // as the starter disengages. Wait on the START SWITCH itself — matching the
+            // pilot-paced checklist and guaranteeing engine 1's GRD is never set while
+            // engine 2's starter is still engaged (the old start-valve-byte wait released
+            // early — user report 2026-07-03).
+            WaitForField("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
+                "ENG_StartSelector_1", v => Math.Abs(v - 1) < 0.1, 120),
             // --- Engine 1 ---
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
             WaitForField("ES_E1_VALVE", "Engine 1 start valve open",
@@ -208,8 +213,8 @@ public static class PMDG737FlowDefinitions
             WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
-            WaitForField("ES_E1_WAIT", "Engine 1 starting — waiting for the start valve to close",
-                "ENG_StartValve_0", v => v < 0.5, 120),
+            WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
+                "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120),
         }
     };
 

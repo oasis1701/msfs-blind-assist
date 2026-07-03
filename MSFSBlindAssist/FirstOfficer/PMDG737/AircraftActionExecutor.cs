@@ -24,6 +24,14 @@ public enum Dispatch
     /// <summary>Absolute rotary: <c>SendPMDGEventViaTransmitWithTarget(id, target)</c> —
     /// engine start selectors + ignition (LEFTSINGLE click-walk is directionally inverted).</summary>
     AbsoluteSelector,
+    /// <summary>Click-walked rotary: read the current position from the CDA state field,
+    /// then step to the target one transmit mouse-click at a time — RIGHTSINGLE steps UP
+    /// (higher index), LEFTSINGLE steps DOWN. Live-probed 2026-07-03 on EVT_TCAS_MODE:
+    /// the CDA write with a position AND the transmit-with-target shape are both silent
+    /// no-ops; only the click-walk moves it. NOTE the direction is the OPPOSITE of
+    /// <c>WalkSelectorViaClicks</c>' TFM convention (same inversion the engine-start
+    /// selectors documented), which is why this walks locally instead of reusing it.</summary>
+    WalkedSelector,
     /// <summary>Fuel-control lever: transmit with a directional mouse flag (Run=LEFTSINGLE, Cutoff=RIGHTSINGLE).</summary>
     FuelLever,
     /// <summary>MCP FD / AT Arm: <c>SendPMDGEvent(event, id, MOUSE_FLAG_LEFTSINGLE)</c>.</summary>
@@ -52,6 +60,12 @@ public class AircraftActionExecutor : IFoActionExecutor
     // APU selector ON → START needs a dwell so the model registers ON before the momentary
     // START, otherwise the APU never spools up (same fix as the 777 StartApuAsync).
     private const int ApuOnToStartMs = 2000;
+    // Gap between successive transmit mouse-clicks when walking a rotary (WalkedSelector)
+    // or rotating an EFIS baro knob. The transmit path doesn't frame-coalesce like the
+    // CDA, but PMDG needs a beat between clicks to register each detent; 40 ms is the
+    // Ctrl+B baro dialog's in-sim-verified rate (RotateBaroKnobAsync), doubled here for
+    // margin since these fire unattended.
+    private const int WalkClickGapMs = 80;
 
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
@@ -78,7 +92,7 @@ public class AircraftActionExecutor : IFoActionExecutor
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public bool IsAvailable => _sc is { IsConnected: true };
 
-    private sealed record Spec(Dispatch Kind, string? Guard = null);
+    private sealed record Spec(Dispatch Kind, string? Guard = null, string? StateField = null);
 
     // Event -> dispatch category. Events NOT listed default to Simple.
     // Built by inverting PMDG737Definition's dispatch maps.
@@ -119,6 +133,13 @@ public class AircraftActionExecutor : IFoActionExecutor
         ["EVT_OH_LIGHTS_L_ENGINE_START"]     = new(Dispatch.AbsoluteSelector),
         ["EVT_OH_LIGHTS_R_ENGINE_START"]     = new(Dispatch.AbsoluteSelector),
         ["EVT_OH_LIGHTS_IGN_SEL"]            = new(Dispatch.AbsoluteSelector),
+        // Transponder mode rotary: live-probed 2026-07-03 — the CDA write with a
+        // position parameter (the panel's XPDR_ModeSel path, which the FO used to
+        // share) AND the engine-start-style transmit-with-target are BOTH silent
+        // no-ops on this rotary; only mouse-click walking moves it (LEFTSINGLE
+        // stepped 2→1, RIGHTSINGLE 1→2 — verified both directions). The PANEL is
+        // deliberately left on the CDA path for now — FO-only fix per user direction.
+        ["EVT_TCAS_MODE"]                    = new(Dispatch.WalkedSelector, StateField: "XPDR_ModeSel"),
 
         // --- Fuel-control levers ---
         ["EVT_CONTROL_STAND_ENG1_START_LEVER"] = new(Dispatch.FuelLever),
@@ -143,6 +164,18 @@ public class AircraftActionExecutor : IFoActionExecutor
         ["EVT_CONTROL_STAND_FLAPS_LEVER_25"] = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_FLAPS_LEVER_30"] = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_FLAPS_LEVER_40"] = new(Dispatch.MouseFlag),
+
+        // --- Speed-brake lever per-detent clicks ---
+        // Same SDK mouse-click family as the flap detents above (sub-detent event ids
+        // 6791–6795, like the flaps' 7141–7149): they commit ONLY with
+        // MOUSE_FLAG_LEFTSINGLE. The old Simple dispatch (bare param) was a silent
+        // no-op — the Landing flow's "Speedbrake: ARMED" never armed. Live-verified
+        // 2026-07-03: CDA + LEFTSINGLE on _ARM lit MAIN_annunSPEEDBRAKE_ARMED.
+        ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN"]    = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM"]     = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50PCT"]   = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_FLT_DET"] = new(Dispatch.MouseFlag),
+        ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_UP"]      = new(Dispatch.MouseFlag),
     };
 
     // -----------------------------------------------------------------------
@@ -224,6 +257,25 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case Dispatch.AbsoluteSelector:
                     _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(target ?? 0));
                     return true;
+
+                case Dispatch.WalkedSelector:
+                {
+                    // Step from the live CDA position to the target, one transmit click
+                    // per detent. RIGHTSINGLE = up / LEFTSINGLE = down (live-probed on
+                    // EVT_TCAS_MODE — inverted vs WalkSelectorViaClicks, see the enum doc).
+                    var dm = _sc.PMDGDataManager;
+                    if (spec?.StateField == null || dm is not { IsReady: true } || target == null)
+                        return false;
+                    int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));
+                    int steps = target.Value - current;
+                    uint flag = steps > 0 ? 0x80000000u : 0x20000000u;
+                    for (int i = 0; i < Math.Abs(steps); i++)
+                    {
+                        _sc.SendPMDGEventViaTransmitWithTarget(id, flag);
+                        if (i < Math.Abs(steps) - 1) await Task.Delay(WalkClickGapMs);
+                    }
+                    return true;
+                }
 
                 case Dispatch.FuelLever:
                     _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(t != 0 ? MouseFlagLeftSingle : MouseFlagRightSingle));
@@ -453,8 +505,77 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetEFISModeFO(int p)     => Fire("EVT_EFIS_FO_MODE", p);
     public bool SetEFISRangeCapt(int p)  => Fire("EVT_EFIS_CPT_RANGE", p);
     public bool SetEFISRangeFO(int p)    => Fire("EVT_EFIS_FO_RANGE", p);
-    public bool PushBaroSTDCapt()        => FireMomentaryToggle("EVT_EFIS_CPT_BARO_STD");
-    public bool PushBaroSTDFO()          => FireMomentaryToggle("EVT_EFIS_FO_BARO_STD");
+    // -----------------------------------------------------------------------
+    // EFIS baro to STANDARD — knob ROTATION, not the STD toggle (2026-07-03).
+    //
+    // The old PushBaroSTDCapt/FO fired the EVT_EFIS_*_BARO_STD momentary toggle.
+    // Live-probed: that toggle commits only intermittently (one probe pair engaged
+    // STD, an identically-shaped pair later silently failed), it has NO readback on
+    // the NG3 (no struct field; the stock KOHLSMAN SETTING STD flag never moves),
+    // and while STD *is* engaged the baro knob is masked — so a missed or doubled
+    // toggle is invisible and unrecoverable. The user-reported symptom was exactly
+    // that: "Altimeters set to standard" announced, altimeters unchanged.
+    //
+    // Rotation is the Ctrl+B altimeter dialog's in-sim-verified mechanism (PMDG
+    // ignores absolute baro writes; EVT_EFIS_CPT_BARO / EVT_EFIS_FO_BARO transmit
+    // clicks: RIGHTSINGLE = up, LEFTSINGLE = down, 1 hPa or 0.01 inHg per click —
+    // re-verified live 2026-07-03, both knobs). Deterministic: read the KOHLSMAN
+    // simvar (continuously cached), step to 1013 / 29.92. If the pilot manually
+    // engaged STD, the reading already shows ~29.92 → zero clicks → harmless no-op.
+    //
+    // The stock KOHLSMAN indexes read as ONE ganged value on the NG3 (live-probed:
+    // the FO knob moved KOHLSMAN:1 and :2 together; there is no per-side readback).
+    // So: rotate the captain knob, wait for the fresh reading, then rotate the FO
+    // knob by whatever residual remains. Ganged topology → residual 0 after the
+    // captain pass (no double-apply); if a per-side topology ever surfaces, the
+    // captain's altimeter — the one every MSFSBA readout uses — still lands on
+    // standard under both.
+    // -----------------------------------------------------------------------
+
+    private const double StdInHg = 29.92;
+
+    public async Task SetAltimetersStandardAsync()
+    {
+        var sc = _sc;
+        if (sc == null) return;
+        if (!PMDG737Definition.EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int captEv) ||
+            !PMDG737Definition.EventIds.TryGetValue("EVT_EFIS_FO_BARO", out int foEv))
+            return;
+
+        await RotateBaroToStandardAsync(sc, (uint)captEv, "EFIS_BaroSelHPA_0");
+
+        // Let the knob clicks land and the continuous batch (1 Hz) deliver the fresh
+        // KOHLSMAN value before computing the FO side's residual — a stale read here
+        // would double-apply the clicks on the ganged baro.
+        await Task.Delay(1500);
+        await RotateBaroToStandardAsync(sc, (uint)foEv, "EFIS_BaroSelHPA_1");
+    }
+
+    private async Task RotateBaroToStandardAsync(SimConnectManager sc, uint knobEventId, string hpaModeField)
+    {
+        double? curInHg = sc.GetCachedVariableValue("ALTIMETER_SETTING");
+        if (curInHg == null) return;
+
+        // Click size follows the side's own hPa/inHg unit selector.
+        bool hpaMode = false;
+        if (sc.PMDGDataManager is { IsReady: true } dm)
+            hpaMode = (int)Math.Round(dm.GetFieldValue(hpaModeField)) == 1;
+
+        int clicks = hpaMode
+            ? (int)Math.Round(StdInHg * 33.8639) - (int)Math.Round(curInHg.Value * 33.8639) // 1 hPa per click
+            : (int)Math.Round((StdInHg - curInHg.Value) / 0.01);                            // 0.01 inHg per click
+        if (clicks == 0) return;
+
+        // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down — the dialog's
+        // verified convention. Cap matches the Ctrl+B dialog's safety cap.
+        uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
+        int count = Math.Min(Math.Abs(clicks), 200);
+        for (int i = 0; i < count; i++)
+        {
+            sc.SendPMDGEventViaTransmitWithTarget(knobEventId, flag);
+            if (i < count - 1) await Task.Delay(WalkClickGapMs);
+        }
+    }
 
     // IRS / display / transponder
     public bool SetIrsMode(int p)        => FireBoth("EVT_IRU_MSU_LEFT", "EVT_IRU_MSU_RIGHT", p); // 2=NAV

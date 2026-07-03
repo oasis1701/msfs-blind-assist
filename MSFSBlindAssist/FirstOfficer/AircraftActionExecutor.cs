@@ -82,11 +82,17 @@ public class AircraftActionExecutor : IFoActionExecutor
         if (_simConnect == null || !PMDG777Definition.EventIds.TryGetValue(eventName, out int evId)) return false;
         uint eventId = (uint)evId;
 
-        // Per-detent flap-lever events are SDK mouse-click events that ONLY commit with
-        // MOUSE_FLAG_LEFTSINGLE (the panel's proven FCTL_Flaps convention). Force the
-        // flag here so EVERY caller shape is corrected — the flows' takeoff-flap and
-        // flaps-up steps were built as IsMomentary (param 1) and silently did nothing.
-        if (eventName.StartsWith("EVT_CONTROL_STAND_FLAPS_LEVER_", StringComparison.Ordinal))
+        // Per-detent flap-lever AND speed-brake-lever events are SDK mouse-click events
+        // that ONLY commit with MOUSE_FLAG_LEFTSINGLE (the panel's proven FCTL_Flaps
+        // convention; the speed-brake detents are the same sub-detent click family —
+        // live-verified on the 737 2026-07-03, where CDA+LEFTSINGLE on _ARM lit the
+        // ARMED annunciator while the bare param was a silent no-op). Force the flag
+        // here so EVERY caller shape is corrected — the flows' flap steps and the
+        // "Speedbrake: ARMED"/"DOWN" steps were built as IsMomentary (param 1) and
+        // silently did nothing. (The trailing underscore keeps the bare
+        // EVT_CONTROL_STAND_SPEED_BRAKE_LEVER drag-axis event out of this.)
+        if (eventName.StartsWith("EVT_CONTROL_STAND_FLAPS_LEVER_", StringComparison.Ordinal) ||
+            eventName.StartsWith("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_", StringComparison.Ordinal))
         {
             usesMouseFlag = true;
             isMomentary = false;

@@ -9,13 +9,17 @@ namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 ///   OFF — climbing through 10,300 ft (rising threshold + 300 ft hysteresis)
 ///   ON  — descending through 9,700 ft  (falling threshold − 300 ft hysteresis)
 ///
-/// Transition altitude / level baro-STD:
-///   Set STD  — climbing through transitionAltitude (+ hysteresis); pushes both Captain and FO
-///              baro-STD buttons unconditionally. The NG3 data struct exposes no baro-STD
-///              readback field, so the push is always correct — if already in STD, a second push
-///              would toggle it off, but the _prevInStd latch prevents that.
-///   Leave STD — descending through transitionLevel (− hysteresis); pushes both baro-STD buttons
-///              again (which toggles back to QNH mode on the 737) and announces to set local QNH.
+/// Transition altitude / level altimeter handling (2026-07-03 — ROTATION, not the STD toggle):
+///   Set standard — climbing through transitionAltitude (+ hysteresis); ROTATES both EFIS baro
+///              knobs to 1013 hPa / 29.92 inHg (SetAltimetersStandardAsync — the Ctrl+B dialog's
+///              verified mechanism). The old EVT_EFIS_*_BARO_STD momentary pushes committed only
+///              intermittently and have no NG3 readback, so the announcement fired while the
+///              altimeters silently stayed on QNH (the reported bug); a blind toggle could also
+///              flip a manually-set STD the wrong way. Rotation is deterministic and a no-op when
+///              the altimeter already reads standard.
+///   Leave standard — descending through transitionLevel (− hysteresis); announce-only ("set
+///              local pressure now" — the pilot sets QNH via Ctrl+B). The local QNH is unknowable
+///              here, and with no STD-mode toggling on the climb there is nothing to toggle back.
 ///
 /// Hysteresis on every crossing prevents oscillating callouts near the altitude band.
 ///
@@ -184,23 +188,20 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         // the crossing. That silent miss is one way "altimeters never went to STD".
         if (!descending && nowAboveTrans && _prevInStd == false)
         {
-            // Climbing through transition altitude — set both altimeters to STD.
-            // The 737 NG3 struct has no baro-STD state field, so we push unconditionally.
-            // The _prevInStd latch prevents a repeated push on subsequent Update() calls.
-            PhaseLog.Write($"737 STD push fired alt={alt:F0} climbing={climbing} descending={descending}");
-            _executor.PushBaroSTDCapt();
-            _executor.PushBaroSTDFO();
+            // Climbing through transition altitude — rotate both EFIS baro knobs to
+            // standard (fire-and-forget; the executor sequences the two knobs itself).
+            // The _prevInStd latch prevents a repeat on subsequent Update() calls.
+            PhaseLog.Write($"737 STD rotate fired alt={alt:F0} climbing={climbing} descending={descending}");
+            _ = _executor.SetAltimetersStandardAsync();
             _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
             _prevInStd = true;
         }
         else if (!climbing && nowBelowTrans && _prevInStd == true)
         {
-            // Descending through transition level — return both altimeters to local QNH.
-            // Pushing the STD button again toggles it back to QNH mode on the 737 MCP.
-            PhaseLog.Write($"737 QNH push fired alt={alt:F0} climbing={climbing} descending={descending}");
-            _executor.PushBaroSTDCapt();
-            _executor.PushBaroSTDFO();
-            _announcer.AnnounceImmediate("Transition level. Altimeters set to local QNH. Set local pressure now.");
+            // Descending through transition level — the local QNH is unknowable here,
+            // so this is announce-only; the pilot sets pressure via the Ctrl+B dialog.
+            PhaseLog.Write($"737 QNH reminder fired alt={alt:F0} climbing={climbing} descending={descending}");
+            _announcer.AnnounceImmediate("Transition level. Set local altimeter pressure now.");
             _prevInStd = false;
         }
 

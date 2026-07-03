@@ -72,6 +72,7 @@ public static class SettingsManager
                     UserSettings defaultSettings = new UserSettings();
                     MigrateFOGearSplit(defaultSettings);
                     SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
+                    SeedPmdgMonitorDefaults(defaultSettings);
                     return defaultSettings;
                 }
 
@@ -92,6 +93,7 @@ public static class SettingsManager
 
                 MigrateFOGearSplit(settings);       // one-time: seed split gear flags from the legacy flag
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
+                SeedPmdgMonitorDefaults(settings);  // one-time: default-silence the cycling window-heat ON annunciators
                 return settings;
             }
             catch (Exception ex)
@@ -150,6 +152,33 @@ public static class SettingsManager
             {
                 if (!s.FenixDisabledMonitorVariables.Contains(key))
                     s.FenixDisabledMonitorVariables.Add(key);
+            }
+            Save(s);
+        }
+
+        /// <summary>
+        /// One-time seed of PMDG vars that should be auto-monitored but NOT spoken by
+        /// default — added to the shared PMDG disabled-monitor list (panel displays
+        /// still track them; only the spoken call-out is gated off):
+        ///   * the 737 window-heat ON annunciators (ICE_annunON_0..3, "Window N Heat
+        ///     On") — the window-heat controller cycles them thermostatically as the
+        ///     windows reach temperature, most visibly on the ground, so every cycle
+        ///     spoke an on/off announcement while no switch moved (reported 2026-07-03).
+        /// Re-enable any of them in the PMDG Announcement Monitor (Ctrl+M); this runs
+        /// once (guarded by PmdgMonitorDefaultsSeeded) so that choice sticks.
+        /// </summary>
+        private static void SeedPmdgMonitorDefaults(UserSettings s)
+        {
+            if (s.PmdgMonitorDefaultsSeeded) return;
+            s.PmdgMonitorDefaultsSeeded = true;
+            string[] defaultSilent =
+            {
+                "ICE_annunON_0", "ICE_annunON_1", "ICE_annunON_2", "ICE_annunON_3",
+            };
+            foreach (var key in defaultSilent)
+            {
+                if (!s.PMDGDisabledMonitorVariables.Contains(key))
+                    s.PMDGDisabledMonitorVariables.Add(key);
             }
             Save(s);
         }
