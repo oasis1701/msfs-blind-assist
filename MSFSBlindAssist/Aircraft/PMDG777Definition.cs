@@ -2018,17 +2018,24 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // =================================================================
             // CARGO TEMPERATURE
-            // The -300ER has exactly TWO cargo temp controls: the AFT and BULK
-            // 3-position selectors (SDK AIR_CargoTemp_Selector[2] — the header
-            // comment says "aft / bulk", NOT fwd/aft; the old keys here were
-            // mislabeled). Live-verified 2026-07 on the loaded -300ER: readable
-            // and settable (aft LOW -> HIGH with SDK read-back confirming).
-            // The four continuous knobs (AIR_CargoTemp_MainDeck*/Lower*_Sel +
-            // L:MAINDECK*/LOWERDECK*TempKnob) are the 77F FREIGHTER's panel —
-            // on the -300ER the L:var moves the visual knob but PMDG's systems
-            // ignore it (SDK field never follows), so they were removed here.
-            // Reintroduce them via the L:var mechanism in a 77F pass (the
-            // lower-aft knob adds HEAT HIGH/OFF/LOW detents at SDK 67/70/73).
+            // The AFT and BULK 3-position selectors (SDK AIR_CargoTemp_Selector[2]
+            // — the header comment says "aft / bulk", NOT fwd/aft; the old keys
+            // here were mislabeled) work on BOTH variants — live-verified on the
+            // -300ER AND the 77F (LOW -> HIGH with SDK read-back on each).
+            // The four continuous knobs below are the 77F FREIGHTER's panel,
+            // driven by their cockpit L:vars (same pattern as the flight deck
+            // temp knob but a DIFFERENT scale: cargo knob L:var maps 1:1 onto
+            // the SDK 0-60 C..W value — live-verified 55->55, 60->60 on the
+            // 77F; the flight deck knob is x0.8). The lower-aft knob continues
+            // past Warm into the bulk-heat detents, and the L:var takes those
+            // SDK values DIRECTLY: 67 = HEAT HIGH, 70 = HEAT OFF, 73 = HEAT LOW
+            // (each live-verified with SDK read-back). On the -300ER the knob
+            // L:vars move the visual only — PMDG's systems never sample them
+            // (SDK field stays put) — so HandleUIVariableSet has a variant
+            // guard (B77W) that says so instead of writing a dead value.
+            // Conversely the CABIN temp knob is dead on the 77F (no passenger
+            // cabin; L:var holds, SDK never follows) and gets the inverse
+            // guard (B77L).
             // =================================================================
             ["AIR_CargoTempAftSel"] = new SimConnect.SimVarDefinition
             {
@@ -2047,6 +2054,40 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
+            },
+            ["AIR_CargoTempKnobMainDeckFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MAINDECKFWDTempKnob",
+                DisplayName = "Cargo Temp Main Deck Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [15] = "Cool", [30] = "Neutral", [45] = "Warm", [60] = "Full Warm" }
+            },
+            ["AIR_CargoTempKnobMainDeckAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MAINDECKAFTTempKnob",
+                DisplayName = "Cargo Temp Main Deck Aft",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [15] = "Cool", [30] = "Neutral", [45] = "Warm", [60] = "Full Warm" }
+            },
+            ["AIR_CargoTempKnobLowerFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LOWERDECKFWDTempKnob",
+                DisplayName = "Cargo Temp Lower Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [15] = "Cool", [30] = "Neutral", [45] = "Warm", [60] = "Full Warm" }
+            },
+            ["AIR_CargoTempKnobLowerAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LOWERDECKAFTTempKnob",
+                DisplayName = "Cargo Temp Lower Aft",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                // Past Full Warm the knob enters the bulk-heat detents (SDK
+                // values written directly — see the block comment above).
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [15] = "Cool", [30] = "Neutral", [45] = "Warm", [60] = "Full Warm", [67] = "Heat High", [70] = "Heat Off", [73] = "Heat Low" }
             },
 
             // =================================================================
@@ -5000,6 +5041,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
                 "AIR_TempKnobFlightDeck", "AIR_TempKnobCabin",
                 "AIR_CargoTempAftSel", "AIR_CargoTempBulkSel",
+                "AIR_CargoTempKnobMainDeckFwd", "AIR_CargoTempKnobMainDeckAft",
+                "AIR_CargoTempKnobLowerFwd", "AIR_CargoTempKnobLowerAft",
                 "AIR_AirCondReset",
                 "AIR_MainDeckFlow"
             },
@@ -5828,6 +5871,31 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return false;
             }
             simConnect.SendEvent("#" + switchEventId, (uint)target);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 0b. Temperature-knob variant guards. The cargo temp KNOBS are only
+        //     sampled by PMDG's systems on the 777F (B77L), and the CABIN temp
+        //     knob only on the passenger -300ER (B77W) — on the wrong variant
+        //     the L:var write moves the visual knob but the system never
+        //     follows (live-verified both ways, 2026-07). Announce why instead
+        //     of writing a dead value. An empty/unknown ICAO (detection still
+        //     pending) falls through to the normal write — same net effect as
+        //     today, just without the explanation. NOTE: B77L is also the
+        //     -200LR pax designator; if PMDG ships one, revisit the cabin-knob
+        //     gate (the freighter and 200LR can't be told apart by ICAO).
+        // ------------------------------------------------------------------
+        if (varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
+                   or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft"
+            && simConnect.CurrentAircraftIcaoType == "B77W")
+        {
+            announcer.AnnounceImmediate("Cargo temperature knobs are only functional on the 777 freighter.");
+            return true;
+        }
+        if (varKey == "AIR_TempKnobCabin" && simConnect.CurrentAircraftIcaoType == "B77L")
+        {
+            announcer.AnnounceImmediate("The cabin temperature selector is not functional on the 777 freighter.");
             return true;
         }
 
