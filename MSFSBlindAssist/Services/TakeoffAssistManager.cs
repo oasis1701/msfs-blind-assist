@@ -245,9 +245,6 @@ public class TakeoffAssistManager : IDisposable
                 lastCenterlineAnnouncement = DateTime.MinValue;
                 centerlineTone?.Start(toneWaveType, toneVolume, 600.0);
 
-                lastTakeoffLogTime = DateTime.MinValue;
-                BeginTakeoffLog();
-
                 smoothedSteerError = 0;
                 steerErrorSmootherInitialized = false;
                 hardPanSide = 0;
@@ -309,6 +306,10 @@ public class TakeoffAssistManager : IDisposable
                 }
                 System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
             }
+
+            // Header AFTER the reference branch so a synthetic-centerline activation
+            // logs the just-captured heading instead of "icao= rwy= rwyHdgMag=-1".
+            if (!legacyMode) BeginTakeoffLog();
         }
         else
         {
@@ -664,6 +665,7 @@ public class TakeoffAssistManager : IDisposable
     /// </summary>
     private void BeginTakeoffLog()
     {
+        lastTakeoffLogTime = DateTime.MinValue;
         try
         {
             if (System.IO.File.Exists(TakeoffLogPath) &&
@@ -673,9 +675,13 @@ public class TakeoffAssistManager : IDisposable
             }
             int rwyHdg = referenceRunwayHeadingMagnetic.HasValue
                 ? (int)Math.Round(referenceRunwayHeadingMagnetic.Value) : -1;
-            System.IO.File.AppendAllText(TakeoffLogPath,
-                $"=== Takeoff {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={referenceAirportICAO} rwy={referenceRunwayID} rwyHdgMag={rwyHdg} ===" + Environment.NewLine
-                + "time,lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,pan,crossTrackFt" + Environment.NewLine);
+            System.IO.File.AppendAllText(TakeoffLogPath, string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "=== Takeoff {0:yyyy-MM-dd HH:mm:ss} icao={1} rwy={2} rwyHdgMag={3} ===",
+                DateTime.Now, referenceAirportICAO, referenceRunwayID, rwyHdg)
+                + Environment.NewLine
+                + "time,lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,pan,crossTrackFt"
+                + Environment.NewLine);
         }
         catch { /* diagnostic only */ }
     }
@@ -686,13 +692,18 @@ public class TakeoffAssistManager : IDisposable
     private void AppendTakeoffLog(double lat, double lon, double hdgMag,
         double headingDiff, double desiredCrabDeg, double steerError, float pan, double crossTrackFeet)
     {
-        var now = DateTime.Now;
-        if ((now - lastTakeoffLogTime).TotalMilliseconds < 100) return;
-        lastTakeoffLogTime = now;
+        // UtcNow for the rate limit (monotonic across DST/clock changes; the
+        // taxi-guidance trace convention). Local time only in the display column.
+        var nowUtc = DateTime.UtcNow;
+        if ((nowUtc - lastTakeoffLogTime).TotalMilliseconds < 100) return;
+        lastTakeoffLogTime = nowUtc;
         try
         {
-            System.IO.File.AppendAllText(TakeoffLogPath,
-                $"{now:HH:mm:ss.fff},{lat:F7},{lon:F7},{hdgMag:F1},{headingDiff:F2},{desiredCrabDeg:F2},{steerError:F2},{pan:F2},{crossTrackFeet:F1}" + Environment.NewLine);
+            System.IO.File.AppendAllText(TakeoffLogPath, string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:HH:mm:ss.fff},{1:F7},{2:F7},{3:F1},{4:F2},{5:F2},{6:F2},{7:F2},{8:F1}",
+                DateTime.Now, lat, lon, hdgMag, headingDiff, desiredCrabDeg,
+                steerError, pan, crossTrackFeet) + Environment.NewLine);
         }
         catch { /* diagnostic only */ }
     }
