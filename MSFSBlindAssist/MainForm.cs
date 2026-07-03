@@ -45,6 +45,7 @@ public partial class MainForm : Form
     private System.Windows.Forms.Form? pmdgCDUForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>? pmdg777FirstOfficerForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.PMDG737.AircraftActionExecutor, FirstOfficer.PMDG737.AircraftStateEvaluator>? pmdg737FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>? fenixFirstOfficerForm;
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
     private Forms.FBWA380.FbwEfbForm? fbwEfbForm;
     // No-injection A380X transport: reads/drives the MFD live through the
@@ -3238,6 +3239,25 @@ public partial class MainForm : Form
         pmdg737FirstOfficerForm.ShowForm();
     }
 
+    private void FenixFirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowFenixFirstOfficerDialog();
+    }
+
+    private void ShowFenixFirstOfficerDialog()
+    {
+        if (fenixFirstOfficerForm == null || fenixFirstOfficerForm.IsDisposed)
+        {
+            fenixFirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>(
+                new FirstOfficer.Fenix.FenixFoProfile(),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        fenixFirstOfficerForm.ShowForm();
+    }
+
     private void FOSettingsMenuItem_Click(object? sender, EventArgs e)
     {
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -3250,6 +3270,8 @@ public partial class MainForm : Form
                 pmdg777FirstOfficerForm.ApplySettings();
             if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
                 pmdg737FirstOfficerForm.ApplySettings();
+            if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
+                fenixFirstOfficerForm.ApplySettings();
         }
     }
 
@@ -4929,6 +4951,11 @@ public partial class MainForm : Form
             pmdg737FirstOfficerForm.Dispose();
             pmdg737FirstOfficerForm = null;
         }
+        if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
+        {
+            fenixFirstOfficerForm.Dispose();
+            fenixFirstOfficerForm = null;
+        }
 
         if (coherentNDClient != null)
         {
@@ -5081,12 +5108,13 @@ public partial class MainForm : Form
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
         fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
 
-        // First Officer items are aircraft-specific: each shows only for its own PMDG aircraft.
+        // First Officer items are aircraft-specific: each shows only for its own aircraft.
         bool isPmdg777 = currentAircraft?.AircraftCode == "PMDG_777";
         bool isPmdg737 = currentAircraft?.AircraftCode == "PMDG_737";
         pmdg777FirstOfficerMenuItem.Visible = isPmdg777;
         pmdg737FirstOfficerMenuItem.Visible = isPmdg737;
-        foSettingsMenuItem.Visible = isPmdg777 || isPmdg737;
+        fenixFirstOfficerMenuItem.Visible = isFenix;
+        foSettingsMenuItem.Visible = isPmdg777 || isPmdg737 || isFenix;
     }
 
     /// <summary>

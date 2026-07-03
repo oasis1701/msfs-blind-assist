@@ -23,6 +23,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737FirstOfficerMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem fenixFirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem foSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
@@ -63,6 +64,7 @@ namespace MSFSBlindAssist
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fenixFirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.foSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -98,6 +100,7 @@ namespace MSFSBlindAssist
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.pmdg737FirstOfficerMenuItem,
+            this.fenixFirstOfficerMenuItem,
             this.pmdg777FirstOfficerMenuItem,
             this.foSettingsMenuItem,
             this.taxiGuidanceOptionsMenuItem,
@@ -232,6 +235,15 @@ namespace MSFSBlindAssist
             this.pmdg737FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
             this.pmdg737FirstOfficerMenuItem.Text = "PMDG 737 &First Officer";
             this.pmdg737FirstOfficerMenuItem.Click += new System.EventHandler(this.PMDG737FirstOfficerMenuItem_Click);
+            //
+            // fenixFirstOfficerMenuItem
+            //
+            this.fenixFirstOfficerMenuItem.AccessibleName = "Fenix A320 First Officer";
+            this.fenixFirstOfficerMenuItem.AccessibleDescription = "Open the Fenix A320 First Officer checklists and flows window";
+            this.fenixFirstOfficerMenuItem.Name = "fenixFirstOfficerMenuItem";
+            this.fenixFirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.fenixFirstOfficerMenuItem.Text = "Fenix A320 &First Officer";
+            this.fenixFirstOfficerMenuItem.Click += new System.EventHandler(this.FenixFirstOfficerMenuItem_Click);
             //
             // pmdg777FirstOfficerMenuItem
             //
