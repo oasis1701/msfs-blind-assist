@@ -172,7 +172,18 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // Polling
     // ------------------------------------------------------------------
 
-    private void PollTimer_Tick(object? sender, EventArgs e) => RequestData();
+    private void PollTimer_Tick(object? sender, EventArgs e)
+    {
+        // Suspend the ambient 1 Hz poll while a closed-loop walk runs. The walk
+        // issues its own PERIOD.ONCE Data requests under the SAME request ID, and
+        // a poll response landing right after the walk swaps in a fresh
+        // _snapshotTcs would satisfy that TCS with data the walk didn't request
+        // (possibly sampled before the last click) — reintroducing the stale-read
+        // overshoot the fresh-snapshot walk exists to prevent. The walk's own
+        // ~300 ms requests keep the monitor cache fresh in the meantime.
+        if (AnyWalkInProgress) return;
+        RequestData();
+    }
 
     /// <summary>
     /// Issues a one-shot request for the PMDG_NG3_Data CDA.
@@ -740,10 +751,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
     public static bool AnyWalkInProgress => Volatile.Read(ref s_walksInProgress) > 0;
 
     /// <summary>
-    /// Requests a one-shot Data-CDA refresh and completes when the response
-    /// has been applied to the snapshot (false on timeout / no SimConnect).
-    /// The ambient 1 Hz poll is far too slow for closed-loop walks — this is
-    /// the walk's per-iteration freshness guarantee.
+    /// Requests a one-shot Data-CDA refresh and completes when the next Data
+    /// snapshot has been applied (false on timeout / no SimConnect). The ambient
+    /// 1 Hz poll is far too slow for closed-loop walks AND is suspended while a
+    /// walk runs (see PollTimer_Tick), so during a walk the completing snapshot
+    /// is this request's own response — the walk's per-iteration freshness
+    /// guarantee.
     /// </summary>
     public async Task<bool> RequestFreshSnapshotAsync(int timeoutMs = 1500)
     {

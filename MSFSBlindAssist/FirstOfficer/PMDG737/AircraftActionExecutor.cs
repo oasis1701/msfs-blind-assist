@@ -64,15 +64,6 @@ public class AircraftActionExecutor : IFoActionExecutor
     // dialog's in-sim-verified rate (RotateBaroKnobAsync; the baro is a free encoder,
     // not a detented selector, and accepts this rate reliably).
     private const int BaroClickGapMs = 40;
-    // Closed-loop walked-selector pacing (WalkedSelector). DETENTED rotaries are much
-    // slower to accept clicks than the baro encoder: live-probed 2026-07-03, firing
-    // 4 clicks at 80 ms at EVT_TCAS_MODE moved it only 3 detents (one click silently
-    // dropped, leaving the walk one short — the "transponder still bugged" report),
-    // while clicks 250 ms apart all registered. The walk re-reads the CDA position
-    // before every click, so the gap must also cover the data broadcast refreshing
-    // after the previous click.
-    // Iteration budget for a closed-loop walk: the widest selector span is 4 detents;
-    // the headroom absorbs dropped clicks and stale-read re-decisions.
 
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
