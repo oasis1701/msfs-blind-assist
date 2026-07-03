@@ -57,6 +57,11 @@ public class TakeoffAssistManager : IDisposable
     private const long MAX_TAKEOFF_LOG_BYTES = 2 * 1024 * 1024;
     private DateTime lastTakeoffLogTime = DateTime.MinValue;
 
+    private double smoothedSteerError;
+    private bool steerErrorSmootherInitialized;
+    private int hardPanSide;        // -1 left / 0 centred / +1 right (hard-pan mode)
+    private bool toneUnmuted;       // threshold-gate state (threshold >= 1 only)
+
     // Speed callout state (for takeoff roll)
     private bool hasAnnounced80Knots = false;
     private bool hasAnnounced100Knots = false;
@@ -76,6 +81,18 @@ public class TakeoffAssistManager : IDisposable
     private const double CENTERLINE_TOLERANCE_FEET = 25.0; // Within ±25 feet is "center"
     private const double CENTERLINE_CHANGE_THRESHOLD_FEET = 10.0; // Announce if deviation changes by >10 feet
     private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° tracking error for full left/right pan
+
+    // Smoothing/hysteresis for the DISCRETE audio switches (mute gate + hard-pan
+    // side). The proportional pan stays on the RAW steer error (continuous — can't
+    // flap); the on/off and left/right decisions use a lightly smoothed error with
+    // hysteresis so GPS cross-track jitter (0.1°/ft couples ~1 ft of noise into
+    // 0.1° of steer error) and the zero-crossings of normal convergence can't
+    // chatter the tone. Same lesson as TaxiSteeringTone's 3°/6° + min-sustain.
+    private const double STEER_SMOOTH_ALPHA = 0.3;          // EMA at ~30 Hz ≈ 100 ms
+    private const double HARDPAN_SIDE_ON_DEG = 0.5;         // enter a side
+    private const double HARDPAN_SIDE_OFF_DEG = 0.25;       // drop to centred
+    private const double MUTE_HYSTERESIS_DEG = 0.5;         // re-mute at threshold − this
+    private const double MUTE_OFF_FLOOR_DEG = 0.25;         // never re-mute below this gap
 
     // Cross-track centerline tracking. The pan tone tracks an INTERCEPT
     // heading that converges on the centerline, not the bare runway heading —
@@ -202,6 +219,11 @@ public class TakeoffAssistManager : IDisposable
 
                 lastTakeoffLogTime = DateTime.MinValue;
                 BeginTakeoffLog();
+
+                smoothedSteerError = 0;
+                steerErrorSmootherInitialized = false;
+                hardPanSide = 0;
+                toneUnmuted = false;
             }
 
             if (hasRunwayReference)
@@ -374,12 +396,26 @@ public class TakeoffAssistManager : IDisposable
             // heading that converges on centerline. Positive steerError = steer
             // right → pan RIGHT (unless steerTowardTone is false). Hard-pan mode forces ±1 (one
             // speaker only) for stereo-speaker users; proportional curve otherwise.
+            smoothedSteerError = steerErrorSmootherInitialized
+                ? smoothedSteerError + STEER_SMOOTH_ALPHA * (steerError - smoothedSteerError)
+                : steerError;
+            steerErrorSmootherInitialized = true;
+
+            // Audio pan in the steer direction — silent/centred tone = on the
+            // heading that converges on centerline. Positive steerError = steer
+            // right → pan RIGHT (unless steer-away is configured).
             float pan;
             if (hardPanTone)
             {
-                // Sign(0) is 0 — leave pan = 0 so the on-track case still reads
-                // as silent / centred via the existing headingToneThreshold gate.
-                pan = (float)Math.Sign(steerError);
+                // Hard-pan holds its side with hysteresis: enter a side at ON,
+                // drop to centred below OFF, hold in between — so the ±1 slam
+                // can't alternate speakers on jitter or normal convergence
+                // zero-crossings (worst with the legacy threshold=0 "Always").
+                if (Math.Abs(smoothedSteerError) >= HARDPAN_SIDE_ON_DEG)
+                    hardPanSide = Math.Sign(smoothedSteerError);
+                else if (Math.Abs(smoothedSteerError) < HARDPAN_SIDE_OFF_DEG)
+                    hardPanSide = 0;
+                pan = hardPanSide;
             }
             else
             {
@@ -388,13 +424,24 @@ public class TakeoffAssistManager : IDisposable
             if (!steerTowardTone) pan = -pan;
             centerlineTone?.SetPan(pan);
 
-            // Apply threshold - mute tone when the steer error is below threshold
-            // (on track). Being off-centerline un-mutes it via the crab term, even
-            // when the nose is pointed straight down the runway.
+            // Threshold mute with hysteresis: unmute at ≥ threshold, re-mute only
+            // once the smoothed error falls half a degree back inside (floored so
+            // the band never collapses). Being off-centerline un-mutes via the
+            // crab term even with the nose pointed straight down the runway.
             if (headingToneThreshold > 0)
             {
-                bool shouldPlayTone = Math.Abs(steerError) >= headingToneThreshold;
-                centerlineTone?.UpdateVolume(shouldPlayTone ? toneVolume : 0);
+                double offThresh = Math.Max(MUTE_OFF_FLOOR_DEG, headingToneThreshold - MUTE_HYSTERESIS_DEG);
+                if (!toneUnmuted && Math.Abs(smoothedSteerError) >= headingToneThreshold)
+                    toneUnmuted = true;
+                else if (toneUnmuted && Math.Abs(smoothedSteerError) <= offThresh)
+                    toneUnmuted = false;
+                centerlineTone?.UpdateVolume(toneUnmuted ? toneVolume : 0);
+            }
+            else
+            {
+                // "Always" mode: re-assert volume every sounding frame (the
+                // TaxiSteeringTone lesson — never rely on caller-side volume state).
+                centerlineTone?.UpdateVolume(toneVolume);
             }
 
             AppendTakeoffLog(currentLat, currentLon, currentHeadingMagnetic,
@@ -634,6 +681,11 @@ public class TakeoffAssistManager : IDisposable
             TakeoffAssistActiveChanged?.Invoke(this, false);
             System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Reset");
         }
+
+        smoothedSteerError = 0;
+        steerErrorSmootherInitialized = false;
+        hardPanSide = 0;
+        toneUnmuted = false;
 
         // Clear all reference data on reset
         ClearRunwayReference();
