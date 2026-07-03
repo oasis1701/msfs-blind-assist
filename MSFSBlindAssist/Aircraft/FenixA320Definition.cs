@@ -13219,13 +13219,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ReadDisplay(Services.GeminiService.DisplayType.ISIS, "ISIS", announcer, parentForm);
                 return true;
 
-            // FCU knob push/pull actions (use increment/decrement, not button transitions)
+            // FCU knob push/pull actions (use atomic RPN, not button transitions)
             case HotkeyAction.FCUHeadingPush:
-                DecrementCounter("S_FCU_HEADING", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_HEADING", -1, simConnect);
                 return true;
 
             case HotkeyAction.FCUHeadingPull:
-                IncrementCounter("S_FCU_HEADING", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_HEADING", 1, simConnect);
                 return true;
 
             case HotkeyAction.FCUAltitudePush:
@@ -13237,11 +13237,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
 
             case HotkeyAction.FCUSpeedPush:
-                DecrementCounter("S_FCU_SPEED", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_SPEED", -1, simConnect);
                 return true;
 
             case HotkeyAction.FCUSpeedPull:
-                IncrementCounter("S_FCU_SPEED", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_SPEED", 1, simConnect);
                 return true;
 
             case HotkeyAction.FCUVSPush:
