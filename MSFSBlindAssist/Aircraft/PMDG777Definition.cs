@@ -1173,23 +1173,34 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["AIR_TempSelectorFlightDeck"] = new SimConnect.SimVarDefinition
+            // Flight deck / cabin temperature selectors are CONTINUOUS rotary
+            // knobs. The SDK event (EVT_OH_AIRCOND_TEMP_SELECTOR_*) ignores a
+            // position parameter (live-verified 2026-07: param, wheel and click
+            // flags all no-op), so — like the shoulder heaters — the control is
+            // the cockpit-model L:var, which IS the pilot input: writing
+            // L:FLTDeckTempKnob 60 moved the SDK AIR_TempSelector_0 read-back
+            // 30 -> 48 (knob 0-75 scales to SDK 0-60 Cold..Warm; the knob's
+            // 76-100 band is the flight-deck MAN detent zone, release-snap 87
+            // -> SDK 70). Stepped combos on the L:var, set via MainForm's
+            // generic SetLVar fall-through (MobiFlight calc path) — no event
+            // mapping. The old PMDGVar combos (SDK read-back + dead event set)
+            // were replaced by these in 2026-07.
+            ["AIR_TempKnobFlightDeck"] = new SimConnect.SimVarDefinition
             {
-                Name = "AIR_TempSelector_0",
+                Name = "FLTDeckTempKnob",
                 DisplayName = "Temp Selector Flight Deck",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Cold", [35] = "Neutral", [60] = "Warm", [70] = "Manual" }
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [19] = "Cool", [37] = "Neutral", [56] = "Warm", [75] = "Full Warm", [87] = "Manual" }
             },
-            ["AIR_TempSelectorCabin"] = new SimConnect.SimVarDefinition
+            ["AIR_TempKnobCabin"] = new SimConnect.SimVarDefinition
             {
-                Name = "AIR_TempSelector_1",
+                Name = "CABINTempKnob",
                 DisplayName = "Temp Selector Cabin",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Cold", [35] = "Neutral", [60] = "Warm", [70] = "Manual" }
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                // No Manual option: the SDK marks MAN as flt-deck-only.
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [19] = "Cool", [37] = "Neutral", [56] = "Warm", [75] = "Full Warm" }
             },
             // Air conditioning annunciators
             ["AIR_annunPackOFF_1"] = new SimConnect.SimVarDefinition
@@ -2007,56 +2018,35 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // =================================================================
             // CARGO TEMPERATURE
+            // The -300ER has exactly TWO cargo temp controls: the AFT and BULK
+            // 3-position selectors (SDK AIR_CargoTemp_Selector[2] — the header
+            // comment says "aft / bulk", NOT fwd/aft; the old keys here were
+            // mislabeled). Live-verified 2026-07 on the loaded -300ER: readable
+            // and settable (aft LOW -> HIGH with SDK read-back confirming).
+            // The four continuous knobs (AIR_CargoTemp_MainDeck*/Lower*_Sel +
+            // L:MAINDECK*/LOWERDECK*TempKnob) are the 77F FREIGHTER's panel —
+            // on the -300ER the L:var moves the visual knob but PMDG's systems
+            // ignore it (SDK field never follows), so they were removed here.
+            // Reintroduce them via the L:var mechanism in a 77F pass (the
+            // lower-aft knob adds HEAT HIGH/OFF/LOW detents at SDK 67/70/73).
             // =================================================================
-            ["AIR_CargoTempFwd"] = new SimConnect.SimVarDefinition
+            ["AIR_CargoTempAftSel"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_CargoTemp_Selector_0",
-                DisplayName = "Cargo Temp Forward",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
-            },
-            ["AIR_CargoTempAft"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AIR_CargoTemp_Selector_1",
                 DisplayName = "Cargo Temp Aft",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
             },
-            ["AIR_CargoTempMainDeckFwd"] = new SimConnect.SimVarDefinition
+            ["AIR_CargoTempBulkSel"] = new SimConnect.SimVarDefinition
             {
-                Name = "AIR_CargoTemp_MainDeckFwd_Sel",
-                DisplayName = "Cargo Temp Main Deck Forward",
+                Name = "AIR_CargoTemp_Selector_1",
+                DisplayName = "Cargo Temp Bulk",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-            ["AIR_CargoTempMainDeckAft"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AIR_CargoTemp_MainDeckAft_Sel",
-                DisplayName = "Cargo Temp Main Deck Aft",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-            ["AIR_CargoTempLowerFwd"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AIR_CargoTemp_LowerFwd_Sel",
-                DisplayName = "Cargo Temp Lower Forward",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-            ["AIR_CargoTempLowerAft"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AIR_CargoTemp_LowerAft_Sel",
-                DisplayName = "Cargo Temp Lower Aft",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
             },
 
             // =================================================================
@@ -5008,6 +4998,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_TrimAir_1", "AIR_TrimAir_2",
                 "AIR_RecircFanUpper", "AIR_RecircFanLower",
                 "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
+                "AIR_TempKnobFlightDeck", "AIR_TempKnobCabin",
+                "AIR_CargoTempAftSel", "AIR_CargoTempBulkSel",
                 "AIR_AirCondReset",
                 "AIR_MainDeckFlow"
             },
@@ -5445,14 +5437,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_EquipCooling"]        = "EVT_OH_AIRCOND_EQUIP_COOLING_SWITCH",
             ["AIR_Gasper"]              = "EVT_OH_AIRCOND_GASPER_SWITCH",
             ["AIR_AltnVent"]            = "EVT_OH_AIRCOND_ALT_VENT_SWITCH",
-            ["AIR_TempSelectorFlightDeck"] = "EVT_OH_AIRCOND_TEMP_SELECTOR_FLT_DECK",
-            ["AIR_TempSelectorCabin"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_CABIN",
-            ["AIR_CargoTempFwd"]        = "EVT_OH_AIRCOND_TEMP_SELECTOR_CARGO_AFT",
-            ["AIR_CargoTempAft"]        = "EVT_OH_AIRCOND_TEMP_SELECTOR_CARGO_BULK",
-            ["AIR_CargoTempMainDeckFwd"]= "EVT_OH_AIRCOND_TEMP_SELECTOR_MAIN_CARGO_FWD",
-            ["AIR_CargoTempMainDeckAft"]= "EVT_OH_AIRCOND_TEMP_SELECTOR_MAIN_CARGO_AFT",
-            ["AIR_CargoTempLowerFwd"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_LWR_CARGO_FWD",
-            ["AIR_CargoTempLowerAft"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_LWR_CARGO_AFT",
+            // Flight deck / cabin temp knobs are NOT event-mapped: they're
+            // continuous rotaries whose SDK event ignores a position param —
+            // they're L:var combos (FLTDeckTempKnob / CABINTempKnob) that set
+            // through MainForm's generic SetLVar fall-through. The freighter
+            // cargo knob events (MAIN/LWR_CARGO) went with their dead combos.
+            ["AIR_CargoTempAftSel"]     = "EVT_OH_AIRCOND_TEMP_SELECTOR_CARGO_AFT",
+            ["AIR_CargoTempBulkSel"]    = "EVT_OH_AIRCOND_TEMP_SELECTOR_CARGO_BULK",
             ["AIR_MainDeckFlow"]        = "EVT_OH_AIRCOND_MAIN_DECK_FLOW_SWITCH",
 
             // --- Pressurization ---
