@@ -23,15 +23,24 @@ public static class FenixChecklistDefinitions
         BuildElectricalPowerUp(),
         BuildPreflight(),
         BuildBeforeStart(),
+        BuildBeforeStartChecklist(),
         BuildEngineStart(),
         BuildAfterStart(),
+        BuildAfterStartChecklist(),
         BuildBeforeTakeoff(),
+        BuildBeforeTakeoffChecklist(),
         BuildAfterTakeoff(),
+        BuildAfterTakeoffChecklist(),
         BuildDescent(),
         BuildApproach(),
+        BuildApproachChecklist(),
+        BuildLandingChecklist(),
         BuildAfterLanding(),
+        BuildAfterLandingChecklist(),
         BuildShutdown(),
+        BuildParkingChecklist(),
         BuildSecure(),
+        BuildSecuringChecklist(),
     };
 
     // -----------------------------------------------------------------------
@@ -386,6 +395,185 @@ public static class FenixChecklistDefinitions
                 "S_OH_ELEC_BAT1", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT1", 0)),
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF",
                 "S_OH_ELEC_BAT2", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT2", 0)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Readback checklists (*_CL) — Airbus wording per JD's Guide. STRICTLY
+    // action-free: no item here may carry a CheckAction.
+    // -----------------------------------------------------------------------
+
+    private static Group BuildBeforeStartChecklist() => new()
+    {
+        Id = "BEFORE_START_CL", Name = "Before Start Checklist",
+        Items = new()
+        {
+            Reminder("BSC_PREP", "BEFORE_START_CL", "Cockpit preparation: COMPLETED"),
+            Reminder("BSC_PINS", "BEFORE_START_CL", "Gear pins and covers: REMOVED"),
+            Auto("BSC_SIGNS", "BEFORE_START_CL", "Signs: ON and AUTO",
+                "S_OH_SIGNS", v => v > 0.5, action: null),
+            Auto("BSC_ADIRS", "BEFORE_START_CL", "ADIRS: NAV",
+                "S_OH_NAV_IR1_MODE", v => Math.Abs(v - 1) < 0.5,
+                new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" }, action: null),
+            Reminder("BSC_FUELQTY", "BEFORE_START_CL", "Fuel quantity: CHECKED"),
+            Reminder("BSC_TODATA", "BEFORE_START_CL", "Takeoff data: SET"),
+            Reminder("BSC_BARO", "BEFORE_START_CL", "Baro ref: SET"),
+            Info("BSC_LINE", "BEFORE_START_CL", "— Down to the line —"),
+            Reminder("BSC_DOORS", "BEFORE_START_CL", "Windows and doors: CLOSED"),
+            Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON",
+                "S_OH_EXT_LT_BEACON", v => v > 0.5, action: null),
+            Auto("BSC_THRLEVERS", "BEFORE_START_CL", "Thrust levers: IDLE",
+                "A_FC_THROTTLE_LEFT_INPUT", v => Math.Abs(v - 2) < 0.5,
+                new[] { "A_FC_THROTTLE_RIGHT_INPUT" }, action: null),
+            Auto("BSC_PARK", "BEFORE_START_CL", "Parking brake: ON",
+                "S_MIP_PARKING_BRAKE", v => v > 0.5, action: null),
+        }
+    };
+
+    private static Group BuildAfterStartChecklist() => new()
+    {
+        Id = "AFTER_START_CL", Name = "After Start Checklist",
+        Items = new()
+        {
+            Reminder("ASC_ANTIICE", "AFTER_START_CL", "Anti-ice: OFF or ON as required"),
+            Reminder("ASC_ECAM", "AFTER_START_CL", "ECAM status: CHECKED"),
+            Reminder("ASC_PITCH", "AFTER_START_CL", "Pitch trim: SET"),
+            Reminder("ASC_RUDDER", "AFTER_START_CL", "Rudder trim: ZERO"),
+        }
+    };
+
+    private static Group BuildBeforeTakeoffChecklist() => new()
+    {
+        Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
+        Items = new()
+        {
+            Reminder("BTC_FCTL", "BEFORE_TAKEOFF_CL", "Flight controls: CHECKED"),
+            Reminder("BTC_INST", "BEFORE_TAKEOFF_CL", "Flight instruments: CHECKED"),
+            Reminder("BTC_BRIEF", "BEFORE_TAKEOFF_CL", "Briefing: CONFIRMED"),
+            Auto("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flap setting: CONFIG set",
+                "S_FC_FLAPS", v => v is >= 0.5 and <= 3.5, action: null),
+            Reminder("BTC_VSPEEDS", "BEFORE_TAKEOFF_CL", "V1, VR, V2, FLEX temp: SET"),
+            Reminder("BTC_ATC", "BEFORE_TAKEOFF_CL", "ATC: SET"),
+            Info("BTC_LINE", "BEFORE_TAKEOFF_CL", "— Below the line —"),
+            Reminder("BTC_CABIN", "BEFORE_TAKEOFF_CL", "Cabin crew: ADVISED"),
+            Auto("BTC_TCAS", "BEFORE_TAKEOFF_CL", "TCAS: TA/RA",
+                "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null),
+            Auto("BTC_ENGMODE", "BEFORE_TAKEOFF_CL", "Engine mode selector: NORM or IGN",
+                "S_ENG_MODE", v => v > 0.5, action: null),
+            Auto("BTC_PACKS", "BEFORE_TAKEOFF_CL", "Packs: ON",
+                "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
+                action: null),
+        }
+    };
+
+    private static Group BuildAfterTakeoffChecklist() => new()
+    {
+        Id = "AFTER_TAKEOFF_CL", Name = "After Takeoff Checklist",
+        Items = new()
+        {
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP",
+                "S_MIP_GEAR", v => v < 0.5, action: null),
+            Auto("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: RETRACTED",
+                "S_FC_FLAPS", v => v < 0.5, action: null),
+            Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: ON",
+                "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
+                action: null),
+            Info("ATC_LINE", "AFTER_TAKEOFF_CL", "— Below the line (at transition altitude) —"),
+            Auto("ATC_BARO", "AFTER_TAKEOFF_CL", "Baro ref: STANDARD set",
+                "S_FCU_EFIS1_BARO_STD", v => v > 0.5, new[] { "S_FCU_EFIS2_BARO_STD" },
+                action: null),
+        }
+    };
+
+    private static Group BuildApproachChecklist() => new()
+    {
+        Id = "APPROACH_CL", Name = "Approach Checklist",
+        Items = new()
+        {
+            Reminder("APC_BRIEF", "APPROACH_CL", "Briefing: CONFIRMED"),
+            Reminder("APC_ECAM", "APPROACH_CL", "ECAM status: CHECKED"),
+            Auto("APC_SEATBELTS", "APPROACH_CL", "Seat belts: ON",
+                "S_OH_SIGNS", v => v > 0.5, action: null),
+            Auto("APC_BARO", "APPROACH_CL", "Baro ref: QNH set",
+                "S_FCU_EFIS1_BARO_STD", v => v < 0.5, new[] { "S_FCU_EFIS2_BARO_STD" },
+                action: null),
+            Reminder("APC_MINIMUMS", "APPROACH_CL", "Minimums: SET"),
+            Reminder("APC_ENGMODE", "APPROACH_CL", "Engine mode selector: NORM or IGN"),
+        }
+    };
+
+    private static Group BuildLandingChecklist() => new()
+    {
+        Id = "LANDING_CL", Name = "Landing Checklist",
+        Items = new()
+        {
+            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN",
+                "S_MIP_GEAR", v => v > 0.5, action: null),
+            Auto("LDC_SIGNS", "LANDING_CL", "Signs: ON",
+                "S_OH_SIGNS", v => v > 0.5, action: null),
+            Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARMED",
+                "A_FC_SPEEDBRAKE", v => v < 0.5, action: null),
+            Auto("LDC_FLAPS", "LANDING_CL", "Flaps: SET",
+                "S_FC_FLAPS", v => v > 2.5, action: null),
+            Reminder("LDC_AUTOBRAKE", "LANDING_CL", "Autobrake: SET as required"),
+        }
+    };
+
+    private static Group BuildAfterLandingChecklist() => new()
+    {
+        Id = "AFTER_LANDING_CL", Name = "After Landing Checklist",
+        Items = new()
+        {
+            Auto("ALC_FLAPS", "AFTER_LANDING_CL", "Flaps: RETRACTED",
+                "S_FC_FLAPS", v => v < 0.5, action: null),
+            Auto("ALC_SPOILERS", "AFTER_LANDING_CL", "Spoilers: DISARMED",
+                "A_FC_SPEEDBRAKE", v => Math.Abs(v - 1) < 0.5, action: null),
+            Auto("ALC_APU", "AFTER_LANDING_CL", "APU: STARTED",
+                "I_OH_ELEC_APU_START_U", v => v > 0.5, action: null),
+            Auto("ALC_WXR", "AFTER_LANDING_CL", "Radar: OFF",                          // [RADAR]
+                "S_WR_SYS", v => Math.Abs(v - 1) < 0.5, action: null),                 // [RADAR]
+            Auto("ALC_PWS", "AFTER_LANDING_CL", "Predictive windshear: OFF",           // [RADAR]
+                "S_WR_PRED_WS", v => v < 0.5, action: null),                           // [RADAR]
+        }
+    };
+
+    private static Group BuildParkingChecklist() => new()
+    {
+        Id = "PARKING_CL", Name = "Parking Checklist",
+        Items = new()
+        {
+            Auto("PKC_APUBLEED", "PARKING_CL", "APU bleed: ON",
+                "S_OH_PNEUMATIC_APU_BLEED", v => v > 0.5, action: null),
+            Auto("PKC_ENGINES", "PARKING_CL", "Engines: OFF",
+                "FO_ENGINES_OFF", v => v > 0.5, action: null),
+            Auto("PKC_SEATBELTS", "PARKING_CL", "Seat belts: OFF",
+                "S_OH_SIGNS", v => v < 0.5, action: null),
+            Reminder("PKC_EXTLT", "PARKING_CL", "Exterior lights: AS REQUIRED"),
+            Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF",
+                "S_OH_FUEL_LEFT_1", v => v < 0.5,
+                new[] { "S_OH_FUEL_LEFT_2", "S_OH_FUEL_CENTER_1", "S_OH_FUEL_CENTER_2",
+                        "S_OH_FUEL_RIGHT_1", "S_OH_FUEL_RIGHT_2" }, action: null),
+            Auto("PKC_PARK", "PARKING_CL", "Parking brake: ON (chocks as required)",
+                "S_MIP_PARKING_BRAKE", v => v > 0.5, action: null),
+        }
+    };
+
+    private static Group BuildSecuringChecklist() => new()
+    {
+        Id = "SECURING_CL", Name = "Securing the Aircraft Checklist",
+        Items = new()
+        {
+            Auto("SCC_ADIRS", "SECURING_CL", "ADIRS: OFF",
+                "S_OH_NAV_IR1_MODE", v => v < 0.5,
+                new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" }, action: null),
+            Auto("SCC_OXY", "SECURING_CL", "Oxygen: OFF",
+                "S_OH_OXYGEN_CREW_OXYGEN", v => v < 0.5, action: null),
+            Auto("SCC_PARK", "SECURING_CL", "Parking brake: SET",
+                "S_MIP_PARKING_BRAKE", v => v > 0.5, action: null),
+            Auto("SCC_APU", "SECURING_CL", "APU: OFF",
+                "S_OH_ELEC_APU_MASTER", v => v < 0.5, action: null),
+            Auto("SCC_BAT", "SECURING_CL", "Batteries 1 and 2: OFF",
+                "S_OH_ELEC_BAT1", v => v < 0.5, new[] { "S_OH_ELEC_BAT2" }, action: null),
         }
     };
 
