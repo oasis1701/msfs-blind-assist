@@ -40,6 +40,12 @@ public static class FenixFlowDefinitions
         BuildEngineStart(),
         BuildAfterStart(),
         BuildBeforeTakeoff(),
+        BuildAfterTakeoff(),
+        BuildDescent(),
+        BuildApproach(),
+        BuildAfterLanding(),
+        BuildShutdown(),
+        BuildSecure(),
     };
 
     // -----------------------------------------------------------------------
@@ -279,6 +285,180 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("BT_STROBE", "Strobes: ON", "S_OH_EXT_LT_STROBE", 2),
                 s => s.IsPosition("S_OH_EXT_LT_STROBE", 2)), "BT_STROBE"),
             Captain("BT_CABIN", "Advise the cabin crew and obtain takeoff clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 7. After Takeoff
+    // -----------------------------------------------------------------------
+    private static Flow BuildAfterTakeoff() => new()
+    {
+        Id = "AFTER_TAKEOFF", Name = "After Takeoff",
+        Description = "Spoilers disarm, packs on, turn-off lights off. Gear and autopilot are handled by the auto-managers; 10,000 ft lights and transition-altitude STD by the phase monitor.",
+        RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF" },
+        Steps = new()
+        {
+            Done(Skip(SW("AT_SPOILERS_DISARM", "Ground spoilers: DISARM", "A_FC_SPEEDBRAKE", 1),
+                s => s.IsPosition("A_FC_SPEEDBRAKE", 1)), "AT_SPOILERS_DISARM"),
+            Done(Skip(Multi("AT_PACKS", "Packs 1 and 2: ON",
+                    ("S_OH_PNEUMATIC_PACK_1", 1), ("S_OH_PNEUMATIC_PACK_2", 1)),
+                s => s.IsOn("S_OH_PNEUMATIC_PACK_1") && s.IsOn("S_OH_PNEUMATIC_PACK_2")), "AT_PACKS"),
+            Done(Skip(SW("AT_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
+                s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "AT_TURNOFF_OFF"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 8. Descent
+    // -----------------------------------------------------------------------
+    private static Flow BuildDescent() => new()
+    {
+        Id = "DESCENT", Name = "Descent",
+        Description = "Autobrake, seatbelt signs, arrival preparation reminders.",
+        RelatedChecklistGroupIds = new[] { "DESCENT" },
+        Steps = new()
+        {
+            Done(Skip(SW("DC_AUTOBRAKE", "Autobrake: MED", "S_MIP_AUTOBRAKE_MED", 1),
+                s => s.IsOn("I_MIP_AUTOBRAKE_MED_L")), "DC_AUTOBRAKE"),
+            Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
+                s => s.IsOn("S_OH_SIGNS")), "DC_SEATBELTS"),
+            Captain("DC_ARRPERF", "Calculate arrival performance on the EFB"),
+            Captain("DC_MCDU", "Complete the MCDU approach page and minimums before top of descent"),
+            Captain("DC_LDGELEV", "Check landing elevation auto on the ECAM"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 9. Approach
+    // -----------------------------------------------------------------------
+    private static Flow BuildApproach() => new()
+    {
+        Id = "APPROACH", Name = "Approach",
+        Description = "LS on both sides, approach reminders.",
+        RelatedChecklistGroupIds = new[] { "APPROACH" },
+        Steps = new()
+        {
+            Done(Skip(SW("AP_LS1", "LS captain: ON", "S_FCU_EFIS1_LS_PRESS", 1),
+                s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"),
+            Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS_PRESS", 1),
+                s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"),
+            Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
+            Captain("AP_BARO", "Confirm QNH set at transition level"),
+            Captain("AP_ENGMODE", "Set engine mode selector as required"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 10. After Landing (pilot-triggered once clear of the runway)
+    // -----------------------------------------------------------------------
+    private static Flow BuildAfterLanding() => new()
+    {
+        Id = "AFTER_LANDING", Name = "After Landing",
+        Description = "Clean up after vacating: spoilers, flaps, radar, transponder, lights, APU start.",
+        RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
+        Steps = new()
+        {
+            Done(Skip(SW("AL_SPOILERS", "Ground spoilers: DISARM", "A_FC_SPEEDBRAKE", 1),
+                s => s.IsPosition("A_FC_SPEEDBRAKE", 1)), "AL_SPOILERS"),
+            Done(Skip(SW("AL_FLAPS_UP", "Flaps: UP", "S_FC_FLAPS", 0),
+                s => s.IsPosition("S_FC_FLAPS", 0)), "AL_FLAPS_UP"),
+            Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "S_WR_SYS", WxOff),      // [RADAR]
+                s => s.IsPosition("S_WR_SYS", WxOff)), "AL_WXR_OFF"),                  // [RADAR]
+            Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "S_WR_PRED_WS", PwsOff), // [RADAR]
+                s => s.IsPosition("S_WR_PRED_WS", PwsOff)), "AL_PWS_OFF"),             // [RADAR]
+            Done(Skip(SW("AL_XPDR_STBY", "Transponder: STANDBY", "S_XPDR_OPERATION", 0),
+                s => s.IsPosition("S_XPDR_OPERATION", 0)), "AL_XPDR_STBY"),
+            Skip(SW("AL_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
+                s => s.IsPosition("S_XPDR_MODE", 0)),
+            Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "S_OH_EXT_LT_STROBE", 1),
+                s => s.IsPosition("S_OH_EXT_LT_STROBE", 1)), "AL_STROBE_AUTO"),
+            Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_BOTH", 1), "AL_LANDING_OFF"),
+            Done(Skip(SW("AL_NOSE_TAXI", "Nose light: TAXI", "S_OH_EXT_LT_NOSE", 1),
+                s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AL_NOSE_TAXI"),
+            // APU for the gate (skip the whole block when already available)
+            Done(Skip(SW("AL_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
+                s => s.IsOn("I_OH_ELEC_APU_START_U")), "AL_APU"),
+            Skip(Wait("AL_APU_DWELL", "Waiting before APU start", 3),
+                s => s.IsOn("I_OH_ELEC_APU_START_U")),
+            Skip(SW("AL_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
+                s => s.IsOn("I_OH_ELEC_APU_START_U")),
+            WaitForField("AL_APU_AVAIL", "Waiting for APU available",
+                "I_OH_ELEC_APU_START_U", v => v > 0.5, 180),
+            Done(Skip(Multi("AL_ANTIICE_OFF", "Engine and wing anti-ice: OFF",
+                    ("S_OH_PNEUMATIC_ENG1_ANTI_ICE", 0), ("S_OH_PNEUMATIC_ENG2_ANTI_ICE", 0),
+                    ("S_OH_PNEUMATIC_WING_ANTI_ICE", 0)),
+                s => s.IsPosition("S_OH_PNEUMATIC_ENG1_ANTI_ICE", 0)
+                     && s.IsPosition("S_OH_PNEUMATIC_ENG2_ANTI_ICE", 0)
+                     && s.IsPosition("S_OH_PNEUMATIC_WING_ANTI_ICE", 0)), "AL_ANTIICE_OFF"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 11. Shutdown / Parking
+    // -----------------------------------------------------------------------
+    private static Flow BuildShutdown() => new()
+    {
+        Id = "SHUTDOWN", Name = "Shutdown",
+        Description = "Parking brake, APU bleed, engine masters off, signs, beacon, fuel pumps.",
+        RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
+        Steps = new()
+        {
+            Done(Skip(SW("SD_PARKBRAKE", "Parking brake: ON", "S_MIP_PARKING_BRAKE", 1),
+                s => s.IsOn("S_MIP_PARKING_BRAKE")), "SD_PARKBRAKE"),
+            Done(Skip(SW("SD_APUBLEED_ON", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
+                s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "SD_APUBLEED_ON"),
+            Done(Skip(SW("SD_ENG1_OFF", "Engine 1 master: OFF", "S_ENG_MASTER_1", 0),
+                s => s.IsPosition("S_ENG_MASTER_1", 0)), "SD_ENG1_OFF"),
+            Done(Skip(SW("SD_ENG2_OFF", "Engine 2 master: OFF", "S_ENG_MASTER_2", 0),
+                s => s.IsPosition("S_ENG_MASTER_2", 0)), "SD_ENG2_OFF"),
+            Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "S_OH_SIGNS", 0),
+                s => s.IsPosition("S_OH_SIGNS", 0)), "SD_SEATBELTS_OFF"),
+            Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "S_OH_EXT_LT_BEACON", 0),
+                s => s.IsPosition("S_OH_EXT_LT_BEACON", 0)), "SD_BEACON_OFF"),
+            Done(Skip(Multi("SD_FUELPUMPS_OFF", "Fuel pumps: ALL OFF",
+                    ("S_OH_FUEL_LEFT_1", 0), ("S_OH_FUEL_LEFT_2", 0),
+                    ("S_OH_FUEL_CENTER_1", 0), ("S_OH_FUEL_CENTER_2", 0),
+                    ("S_OH_FUEL_RIGHT_1", 0), ("S_OH_FUEL_RIGHT_2", 0)),
+                s => s.IsPosition("S_OH_FUEL_LEFT_1", 0) && s.IsPosition("S_OH_FUEL_LEFT_2", 0)
+                     && s.IsPosition("S_OH_FUEL_CENTER_1", 0) && s.IsPosition("S_OH_FUEL_CENTER_2", 0)
+                     && s.IsPosition("S_OH_FUEL_RIGHT_1", 0) && s.IsPosition("S_OH_FUEL_RIGHT_2", 0)), "SD_FUELPUMPS_OFF"),
+            Done(Skip(SW("SD_NOSE_OFF", "Nose light: OFF", "S_OH_EXT_LT_NOSE", 0),
+                s => s.IsPosition("S_OH_EXT_LT_NOSE", 0)), "SD_NOSE_OFF"),
+            Done(Skip(SW("SD_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
+                s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "SD_TURNOFF_OFF"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 12. Securing
+    // -----------------------------------------------------------------------
+    private static Flow BuildSecure() => new()
+    {
+        Id = "SECURE", Name = "Securing",
+        Description = "ADIRS, oxygen, emergency lights, signs, APU and batteries off.",
+        RelatedChecklistGroupIds = new[] { "SECURE" },
+        Steps = new()
+        {
+            Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
+                    ("S_OH_NAV_IR1_MODE", 0), ("S_OH_NAV_IR2_MODE", 0), ("S_OH_NAV_IR3_MODE", 0)),
+                s => s.IsPosition("S_OH_NAV_IR1_MODE", 0) && s.IsPosition("S_OH_NAV_IR2_MODE", 0)
+                     && s.IsPosition("S_OH_NAV_IR3_MODE", 0)), "SC_ADIRS"),
+            Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "S_OH_OXYGEN_CREW_OXYGEN", 0),
+                s => s.IsPosition("S_OH_OXYGEN_CREW_OXYGEN", 0)), "SC_OXY"),
+            Done(Skip(SW("SC_EMEREXIT", "Emergency exit lights: OFF", "S_OH_INT_LT_EMER", 0),
+                s => s.IsPosition("S_OH_INT_LT_EMER", 0)), "SC_EMEREXIT"),
+            Done(Skip(SW("SC_NOSMOKE", "No smoking: OFF", "S_OH_SIGNS_SMOKING", 0),
+                s => s.IsPosition("S_OH_SIGNS_SMOKING", 0)), "SC_NOSMOKE"),
+            Done(Skip(SW("SC_APUBLEED", "APU bleed: OFF", "S_OH_PNEUMATIC_APU_BLEED", 0),
+                s => s.IsPosition("S_OH_PNEUMATIC_APU_BLEED", 0)), "SC_APUBLEED"),
+            Done(Skip(SW("SC_APUMASTER", "APU master: OFF", "S_OH_ELEC_APU_MASTER", 0),
+                s => s.IsPosition("S_OH_ELEC_APU_MASTER", 0)), "SC_APUMASTER"),
+            Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
+                s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")),
+            Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "S_OH_ELEC_BAT1", 0),
+                s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"),
+            Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),
+                s => s.IsPosition("S_OH_ELEC_BAT2", 0)), "SC_BAT2"),
         }
     };
 
