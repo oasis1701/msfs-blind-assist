@@ -59,6 +59,10 @@ public class TakeoffAssistManager : IDisposable
     private static readonly string TakeoffLogPath = Utils.AppLogs.PathFor("takeoff_assist.log");
     private const long MAX_TAKEOFF_LOG_BYTES = 2 * 1024 * 1024;
     private DateTime lastTakeoffLogTime = DateTime.MinValue;
+    // Last IAS seen by ProcessSpeedUpdate, cached ONLY so the trace can log a
+    // speed column (tuning needs error-vs-speed). IAS, not ground speed — GS
+    // never reaches this manager, and IAS is what the callouts key on anyway.
+    private double lastIndicatedAirspeedKts;
 
     private double smoothedSteerError;
     private bool steerErrorSmootherInitialized;
@@ -238,6 +242,7 @@ public class TakeoffAssistManager : IDisposable
             hasAnnounced100Knots = false;
             hasAnnouncedV1 = false;
             hasAnnouncedRotate = false;
+            lastIndicatedAirspeedKts = 0;
 
             if (legacyMode)
             {
@@ -529,6 +534,10 @@ public class TakeoffAssistManager : IDisposable
     /// <param name="currentIAS">Current indicated airspeed in knots</param>
     public void ProcessSpeedUpdate(double currentIAS)
     {
+        // Cache BEFORE the guards — the trace's iasKt column must stay fresh
+        // even when callouts are disabled.
+        lastIndicatedAirspeedKts = currentIAS;
+
         if (!isActive) return;
         if (!enableCallouts) return;
 
@@ -678,7 +687,7 @@ public class TakeoffAssistManager : IDisposable
                 "=== Takeoff {0:yyyy-MM-dd HH:mm:ss} icao={1} rwy={2} rwyHdgMag={3} ===",
                 DateTime.Now, referenceAirportICAO, referenceRunwayID, rwyHdg)
                 + Environment.NewLine
-                + "time,lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,pan,crossTrackFt"
+                + "time,lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,smoothedErr,pan,toneOn,iasKt,crossTrackFt"
                 + Environment.NewLine);
         }
         catch { /* diagnostic only */ }
@@ -697,11 +706,15 @@ public class TakeoffAssistManager : IDisposable
         lastTakeoffLogTime = nowUtc;
         try
         {
+            // toneOn = what the pilot actually hears: the hysteresis gate's
+            // output when a threshold is set, always-audible in "Always" mode.
+            int toneOn = headingToneThreshold > 0 ? (toneUnmuted ? 1 : 0) : 1;
             System.IO.File.AppendAllText(TakeoffLogPath, string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss.fff},{1:F7},{2:F7},{3:F1},{4:F2},{5:F2},{6:F2},{7:F2},{8:F1}",
+                "{0:HH:mm:ss.fff},{1:F7},{2:F7},{3:F1},{4:F2},{5:F2},{6:F2},{7:F2},{8:F2},{9},{10:F1},{11:F1}",
                 DateTime.Now, lat, lon, hdgMag, headingDiff, desiredCrabDeg,
-                steerError, pan, crossTrackFeet) + Environment.NewLine);
+                steerError, smoothedSteerError, pan, toneOn,
+                lastIndicatedAirspeedKts, crossTrackFeet) + Environment.NewLine);
         }
         catch { /* diagnostic only */ }
     }
