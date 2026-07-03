@@ -526,13 +526,11 @@ public class FBWA380MCDUForm : Form
         }
 
         int saved = _display.SelectedIndex;
-        _display.BeginUpdate();
-        while (_display.Items.Count > lines.Count) _display.Items.RemoveAt(_display.Items.Count - 1);
-        while (_display.Items.Count < lines.Count) _display.Items.Add("");
-        for (int i = 0; i < lines.Count; i++)
-            if (_display.Items[i]?.ToString() != lines[i])
-                _display.Items[i] = lines[i];
-        _display.EndUpdate();
+
+        // Shared in-place reconcile (grow/shrink tail + rewrite changed rows). This form's own
+        // selection semantics run BELOW and override the helper's content-based restore — the
+        // page-change signature gate + saved-index restore win.
+        Forms.DisplayList.UpdateInPlace(_display, lines);
 
         // Only honor the page-change reset once the NEW page's content has actually arrived.
         // A stale old-page elements push renders the same lines it already showed, so its signature
@@ -549,7 +547,7 @@ public class FBWA380MCDUForm : Form
             _display.SelectedIndex = 0;
             _resetSelection = false;
         }
-        else if (saved >= 0 && saved < _display.Items.Count)
+        else if (saved >= 0 && saved < _display.Items.Count && _display.SelectedIndex != saved)
         {
             _display.SelectedIndex = saved;
         }
