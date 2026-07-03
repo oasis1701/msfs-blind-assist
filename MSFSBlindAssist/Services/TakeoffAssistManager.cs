@@ -15,7 +15,8 @@ public class TakeoffAssistManager : IDisposable
 
     /// <summary>
     /// When true, the centerline tone hard-pans to ±1 instead of using the
-    /// proportional headingDiff / PAN_FULL_RANGE_DEGREES curve. Speaker
+    /// proportional steerError / 5° curve (steer error = heading error plus
+    /// the centerline-intercept crab). Speaker
     /// users get unambiguous "left or right" — no in-between values that
     /// could be confused with centred. Read on every position update so a
     /// runtime toggle in Hand Fly Options applies without restarting
@@ -51,8 +52,10 @@ public class TakeoffAssistManager : IDisposable
     private DateTime lastPitchAnnouncement = DateTime.MinValue;
 
     // Diagnostic frame trace for the takeoff roll (one append per ~100 ms while
-    // active). Lets a post-flight reader see the actual swing + the yaw-rate
-    // lead's effect so leadSeconds can be tuned from data.
+    // active). Lets a post-flight reader see the actual swing and how the
+    // cross-track intercept behaved, so the CROSSTRACK_INTERCEPT_* constants can
+    // be tuned from data. (There is NO yaw-rate lead in takeoff assist — that is
+    // taxi guidance's TaxiTurnLeadSeconds; do not add one from a log hunch.)
     private static readonly string TakeoffLogPath = Utils.AppLogs.PathFor("takeoff_assist.log");
     private const long MAX_TAKEOFF_LOG_BYTES = 2 * 1024 * 1024;
     private DateTime lastTakeoffLogTime = DateTime.MinValue;
@@ -95,9 +98,13 @@ public class TakeoffAssistManager : IDisposable
     private const double MUTE_OFF_FLOOR_DEG = 0.25;         // never re-mute below this gap
 
     // Cross-track centerline tracking. The pan tone tracks an INTERCEPT
-    // heading that converges on the centerline, not the bare runway heading —
-    // exactly like the taxi-guidance runway-lineup intercept. A pure
-    // heading-only tone (the original design) left pilots unable to hold
+    // heading that converges on the centerline, not the bare runway heading.
+    // Same IDEA as the taxi-guidance runway-lineup intercept (deadband → ramp →
+    // cap on cross-track), but a DELIBERATELY different curve: linear 0.1°/ft
+    // capped at 10°, vs taxi's sqrt ramp to 30° at 100 ft — a 30° crab command
+    // during a high-speed roll would be dangerous; gentle linear is right here.
+    // The 8 ft deadband intentionally matches taxi's LINEUP_NOISE_DEADBAND_FEET.
+    // A pure heading-only tone (the original design) left pilots unable to hold
     // centerline: a small steady heading error silently integrates into a
     // huge sideways drift (measured 800 ft off at EIDW 28R while the nose
     // never strayed >12° from runway heading), and the tone gave no cue of it.
@@ -258,17 +265,12 @@ public class TakeoffAssistManager : IDisposable
                 announcer.AnnounceImmediate($"Takeoff assist active{(legacyMode ? " legacy mode" : "")}, runway {referenceRunwayID} at {referenceAirportICAO}");
                 System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
 
-                // EXPLICIT heading sanity check at activation. The centerline tone
-                // pans on heading deviation but uses pan-only (no spoken cue), and
-                // the spoken "center" callout reflects CROSS-TRACK only — so a
-                // pilot who finishes lineup off-heading but on-CL gets "center"
-                // and starts the roll without realizing the nose is pointed
-                // off-runway. FAA AIM and standard pilot training require a
-                // pre-takeoff heading-vs-runway cross-check (sighted pilots do
-                // this visually against the heading indicator). For a blind
-                // pilot this has to be spoken. Threshold ≈ 3° matches the taxi-
-                // lineup tolerance used during alignment, so we only warn when
-                // the misalignment actually exceeds what lineup considered "good".
+                // EXPLICIT heading sanity check at activation. The intercept tone
+                // now DOES cue an off-heading pilot (nonzero steerError), but the
+                // tone is pan-only — this spoken pre-roll heading-vs-runway
+                // cross-check (FAA AIM standard practice; sighted pilots do it
+                // visually) gives the blind pilot explicit NUMBERS before the
+                // roll starts. Threshold ≈ 3° matches the taxi-lineup tolerance.
                 if (referenceRunwayHeadingMagnetic.HasValue)
                 {
                     double headingDiff = currentHeadingMagnetic - referenceRunwayHeadingMagnetic.Value;
@@ -380,7 +382,7 @@ public class TakeoffAssistManager : IDisposable
             // Unified centerline math — see RunwayCenterlineTracker sign convention.
             // We already have MAGNETIC heading here; pass TRUE via (mag + variation) isn't available so
             // use the mag heading as an approximation for the heading-error field (we don't use that
-            // field here — pan is computed from the explicit magnetic headingDiff above).
+            // field here — pan is computed from steerError (magnetic headingDiff + crab) below.
             var track = RunwayCenterlineTracker.Compute(
                 currentLat, currentLon,
                 currentHeadingMagnetic, // heading error not used by this caller
@@ -421,10 +423,6 @@ public class TakeoffAssistManager : IDisposable
             while (steerError < -180.0) steerError += 360.0;
             // ------------------------------------------------------------------
 
-            // Audio pan in the steer direction - silent/centred tone = on the
-            // heading that converges on centerline. Positive steerError = steer
-            // right → pan RIGHT (unless steerTowardTone is false). Hard-pan mode forces ±1 (one
-            // speaker only) for stereo-speaker users; proportional curve otherwise.
             smoothedSteerError = steerErrorSmootherInitialized
                 ? smoothedSteerError + STEER_SMOOTH_ALPHA * (steerError - smoothedSteerError)
                 : steerError;

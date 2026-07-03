@@ -517,10 +517,10 @@ public partial class HandFlyOptionsForm : Form
         // Heading Tone Threshold Label
         headingToneThresholdLabel = new Label
         {
-            Text = "Play heading deviation tone:",
+            Text = "Play steering tone:",
             Location = new Point(20, 765),
             Size = new Size(250, 20),
-            AccessibleName = "Heading Tone Threshold Label"
+            AccessibleName = "Steering Tone Threshold Label"
         };
 
         // Heading Tone Threshold ComboBox
@@ -529,8 +529,8 @@ public partial class HandFlyOptionsForm : Form
             Location = new Point(280, 763),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Play heading deviation tone",
-            AccessibleDescription = "Select when the heading deviation tone plays. Always plays continuously, or only when deviation exceeds selected threshold."
+            AccessibleName = "Play steering tone",
+            AccessibleDescription = "Select when the steering tone plays. Always plays continuously, or only when the required steering correction (heading error plus centerline correction) exceeds the selected threshold."
         };
         headingToneThresholdCombo.Items.AddRange(new object[]
         {

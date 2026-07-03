@@ -4476,7 +4476,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistAutoActivateOnLineup = settingsForm.TakeoffAssistAutoActivateOnLineup;
                 SettingsManager.Save();
 
-                // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
+                // Recreate TakeoffAssistManager to pick up new settings (steer-toward tone, legacy mode, tone, volume)
                 // The manager's mode is set at construction time
                 if (takeoffAssistManager != null)
                 {
