@@ -60,12 +60,21 @@ public class AircraftActionExecutor : IFoActionExecutor
     // APU selector ON → START needs a dwell so the model registers ON before the momentary
     // START, otherwise the APU never spools up (same fix as the 777 StartApuAsync).
     private const int ApuOnToStartMs = 2000;
-    // Gap between successive transmit mouse-clicks when walking a rotary (WalkedSelector)
-    // or rotating an EFIS baro knob. The transmit path doesn't frame-coalesce like the
-    // CDA, but PMDG needs a beat between clicks to register each detent; 40 ms is the
-    // Ctrl+B baro dialog's in-sim-verified rate (RotateBaroKnobAsync), doubled here for
-    // margin since these fire unattended.
-    private const int WalkClickGapMs = 80;
+    // Inter-click gap for the EFIS baro knob rotation — 40 ms is the Ctrl+B baro
+    // dialog's in-sim-verified rate (RotateBaroKnobAsync; the baro is a free encoder,
+    // not a detented selector, and accepts this rate reliably).
+    private const int BaroClickGapMs = 40;
+    // Closed-loop walked-selector pacing (WalkedSelector). DETENTED rotaries are much
+    // slower to accept clicks than the baro encoder: live-probed 2026-07-03, firing
+    // 4 clicks at 80 ms at EVT_TCAS_MODE moved it only 3 detents (one click silently
+    // dropped, leaving the walk one short — the "transponder still bugged" report),
+    // while clicks 250 ms apart all registered. The walk re-reads the CDA position
+    // before every click, so the gap must also cover the data broadcast refreshing
+    // after the previous click.
+    private const int WalkClickGapMs = 300;
+    // Iteration budget for a closed-loop walk: the widest selector span is 4 detents;
+    // the headroom absorbs dropped clicks and stale-read re-decisions.
+    private const int MaxWalkClicks = 12;
 
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
@@ -260,21 +269,25 @@ public class AircraftActionExecutor : IFoActionExecutor
 
                 case Dispatch.WalkedSelector:
                 {
-                    // Step from the live CDA position to the target, one transmit click
-                    // per detent. RIGHTSINGLE = up / LEFTSINGLE = down (live-probed on
-                    // EVT_TCAS_MODE — inverted vs WalkSelectorViaClicks, see the enum doc).
+                    // CLOSED-LOOP walk: re-read the live CDA position before every click
+                    // and step one detent toward the target — RIGHTSINGLE = up /
+                    // LEFTSINGLE = down (live-probed on EVT_TCAS_MODE; inverted vs
+                    // WalkSelectorViaClicks, see the enum doc). Open-loop walking is NOT
+                    // enough: PMDG silently drops detent clicks fired faster than ~4/s
+                    // (see WalkClickGapMs), and a dropped click in a blind sequence left
+                    // the selector one short. The re-read makes every drop self-correct.
                     var dm = _sc.PMDGDataManager;
                     if (spec?.StateField == null || dm is not { IsReady: true } || target == null)
                         return false;
-                    int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));
-                    int steps = target.Value - current;
-                    uint flag = steps > 0 ? 0x80000000u : 0x20000000u;
-                    for (int i = 0; i < Math.Abs(steps); i++)
+                    for (int i = 0; i < MaxWalkClicks; i++)
                     {
-                        _sc.SendPMDGEventViaTransmitWithTarget(id, flag);
-                        if (i < Math.Abs(steps) - 1) await Task.Delay(WalkClickGapMs);
+                        int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));
+                        if (current == target.Value) return true;
+                        _sc.SendPMDGEventViaTransmitWithTarget(
+                            id, target.Value > current ? 0x80000000u : 0x20000000u);
+                        await Task.Delay(WalkClickGapMs);
                     }
-                    return true;
+                    return (int)Math.Round(dm.GetFieldValue(spec.StateField)) == target.Value;
                 }
 
                 case Dispatch.FuelLever:
@@ -573,7 +586,7 @@ public class AircraftActionExecutor : IFoActionExecutor
         for (int i = 0; i < count; i++)
         {
             sc.SendPMDGEventViaTransmitWithTarget(knobEventId, flag);
-            if (i < count - 1) await Task.Delay(WalkClickGapMs);
+            if (i < count - 1) await Task.Delay(BaroClickGapMs);
         }
     }
 
