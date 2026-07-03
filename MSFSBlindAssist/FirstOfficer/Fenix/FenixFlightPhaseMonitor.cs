@@ -43,7 +43,6 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
     {
         _transAltFt = transAltFt;
         _transLvlFt = transLevelFt > 0 ? transLevelFt : transAltFt;
-        PhaseLog.Write($"Fenix SetThresholds transAlt={_transAltFt} transLvl={_transLvlFt}");
     }
 
     public void Reset()
@@ -73,7 +72,6 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            PhaseLog.Write($"Fenix no-TA reminder fired alt={alt:F0}");
             _announcer.AnnounceImmediate(
                 "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
         }
@@ -115,23 +113,18 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
 
         if (!descending && nowAboveTrans && _prevInStd == false)
         {
-            PhaseLog.Write($"Fenix STD set fired alt={alt:F0}");
             _ = _executor.SetBaroStdBoth(true);
             _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
             _prevInStd = true;
         }
         else if (!climbing && nowBelowTrans && _prevInStd == true)
         {
-            PhaseLog.Write($"Fenix QNH set fired alt={alt:F0}");
             _ = _executor.SetBaroStdBoth(false);
             _announcer.AnnounceImmediate("Transition level. Altimeters set to QNH mode. Set local pressure now.");
             _prevInStd = false;
         }
 
-        bool? before = _prevInStd;
         if (nowAboveTrans)      _prevInStd = true;
         else if (nowBelowTrans) _prevInStd = false;
-        if (_prevInStd != before)
-            PhaseLog.Write($"Fenix trans latch {(before?.ToString() ?? "null")} -> {_prevInStd} alt={alt:F0}");
     }
 }

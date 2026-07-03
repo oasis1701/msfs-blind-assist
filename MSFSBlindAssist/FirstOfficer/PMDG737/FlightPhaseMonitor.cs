@@ -83,7 +83,6 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _transAltFt = transAltFt;
         _transLvlFt = transLevelFt > 0 ? transLevelFt : transAltFt;
-        PhaseLog.Write($"737 SetThresholds transAlt={_transAltFt} transLvl={_transLvlFt}");
     }
 
     /// <summary>
@@ -127,7 +126,6 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            PhaseLog.Write($"737 no-TA reminder fired alt={alt:F0} (no SimBrief thresholds loaded)");
             _announcer.AnnounceImmediate(
                 "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
         }
@@ -191,7 +189,6 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
             // Climbing through transition altitude — rotate both EFIS baro knobs to
             // standard (fire-and-forget; the executor sequences the two knobs itself).
             // The _prevInStd latch prevents a repeat on subsequent Update() calls.
-            PhaseLog.Write($"737 STD rotate fired alt={alt:F0} climbing={climbing} descending={descending}");
             _ = _executor.SetAltimetersStandardAsync();
             _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
             _prevInStd = true;
@@ -200,17 +197,13 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         {
             // Descending through transition level — the local QNH is unknowable here,
             // so this is announce-only; the pilot sets pressure via the Ctrl+B dialog.
-            PhaseLog.Write($"737 QNH reminder fired alt={alt:F0} climbing={climbing} descending={descending}");
             _announcer.AnnounceImmediate("Transition level. Set local altimeter pressure now.");
             _prevInStd = false;
         }
 
         // Update latch only when outside the hysteresis band
-        bool? before = _prevInStd;
         if (nowAboveTrans)      _prevInStd = true;
         else if (nowBelowTrans) _prevInStd = false;
         // Inside the band: latch holds its previous value
-        if (_prevInStd != before)
-            PhaseLog.Write($"737 trans latch {(before?.ToString() ?? "null")} -> {_prevInStd} alt={alt:F0} climbing={climbing} descending={descending}");
     }
 }
