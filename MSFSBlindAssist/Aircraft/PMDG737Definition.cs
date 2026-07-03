@@ -4690,12 +4690,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // Transponder mode: swallow the per-detent callouts produced by a
             // transponder click-walk — walking STBY→TA/RA passes ALT RPTG
             // OFF/XPNDR/TA and each detent would otherwise announce, when the
-            // walk's initiator already spoke (the screen reader read the combo
-            // pick; a First Officer flow announces its own step label).
-            // Self-draining COUNT (not a value latch) so it can never
-            // permanently mute a later background change — a knob turned in
-            // the VC still announces normally. CAS drain so an off-UI-thread
-            // walk start can't race a decrement.
+            // walk speaks for itself (the panel path reads back the landed
+            // mode when the walk ends; a First Officer flow announces its own
+            // step label). Gate = walk-ACTIVE, not a detent count: the walk's
+            // try/finally clears it on every exit path, so leftover state can
+            // never mute a later genuine background change — a knob turned in
+            // the VC announces normally.
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
                 return SimConnect.PMDGNG3DataManager.AnyWalkInProgress;
