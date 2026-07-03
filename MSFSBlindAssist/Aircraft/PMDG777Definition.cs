@@ -5886,8 +5886,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         //     -200LR pax designator; if PMDG ships one, revisit the cabin-knob
         //     gate (the freighter and 200LR can't be told apart by ICAO).
         // ------------------------------------------------------------------
-        if (varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
-                   or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft"
+        if ((varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
+                    or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft")
             && simConnect.CurrentAircraftIcaoType == "B77W")
         {
             announcer.AnnounceImmediate("Cargo temperature knobs are only functional on the 777 freighter.");
