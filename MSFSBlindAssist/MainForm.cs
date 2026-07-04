@@ -436,7 +436,7 @@ public partial class MainForm : Form
         takeoffAssistManager = new TakeoffAssistManager(announcer,
             takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume,
             takeoffSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            takeoffSettings.TakeoffAssistInvertPanning,
+            takeoffSettings.TakeoffAssistSteerTowardTone,
             takeoffSettings.TakeoffAssistHeadingToneThreshold, takeoffSettings.TakeoffAssistLegacyMode,
             takeoffSettings.TakeoffAssistEnableCallouts);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
@@ -4513,7 +4513,7 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistToneWaveform,
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            currentSettings.TakeoffAssistInvertPanning,
+            currentSettings.TakeoffAssistSteerTowardTone,
             currentSettings.TakeoffAssistHardPanTone,
             currentSettings.TakeoffAssistHeadingToneThreshold,
             currentSettings.TakeoffAssistLegacyMode,
@@ -4536,7 +4536,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
-                currentSettings.TakeoffAssistInvertPanning = settingsForm.TakeoffAssistInvertPanning;
+                currentSettings.TakeoffAssistSteerTowardTone = settingsForm.TakeoffAssistSteerTowardTone;
                 currentSettings.TakeoffAssistHardPanTone = settingsForm.TakeoffAssistHardPanTone;
                 currentSettings.TakeoffAssistHeadingToneThreshold = settingsForm.TakeoffAssistHeadingToneThreshold;
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
@@ -4544,19 +4544,33 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistAutoActivateOnLineup = settingsForm.TakeoffAssistAutoActivateOnLineup;
                 SettingsManager.Save();
 
-                // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
+                // Recreate TakeoffAssistManager to pick up new settings (steer-toward tone, legacy mode, tone, volume)
                 // The manager's mode is set at construction time
                 if (takeoffAssistManager != null)
                 {
+                    // Preserve a teleport/taxi-lineup runway reference across the
+                    // recreate — Reset() clears it, and losing it here silently
+                    // downgraded the next Ctrl+T to "no runway selected". Restore
+                    // is silent (SetRunwayReference only Debug-logs).
+                    bool hadRunwayRef = takeoffAssistManager.TryGetRunwayReference(
+                        out double refLat, out double refLon, out double refHdgTrue,
+                        out double refHdgMag, out string refRunwayId, out string refIcao);
+
                     takeoffAssistManager.Reset();
                     takeoffAssistManager.Dispose();
                     takeoffAssistManager = new TakeoffAssistManager(announcer,
                         currentSettings.TakeoffAssistToneWaveform, currentSettings.TakeoffAssistToneVolume,
                         currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-                        currentSettings.TakeoffAssistInvertPanning,
+                        currentSettings.TakeoffAssistSteerTowardTone,
                         currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode,
                         currentSettings.TakeoffAssistEnableCallouts);
                     takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+
+                    if (hadRunwayRef)
+                    {
+                        takeoffAssistManager.SetRunwayReference(refLat, refLon,
+                            refHdgTrue, refHdgMag, refRunwayId, refIcao);
+                    }
                 }
 
                 // Update HandFlyManager if it's active
