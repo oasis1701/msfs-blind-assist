@@ -9,6 +9,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem sayIntentionsSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
@@ -46,6 +47,7 @@ namespace MSFSBlindAssist
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.sayIntentionsSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -89,6 +91,7 @@ namespace MSFSBlindAssist
             this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
             this.simbriefSettingsMenuItem,
+            this.sayIntentionsSettingsMenuItem,
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.taxiGuidanceOptionsMenuItem,
@@ -136,6 +139,15 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.simbriefSettingsMenuItem.Text = "Define &SimBrief Username";
             this.simbriefSettingsMenuItem.Click += new System.EventHandler(this.SimBriefSettingsMenuItem_Click);
+            //
+            // sayIntentionsSettingsMenuItem
+            //
+            this.sayIntentionsSettingsMenuItem.AccessibleName = "SayIntentions Settings";
+            this.sayIntentionsSettingsMenuItem.AccessibleDescription = "Configure optional SayIntentions API key";
+            this.sayIntentionsSettingsMenuItem.Name = "sayIntentionsSettingsMenuItem";
+            this.sayIntentionsSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.sayIntentionsSettingsMenuItem.Text = "Sa&yIntentions Settings";
+            this.sayIntentionsSettingsMenuItem.Click += new System.EventHandler(this.SayIntentionsSettingsMenuItem_Click);
             //
             // geminiSettingsMenuItem
             //
