@@ -70,6 +70,7 @@ public static class SettingsManager
                 {
                     System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
+                    SeedTakeoffAssistToneConvention(defaultSettings, freshInstall: true);
                     SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
                     return defaultSettings;
                 }
@@ -89,6 +90,15 @@ public static class SettingsManager
                     Debug.WriteLine("[SettingsManager] Settings loaded successfully from JSON");
                 }
 
+                // SeedFenixMonitorDefaults only saves when ITS OWN flag was just set, so a
+                // stored file that already has FenixMonitorDefaultsSeeded=true would leave
+                // our migration unpersisted on disk if we didn't guard+save it ourselves here
+                // (mirrors the Fenix helper's own save-only-when-newly-set pattern).
+                if (!settings.TakeoffAssistToneConventionMigrated)
+                {
+                    SeedTakeoffAssistToneConvention(settings, freshInstall: false);
+                    Save(settings);
+                }
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
                 return settings;
             }
@@ -98,6 +108,33 @@ public static class SettingsManager
                 // Return default settings on error
                 return new UserSettings();
             }
+        }
+
+        /// <summary>
+        /// One-time seed for the PR #111 takeoff-tone changes (Robin-confirmed
+        /// 2026-07-03). Two migrations under one flag:
+        /// (a) Pan convention: the tone used to pan on the heading DEVIATION side
+        ///     (steer AWAY at InvertPanning=false); it now pans on the STEER side.
+        ///     Under the old semantics InvertPanning==true WAS the steer-toward
+        ///     mapping, so seeding SteerTowardTone from it preserves each existing
+        ///     user's experienced direction exactly.
+        /// (b) Threshold: a stored 0 ("Always") becomes 1° so every user gets the
+        ///     new silent-on-track behavior once; deliberate 1–5 values are kept,
+        ///     and post-migration choices (incl. re-selecting "Always") stick.
+        /// Fresh installs keep the class defaults (steer-toward, 1°).
+        /// </summary>
+        private static void SeedTakeoffAssistToneConvention(UserSettings settings, bool freshInstall)
+        {
+            if (settings.TakeoffAssistToneConventionMigrated) return;
+            if (!freshInstall)
+            {
+                settings.TakeoffAssistSteerTowardTone = settings.TakeoffAssistInvertPanning;
+                if (settings.TakeoffAssistHeadingToneThreshold == 0)
+                {
+                    settings.TakeoffAssistHeadingToneThreshold = 1;
+                }
+            }
+            settings.TakeoffAssistToneConventionMigrated = true;
         }
 
         /// <summary>

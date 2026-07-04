@@ -255,6 +255,25 @@ public partial class MainForm : Form
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
+    // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
+    // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
+    // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle.
+    // The timer is armed by the FIRST push and NOT restarted by later ones, so the repaint fires
+    // a bounded 120 ms after the burst began. (A restart-per-push trailing debounce starved here:
+    // hand-fly/takeoff-assist stream PLANE_PITCH/BANK/HEADING per SIM_FRAME — ~30-60 Hz — and
+    // those are PFD/ISIS display vars, so the repaint deadline was pushed out forever and the
+    // "live" list froze exactly while the aircraft was being hand-flown.)
+    private System.Windows.Forms.Timer? _displayRepaintDebounce;
+    // Cached view of currentAircraft.GetPanelDisplayVariables(). The aircraft defs rebuild that
+    // dictionary from scratch on EVERY call (hundreds of interpolated strings on the FBW jets —
+    // the same lag class GetVariables' _varCache fixed), and OnSimVarUpdated consults it PER
+    // EVENT: with the 1 s display force-read firing an event per panel var per second, the
+    // uncached call was thousands of allocations per second on the UI thread. Panel display sets
+    // are static per aircraft-definition instance, so cache both the dict and a flat name set,
+    // keyed on the aircraft instance (an aircraft switch invalidates automatically).
+    private Dictionary<string, List<string>>? _panelDisplayVarsCache;
+    private HashSet<string>? _displayVarNameCache;
+    private IAircraftDefinition? _displayVarCacheOwner;
     private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
@@ -417,7 +436,7 @@ public partial class MainForm : Form
         takeoffAssistManager = new TakeoffAssistManager(announcer,
             takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume,
             takeoffSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            takeoffSettings.TakeoffAssistInvertPanning,
+            takeoffSettings.TakeoffAssistSteerTowardTone,
             takeoffSettings.TakeoffAssistHeadingToneThreshold, takeoffSettings.TakeoffAssistLegacyMode,
             takeoffSettings.TakeoffAssistEnableCallouts);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
@@ -849,7 +868,7 @@ public partial class MainForm : Form
             // Also mirror to displayValues so panel display textboxes have
             // the right initial content when first rendered.
             if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
-                currentAircraft.GetPanelDisplayVariables().Values.Any(list => list.Contains(e.VarName)))
+                GetDisplayVarNamesCached().Contains(e.VarName))
             {
                 displayValues[e.VarName] = e.Value;
             }
@@ -979,8 +998,9 @@ public partial class MainForm : Form
 
         // Step 3: Update display values (if this variable is used in any panel display)
         // This happens silently without announcements - users read the display manually
+        // (cached name set — this gate runs PER EVENT; see GetDisplayVarNamesCached)
         if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
-            currentAircraft.GetPanelDisplayVariables().Values.Any(list => list.Contains(e.VarName)))
+            GetDisplayVarNamesCached().Contains(e.VarName))
         {
             displayValues[e.VarName] = e.Value;
 
@@ -990,14 +1010,13 @@ public partial class MainForm : Form
                 pendingDisplayRequests[e.VarName].TrySetResult(true);
             }
 
-            // Update display textbox if visible
-            if (currentControls.ContainsKey("_DISPLAY_"))
+            // Repaint the display list if visible — COALESCED. During the auto-refresh tick the
+            // whole panel is force-read at once, so N responses land in quick succession; without
+            // debouncing, each would rebuild + reconcile the entire list (O(N) × N). Schedule one
+            // repaint instead.
+            if (currentControls.ContainsKey("_DISPLAY_") && currentControls["_DISPLAY_"] is ListBox)
             {
-                TextBox? displayBox = currentControls["_DISPLAY_"] as TextBox;
-                if (displayBox != null)
-                {
-                    UpdateDisplayText(displayBox);
-                }
+                ScheduleDisplayRepaint();
             }
             // DON'T return - continue processing for announcements if needed
         }
@@ -1835,35 +1854,34 @@ public partial class MainForm : Form
         }
     }
 
-    private void UpdateDisplayText(TextBox displayBox)
+    private void UpdateDisplayText(ListBox displayBox)
     {
-        if (currentAircraft.GetPanelDisplayVariables().ContainsKey(currentPanel))
+        if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var displayVars))
         {
-            var displayVars = currentAircraft.GetPanelDisplayVariables()[currentPanel];
+            var allVars = currentAircraft.GetVariables();
             List<string> values = new List<string>();
 
             foreach (var varKey in displayVars)
             {
-                if (currentAircraft.GetVariables().ContainsKey(varKey))
+                if (allVars.TryGetValue(varKey, out var varDef))
                 {
-                    var varDef = currentAircraft.GetVariables()[varKey];
-
-                    // Fall back to SimConnectManager's lastVariableValues cache
-                    // when displayValues lacks an entry. lastVariableValues is
-                    // populated in ProcessIndividualVariableResponse BEFORE the
-                    // announced-var "unchanged" suppression at line 2215, so it
-                    // holds the current value even when SimVarUpdated was
-                    // suppressed and never reached MainForm's displayValues
-                    // sink. Without this fallback, panel display fields for
-                    // stable continuous announced vars (e.g. IRS POS_SET held
-                    // at 1, IRS minutes held at -1) silently render as "--".
-                    if (!displayValues.ContainsKey(varKey))
+                    // ALWAYS prefer SimConnectManager's lastVariableValues cache over the
+                    // displayValues entry. The cache is written unconditionally, BEFORE any
+                    // suppression, on every individual response AND every continuous-batch
+                    // delivery — so it is at least as fresh as displayValues for every
+                    // deliverable var. displayValues alone goes STALE for def-handled vars:
+                    // when ProcessSimVarUpdate returns true, OnSimVarUpdated exits before the
+                    // Step-3 displayValues write, so those rows (A32NX COM frequencies, A380
+                    // EFIS baro, HS787 flight data) would freeze at their first-painted value
+                    // forever — the old 3 s tick masked this by clearing displayValues every
+                    // cycle via the Refresh button, which the live 1 s tick no longer does.
+                    // displayValues remains the fallback for values delivered through paths
+                    // that don't populate the cache, and covers stable continuous announced
+                    // vars whose SimVarUpdated was suppressed (e.g. IRS POS_SET held at 1).
+                    double? cached = simConnectManager?.GetCachedVariableValue(varKey);
+                    if (cached.HasValue)
                     {
-                        double? cached = simConnectManager?.GetCachedVariableValue(varKey);
-                        if (cached.HasValue)
-                        {
-                            displayValues[varKey] = cached.Value;
-                        }
+                        displayValues[varKey] = cached.Value;
                     }
 
                     if (displayValues.ContainsKey(varKey))
@@ -1945,19 +1963,69 @@ public partial class MainForm : Form
                 }
             }
 
-            SetDisplayTextPreserveCaret(displayBox, string.Join("\r\n", values));
+            // Split any multi-line entries (the SD-page override block is one display var
+            // whose value is a multi-row block) into one list item per row, then update only
+            // the items whose text changed — preserving the selected ROW (by content) so the
+            // reader stays put. A per-item list update never moves a caret, so NVDA's cursor
+            // never jumps. The reconcile lives in Forms.DisplayList.UpdateInPlace.
+            var lines = new List<string>();
+            foreach (var v in values)
+                lines.AddRange((v ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
+            Forms.DisplayList.UpdateInPlace(displayBox, lines);
         }
     }
 
     /// <summary>
-    /// Writes new text into a (read-only) status display box WITHOUT yanking the
-    /// screen-reader review cursor back to the top on every refresh. Delegates to the
-    /// shared <see cref="Forms.DisplayText.SetPreserveCaret"/>, which rewrites only the
-    /// characters that changed (so NVDA sees a localized edit, not a full content
-    /// replacement) and keeps the caret on the same line. No-ops when unchanged.
+    /// Request a status-list repaint, COALESCED via a short one-shot debounce: the FIRST push arms
+    /// the 120 ms timer and later pushes leave it running, so a force-read burst (the auto-refresh
+    /// tick reads the whole panel at once) collapses into a single
+    /// <see cref="UpdateDisplayText(ListBox)"/> pass a bounded 120 ms after the burst began. The
+    /// repaint reads the current cache, so the single pass shows the freshest data; a straggler
+    /// landing after the tick simply arms the next window. Do NOT switch this to a
+    /// restart-per-push trailing debounce — sustained sub-120 ms pushes (hand-fly's per-SIM_FRAME
+    /// PLANE_PITCH/BANK/HEADING, which are PFD/ISIS display vars) starve a trailing debounce and
+    /// freeze the "live" list exactly while values change fastest.
     /// </summary>
-    private void SetDisplayTextPreserveCaret(TextBox box, string text)
-        => Forms.DisplayText.SetPreserveCaret(box, text);
+    private void ScheduleDisplayRepaint()
+    {
+        if (_displayRepaintDebounce == null)
+        {
+            _displayRepaintDebounce = new System.Windows.Forms.Timer { Interval = 120 };
+            _displayRepaintDebounce.Tick += (s, e) =>
+            {
+                _displayRepaintDebounce!.Stop();
+                if (currentControls != null &&
+                    currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is ListBox lb)
+                    UpdateDisplayText(lb);
+            };
+        }
+        if (!_displayRepaintDebounce.Enabled)
+            _displayRepaintDebounce.Start();
+    }
+
+    /// <summary>
+    /// Cached <c>currentAircraft.GetPanelDisplayVariables()</c> (see the cache fields for why:
+    /// the defs rebuild the dictionary per call and the per-event Step-3 gate made that a
+    /// per-second allocation storm). Self-invalidates when the aircraft instance changes.
+    /// </summary>
+    private Dictionary<string, List<string>> GetPanelDisplayVarsCached()
+    {
+        if (_panelDisplayVarsCache == null || !ReferenceEquals(_displayVarCacheOwner, currentAircraft))
+        {
+            _panelDisplayVarsCache = currentAircraft.GetPanelDisplayVariables();
+            _displayVarNameCache = new HashSet<string>(_panelDisplayVarsCache.Values.SelectMany(l => l));
+            _displayVarCacheOwner = currentAircraft;
+        }
+        return _panelDisplayVarsCache;
+    }
+
+    /// <summary>Flat set of every display-var name across all panels — the O(1) form of
+    /// "is this var used in any panel display" for the per-event OnSimVarUpdated gate.</summary>
+    private HashSet<string> GetDisplayVarNamesCached()
+    {
+        GetPanelDisplayVarsCached();
+        return _displayVarNameCache!;
+    }
 
 
     /// <summary>
@@ -4445,7 +4513,7 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistToneWaveform,
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            currentSettings.TakeoffAssistInvertPanning,
+            currentSettings.TakeoffAssistSteerTowardTone,
             currentSettings.TakeoffAssistHardPanTone,
             currentSettings.TakeoffAssistHeadingToneThreshold,
             currentSettings.TakeoffAssistLegacyMode,
@@ -4468,7 +4536,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
-                currentSettings.TakeoffAssistInvertPanning = settingsForm.TakeoffAssistInvertPanning;
+                currentSettings.TakeoffAssistSteerTowardTone = settingsForm.TakeoffAssistSteerTowardTone;
                 currentSettings.TakeoffAssistHardPanTone = settingsForm.TakeoffAssistHardPanTone;
                 currentSettings.TakeoffAssistHeadingToneThreshold = settingsForm.TakeoffAssistHeadingToneThreshold;
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
@@ -4476,19 +4544,33 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistAutoActivateOnLineup = settingsForm.TakeoffAssistAutoActivateOnLineup;
                 SettingsManager.Save();
 
-                // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
+                // Recreate TakeoffAssistManager to pick up new settings (steer-toward tone, legacy mode, tone, volume)
                 // The manager's mode is set at construction time
                 if (takeoffAssistManager != null)
                 {
+                    // Preserve a teleport/taxi-lineup runway reference across the
+                    // recreate — Reset() clears it, and losing it here silently
+                    // downgraded the next Ctrl+T to "no runway selected". Restore
+                    // is silent (SetRunwayReference only Debug-logs).
+                    bool hadRunwayRef = takeoffAssistManager.TryGetRunwayReference(
+                        out double refLat, out double refLon, out double refHdgTrue,
+                        out double refHdgMag, out string refRunwayId, out string refIcao);
+
                     takeoffAssistManager.Reset();
                     takeoffAssistManager.Dispose();
                     takeoffAssistManager = new TakeoffAssistManager(announcer,
                         currentSettings.TakeoffAssistToneWaveform, currentSettings.TakeoffAssistToneVolume,
                         currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-                        currentSettings.TakeoffAssistInvertPanning,
+                        currentSettings.TakeoffAssistSteerTowardTone,
                         currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode,
                         currentSettings.TakeoffAssistEnableCallouts);
                     takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+
+                    if (hadRunwayRef)
+                    {
+                        takeoffAssistManager.SetRunwayReference(refLat, refLon,
+                            refHdgTrue, refHdgMag, refRunwayId, refIcao);
+                    }
                 }
 
                 // Update HandFlyManager if it's active
@@ -5339,15 +5421,15 @@ public partial class MainForm : Form
         // Ctrl+2 panel-nav already relies on against FCU Pull-Heading/Pull-Altitude.
         else if (keyData == (Keys.Control | Keys.D3))
         {
-            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is TextBox dispBox)
+            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is ListBox dispBox)
             {
                 dispBox.Focus();
-                // If the field is empty (OnRequest display vars don't auto-update until a
+                // If the list is empty (OnRequest display vars don't auto-update until a
                 // refresh), pull live content so the user lands on real status rather than a
-                // blank box. The refresh is silent; the screen reader reads the field itself.
+                // blank list. The refresh is silent; the screen reader reads the list itself.
                 // If it already has content (continuously-monitored vars / a prior refresh),
                 // leave it untouched so NVDA reads the current value immediately.
-                if (string.IsNullOrWhiteSpace(dispBox.Text) &&
+                if (dispBox.Items.Count == 0 &&
                     currentControls.TryGetValue("_REFRESH_", out var refreshOnJump) &&
                     refreshOnJump is Button jumpRefreshBtn && jumpRefreshBtn.Enabled)
                 {
@@ -6352,7 +6434,7 @@ public partial class MainForm : Form
         }
 
         // Add display field if this panel has display variables
-        if (currentAircraft.GetPanelDisplayVariables().ContainsKey(currentPanel))
+        if (GetPanelDisplayVarsCached().ContainsKey(currentPanel))
         {
             // Standard display for other panels
             // Add separator row
@@ -6361,7 +6443,7 @@ public partial class MainForm : Form
 
             // Add display row
             int displayRow = layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
 
             Label displayLabel = new Label();
             displayLabel.Text = "Status Display:";
@@ -6370,29 +6452,36 @@ public partial class MainForm : Form
             displayLabel.Size = new Size(140, 25);
             layout.Controls.Add(displayLabel, 0, displayRow);
 
-            // Panel to hold textbox and button
+            // Panel to hold the status list + refresh button
             Panel displayPanel = new Panel();
-            displayPanel.Size = new Size(240, 55);
+            displayPanel.Size = new Size(240, 150);
 
-            // Read-only multiline textbox for display
-            TextBox displayTextBox = new TextBox();
-            displayTextBox.Multiline = true;
-            displayTextBox.ReadOnly = true;
-            displayTextBox.Size = new Size(240, 30);
-            displayTextBox.Location = new Point(0, 0);
-            displayTextBox.AccessibleName = "Status display (press F5 to refresh)";
-            displayTextBox.Text = "";  // Empty by default
+            // Read-only NAVIGABLE LIST for the status display — one row per item. A live
+            // refresh updates ONLY the items whose value changed, and a ListBox item-text
+            // update never touches a caret or selection, so the screen-reader cursor stays
+            // on the row the user is reading. (A multiline TextBox couldn't do this: every
+            // in-place edit has to move the selection to replace text, and NVDA follows
+            // those caret events, throwing the review cursor around.) Arrow up/down reads
+            // each row; only a row whose value actually changes re-announces while focused.
+            ListBox displayList = new ListBox();
+            displayList.Size = new Size(240, 120);
+            displayList.Location = new Point(0, 0);
+            displayList.IntegralHeight = false;
+            displayList.SelectionMode = SelectionMode.One;
+            displayList.HorizontalScrollbar = true;
+            displayList.TabStop = true;
+            displayList.AccessibleName = "Status display, updates live (F5 to refresh now)";
 
             // Refresh button
             Button refreshButton = new Button();
             refreshButton.Text = "Refresh";
             refreshButton.Size = new Size(80, 23);
-            refreshButton.Location = new Point(0, 32);
+            refreshButton.Location = new Point(0, 122);
             refreshButton.AccessibleName = "Refresh status";
 
-            // F5 on the read-only display triggers the same refresh action as the
-            // button — convenient for blind users who don't want to tab to the button.
-            displayTextBox.KeyDown += (s2, e2) =>
+            // F5 on the list triggers the same refresh action as the button — convenient
+            // for blind users who don't want to tab to the button.
+            displayList.KeyDown += (s2, e2) =>
             {
                 if (e2.KeyCode == Keys.F5)
                 {
@@ -6401,14 +6490,12 @@ public partial class MainForm : Form
                 }
             };
 
-            // When the user moves focus TO the status box, refresh it to the current selection.
-            // The auto-refresh timer deliberately skips while a selector combo (or the box) is
-            // focused — that periodic mid-navigation update was interrupting NVDA's combo
-            // announcements — so this GotFocus refresh is what brings the box current when the
-            // user goes to read it. It updates once on focus-in (review cursor at the top, which
-            // is what you want when you start reading), then the box-focused guard above keeps it
-            // stable. SetDisplayTextPreserveCaret no-ops when the content is unchanged.
-            displayTextBox.GotFocus += (s2, e2) =>
+            // When the user moves focus TO the list, pull current content. The live auto-refresh
+            // timer keeps it current while focused too (updating only the changed rows, so the
+            // cursor stays put), but it skips while a SELECTOR COMBO is focused so it can't fight
+            // the combo's announcement — so this GotFocus pull is what brings the list current the
+            // instant the user moves from the page combo onto it to read.
+            displayList.GotFocus += (s2, e2) =>
             {
                 try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
             };
@@ -6416,21 +6503,18 @@ public partial class MainForm : Form
             refreshButton.Click += async (s2, e2) =>
             {
                 // Where to return focus when the refresh finishes (set by the F5 handler
-                // before PerformClick moves focus onto this button). Fall back to the box
+                // before PerformClick moves focus onto this button). Fall back to the list
                 // if it's somehow still focused here.
-                Control? focusReturn = _refreshFocusReturn ?? (displayTextBox.Focused ? displayTextBox : null);
+                Control? focusReturn = _refreshFocusReturn ?? (displayList.Focused ? displayList : null);
                 _refreshFocusReturn = null;
 
-                // Only show the "Loading..." placeholder on the FIRST populate (empty box).
-                // On subsequent refreshes — manual F5 or the periodic auto-refresh timer —
-                // keep the existing content visible so the box doesn't flash/blank every
-                // cycle; the new values simply overwrite it when they arrive.
-                if (string.IsNullOrEmpty(displayTextBox.Text))
-                    displayTextBox.Text = "Loading...";
+                // First populate only (empty list): show a Loading placeholder so it isn't silent.
+                if (displayList.Items.Count == 0)
+                    displayList.Items.Add("Loading...");
                 displayValues.Clear();  // Clear old values for this panel
 
                 // Get the display variables for this panel
-                var displayVars = currentAircraft.GetPanelDisplayVariables()[currentPanel];
+                var displayVars = GetPanelDisplayVarsCached()[currentPanel];
 
                 // Create a task completion source for each variable
                 var pendingValues = new Dictionary<string, TaskCompletionSource<bool>>();
@@ -6442,7 +6526,7 @@ public partial class MainForm : Form
                 // Store the pending values temporarily
                 pendingDisplayRequests = pendingValues;
 
-                // Rebuild any aircraft-managed SNAPSHOT content (the A380/A32NX SD-page
+                // Rebuild any aircraft-managed SNAPSHOT content (the A380/A32NX/PMDG SD-page
                 // box). That content lives in the aircraft def's _sdPageContent and is ONLY
                 // regenerated by OnDisplayPanelShown -> RefreshSdPageDisplayAsync, which
                 // re-reads the underlying SimVars (FOB, engine N1-N3, per-tank fuel, …).
@@ -6475,22 +6559,22 @@ public partial class MainForm : Form
                 pendingDisplayRequests = null;
 
                 // Update display - NO announcement, user will read with NVDA
-                UpdateDisplayText(displayTextBox);
+                UpdateDisplayText(displayList);
 
-                // Restore focus to the status box if the refresh moved it (onto the Refresh
+                // Restore focus to the status list if the refresh moved it (onto the Refresh
                 // button). Only refocuses when it actually left — a deliberate click on the
-                // Refresh button won't bounce focus back to the box.
+                // Refresh button won't bounce focus back to the list.
                 if (focusReturn != null && focusReturn.IsHandleCreated && focusReturn.CanFocus && !focusReturn.Focused)
                     focusReturn.Focus();
             };
 
-            displayPanel.Controls.Add(displayTextBox);
+            displayPanel.Controls.Add(displayList);
             displayPanel.Controls.Add(refreshButton);
             layout.Controls.Add(displayPanel, 1, displayRow);
 
-            // Store reference to display textbox + refresh button (F5 in ProcessCmdKey
+            // Store reference to display list + refresh button (F5 in ProcessCmdKey
             // performs the refresh from anywhere in the panel).
-            currentControls["_DISPLAY_"] = displayTextBox;
+            currentControls["_DISPLAY_"] = displayList;
             currentControls["_REFRESH_"] = refreshButton;
         }
 
@@ -6611,12 +6695,15 @@ public partial class MainForm : Form
         if (!hasDisplay)
         {
             _sdAutoRefreshTimer?.Stop();
+            _displayRepaintDebounce?.Stop();   // no pending repaint into a panel that's gone
             return;
         }
         if (_sdAutoRefreshTimer == null)
         {
-            // 3s: longer than the Refresh handler's 2s response timeout so ticks don't stack.
-            _sdAutoRefreshTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            // 1s for live monitoring. The tick force-reads the page vars and schedules a single
+            // coalesced repaint (no TaskCompletionSource/2s-timeout dance), so ticks can't stack
+            // and a changed value surfaces within ~one read round-trip instead of several seconds.
+            _sdAutoRefreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
             _sdAutoRefreshTimer.Tick += SdAutoRefreshTimer_Tick;
         }
         _sdAutoRefreshTimer.Stop();
@@ -6636,40 +6723,38 @@ public partial class MainForm : Form
             }
             if (simConnectManager == null || !simConnectManager.IsConnected) return;
 
-            // DON'T refresh the status box WHILE THE USER IS READING IT. Replacing a
-            // read-only multiline TextBox's .Text fires an MSAA value-change that resets
-            // NVDA's review cursor to the top even though the system caret is preserved
-            // (SetDisplayTextPreserveCaret can't stop the review-cursor reset). So if the
-            // display box currently has focus, skip this auto tick entirely — the content
-            // the user is reading stays frozen and stable. Ticks resume the moment they
-            // move focus away (combo/another control), and manual F5 always refreshes.
-            if (currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is TextBox dtb
-                && dtb.IsHandleCreated && dtb.Focused)
-                return;
+            // We refresh while the user is reading the status LIST now — full live monitoring.
+            // The reconcile (UpdateDisplayText -> Forms.DisplayList.UpdateInPlace) rewrites only
+            // the rows whose value actually changed and never disturbs the selection, so the
+            // screen-reader cursor stays on the row being read; a stable value is never
+            // re-touched (so it never re-announces).
 
-            // Also skip while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
+            // Skip ONLY while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
             // picker). The refresh re-requests the page var — UpdateControlFromSimVar can then
             // re-set the combo's SelectedIndex to a lagging value, fighting the user's arrowing —
-            // and it replaces the box .Text (the MSAA interference noted above). Either one steps
-            // on NVDA's page-selection announcement, which is why arrowing the combo "frequently"
-            // didn't announce the landed page. The box is brought current when the user moves
-            // focus TO it (the display box's GotFocus refresh).
+            // which steps on NVDA's page-selection announcement. The list is brought current when
+            // the user moves focus TO it (the list's GotFocus refresh).
             foreach (var kv in currentControls)
                 if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
                     return;
 
-            // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, etc.) — silent,
-            //     no speech, pushes into the box via the page-index display var.
+            // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
+            //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
+            //     which drives UpdateDisplayText -> the list updates its changed rows in place.
             try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
 
-            // (b) Re-pull the panel's OnRequest display vars for the generic status box.
-            //     The handler keeps existing content (no "Loading..." flash) and overwrites
-            //     in place when the fresh values arrive.
-            if (currentControls.TryGetValue("_REFRESH_", out var rc) && rc is Button rb &&
-                rb.Enabled && rb.IsHandleCreated)
-            {
-                rb.PerformClick();
-            }
+            // (b) Force-read the panel's own display vars so the cache is fresh (covers the
+            //     non-override panels whose display vars ARE the content). Each force-read response
+            //     pushes through OnSimVarUpdated, which schedules a COALESCED repaint — so the whole
+            //     burst of responses collapses into ONE list rebuild (instead of one per var), and a
+            //     changed row appears within ~one read round-trip. We also schedule once here so the
+            //     list still repaints when no value changed (e.g. the very first populate).
+            if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var liveVars))
+                foreach (var vk in liveVars)
+                    if (currentAircraft.GetVariables().ContainsKey(vk))
+                        simConnectManager.RequestVariable(vk, forceUpdate: true);
+
+            ScheduleDisplayRepaint();
         }
         catch { /* best-effort live refresh; never let a tick crash the UI */ }
     }
@@ -6932,6 +7017,8 @@ public partial class MainForm : Form
         _sdAutoRefreshTimer?.Stop();
         _sdAutoRefreshTimer?.Dispose();
 
+        _displayRepaintDebounce?.Stop();
+        _displayRepaintDebounce?.Dispose();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
