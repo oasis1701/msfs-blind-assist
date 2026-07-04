@@ -161,6 +161,12 @@ public class TaxiAssistForm : Form
     private TaxiGraph? _graph;
     private string _currentIcao = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
+    // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
+    // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
+    // connection per call, so caching the (session-stable) runway set for the
+    // loaded airport avoids a UI-thread DB round-trip on each interaction.
+    private List<Runway>? _cachedRunways;
+    private string _cachedRunwaysIcao = "";
 
     // Destination nodes for routing
     private Dictionary<string, int> _destinationNodeMap = new();
@@ -411,11 +417,15 @@ public class TaxiAssistForm : Form
             AccessibleDescription = "Select the destination runway or gate"
         };
         // Re-list intersections when the runway changes (only matters while the
-        // intersection checkbox is on and a runway destination is selected).
+        // intersection checkbox is on and a runway destination is selected). Guard
+        // on a real selection (>= 0): repopulating the destination combo fires this
+        // with a transient SelectedIndex of -1, and re-listing then would find no
+        // runway and spuriously announce "no intersections" + untick the box.
         cmbDestination.SelectedIndexChanged += (s, e) =>
         {
-            if (cmbDestType.SelectedIndex == 0 && chkIntersection.Checked)
-                PopulateIntersections();
+            if (cmbDestType.SelectedIndex == 0 && chkIntersection.Checked
+                && cmbDestination.SelectedIndex >= 0)
+                ShowIntersectionListOrFallback(focusCombo: false);
         };
         y += 30;
 
@@ -430,7 +440,12 @@ public class TaxiAssistForm : Form
             Text = "&Intersection departure",
             Location = new System.Drawing.Point(controlX, y),
             AutoSize = true,
-            Visible = false,
+            // Visible for the default (Runway) destination type. OnDestTypeChanged
+            // is wired AFTER cmbDestType.SelectedIndex = 0, so it never fires during
+            // construction — the checkbox must therefore be born in the state that
+            // matches the default selection, or the whole feature is invisible on
+            // first open until the user toggles the destination type away and back.
+            Visible = cmbDestType.SelectedIndex == 0,
             AccessibleName = "Intersection departure",
             AccessibleDescription = "Line up at a runway intersection instead of full length"
         };
@@ -1284,27 +1299,42 @@ public class TaxiAssistForm : Form
     {
         if (chkIntersection.Checked)
         {
-            PopulateIntersections();
-            if (cmbIntersection.Items.Count > 0)
-            {
-                cmbIntersection.Visible = true;
-                cmbIntersection.SelectedIndex = 0;
-                cmbIntersection.Focus();
-            }
-            else
-            {
-                // Nothing to offer (sparse navdata, or the taxi graph has no
-                // taxiway node on this runway). Fall back to a full-length
-                // departure rather than leaving a checked-but-empty control.
-                _announcer.AnnounceImmediate("No runway intersections available. Full length departure.");
-                chkIntersection.Checked = false; // re-enters this handler → hides the list
-            }
+            ShowIntersectionListOrFallback(focusCombo: true);
         }
         else
         {
             cmbIntersection.Visible = false;
             cmbIntersection.Items.Clear();
             _intersectionMap.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Populates the intersection combo for the current runway and either reveals
+    /// it with the first entry selected, or — if the runway has no usable
+    /// intersections — announces the full-length fallback and unticks the box.
+    /// Shared by the checkbox-toggle and runway-change paths so BOTH always leave a
+    /// valid entry selected; without this the runway-change path repopulated the
+    /// combo but never set SelectedIndex, leaving it blank so Calculate silently
+    /// reverted to a full-length departure while the box stayed checked.
+    /// </summary>
+    private void ShowIntersectionListOrFallback(bool focusCombo)
+    {
+        PopulateIntersections();
+        if (cmbIntersection.Items.Count > 0)
+        {
+            cmbIntersection.Visible = true;
+            cmbIntersection.SelectedIndex = 0;
+            if (focusCombo)
+                cmbIntersection.Focus();
+        }
+        else
+        {
+            // Nothing to offer (sparse navdata, or the taxi graph has no
+            // taxiway node on this runway). Fall back to a full-length
+            // departure rather than leaving a checked-but-empty control.
+            _announcer.AnnounceImmediate("No runway intersections available. Full length departure.");
+            chkIntersection.Checked = false; // re-enters OnIntersectionToggled → hides the list
         }
     }
 
@@ -1333,7 +1363,12 @@ public class TaxiAssistForm : Form
         // Runway model gives the departure threshold (StartLat/Lon), the far end
         // (EndLat/Lon), and the width, so distance-from-threshold and remaining
         // reflect the true runway.
-        var rwy = _dataProvider.GetRunways(_currentIcao)
+        if (_cachedRunways == null || _cachedRunwaysIcao != _currentIcao)
+        {
+            _cachedRunways = _dataProvider.GetRunways(_currentIcao);
+            _cachedRunwaysIcao = _currentIcao;
+        }
+        var rwy = _cachedRunways
             .FirstOrDefault(r => string.Equals(r.RunwayID, runwayId, StringComparison.OrdinalIgnoreCase));
         if (rwy == null) return;
 

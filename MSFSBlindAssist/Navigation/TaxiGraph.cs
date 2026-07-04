@@ -1080,7 +1080,16 @@ public class TaxiGraph
                 if (!Nodes.TryGetValue(nid, out var n)) continue;
                 var (perp, along, projLat, projLon) =
                     ProjectOntoCenterline(n.Latitude, n.Longitude, thrLat, thrLon, farLat, farLon);
-                if (along < 0 || along > totalLen) continue;   // beyond the thresholds
+                // Only nodes that are themselves a valid intersection point compete
+                // for "closest to the centerline": within the pavement band, past
+                // the threshold connector, and with usable runway remaining. Gating
+                // HERE — not after picking a single best node — means a taxiway's
+                // near-threshold connector node (along < MIN_ALONG_M) or a far-end
+                // nub can't shadow a genuine mid-field entrance further down the
+                // same taxiway and drop the whole taxiway from the list.
+                if (along < MIN_ALONG_M || along > totalLen) continue;
+                if (totalLen - along < MIN_REMAINING_M) continue;
+                if (perp > maxPerp) continue;
                 if (perp < bestPerp)
                 {
                     bestPerp = perp; bestNode = nid; bestAlong = along;
@@ -1088,10 +1097,8 @@ public class TaxiGraph
                 }
             }
 
-            if (bestNode < 0 || bestPerp > maxPerp) continue;
-            if (bestAlong < MIN_ALONG_M) continue;
+            if (bestNode < 0) continue;
             double remaining = totalLen - bestAlong;
-            if (remaining < MIN_REMAINING_M) continue;
 
             result.Add(new RunwayIntersection
             {
