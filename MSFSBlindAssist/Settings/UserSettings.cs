@@ -74,7 +74,31 @@ public class UserSettings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
         public bool TakeoffAssistMuteCenterlineAnnouncements { get; set; } = false; // Mute centerline deviation announcements
-        public bool TakeoffAssistInvertPanning { get; set; } = false; // Invert panning direction
+        // LEGACY (pre-PR-#111): kept only so SeedTakeoffAssistToneConvention can read
+        // the user's old choice; no runtime code consults this anymore.
+        public bool TakeoffAssistInvertPanning { get; set; } = false;
+
+        /// <summary>
+        /// True (default) = the tone plays on the side to STEER TOWARD (taxi-tone
+        /// convention; steer into the tone to centre). False = steer away.
+        /// Replaces the runtime use of TakeoffAssistInvertPanning — under the OLD
+        /// heading-error tone, InvertPanning == true was the steer-toward mapping,
+        /// so the one-time migration in SettingsManager seeds this from that value
+        /// to preserve each existing user's experienced direction.
+        /// </summary>
+        public bool TakeoffAssistSteerTowardTone { get; set; } = true;
+
+        /// <summary>
+        /// One-time migration flag for the PR #111 tone changes. False in settings
+        /// files that predate TakeoffAssistSteerTowardTone; set true after
+        /// SettingsManager seeds (a) the steer-toward setting from the old
+        /// InvertPanning choice and (b) a stored threshold 0 ("Always") to 1° so
+        /// every user gets the new silent-on-track behavior once (deliberate 1–5
+        /// values are kept; post-migration choices — including re-selecting
+        /// "Always" — stick). See SeedTakeoffAssistToneConvention.
+        /// </summary>
+        public bool TakeoffAssistToneConventionMigrated { get; set; } = false;
+
         /// <summary>
         /// When true, the takeoff-assist centerline tone hard-pans to full
         /// ±1 instead of the proportional headingDiff / 5° curve. Useful
@@ -83,7 +107,10 @@ public class UserSettings
         /// </summary>
         public bool TakeoffAssistHardPanTone { get; set; } = false;
         public bool TakeoffAssistLegacyMode { get; set; } = false; // Legacy mode: heading-based instead of centerline tracking
-        public int TakeoffAssistHeadingToneThreshold { get; set; } = 0; // 0 = Always, 1-5 = degrees threshold
+        // 0 = Always play (continuous centred tone), 1-5 = silent until the steer
+        // error exceeds N degrees. Default 1 = silent when on track, only sounds
+        // when you need to steer back — matches "silent on the deadband".
+        public int TakeoffAssistHeadingToneThreshold { get; set; } = 1;
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
         /// <summary>
@@ -351,6 +378,8 @@ public class UserSettings
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,
             TakeoffAssistInvertPanning = TakeoffAssistInvertPanning,
+            TakeoffAssistSteerTowardTone = TakeoffAssistSteerTowardTone,
+            TakeoffAssistToneConventionMigrated = TakeoffAssistToneConventionMigrated,
             TakeoffAssistHardPanTone = TakeoffAssistHardPanTone,
             TakeoffAssistLegacyMode = TakeoffAssistLegacyMode,
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,

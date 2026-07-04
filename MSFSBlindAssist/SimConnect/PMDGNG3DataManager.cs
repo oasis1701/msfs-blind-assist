@@ -74,6 +74,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
 
     private PMDGNG3DataStruct _lastDataSnapshot;
     private bool _hasSnapshot;
+    private SynchronizationContext? _syncContext;
 
     /// <inheritdoc />
     public bool IsReady => _hasSnapshot;
@@ -100,6 +101,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
         MobiFlightWasmModule? mobiFlightWasm)
     {
         _simConnect     = simConnect;
+        // Initialize runs on the UI thread (it creates the WinForms poll timer
+        // below); capture the context so RaiseFieldChanged can marshal a
+        // pool-thread re-raise back onto it — VariableChanged consumers
+        // (MainForm) do UI work.
+        _syncContext    = SynchronizationContext.Current;
 
         try
         {
@@ -172,7 +178,18 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // Polling
     // ------------------------------------------------------------------
 
-    private void PollTimer_Tick(object? sender, EventArgs e) => RequestData();
+    private void PollTimer_Tick(object? sender, EventArgs e)
+    {
+        // Suspend THIS manager's ambient 1 Hz poll while one of its own
+        // closed-loop walks runs — the walk substitutes its own ~300 ms
+        // PERIOD.ONCE requests, which keep the monitor cache fresh, and the
+        // response-counting handshake in RequestFreshSnapshotAsync guarantees
+        // each awaited snapshot postdates the walk's last click. (Instance
+        // state, not static: a walk orphaned on a swapped-out manager must
+        // never suspend the replacement manager's poll.)
+        if (Volatile.Read(ref _walksInProgress) > 0) return;
+        RequestData();
+    }
 
     /// <summary>
     /// Issues a one-shot request for the PMDG_NG3_Data CDA.
@@ -190,6 +207,9 @@ public class PMDGNG3DataManager : IPMDGDataManager
                 SIMCONNECT_CLIENT_DATA_PERIOD.ONCE,
                 SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.DEFAULT,
                 0, 0, 0);
+            // Count only successfully-issued requests — the freshness handshake
+            // (RequestFreshSnapshotAsync) pairs this with _dataResponsesSeen.
+            Interlocked.Increment(ref _dataRequestsIssued);
         }
         catch (Exception ex)
         {
@@ -217,6 +237,27 @@ public class PMDGNG3DataManager : IPMDGDataManager
                     DetectAndRaiseChanges(newData);
                     _lastDataSnapshot = newData;
                     _hasSnapshot      = true;
+                    // Wake a closed-loop walk awaiting a fresh snapshot — AFTER
+                    // the snapshot fields update, so the awaiter's GetFieldValue
+                    // read is guaranteed post-refresh. Response-counting keeps a
+                    // STRAGGLER honest: a late response to an EARLIER request
+                    // (sampled before the walk's last click) must not satisfy
+                    // the handshake, so the TCS completes only once responses
+                    // have caught up with every request issued up to and
+                    // including the walk's own (responses arrive in request
+                    // order on the one shared request ID). The clamp keeps a
+                    // presumed-lost response that straggles in after a timeout
+                    // resync from over-running the request count.
+                    if (Interlocked.Read(ref _dataResponsesSeen) <
+                        Interlocked.Read(ref _dataRequestsIssued))
+                    {
+                        Interlocked.Increment(ref _dataResponsesSeen);
+                    }
+                    if (Interlocked.Read(ref _dataResponsesSeen) >=
+                        Interlocked.Read(ref _snapshotRequiredResponses))
+                    {
+                        _snapshotTcs?.TrySetResult(true);
+                    }
                     break;
                 }
                 case PMDG_DATA_REQUEST_ID.CDU_0:
@@ -695,6 +736,142 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
     }
 
+    // ------------------------------------------------------------------
+    // Fresh-snapshot handshake + walk-active state (closed-loop walks)
+    // ------------------------------------------------------------------
+
+    // Completed by ProcessClientData's Data case when a snapshot lands.
+    // Swapped fresh by RequestFreshSnapshotAsync before each one-shot request.
+    private volatile TaskCompletionSource<bool>? _snapshotTcs;
+
+    // Count of in-flight closed-loop walks on THIS manager (instance state on
+    // purpose: a walk orphaned on a disposed manager after an aircraft swap
+    // must not suspend the replacement manager's ambient poll). Self-clearing
+    // by construction: the walk's try/finally decrements on every exit path
+    // (target reached, budget exhausted, snapshot timeout, exception).
+    private int _walksInProgress;
+
+    // Request/response bookkeeping for the freshness handshake. Data-CDA
+    // responses carry no correlation beyond the shared request ID, but they
+    // arrive in request order — so "responses seen >= requests issued at the
+    // time OUR request went out, plus one" proves the applied snapshot
+    // postdates our request (and therefore the click that preceded it).
+    private long _dataRequestsIssued;
+    private long _dataResponsesSeen;
+    private long _snapshotRequiredResponses;
+
+    private const int SNAPSHOT_TIMEOUT_MS = 1500;
+
+    /// <summary>
+    /// Requests a one-shot Data-CDA refresh and completes when a snapshot that
+    /// POSTDATES this request has been applied (false on timeout / no
+    /// SimConnect). The response-counting handshake (see ProcessClientData)
+    /// rejects stragglers — a late response to an earlier request, sampled
+    /// before the walk's last click, cannot satisfy the wait even when the
+    /// ambient poll issued it just before the walk started. Serialized by the
+    /// walk (single caller); the single-slot _snapshotTcs is not safe for
+    /// concurrent callers, which is why this is private.
+    /// </summary>
+    private async Task<bool> RequestFreshSnapshotAsync()
+    {
+        if (_simConnect == null) return false;
+        var tcs = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Interlocked.Exchange(ref _snapshotRequiredResponses,
+            Interlocked.Read(ref _dataRequestsIssued) + 1);
+        _snapshotTcs = tcs;
+        RequestData();
+        var done = await Task.WhenAny(tcs.Task, Task.Delay(SNAPSHOT_TIMEOUT_MS));
+        if (done != tcs.Task)
+        {
+            // Timed out — presume the outstanding response(s) lost so one lost
+            // response can't permanently starve every future handshake (the
+            // required count only ever grows). If a presumed-lost response DOES
+            // straggle in later, ProcessClientData's clamp absorbs it.
+            Interlocked.Exchange(ref _dataResponsesSeen,
+                Interlocked.Read(ref _dataRequestsIssued));
+            return false;
+        }
+        return true;
+    }
+
+    // Closed-loop walk pacing: detented rotaries are far slower to accept clicks
+    // than CLICK_GAP_MS. Snapshot freshness between clicks is handled separately
+    // by the awaited RequestFreshSnapshotAsync — this gap only paces PMDG's
+    // click acceptance.
+    private const int CLOSED_LOOP_CLICK_GAP_MS = 300;
+    // Attempt budget: the widest walked selector spans 4 detents; the headroom
+    // absorbs dropped clicks and stale-read re-decisions.
+    private const int CLOSED_LOOP_MAX_CLICKS = 12;
+
+    /// <summary>
+    /// Closed-loop click-walk for detented rotaries whose CDA position write AND
+    /// transmit-with-target dispatch are both silent no-ops — live-probed
+    /// 2026-07-03 on <c>EVT_TCAS_MODE</c> (the transponder mode selector), the
+    /// only known member so far. Three deliberate differences from
+    /// <see cref="WalkSelectorViaClicks"/>:
+    ///   1. The click DIRECTION is inverted vs the TFM convention: RIGHTSINGLE
+    ///      steps UP (toward higher positions, e.g. TA/RA) and LEFTSINGLE steps
+    ///      DOWN (toward STBY) — both directions verified in-sim.
+    ///   2. Every iteration AWAITS a fresh Data-CDA snapshot
+    ///      (<see cref="RequestFreshSnapshotAsync"/>) before reading. The
+    ///      ambient poll is only 1 Hz, so an unawaited re-read is stale most of
+    ///      the time — and a stale read fires an extra click past the target
+    ///      (overshoot, oscillation, budget exhaustion on middle detents).
+    ///   3. PMDG drops detent clicks probabilistically (4 clicks at 80 ms moved
+    ///      the selector only 3 detents, and even at 300 ms one of 4 was eaten);
+    ///      the fresh re-read makes every dropped click self-correct.
+    /// Returns the VERIFIED landed position (from the walk's own final fresh
+    /// read — equal to the target on success, elsewhere on budget exhaustion),
+    /// or null when it could not verify (manager not ready / snapshot timeout,
+    /// i.e. the last cached value may predate an in-flight click). Callers own
+    /// all announcement/UI semantics, including suppressing the per-detent
+    /// monitor callouts for the walk's duration (the 737 def gates its
+    /// XPDR_ModeSel case on its own walk-active flag).
+    /// </summary>
+    public async Task<int?> WalkSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
+    {
+        Interlocked.Increment(ref _walksInProgress);
+        try
+        {
+            for (int i = 0; i < CLOSED_LOOP_MAX_CLICKS; i++)
+            {
+                if (!IsReady) return null;
+                if (!await RequestFreshSnapshotAsync()) return null;
+                int current = (int)Math.Round(GetFieldValue(fieldName));
+                if (current == targetPosition) return current;
+                SendEventViaTransmitWithTarget(eventId,
+                    current < targetPosition ? MOUSE_FLAG_RIGHTSINGLE : MOUSE_FLAG_LEFTSINGLE);
+                await Task.Delay(CLOSED_LOOP_CLICK_GAP_MS);
+            }
+            // Budget exhausted — one last fresh read gives the verified landed
+            // position (needed: the 12th click just fired).
+            if (!await RequestFreshSnapshotAsync()) return null;
+            return (int)Math.Round(GetFieldValue(fieldName));
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _walksInProgress);
+        }
+    }
+
+    /// <summary>
+    /// Re-raises <see cref="VariableChanged"/> for one field with its current
+    /// cached value, marshalled to the UI thread. Used after a FAILED
+    /// closed-loop walk: the walk suppressed the field's natural change events
+    /// (delivered synchronously while its gate was up) and the value will not
+    /// change again on its own, so this replays the landed state through the
+    /// standard pipeline — MainForm re-syncs the panel combo and the monitor
+    /// announces the real position as a background change.
+    /// </summary>
+    public void RaiseFieldChanged(string fieldName)
+    {
+        if (!_hasSnapshot) return;
+        void Fire() => RaiseVariableChanged(fieldName, GetFieldValue(fieldName));
+        if (_syncContext != null) _syncContext.Post(_ => Fire(), null);
+        else Fire();
+    }
+
     /// <summary>
     /// Guarded set: open guard (param=1) → set switch (param=targetPosition) → close guard (param=0).
     /// 150 ms gaps so PMDG's frame loop processes each transition. The guard-close runs inside
@@ -829,6 +1006,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
         _pollTimer?.Dispose();
         _pollTimer = null;
         VariableChanged = null;
+        // Fail-fast for any closed-loop walk orphaned on this instance by an
+        // aircraft swap: RequestFreshSnapshotAsync returns false immediately
+        // instead of burning its full timeout against a connection whose
+        // responses now route to the replacement manager.
+        _simConnect = null;
         System.Diagnostics.Debug.WriteLine("[PMDGNG3DataManager] Disposed.");
     }
 }
