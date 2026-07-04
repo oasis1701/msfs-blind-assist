@@ -14,7 +14,7 @@ These tools assume **MSFS is running with a Coherent aircraft loaded** (the sim 
 |---|---|---|
 | **PowerShell 7+ (`pwsh`)** — *the assumed/preferred shell* | `winget install Microsoft.PowerShell` | Every `*.ps1` tool: `coherent.ps1`, `coherent-eval.ps1`, `fcu/`, `sd-page-tour.ps1`, `mcdu_*`, `fp_*`, `probe-*.ps1`. |
 | **Node.js 18+ (LTS)** | `winget install OpenJS.NodeJS.LTS` | The offline test harnesses (`flypad-settings-test/`, `flypad-shell-test/`, `perf-builder-test/`) and the Node probes (`fbw-mcdu-probe/`, `efb-dom-tool.js`). Run a one-time `npm install` in each jsdom harness folder. |
-| **.NET 9 SDK** | (see `CLAUDE.md` Build Commands) | Building MSFSBA + the .NET probe apps (`PMDGDispatchTester`, `CDUTest`). |
+| **.NET 10 SDK** | (see `CLAUDE.md` Build Commands) | Building MSFSBA + the .NET probe apps (`PMDGDispatchTester`, `CDUTest`). |
 | **MSFS 2020 or 2024 — running** | — | Hosts the Coherent views + the SimConnect/MobiFlight surface. |
 | **MobiFlight WASM** (optional) | (FBW/community installer) | Only for reliable L:var **writes** via the calculator path (`(>L:VAR)`); not needed for read/scrape. |
 

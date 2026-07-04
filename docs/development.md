@@ -89,9 +89,9 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 ## Development Notes
 
-- Project targets .NET 9 (`net9.0-windows`)
+- Project targets .NET 10 (`net10.0-windows`)
 - Uses modern SDK-style project format
-- Runtime Identifier: `win-x64`
+- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha in CLAUDE.md)
 - Uses Microsoft Flight Simulator SimConnect SDK
 - Post-build event copies SimConnect.dll to output directory
 - SimConnect.cfg configuration file is copied to output for connection settings
@@ -141,17 +141,20 @@ Application for the faulting module. Full procedure in [tooling.md §8](tooling.
 ## Dependencies
 
 - **Microsoft.FlightSimulator.SimConnect** (from MSFS SDK)
-- **System.Windows.Forms** (.NET 9)
-- **Microsoft.Data.Sqlite** (version 9.0.0) - Airport database functionality
+- **System.Windows.Forms** (.NET 10)
+- **Microsoft.Data.Sqlite** (version 10.0.x) - Airport database functionality
+- **SQLitePCLRaw.bundle_e_sqlite3** (version 3.0.x) - direct reference lifting the transitive
+  bundle above the vulnerable 2.1.11 (CVE-2025-6965); keep it >= the version
+  Microsoft.Data.Sqlite would otherwise pull
 - **Newtonsoft.Json** (version 13.0.3) - JSON serialization
-- **System.Speech** (version 9.0.0) - Text-to-speech fallback
-- **Microsoft.Extensions.Configuration** (version 9.0.0) - Configuration management
-- **Microsoft.Extensions.Configuration.Json** (version 9.0.0) - JSON configuration provider
-- **Microsoft.Extensions.Configuration.Binder** (version 9.0.0) - Configuration binding
+- **System.Speech** (version 10.0.x) - Text-to-speech fallback
+- **Microsoft.Extensions.Configuration** (version 10.0.x) - Configuration management
+- **Microsoft.Extensions.Configuration.Json** (version 10.0.x) - JSON configuration provider
+- **Microsoft.Extensions.Configuration.Binder** (version 10.0.x) - Configuration binding
 - **NVDA Controller Client** (included) - Direct NVDA integration
 - **Tolk wrapper** (included) - Universal screen reader support
 
-## Settings System (.NET 9)
+## Settings System
 
 Settings are now stored in JSON format at:
 - **Location:** `%APPDATA%\MSFSBlindAssist\settings.json`
