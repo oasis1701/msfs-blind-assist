@@ -90,6 +90,20 @@ public class AircraftActionExecutor : IFoActionExecutor
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public bool IsAvailable => _sc is { IsConnected: true };
 
+    // Self-clearing count of transponder-mode closed-loop walks THIS executor
+    // is driving. PMDG737Definition.ProcessSimVarUpdate's XPDR_ModeSel case
+    // reads XpdrWalkInProgress to swallow the per-detent monitor callouts the
+    // walk produces (walking STBY→TA/RA passes ALT RPTG OFF/XPNDR/TA). The
+    // panel path suppresses via the def's own instance _xpdrWalkSuppress, but
+    // the FO executor can't reach that def instance and ProcessSimVarUpdate has
+    // no SimConnectManager handle to read the shared walk's instance counter —
+    // hence this static bridge. Static is safe here: the gate is only ever read
+    // by the 737 def, and the WalkedSelector try/finally decrements on every
+    // exit path, so an orphaned walk after an aircraft swap can't mute the next
+    // aircraft's callouts.
+    private static int s_xpdrWalksInProgress;
+    internal static bool XpdrWalkInProgress => Volatile.Read(ref s_xpdrWalksInProgress) > 0;
+
     private sealed record Spec(Dispatch Kind, string? Guard = null, string? StateField = null);
 
     // Event -> dispatch category. Events NOT listed default to Simple.
@@ -266,15 +280,26 @@ public class AircraftActionExecutor : IFoActionExecutor
                     // (RIGHTSINGLE = up / LEFTSINGLE = down, live-probed on
                     // EVT_TCAS_MODE; inverted vs WalkSelectorViaClicks). PMDG
                     // drops detent clicks probabilistically; the fresh re-read
-                    // self-corrects every drop. Per-detent monitor chatter is
-                    // suppressed for the walk's duration via
-                    // PMDGNG3DataManager.AnyWalkInProgress (checked in
-                    // PMDG737Definition.ProcessSimVarUpdate); the flow
-                    // announces its own step label, so nothing extra here.
+                    // self-corrects every drop. The walk returns the VERIFIED
+                    // landed position (null = unverified), so success is
+                    // "landed == target". Per-detent monitor chatter is
+                    // suppressed for the walk's duration via XpdrWalkInProgress
+                    // (read in PMDG737Definition.ProcessSimVarUpdate's
+                    // XPDR_ModeSel case); the flow announces its own step label,
+                    // so nothing extra here.
                     var dm = _sc.PMDGDataManager;
                     if (spec?.StateField == null || dm is not { IsReady: true } || target == null)
                         return false;
-                    return await _sc.WalkPMDGSelectorClosedLoop(id, spec.StateField, target.Value);
+                    Interlocked.Increment(ref s_xpdrWalksInProgress);
+                    try
+                    {
+                        int? landed = await _sc.WalkPMDGSelectorClosedLoop(id, spec.StateField, target.Value);
+                        return landed == target.Value;
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref s_xpdrWalksInProgress);
+                    }
                 }
 
                 case Dispatch.FuelLever:

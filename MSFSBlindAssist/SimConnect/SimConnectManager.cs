@@ -4883,15 +4883,16 @@ public class SimConnectManager
     /// re-read (the ambient poll is 1 Hz — too stale to steer clicks) so PMDG's
     /// probabilistically-dropped detent clicks self-correct without overshoot;
     /// click direction is inverted vs <see cref="WalkPMDGSelector"/>'s TFM
-    /// convention. Returns true when the selector landed on the target; false
-    /// for a non-NG3 manager, timeout, or budget exhaustion. See
+    /// convention. Returns the VERIFIED landed position (== target on success,
+    /// elsewhere on budget exhaustion), or null when unverified — non-NG3
+    /// manager, not ready, or snapshot timeout. See
     /// <see cref="PMDGNG3DataManager.WalkSelectorClosedLoop"/> for the probe history.
     /// </summary>
-    public async Task<bool> WalkPMDGSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
+    public async Task<int?> WalkPMDGSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
     {
         if (pmdgDataManager is PMDGNG3DataManager ng3)
             return await ng3.WalkSelectorClosedLoop(eventId, fieldName, targetPosition);
-        return false;
+        return null;
     }
 
     /// <summary>
