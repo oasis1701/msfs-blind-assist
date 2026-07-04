@@ -59,7 +59,7 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### Accessible TreeView Controls
 
-**CRITICAL:** Never use `TreeView` directly in forms. Use `NativeAccessibleTreeView` (`Controls/NativeAccessibleTreeView.cs`) instead. .NET 9's `TreeViewAccessibleObject` (UIA-based) produces incorrect navigation order in NVDA — items appear out of sequence, focus jumps between unrelated nodes. `NativeAccessibleTreeView` bypasses the .NET 9 UIA implementation and falls back to the native Win32 SysTreeView32 MSAA proxy, which works reliably.
+**CRITICAL:** Never use `TreeView` directly in forms. Use `NativeAccessibleTreeView` (`Controls/NativeAccessibleTreeView.cs`) instead. The framework's UIA-based `TreeViewAccessibleObject` (introduced in .NET 9, still the default in .NET 10) produces incorrect navigation order in NVDA — items appear out of sequence, focus jumps between unrelated nodes. `NativeAccessibleTreeView` bypasses the framework UIA implementation and falls back to the native Win32 SysTreeView32 MSAA proxy, which works reliably (NVDA-verified on the .NET 10 build, 2026-07).
 
 **Pattern for tree views with detail data:**
 - Parent nodes show summary text only — no child nodes pre-populated

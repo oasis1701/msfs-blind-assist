@@ -91,7 +91,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 - Project targets .NET 10 (`net10.0-windows`)
 - Uses modern SDK-style project format
-- Runtime Identifier: `win-x64`
+- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha in CLAUDE.md)
 - Uses Microsoft Flight Simulator SimConnect SDK
 - Post-build event copies SimConnect.dll to output directory
 - SimConnect.cfg configuration file is copied to output for connection settings
