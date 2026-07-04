@@ -4749,6 +4749,25 @@ public class SimConnectManager
     }
 
     /// <summary>
+    /// Closed-loop click-walk for NG3 detented rotaries that ignore both the CDA
+    /// position write and transmit-with-target (currently the transponder mode
+    /// selector, EVT_TCAS_MODE). Awaits a FRESH Data-CDA snapshot before every
+    /// re-read (the ambient poll is 1 Hz — too stale to steer clicks) so PMDG's
+    /// probabilistically-dropped detent clicks self-correct without overshoot;
+    /// click direction is inverted vs <see cref="WalkPMDGSelector"/>'s TFM
+    /// convention. Returns the VERIFIED landed position (== target on success,
+    /// elsewhere on budget exhaustion), or null when unverified — non-NG3
+    /// manager, not ready, or snapshot timeout. See
+    /// <see cref="PMDGNG3DataManager.WalkSelectorClosedLoop"/> for the probe history.
+    /// </summary>
+    public async Task<int?> WalkPMDGSelectorClosedLoop(uint eventId, string fieldName, int targetPosition)
+    {
+        if (pmdgDataManager is PMDGNG3DataManager ng3)
+            return await ng3.WalkSelectorClosedLoop(eventId, fieldName, targetPosition);
+        return null;
+    }
+
+    /// <summary>
     /// Sends a press-and-release dispatch pair for a momentary spring-loaded
     /// toggle. Used by the PMDG 737 NG3 for GRD POWER, GEN, and APU GEN
     /// switches — bare clicks without RELEASE play the switch sound but the
