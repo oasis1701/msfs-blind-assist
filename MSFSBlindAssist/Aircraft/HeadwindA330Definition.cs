@@ -94,11 +94,33 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     private int    _hwBaroInHg = -1;  // A32NX_FCU_EFIS_L_BARO_IS_INHG (0 = hPa, 1 = inHg)
     private string _hwLastBaroPhrase = "";
 
+    // Kill the base's FBW-word baro announce at its single chokepoint
+    // (AnnounceBaroIfChanged) instead of silencing individual var cases here —
+    // fail-closed: any baro leg the base adds later is silenced too, so the
+    // Kohlsman path below can never double-talk with it.
+    protected override bool SuppressFbwEfisBaroAnnounce => true;
+
+    // Ctrl+B window echo window: the window's own combos/confirmation are already
+    // spoken (screen reader + "Altimeter set to …"), so a def-side re-announce of the
+    // same change ~1 s later (when the monitored var delivers) is pure double-talk.
+    // The Set* overrides below stamp this; announces inside the window are skipped
+    // (baselines still update). Cockpit knob changes outside the window announce.
+    private long _hwWindowSetTicks = long.MinValue;
+    private const int HwWindowEchoMs = 2500;
+    private bool HwWindowEchoActive => Environment.TickCount64 - _hwWindowSetTicks < HwWindowEchoMs;
+
+    public override void SetEfisBaroPressureHpa(double hpa, SimConnect.SimConnectManager s)
+    { _hwWindowSetTicks = Environment.TickCount64; base.SetEfisBaroPressureHpa(hpa, s); }
+    public override void SetEfisBaroStd(bool std, SimConnect.SimConnectManager s)
+    { _hwWindowSetTicks = Environment.TickCount64; base.SetEfisBaroStd(std, s); }
+    public override void SetEfisBaroUnitInHg(bool inHg, SimConnect.SimConnectManager s)
+    { _hwWindowSetTicks = Environment.TickCount64; base.SetEfisBaroUnitInHg(inHg, s); }
+
     private string HwBaroPhrase()
     {
         if (_hwBaroStd >= 1) return "Altimeter standard";
         double mb = _hwBaroMb;
-        double inHg = mb * 0.0295299830714;
+        double inHg = mb * HpaToInHg;
         // Lead with the value in the FCU's selected display unit so the spoken order
         // matches what the cockpit shows (and a unit flip re-announces).
         return _hwBaroInHg >= 1
@@ -117,6 +139,7 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         }
         if (phrase == _hwLastBaroPhrase) return;
         _hwLastBaroPhrase = phrase;
+        if (HwWindowEchoActive) return;                  // Ctrl+B window already spoke this change
         announcer.Announce(phrase);
     }
 
@@ -124,18 +147,9 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     {
         switch (varName)
         {
-            // Silence the base's six FBW baro-display legs. On the A339X these words are
-            // undelivered (the bug); if a future Headwind build starts delivering them,
-            // silencing here prevents double-talk with the Kohlsman path below.
-            case "A32NX_FCU_LEFT_EIS_BARO_HPA":
-            case "A32NX_FCU_LEFT_EIS_BARO":
-            case "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE":
-            case "A32NX_FCU_RIGHT_EIS_BARO_HPA":
-            case "A32NX_FCU_RIGHT_EIS_BARO":
-            case "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE":
-                return true;
-
             // Stock altimeter — the authoritative baro source on this airframe.
+            // (The base's FBW baro-display legs are silenced via the
+            // SuppressFbwEfisBaroAnnounce chokepoint override above, not per-case here.)
             case "KOHLSMAN SETTING MB:1":
                 _hwBaroMb = value;
                 HwAnnounceBaroIfChanged(announcer);
@@ -147,9 +161,17 @@ public class HeadwindA330Definition : FlyByWireA320Definition
                 return true;
 
             case "A32NX_FCU_EFIS_L_BARO_IS_INHG":
+                // A unit flip only REORDERS the phrase — rebase the dedup baseline
+                // silently so the next real value/STD change can't announce a phantom.
                 _hwBaroInHg = value >= 0.5 ? 1 : 0;
-                HwAnnounceBaroIfChanged(announcer);   // unit flip reorders the phrase → announces
-                return true;
+                if (_hwBaroMb >= 0 && _hwBaroStd >= 0) _hwLastBaroPhrase = HwBaroPhrase();
+                // Ctrl+B-window flips: the screen reader already spoke the combo — swallow.
+                if (HwWindowEchoActive) return true;
+                // Everything else falls through to the GENERIC path (base has no case for
+                // this var): that path speaks the short "Altimeter Unit: hPa/inHg", syncs
+                // the EFIS Captain panel combo, and honours the _uiSetEcho + Ctrl+M gates —
+                // all of which an intercept-and-return-true here silently lost.
+                return base.ProcessSimVarUpdate(varName, value, announcer);
         }
 
         return base.ProcessSimVarUpdate(varName, value, announcer);

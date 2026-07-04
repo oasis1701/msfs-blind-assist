@@ -934,6 +934,13 @@ public partial class MainForm : Form
         bool hs787 = currentAircraft!.AircraftCode == "HS_787";
         bool hs787Muted = hs787 &&
             Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+        // Same silent-no-op class for the A32NX family: the A320 (EFIS baro) and the
+        // Headwind A330 (stock-Kohlsman altimeter) announce those vars from INSIDE
+        // ProcessSimVarUpdate, which returns true and exits before the generic
+        // A32NXDisabledMonitorVariables gate below — so a Ctrl+M un-tick never muted
+        // them. Suppress right here, exactly like the HS787.
+        bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
+            Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -947,7 +954,7 @@ public partial class MainForm : Form
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;

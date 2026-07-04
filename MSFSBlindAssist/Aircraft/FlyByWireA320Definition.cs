@@ -6227,12 +6227,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (mode == 0) return "Altimeter standard";
         if (mode == 2)
         {
-            double inches = (inUnit >= 22 && inUnit <= 33) ? inUnit : hpa * 0.0295299830714;
+            double inches = (inUnit >= 22 && inUnit <= 33) ? inUnit : hpa * HpaToInHg;
             return $"Altimeter {inches:F2} inches";
         }
         double hpaVal = (inUnit >= 745 && inUnit <= 1100) ? inUnit : hpa;
         return $"Altimeter {hpaVal:F0} hectopascals";
     }
+
+    // hPa → inHg (shared with forks; keep the one constant so conversions can't drift).
+    protected const double HpaToInHg = 0.0295299830714;
+
+    // Set true by a fork (Headwind A330) whose airframe never DELIVERS the FBW EFIS
+    // baro display words: gates the FBW-word baro announce at this single chokepoint
+    // so the fork's replacement read path (stock Kohlsman) can't double-talk with it.
+    // Fail-closed by construction — every FBW baro var case funnels through
+    // AnnounceBaroIfChanged, so a baro leg added later is silenced on the fork too.
+    protected virtual bool SuppressFbwEfisBaroAnnounce => false;
 
     // Phrase-level dedup + announce for either side's baro. Phrase-keyed (not
     // whole-hPa-keyed) so a 0.01-inch knob click that doesn't cross a whole-hPa
@@ -6240,6 +6250,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // First valid phrase per side seeds SILENTLY (the startup double-announce fix).
     private void AnnounceBaroIfChanged(bool capt, ScreenReaderAnnouncer announcer)
     {
+        if (SuppressFbwEfisBaroAnnounce) return;
         int mode = capt ? _baroMode : _baroModeR;
         double hpa = capt ? _baroHpa : _baroHpaR;
         double inUnit = capt ? _baroInUnitL : _baroInUnitR;
