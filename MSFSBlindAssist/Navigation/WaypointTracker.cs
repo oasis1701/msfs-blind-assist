@@ -24,10 +24,13 @@ public class WaypointTracker
     /// <param name="course">Optional magnetic course (degrees) for the Waypoint Flight Director to
     ///   capture and hold THROUGH this fix (airway leg / radial / approach course), instead of a
     ///   direct-to. Null = direct-to.</param>
+    /// <param name="referenceMagVar">Magnetic variation (EAST-positive) the <paramref name="course"/> is
+    ///   referenced to (navaid station declination / fix local variation). Null → the FD converts the
+    ///   course using the aircraft's live magvar instead. Ignored when <paramref name="course"/> is null.</param>
     public void TrackWaypoint(int slotNumber, WaypointFix waypoint,
         double? crossingAltitude = null, double? crossingAltitudeUpper = null,
         AltitudeConstraintType constraint = AltitudeConstraintType.None,
-        double? course = null)
+        double? course = null, double? referenceMagVar = null)
     {
         if (slotNumber < 1 || slotNumber > MAX_SLOTS)
             throw new ArgumentOutOfRangeException(nameof(slotNumber), "Slot number must be between 1 and 5");
@@ -45,7 +48,8 @@ public class WaypointTracker
             CrossingAltitude = crossingAltitude,
             CrossingAltitudeUpper = crossingAltitudeUpper,
             Constraint = constraint,
-            Course = course
+            Course = course,
+            ReferenceMagVar = course.HasValue ? referenceMagVar : null
         };
     }
 
@@ -60,7 +64,7 @@ public class WaypointTracker
         var t = _slots[slotNumber - 1];
         if (t == null) return null;
         return new WaypointSlotData(t.Ident, t.Latitude, t.Longitude,
-            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course);
+            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course, t.ReferenceMagVar);
     }
 
     /// <summary>
@@ -177,6 +181,7 @@ public class WaypointTracker
         public double? CrossingAltitudeUpper { get; set; }
         public AltitudeConstraintType Constraint { get; set; } = AltitudeConstraintType.None;
         public double? Course { get; set; }
+        public double? ReferenceMagVar { get; set; }
     }
 }
 
@@ -190,4 +195,5 @@ public readonly record struct WaypointSlotData(
     double? CrossingAltitude,
     double? CrossingAltitudeUpper,
     AltitudeConstraintType Constraint,
-    double? Course);
+    double? Course,
+    double? ReferenceMagVar);

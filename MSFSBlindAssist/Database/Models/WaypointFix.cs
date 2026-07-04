@@ -42,6 +42,12 @@ public class WaypointFix
     public double? Theta { get; set; } // DME arc angle in degrees
     public double? Rho { get; set; } // DME arc distance in NM
     public bool IsTrueCourse { get; set; } // Whether course is true or magnetic
+    // The magnetic variation (degrees, EAST-positive: true = magnetic + var) that a MAGNETIC Course is
+    // referenced to — the referenced navaid's station declination for a radial/course-to leg, else the
+    // fix's own local variation. Lets the Waypoint Flight Director convert the course to true against the
+    // RIGHT variation (what real RNAV/FMS does) instead of the aircraft's live magvar. Null = unknown
+    // (the FD falls back to the aircraft magvar). Same sign convention as SimConnect MAGVAR / navdata mag_var.
+    public double? ReferenceMagVar { get; set; }
     public string ArincDescCode { get; set; } = ""; // ARINC leg type descriptor code
     public string ApproachFixType { get; set; } = ""; // Approach fix type
     public bool IsMissedApproach { get; set; } // Whether this leg is part of the missed approach

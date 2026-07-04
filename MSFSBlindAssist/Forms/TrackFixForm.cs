@@ -297,7 +297,11 @@ public partial class TrackFixForm : Form
         if (double.TryParse(courseTextBox.Text.Trim(), out double c) && c >= 0 && c <= 360)
             course = c % 360.0;
 
-        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, upperAlt, constraint, course);
+        // Reference variation the magnetic course is defined against (navaid station declination / fix
+        // local variation, from navdata). Lets the FD convert the course to true against the RIGHT magvar
+        // instead of the aircraft's live one; null → the FD falls back to the aircraft magvar.
+        _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, upperAlt, constraint, course,
+            waypoint.ReferenceMagVar);
 
         string detail = "";
         if (course.HasValue)

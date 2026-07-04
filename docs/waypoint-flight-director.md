@@ -70,6 +70,18 @@ the fix is just a point on the line, so the same field covers inbound courses an
 course leg sequences when you reach the fix (capture radius); an outbound radial simply holds until
 you turn the FD off or advance.
 
+**Magnetic → true is referenced correctly.** A magnetic course isn't relative to today's variation at
+your position — a VOR radial is defined by the *station's declination* (VORs are re-aligned rarely, so
+that can differ from the current value by several degrees), and an airway/CF leg by the local variation
+where it's defined. The FD captures that **reference variation from navdata** (the referenced navaid's
+declination, else the fix's own local variation — `WaypointFix.ReferenceMagVar`) when you track the fix,
+and converts the course to true against *it*, lifting your GPS ground track to true with the *aircraft's*
+own live magvar — the whole intercept is then computed in one consistent true frame, the same way an
+RNAV/FMS does it. If navdata carries no variation for the fix (or you hand-enter a course on a fix that
+isn't in the database), it falls back to the aircraft's live magvar. This is the biggest accuracy win
+where station declination is large; the remaining refinements (ellipsoidal geodesics, a live WMM) are
+below what's audible when matching two tones by ear.
+
 ## Vertical guidance (crossing altitudes)
 
 Each slot can carry an optional crossing target. Commanded pitch ≈ **required flight-path angle +

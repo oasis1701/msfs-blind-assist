@@ -264,17 +264,25 @@ public class WaypointFlightDirectorManager : IDisposable
             // Course / radial tracking: capture and hold the course line THROUGH the fix (airway
             // leg, approach course, radial) instead of direct-to. Generalised ILS localizer capture.
             double courseMag = slot.Value.Course!.Value;
-            // true = mag + var (east +). NOTE: this uses the AIRCRAFT's live magvar as a proxy for the
-            // fix's — the sim exposes magvar only at the aircraft, and there's no world-magnetic model
-            // here. The residual (magvar gradient between aircraft and fix) is sub-degree at normal
-            // en-route ranges and is dominated by the capped intercept when far, so it's negligible in
-            // practice; converting with the fix's own magvar would need a WMM the app doesn't carry.
-            double courseTrue = courseMag + magvar;
+            // Work the whole intercept in the TRUE frame, converting each angle with the variation it's
+            // actually referenced to (what real RNAV/FMS does):
+            //   - the COURSE is defined at the fix, so lift it to true with the fix's REFERENCE variation
+            //     (navaid station declination / fix local variation from navdata). This matters: a VOR
+            //     radial is defined by the station's declination, which — because VORs are re-aligned
+            //     rarely — can differ from today's variation by several degrees, and far from the fix the
+            //     aircraft's own magvar is a different value again. Fall back to the aircraft magvar only
+            //     when navdata gave us none (ReferenceMagVar == null).
+            //   - the aircraft GROUND TRACK is measured at the aircraft, so lift it to true with the
+            //     aircraft's own live magvar.
+            // (east +: true = mag + var.)
+            double refVar = slot.Value.ReferenceMagVar ?? magvar;
+            double courseTrue = courseMag + refVar;
             double brgFixToAcTrue = NavigationCalculator.CalculateBearing(slotLat, slotLon, lat, lon);
             double xtNm = G.CrossTrackNm(distNm, brgFixToAcTrue, courseTrue);
-            double desiredTrackMag = G.CourseInterceptTrackDeg(courseMag, xtNm,
-                                                               profile.MaxInterceptDeg, profile.InterceptDegPerNm);
-            trackErr = G.NormalizeSigned(desiredTrackMag - effectiveTrack);
+            double desiredTrackTrue = G.CourseInterceptTrackDeg(courseTrue, xtNm,
+                                                                profile.MaxInterceptDeg, profile.InterceptDegPerNm);
+            double effectiveTrackTrue = effectiveTrack + magvar;   // aircraft magnetic track → true
+            trackErr = G.NormalizeSigned(desiredTrackTrue - effectiveTrackTrue);
         }
         else
         {
