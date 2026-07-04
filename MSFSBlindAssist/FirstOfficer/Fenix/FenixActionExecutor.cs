@@ -43,10 +43,19 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         ["S_MIP_AUTOBRAKE_MAX"]    = LVarDispatchKind.LVarPulse,
         ["S_FCU_AP1"]              = LVarDispatchKind.LVarPulse,
         ["S_FCU_AP2"]              = LVarDispatchKind.LVarPulse,
-        ["S_FCU_EFIS1_LS_PRESS"]   = LVarDispatchKind.LVarPulse,
-        ["S_FCU_EFIS2_LS_PRESS"]   = LVarDispatchKind.LVarPulse,
+        // LS (localizer) + FD toggles: the ACTUATOR is the BASE var (S_FCU_EFISn_LS/FD).
+        // The "_PRESS" name is only MSFSBA's synthetic PANEL key — the def's
+        // HandleUIVariableSet redirects _PRESS → a button transition on the base var
+        // (FenixA320Definition.cs:11664). The FO writes L:vars directly (bypassing that
+        // handler), so writing "_PRESS" is a no-op in the sim — that was the "LS not
+        // turning on in approach" bug (and the same latent bug on FD).
+        ["S_FCU_EFIS1_LS"]         = LVarDispatchKind.LVarPulse,
+        ["S_FCU_EFIS2_LS"]         = LVarDispatchKind.LVarPulse,
+        ["S_FCU_EFIS1_FD"]         = LVarDispatchKind.LVarPulse,
+        ["S_FCU_EFIS2_FD"]         = LVarDispatchKind.LVarPulse,
         ["S_FC_RUDDER_TRIM_RESET"] = LVarDispatchKind.LVarPulse,
-        ["S_ECAM_TO"]              = LVarDispatchKind.LVarPulse,   // TO config test
+        ["S_ECAM_TO"]              = LVarDispatchKind.LVarPulse,   // TO CONFIG test (takeoff)
+        ["S_ECAM_STATUS"]          = LVarDispatchKind.LVarPulse,   // STS status page (landing review)
     };
 
     protected override IReadOnlyDictionary<string, LVarDispatchKind> DispatchTable => Table;
@@ -95,6 +104,13 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// the button is then returned to 0 (rest). Fire-and-forget like the tests, so the
     /// checkbox records that the cabin was advised.</summary>
     public Task<bool> CabinCall(string lvar) => HoldAsync(lvar, CabinCallHoldMs);
+
+    /// <summary>Cockpit-door lock selector (S_PED_COCKPIT_DOOR): 0 = Unlock, 1 = Norm
+    /// (closed and locked), 2 = Lock. ⚠️ BEST-EFFORT var/values per the Fenix pedestal
+    /// convention — the door lock is a documented DEFERRED control (not exposed in the def),
+    /// so this needs in-sim verification. The base name matches the I_PED_COCKPIT_DOOR_*
+    /// indicators; a wrong name degrades to a harmless SetLVar no-op.</summary>
+    public Task<bool> SetCockpitDoor(int pos) => DispatchAsync("S_PED_COCKPIT_DOOR", pos);
 
     /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). The Fenix
     /// STD state is a plain settable L:var per side — no toggle-push ambiguity.</summary>

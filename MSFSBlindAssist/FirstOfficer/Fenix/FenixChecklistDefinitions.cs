@@ -171,6 +171,9 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.PushFcuManaged("S_FCU_SPEED")),
             ActionManual("BS_FCUHDG", "BEFORE_START", "FCU heading: managed",
                 (e, _) => e.PushFcuManaged("S_FCU_HEADING")),
+            // Cockpit door: closed and locked (NORM). ⚠️ best-effort var/value — verify in sim.
+            ActionManual("BS_COCKPITDOOR", "BEFORE_START", "Cockpit door: closed and locked",
+                (e, _) => e.SetCockpitDoor(1)),
             Reminder("BS_DOORS", "BEFORE_START", "Close doors and remove ground services on the EFB"),
             Reminder("BS_THRLEVERS", "BEFORE_START", "Confirm thrust levers idle"),
             Reminder("BS_CLEARANCE", "BEFORE_START", "Obtain pushback and start clearance"),
@@ -307,15 +310,21 @@ public static class FenixChecklistDefinitions
         {
             // Guarded: momentary pulse on a latching light — act only when not lit
             // (a retick on an already-lit side must not turn LS back off).
+            // LS actuator is the BASE var S_FCU_EFISn_LS (NOT "_PRESS" — that synthetic panel
+            // key is a no-op when written directly; see FenixActionExecutor).
             Auto("AP_LS1", "APPROACH", "LS captain: ON",
                 "I_FCU_EFIS1_LS", v => v > 0.5,
-                (e, s) => s.IsOn("I_FCU_EFIS1_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS1_LS_PRESS")),
+                (e, s) => s.IsOn("I_FCU_EFIS1_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS1_LS")),
             Auto("AP_LS2", "APPROACH", "LS first officer: ON",
                 "I_FCU_EFIS2_LS", v => v > 0.5,
-                (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS_PRESS")),
+                (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS")),
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
+            // ECAM STATUS page for the landing review (A320 has no landing config-test button;
+            // STS is the landing analog of the takeoff TO CONFIG press).
+            ActionManual("AP_ECAM_STS", "APPROACH", "ECAM status page (STS) for landing",
+                (e, _) => e.Pulse("S_ECAM_STATUS")),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
             Reminder("AP_BARO", "APPROACH", "Confirm QNH set at transition level"),
             Reminder("AP_ENGMODE", "APPROACH", "Set engine mode selector as required"),
@@ -392,6 +401,9 @@ public static class FenixChecklistDefinitions
                 "S_OH_EXT_LT_NOSE", v => v < 0.5, (e, _) => e.SetNoseLight(0)),
             Auto("SD_TURNOFF_OFF", "SHUTDOWN", "Runway turn-off lights: OFF",
                 "S_OH_EXT_LT_RWY_TURNOFF", v => v < 0.5, (e, _) => e.Set("S_OH_EXT_LT_RWY_TURNOFF", 0)),
+            // Cockpit door: unlocked (open for disembark). ⚠️ best-effort var/value — verify in sim.
+            ActionManual("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: unlocked",
+                (e, _) => e.SetCockpitDoor(0)),
         }
     };
 

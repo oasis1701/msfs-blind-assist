@@ -143,10 +143,12 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("S_XPDR_ALTREPORTING")), "PF_ALTRPTG"),
             Done(Skip(SW("PF_TCASTRAFFIC", "TCAS traffic: ALL", "S_TCAS_RANGE", 1),
                 s => s.IsPosition("S_TCAS_RANGE", 1)), "PF_TCASTRAFFIC"),
-            // Flight directors — verify on (skip when the FD lights are lit)
-            Skip(SW("PF_FD1", "Flight director 1: ON", "S_FCU_EFIS1_FD_PRESS", 1),
+            // Flight directors — verify on (skip when the FD lights are lit). The actuator is
+            // the BASE var S_FCU_EFISn_FD, NOT "_PRESS" (the synthetic panel key is a no-op
+            // written directly — same class of bug as the LS buttons).
+            Skip(SW("PF_FD1", "Flight director 1: ON", "S_FCU_EFIS1_FD", 1),
                 s => s.IsOn("I_FCU_EFIS1_FD")),
-            Skip(SW("PF_FD2", "Flight director 2: ON", "S_FCU_EFIS2_FD_PRESS", 1),
+            Skip(SW("PF_FD2", "Flight director 2: ON", "S_FCU_EFIS2_FD", 1),
                 s => s.IsOn("I_FCU_EFIS2_FD")),
             // Captain items
             Captain("PF_BARO", "Set QNH on both altimeters and the standby altimeter"),
@@ -195,6 +197,8 @@ public static class FenixFlowDefinitions
             // FCU managed modes (pseudo-keys → atomic knob-push calc)
             Done(SW("BS_FCUSPD", "FCU speed: managed", "FCU_PUSH_SPEED_MANAGED", 1), "BS_FCUSPD"),
             Done(SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING_MANAGED", 1), "BS_FCUHDG"),
+            // Cockpit door: closed and locked (NORM=1). ⚠️ best-effort var/value — verify in sim.
+            Done(SW("BS_COCKPITDOOR", "Cockpit door: closed and locked", "S_PED_COCKPIT_DOOR", 1), "BS_COCKPITDOOR"),
             Captain("BS_DOORS", "Close doors and remove ground services on the EFB"),
             Captain("BS_THRLEVERS", "Confirm thrust levers idle"),
             Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
@@ -339,16 +343,21 @@ public static class FenixFlowDefinitions
     private static Flow BuildApproach() => new()
     {
         Id = "APPROACH", Name = "Approach",
-        Description = "LS on both sides, notify the cabin for landing, approach reminders.",
+        Description = "LS on both sides, notify the cabin for landing, ECAM status review, approach reminders.",
         RelatedChecklistGroupIds = new[] { "APPROACH" },
         Steps = new()
         {
-            Done(Skip(SW("AP_LS1", "LS captain: ON", "S_FCU_EFIS1_LS_PRESS", 1),
+            // LS actuator is the BASE var S_FCU_EFISn_LS (NOT "_PRESS" — writing the synthetic
+            // panel key directly is a no-op; that was the "LS not on in approach" bug).
+            Done(Skip(SW("AP_LS1", "LS captain: ON", "S_FCU_EFIS1_LS", 1),
                 s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"),
-            Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS_PRESS", 1),
+            Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS", 1),
                 s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"),
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
+            // ECAM STATUS page for the landing review (A320 has no landing config-test button;
+            // STS is the landing analog of the takeoff TO CONFIG press).
+            Done(SW("AP_ECAM_STS", "ECAM status page (STS) for landing", "S_ECAM_STATUS", 1), "AP_ECAM_STS"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
             Captain("AP_BARO", "Confirm QNH set at transition level"),
             Captain("AP_ENGMODE", "Set engine mode selector as required"),
@@ -433,6 +442,8 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 0)), "SD_NOSE_OFF"),
             Done(Skip(SW("SD_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
                 s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "SD_TURNOFF_OFF"),
+            // Cockpit door: unlocked (UNLOCK=0, open for disembark). ⚠️ best-effort — verify in sim.
+            Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "S_PED_COCKPIT_DOOR", 0), "SD_COCKPITDOOR"),
         }
     };
 
