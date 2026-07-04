@@ -77,8 +77,10 @@ public static class FenixChecklistDefinitions
             Auto("PF_GNDCTL", "PREFLIGHT", "Recorder ground control: ON",
                 "I_OH_RCRD_GND_CTL_L", v => v > 0.5,
                 (e, s) => s.IsOn("I_OH_RCRD_GND_CTL_L") ? Task.CompletedTask : e.Pulse("S_OH_RCRD_GND_CTL")),
+            // Held 3 s test (like the fire tests) — ticking runs a self-completing test and
+            // the switch returns to NORMAL, so it never sticks in TEST.
             ActionManual("PF_CVR", "PREFLIGHT", "CVR test (listen for the test tone)",
-                (e, _) => e.Set("S_OH_RCRD_TEST", 1)),
+                (e, _) => e.CvrTest("S_OH_RCRD_TEST")),
             Auto("PF_IRS", "PREFLIGHT", "IRS 1, 2 and 3: NAV",
                 "S_OH_NAV_IR1_MODE", v => Math.Abs(v - 1) < 0.5,
                 new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" },
@@ -182,14 +184,15 @@ public static class FenixChecklistDefinitions
         {
             Auto("ES_MODE", "ENGINE_START", "Engine mode selector: IGN START",
                 "S_ENG_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_ENG_MODE", 2)),
-            Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON",
-                "S_ENG_MASTER_2", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_2", 1)),
-            Auto("ES_ENG2_RUN", "ENGINE_START", "Engine 2: running",
-                "FO_ENG2_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
+            // Engine 1 first, then engine 2 (user preference).
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON",
                 "S_ENG_MASTER_1", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_1", 1)),
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running",
                 "FO_ENG1_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
+            Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON",
+                "S_ENG_MASTER_2", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_2", 1)),
+            Auto("ES_ENG2_RUN", "ENGINE_START", "Engine 2: running",
+                "FO_ENG2_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
         }
     };
 
@@ -254,7 +257,10 @@ public static class FenixChecklistDefinitions
                 "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.SetNoseLight(2)),
             Auto("BT_STROBE", "BEFORE_TAKEOFF", "Strobes: ON",
                 "S_OH_EXT_LT_STROBE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_EXT_LT_STROBE", 2)),
-            Reminder("BT_CABIN", "BEFORE_TAKEOFF", "Advise the cabin crew and obtain takeoff clearance"),
+            // Advise the cabin crew: hit CALL ALL and release (momentary chime).
+            ActionManual("BT_CABIN", "BEFORE_TAKEOFF", "Advise the cabin crew for takeoff (call all)",
+                (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
+            Reminder("BT_CLEARANCE", "BEFORE_TAKEOFF", "Obtain takeoff clearance"),
         }
     };
 
@@ -307,6 +313,9 @@ public static class FenixChecklistDefinitions
             Auto("AP_LS2", "APPROACH", "LS first officer: ON",
                 "I_FCU_EFIS2_LS", v => v > 0.5,
                 (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS_PRESS")),
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
+                (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
             Reminder("AP_BARO", "APPROACH", "Confirm QNH set at transition level"),
             Reminder("AP_ENGMODE", "APPROACH", "Set engine mode selector as required"),

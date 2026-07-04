@@ -8,7 +8,10 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// class; the dispatch table lists the momentary pushbuttons (Fenix buttons trigger on the
 /// 0 → 1 transition — the def's panel-proven ExecuteButtonTransition convention).
 ///
-/// Fire tests are HELD switches (1 → 3 s → 0), not pulses. The FCU managed pushes go
+/// Fire tests AND the CVR test are HELD switches (1 → 3 s → 0), not pulses — the box being
+/// ticked means "test performed" and the test auto-ends, so it never sticks in TEST and the
+/// user never has to un-tick to stop it. The cabin CALL pushbuttons are also held (press,
+/// brief hold, release — "hit and release"). The FCU managed pushes go
 /// through an atomic read-modify-write calculator string rather than an app-side counter:
 /// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING_PUSH/PULL)
 /// ALSO writes these same L:vars via its own atomic RPN read-modify-write
@@ -21,7 +24,8 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// </summary>
 public sealed class FenixActionExecutor : LVarActionExecutor
 {
-    private const int FireTestHoldMs = 3000;
+    private const int TestHoldMs = 3000;       // CVR + fire tests: TEST for 3 s, then back to normal.
+    private const int CabinCallHoldMs = 600;   // Cabin CALL pushbutton: press, brief hold, release.
     private const int ApuMasterToStartMs = 3000;
 
     // Anti-dedup sequence for the FCU push/pull atomic RPN write (see PushFcuManaged).
@@ -32,7 +36,8 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         ["S_OH_ELEC_EXT_PWR"]      = LVarDispatchKind.LVarPulse,
         ["S_OH_ELEC_APU_START"]    = LVarDispatchKind.LVarPulse,
         ["S_OH_RCRD_GND_CTL"]      = LVarDispatchKind.LVarPulse,
-        ["S_OH_RCRD_TEST"]         = LVarDispatchKind.LVarPulse,   // CVR test
+        // NOTE: S_OH_RCRD_TEST (CVR test) is NOT a pulse — it is a 3 s HELD test via
+        // CvrTest()/the CVR_TEST pseudo-key (see FireTest); a pulse left it stuck in TEST.
         ["S_MIP_AUTOBRAKE_LO"]     = LVarDispatchKind.LVarPulse,
         ["S_MIP_AUTOBRAKE_MED"]    = LVarDispatchKind.LVarPulse,
         ["S_MIP_AUTOBRAKE_MAX"]    = LVarDispatchKind.LVarPulse,
@@ -56,9 +61,11 @@ public sealed class FenixActionExecutor : LVarActionExecutor
             {
                 case "FCU_PUSH_SPEED_MANAGED":   return PushFcuManaged("S_FCU_SPEED");
                 case "FCU_PUSH_HEADING_MANAGED": return PushFcuManaged("S_FCU_HEADING");
+                case "CVR_TEST":                 return CvrTest("S_OH_RCRD_TEST");
                 case "FIRE_TEST_APU":            return FireTest("S_OH_FIRE_APU_TEST");
                 case "FIRE_TEST_ENG1":           return FireTest("S_OH_FIRE_ENG1_TEST");
                 case "FIRE_TEST_ENG2":           return FireTest("S_OH_FIRE_ENG2_TEST");
+                case "CABIN_CALL_ALL":           return CabinCall("S_OH_CALLS_ALL");
                 case "LANDING_LIGHTS_BOTH":      return SetLandingLights(step.TargetValue ?? 2);
             }
         }
@@ -75,7 +82,19 @@ public sealed class FenixActionExecutor : LVarActionExecutor
 
     /// <summary>Held fire-test switch: TEST for 3 s, back to NORMAL. The fire bell is the
     /// audible verification for a blind pilot.</summary>
-    public Task<bool> FireTest(string lvar) => HoldAsync(lvar, FireTestHoldMs);
+    public Task<bool> FireTest(string lvar) => HoldAsync(lvar, TestHoldMs);
+
+    /// <summary>Held CVR test: TEST for 3 s, back to NORMAL — the SAME held mechanism as the
+    /// fire tests. A plain pulse left it stuck in TEST (it only ever wrote 1); holding then
+    /// releasing means ticking the box performs a self-completing 3 s test (audible test
+    /// tone), so the box reliably reflects "test performed" and nothing stays testing.</summary>
+    public Task<bool> CvrTest(string lvar) => HoldAsync(lvar, TestHoldMs);
+
+    /// <summary>Momentary cabin CALL pushbutton (CALL ALL / FWD / AFT): press then release —
+    /// "hit and release". The 0 → 1 write is the transition that triggers the cabin chime;
+    /// the button is then returned to 0 (rest). Fire-and-forget like the tests, so the
+    /// checkbox records that the cabin was advised.</summary>
+    public Task<bool> CabinCall(string lvar) => HoldAsync(lvar, CabinCallHoldMs);
 
     /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). The Fenix
     /// STD state is a plain settable L:var per side — no toggle-push ambiguity.</summary>

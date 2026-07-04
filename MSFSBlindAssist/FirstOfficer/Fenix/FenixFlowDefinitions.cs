@@ -101,10 +101,11 @@ public static class FenixFlowDefinitions
         Steps = new()
         {
             // Recorder: latching press with an ON light readback, then the CVR test
-            // (audible test tone — the blind-verifiable check).
+            // (held 3 s via the CVR_TEST pseudo-key — audible test tone, self-completing so
+            // it never sticks in TEST).
             Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "S_OH_RCRD_GND_CTL", 1),
                 s => s.IsOn("I_OH_RCRD_GND_CTL_L")), "PF_GNDCTL"),
-            Done(SW("PF_CVR", "CVR test — listen for the test tone", "S_OH_RCRD_TEST", 1), "PF_CVR"),
+            Done(SW("PF_CVR", "CVR test — listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
             // ADIRS
             Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
                     ("S_OH_NAV_IR1_MODE", 1), ("S_OH_NAV_IR2_MODE", 1), ("S_OH_NAV_IR3_MODE", 1)),
@@ -206,22 +207,23 @@ public static class FenixFlowDefinitions
     private static Flow BuildEngineStart() => new()
     {
         Id = "ENGINE_START", Name = "Engine Start",
-        Description = "Engine mode IGN/START, then engine 2 and engine 1 with N2 verification.",
+        Description = "Engine mode IGN/START, then engine 1 and engine 2 with N2 verification.",
         RelatedChecklistGroupIds = new[] { "ENGINE_START" },
         Steps = new()
         {
             Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "S_ENG_MODE", 2),
                 s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
-            // Engine 2 first (Airbus convention). The FADEC runs the whole start; the
-            // N2 wait verifies it actually spooled (stock TURB ENG N2, pushed per second).
-            Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
-                s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
-            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for stabilized N2",
-                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
+            // start; each N2 wait verifies the engine actually spooled (stock TURB ENG N2,
+            // pushed per second) before the next master goes on.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
                 s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
             WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for stabilized N2",
                 "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
+                s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
+            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for stabilized N2",
+                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
 
@@ -285,7 +287,9 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 2)), "BT_NOSE_TO"),
             Done(Skip(SW("BT_STROBE", "Strobes: ON", "S_OH_EXT_LT_STROBE", 2),
                 s => s.IsPosition("S_OH_EXT_LT_STROBE", 2)), "BT_STROBE"),
-            Captain("BT_CABIN", "Advise the cabin crew and obtain takeoff clearance"),
+            // Advise the cabin crew: hit CALL ALL and release (momentary chime).
+            Done(SW("BT_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "BT_CABIN"),
+            Captain("BT_CLEARANCE", "Obtain takeoff clearance"),
         }
     };
 
@@ -335,7 +339,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildApproach() => new()
     {
         Id = "APPROACH", Name = "Approach",
-        Description = "LS on both sides, approach reminders.",
+        Description = "LS on both sides, notify the cabin for landing, approach reminders.",
         RelatedChecklistGroupIds = new[] { "APPROACH" },
         Steps = new()
         {
@@ -343,6 +347,8 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"),
             Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS_PRESS", 1),
                 s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"),
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
             Captain("AP_BARO", "Confirm QNH set at transition level"),
             Captain("AP_ENGMODE", "Set engine mode selector as required"),
