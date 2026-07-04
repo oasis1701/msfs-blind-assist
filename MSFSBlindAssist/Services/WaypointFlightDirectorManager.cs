@@ -82,6 +82,13 @@ public class WaypointFlightDirectorManager : IDisposable
     // still sequences) from an OUTBOUND radial (starts at/behind the fix, where abeam would misfire).
     private double legStartDistNm;
     private bool legStartCaptured;
+    // Capture-arrival arming (anti-cascade): a leg only "arrives" by capture radius once it has been
+    // approached from OUTSIDE that radius. If the leg STARTS inside the radius — the FD was engaged
+    // overhead the fix, or it's an outbound radial from the fix — the initial dwell must NOT count,
+    // otherwise the first frames cascade through every slot. Such a leg sequences instead once the
+    // aircraft has flown clear of the radius while moving (station passage away from the fix).
+    private bool legInsideAtStart;
+    private bool legArmedCapture;
 
     private DateTime routineSuppressedUntil = DateTime.MinValue;
 
@@ -130,8 +137,10 @@ public class WaypointFlightDirectorManager : IDisposable
         appliedDesiredWave = desiredWave;
 
         // Start on the first FILLED slot (the user may have tracked into 2-3, not 1, from the EFB).
-        activeSlot = 1;
-        while (activeSlot < 5 && tracker.IsSlotEmpty(activeSlot)) activeSlot++;
+        // Caller (MainForm) has confirmed HasAnyWaypoint(), so NextFilledSlot(1) finds one; the ?? 1 is
+        // a defensive fallback if that invariant is ever violated (first ProcessUpdate then stops clean).
+        int firstFilled = tracker.NextFilledSlot(1);
+        activeSlot = firstFilled == 0 ? 1 : firstFilled;
         apMutedAnnounced = false;
         hasLat = hasLon = hasAlt = hasTrack = false;
         lastRateTime = DateTime.MinValue;
@@ -206,22 +215,35 @@ public class WaypointFlightDirectorManager : IDisposable
         double distNm = NavigationCalculator.CalculateDistance(lat, lon, slotLat, slotLon);
         double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, slotLat, slotLon, magvar);
 
-        // Record the leg's start distance once (the first frame all caches are fresh) — used to tell an
-        // inbound course leg from an outbound radial below.
-        if (!legStartCaptured) { legStartDistNm = distNm; legStartCaptured = true; }
-
-        // Arrival → sequence to the next leg. Inside the capture radius counts at any speed; the
-        // abeam test (station passage) only counts when actually MOVING — otherwise engaging the FD
-        // while parked next to / behind a fix would cascade through every slot on the first frame.
-        // A COURSE leg normally sequences on capture-radius only (an OUTBOUND radial starts behind the
-        // fix, where abeam would misfire) — BUT an INBOUND course leg (started well outside the fix,
-        // e.g. an EFB approach/airway CF leg) ALSO sequences on abeam, so a leg passed wide of the fix
-        // doesn't strand the pilot with no way to advance.
         bool withinCapture = distNm <= profile.CaptureRadiusNm;
-        bool stationPassage = groundSpeedKts >= profile.LowSpeedFloorKts &&
-                              G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm);
+        bool moving = groundSpeedKts >= profile.LowSpeedFloorKts;
+
+        // Record the leg's start state once (the first frame all caches are fresh): its distance (to tell
+        // an inbound course leg from an outbound radial below) and whether it started INSIDE the capture
+        // radius. Capture-arrival is armed only once the fix has been approached from outside the radius.
+        if (!legStartCaptured)
+        {
+            legStartDistNm = distNm;
+            legStartCaptured = true;
+            legInsideAtStart = withinCapture;
+            legArmedCapture = !withinCapture;
+        }
+        if (!withinCapture) legArmedCapture = true;   // left (or never entered) the zone → arm capture
+
+        // Arrival → sequence to the next leg.
+        //   captureArrival  : inside the radius, having approached from OUTSIDE it (a real fly-in). Counts
+        //                     at any speed. NOT triggered by the initial dwell of a leg started overhead.
+        //   clearedFromStart: the leg STARTED on the fix (engaged overhead / outbound radial); it sequences
+        //                     once the aircraft has flown clear of the radius while MOVING — never on the
+        //                     first frames (kills the parked/overhead cascade the un-armed capture caused).
+        //   stationPassage  : the abeam test (only when MOVING). A COURSE leg uses it only when it started
+        //                     well OUTSIDE the fix (an inbound CF leg passed wide) — an outbound radial
+        //                     starts behind the fix, where abeam would misfire; a direct-to leg always uses it.
+        bool captureArrival = legArmedCapture && withinCapture;
+        bool clearedFromStart = legInsideAtStart && moving && !withinCapture;
+        bool stationPassage = moving && G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm);
         bool startedFar = legStartDistNm > profile.CaptureRadiusNm * 4.0;   // inbound, not an outbound radial
-        bool arrived = withinCapture
+        bool arrived = captureArrival || clearedFromStart
             || (isCourseLeg ? (startedFar && stationPassage) : stationPassage);
         if (arrived)
         {
@@ -242,7 +264,12 @@ public class WaypointFlightDirectorManager : IDisposable
             // Course / radial tracking: capture and hold the course line THROUGH the fix (airway
             // leg, approach course, radial) instead of direct-to. Generalised ILS localizer capture.
             double courseMag = slot.Value.Course!.Value;
-            double courseTrue = courseMag + magvar;                                   // true = mag + var (east +)
+            // true = mag + var (east +). NOTE: this uses the AIRCRAFT's live magvar as a proxy for the
+            // fix's — the sim exposes magvar only at the aircraft, and there's no world-magnetic model
+            // here. The residual (magvar gradient between aircraft and fix) is sub-degree at normal
+            // en-route ranges and is dominated by the capped intercept when far, so it's negligible in
+            // practice; converting with the fix's own magvar would need a WMM the app doesn't carry.
+            double courseTrue = courseMag + magvar;
             double brgFixToAcTrue = NavigationCalculator.CalculateBearing(slotLat, slotLon, lat, lon);
             double xtNm = G.CrossTrackNm(distNm, brgFixToAcTrue, courseTrue);
             double desiredTrackMag = G.CourseInterceptTrackDeg(courseMag, xtNm,
@@ -305,21 +332,19 @@ public class WaypointFlightDirectorManager : IDisposable
     {
         legStartCaptured = false;   // re-measure the start distance for the new leg
 
-        // Skip empty INTERIOR slots so a gap (e.g. the user tracked slots 1, 2, 4 from the EFB, or
-        // slot 3 was a position-less leg that couldn't be tracked) doesn't silently end the route —
-        // fly whatever slots are filled, in order, up to slot 5.
-        activeSlot++;
-        while (activeSlot <= 5 && tracker != null && tracker.IsSlotEmpty(activeSlot))
-            activeSlot++;
-
-        if (activeSlot > 5 || tracker == null || tracker.IsSlotEmpty(activeSlot))
+        // Advance to the next FILLED slot, skipping empty INTERIOR slots so a gap (e.g. the user
+        // tracked slots 1, 2, 4 from the EFB, or slot 3 was a position-less leg that couldn't be
+        // tracked) doesn't silently end the route — fly whatever slots are filled, in order, up to 5.
+        int next = tracker?.NextFilledSlot(activeSlot + 1) ?? 0;
+        if (next == 0)
         {
             announcer.AnnounceImmediate("Final waypoint reached. Flight director off.");
             Stop(announce: false);
             return;
         }
+        activeSlot = next;
 
-        var s = tracker.GetSlot(activeSlot);
+        var s = tracker!.GetSlot(activeSlot);
         if (s == null) { Stop(announce: false); return; }
 
         double distNm = NavigationCalculator.CalculateDistance(lat, lon, s.Value.Latitude, s.Value.Longitude);

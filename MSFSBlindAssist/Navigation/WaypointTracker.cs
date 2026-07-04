@@ -117,6 +117,18 @@ public class WaypointTracker
     }
 
     /// <summary>
+    /// The first FILLED slot at or after <paramref name="startInclusive"/>, skipping empty (gap) slots,
+    /// or 0 if none remain through slot 5. Single source of truth for the Waypoint Flight Director's
+    /// "start on / advance to the next tracked slot" sequencing (used by both Initialize and AdvanceLeg).
+    /// </summary>
+    public int NextFilledSlot(int startInclusive)
+    {
+        for (int s = System.Math.Max(1, startInclusive); s <= MAX_SLOTS; s++)
+            if (!IsSlotEmpty(s)) return s;
+        return 0;
+    }
+
+    /// <summary>
     /// Clears a tracking slot
     /// </summary>
     public void ClearSlot(int slotNumber)

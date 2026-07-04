@@ -1234,9 +1234,13 @@ public partial class HandFlyOptionsForm : Form
 
             fdTestDesired = new AudioToneGenerator();
             fdTestCurrent = new AudioToneGenerator();
-            // FD dual-tone mapping defaults (match WaypointFlightDirectorProfile's tone fields).
-            fdTestDesired.Configure(200f, 800f, 6.0, 5.0);
-            fdTestCurrent.Configure(200f, 800f, 6.0, 5.0);
+            // FD dual-tone mapping — take the tone range straight from the profile defaults so the
+            // preview can't silently drift from what the real FD plays if a default is retuned.
+            var fdTone = new MSFSBlindAssist.Aircraft.WaypointFlightDirectorProfile();
+            fdTestDesired.Configure(fdTone.ToneMinFrequencyHz, fdTone.ToneMaxFrequencyHz,
+                                    fdTone.TonePitchRangeDeg, fdTone.ToneBankRangeDeg);
+            fdTestCurrent.Configure(fdTone.ToneMinFrequencyHz, fdTone.ToneMaxFrequencyHz,
+                                    fdTone.TonePitchRangeDeg, fdTone.ToneBankRangeDeg);
             fdTestDesired.Start(_fdToneWave, _fdVolume);
             fdTestCurrent.Start(_fdCurrentWave, _fdCurrentVolume);
 

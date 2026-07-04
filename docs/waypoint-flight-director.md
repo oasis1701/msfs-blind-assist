@@ -152,12 +152,14 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 - **Gaps in the slots are skipped, not fatal.** If you track into slots 1, 2 and 4 (or slot 3 couldn't
   be tracked), the FD flies 1 → 2 → 4 — it skips empty interior slots instead of stopping at the first
   gap. It ends only after the last filled slot or slot 5 ("Final waypoint reached").
-- **A course leg passed wide still sequences.** An inbound course/airway leg now advances on
-  station-passage (abeam) as well as capture-radius, so being blown wide of the fix doesn't strand you
-  on that leg. (A true outbound radial, which starts behind the fix, still uses capture-radius only.)
-- **Engaged while parked or behind a fix:** the abeam (station-passage) arrival only counts when
-  actually moving, so it can't cascade through every slot on the first frame; the capture-radius
-  arrival still works at any speed.
+- **A course leg passed wide still sequences.** An inbound course/airway leg (one that started well
+  outside the fix) advances on station-passage (abeam) as well as capture-radius, so being blown wide
+  of the fix doesn't strand you on that leg.
+- **Engaged parked/overhead a fix (or an outbound radial that starts on it) can't cascade.** Capture-
+  radius arrival is *armed* — it only counts once the fix has been approached from **outside** the
+  radius, so the initial dwell of a leg that starts inside it is ignored. Such a leg instead sequences
+  once you've **flown clear of the radius while moving** (station passage away from the fix). Result:
+  no chain-reaction through every slot on the first frames, whether parked or airborne over the fix.
 - **Overhead a fix:** bearing spins, but arrival sequences first (capture radius / abeam) and the
   required-FPA is guarded inside ~0.05 NM, so the command doesn't blow up.
 - **Low speed / on the ground / no GPS track:** below the per-aircraft speed floor the lateral
@@ -172,7 +174,9 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 - **Touchdown:** auto-deactivates on the airborne→ground edge (taxi/rollout tones take over).
 - **Mutually exclusive with Visual Guidance:** engaging one stops the other; the shared 505 stream
   is reference-counted (with per-feature claim flags so an aborted activation can't stop the other's
-  stream). Hand-Fly's tone is suppressed while the FD runs and resumes after.
+  stream). Hand-Fly's tone is suppressed while the FD runs and resumes after — suppression is likewise
+  tracked per feature, so a Visual-Guidance activation that aborts (e.g. no destination runway) can't
+  un-mute Hand-Fly underneath a running FD and leave three tones playing.
 - **Aircraft swap:** the FD, Visual Guidance, and the rudder-coordination slip cue are all stopped
   when you change aircraft, so a tone/tick tuned for the old airframe never carries onto the new one
   (the slip cue owns its own audio device and is also disposed on app close).

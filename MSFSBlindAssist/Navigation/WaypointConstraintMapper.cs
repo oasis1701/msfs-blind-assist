@@ -35,16 +35,23 @@ public static class WaypointConstraintMapper
         double? min = fix.MinAltitude;
         double? max = fix.MaxAltitude;
 
+        // The bound lives in alt1 (MinAltitude) by ARINC convention for "+"/"-"/"A", but a non-navdata
+        // source may carry the single figure in alt2 (MaxAltitude) instead — fall back to it rather than
+        // silently dropping the constraint (the final guard still discards a genuinely-absent altitude).
+        double? single = (min.HasValue && min.Value > 0) ? min
+                       : (max.HasValue && max.Value > 0) ? max
+                       : null;
+
         switch (desc)
         {
             case "+":   // at or above alt1
                 constraint = AltitudeConstraintType.AtOrAbove;
-                crossingAltitude = min;
+                crossingAltitude = single;
                 break;
 
             case "-":   // at or below alt1
                 constraint = AltitudeConstraintType.AtOrBelow;
-                crossingAltitude = min;
+                crossingAltitude = single;
                 break;
 
             case "B":   // between (block): alt1/alt2 are the two bounds, order not guaranteed
@@ -75,10 +82,10 @@ public static class WaypointConstraintMapper
 
             case "A":   // at alt1
             default:    // blank / unrecognized descriptor with an altitude ≈ "at" (ARINC default)
-                if (min.HasValue && min.Value > 0)
+                if (single.HasValue)
                 {
                     constraint = AltitudeConstraintType.At;
-                    crossingAltitude = min;
+                    crossingAltitude = single;
                 }
                 break;
         }
