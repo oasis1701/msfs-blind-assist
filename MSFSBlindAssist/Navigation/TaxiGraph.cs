@@ -53,6 +53,21 @@ public class TaxiGraph
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
+    /// <summary>
+    /// A taxiway that meets a runway partway down its length — an intersection
+    /// (a.k.a. intersection-departure) point. Enumerated by
+    /// <see cref="GetRunwayIntersections"/> so the Taxi form can offer "depart
+    /// from taxiway W" instead of taxiing to the full-length threshold.
+    /// </summary>
+    public class RunwayIntersection
+    {
+        public string TaxiwayName = "";
+        public int NodeId;                      // graph node where the taxiway meets the runway
+        public double Latitude, Longitude;      // that node projected ONTO the centerline
+        public double AlongMetersFromThreshold; // from the named runway's takeoff-end threshold
+        public double RemainingMeters;          // runway ahead in the takeoff direction
+    }
+
     // Max perpendicular distance (metres) from a hold-short node to a runway
     // centerline for the node to be named after that runway. Above a CAT III /
     // code-F holding-position setback (~107 m) so real hold lines match, below
@@ -1010,6 +1025,118 @@ public class TaxiGraph
         deg = deg % 360.0;
         if (deg < 0) deg += 360.0;
         return deg;
+    }
+
+    /// <summary>
+    /// Enumerates the taxiways that meet a runway partway along its length — the
+    /// valid intersection-departure points. For each named taxiway we keep the
+    /// single node closest to the runway centerline; if that node sits within the
+    /// runway half-width (i.e. the taxiway actually reaches the pavement) it
+    /// becomes an intersection, with its distance measured from the DEPARTURE
+    /// threshold (so "remaining" is the runway ahead in the takeoff direction).
+    /// Sorted threshold-first. The threshold connector itself and the far-end
+    /// nubs are filtered out.
+    ///
+    /// Parallel taxiways that run alongside the runway (e.g. a full-length
+    /// parallel) never have a node within half-width, so they're correctly
+    /// excluded — only taxiways that genuinely enter the runway are offered.
+    ///
+    /// The centerline is passed as explicit PHYSICAL geometry
+    /// (<paramref name="thrLat"/>..<paramref name="farLon"/>, from the runway_end
+    /// thresholds via the <c>Runway</c> model) — NOT the <see cref="RunwayCenterline"/>
+    /// list, which is built from the <c>start</c> table and can sit hundreds of
+    /// metres inside the pavement at displaced-threshold runways (that would make
+    /// "remaining" badly understate the real runway length).
+    /// </summary>
+    /// <param name="thrLat">Departure-end threshold latitude (takeoff direction origin).</param>
+    /// <param name="thrLon">Departure-end threshold longitude.</param>
+    /// <param name="farLat">Opposite-end (rollout-end) latitude.</param>
+    /// <param name="farLon">Opposite-end longitude.</param>
+    /// <param name="halfWidthMeters">Runway half-width; a node must be within this of the centerline to count.</param>
+    public List<RunwayIntersection> GetRunwayIntersections(
+        double thrLat, double thrLon, double farLat, double farLon, double halfWidthMeters)
+    {
+        var result = new List<RunwayIntersection>();
+
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return result;
+
+        // Small tolerance above the stored half-width to absorb navdata rounding
+        // at the runway edge (the node is often exactly on the centerline, but a
+        // few metres of slop keeps a wide runway's entrance node in).
+        double maxPerp = halfWidthMeters + 5.0;
+        const double MIN_ALONG_M = 15.0;      // exclude the threshold connector itself
+        const double MIN_REMAINING_M = 45.0;  // exclude far-end nubs (~150 ft left)
+
+        foreach (var kv in _taxiwayNodeIndex)
+        {
+            string twName = kv.Key;
+            if (string.IsNullOrEmpty(twName)) continue;
+
+            int bestNode = -1;
+            double bestPerp = double.MaxValue, bestAlong = 0, bestLat = 0, bestLon = 0;
+            foreach (int nid in kv.Value)
+            {
+                if (!Nodes.TryGetValue(nid, out var n)) continue;
+                var (perp, along, projLat, projLon) =
+                    ProjectOntoCenterline(n.Latitude, n.Longitude, thrLat, thrLon, farLat, farLon);
+                if (along < 0 || along > totalLen) continue;   // beyond the thresholds
+                if (perp < bestPerp)
+                {
+                    bestPerp = perp; bestNode = nid; bestAlong = along;
+                    bestLat = projLat; bestLon = projLon;
+                }
+            }
+
+            if (bestNode < 0 || bestPerp > maxPerp) continue;
+            if (bestAlong < MIN_ALONG_M) continue;
+            double remaining = totalLen - bestAlong;
+            if (remaining < MIN_REMAINING_M) continue;
+
+            result.Add(new RunwayIntersection
+            {
+                TaxiwayName = twName,
+                NodeId = bestNode,
+                Latitude = bestLat,
+                Longitude = bestLon,
+                AlongMetersFromThreshold = bestAlong,
+                RemainingMeters = remaining,
+            });
+        }
+
+        result.Sort((a, b) => a.AlongMetersFromThreshold.CompareTo(b.AlongMetersFromThreshold));
+        return result;
+    }
+
+    /// <summary>
+    /// Projects a point onto the runway centerline (a→b). Returns the
+    /// perpendicular distance, the signed along-track distance from a (metres),
+    /// and the foot-of-perpendicular point in lat/lon. Equirectangular frame —
+    /// accurate at runway scale. Unlike <see cref="PerpendicularDistanceMeters"/>
+    /// the along-track value is NOT clamped, so callers can reject points beyond
+    /// the thresholds.
+    /// </summary>
+    private static (double perp, double along, double projLat, double projLon) ProjectOntoCenterline(
+        double plat, double plon, double alat, double alon, double blat, double blon)
+    {
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos((alat + blat) * 0.5 * (Math.PI / 180.0));
+
+        double bx = (blon - alon) * metersPerDegLon, by = (blat - alat) * METERS_PER_DEG_LAT;
+        double px = (plon - alon) * metersPerDegLon, py = (plat - alat) * METERS_PER_DEG_LAT;
+
+        double lenSq = bx * bx + by * by;
+        if (lenSq < 1e-9)
+            return (Math.Sqrt(px * px + py * py), 0.0, alat, alon);
+
+        double t = (px * bx + py * by) / lenSq;
+        double fx = t * bx, fy = t * by;
+        double ex = px - fx, ey = py - fy;
+        double perp = Math.Sqrt(ex * ex + ey * ey);
+        double along = t * Math.Sqrt(lenSq);
+        double projLat = alat + t * (blat - alat);
+        double projLon = alon + t * (blon - alon);
+        return (perp, along, projLat, projLon);
     }
 
     /// <summary>
