@@ -588,6 +588,53 @@ Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --"
     var (cs, os_) = RouteRunwayCrossings.Describe(sameSegs, excludeLastSegment: false);
     Check(cs == "crossing runway 10L twice" && os_ == 0,
         $"crossings: same-designator crossings keep the single name (got '{cs}')");
+
+    // (g) Tier-2 connectivity: a NEIGHBOURING connector's HSND inside the 75 m
+    // along window must NOT hijack the hold from the cleared taxiway when it
+    // has no graph connection to it near the runway. P parallels Q, carries an
+    // HSND at 90 m, joins the component only far upfield (4 hops > the 3-hop
+    // stub budget). Pre-fix tier 2 returned P's HSND; the resolver must return
+    // Q's own plain node at 105 m.
+    var neighbor = new List<TaxiPath>
+    {
+        P("Q", 105, -90.00505, "N", 160, -90.0050, "N"),
+        P("Q", 160, -90.0050, "N", 250, -90.0049, "N"),
+        P("P", 90, -90.0044, "HSND", 130, -90.00435, "N"),
+        P("P", 130, -90.00435, "N", 170, -90.0043, "N"),
+        P("P", 170, -90.0043, "N", 210, -90.00425, "N"),
+        P("P", 210, -90.00425, "N", 250, -90.0049, "N"),
+    };
+    var ng = TaxiGraph.Build(neighbor, new List<ParkingSpot>(), new List<StartPosition>());
+    var pNbr = HoldShortNodeResolver.ResolveNearSide(ng, tierRwy, acLat, acLon, 270, "Q");
+    Check(pNbr != null && pNbr.TaxiwayNames.Contains("Q") &&
+          Math.Abs(pNbr.Latitude - LatAt(105)) < 0.00002,
+        $"tier2: unconnected neighbour connector's HSND rejected, Q's plain node wins (got {(pNbr == null ? "null" : $"{(pNbr.Latitude - 40.0) * 111320.0:F1} m, {string.Join("/", pNbr.TaxiwayNames)}")})");
+
+    // (g2) The legitimate unnamed-stub shape (case (a)) must still pass the
+    // connectivity gate — S's HSND is 1 hop from Q's junction node.
+    var pStub2 = HoldShortNodeResolver.ResolveNearSide(sg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pStub2 != null && Math.Abs(pStub2.Latitude - LatAt(90)) < 0.00002,
+        "tier2: connected unnamed stub still wins after the connectivity gate");
+
+    // (h) Tier-4 along guard: with NO cleared-taxiway candidate at all, a
+    // designated node far along the runway must not beat the plain node next
+    // to the legacy pick. Plain "A" node at 98 m mid-runway; HSND on "B" at
+    // 100 m lateral but ~700 m further along. Legacy pick (98 m plain) wins.
+    var farT4 = new List<TaxiPath>
+    {
+        P("A", 98, -90.0052, "N", 200, -90.00515, "N"),
+        new TaxiPath
+        {
+            Type = "T", Name = "B", Width = 75,
+            StartLat = LatAt(100), StartLon = -89.9970, StartType = "HSND",
+            EndLat = LatAt(200), EndLon = -90.00515, EndType = "N",
+        },
+    };
+    var t4g = TaxiGraph.Build(farT4, new List<ParkingSpot>(), new List<StartPosition>());
+    var pT4 = HoldShortNodeResolver.ResolveNearSide(t4g, tierRwy, acLat, acLon, 270, "Z");
+    Check(pT4 != null && pT4.TaxiwayNames.Contains("A") &&
+          Math.Abs(pT4.Latitude - LatAt(98)) < 0.00002,
+        $"tier4: far-along designated node loses to the adjacent legacy pick (got {(pT4 == null ? "null" : $"{(pT4.Latitude - 40.0) * 111320.0:F1} m, {string.Join("/", pT4.TaxiwayNames)}")})");
 }
 
 // ---------------------------------------------------------------------------

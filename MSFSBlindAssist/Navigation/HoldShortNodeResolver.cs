@@ -23,16 +23,23 @@ namespace MSFSBlindAssist.Navigation;
 ///      the same convention TruncateToHoldShort uses for runway destinations).
 ///   2. Designated node at the cleared taxiway's runway junction (within
 ///      HS_JUNCTION_ALONG_M along-track of the taxiway's own closest plain
-///      candidate) — covers the common scenery shape where the final approach
-///      stub from taxiway to hold line is an unnamed connector, so the HSND
-///      doesn't carry the taxiway name.
+///      candidate AND graph-connected to the cleared taxiway within
+///      HS_STUB_MAX_HOPS edges) — covers the common scenery shape where the
+///      final approach stub from taxiway to hold line is an unnamed connector,
+///      so the HSND doesn't carry the taxiway name; the connectivity gate
+///      keeps a parallel neighbour connector's hold line from hijacking the
+///      route sideways (2026-07 review, confirmed at ladder junctions).
 ///   3. Plain node on the cleared taxiway — the legacy geometric pick, with
 ///      its deliberate setback: Runway.Width is in FEET, and dividing by 2 and
 ///      reading the result as METRES gives ~1.64 × the physical half-width
 ///      (a 200 ft runway → ~97 m), approximating real hold-line placement
 ///      (FAA hold lines sit 125–280 ft from the centerline). Do NOT "fix" the
 ///      units — see <see cref="LegacySetbackMetres"/>.
-///   4. Designated node on any taxiway (no cleared-taxiway candidate exists).
+///   4. Designated node at the legacy pick's junction, any taxiway (no
+///      cleared-taxiway candidate exists; with no plain candidate anywhere,
+///      the best designated node in the window is the only option left —
+///      the junction guard keeps an HSND far along the runway from
+///      out-ranking the plain node beside the natural hold point).
 ///   5. Plain node on any taxiway (legacy last resort).
 ///
 /// Designated candidates are additionally gated by the node's own
@@ -69,6 +76,33 @@ public static class HoldShortNodeResolver
     // parallel-taxiway junction spacing (~100 m+) so an adjacent taxiway's
     // hold node doesn't hijack the route.
     private const double HS_JUNCTION_ALONG_M = 75.0;
+
+    // Tier-2 stub budget: a designated node counts as "the cleared taxiway's
+    // hold line on an unnamed stub" only when it is graph-connected to a node
+    // carrying the cleared taxiway's name within this many edges. Without the
+    // connectivity gate, a NEIGHBOURING connector's HSND inside the 75 m along
+    // window hijacked the route sideways onto the wrong connector (2026-07
+    // review, confirmed) — ladder junctions under 75 m spacing exist.
+    private const int HS_STUB_MAX_HOPS = 3;
+
+    private static bool ConnectsToTaxiway(TaxiGraph graph, int nodeId, string taxiway, int maxHops)
+    {
+        var visited = new HashSet<int> { nodeId };
+        var frontier = new Queue<(int id, int depth)>();
+        frontier.Enqueue((nodeId, 0));
+        while (frontier.Count > 0)
+        {
+            var (id, depth) = frontier.Dequeue();
+            if (graph.Nodes.TryGetValue(id, out var n) && n.TaxiwayNames.Contains(taxiway))
+                return true;
+            if (depth >= maxHops) continue;
+            if (!graph.Adjacency.TryGetValue(id, out var edges)) continue;
+            foreach (var e in edges)
+                if (visited.Add(e.ToNodeId))
+                    frontier.Enqueue((e.ToNodeId, depth + 1));
+        }
+        return false;
+    }
 
     /// <summary>
     /// The legacy geometric hold setback. Runway.Width is in FEET; dividing by
@@ -162,6 +196,7 @@ public static class HoldShortNodeResolver
         var designated = new List<(TaxiNode node, double lateral, double along)>();
 
         TaxiNode? bestNode = null;   double bestLateral = double.MaxValue;     // plain, any taxiway
+        double bestNodeAlong = 0;
         TaxiNode? bestOnTw = null;   double bestLateralTw = double.MaxValue;   // plain, on lastTaxiway
         double bestOnTwAlong = 0;
 
@@ -187,7 +222,7 @@ public static class HoldShortNodeResolver
             // Legacy geometric tracking (a designated node past the legacy
             // floor also counts here, exactly as the old single-pass scan did).
             if (lateralAbs < legacyMinLateralM) continue;
-            if (lateralAbs < bestLateral) { bestLateral = lateralAbs; bestNode = node; }
+            if (lateralAbs < bestLateral) { bestLateral = lateralAbs; bestNode = node; bestNodeAlong = along; }
             if (lateralAbs < bestLateralTw && OnLastTaxiway(node))
             {
                 bestLateralTw = lateralAbs;
@@ -211,17 +246,26 @@ public static class HoldShortNodeResolver
         if (bestOnTw != null)
         {
             // Tier 2: designated node at the cleared taxiway's runway junction
-            // (unnamed-stub shape).
+            // (unnamed-stub shape) — must also CONNECT to the cleared taxiway
+            // within the stub budget, so a parallel neighbour connector's hold
+            // line inside the along window can't hijack the route sideways.
             var tier2 = ClosestToRunway(designated.Where(d =>
-                Math.Abs(d.along - bestOnTwAlong) <= HS_JUNCTION_ALONG_M));
+                Math.Abs(d.along - bestOnTwAlong) <= HS_JUNCTION_ALONG_M &&
+                ConnectsToTaxiway(graph, d.node.NodeId, lastTaxiway, HS_STUB_MAX_HOPS)));
             if (tier2 != null) return tier2;
 
             // Tier 3: plain node on the cleared taxiway (legacy behaviour).
             return bestOnTw;
         }
 
-        // Tiers 4/5: no cleared-taxiway candidate at all — best designated
-        // node anywhere, else the legacy any-taxiway geometric pick.
-        return ClosestToRunway(designated) ?? bestNode;
+        // Tiers 4/5: no cleared-taxiway candidate at all. A designated node is
+        // preferred only when it sits at the SAME junction as the legacy pick
+        // (the marked hold line for that junction) — a designated node far
+        // along the runway must not out-rank the plain node next to the
+        // aircraft's natural hold point. With no plain candidate at all, the
+        // best designated node anywhere is the only option left.
+        var tier4 = ClosestToRunway(designated.Where(d =>
+            bestNode == null || Math.Abs(d.along - bestNodeAlong) <= HS_JUNCTION_ALONG_M));
+        return tier4 ?? bestNode;
     }
 }
