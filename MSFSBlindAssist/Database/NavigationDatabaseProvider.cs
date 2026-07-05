@@ -259,30 +259,48 @@ public class NavigationDatabaseProvider
     {
         var result = new List<string> { "ALL" };
 
-        // (runway_name, arinc_name) for every procedure of this suffix.
+        // (runway_name, arinc_name) for every procedure of this suffix, plus the airport's
+        // actual runways — both on ONE connection (non-pooled opens are real file opens).
         var rows = new List<(string? runwayName, string? arincName)>();
+        List<string> airportRunways;
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
             string sql = @"SELECT runway_name, arinc_name FROM approach
                            WHERE UPPER(airport_ident) = UPPER(@icao) AND suffix = @suffix";
-            using var command = new SqliteCommand(sql, connection);
-            command.Parameters.AddWithValue("@icao", icao);
-            command.Parameters.AddWithValue("@suffix", suffix);
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
-                rows.Add((SafeGetString(reader, "runway_name"), SafeGetString(reader, "arinc_name")));
+            using (var command = new SqliteCommand(sql, connection))
+            {
+                command.Parameters.AddWithValue("@icao", icao);
+                command.Parameters.AddWithValue("@suffix", suffix);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    rows.Add((SafeGetString(reader, "runway_name"), SafeGetString(reader, "arinc_name")));
+            }
+            airportRunways = GetAirportRunwayDesignators(connection, icao);
         }
 
         var covered = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         // Direct runway_name tags (already concrete runways).
         foreach (var (runwayName, _) in rows)
-            if (!string.IsNullOrEmpty(runwayName)) covered.Add(runwayName.Trim());
-        // ARINC runway tags — expand against the airport's actual runways (RW30B → 30L, 30R).
-        var airportRunways = GetAirportRunwayDesignators(icao);
-        foreach (var rw in airportRunways)
-            if (rows.Any(r => ProcedureServesRunway(r.runwayName, r.arincName, rw)))
-                covered.Add(rw);
+            if (!string.IsNullOrWhiteSpace(runwayName)) covered.Add(runwayName.Trim());
+        // ARINC runway tags on runway_name-less rows — expand against the airport's actual
+        // runways (RW30B → 30L, 30R). Tags are parsed ONCE here (not per runway×row pair);
+        // runway_name-tagged rows already contributed their concrete designator above.
+        var arincTags = rows.Where(r => string.IsNullOrWhiteSpace(r.runwayName))
+                            .Select(r => ParseArincRunway(r.arincName))
+                            .Where(a => a != null)
+                            .Select(a => a!.Value)
+                            .Distinct()
+                            .ToList();
+        if (arincTags.Count > 0)
+        {
+            foreach (var rw in airportRunways)
+            {
+                var target = SplitRunwayDesignator(rw);
+                if (target != null && arincTags.Any(tag => ArincCoversTarget(tag, target.Value)))
+                    covered.Add(rw);
+            }
+        }
 
         result.AddRange(covered);
         return result;
@@ -371,12 +389,11 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<string> GetRunwaysForSTARs(string icao) => GetProcedureRunways(icao, "A");
 
-    /// <summary>The airport's runway designators (e.g. "30L", "12R") from the runway_end table.</summary>
-    private List<string> GetAirportRunwayDesignators(string icao)
+    /// <summary>The airport's runway designators (e.g. "30L", "12R") from the runway_end table.
+    /// Runs on the caller's open connection — one connection per dropdown build, not one per query.</summary>
+    private List<string> GetAirportRunwayDesignators(SqliteConnection connection, string icao)
     {
         var runways = new List<string>();
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
         string sql = @"SELECT re.name FROM runway_end re
                        JOIN runway r ON (re.runway_end_id = r.primary_end_id OR re.runway_end_id = r.secondary_end_id)
                        JOIN airport ap ON r.airport_id = ap.airport_id
@@ -387,7 +404,7 @@ public class NavigationDatabaseProvider
         while (reader.Read())
         {
             string? name = SafeGetString(reader, "name");
-            if (!string.IsNullOrEmpty(name)) runways.Add(name.Trim());
+            if (!string.IsNullOrWhiteSpace(name)) runways.Add(name.Trim());
         }
         return runways;
     }
