@@ -156,47 +156,57 @@ public class LittleNavMapProvider : IAirportDataProvider
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
+            return GetILSForRunway(connection, icao, runwayName);
+        }
+    }
 
-            // Fast path: direct join via loc_airport_ident + loc_runway_name. Works
-            // for fs2020 (every ILS row populated) and the majority of fs2024 rows.
-            var sql = @"SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
-                              lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
-                       FROM ils
-                       WHERE UPPER(loc_airport_ident) = UPPER(@ICAO)
-                         AND UPPER(loc_runway_name) = UPPER(@RunwayName)
-                       LIMIT 1";
+    /// <summary>
+    /// Connection-reusing core of <see cref="GetILSForRunway(string, string)"/>. Callers that already
+    /// hold an open connection to the SAME database (e.g. the EFB Airport-Lookup runway-info box, which
+    /// runs on the UI thread on every runway-list SelectedIndexChanged) use this to skip a per-call
+    /// non-pooled connection open.
+    /// </summary>
+    public ILSData? GetILSForRunway(SqliteConnection connection, string icao, string runwayName)
+    {
+        // Fast path: direct join via loc_airport_ident + loc_runway_name. Works
+        // for fs2020 (every ILS row populated) and the majority of fs2024 rows.
+        var sql = @"SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
+                          lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
+                   FROM ils
+                   WHERE UPPER(loc_airport_ident) = UPPER(@ICAO)
+                     AND UPPER(loc_runway_name) = UPPER(@RunwayName)
+                   LIMIT 1";
 
-            using (var command = new SqliteCommand(sql, connection))
+        using (var command = new SqliteCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("@ICAO", icao);
+            command.Parameters.AddWithValue("@RunwayName", runwayName);
+
+            using (var reader = command.ExecuteReader())
             {
-                command.Parameters.AddWithValue("@ICAO", icao);
-                command.Parameters.AddWithValue("@RunwayName", runwayName);
-
-                using (var reader = command.ExecuteReader())
+                if (reader.Read())
                 {
-                    if (reader.Read())
-                    {
-                        return ReadILSFromReader(reader);
-                    }
+                    return ReadILSFromReader(reader);
                 }
             }
-
-            // Fallback: spatial+heading match against ILS rows where loc_airport_ident
-            // / loc_runway_name / loc_runway_end_id are all NULL. The fs2024 vanilla
-            // navdata extraction has 213 such orphans (KPHX 5, KORD 1, etc.) — the
-            // ILS rows are correct (right ident, frequency, location, heading) but
-            // the join columns weren't populated by navdatareader. fs2020 has zero
-            // orphans, so this fallback is a no-op there. We re-link by:
-            //   1. Finding the runway end at this airport with the requested name
-            //      (gives us threshold lat/lon and heading).
-            //   2. Searching unlinked ILS rows within a 0.1° (~11 km) bounding box
-            //      of the airport whose loc_heading is within ±5° of the runway
-            //      heading (with wrap handling).
-            //   3. Picking the closest by squared distance to the runway threshold.
-            // Localizer antennas sit on the runway centerline beyond the far end,
-            // so the closest unlinked ILS to a given threshold is the right one
-            // for that runway.
-            return GetILSForRunwayFallback(connection, icao, runwayName);
         }
+
+        // Fallback: spatial+heading match against ILS rows where loc_airport_ident
+        // / loc_runway_name / loc_runway_end_id are all NULL. The fs2024 vanilla
+        // navdata extraction has 213 such orphans (KPHX 5, KORD 1, etc.) — the
+        // ILS rows are correct (right ident, frequency, location, heading) but
+        // the join columns weren't populated by navdatareader. fs2020 has zero
+        // orphans, so this fallback is a no-op there. We re-link by:
+        //   1. Finding the runway end at this airport with the requested name
+        //      (gives us threshold lat/lon and heading).
+        //   2. Searching unlinked ILS rows within a 0.1° (~11 km) bounding box
+        //      of the airport whose loc_heading is within ±5° of the runway
+        //      heading (with wrap handling).
+        //   3. Picking the closest by squared distance to the runway threshold.
+        // Localizer antennas sit on the runway centerline beyond the far end,
+        // so the closest unlinked ILS to a given threshold is the right one
+        // for that runway.
+        return GetILSForRunwayFallback(connection, icao, runwayName);
     }
 
     /// <summary>
