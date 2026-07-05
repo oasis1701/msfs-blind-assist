@@ -38,13 +38,40 @@ public static class RouteRunwayCrossings
     {
         if (string.IsNullOrEmpty(holdShortLabel)) return null;
         var m = RunwayToken.Match(holdShortLabel);
-        return m.Success ? m.Groups[1].Value.ToUpperInvariant() : null;
+        return m.Success ? NormalizeDesignator(m.Groups[1].Value) : null;
+    }
+
+    /// <summary>
+    /// Canonical designator form for comparisons and speech: trimmed, uppercase,
+    /// runway number zero-padded to two digits ("9L" → "09L" — also the correct
+    /// ATC phraseology, "runway zero nine left"). Non-runway designators
+    /// (compass-point water runways "NE", taxiway-ish strings) pass through
+    /// trimmed/uppercased. fs2024 navdata is consistently padded, but the DB
+    /// ecosystem documents unpadded spellings (approach tables, third-party
+    /// scenery) — every designator compare in this codebase must go through
+    /// this so "9" and "09" can never silently fail to match.
+    /// </summary>
+    public static string NormalizeDesignator(string designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return designator ?? "";
+        string d = designator.Trim().ToUpperInvariant();
+        string suffix = "";
+        if (d.Length > 1 && (d[^1] is 'L' or 'R' or 'C' or 'W') && char.IsDigit(d[0]))
+        {
+            suffix = d[^1..];
+            d = d[..^1];
+        }
+        if (int.TryParse(d, out int num) && num >= 1 && num <= 36)
+            return $"{num:D2}{suffix}";
+        return designator.Trim().ToUpperInvariant();
     }
 
     /// <summary>
     /// Returns the reciprocal runway designator: adds 18 (mod 36, 1-based)
-    /// and swaps L↔R suffix (C stays C). "09" → "27", "27L" → "09R", "36" → "18".
-    /// Returns <paramref name="designator"/> unchanged if it is blank or does
+    /// and swaps L↔R suffix (C stays C, W stays W — fs2024 carries 1,166
+    /// W-suffixed water-runway ends). "09" → "27", "27L" → "09R", "18W" → "36W".
+    /// Input is normalized first, so "9" → "27". Returns
+    /// <paramref name="designator"/> unchanged if it is blank or does
     /// not parse as a runway heading number. Shared by the crossing-clause
     /// reciprocal merge below, HoldShortNodeResolver's designated-node runway
     /// gate, and TaxiGuidanceManager.RunwayDesignatorsMatch.
@@ -52,11 +79,12 @@ public static class RouteRunwayCrossings
     public static string Reciprocal(string designator)
     {
         if (string.IsNullOrWhiteSpace(designator)) return designator;
-        string d = designator.Trim().ToUpperInvariant();
+        string d = NormalizeDesignator(designator);
         string suffix = "";
         if (d.EndsWith("L"))      { suffix = "R"; d = d[..^1]; }
         else if (d.EndsWith("R")) { suffix = "L"; d = d[..^1]; }
         else if (d.EndsWith("C")) { suffix = "C"; d = d[..^1]; }
+        else if (d.EndsWith("W")) { suffix = "W"; d = d[..^1]; }  // water runway
         if (!int.TryParse(d, out int num)) return designator;
         int recip = ((num - 1 + 18) % 36) + 1;  // 1-based 1–36; +18 mod 36
         return $"{recip:D2}{suffix}";

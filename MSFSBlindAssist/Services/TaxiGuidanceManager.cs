@@ -6350,8 +6350,9 @@ public class TaxiGuidanceManager : IDisposable
         // never-matching strings. Fall back to the strip for a bare designator
         // with no "runway" word at all.
         string a = RouteRunwayCrossings.ExtractRunwayDesignator(tagged)
-            ?? tagged.Replace("runway", "", StringComparison.OrdinalIgnoreCase).Trim();
-        string b = target.Trim();
+            ?? RouteRunwayCrossings.NormalizeDesignator(
+                   tagged.Replace("runway", "", StringComparison.OrdinalIgnoreCase).Trim());
+        string b = RouteRunwayCrossings.NormalizeDesignator(target.Trim());
         if (a.Equals(b, StringComparison.OrdinalIgnoreCase)) return true;
         return RouteRunwayCrossings.Reciprocal(a).Equals(b, StringComparison.OrdinalIgnoreCase);
     }

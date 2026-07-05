@@ -524,6 +524,18 @@ Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --"
     Check(pRecip != null && Math.Abs(pRecip.Latitude - LatAt(90)) < 0.00002,
         $"gate: reciprocal designator accepted (got {(pRecip == null ? double.NaN : (pRecip.Latitude - 40.0) * 111320.0):F1} m)");
 
+    // (c2) padding: an unpadded RunwayID must still match a padded node name.
+    var padRwy = new Runway
+    {
+        RunwayID = "9", Heading = 90, HeadingMag = 90,
+        StartLat = 40.0, StartLon = -90.010, EndLat = 40.0, EndLon = -90.000,
+        Length = 2798, Width = 194,
+    };
+    hsNode.HoldShortName = "runway 09 at S";
+    var pPad = HoldShortNodeResolver.ResolveNearSide(gg, padRwy, acLat, acLon, 270, "Q");
+    Check(pPad != null && Math.Abs(pPad.Latitude - LatAt(90)) < 0.00002,
+        $"gate: unpadded RunwayID '9' accepts node named 'runway 09' (got {(pPad == null ? double.NaN : (pPad.Latitude - 40.0) * 111320.0):F1} m)");
+
     // (d) Near-side sign at the hold line: a pilot stopped AT the designated
     // hold line (90 m — inside the legacy 97 m floor, outside the pavement)
     // with a runway-PARALLEL heading is physically on the north side; the
@@ -564,6 +576,46 @@ Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --"
     var (cr, or_) = RouteRunwayCrossings.Describe(recipSegs, excludeLastSegment: false);
     Check(cr == "crossing runway 10L twice" && or_ == 0,
         $"crossings: reciprocal designators merge as one runway (got '{cr}', others={or_})");
+}
+
+// ---------------------------------------------------------------------------
+// #10 — 2026-07 review fixes round 2: designator normalization (padding) and
+// the W (water-runway) suffix. fs2024 navdata carries 1,166 W-suffixed runway
+// ends (01W–36W), and the DB ecosystem documents unpadded spellings ("7R" in
+// approach tables) — the ordinal compares must not break on either.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- designator normalization + W suffix --");
+{
+    Check(RouteRunwayCrossings.NormalizeDesignator("9") == "09",
+        "normalize: '9' -> '09'");
+    Check(RouteRunwayCrossings.NormalizeDesignator("9l") == "09L",
+        "normalize: '9l' -> '09L'");
+    Check(RouteRunwayCrossings.NormalizeDesignator("28R") == "28R",
+        "normalize: padded passes through");
+    Check(RouteRunwayCrossings.NormalizeDesignator("NE") == "NE",
+        "normalize: compass-point designator untouched");
+    Check(RouteRunwayCrossings.Reciprocal("18W") == "36W",
+        $"reciprocal: water runway 18W -> 36W (got '{RouteRunwayCrossings.Reciprocal("18W")}')");
+    Check(RouteRunwayCrossings.Reciprocal("36W") == "18W",
+        "reciprocal: water runway 36W -> 18W");
+    Check(RouteRunwayCrossings.Reciprocal("9") == "27",
+        "reciprocal: unpadded '9' -> '27'");
+    Check(RouteRunwayCrossings.ExtractRunwayDesignator("runway 9 at Q") == "09",
+        "extract: unpadded label normalizes to '09'");
+
+    // Unpadded labels must merge with their padded reciprocal in the clause.
+    TaxiRouteSegment Seg10(bool hold, string? label) => new TaxiRouteSegment
+    {
+        FromNode = new TaxiNode(), ToNode = new TaxiNode(),
+        IsHoldShortPoint = hold, HoldShortRunway = label,
+    };
+    var unpadded = new List<TaxiRouteSegment>
+    {
+        Seg10(true, "runway 9"), Seg10(false, null), Seg10(true, "runway 27"),
+    };
+    var (cu, ou) = RouteRunwayCrossings.Describe(unpadded, excludeLastSegment: false);
+    Check(cu == "crossing runway 09 twice" && ou == 0,
+        $"crossings: unpadded reciprocal labels merge (got '{cu}')");
 }
 
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");

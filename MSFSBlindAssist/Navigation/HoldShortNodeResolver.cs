@@ -153,8 +153,9 @@ public static class HoldShortNodeResolver
 
         bool OnLastTaxiway(TaxiNode node) => node.TaxiwayNames.Contains(lastTaxiway);
 
-        // The target runway's two designators, for the HoldShortName gate.
-        string targetId = runway.RunwayID ?? "";
+        // The target runway's two designators, for the HoldShortName gate
+        // (normalized — an unpadded RunwayID "9" must match a padded "09").
+        string targetId = RouteRunwayCrossings.NormalizeDesignator(runway.RunwayID ?? "");
         string targetRecip = RouteRunwayCrossings.Reciprocal(targetId);
 
         // ---- Single scan: collect designated candidates + track plain bests ----
