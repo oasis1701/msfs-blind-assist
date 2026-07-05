@@ -105,12 +105,13 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// checkbox records that the cabin was advised.</summary>
     public Task<bool> CabinCall(string lvar) => HoldAsync(lvar, CabinCallHoldMs);
 
-    /// <summary>Cockpit-door lock selector (S_PED_COCKPIT_DOOR): 0 = Unlock, 1 = Norm
-    /// (closed and locked), 2 = Lock. ⚠️ BEST-EFFORT var/values per the Fenix pedestal
-    /// convention — the door lock is a documented DEFERRED control (not exposed in the def),
-    /// so this needs in-sim verification. The base name matches the I_PED_COCKPIT_DOOR_*
-    /// indicators; a wrong name degrades to a harmless SetLVar no-op.</summary>
-    public Task<bool> SetCockpitDoor(int pos) => DispatchAsync("S_PED_COCKPIT_DOOR", pos);
+    /// <summary>Open (true) or close (false) the physical cockpit door via
+    /// <c>S_COCKPIT_DOOR</c> (0 = closed, 1 = open). Live-verified 2026-07-05: a calc-path
+    /// write holds and drives the "Cockpit Door Open" indicator <c>I_PED_COCKPIT_DOOR_U</c>
+    /// 0↔1. Do NOT use the pedestal lock selector <c>S_PED_COCKPIT_DOOR</c> — it is a
+    /// spring-loaded UNLOCK/NORM/LOCK switch that rests at NORM(1), so an absolute write is
+    /// a no-op (1) or a momentary pulse that springs back (0) and never moves the door.</summary>
+    public Task<bool> SetCockpitDoor(bool open) => DispatchAsync("S_COCKPIT_DOOR", open ? 1 : 0);
 
     /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). The Fenix
     /// STD state is a plain settable L:var per side — no toggle-push ambiguity.</summary>

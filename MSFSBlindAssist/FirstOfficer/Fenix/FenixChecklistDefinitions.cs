@@ -171,9 +171,9 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.PushFcuManaged("S_FCU_SPEED")),
             ActionManual("BS_FCUHDG", "BEFORE_START", "FCU heading: managed",
                 (e, _) => e.PushFcuManaged("S_FCU_HEADING")),
-            // Cockpit door: closed and locked (NORM). ⚠️ best-effort var/value — verify in sim.
+            // Cockpit door: closed (S_COCKPIT_DOOR=0, live-verified actuator 2026-07-05).
             ActionManual("BS_COCKPITDOOR", "BEFORE_START", "Cockpit door: closed and locked",
-                (e, _) => e.SetCockpitDoor(1)),
+                (e, _) => e.SetCockpitDoor(false)),
             Reminder("BS_DOORS", "BEFORE_START", "Close doors and remove ground services on the EFB"),
             Reminder("BS_THRLEVERS", "BEFORE_START", "Confirm thrust levers idle"),
             Reminder("BS_CLEARANCE", "BEFORE_START", "Obtain pushback and start clearance"),
@@ -401,9 +401,9 @@ public static class FenixChecklistDefinitions
                 "S_OH_EXT_LT_NOSE", v => v < 0.5, (e, _) => e.SetNoseLight(0)),
             Auto("SD_TURNOFF_OFF", "SHUTDOWN", "Runway turn-off lights: OFF",
                 "S_OH_EXT_LT_RWY_TURNOFF", v => v < 0.5, (e, _) => e.Set("S_OH_EXT_LT_RWY_TURNOFF", 0)),
-            // Cockpit door: unlocked (open for disembark). ⚠️ best-effort var/value — verify in sim.
+            // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
             ActionManual("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: unlocked",
-                (e, _) => e.SetCockpitDoor(0)),
+                (e, _) => e.SetCockpitDoor(true)),
         }
     };
 

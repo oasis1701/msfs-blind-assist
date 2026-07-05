@@ -197,8 +197,8 @@ public static class FenixFlowDefinitions
             // FCU managed modes (pseudo-keys → atomic knob-push calc)
             Done(SW("BS_FCUSPD", "FCU speed: managed", "FCU_PUSH_SPEED_MANAGED", 1), "BS_FCUSPD"),
             Done(SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING_MANAGED", 1), "BS_FCUHDG"),
-            // Cockpit door: closed and locked (NORM=1). ⚠️ best-effort var/value — verify in sim.
-            Done(SW("BS_COCKPITDOOR", "Cockpit door: closed and locked", "S_PED_COCKPIT_DOOR", 1), "BS_COCKPITDOOR"),
+            // Cockpit door: closed (S_COCKPIT_DOOR=0, live-verified actuator 2026-07-05).
+            Done(SW("BS_COCKPITDOOR", "Cockpit door: closed and locked", "S_COCKPIT_DOOR", 0), "BS_COCKPITDOOR"),
             Captain("BS_DOORS", "Close doors and remove ground services on the EFB"),
             Captain("BS_THRLEVERS", "Confirm thrust levers idle"),
             Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
@@ -442,8 +442,8 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 0)), "SD_NOSE_OFF"),
             Done(Skip(SW("SD_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
                 s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "SD_TURNOFF_OFF"),
-            // Cockpit door: unlocked (UNLOCK=0, open for disembark). ⚠️ best-effort — verify in sim.
-            Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "S_PED_COCKPIT_DOOR", 0), "SD_COCKPITDOOR"),
+            // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
+            Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "S_COCKPIT_DOOR", 1), "SD_COCKPITDOOR"),
         }
     };
 
