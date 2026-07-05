@@ -53,14 +53,18 @@ namespace MSFSBlindAssist.Navigation;
 /// </summary>
 public static class HoldShortNodeResolver
 {
-    private const double MAX_LATERAL_M = 600.0;        // max lateral distance from runway centerline
-    private const double MAX_ALONG_PAST_END_M = 500.0; // buffer past each runway end
+    // Search corridor — shared with TaxiAssistForm.FindFarSideRunwayNode so
+    // the near-side and far-side finders scan the same window (internal, one
+    // home; a retune here reaches both).
+    internal const double MAX_LATERAL_M = 600.0;        // max lateral distance from runway centerline
+    internal const double MAX_ALONG_PAST_END_M = 500.0; // buffer past each runway end
 
     // A designated hold-short node is trusted as belonging to THIS runway only
-    // within the same tolerance TaxiGraph uses to NAME hold nodes after a runway
-    // (HOLDSHORT_RUNWAY_MATCH_M). Beyond that, an HS node inside the geometric
-    // window could belong to a parallel runway.
-    private const double HS_NODE_MATCH_M = 150.0;
+    // within the same tolerance TaxiGraph uses to NAME hold nodes after a
+    // runway — a DIRECT reference to that constant, so a retune there can
+    // never silently diverge from the resolver's trust window. Beyond it, an
+    // HS node inside the geometric window could belong to a parallel runway.
+    private const double HS_NODE_MATCH_M = TaxiGraph.HOLDSHORT_RUNWAY_MATCH_M;
 
     // A designated node closer to the centerline than the true pavement
     // half-width PLUS this buffer is treated as a misplaced scenery marker,
@@ -126,6 +130,23 @@ public static class HoldShortNodeResolver
         runway.Width > 0 ? runway.Width * 0.3048 / 2.0 : 23.0;
 
     /// <summary>
+    /// On-pavement side heuristic, shared by the near-side resolver and
+    /// TaxiAssistForm.FindFarSideRunwayNode so the two can never diverge:
+    /// the sign of the runway side the aircraft's heading points TOWARD
+    /// (+1 = left of the runway heading, matching RunwayFrame's cross-track
+    /// convention; runway-parallel headings deterministically return +1).
+    /// The far-side finder targets this sign; the near-side resolver targets
+    /// its negation (the side the aircraft is coming FROM). Both operands
+    /// must be in the magnetic frame (runway.HeadingMag vs PLANE HEADING
+    /// DEGREES MAGNETIC).
+    /// </summary>
+    public static int HeadingExitSideSign(Runway runway, double aircraftHeadingMag)
+    {
+        double perpComp = Math.Sin((runway.HeadingMag - aircraftHeadingMag) * Math.PI / 180.0);
+        return perpComp >= 0 ? 1 : -1;
+    }
+
+    /// <summary>
     /// Finds the hold-short node on the aircraft's side of <paramref name="runway"/>,
     /// preferring the scenery's designated hold-short nodes per the tier order
     /// in the class remarks, falling back to the legacy geometric
@@ -159,8 +180,7 @@ public static class HoldShortNodeResolver
         }
         else
         {
-            double perpComp = Math.Sin((runway.HeadingMag - aircraftHeadingMag) * Math.PI / 180.0);
-            nearSign = perpComp >= 0 ? -1 : 1;
+            nearSign = -HeadingExitSideSign(runway, aircraftHeadingMag);
         }
 
         // Restrict candidates to the aircraft's connected component so the

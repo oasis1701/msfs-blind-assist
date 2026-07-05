@@ -2267,19 +2267,17 @@ public class TaxiAssistForm : Form
         }
         else
         {
-            // Aircraft is on the runway: use heading to determine intended exit side.
-            // Perpendicular component of aircraft heading relative to runway heading:
-            // sin(runwayHdg - aircraftHdg) > 0 → aircraft heading toward left side.
-            // Use HeadingMag (not the TRUE Heading used for the geographic
-            // cross-track above) so both operands are in the magnetic frame that
-            // _aircraftHeading (PLANE HEADING DEGREES MAGNETIC) lives in.
-            double perpComp = Math.Sin((runway.HeadingMag - _aircraftHeading) * Math.PI / 180.0);
-            targetSign = perpComp >= 0 ? 1 : -1;
+            // Aircraft is on the runway: use heading to determine intended exit
+            // side — the SHARED heuristic (see HoldShortNodeResolver.
+            // HeadingExitSideSign; both operands in the magnetic frame that
+            // _aircraftHeading, PLANE HEADING DEGREES MAGNETIC, lives in).
+            targetSign = HoldShortNodeResolver.HeadingExitSideSign(runway, _aircraftHeading);
         }
 
-        // Search geometry bounds
-        const double MAX_LATERAL_M = 600.0;      // max lateral distance from runway centerline
-        const double MAX_ALONG_PAST_END_M = 500.0; // buffer past each runway end
+        // Search geometry bounds — shared with HoldShortNodeResolver so the
+        // near-side and far-side finders scan the same corridor.
+        const double MAX_LATERAL_M = HoldShortNodeResolver.MAX_LATERAL_M;
+        const double MAX_ALONG_PAST_END_M = HoldShortNodeResolver.MAX_ALONG_PAST_END_M;
 
         // Restrict candidates to the aircraft's own connected component so the
         // chosen far node is actually reachable. Without this, the nearest
