@@ -5564,25 +5564,14 @@ public class TaxiGuidanceManager : IDisposable
             // runway, which is the end of segment i-1.
             var holdSeg = route.Segments[i - 1];
             holdSeg.IsHoldShortPoint = true;
-            if (string.IsNullOrEmpty(holdSeg.HoldShortRunway))
-            {
-                holdSeg.HoldShortRunway = $"runway {crossedRwy}";
-            }
-            else if (RouteRunwayCrossings.ExtractRunwayDesignator(holdSeg.HoldShortRunway) == null &&
-                     !holdSeg.HoldShortRunway.StartsWith("end of taxiway", StringComparison.OrdinalIgnoreCase))
-            {
-                // A DB-derived hold-node name that names NO runway (bare
-                // holding-point/taxiway name from sparse navdata, e.g. "A5")
-                // sits at what we just detected geometrically as a genuine
-                // runway crossing — upgrade it to the standard "runway X at
-                // <holdPoint>" shape so the tactical callout AND the route
-                // summary's crossing clause both name the runway (otherwise
-                // the crossing is silently demoted to an anonymous "hold
-                // short point"). User labels are preserved: "end of taxiway"
-                // is skipped explicitly, and user runway picks already name
-                // a runway so the extractor guard leaves them alone.
-                holdSeg.HoldShortRunway = $"runway {crossedRwy} at {holdSeg.HoldShortRunway}";
-            }
+            // Label policy lives in RouteRunwayCrossings.ComposeCrossingLabel
+            // (pure, probe-tested): empty → tagged; bare DB names upgraded to
+            // "runway X at <holdPoint>"; user labels + correct names kept;
+            // a DB name for a DIFFERENT pavement corrected to geometric truth.
+            string? newLabel = RouteRunwayCrossings.ComposeCrossingLabel(
+                holdSeg.HoldShortRunway, crossedRwy);
+            if (newLabel != null)
+                holdSeg.HoldShortRunway = newLabel;
             lastTaggedRunway = crossedRwy;
         }
     }

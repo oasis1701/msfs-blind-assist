@@ -677,5 +677,26 @@ Console.WriteLine("\n-- designator normalization + W suffix --");
         $"crossings: unpadded reciprocal labels merge as one pavement, padded dual name (got '{cu}')");
 }
 
+// ---------------------------------------------------------------------------
+// #11 — ComposeCrossingLabel: the one label policy for auto-detected runway
+// crossings. Geometric truth (crossedRwy) wins over a DB node name that names
+// a DIFFERENT pavement; user labels and correct names are preserved.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- crossing label policy --");
+{
+    Check(RouteRunwayCrossings.ComposeCrossingLabel(null, "10L") == "runway 10L",
+        "label: empty -> 'runway 10L'");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("A5", "10L") == "runway 10L at A5",
+        "label: bare DB holding-point name upgraded");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("end of taxiway B", "10L") == null,
+        "label: user end-of-taxiway hold preserved");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("runway 10R", "28L") == null,
+        "label: user pick naming the same pavement (reciprocal) preserved");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("runway 28L at Q", "28L") == null,
+        "label: correct DB name preserved");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("runway 28R at Q", "28L") == "runway 28L",
+        "label: DB name for a DIFFERENT pavement corrected to geometric truth");
+}
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);

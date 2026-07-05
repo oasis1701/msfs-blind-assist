@@ -91,6 +91,37 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
+    /// Label policy for an auto-detected runway crossing's hold segment
+    /// (<c>TaxiGuidanceManager.InsertRunwayCrossingHoldShorts</c>). Returns the
+    /// label to write, or null to KEEP the existing label. Rules:
+    ///  - empty → "runway {crossedRwy}";
+    ///  - user "end of taxiway …" terminator label → keep (user intent wins);
+    ///  - names no runway (bare DB holding-point name, e.g. "A5") → upgrade to
+    ///    "runway {crossedRwy} at {name}" so callout + summary name the runway;
+    ///  - names THIS pavement (same designator or reciprocal — user picks and
+    ///    correct DB names) → keep;
+    ///  - names a DIFFERENT pavement → the DB node was named for the wrong
+    ///    runway (TaxiGraph's 150 m nearest-centerline naming can mis-bind
+    ///    between closely spaced parallels); the geometric detection is the
+    ///    truth here, so rewrite to "runway {crossedRwy}" — otherwise the
+    ///    summary announces crossings of a runway the route never crosses and
+    ///    the tactical callout names the wrong pavement.
+    /// </summary>
+    public static string? ComposeCrossingLabel(string? existingLabel, string crossedRwy)
+    {
+        if (string.IsNullOrEmpty(existingLabel)) return $"runway {crossedRwy}";
+        if (existingLabel.StartsWith("end of taxiway", StringComparison.OrdinalIgnoreCase))
+            return null;
+        string? named = ExtractRunwayDesignator(existingLabel);
+        if (named == null) return $"runway {crossedRwy} at {existingLabel}";
+        string cross = NormalizeDesignator(crossedRwy);
+        if (named.Equals(cross, StringComparison.OrdinalIgnoreCase) ||
+            named.Equals(Reciprocal(cross), StringComparison.OrdinalIgnoreCase))
+            return null;
+        return $"runway {crossedRwy}";
+    }
+
+    /// <summary>
     /// Scans the hold-short-tagged segments and splits them into runway crossings
     /// (composed into a spoken clause) and plain hold-short points (returned as a
     /// count for the existing "N hold short points" wording).
