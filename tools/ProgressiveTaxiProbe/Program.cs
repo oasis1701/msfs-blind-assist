@@ -635,6 +635,24 @@ Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --"
     Check(pT4 != null && pT4.TaxiwayNames.Contains("A") &&
           Math.Abs(pT4.Latitude - LatAt(98)) < 0.00002,
         $"tier4: far-along designated node loses to the adjacent legacy pick (got {(pT4 == null ? "null" : $"{(pT4.Latitude - 40.0) * 111320.0:F1} m, {string.Join("/", pT4.TaxiwayNames)}")})");
+
+    // (i) Deliberate band-change lock (2026-07 review finding 3): an aircraft
+    // BETWEEN the true pavement edge (~30 m) and the legacy floor (~97 m) uses
+    // its POSITION sign, not the heading heuristic — a pilot at 50 m north
+    // heading north (away) is physically on the north side; pre-PR the heading
+    // heuristic picked SOUTH here. The sparse legacy path is otherwise
+    // unchanged (probe #8), so this is the one intentional divergence in the
+    // 30–97 m band — in-sim regression testing must cover it.
+    var bandPaths = new List<TaxiPath>
+    {
+        P("Q", 38, -90.0052, "N", 90, -90.0051, "N"),
+        P("Q", 90, -90.0051, "N", 160, -90.0050, "N"),
+        P("Q", 160, -90.0050, "N", 250, -90.0049, "N"),
+    };
+    var bg = TaxiGraph.Build(bandPaths, new List<ParkingSpot>(), new List<StartPosition>());
+    var pBand = HoldShortNodeResolver.ResolveNearSide(bg, tierRwy, LatAt(50), -90.0055, 0, "Q");
+    Check(pBand != null && pBand.Latitude > 40.0,
+        "nearSign: 30-97 m band uses position sign, not the heading heuristic (deliberate 2026-07 change)");
 }
 
 // ---------------------------------------------------------------------------
