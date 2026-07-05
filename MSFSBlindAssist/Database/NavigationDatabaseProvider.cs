@@ -418,24 +418,39 @@ public class NavigationDatabaseProvider
         return int.TryParse(s, out int num) ? (num, side) : null;
     }
 
+    /// <summary>True when the parsed ARINC tag covers the parsed concrete runway — same number, and a
+    /// "B"/bare side covers either side (RW30B → 30L and 30R).</summary>
+    private static bool ArincCoversTarget((int number, string side) tag, (int number, string side) target)
+        => tag.number == target.number && (tag.side is "B" or "" || tag.side == target.side);
+
     /// <summary>Does a procedure (its <paramref name="runwayName"/> + <paramref name="arincName"/>) serve
-    /// the concrete <paramref name="targetRunway"/>? A populated <c>runway_name</c> is AUTHORITATIVE (exact
-    /// match only — it names the one runway this procedure serves); only when it's NULL/empty do we fall back
-    /// to the ARINC tag, where a "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
+    /// the concrete <paramref name="targetRunway"/>? A populated <c>runway_name</c> is AUTHORITATIVE (it
+    /// names the one runway this procedure serves); only when it's NULL/blank do we fall back to the
+    /// ARINC tag, where a "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
     private static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
     {
         // A concrete runway_name is the definitive runway for this procedure row. Do NOT also consult
         // arinc_name — a specific-runway procedure (runway_name "25L") that happens to carry a broad
-        // arinc tag ("RW25B") must not leak into a different side ("25R").
-        if (!string.IsNullOrEmpty(runwayName))
-            return string.Equals(runwayName.Trim(), targetRunway.Trim(), StringComparison.OrdinalIgnoreCase);
+        // arinc tag ("RW25B") must not leak into a different side ("25R"). The compare is additionally
+        // normalized through SplitRunwayDesignator so a zero-padding divergence between
+        // approach.runway_name and runway_end.name ("7R" vs "07R") can't split one physical runway
+        // into two non-matching spellings.
+        if (!string.IsNullOrWhiteSpace(runwayName))
+        {
+            if (string.Equals(runwayName.Trim(), targetRunway.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+            var named = SplitRunwayDesignator(runwayName);
+            var wanted = SplitRunwayDesignator(targetRunway);
+            return named != null && wanted != null
+                && named.Value.number == wanted.Value.number
+                && named.Value.side == wanted.Value.side;
+        }
 
-        // runway_name is NULL (Jeppesen-style field) — the runway lives in the ARINC tag.
+        // runway_name is NULL/blank (Jeppesen-style field) — the runway lives in the ARINC tag.
         var a = ParseArincRunway(arincName);
         var t = SplitRunwayDesignator(targetRunway);
         if (a == null || t == null) return false;
-        if (a.Value.number != t.Value.number) return false;
-        return a.Value.side is "B" or "" || a.Value.side == t.Value.side;
+        return ArincCoversTarget(a.Value, t.Value);
     }
 
     /// <summary>
