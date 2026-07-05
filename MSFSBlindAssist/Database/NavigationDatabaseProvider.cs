@@ -353,31 +353,9 @@ public class NavigationDatabaseProvider
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
-                // No @runwayName parameter: the runway match is done in C# (ProcedureServesRunway) so
-                // arinc_name-tagged runways are honoured; the SQL selects all suffix-'D' rows.
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        // Non-ALL: keep only SIDs serving the selected runway (via runway_name or arinc_name).
-                        if (!runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase)
-                            && !ProcedureServesRunway(SafeGetString(reader, "runway_name"),
-                                                      SafeGetString(reader, "arinc_name"), runwayName))
-                            continue;
-
-                        int approachId = reader.GetInt32(0);
-                        string? fixIdent = SafeGetString(reader, "fix_ident");
-                        string? type = SafeGetString(reader, "type");
-
-                        // SID name is the fix_ident (e.g., "DEEZZ5")
-                        string sidName = fixIdent ?? "SID";
-                        if (!string.IsNullOrEmpty(type))
-                            sidName += $" ({type})";
-
-                        sids.Add((sidName, fixIdent, approachId));
-                    }
-                }
+                // Non-ALL: no @runwayName SQL parameter — the runway match happens in C#
+                // (ReadProcedureRows -> ProcedureServesRunway) so arinc_name tags are honoured.
+                sids.AddRange(ReadProcedureRows(command, runwayName, "SID"));
             }
         }
 
@@ -470,6 +448,46 @@ public class NavigationDatabaseProvider
         return ArincCoversTarget(a.Value, t.Value);
     }
 
+    /// <summary>Executes a prepared SID/STAR query and reads its rows, applying the C# runway filter
+    /// (<see cref="ProcedureServesRunway"/>) for a concrete runway, then deduplicating to ONE row per
+    /// procedure name — a runway_name-tagged row is authoritative over an arinc-tagged sibling
+    /// (mixed-encoding DBs can carry both for the same procedure), ties broken by lowest approach_id.
+    /// Mirrors the ALL branch's per-name dedup, which its SQL subquery already performs.</summary>
+    private List<(string name, string? fixIdent, int approachId)> ReadProcedureRows(
+        SqliteCommand command, string runwayName, string defaultName)
+    {
+        bool isAll = runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase);
+        var matches = new List<(string name, string? fixIdent, int approachId, bool viaRunwayName)>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                // ALL-branch SQL has no runway_name/arinc_name columns and is pre-filtered/deduped.
+                string? rowRunwayName = isAll ? null : SafeGetString(reader, "runway_name");
+                if (!isAll && !ProcedureServesRunway(rowRunwayName, SafeGetString(reader, "arinc_name"), runwayName))
+                    continue;
+
+                int approachId = reader.GetInt32(0);
+                string? fixIdent = SafeGetString(reader, "fix_ident");
+                string? type = SafeGetString(reader, "type");
+
+                string name = fixIdent ?? defaultName;
+                if (!string.IsNullOrEmpty(type))
+                    name += $" ({type})";
+
+                matches.Add((name, fixIdent, approachId, !string.IsNullOrWhiteSpace(rowRunwayName)));
+            }
+        }
+
+        var result = new List<(string, string?, int)>();
+        foreach (var group in matches.GroupBy(m => m.fixIdent ?? m.name))
+        {
+            var pick = group.OrderByDescending(m => m.viaRunwayName).ThenBy(m => m.approachId).First();
+            result.Add((pick.name, pick.fixIdent, pick.approachId));
+        }
+        return result;
+    }
+
     /// <summary>
     /// Gets all STAR procedures available for a specific runway
     /// </summary>
@@ -520,31 +538,9 @@ public class NavigationDatabaseProvider
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
-                // No @runwayName parameter: the runway match is done in C# (ProcedureServesRunway) so
-                // arinc_name-tagged runways are honoured; the SQL selects all suffix-'A' rows.
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        // Non-ALL: keep only STARs serving the selected runway (via runway_name or arinc_name).
-                        if (!runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase)
-                            && !ProcedureServesRunway(SafeGetString(reader, "runway_name"),
-                                                      SafeGetString(reader, "arinc_name"), runwayName))
-                            continue;
-
-                        int approachId = reader.GetInt32(0);
-                        string? fixIdent = SafeGetString(reader, "fix_ident");
-                        string? type = SafeGetString(reader, "type");
-
-                        // STAR name is the fix_ident (e.g., "HAYNZ7")
-                        string starName = fixIdent ?? "STAR";
-                        if (!string.IsNullOrEmpty(type))
-                            starName += $" ({type})";
-
-                        stars.Add((starName, fixIdent, approachId));
-                    }
-                }
+                // Non-ALL: no @runwayName SQL parameter — the runway match happens in C#
+                // (ReadProcedureRows -> ProcedureServesRunway) so arinc_name tags are honoured.
+                stars.AddRange(ReadProcedureRows(command, runwayName, "STAR"));
             }
         }
 
