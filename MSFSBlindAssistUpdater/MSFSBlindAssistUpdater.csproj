@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- Target Framework & Platform -->
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
@@ -31,8 +31,8 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
 
     <!-- Output Path (to MSFSBlindAssist bin directory) - same directory as main app -->
-    <OutputPath Condition="'$(Configuration)' == 'Debug'">..\MSFSBlindAssist\bin\x64\Debug\net9.0-windows\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'Release'">..\MSFSBlindAssist\bin\x64\Release\net9.0-windows\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Debug'">..\MSFSBlindAssist\bin\x64\Debug\net10.0-windows\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Release'">..\MSFSBlindAssist\bin\x64\Release\net10.0-windows\</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">

@@ -2896,7 +2896,7 @@ public class SimConnectManager
             // (heap-corruption AccessViolation → 0x80131506 ExecutionEngineException, e.g. the
             // struct over-read fixed in 8cbb502) is NOT catchable by managed try/catch and will
             // FailFast regardless — there is intentionally no ExecutionEngineException catch here
-            // (it is obsolete/never-raised on .NET 9). This handler covers ordinary exceptions.
+            // (it is obsolete/never-raised on modern .NET). This handler covers ordinary exceptions.
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
