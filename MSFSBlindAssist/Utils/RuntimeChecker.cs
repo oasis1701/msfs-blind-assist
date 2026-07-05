@@ -68,8 +68,8 @@ public static class RuntimeChecker
             var runtimeVersion = Environment.Version;
             StartupLogger.Log($".NET Runtime Version: {runtimeVersion}");
 
-            // Check if it's .NET 9 or higher
-            if (runtimeVersion.Major >= 9)
+            // Check if it's .NET 10 or higher
+            if (runtimeVersion.Major >= 10)
             {
                 result.Messages.Add($"✓ .NET Runtime {runtimeVersion} detected");
                 StartupLogger.Log($"✓ .NET Runtime version check passed");
@@ -77,9 +77,9 @@ public static class RuntimeChecker
             else
             {
                 result.Success = false;
-                result.Errors.Add($"✗ .NET Runtime {runtimeVersion} detected (requires .NET 9 or higher)");
-                result.MissingComponents.Add(".NET 9 Runtime");
-                StartupLogger.Log($"✗ .NET Runtime version check FAILED - found {runtimeVersion}, need 9.0+");
+                result.Errors.Add($"✗ .NET Runtime {runtimeVersion} detected (requires .NET 10 or higher)");
+                result.MissingComponents.Add(".NET 10 Runtime");
+                StartupLogger.Log($"✗ .NET Runtime version check FAILED - found {runtimeVersion}, need 10.0+");
             }
 
             // Check for Windows Desktop Runtime (Windows Forms support) using standard reflection approach
@@ -97,7 +97,7 @@ public static class RuntimeChecker
                 {
                     result.Success = false;
                     result.Errors.Add("✗ .NET Desktop Runtime not found");
-                    result.MissingComponents.Add(".NET 9 Desktop Runtime (Windows Forms)");
+                    result.MissingComponents.Add(".NET 10 Desktop Runtime (Windows Forms)");
                     StartupLogger.Log("✗ Windows Forms type could not be loaded - Desktop Runtime missing");
                 }
             }
@@ -105,7 +105,7 @@ public static class RuntimeChecker
             {
                 result.Success = false;
                 result.Errors.Add("✗ .NET Desktop Runtime not found");
-                result.MissingComponents.Add(".NET 9 Desktop Runtime (Windows Forms)");
+                result.MissingComponents.Add(".NET 10 Desktop Runtime (Windows Forms)");
                 StartupLogger.Log($"✗ Error loading Windows Forms type: {formEx.Message}");
             }
 
@@ -257,9 +257,9 @@ public static class RuntimeChecker
         if (checkResult.MissingComponents.Any(c => c.Contains(".NET")))
         {
             message += "To fix .NET Runtime issues:\n";
-            message += "1. Download and install .NET 9 Desktop Runtime (x64) from:\n";
-            message += "   https://dotnet.microsoft.com/download/dotnet/9.0\n";
-            message += "2. Look for 'Desktop Runtime' under '.NET Desktop Runtime 9.0'\n";
+            message += "1. Download and install .NET 10 Desktop Runtime (x64) from:\n";
+            message += "   https://dotnet.microsoft.com/download/dotnet/10.0\n";
+            message += "2. Look for 'Desktop Runtime' under '.NET Desktop Runtime 10.0'\n";
             message += "3. Download the 'x64' version\n";
             message += "4. Run the installer and restart this application\n\n";
         }

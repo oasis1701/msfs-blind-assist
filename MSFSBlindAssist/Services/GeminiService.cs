@@ -609,7 +609,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             {
                 // HttpClient 120s timeout. No caller token is ever passed, so a cancellation here is
                 // always the timeout. Do NOT gate on ex.CancellationToken.IsCancellationRequested —
-                // on .NET 9 the timeout token IS signaled, so that filter never matches a timeout
+                // on modern .NET (9+) the timeout token IS signaled, so that filter never matches a timeout
                 // (matches the SimBriefService pattern). Transient — retry with backoff.
                 lastTransient = new HttpRequestException("Gemini API request timed out.", ex);
                 response = null;
