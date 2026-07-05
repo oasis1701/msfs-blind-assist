@@ -2028,22 +2028,31 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine();
 
                         // ILS INFORMATION (placed at top as requested)
+                        //
+                        // Resolution order:
+                        //  1. runway_end.ils_ident + an `ils` row SCOPED to this airport (exact
+                        //     airport+runway preferred, then same-airport). ILS idents are NOT unique
+                        //     across airports (498 shared in fs2024), so an ident-only match must never
+                        //     be trusted — an unscoped pick can return a DIFFERENT airport's ILS (the
+                        //     ENSD 26 → DAUA 04 bug; and when this airport's own row is an fs2024
+                        //     orphan, an ident-only tie still favours whichever row the engine scans
+                        //     first — live cases OMAM 31R, UIIR 32, DNMN 05, WSAT 36). Foreign-airport
+                        //     rows are therefore excluded outright, not merely ranked last.
+                        //  2. LittleNavMapProvider.GetILSForRunway — the airport+runway join plus the
+                        //     spatial+heading fallback that recovers fs2024's 213 "orphan" ILS rows
+                        //     (join columns left NULL, e.g. KPHX 07R) and VALIDATES them against this
+                        //     runway's threshold position and heading. Covers empty, orphaned, and
+                        //     stale runway_end.ils_ident alike.
+                        //  3. "No ILS available".
+                        sb.AppendLine("ILS INFORMATION:");
                         var ilsIdent = reader["ils_ident"]?.ToString();
+                        bool ilsRendered = false;
                         if (!string.IsNullOrEmpty(ilsIdent))
                         {
-                            sb.AppendLine("ILS INFORMATION:");
-                            sb.AppendLine($"  ILS Ident:    {ilsIdent}");
-
-                            // Query ILS table for detailed info. ILS idents are NOT unique across
-                            // airports (498 shared in fs2024), so an unscoped LIMIT 1 returns whichever
-                            // airport was imported first — the WRONG ILS for every other airport that
-                            // shares the ident. Prefer this airport+runway's row, then this airport's,
-                            // then fall back to ident-only (covers rows with unpopulated join columns).
-                            var ilsSql = @"SELECT * FROM ils WHERE ident = @IlsIdent
-                                           ORDER BY (CASE
-                                               WHEN UPPER(loc_airport_ident) = UPPER(@ICAO) AND UPPER(loc_runway_name) = UPPER(@RunwayId) THEN 0
-                                               WHEN UPPER(loc_airport_ident) = UPPER(@ICAO) THEN 1
-                                               ELSE 2 END)
+                            var ilsSql = @"SELECT * FROM ils
+                                           WHERE ident = @IlsIdent
+                                             AND UPPER(IFNULL(loc_airport_ident, '')) = UPPER(@ICAO)
+                                           ORDER BY (CASE WHEN UPPER(IFNULL(loc_runway_name, '')) = UPPER(@RunwayId) THEN 0 ELSE 1 END)
                                            LIMIT 1";
                             using (var ilsCmd = new SqliteCommand(ilsSql, connection))
                             {
@@ -2054,6 +2063,7 @@ public partial class ElectronicFlightBagForm : Form
                                 {
                                     if (ilsReader.Read())
                                     {
+                                        sb.AppendLine($"  ILS Ident:            {ilsIdent}");
                                         var freq = ilsReader["frequency"];
                                         sb.AppendLine($"  ILS Frequency:        {(freq != DBNull.Value ? $"{Convert.ToDouble(freq) / 1000.0:F2} MHz" : "N/A")}");
                                         sb.AppendLine($"  ILS Name:             {ilsReader["name"]?.ToString() ?? "N/A"}");
@@ -2092,21 +2102,21 @@ public partial class ElectronicFlightBagForm : Form
                                         sb.AppendLine($"  Localizer Altitude:   {ilsReader["altitude"]} ft");
                                         sb.AppendLine($"  Localizer Longitude:  {ilsReader["lonx"]}");
                                         sb.AppendLine($"  Localizer Latitude:   {ilsReader["laty"]}");
+                                        ilsRendered = true;
                                     }
                                 }
                             }
-                            sb.AppendLine();
                         }
-                        else
+                        if (!ilsRendered)
                         {
-                            // runway_end.ils_ident is empty. Most such runways genuinely have no ILS —
-                            // but fs2024 has ~219 "orphan" ILS rows whose join columns (loc_airport_ident
-                            // / loc_runway_name / loc_runway_end_id) were left NULL, so the ident never
-                            // reached the runway end even though the ILS exists (e.g. KPHX 07R).
-                            // GetILSForRunway recovers those via a spatial+heading fallback — show what it
-                            // finds instead of a false "No ILS available".
-                            sb.AppendLine("ILS INFORMATION:");
-                            var recoveredIls = new LittleNavMapProvider(dbPath, simulatorVersion).GetILSForRunway(icao, runwayId);
+                            // No airport-scoped ils row: runway_end.ils_ident is empty, stale, or its
+                            // row is one of fs2024's 213 orphans (join columns NULL, e.g. KPHX 07R).
+                            // GetILSForRunway spatially validates any recovered row against this
+                            // runway's threshold + heading, so a shared/stale ident can never surface
+                            // another airport's ILS here. Reuses the method's open connection (this
+                            // runs per runway-list keypress on the UI thread).
+                            var recoveredIls = new LittleNavMapProvider(dbPath, simulatorVersion)
+                                .GetILSForRunway(connection, icao, runwayId);
                             if (recoveredIls != null)
                             {
                                 sb.AppendLine($"  ILS Ident:            {recoveredIls.Ident}");
@@ -2120,13 +2130,14 @@ public partial class ElectronicFlightBagForm : Form
                                     sb.AppendLine($"  GS Range:             {recoveredIls.GlideslopeRange} NM");
                                     sb.AppendLine($"  GS Pitch:             {recoveredIls.GlideslopePitch:F1}°");
                                 }
+                                ilsRendered = true;
                             }
-                            else
-                            {
-                                sb.AppendLine("  No ILS available");
-                            }
-                            sb.AppendLine();
                         }
+                        if (!ilsRendered)
+                        {
+                            sb.AppendLine("  No ILS available");
+                        }
+                        sb.AppendLine();
 
                         // DIMENSIONS
                         sb.AppendLine("DIMENSIONS:");
