@@ -114,6 +114,13 @@ public static class RouteRunwayCrossings
         // reads in taxi order ("04L, 04R and 27" at KBOS, not alphabetical).
         var order = new List<string>();
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // All distinct SIGNED designators seen per merged pavement, encounter
+        // order. The tactical callouts speak each crossing's own closer-end
+        // label, so when one pavement is crossed near opposite ends the summary
+        // must pre-announce BOTH names ("10L/28R") — "crossing runway 10L
+        // twice" followed by a live "hold short of runway 28R" callout would
+        // recreate the exact trust failure this clause exists to fix.
+        var namesByKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         int nonRunway = 0;
 
         int end = segments.Count - (excludeLastSegment ? 1 : 0);
@@ -142,10 +149,13 @@ public static class RouteRunwayCrossings
             if (counts.TryGetValue(key, out int c))
             {
                 counts[key] = c + 1;
+                if (!namesByKey[key].Contains(designator, StringComparer.OrdinalIgnoreCase))
+                    namesByKey[key].Add(designator);
             }
             else
             {
                 counts[key] = 1;
+                namesByKey[key] = new List<string> { designator };
                 order.Add(key);
             }
         }
@@ -156,11 +166,12 @@ public static class RouteRunwayCrossings
         foreach (var d in order)
         {
             int c = counts[d];
+            string name = string.Join("/", namesByKey[d]);   // "10L" or "10L/28R"
             parts.Add(c switch
             {
-                1 => d,
-                2 => $"{d} twice",
-                _ => $"{d} {c} times",
+                1 => name,
+                2 => $"{name} twice",
+                _ => $"{name} {c} times",
             });
         }
 

@@ -574,8 +574,20 @@ Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --"
         Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 28R"),
     };
     var (cr, or_) = RouteRunwayCrossings.Describe(recipSegs, excludeLastSegment: false);
-    Check(cr == "crossing runway 10L twice" && or_ == 0,
-        $"crossings: reciprocal designators merge as one runway (got '{cr}', others={or_})");
+    Check(cr == "crossing runway 10L/28R twice" && or_ == 0,
+        $"crossings: reciprocal designators merge as one pavement, BOTH names spoken (got '{cr}', others={or_})");
+
+    // Same-designator crossings must keep the single name — the dual form is
+    // only for a pavement whose two crossings carry reciprocal labels (the
+    // tactical callouts will speak each crossing's own closer-end label, so
+    // the summary must pre-announce both names the pilot will hear).
+    var sameSegs = new List<TaxiRouteSegment>
+    {
+        Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
+    };
+    var (cs, os_) = RouteRunwayCrossings.Describe(sameSegs, excludeLastSegment: false);
+    Check(cs == "crossing runway 10L twice" && os_ == 0,
+        $"crossings: same-designator crossings keep the single name (got '{cs}')");
 }
 
 // ---------------------------------------------------------------------------
@@ -614,8 +626,8 @@ Console.WriteLine("\n-- designator normalization + W suffix --");
         Seg10(true, "runway 9"), Seg10(false, null), Seg10(true, "runway 27"),
     };
     var (cu, ou) = RouteRunwayCrossings.Describe(unpadded, excludeLastSegment: false);
-    Check(cu == "crossing runway 09 twice" && ou == 0,
-        $"crossings: unpadded reciprocal labels merge (got '{cu}')");
+    Check(cu == "crossing runway 09/27 twice" && ou == 0,
+        $"crossings: unpadded reciprocal labels merge as one pavement, padded dual name (got '{cu}')");
 }
 
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
