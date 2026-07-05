@@ -651,15 +651,18 @@ public class LittleNavMapProvider : IAirportDataProvider
             ilsHeading = ilsData.heading;
             ilsGsPitch = ilsData.gsPitch;
         }
-        else
+
+        if (ilsFreq <= 0.0)
         {
-            // fs2024 navdata extraction quirk: some runway_end.ils_ident columns
-            // are blank even when an ILS does exist for that runway — the ILS row
-            // sits in the table without `loc_airport_ident`/`loc_runway_name`/
-            // `loc_runway_end_id` populated (213 such orphans in vanilla fs2024,
-            // KPHX 07R among them). The spatial fallback in GetILSForRunwayFallback
-            // matches by airport-bbox + heading + nearest-to-threshold and finds
-            // the right row. fs2020 has zero orphans so this branch is a no-op
+            // No airport-scoped ils row for this runway end — either ils_ident is
+            // blank (fs2024 extraction quirk: 213 orphan rows whose join columns are
+            // NULL, KPHX 07R among them) or it is STALE (fs2024 dropped the airport's
+            // own ils row entirely while runway_end still names the ident — OMAM 31R
+            // 'IMA', whose only same-ident rows belong to UUEE/UAAA/RPLL/DNMA plus an
+            // orphan near Milan). GetILSForRunwayFallback matches orphan rows by
+            // airport-bbox + heading + nearest-to-threshold, so it recovers genuine
+            // orphans and correctly returns nothing for stale idents — never a foreign
+            // airport's data. fs2020 has zero orphans so the fallback is a no-op
             // there. We re-use the same SqliteConnection rather than opening a new
             // one for performance.
             var fallback = GetILSForRunwayFallback(connection, icao, runwayId);
@@ -770,10 +773,14 @@ public class LittleNavMapProvider : IAirportDataProvider
 
     private (double freq, double heading, double gsPitch) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
     {
-        // Airport-scoped lookup first: multiple airports can share the same ILS ident
-        // (e.g. 'IDE' exists at EIDW, OTHH, and ZUUU). Without the airport filter,
-        // LIMIT 1 returns whichever row has the lowest row-id — typically a different
-        // airport — giving the wrong heading and frequency for the actual runway.
+        // Airport-scoped lookup ONLY: multiple airports can share the same ILS ident
+        // (e.g. 'IDE' exists at EIDW, OTHH, and ZUUU; five airports carry 'IMA').
+        // The former ident-only fallback (`WHERE ident = @Ident LIMIT 1`) returned
+        // whichever row has the lowest row-id — typically a DIFFERENT airport — and
+        // poisoned Runway.ILSFreq/ILSHeading/GlideslopeAngleDeg with foreign data
+        // (OMAM 31R showed Moscow's 108.75 MHz / 075°). On a scoped miss we return
+        // zeros and the caller falls through to the spatial+heading recovery
+        // (GetILSForRunwayFallback) — a bare ident match is never trusted.
         // gs_pitch is the published glideslope angle (degrees) — usually 3.0, but not
         // always (LCY 5.5°, Aspen 6.59°). Defaults to 0.0 when missing → caller falls back.
         if (!string.IsNullOrEmpty(icao))
@@ -792,23 +799,6 @@ public class LittleNavMapProvider : IAirportDataProvider
                         double gsPitch = SafeReadDouble(rdr, "gs_pitch", 0.0);  // NULL on LOC-only rows
                         return (freq, heading, gsPitch);
                     }
-                }
-            }
-        }
-
-        // Fallback: no airport match (e.g. loc_airport_ident unpopulated in this DB build).
-        var sql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident LIMIT 1";
-        using (var command = new SqliteCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("@Ident", ilsIdent);
-            using (var reader = command.ExecuteReader())
-            {
-                if (reader.Read())
-                {
-                    double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0;
-                    double heading = Convert.ToDouble(reader["loc_heading"] ?? 0.0);
-                    double gsPitch = SafeReadDouble(reader, "gs_pitch", 0.0);  // NULL on LOC-only rows
-                    return (freq, heading, gsPitch);
                 }
             }
         }
