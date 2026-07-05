@@ -323,8 +323,11 @@ public class NavigationDatabaseProvider
             if (runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
                 // A named SID has a separate `approach` row per runway transition. The old
-                // MIN(approach_id) pick loaded an ARBITRARY runway's legs under "ALL". Prefer the
-                // runway-independent row (empty runway_name) per SID name instead.
+                // MIN(approach_id) pick loaded an ARBITRARY runway's legs under "ALL". Prefer, per
+                // SID name: (0) a fully runway-independent row — empty runway_name AND an arinc_name
+                // that is not an RW-runway tag (at Jeppesen-style airports like OMDB runway_name is
+                // NULL on EVERY row and the runway lives in arinc_name, so keying on runway_name
+                // alone degenerated to MIN(approach_id) again); (1) runway_name-less rows; (2) rest.
                 sql = @"SELECT a.approach_id, a.fix_ident, a.type
                           FROM approach a
                           WHERE UPPER(a.airport_ident) = UPPER(@icao)
@@ -333,7 +336,11 @@ public class NavigationDatabaseProvider
                                 SELECT a2.approach_id FROM approach a2
                                 WHERE a2.airport_ident = a.airport_ident AND a2.suffix = 'D'
                                   AND a2.fix_ident IS a.fix_ident
-                                ORDER BY (CASE WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 0 ELSE 1 END),
+                                ORDER BY (CASE
+                                            WHEN (a2.runway_name IS NULL OR a2.runway_name = '')
+                                                 AND IFNULL(a2.arinc_name, '') NOT GLOB 'RW[0-9]*' THEN 0
+                                            WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 1
+                                            ELSE 2 END),
                                          a2.approach_id
                                 LIMIT 1)
                           ORDER BY a.fix_ident";
@@ -504,8 +511,9 @@ public class NavigationDatabaseProvider
             // If "ALL" is selected, show all unique STARs at the airport (deduplicated by fix_ident)
             if (runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
-                // Prefer the runway-independent STAR body per name (see GetSIDsForRunway), and exclude
-                // circling approaches that share suffix 'A' (they have a missed-approach leg).
+                // Prefer the runway-independent STAR body per name — same arinc-aware tiering as
+                // GetSIDsForRunway — and exclude circling approaches that share suffix 'A' (they
+                // have a missed-approach leg).
                 sql = @"SELECT a.approach_id, a.fix_ident, a.type
                           FROM approach a
                           WHERE UPPER(a.airport_ident) = UPPER(@icao)
@@ -516,7 +524,11 @@ public class NavigationDatabaseProvider
                                 SELECT a2.approach_id FROM approach a2
                                 WHERE a2.airport_ident = a.airport_ident AND a2.suffix = 'A'
                                   AND a2.fix_ident IS a.fix_ident
-                                ORDER BY (CASE WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 0 ELSE 1 END),
+                                ORDER BY (CASE
+                                            WHEN (a2.runway_name IS NULL OR a2.runway_name = '')
+                                                 AND IFNULL(a2.arinc_name, '') NOT GLOB 'RW[0-9]*' THEN 0
+                                            WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 1
+                                            ELSE 2 END),
                                          a2.approach_id
                                 LIMIT 1)
                           ORDER BY a.fix_ident";
