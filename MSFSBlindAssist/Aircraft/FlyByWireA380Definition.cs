@@ -483,22 +483,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
-        // Wing anti-ice (CORRECTED 2026-06 — the old _SYSTEM_SELECTED combo was DEAD on
-        // the A380X). Live-verified against the running build: writing
-        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED is read by NOTHING — the stock
-        // STRUCTURAL DEICE SWITCH stayed 0 and _SYSTEM_ON stayed 0 (even airborne), so
-        // the combo actuated nothing. The A380's real wing anti-ice is the stock
-        // STRUCTURAL DEICE SWITCH (the EWD reads it via 'A:STRUCTURAL DEICE SWITCH'),
-        // and the only working actuator is the stock TOGGLE_STRUCTURAL_DEICE event
-        // (live-verified 0->1; the absolute STRUCTURAL_DEICE_SET event is a no-op on
-        // this build). So back the combo on the stock SimVar and toggle-if-differs via
-        // HandleUIVariableSet — same pattern as the ENG GEN / taxi-light combos.
-        // NOTE: source/WASM grep could NOT have found this (the FBW consumer is in the
-        // compiled systems.wasm / base avionics); only live downstream testing did.
+        // Wing anti-ice (CORRECTED 2026-07 — back the combo on the var the REAL cockpit
+        // button writes). The A380 overhead WING anti-ice PB (FBW_Airbus_AntiIce_Wing
+        // template) toggles A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION; the PB light reads
+        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED. The previous combo drove the stock
+        // STRUCTURAL DEICE SWITCH, which the cockpit button does NOT touch — so MSFSBA's
+        // combo diverged from the actual switch. Backing it on the button-position L:var
+        // (live-verified settable + held) keeps the two in sync and drives the real input.
+        // ⚠️ FBW-BUILD LIMITATION: the A380 wing anti-ice PNEUMATIC is not modelled yet —
+        // live-verified that setting the button (or SELECTED, or the stock switch, or the
+        // PB_IS_ON) at cruise with TAT -15 C leaves _SYSTEM_ON at 0 (no valve/flow), and
+        // the a380_systems Rust has no wing-anti-ice pneumatic. So the SWITCH is faithful
+        // and future-proof, but the flow won't engage until FBW implements it — the
+        // read-only "Wing Anti-Ice Flowing" status (_SYSTEM_ON) correctly reports that.
         vars["WING_ANTI_ICE_OVHD"] = new SimVarDefinition
         {
-            Name = "STRUCTURAL DEICE SWITCH", DisplayName = "Wing Anti-Ice",
-            Type = SimVarType.SimVar, Units = "bool",
+            Name = "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", DisplayName = "Wing Anti-Ice",
+            Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = onOff
         };
@@ -4959,17 +4960,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR", side);
             return true;
         }
-        // Wing anti-ice (CORRECTED 2026-06): the A380's real control is the stock
-        // STRUCTURAL DEICE SWITCH, actuated by TOGGLE_STRUCTURAL_DEICE (toggle only when
-        // the desired state differs from the live SimVar — the absolute STRUCTURAL_DEICE_SET
-        // is a no-op on this build). The old A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED
-        // L:var write was DEAD (read by nothing on the A380X — live-verified). Same
-        // toggle-if-differs pattern as ENG GEN / taxi light.
+        // Wing anti-ice (CORRECTED 2026-07): write the var the real cockpit button writes,
+        // A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION (0/1), via the calculator path — it
+        // holds (live-verified) and matches the overhead PB, so MSFSBA and the cockpit
+        // switch stay in sync. Absolute write (not a toggle) — the button position is a
+        // plain settable L:var. (Flow won't engage until FBW models the A380 wing
+        // anti-ice pneumatic — see the def comment; not an MSFSBA-fixable gap.)
         if (varKey == "WING_ANTI_ICE_OVHD")
         {
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("WING_ANTI_ICE_OVHD") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
-            if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_STRUCTURAL_DEICE");
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION)");
             return true;
         }
         // Probe/window heat: A32NX_MAN_PITOT_HEAT is the var the cockpit button toggles
