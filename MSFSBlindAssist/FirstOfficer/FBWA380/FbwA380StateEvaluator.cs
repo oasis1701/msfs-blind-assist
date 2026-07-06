@@ -41,6 +41,9 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "XMLVAR_Baro_Selector_HPA_1", "XMLVAR_Baro_Selector_HPA_2",
         "FD_1_CTL", "FD_2_CTL",
         "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
+        // Auto-flap schedule inputs (speed tape + landing config + flaps handle).
+        "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
+        "A32NX_SPEEDS_LANDING_CONF3", "A32NX_FLAPS_HANDLE_INDEX",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;

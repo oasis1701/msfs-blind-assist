@@ -2318,6 +2318,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SPEEDS_VS", "V S (stall)", "knots");
         Read("A32NX_SPEEDS_VFEN", "V F E next", "knots");
 
+        // Landing-config selection from the MFD PERF APPR page (1 = CONF 3, 0 = FULL).
+        // Registered for the First Officer's auto-flap schedule (FO polls it OnRequest).
+        Read("A32NX_SPEEDS_LANDING_CONF3", "Landing Configuration 3", "bool");
+
         // Lighting extras.
         Sel("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS", "Standby Compass / Ice Light",
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
