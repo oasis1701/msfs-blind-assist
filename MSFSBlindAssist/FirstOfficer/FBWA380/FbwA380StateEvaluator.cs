@@ -35,6 +35,10 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_SELECTED_MODE",
         "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_R_ND_MODE",
+        "A32NX_EFIS_L_ND_RANGE", "A32NX_EFIS_R_ND_RANGE",
+        "XMLVAR_Baro_Selector_HPA_1", "XMLVAR_Baro_Selector_HPA_2",
+        "FD_1_CTL", "FD_2_CTL",
+        "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
