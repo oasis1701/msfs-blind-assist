@@ -1,9 +1,9 @@
-> **⚠ SUPERSEDED (2026-06-04).** This file is self-contradictory (declares the pass "complete" up
-> top while sections A–G still list dozens of open items) and is kept only for its verified-history
-> record. The authoritative, source-grounded + live-verified audit is
-> **[`a320-a380-parity-audit-2026-06-04.md`](a320-a380-parity-audit-2026-06-04.md)** — start there.
-> Do NOT trust the `[ ]` items below without re-verifying against the FBW source + live sim per
-> the methodology in the new doc.
+> **⚠ NOTE.** This file is self-contradictory in places (declares the pass "complete" up top while
+> sections A–G still list open items) and is kept only for its verified-history record and the small
+> set of items genuinely still open. Most of its findings have since been superseded by the current,
+> live-verified documentation in [`docs/a32nx.md`](a32nx.md) ("FlyByWire A32NX Panel Parity, Phase 3+")
+> — check there first. Do NOT trust the `[ ]` items below without re-verifying against the FBW source
+> + live sim.
 
 # A32NX (FlyByWire A320) feature-parity TODO
 
@@ -302,8 +302,8 @@ autobrake; ND GS/TAS/wind/heading-ref + cross-track L/R; ISIS bugs label; TCAS m
 speed-protection/mode-reversion auto-announces; RMP transmit selectors (both ACPs); APU auto-exit
 test + emer-gen test + lighting preset load/save; **B1→B4 CPCS + SEC1→SEC3 rudder-trim correctness
 fixes**. New build connects FULLY CONNECTED at approxTotalDefs~602 (ceiling 1000), 0 capped. The
-standalone "addable backlog" doc was retired; the live-flight audit checklist is now
-`docs/live-flight-audit-checklist.md`.
+standalone "addable backlog" doc was retired (its remaining flight-verification items have since
+been folded into `docs/a32nx.md` and CLAUDE.md as they were confirmed).
 
 GENUINELY NOT MODELLED on this FBW A380 dev build (do-not-chase — **source-verified 2026-06-03**,
 not just assumed): **BRAKE FAN** — all four A380 brake assemblies pass `None` for the fan bus
