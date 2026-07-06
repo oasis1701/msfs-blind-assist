@@ -279,8 +279,14 @@ public static class FbwA380ChecklistDefinitions
         Id = "TAXI", Name = "Taxi",
         Items = new()
         {
-            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED",
-                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1)),
+            // RTO arm: detect on the LATCHED armed state (the _IS_PRESSED L:var is a
+            // momentary that auto-resets to 0, so it could never hold a tick — and
+            // RevertToState would un-tick it seconds after arming). Guarded action:
+            // a retick while already armed must not re-press — a second press disarms.
+            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX", "A32NX_AUTOBRAKES_RTO_ARMED",
+                v => v > 0.5, (e, s) => s.IsOn("A32NX_AUTOBRAKES_RTO_ARMED")
+                    ? Task.CompletedTask
+                    : e.Set("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1)),
             Auto("TX_ENGMODE", "TAXI", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
             Auto("TX_WXR", "TAXI", "Weather radar: ON", "XMLVAR_A320_WeatherRadar_Sys",

@@ -237,8 +237,13 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new[] { "TAXI_CL" },
         Steps = new()
         {
+            // RTO arm is a MOMENTARY press (the L:var auto-resets to 0 ~1.5 s later);
+            // the latched armed state is the separate A32NX_AUTOBRAKES_RTO_ARMED
+            // (Continuous+IsAnnounced, batch-cached). Skip on the ARMED state so a
+            // re-run never re-presses the momentary while already armed (a second
+            // press would disarm it).
             Skip(SW("TX_AUTOBRAKE", "Autobrake: MAX", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1),
-                s => s.IsOn("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED")),
+                s => s.IsOn("A32NX_AUTOBRAKES_RTO_ARMED")),
             Skip(SW("TX_ENGMODE", "Engine mode: NORM", "ENGINE_MODE_SELECTOR", 1),
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 1)),
             Skip(SW("TX_WXR", "Weather radar: ON", "XMLVAR_A320_WeatherRadar_Sys", 1),
