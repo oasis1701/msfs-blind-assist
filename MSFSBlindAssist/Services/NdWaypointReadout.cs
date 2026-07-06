@@ -33,38 +33,48 @@ public static class NdWaypointReadout
     /// <summary>
     /// Force-reads the TO-waypoint SimVars and announces them. Fire-and-forget:
     /// the read is async (one SimConnect round-trip) so the call returns immediately.
+    /// Non-handler async void (called directly from HandleHotkeyAction, not subscribed
+    /// to an event) — wrapped end-to-end so a fault can't escape as an unobserved
+    /// async-void exception.
     /// </summary>
     public static async void Announce(SimConnectManager sim, ScreenReaderAnnouncer announcer)
     {
         if (sim == null || announcer == null) return;
-        if (!sim.IsConnected) { announcer.AnnounceImmediate("Not connected"); return; }
-
-        // Seed from cache, then force a fresh read of each var (all OnRequest, so
-        // RequestVariable(forceUpdate) delivers them; not batch-covered).
-        var raw = new Dictionary<string, double>(sim.GetCachedVariableSnapshot(Vars));
-        foreach (var v in Vars) sim.RequestVariable(v, forceUpdate: true);
-        await Task.Delay(400);
-        foreach (var kvp in sim.GetCachedVariableSnapshot(Vars)) raw[kvp.Key] = kvp.Value;
-
-        double R(string v) => raw.TryGetValue(v, out double d) ? d : 0;
-
-        string ident = UnpackIdent(R("A32NX_EFIS_L_TO_WPT_IDENT_0"), R("A32NX_EFIS_L_TO_WPT_IDENT_1"));
-        if (string.IsNullOrWhiteSpace(ident))
+        try
         {
-            announcer.AnnounceImmediate("No active waypoint");
-            return;
+            if (!sim.IsConnected) { announcer.AnnounceImmediate("Not connected"); return; }
+
+            // Seed from cache, then force a fresh read of each var (all OnRequest, so
+            // RequestVariable(forceUpdate) delivers them; not batch-covered).
+            var raw = new Dictionary<string, double>(sim.GetCachedVariableSnapshot(Vars));
+            foreach (var v in Vars) sim.RequestVariable(v, forceUpdate: true);
+            await Task.Delay(400);
+            foreach (var kvp in sim.GetCachedVariableSnapshot(Vars)) raw[kvp.Key] = kvp.Value;
+
+            double R(string v) => raw.TryGetValue(v, out double d) ? d : 0;
+
+            string ident = UnpackIdent(R("A32NX_EFIS_L_TO_WPT_IDENT_0"), R("A32NX_EFIS_L_TO_WPT_IDENT_1"));
+            if (string.IsNullOrWhiteSpace(ident))
+            {
+                announcer.AnnounceImmediate("No active waypoint");
+                return;
+            }
+
+            bool trueRef = R("A32NX_FMGC_TRUE_REF") > 0.5 || R("A32NX_PUSH_TRUE_REF") > 0.5;
+            double trueBrg = R("A32NX_EFIS_L_TO_WPT_TRUE_BEARING");
+            double brg; string brgRef;
+            if (trueRef && trueBrg >= 0) { brg = trueBrg; brgRef = "true"; }
+            else { brg = R("A32NX_EFIS_L_TO_WPT_BEARING") * 180.0 / Math.PI; brgRef = "magnetic"; }
+            if (brg < 0) brg += 360;
+
+            double dist = R("A32NX_EFIS_L_TO_WPT_DISTANCE");
+            announcer.AnnounceImmediate(
+                $"{ident}, distance {dist:0.0} nautical miles, bearing {brg:000} degrees {brgRef}");
         }
-
-        bool trueRef = R("A32NX_FMGC_TRUE_REF") > 0.5 || R("A32NX_PUSH_TRUE_REF") > 0.5;
-        double trueBrg = R("A32NX_EFIS_L_TO_WPT_TRUE_BEARING");
-        double brg; string brgRef;
-        if (trueRef && trueBrg >= 0) { brg = trueBrg; brgRef = "true"; }
-        else { brg = R("A32NX_EFIS_L_TO_WPT_BEARING") * 180.0 / Math.PI; brgRef = "magnetic"; }
-        if (brg < 0) brg += 360;
-
-        double dist = R("A32NX_EFIS_L_TO_WPT_DISTANCE");
-        announcer.AnnounceImmediate(
-            $"{ident}, distance {dist:0.0} nautical miles, bearing {brg:000} degrees {brgRef}");
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NdWaypointReadout] Announce error: {ex.Message}");
+        }
     }
 
     // 6-bit-per-char packed ident (two doubles, 8 chars each) — same encoding the

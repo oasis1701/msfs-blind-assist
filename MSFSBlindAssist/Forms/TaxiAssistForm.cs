@@ -718,8 +718,14 @@ public class TaxiAssistForm : Form
         };
     }
 
+    // Non-handler async void (called from the airport textbox's Leave lambda and from
+    // the nearest-airport auto-load) — wrapped end-to-end so a DB/graph-build fault
+    // can't escape as an unobserved async-void exception; only the augmentation
+    // prefetch and the graph build had their own local guards before this.
     private async void LoadAirportData(string icao)
     {
+      try
+      {
         if (string.IsNullOrWhiteSpace(icao)) return;
 
         // Refresh wingspan from the live SimConnectManager. This form persists
@@ -838,6 +844,12 @@ public class TaxiAssistForm : Form
 
         // Populate first taxiway combobox sorted by distance, closest first
         PopulateFirstTaxiway();
+      }
+      catch (Exception ex)
+      {
+          lblStatus.Text = $"Error loading {icao}: {ex.Message}";
+          btnCalculate.Enabled = true;
+      }
     }
 
     /// <summary>

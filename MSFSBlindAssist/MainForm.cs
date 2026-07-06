@@ -1810,21 +1810,6 @@ public partial class MainForm : Form
         }
     }
 
-    /// <summary>
-    /// Find which panel a variable belongs to for efficient variable requests
-    /// </summary>
-    private string? GetPanelForVariable(string varKey)
-    {
-        foreach (var panel in currentAircraft.GetPanelControls())
-        {
-            if (panel.Value.Contains(varKey))
-            {
-                return panel.Key;
-            }
-        }
-        return null; // Variable not found in any panel
-    }
-
     private void HandleButtonStateAnnouncement(string eventName)
     {
         // Check if this button has a corresponding state variable to announce
@@ -2774,21 +2759,32 @@ public partial class MainForm : Form
         }
     }
 
+    // Non-handler async void (called from the hotkey dispatcher, not subscribed to an
+    // event) — wrapped so a fault in the poll/announce path can't escape as an
+    // unobserved async-void exception.
     private async void AnnounceTrackedTcasTraffic()
     {
-        if (tcasService == null || !tcasService.HasTracked)
+        try
         {
-            announcer.AnnounceImmediate("No tracked aircraft. Add aircraft to track list from the TCAS window.");
-            return;
+            if (tcasService == null || !tcasService.HasTracked)
+            {
+                announcer.AnnounceImmediate("No tracked aircraft. Add aircraft to track list from the TCAS window.");
+                return;
+            }
+
+            // Kick off a fresh poll so SimConnect returns the latest positions.
+            // Wait ~600 ms for responses to arrive before reading announcements.
+            tcasService.PollNow();
+            await Task.Delay(600);
+
+            var items = tcasService.GetTrackedAnnouncements();
+            announcer.AnnounceImmediate(string.Join(". ", items));
         }
-
-        // Kick off a fresh poll so SimConnect returns the latest positions.
-        // Wait ~600 ms for responses to arrive before reading announcements.
-        tcasService.PollNow();
-        await Task.Delay(600);
-
-        var items = tcasService.GetTrackedAnnouncements();
-        announcer.AnnounceImmediate(string.Join(". ", items));
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in AnnounceTrackedTcasTraffic: {ex.Message}");
+            announcer.AnnounceImmediate("Error reading traffic.");
+        }
     }
 
     private void OpenSimBriefBriefing()
@@ -3925,34 +3921,45 @@ public partial class MainForm : Form
         simConnectManager.RequestILSGuidance(ilsData, runway, airport);
     }
 
+    // Non-handler async void (called from the hotkey dispatcher, not subscribed to an
+    // event) — wrapped so a fault in the callback/format path can't escape as an
+    // unobserved async-void exception (mirrors the guard already on RequestWindInfo).
     private async void RequestNavRadioInfo()
     {
-        if (simConnectManager == null || !simConnectManager.IsConnected)
+        try
         {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
+            if (simConnectManager == null || !simConnectManager.IsConnected)
+            {
+                announcer.AnnounceImmediate("Not connected to simulator.");
+                return;
+            }
+
+            bool received = false;
+            string announcement = "";
+
+            simConnectManager.RequestNavRadioInfo(navData =>
+            {
+                announcement = FormatNavRadioData(navData);
+                received = true;
+            });
+
+            var timeout = DateTime.Now.AddSeconds(2);
+            while (!received && DateTime.Now < timeout)
+            {
+                await Task.Delay(50);
+                Application.DoEvents();
+            }
+
+            if (received)
+                announcer.AnnounceImmediate(announcement);
+            else
+                announcer.AnnounceImmediate("NAV radio data unavailable.");
         }
-
-        bool received = false;
-        string announcement = "";
-
-        simConnectManager.RequestNavRadioInfo(navData =>
+        catch (Exception ex)
         {
-            announcement = FormatNavRadioData(navData);
-            received = true;
-        });
-
-        var timeout = DateTime.Now.AddSeconds(2);
-        while (!received && DateTime.Now < timeout)
-        {
-            await Task.Delay(50);
-            Application.DoEvents();
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in RequestNavRadioInfo: {ex.Message}");
+            announcer.AnnounceImmediate("Error getting NAV radio information");
         }
-
-        if (received)
-            announcer.AnnounceImmediate(announcement);
-        else
-            announcer.AnnounceImmediate("NAV radio data unavailable.");
     }
 
     private string FormatNavRadioData(SimConnect.SimConnectManager.NavRadioData data)
@@ -6497,7 +6504,13 @@ public partial class MainForm : Form
             // instant the user moves from the page combo onto it to read.
             displayList.GotFocus += (s2, e2) =>
             {
-                try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+                try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); }
+                catch (Exception ex)
+                {
+                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                    // a known confusing-bug shape for this codebase (values that "never move").
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (GotFocus) failed for panel '{currentPanel}': {ex.Message}");
+                }
             };
 
             refreshButton.Click += async (s2, e2) =>
@@ -6534,7 +6547,13 @@ public partial class MainForm : Form
                 // it, so WITHOUT this call a manual F5 / Refresh re-printed the SAME stale
                 // snapshot and values like "FOB 13400 KG" never moved. Fire-and-forget: it
                 // pushes its own UpdateDisplayText when the fresh read completes (~0.6s).
-                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); }
+                catch (Exception ex)
+                {
+                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                    // a known confusing-bug shape for this codebase (values that "never move").
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (Refresh) failed for panel '{currentPanel}': {ex.Message}");
+                }
 
                 // Request all values. forceUpdate=true bypasses the
                 // ProcessIndividualVariableResponse suppression that drops
@@ -6587,7 +6606,13 @@ public partial class MainForm : Form
             // Auto-populate a multi-page status box (e.g. the SD-page combo) with the
             // combo's CURRENT page, so the user doesn't have to cycle it to get content
             // on first display. No-op for panels without such a box.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); }
+            catch (Exception ex)
+            {
+                // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                // a known confusing-bug shape for this codebase (values that "never move").
+                System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (initial show) failed for panel '{currentPanel}': {ex.Message}");
+            }
 
             // Start (or stop) the live status-box auto-refresh for THIS panel. Only panels
             // that actually built a status display (have a "_REFRESH_" button) get the timer;
@@ -6741,7 +6766,13 @@ public partial class MainForm : Form
             // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
             //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
             //     which drives UpdateDisplayText -> the list updates its changed rows in place.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); }
+            catch (Exception ex)
+            {
+                // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                // a known confusing-bug shape for this codebase (values that "never move").
+                System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
+            }
 
             // (b) Force-read the panel's own display vars so the cache is fresh (covers the
             //     non-override panels whose display vars ARE the content). Each force-read response

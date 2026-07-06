@@ -5862,53 +5862,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         };
     }
 
-    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
-    // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
-    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
-    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
-    // keep live windows (and the E/WD window's refresh timer) running against the
-    // new aircraft.
-    private readonly Dictionary<Type, Form> _trackedWindows = new();
-
-    private void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : Form
-    {
-        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed)
-        {
-            show((T)existing);
-            return;
-        }
-        var form = factory();
-        _trackedWindows[typeof(T)] = form;
-        // Only evict OUR entry — guards against a stale close (e.g. a future
-        // hide-on-close window's deferred real close) removing a successor window.
-        form.FormClosed += (s, _) =>
-        {
-            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
-                _trackedWindows.Remove(typeof(T));
-        };
-        show(form);
-    }
-
-    private void DisposeTrackedWindows()
-    {
-        foreach (var f in _trackedWindows.Values.ToList())
-        {
-            try
-            {
-                if (f.IsDisposed) continue;
-                // Form.Dispose() raises neither FormClosing nor FormClosed (the documented
-                // hide-on-close/RMP trap), but the FCU windows tear their refresh timers
-                // down in OnFormClosing — Close() first so the timers actually stop. None
-                // of the tracked windows hide-on-close, so Close() really closes (and the
-                // FormClosed dict self-removal is safe against the ToList copy).
-                if (f.IsHandleCreated) f.Close();
-                if (!f.IsDisposed) f.Dispose();
-            }
-            catch { }
-        }
-        _trackedWindows.Clear();
-    }
-
     /// <summary>
     /// Handles complex hotkey actions that require custom dialogs or logic.
     /// </summary>
@@ -8119,12 +8072,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             if (value > 0.5)
             {
-                simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
-                _ = System.Threading.Tasks.Task.Run(async () =>
-                {
-                    try { await System.Threading.Tasks.Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
-                });
-                announcer.Announce($"{varDef.DisplayName} pressed");
+                PulseMomentaryLVar(simConnect, announcer, varKey, varDef.DisplayName);
             }
             return true;
         }
@@ -8339,7 +8287,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private static void DeferReadback(Action readback)
     {
         _ = System.Threading.Tasks.Task.Run(async () =>
-        { try { await System.Threading.Tasks.Task.Delay(300); readback(); } catch { } });
+        {
+            try { await System.Threading.Tasks.Task.Delay(300); readback(); }
+            catch (Exception ex)
+            {
+                // A throw here silently drops the spoken confirmation for a user FCU
+                // set/push/pull — the pilot gets no feedback at all with no diagnostic trail.
+                System.Diagnostics.Debug.WriteLine($"[FlyByWireA320Definition] DeferReadback failed: {ex.Message}");
+            }
+        });
     }
 
     // Public readout wrappers (the windows call these on open + after a push/pull).

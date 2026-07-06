@@ -884,26 +884,6 @@ public sealed class GsxGateSelector
     // Helpers.
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Finds the parking-selection entry in a menu.
-    /// Prefers "Change Parking" over "Select Parking".
-    /// </summary>
-    private static GsxService.MenuOption? FindParkingEntry(
-        IReadOnlyList<GsxService.MenuOption> menu)
-    {
-        // Prefer "Change Parking facility" (parking already armed).
-        foreach (var opt in menu)
-            if (GsxMenuClassifier.IsChangeParkingEntry(opt.Text))
-                return opt;
-
-        // Fall back to "Select Parking".
-        foreach (var opt in menu)
-            if (GsxMenuClassifier.IsSelectParkingEntry(opt.Text))
-                return opt;
-
-        return null;
-    }
-
     // NOTE: leaf-vs-target matching (LeafMatchesTarget + ExtractConcoursePrefix) moved to
     // GsxMenuClassifier — the one tunable surface — so tools/GsxGateSelectProbe can pin the
     // KATL/EGLL letterless-leaf regression cases via a linked compile.

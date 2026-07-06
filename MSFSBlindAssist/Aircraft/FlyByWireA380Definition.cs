@@ -3490,7 +3490,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Update hook (bridge diagnostics)
     // ===================================================================
-    // Last seen E/WD code per line (live cache for ReadAllEwdWarnings).
+    // Last seen E/WD code per line (live cache for the Alt+E E/WD window build).
     private readonly Dictionary<string, long> _lastEwdCode = new();
     // The set of E/WD codes currently on screen (across all lines) that have been
     // announced — so a message that scrolls between lines isn't re-announced.
@@ -4124,7 +4124,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     // it is the single source for the E/WD auto-call-outs (failures
                     // AND memos), so suppress this SimVar announce to avoid double
                     // speech. The dedup sets below are still maintained so the
-                    // on-demand ReadAllEwdWarnings (Alt+E) decode keeps working, and
+                    // on-demand Alt+E E/WD window decode keeps working, and
                     // if the scrape monitor is NOT active this SimVar path still
                     // announces (safe default).
                     if (EwdScrapeHandlesAnnounce) continue;
@@ -4553,12 +4553,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // "Off" does nothing (the pulse already returned the var to 0).
             if (value > 0.5)
             {
-                simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
-                _ = Task.Run(async () =>
-                {
-                    try { await Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
-                });
-                announcer.Announce($"{varDef.DisplayName} pressed");
+                PulseMomentaryLVar(simConnect, announcer, varKey, varDef.DisplayName);
             }
             return true;
         }
@@ -5750,7 +5745,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 int idleEngs = engs.Count(e => { var n1 = simConnect.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}"); return n1.HasValue && n1.Value <= idleLim + 2; });
                 if (fmgcPhase.HasValue && fmgcPhase.Value >= 4 && idleEngs >= 3) ewdLines.Add("IDLE");
                 // Live ECAM memo / warning lines — decoded from the EWD_LOWER code cache
-                // (the same source ReadAllEwdWarnings / Alt+E uses).
+                // (the same source the Alt+E E/WD window build uses).
                 int memoCount = 0;
                 foreach (var lr in new[] { "LEFT", "RIGHT" })
                     for (int i = 1; i <= 10; i++)
@@ -6282,53 +6277,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.RequestVariable(key, forceUpdate: true);
     }
 
-    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
-    // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
-    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
-    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
-    // keep live windows (and the E/WD window's refresh timer) running against the
-    // new aircraft.
-    private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
-
-    private void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
-    {
-        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed)
-        {
-            show((T)existing);
-            return;
-        }
-        var form = factory();
-        _trackedWindows[typeof(T)] = form;
-        // Only evict OUR entry — guards against a stale close (e.g. a future
-        // hide-on-close window's deferred real close) removing a successor window.
-        form.FormClosed += (s, _) =>
-        {
-            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
-                _trackedWindows.Remove(typeof(T));
-        };
-        show(form);
-    }
-
-    private void DisposeTrackedWindows()
-    {
-        foreach (var f in _trackedWindows.Values.ToList())
-        {
-            try
-            {
-                if (f.IsDisposed) continue;
-                // Form.Dispose() raises neither FormClosing nor FormClosed (the documented
-                // hide-on-close/RMP trap), but the FCU windows tear their refresh timers
-                // down in OnFormClosing — Close() first so the timers actually stop. None
-                // of the tracked windows hide-on-close, so Close() really closes (and the
-                // FormClosed dict self-removal is safe against the ToList copy).
-                if (f.IsHandleCreated) f.Close();
-                if (!f.IsDisposed) f.Dispose();
-            }
-            catch { }
-        }
-        _trackedWindows.Clear();
-    }
-
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
@@ -6477,7 +6425,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Alt+E now opens the E/WD as a pop-out WINDOW (auto-refreshing, F5 to
             // refresh, Escape to close) showing the whole E/WD — engine parameters plus
             // the live ECAM memo / warning lines — instead of speaking it once. The old
-            // spoken read lives on as ReadAllEwdWarnings (still used by the live monitor).
+            // one-shot spoken read (ReadAllEwdWarnings) was removed as dead code once
+            // the window fully replaced it.
             case HotkeyAction.ReadDisplayUpperECAM:
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowTrackedWindow(
@@ -6550,32 +6499,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     // (The dedicated PFD/FMA readout WINDOW was removed — those flight values live on
     // the PFD panel + the individual readout hotkeys; only the Alt+E E/WD window remains.)
-
-    // Read ALL current upper-ECAM (E/WD) memo/warning lines on demand (Alt+E),
-    // decoded via EWDMessageLookupA380. Reads the live cache of line codes
-    // (_lastEwdCode, kept current by ProcessSimVarUpdate). Ignores the live
-    // call-out mute — an explicit request should always speak.
-    private void ReadAllEwdWarnings(ScreenReaderAnnouncer announcer)
-    {
-        var lines = new List<string>();
-        foreach (var lr in new[] { "LEFT", "RIGHT" })
-            for (int i = 1; i <= 10; i++)
-            {
-                if (_lastEwdCode.TryGetValue($"A32NX_EWD_LOWER_{lr}_LINE_{i}", out var code) && code != 0)
-                {
-                    string text = EWDMessageLookupA380.GetMessage(code);
-                    if (!string.IsNullOrWhiteSpace(text) &&
-                        !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string priority = EWDMessageLookupA380.GetMessagePriority(code);
-                        lines.Add(string.IsNullOrEmpty(priority) ? text : $"{text}, {priority}");
-                    }
-                }
-            }
-        announcer.Announce(lines.Count == 0
-            ? "No ECAM warnings or memos."
-            : $"ECAM E W D, {lines.Count} line{(lines.Count == 1 ? "" : "s")}: {string.Join(". ", lines)}");
-    }
 
     // Build the FULL upper-E/WD text for the Alt+E pop-out window (FbwEwdWindow):
     // engine primaries grouped per parameter + thrust rating/limit + autothrust message
