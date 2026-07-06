@@ -6836,16 +6836,20 @@ public partial class MainForm : Form
 
         // #129: under ActiveSky the SimConnect AMBIENT PRECIP STATE bitmask
         // sticks (the user saw precip changes never auto-announce), so when AS
-        // is running we source precipitation from the position METAR — the same
-        // source the Weather Radar and the ActiveSky decoded-weather monitor use,
-        // so all three now agree. null = AS not active (fall back to SimConnect);
-        // "" = AS says no precipitation.
+        // is running we source precipitation from the METAR. Use the SAME
+        // precedence as the AS decoded-weather monitor AND the Weather Radar —
+        // closest-station METAR first, position METAR as fallback — so all three
+        // features report the same precipitation and never contradict each other
+        // (issue #129 follow-up: radar vs decoded weather must agree).
+        // null = AS not active (fall back to SimConnect); "" = AS says no precip.
         string? asPrecip = null;
         try
         {
             if (await weatherActiveSky.IsRunningAsync())
             {
-                string? metar = await weatherActiveSky.GetPositionMetarAsync();
+                string? metar = await weatherActiveSky.GetClosestStationMetarAsync();
+                if (string.IsNullOrWhiteSpace(metar))
+                    metar = await weatherActiveSky.GetPositionMetarAsync();
                 if (!string.IsNullOrWhiteSpace(metar))
                     asPrecip = MSFSBlindAssist.Services.WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metar);
             }
@@ -6871,8 +6875,11 @@ public partial class MainForm : Form
         {
             // ActiveSky path — announce on start / stop / phrase change, keyed on
             // the decoded METAR precip phrase ("" = none, else "light rain" etc.).
-            string cur = asPrecip;
-            if (_prevAsPrecip != null && cur != _prevAsPrecip)
+            // Trim + case-insensitive compare so an unchanged phrase NEVER repeats
+            // (#129 follow-up: "light rain -> light rain" must stay silent — only a
+            // genuinely different phrase re-announces).
+            string cur = asPrecip.Trim();
+            if (_prevAsPrecip != null && !string.Equals(cur, _prevAsPrecip, StringComparison.OrdinalIgnoreCase))
             {
                 bool wasNone = _prevAsPrecip.Length == 0;
                 bool isNone = cur.Length == 0;
