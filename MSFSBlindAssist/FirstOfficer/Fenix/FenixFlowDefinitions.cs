@@ -175,8 +175,11 @@ public static class FenixFlowDefinitions
             Wait("BS_APU_DWELL", "Waiting before APU start", 3),
             Skip(SW("BS_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
                 s => s.IsOn("I_OH_ELEC_APU_START_U")),
+            // Stop policy: an APU start failure aborts the flow HERE, before external
+            // power is pulsed off the bus below — never a silent transfer to batteries.
             WaitForField("BS_APU_AVAIL", "Waiting for APU available",
-                "I_OH_ELEC_APU_START_U", v => v > 0.5, 180),
+                "I_OH_ELEC_APU_START_U", v => v > 0.5, 180,
+                onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(SW("BS_APUBLEED", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
                 s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "BS_APUBLEED"),
             // Fuel pumps immediately after the APU block (user decision, matches FSFO)
