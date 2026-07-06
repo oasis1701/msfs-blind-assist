@@ -856,7 +856,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Light("LIGHT_STROBE", "LIGHT STROBE", "Strobe");
         Light("LIGHT_WING", "LIGHT WING", "Wing Lights");
         Light("LIGHT_LOGO", "LIGHT LOGO", "Logo Lights");
-        Light("LIGHT_LANDING", "LIGHT LANDING", "Landing Lights");
+        // Wing LANDING lights (LDG LT L/R) are the stock LIGHT LANDING:2 (systems.cfg
+        // Type:5#Index:2 = LIGHT_ASOBO_LAND_1/2 LH+RH), driven by indexed
+        // `2 <value> (>K:2:LANDING_LIGHTS_SET)` (live-verified). The bare LIGHT LANDING
+        // (index 0/1) hit the NOSE takeoff light, not the wing landing lights.
+        Light("LIGHT_LANDING", "LIGHT LANDING:2", "Landing Lights");
+        // Nose TAKEOFF light = LIGHT LANDING:1 (systems.cfg Type:5#Index:1 = TAKEOFF_1).
+        // The real A380 NOSE switch is 3-position Off / Taxi / Takeoff (TwoSimvars over
+        // LANDING:1 + TAXI:1); MSFSBA exposes the two functions as separate On/Off
+        // controls — "Takeoff Light (Nose)" (LANDING:1) + "Taxi Light (Nose)" (TAXI:1
+        // above) — clearer for a screen reader than one coupled 3-position. Off = both
+        // off. Indexed `1 <value> (>K:2:LANDING_LIGHTS_SET)` (live-verified).
+        Light("LIGHT_TAKEOFF", "LIGHT LANDING:1", "Takeoff Light (Nose)");
         // Nose Taxi light: On / Off. The real nose switch is 3-position (T.O/Taxi/Off)
         // on the FBW L:var A380X_OVHD_EXTLT_NOSE, which is DEAD on the shipping model
         // (writing it drives nothing). The nose taxi/takeoff light is the stock
@@ -2955,7 +2966,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Exterior Lighting"] = new List<string>
         {
             "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
-            "LIGHT_LANDING", "LIGHT_TAXI_OVHD", "LIGHT_RWY_TURNOFF"
+            "LIGHT_LANDING", "LIGHT_TAKEOFF", "LIGHT_TAXI_OVHD", "LIGHT_RWY_TURNOFF"
         };
 
         p["Warnings"] = new List<string>
@@ -4437,7 +4448,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["LIGHT_NAV"] = "NAV_LIGHTS_SET",
         ["LIGHT_WING"] = "WING_LIGHTS_SET",
         ["LIGHT_LOGO"] = "LOGO_LIGHTS_SET",
-        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET",
+        // LIGHT_LANDING / LIGHT_TAKEOFF use the INDEXED LANDING_LIGHTS_SET (handled below).
         ["LIGHT_STROBE"] = "STROBES_SET"
     };
 
@@ -4668,6 +4679,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             int v = value > 0.5 ? 1 : 0;
             simConnect.ExecuteCalculatorCode($"2 {v} (>K:2:TAXI_LIGHTS_SET) 3 {v} (>K:2:TAXI_LIGHTS_SET)");
+            return true;
+        }
+        // Wing LANDING lights = indexed LIGHT LANDING:2; nose TAKEOFF light = index 1
+        // (live-verified `<index> <value> (>K:2:LANDING_LIGHTS_SET)`).
+        if (varKey == "LIGHT_LANDING")
+        {
+            simConnect.ExecuteCalculatorCode($"2 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
+            return true;
+        }
+        if (varKey == "LIGHT_TAKEOFF")
+        {
+            simConnect.ExecuteCalculatorCode($"1 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
             return true;
         }
         // Seat-belt sign: there is no SET event, only CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE,
