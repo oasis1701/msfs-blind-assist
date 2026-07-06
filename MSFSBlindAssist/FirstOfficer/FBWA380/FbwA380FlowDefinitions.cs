@@ -144,8 +144,25 @@ public static class FbwA380FlowDefinitions
             Captain("BS_ALT", "Set cleared altitude on the FCU"),
             SW("BS_FCUALT", "FCU altitude: pushed", "FCU_PUSH_ALT", 1),
             Captain("BS_ECAMPAGE", "ECAM page: APU"),
+            // APU block: master on, dwell, START pushbutton, wait for AVAIL. The master
+            // switch alone does NOT start the FBW APU — the START PB press is required —
+            // and external power must stay on the buses until the APU is actually
+            // available. Stop policy on the AVAIL wait: a start failure aborts the flow
+            // BEFORE the external-power disconnect below. Steps skip once AVAIL is lit.
             Skip(SW("BS_APU", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON")),
+            Skip(Wait("BS_APU_DWELL", "Waiting before APU start", 3),
+                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
+            Skip(SW("BS_APU_START", "APU start", "A32NX_OVHD_APU_START_PB_IS_ON", 1),
+                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
+            WaitForField("BS_APU_AVAIL", "Waiting for APU available",
+                "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180,
+                onTimeout: FlowStepFailurePolicy.Stop),
+            // Defensive: release the latched START PB (no repo evidence FBW auto-clears
+            // it, and a stale latched 1 could surprise-start the APU on a later
+            // master-ON). Silently skipped when FBW already cleared it.
+            Skip(SW("BS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
+                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
             Skip(SW("BS_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")),
             Multi("BS_GPU_OFF", "Ground power: OFF",
@@ -213,6 +230,10 @@ public static class FbwA380FlowDefinitions
             Captain("AS_WINGAI", "Wing anti-ice: set as required"),
             Captain("AS_ENGAI", "Engine anti-ice: set as required"),
             Captain("AS_ECAMPAGE", "ECAM page: APU"),
+            // Release a still-latched START PB first — master-off must never coexist with
+            // START=1 (a latched 1 would surprise-start the APU on the next master-ON).
+            Skip(SW("AS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
+                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
             Skip(SW("AS_APU_OFF", "APU: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Skip(SW("AS_APUBLEED_OFF", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
@@ -356,8 +377,20 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 1)),
             Captain("AL_TCAS", "TCAS mode: standby"),
             Captain("AL_FLAPS_UP", "Flaps: up"),
+            // APU for the gate — same master → START → AVAIL sequence as Before Start,
+            // but Skip policy on the wait: engines are running (no power-loss hazard) and
+            // an abort would kill the unrelated cleanup steps below. Whole block no-ops
+            // when the APU is already available (Fenix After Landing parity).
             Skip(SW("AL_APU", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1),
-                s => s.IsOn("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON")),
+                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
+            Skip(Wait("AL_APU_DWELL", "Waiting before APU start", 3),
+                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
+            Skip(SW("AL_APU_START", "APU start", "A32NX_OVHD_APU_START_PB_IS_ON", 1),
+                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
+            WaitForField("AL_APU_AVAIL", "Waiting for APU available",
+                "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180),
+            Skip(SW("AL_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
+                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
             Multi("AL_ENGAI_OFF", "Engine anti-ice: OFF",
                 ("ENG1_ANTI_ICE", 0), ("ENG2_ANTI_ICE", 0), ("ENG3_ANTI_ICE", 0), ("ENG4_ANTI_ICE", 0)),
             Skip(SW("AL_WINGAI_OFF", "Wing anti-ice: OFF", "WING_ANTI_ICE_OVHD", 0),
