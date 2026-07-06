@@ -861,32 +861,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // `2 <value> (>K:2:LANDING_LIGHTS_SET)` (live-verified). The bare LIGHT LANDING
         // (index 0/1) hit the NOSE takeoff light, not the wing landing lights.
         Light("LIGHT_LANDING", "LIGHT LANDING:2", "Landing Lights");
-        // Nose TAKEOFF light = LIGHT LANDING:1 (systems.cfg Type:5#Index:1 = TAKEOFF_1).
-        // The real A380 NOSE switch is 3-position Off / Taxi / Takeoff (TwoSimvars over
-        // LANDING:1 + TAXI:1); MSFSBA exposes the two functions as separate On/Off
-        // controls — "Takeoff Light (Nose)" (LANDING:1) + "Taxi Light (Nose)" (TAXI:1
-        // above) — clearer for a screen reader than one coupled 3-position. Off = both
-        // off. Indexed `1 <value> (>K:2:LANDING_LIGHTS_SET)` (live-verified).
-        Light("LIGHT_TAKEOFF", "LIGHT LANDING:1", "Takeoff Light (Nose)");
-        // Nose Taxi light: On / Off. The real nose switch is 3-position (T.O/Taxi/Off)
-        // on the FBW L:var A380X_OVHD_EXTLT_NOSE, which is DEAD on the shipping model
-        // (writing it drives nothing). The nose taxi/takeoff light is the stock
-        // LIGHT TAXI:1 (systems.cfg Type:6#Index:1 = LIGHT_ASOBO_TAXI_WING + TAKEOFF_1),
-        // driven by the INDEXED stock event `<index> <value> (>K:2:TAXI_LIGHTS_SET)` —
-        // live-verified 2026-07 (`1 1 …SET` → LIGHT TAXI:1 = 1). (The old code drove
-        // LIGHT TAXI:2 via the un-indexed TOGGLE_TAXI_LIGHTS, but :2 is actually the
-        // runway-turnoff LEFT — see LIGHT_RWY_TURNOFF below — so "Taxi Light" was
-        // mislabelled; it now controls the true nose taxi light, index 1.)
-        vars["LIGHT_TAXI_OVHD"] = new SimVarDefinition
+        // NOSE light — a real 3-POSITION selector (T.O. / Taxi / Off), so it is exposed
+        // as a 3-position combo exactly like the cockpit switch (never split into
+        // separate On/Off controls). State = the FBW switch-position L:var
+        // LIGHTING_LANDING_1 (0=T.O., 1=Taxi, 2=Off — live-verified readable). Writing
+        // that L:var is DEAD on the shipping model (it HOLDS but drives no light —
+        // live-verified: `1 (>L:LIGHTING_LANDING_1)` left LIGHT TAXI:1 = 0), so
+        // HandleUIVariableSet writes it (state mirror) AND fires the working indexed
+        // stock events per position (nose takeoff = LIGHT LANDING:1, nose taxi =
+        // LIGHT TAXI:1; the separate RWY TURN OFF switch is LIGHT TAXI:2/3 below):
+        //   T.O. → LANDING:1 on + TAXI:1 on ("allow TAXI LT with TO LT", per the
+        //          SWITCH_OVHD_EXTLT_NOSE behaviour template) · Taxi → LANDING:1 off,
+        //          TAXI:1 on · Off → both off.
+        vars["NOSE_LIGHT"] = new SimVarDefinition
         {
-            Name = "LIGHT TAXI:1",
-            DisplayName = "Taxi Light (Nose)",
-            Type = SimVarType.SimVar,
+            Name = "LIGHTING_LANDING_1",
+            DisplayName = "Nose Light",
+            Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Units = "bool",
-            RenderAsButton = false,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "T.O.", [1] = "Taxi", [2] = "Off" }
         };
         // Runway Turnoff lights: On / Off. The A380 RWY TURN OFF switch is
         // OnOff_TwoSimvars over SIMVAR_INDEX 2 + 3 (A380_Cockpit_Behavior.xml, the
@@ -2966,7 +2960,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Exterior Lighting"] = new List<string>
         {
             "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
-            "LIGHT_LANDING", "LIGHT_TAKEOFF", "LIGHT_TAXI_OVHD", "LIGHT_RWY_TURNOFF"
+            "LIGHT_LANDING", "NOSE_LIGHT", "LIGHT_RWY_TURNOFF"
         };
 
         p["Warnings"] = new List<string>
@@ -4448,7 +4442,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["LIGHT_NAV"] = "NAV_LIGHTS_SET",
         ["LIGHT_WING"] = "WING_LIGHTS_SET",
         ["LIGHT_LOGO"] = "LOGO_LIGHTS_SET",
-        // LIGHT_LANDING / LIGHT_TAKEOFF use the INDEXED LANDING_LIGHTS_SET (handled below).
+        // LIGHT_LANDING + NOSE_LIGHT use the INDEXED LANDING_LIGHTS_SET (handled below).
         ["LIGHT_STROBE"] = "STROBES_SET"
     };
 
@@ -4664,12 +4658,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:{apuGenI}:APU_GENERATOR_SWITCH_SET)");
             return true;
         }
-        // Nose Taxi light: the indexed stock event `<index> <value> (>K:2:TAXI_LIGHTS_SET)`
-        // drives LIGHT TAXI:1 directly (live-verified) — a clean absolute SET, no toggle
-        // and no stale-state guard needed.
-        if (varKey == "LIGHT_TAXI_OVHD")
+        // NOSE light 3-position selector (T.O.=0 / Taxi=1 / Off=2). Write the FBW
+        // state L:var (display mirror; its own write is dead) AND fire the working
+        // indexed stock events: nose takeoff = LIGHT LANDING:1, nose taxi = LIGHT TAXI:1
+        // (TAXI:1 on for BOTH T.O. and Taxi, per the cockpit "allow TAXI LT with TO LT").
+        if (varKey == "NOSE_LIGHT")
         {
-            simConnect.ExecuteCalculatorCode($"1 {(value > 0.5 ? 1 : 0)} (>K:2:TAXI_LIGHTS_SET)");
+            int pos = (int)Math.Round(value);
+            int takeoff = pos == 0 ? 1 : 0;              // LANDING:1 on only in T.O.
+            int taxi = (pos == 0 || pos == 1) ? 1 : 0;   // TAXI:1 on in T.O. and Taxi
+            simConnect.ExecuteCalculatorCode(
+                $"{pos} (>L:LIGHTING_LANDING_1) 1 {takeoff} (>K:2:LANDING_LIGHTS_SET) 1 {taxi} (>K:2:TAXI_LIGHTS_SET)");
             return true;
         }
         // Runway Turnoff lights: the cockpit switch drives LIGHT TAXI:2 (left) AND :3
@@ -4686,11 +4685,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "LIGHT_LANDING")
         {
             simConnect.ExecuteCalculatorCode($"2 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
-            return true;
-        }
-        if (varKey == "LIGHT_TAKEOFF")
-        {
-            simConnect.ExecuteCalculatorCode($"1 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
             return true;
         }
         // Seat-belt sign: there is no SET event, only CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE,
