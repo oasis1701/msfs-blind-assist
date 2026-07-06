@@ -66,6 +66,12 @@ The two axes are **independent and continuous** — the pilot is not "first cent
 
 `AudioToneGenerator.UpdateBank` follows the standard convention **positive = right wing down → pan right**. The PID's `desiredBank` output already uses this convention, so the desired tone passes it straight through. SimConnect's `PLANE_BANK_DEGREES`, however, is left-positive — `VisualGuidanceManager.cachedBank` stores the raw SimConnect value. **Always** route `cachedBank` through `VisualGuidanceManager.StandardBank(double)` before passing it to any tone API or computing a bank error. The helper just returns `-simConnectBank` but its name documents the conversion at every call site. `HandFlyManager` does its own inline negation; `AnnounceBankGuidance` and the dual-tone update path both go through `StandardBank`. Forget the conversion and the current tone pans opposite the airplane's actual bank — matching the pans steers the pilot the wrong way.
 
+### Manual-query grace window
+
+When the pilot fires a readout hotkey (the H/V/Q/S/D/B/P/A/F set) while VG is active, `MainForm` calls `visualGuidanceManager.NotifyManualQuery()`, which suppresses the per-second bank-guidance and centerline-deviation callouts (both `AnnounceImmediate`) for 3 s so the readout isn't cut off mid-sentence. Only those two chatty callouts are suppressed — phase changes and distance callouts (rare one-shots) still fire. Skipped callouts lose nothing: both always reflect current state, so the next one carries fresh data. `IsManualReadoutAction` in `MainForm` lists the qualifying hotkey actions.
+
+Also: the PID math, phase machine, and lateral arc-capture logic are untouched by the dual-tone work; the glidepath altitude calibration above is the one deliberate vertical-guidance change (a constant offset that shifts where "on glideslope" sits, not a gain/dynamics change). Failure mode of the tone is a missing audible reference, never a wrong steering command — keep it that way.
+
 ### Settings
 
 All exposed in the Hand Fly Options dialog (`Forms/HandFlyOptionsForm.cs`):
@@ -85,7 +91,8 @@ Both tones always play when visual guidance is active; there is no single-tone m
 ### Lifecycle
 
 - **Auto-deactivation on touchdown:** when `SIM_ON_GROUND` transitions from airborne to on-ground, visual guidance deactivates automatically (`MainForm.cs` SIM_ON_GROUND handler). From that moment the landing-exit planner / taxi guidance take over — keeping the dual-tone running would compete audibly with the taxi steering tone and serve no useful purpose. Manual activation on the ground (preflight test, etc.) is still allowed; the auto-deactivation fires only on the airborne→on-ground edge.
-- **Deferred Start:** Initialize() instantiates both `AudioToneGenerator` instances but does NOT call `Start()`. The first ProcessUpdate computes real attitude commands and then starts both tones at the correct initial frequencies via `StartTonesIfNeeded`. The phase-continuous oscillator's portamento (~0.23 ms at 44.1 kHz) is well under WaveOut's 150 ms buffer, so the first *audible* note already reflects the airplane's state — no fused-tone glitch at session start.
+- **Deferred Start:** Initialize() instantiates both `AudioToneGenerator` instances but does NOT call `Start()`. The first ProcessUpdate computes real attitude commands and then starts both tones at the correct initial frequencies via `StartTonesIfNeeded`. The phase-continuous oscillator's portamento (~0.23 ms at 44.1 kHz) is well under WaveOut's 150 ms buffer, so the first *audible* note already reflects the airplane's state — no fused-tone glitch at session start. Concretely: without the deferral, both tones would start immediately at the centre 500 Hz (no real attitude command exists yet), producing an audible fused-tone glitch before the first real command arrives — do not re-add a `Start()` call inside `Initialize`.
+- **Start the current (follower) tone only if the desired tone started.** Without a reference, the follower plays a constant centre-pan tone forever — annoying and meaningless. `StartTonesIfNeeded` enforces this; don't reorder its try blocks.
 - **Idempotent Initialize:** if Initialize is called while existing tones are still running (defensive against future callers that bypass `Stop`), Initialize tears them down first before creating new instances. Today's Toggle flow always Stops first, but the guard prevents future leaks.
 
 ### Aircraft-specific tone frequency / attitude range
@@ -206,6 +213,10 @@ The vertical path is **FPM-based** (target FPM derived from 3° glideslope + alt
 | `FPM_SMOOTHING_FACTOR` | 0.7 | EMA on raw VS reading |
 | `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. |
 | `MAX_FLARE_PITCH_RATE` | 1.5 | Cap on pitch rate during flare (deg/sec) |
+
+### Pitch PID sign convention (bug history)
+
+The pitch PID has **positive coefficients on `fpmError` / `fpmErrorRate`** — NOT the leading `-` that was historically there. Verified sign: with autothrust holding airspeed, MORE pitch ⇒ LESS descent. So negative `fpmError` (descending less than target ⇒ need more descent) calls for a NEGATIVE pitch correction ⇒ the correction has the SAME sign as `fpmError`. The old `-fpmError * gain` produced wrong-direction guidance that was masked by autopilot tests (tight tracking ⇒ `fpmError ≈ 0` ⇒ the wrong-sign correction was negligible) and would have steered a manually-flying pilot away from the glideslope. Do NOT reintroduce the leading minus.
 
 ## Tuning Guide
 

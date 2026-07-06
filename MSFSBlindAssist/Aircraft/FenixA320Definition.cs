@@ -10961,7 +10961,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_ECAM_TO" && value == 1)
             {
-                ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer);
+                // TO CONFIG is a level-triggered test: hold longer so the FWC evaluates the config,
+                // announce the result (blind-pilot equivalent of the sighted "TO CONFIG NORMAL"),
+                // then RELEASE. Leaving it held was the stuck-at-1 bug that re-fired the takeoff-
+                // config check after landing (FWC phase 9) → the spurious CONFIG warning on rollout.
+                ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer,
+                    pressHoldMs: TakeoffConfigTestHoldMs,
+                    onHeld: () => AnnounceTakeoffConfigResult(simConnect, announcer));
                 return true;
             }
 
@@ -12695,31 +12701,65 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Helper method to execute Fenix button transition (0→1 pattern).
-    /// Fenix buttons are transition-activated: they trigger when the variable goes from 0 to 1.
-    /// This method sets the variable to 0, waits, then sets it to 1 to create the transition.
+    /// Delay (ms) after the initial reset-to-0 before the button is pressed (0 → 1).
+    /// Establishes a clean rising edge even if the button was somehow already at 1.
     /// </summary>
+    private const int ButtonReleaseGapMs = 200;
+
+    /// <summary>
+    /// Default time (ms) a momentary button is held at 1 before being RELEASED back to 0.
+    /// Fenix cockpit pushbuttons are momentary: the systems logic latches the effect on the
+    /// 0 → 1 rising edge and keeps it in a separate I_* indicator, so releasing to 0 afterwards
+    /// is the correct real-cockpit behavior and never loses state (verified live for RMP mode
+    /// selects, EFIS filters, and ECAM page selectors — the indicator persists after release).
+    /// Leaving a button HELD at 1 (the previous behavior) breaks level-triggered functions such
+    /// as the TO CONFIG test, which re-fires against a landing config after touchdown (FWC
+    /// phase 9) → a spurious CONFIG / master-warning alarm on rollout.
+    /// </summary>
+    private const int ButtonPressHoldMs = 200;
+
+    /// <summary>
+    /// Hold time (ms) for the TO CONFIG test button. Longer than the default because this test is
+    /// level-triggered (active only while held): the button must stay pressed long enough for the
+    /// FWC to evaluate the config and drive the master warning before we read the result and release.
+    /// </summary>
+    private const int TakeoffConfigTestHoldMs = 1500;
+
+    /// <summary>
+    /// Helper method to execute a Fenix momentary-button press (0 → 1 → 0).
+    /// Fenix buttons are transition-activated: they trigger on the 0 → 1 rising edge. This method
+    /// resets to 0, waits, presses (1), holds briefly, then RELEASES back to 0 so the button does
+    /// not stay latched down (which would keep re-triggering level-sensitive functions such as the
+    /// TO CONFIG TEST). Edge-triggered buttons keep their latched state after the release; the
+    /// release is a no-op for pure momentary actions (ECAM page, keypad, master-warning cancel…).
+    /// </summary>
+    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
+    /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
+    /// <param name="onHeld">Optional callback invoked while the button is still held at 1, just
+    /// before the release — lets a caller read the resulting state (e.g. the master-warning outcome
+    /// of the TO CONFIG test) before the button is released and the level-triggered effect clears.</param>
     private void ExecuteButtonTransition(string varName, string displayName,
-        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer,
+        int pressHoldMs = ButtonPressHoldMs, Action? onHeld = null)
     {
         try
         {
             System.Diagnostics.Debug.WriteLine($"[FenixA320] ExecuteButtonTransition START: {displayName} ({varName})");
 
-            // Reset to 0
+            // Phase 1: reset to 0 (establishes a clean rising edge if the button was left at 1)
             if (simConnect != null && simConnect.IsConnected)
             {
                 System.Diagnostics.Debug.WriteLine($"[FenixA320] Setting {varName} = 0 (Release)");
                 simConnect.SetLVar(varName, 0);
             }
 
-            // Set up timer to transition to 1 after delay
-            var transitionTimer = new System.Windows.Forms.Timer();
-            transitionTimer.Interval = 200;
-            transitionTimer.Tick += (sender, e) =>
+            // Phase 2: press (0 → 1) after the release gap
+            var pressTimer = new System.Windows.Forms.Timer();
+            pressTimer.Interval = ButtonReleaseGapMs;
+            pressTimer.Tick += (sender, e) =>
             {
-                transitionTimer.Stop();
-                transitionTimer.Dispose();
+                pressTimer.Stop();
+                pressTimer.Dispose();
 
                 try
                 {
@@ -12727,20 +12767,82 @@ public class FenixA320Definition : BaseAircraftDefinition
                     {
                         System.Diagnostics.Debug.WriteLine($"[FenixA320] Setting {varName} = 1 (Press)");
                         simConnect.SetLVar(varName, 1);
-                        System.Diagnostics.Debug.WriteLine($"[FenixA320] ExecuteButtonTransition COMPLETE: {displayName}");
                     }
+
+                    // Phase 3: release (1 → 0) after the hold, so the button does not stay latched down.
+                    // This is the fix for the stuck-at-1 bug (spurious TO CONFIG warning after landing).
+                    var releaseTimer = new System.Windows.Forms.Timer();
+                    releaseTimer.Interval = pressHoldMs > 0 ? pressHoldMs : 1;
+                    releaseTimer.Tick += (s2, e2) =>
+                    {
+                        releaseTimer.Stop();
+                        releaseTimer.Dispose();
+
+                        try
+                        {
+                            if (simConnect != null && simConnect.IsConnected)
+                            {
+                                // Read the resulting state while the button is still held (e.g. TO CONFIG
+                                // result). Gated on IsConnected so a disconnect mid-hold can't fire a
+                                // reassuring "Takeoff config normal." off a stale/zero cache.
+                                onHeld?.Invoke();
+
+                                System.Diagnostics.Debug.WriteLine($"[FenixA320] Setting {varName} = 0 (Release after hold)");
+                                simConnect.SetLVar(varName, 0);
+                                System.Diagnostics.Debug.WriteLine($"[FenixA320] ExecuteButtonTransition COMPLETE: {displayName}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (release phase): {ex.Message}");
+                        }
+                    };
+                    releaseTimer.Start();
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (second phase): {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (press phase): {ex.Message}");
                 }
             };
-            transitionTimer.Start();
+            pressTimer.Start();
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
             announcer.Announce($"Error pressing {displayName}");
+        }
+    }
+
+    /// <summary>
+    /// Reads the master-warning outcome of a TO CONFIG test (while the test button is still held)
+    /// and announces it, so a blind pilot gets the same feedback a sighted pilot reads as
+    /// "TO CONFIG NORMAL". A good config is otherwise completely silent. On a bad config the
+    /// master warning is also flagged by the generic annunciator monitor; this adds the takeoff-
+    /// config context. Reads the cached I_MIP_MASTER_WARNING_CAPT (Continuous + IsAnnounced).
+    /// </summary>
+    private void AnnounceTakeoffConfigResult(SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        try
+        {
+            // Deliberately reads the SHARED master-warning latch, not a config-specific memo. Live
+            // L-var search (2026-07) confirmed the Fenix exposes NO TO-CONFIG-only indicator — every
+            // warning I_* var is a discrete system fault (fire/GPWS/master warn+caut/evac), so the
+            // master warning is the only available signal, and it IS driven by the test: press
+            // S_ECAM_TO=1 on a bad config raised I_MIP_MASTER_WARNING_CAPT 0->1, release cleared it.
+            // The fail-safe direction also matters: an already-active (unrelated) warning yields a
+            // conservative "check configuration" (never harmful), whereas disambiguating via a
+            // pre-press baseline delta would mask a genuinely-bad config behind a pre-existing
+            // warning as a DANGEROUS false "normal".
+            double masterWarning = simConnect?.GetCachedVariableValue("I_MIP_MASTER_WARNING_CAPT") ?? 0.0;
+            if (masterWarning >= 0.5)
+                announcer?.AnnounceImmediate("Takeoff config: check configuration.");
+            else
+                announcer?.AnnounceImmediate("Takeoff config normal.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] AnnounceTakeoffConfigResult error: {ex.Message}");
         }
     }
 
