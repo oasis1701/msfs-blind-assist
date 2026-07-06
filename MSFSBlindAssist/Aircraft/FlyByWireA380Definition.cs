@@ -5225,6 +5225,30 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             displayText = $"{value / 1_000_000.0:0.000} MHz";
             return true;
         }
+        // The RMP panel readouts use the reliable STOCK COM simvars, already in MHz
+        // (COM ACTIVE/STANDBY FREQUENCY:n). Without a display override the raw double
+        // dropped the fractional part — a whole-MHz freq like 137.000 read as bare
+        // "137" (the reported "just the 3 digits before the decimal" bug). Force the
+        // full 3-decimal VHF format to match the auto-announce ("137.000 MHz").
+        if (varKey.StartsWith("COM_ACTIVE_", StringComparison.Ordinal)
+            || varKey.StartsWith("COM_STANDBY_", StringComparison.Ordinal))
+        {
+            displayText = value >= 118.0 && value <= 137.0 ? $"{value:0.000} MHz" : "---.--- MHz";
+            return true;
+        }
+        // ND nav-radio frequencies — the raw double carried no unit, so an ADF freq
+        // read as a bare "890" (which IS correct — 890 kHz — but ambiguous). Label
+        // the units: VOR in MHz (108-118), ADF in kHz (190-1750); 0 = not tuned.
+        if (varKey == "ND_VOR1_FREQ" || varKey == "ND_VOR2_FREQ")
+        {
+            displayText = value >= 108.0 && value <= 118.0 ? $"{value:0.00} MHz" : "--- (not tuned)";
+            return true;
+        }
+        if (varKey == "ND_ADF1_FREQ" || varKey == "ND_ADF2_FREQ")
+        {
+            displayText = value >= 150.0 && value <= 1800.0 ? $"{value:0.0} kHz" : "--- (not tuned)";
+            return true;
+        }
         // Beta-target (sideslip target). Only valid when _ACTIVE (cached in ProcessSimVarUpdate).
         if (varKey == "A32NX_BETA_TARGET")
         {
