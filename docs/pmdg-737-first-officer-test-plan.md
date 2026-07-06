@@ -663,3 +663,56 @@ Test (each aircraft, FO window open):
 2. Descend through 9,700 ft → "Below ten thousand. Landing lights on." — verify ALL
    lights come ON and actually illuminate (737 retractables at ON, not just extended).
 3. Before Takeoff flow/item and After Landing flow/item: all lights on / all off.
+
+## Part S — APU-start gating (2026-07-06 pass; 737 + 777)
+
+Ground-power→APU transfers now wait on real availability signals and ABORT the Before
+Start flow on a start failure (ground power stays connected). After Landing APU waits
+announce a timeout but continue.
+
+### S.1 737 Before Start, happy path (cold & dark + GPU)
+1. Cold & dark, GPU connected via the power-up flow. Run Before Start.
+2. Expect, in order: "APU selector: ON" → "Waiting 2 seconds…" → "APU selector: START" →
+   "Waiting for: Waiting for the APU to come on line" (selector spring-back) →
+   "Waiting for: Waiting for the APU generator" → "APU generators: ON" →
+   "Ground power: OFF" → rest of flow.
+3. PASS: the APU GEN transfer and ground-power drop happen only after the blue
+   APU GEN OFF BUS light is lit (spot-check the overhead panel state); no bus power loss.
+4. Timing note for the 30 s budget on the generator wait: from the START command, note the
+   seconds between the selector springing back and "APU generators: ON" being spoken —
+   report if the generator wait ever announces "Timed out" on a healthy start.
+
+### S.2 737 EGT threshold calibration
+1. Cold & dark: FO window open, APU never started. Re-run Before Start — the three APU
+   command steps must RUN (not "Already set"), proving IsApuRunning() reads false cold.
+2. With the APU running: re-run Before Start — the three APU command steps must announce
+   "Already set: …", proving EGT ≥ 100 while running. If either direction misbehaves,
+   tune `AircraftStateEvaluator.ApuRunningEgt` (currently 100).
+
+### S.3 737 re-run after completed transfer
+1. Immediately after a successful S.1, run Before Start again.
+2. Expect: APU command steps "Already set", the come-on-line wait passes instantly, the
+   generator wait announces "Timed out waiting for: Waiting for the APU generator" then
+   "Skipping: …" after 30 s (the blue light is out because the APU is on the buses), and
+   the flow CONTINUES to completion. PASS: no "flow stopped", no state change.
+
+### S.4 777 Before Start, happy path
+1. Cold & dark + GPU (power-up flow), run Before Start.
+2. Expect "Waiting for: Waiting for the APU to start" to END as the APU reaches speed
+   (not a fixed 90 s — on the 777 the APU start typically completes near 60-90 s), then
+   "Waiting 5 seconds: APU stabilising", then hydraulics/fuel/beacon, then the two
+   ground-power disconnects. PASS: EICAS shows the APU running before the GPU drops and
+   the buses never blink.
+3. Re-run: the wait passes instantly (APURunning already 1).
+
+### S.5 777 After Landing
+1. After landing + rollout, run After Landing.
+2. Expect the APU block to end with "Waiting for: Waiting for the APU to start" completing
+   when the APU is actually up (previously it keyed on the selector and completed
+   immediately). A timeout announces and the flow continues (Skip policy).
+
+### S.6 Timeout/abort path (both PMDG jets, optional)
+Hard to force without a scripted APU failure; the Stop mechanism is the same code path as
+the shipped engine-start N2 aborts (Part tested earlier). If a start failure ever occurs
+naturally: expect "Timed out waiting for: …" then "Before Start flow stopped. Unable to
+complete: …", with ground power still connected.

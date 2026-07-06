@@ -309,3 +309,30 @@ switches. This is legitimate state feedback, not a double-announce bug.
   state read (flow Skip conditions and checklist auto-detect) uses the real
   `A32NX_SPOILERS_ARMED` var** — never expect the Act key itself to reflect state; if a
   spoiler step or checklist item seems stuck, check `A32NX_SPOILERS_ARMED` directly.
+
+## APU-start gating (2026-07-06 pass)
+
+The FO now actually starts the A380 APU: master ON → 3 s → START pushbutton → wait for
+AVAIL (Stop on timeout) → release START → APU bleed → external power off. Previously only
+the master was set and external power was dropped immediately (APU never started).
+
+1. Before Start happy path: cold & dark, ext power on (EFB). Run Before Start. Expect:
+   "APU: ON" → "Waiting 3 seconds…" → "APU start" → "Waiting for: Waiting for APU
+   available" (~1-2 min) → "APU start button: released" OR "Already set: APU start
+   button: released" → "APU bleed: ON" → "Ground power: OFF" → captain EFB-disconnect
+   reminder. PASS: ECAM shows APU AVAIL before the EXT PWR pushbuttons go off; buses
+   never drop to batteries.
+2. START PB auto-clear observation: at the "released" step, note which announcement fired.
+   "Already set" = FBW cleared the latched PB itself; the explicit release = it did not.
+   Report either way (informs whether the defensive clears stay).
+3. Re-run idempotence: run Before Start again with the APU available — the whole APU block
+   announces "Already set"/skips instantly; no re-start attempt.
+4. Checklist path: reset to cold & dark + ext power. Tick "APU: ON" in the BEFORE_START
+   checklist group instead of running the flow. PASS: the APU actually starts (master +
+   START press) and AVAIL appears on ECAM ~1-2 min later. Then run the After Start flow
+   and confirm "APU start button: released" precedes "APU: OFF".
+5. After Landing: run the flow after vacating. Same block with a Skip-policy wait — a
+   timeout announces "Skipping: …" and the remaining cleanup (anti-ice off etc.) still
+   runs.
+6. Timeout/abort: pull the APU FIRE pb (or run with empty feed tanks) and run Before
+   Start. Expect the flow to stop after 3 min with external power untouched.

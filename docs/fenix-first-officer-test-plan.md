@@ -272,3 +272,17 @@ against the landing config after touchdown (FWC phase 9, below 80 kt) — a spur
   3-position SYS switch) pending a live `ValueDescriptions` cross-check — if the weather
   radar steps don't land on the expected positions in Part A/E, this mapping is the first
   place to check.
+
+## APU-start gating (2026-07-06 pass)
+
+One change: the Before Start "Waiting for APU available" wait now ABORTS the flow on its
+180 s timeout instead of continuing to pulse external power off.
+
+1. Happy path regression: cold & dark + ext power, run Before Start. Behaviour is
+   unchanged — AVAIL light gates APU bleed / fuel pumps / external power off.
+2. Failure path (forceable on the Fenix: run Before Start with no fuel on board, or pull
+   the APU fire handle first): expect "Timed out waiting for: Waiting for APU available"
+   then "Before Start flow stopped. Unable to complete: Waiting for APU available" after
+   ~3 minutes, with external power still on the bus. Fix the cause, re-run the flow —
+   completed steps announce "Already set" and the flow proceeds.
+3. After Landing APU block: unchanged (timeout announces and continues).
