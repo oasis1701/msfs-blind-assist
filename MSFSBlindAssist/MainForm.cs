@@ -46,6 +46,7 @@ public partial class MainForm : Form
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>? pmdg777FirstOfficerForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.PMDG737.AircraftActionExecutor, FirstOfficer.PMDG737.AircraftStateEvaluator>? pmdg737FirstOfficerForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>? fenixFirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA380.FbwA380ActionExecutor, FirstOfficer.FBWA380.FbwA380StateEvaluator>? fbwA380FirstOfficerForm;
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
     private Forms.FBWA380.FbwEfbForm? fbwEfbForm;
     // No-injection A380X transport: reads/drives the MFD live through the
@@ -682,6 +683,8 @@ public partial class MainForm : Form
                 pmdg737FirstOfficerForm.OnSimConnectChanged();
             if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
                 fenixFirstOfficerForm.OnSimConnectChanged();
+            if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
+                fbwA380FirstOfficerForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -3328,6 +3331,26 @@ public partial class MainForm : Form
         fenixFirstOfficerForm.ShowForm();
     }
 
+    private void FbwA380FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowFbwA380FirstOfficerDialog();
+    }
+
+    private void ShowFbwA380FirstOfficerDialog()
+    {
+        if (currentAircraft is not FlyByWireA380Definition a380Def) return;
+        if (fbwA380FirstOfficerForm == null || fbwA380FirstOfficerForm.IsDisposed)
+        {
+            fbwA380FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA380.FbwA380ActionExecutor, FirstOfficer.FBWA380.FbwA380StateEvaluator>(
+                new FirstOfficer.FBWA380.FbwA380FoProfile(a380Def, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        fbwA380FirstOfficerForm.ShowForm();
+    }
+
     private void FOSettingsMenuItem_Click(object? sender, EventArgs e)
     {
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -3342,6 +3365,8 @@ public partial class MainForm : Form
                 pmdg737FirstOfficerForm.ApplySettings();
             if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
                 fenixFirstOfficerForm.ApplySettings();
+            if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
+                fbwA380FirstOfficerForm.ApplySettings();
         }
     }
 
@@ -5040,6 +5065,11 @@ public partial class MainForm : Form
             fenixFirstOfficerForm.Dispose();
             fenixFirstOfficerForm = null;
         }
+        if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
+        {
+            fbwA380FirstOfficerForm.Dispose();
+            fbwA380FirstOfficerForm = null;
+        }
 
         if (coherentNDClient != null)
         {
@@ -5198,7 +5228,9 @@ public partial class MainForm : Form
         pmdg777FirstOfficerMenuItem.Visible = isPmdg777;
         pmdg737FirstOfficerMenuItem.Visible = isPmdg737;
         fenixFirstOfficerMenuItem.Visible = isFenix;
-        foSettingsMenuItem.Visible = isPmdg777 || isPmdg737 || isFenix;
+        bool isFbwA380 = currentAircraft?.AircraftCode == "FBW_A380";
+        fbwA380FirstOfficerMenuItem.Visible = isFbwA380;
+        foSettingsMenuItem.Visible = isPmdg777 || isPmdg737 || isFenix || isFbwA380;
     }
 
     /// <summary>
