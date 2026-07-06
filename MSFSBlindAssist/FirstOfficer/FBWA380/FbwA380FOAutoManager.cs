@@ -35,7 +35,15 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
     private const double GaClimbFpm = 500;       // go-around: sustained climb rate…
     private const double GaAglGainFt = 200;      // …plus AGL regained above the approach minimum
 
-    private bool _approachPhase;                 // set on first auto-extension; one-way until GA/touchdown
+    // Approach context: armed on the first DESCENDING sample below 5000 ft AGL,
+    // one-way until go-around or touchdown. Extension runs ONLY while armed, and
+    // retraction ONLY while disarmed — without this gate a departure level-off
+    // with takeoff flaps still out would read as "extension" (IAS < F is true by
+    // construction until retraction completes), extend flaps on climb-out, and
+    // block its own retraction schedule (final-review C1). Arming on descent also
+    // stops the FO retracting a configuration the PILOT extended manually on a
+    // level deceleration segment (I3).
+    private bool _extensionArmed;
     private double _minAglInApproach = double.MaxValue;
     private int _lastExtendCommand = -1;         // don't re-fight a pilot who pulled flaps back
     private int _lastRetractCommand = 99;        // don't re-fight a pilot who re-extended
@@ -62,11 +70,20 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
 
     private void ResetFlapState()
     {
-        _approachPhase      = false;
+        _extensionArmed     = false;
         _minAglInApproach   = double.MaxValue;
         _lastExtendCommand  = -1;
         _lastRetractCommand = 99;
         _lastFlapMoveUtc    = DateTime.MinValue;
+    }
+
+    // Leave the approach context (go-around detected): extension disarms and a
+    // fresh extension ladder is armed for the next approach.
+    private void Disarm()
+    {
+        _extensionArmed    = false;
+        _minAglInApproach  = double.MaxValue;
+        _lastExtendCommand = -1;
     }
 
     public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
@@ -152,37 +169,53 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
         double conf3Raw = _state.GetValue("A32NX_SPEEDS_LANDING_CONF3");
         bool conf3 = !double.IsNaN(conf3Raw) && conf3Raw > 0.5;
 
-        // Track the lowest AGL seen while configured for approach — the go-around
+        // Arm the approach context on the first descending sample below 5000 ft
+        // AGL (one-way until go-around or touchdown). See the _extensionArmed
+        // field comment for why extension must never run unarmed.
+        if (!_extensionArmed && descending && agl < 5000)
+            _extensionArmed = true;
+
+        // Track the lowest AGL seen while in the approach context — the go-around
         // detector needs a real climb-out signature a turbulence gust can't fake.
-        if (_approachPhase && agl < _minAglInApproach)
+        if (_extensionArmed && agl < _minAglInApproach)
             _minAglInApproach = agl;
 
-        // ---- Go-around: latch clear + SOP one-step retraction ----
-        bool goAround = _approachPhase &&
-                        (vs > GaClimbFpm && agl >= _minAglInApproach + GaAglGainFt
-                         || climbing && agl > 3000);   // 737-style high fallback clear
-        if (goAround)
+        // ---- Go-around: disarm + SOP one-step retraction ----
+        if (_extensionArmed)
         {
-            _approachPhase = false;
-            _minAglInApproach = double.MaxValue;
-            _lastExtendCommand = -1;
-            // SOP "GO-AROUND — FLAPS": one immediate speed-independent step when
-            // landing flaps are out (FULL -> 3, or 3 -> 2 on a CONF 3 approach).
-            // Retraction is always VFE-safe.
-            if (flaps >= 3 && DwellElapsed())
+            // Primary signature: sustained climb AND real height regained above the
+            // approach's minimum — a bare VS spike can never fire the lever.
+            bool gaPrimary  = vs > GaClimbFpm && agl >= _minAglInApproach + GaAglGainFt;
+            // 737-style high safeguard: clears a stuck approach context on any
+            // established climb above 3000 ft AGL. LATCH-CLEAR ONLY — it must
+            // never command the SOP step (final-review I1).
+            bool gaFallback = climbing && agl > 3000;
+
+            if (gaPrimary && flaps >= 3)
             {
+                // SOP "GO-AROUND — FLAPS": one immediate speed-independent step
+                // (FULL -> 3, or 3 -> 2 on a CONF 3 approach). Retraction is
+                // always VFE-safe. Dwell-blocked (balked landing seconds after
+                // "Flaps full")? Stay armed and retry next tick — the SOP step
+                // must never be silently lost (final-review I2).
+                if (!DwellElapsed()) return;
                 int target = flaps - 1;
                 CommandFlaps(target, $"Go-around. Flaps {FlapName(target)}.");
                 _lastRetractCommand = target;
+                Disarm();
                 return;   // one movement per tick
             }
-            _lastRetractCommand = 99;   // fresh retraction sequence for the climb-out
+            if (gaPrimary || gaFallback)
+            {
+                Disarm();
+                _lastRetractCommand = 99;   // fresh retraction sequence for the climb-out
+            }
         }
 
-        // ---- Retraction (climbing or level, not configured for approach) ----
+        // ---- Retraction (climbing or level, NOT in the approach context) ----
         // Same rule for flaps-2 and flaps-3 takeoffs (Airbus SOP: at F speed select
         // flaps 1, at S speed clean). Deliberately independent of CONF 3.
-        if (!_approachPhase && !descending)
+        if (!_extensionArmed && !descending)
         {
             double f = _state.GetValue("A32NX_SPEEDS_F");
             double s = _state.GetValue("A32NX_SPEEDS_S");
@@ -199,8 +232,9 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
             }
         }
 
-        // ---- Extension (not climbing, below 5000 AGL, VFE-next protected) ----
-        if (!climbing && agl < 5000)
+        // ---- Extension (ARMED approach context, not climbing, below 5000 AGL,
+        // VFE-next protected) ----
+        if (_extensionArmed && !climbing && agl < 5000)
         {
             double vfeNext = _state.GetValue("A32NX_SPEEDS_VFEN");
             if (double.IsNaN(vfeNext) || ias >= vfeNext - VfeNextMarginKts)
@@ -242,11 +276,8 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
         if (target <= _lastExtendCommand || !DwellElapsed()) return;
         CommandFlaps(target, announcement);
         _lastExtendCommand = target;
-        if (!_approachPhase)
-        {
-            _approachPhase = true;   // wing is configuring — stop clean-up retraction
-            _minAglInApproach = double.MaxValue;
-        }
+        // No latch to set here: extension only runs while _extensionArmed, which
+        // was armed by the descending sample that opened the approach context.
     }
 
     // Retraction is monotonic per climb-out: if the pilot re-extended after we

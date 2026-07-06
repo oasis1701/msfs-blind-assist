@@ -201,7 +201,10 @@ checks below require **"Auto Flaps"** enabled in Tools → First Officer Setting
     establish a climb. Confirm an **immediate, speed-independent** step: **"Go-around. Flaps 3."**,
     then the normal F/S retraction schedule cleans up (Flaps 1 at F, Flaps up at S). Repeat from a
     **CONF 3** approach (flaps 3) → **"Go-around. Flaps 2."** The go-around step is one lever move
-    (FULL → 3, or 3 → 2), then the climbout schedule takes over.
+    (FULL → 3, or 3 → 2), then the climbout schedule takes over. Also confirm the step is **never
+    lost when the go-around comes within ~4 s of the last flap movement** (balked landing right
+    after "Flaps full") — the FO stays in the approach context and retries the step on the next
+    tick rather than skipping it.
 11. **Turbulence immunity.** On a descending final in bumps, brief positive-VS spikes must **NOT**
     trigger the go-around step. The detector requires a real climb-out signature: **VS > 500 fpm**
     (`GaClimbFpm`) **and** at least **+200 ft AGL regained above the lowest AGL reached on the
@@ -214,6 +217,15 @@ checks below require **"Auto Flaps"** enabled in Tools → First Officer Setting
 13. **No flap movement on the ground.** Confirm the FO makes **no automatic flap movement while on
     the ground** — after landing, flaps-up stays a **Captain** item (the schedule resets its state
     at touchdown and does not re-arm until airborne again).
+14. **Departure level-off never extends flaps.** Take off with flaps 2 or 3 and level off **below
+    5000 ft AGL with the takeoff flaps still out** (e.g. ATC "maintain 3,000") and accelerate.
+    Confirm the FO does **NOT** extend flaps (extension only arms after a **descending** segment
+    below 5000 ft AGL — a departure level-off never opens the approach context) and that normal
+    retraction proceeds ("Flaps 1." at F speed, "Flaps up." at S speed) during the level segment.
+15. **High-final gust does not move the lever.** On a high approach platform (landing flaps out
+    above 3,000 ft AGL), a brief climb indication must **not** fire "Go-around. Flaps …" — the
+    high-altitude safeguard only disarms the schedule internally; the SOP step itself requires the
+    full climb-out signature from check 11.
 
 ---
 
