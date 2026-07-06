@@ -23,18 +23,27 @@ public static class FbwA380ChecklistDefinitions
     public static List<Group> Build() => new()
     {
         BuildCockpitPrep(),
+        BuildCockpitPrepCL(),
         BuildBeforeStart(),
+        BuildBeforeStartCL(),
         BuildEngineStart(),
         BuildAfterStart(),
+        BuildAfterStartCL(),
         BuildTaxi(),
+        BuildTaxiCL(),
         BuildLineup(),
+        BuildLineupCL(),
+        BuildBeforeTakeoffCL(),
         BuildAfterTakeoff(),
         BuildClimb(),
         BuildApproach(),
+        BuildApproachCL(),
         BuildLanding(),
+        BuildLandingCL(),
         BuildAfterLanding(),
+        BuildAfterLandingCL(),
         BuildParking(),
-        // Readback (*_CL) groups are added in Build() by Task 7.
+        BuildParkingCL(),
     };
 
     // -----------------------------------------------------------------------
@@ -481,6 +490,162 @@ public static class FbwA380ChecklistDefinitions
             Reminder("PK_TCAS", "PARKING", "TCAS mode: standby"),
             Auto("PK_COCKPITDOOR", "PARKING", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 0)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Readback (*_CL) groups — challenge/response checklists.
+    // HARD INVARIANT: every item here is action-free (Reminder, or Auto(..., action: null)).
+    // No ActionManual, no non-null CheckAction, anywhere in a *_CL group.
+    // -----------------------------------------------------------------------
+
+    // 1a. Cockpit Preparation Checklist
+    private static Group BuildCockpitPrepCL() => new()
+    {
+        Id = "COCKPIT_PREP_CL", Name = "Cockpit Preparation Checklist",
+        Items = new()
+        {
+            Reminder("CPC_PREP", "COCKPIT_PREP_CL", "Cockpit preparation: COMPLETED"),
+            Reminder("CPC_FUEL", "COCKPIT_PREP_CL", "Fuel: READBACK"),
+            Auto("CPC_SEATBELT", "COCKPIT_PREP_CL", "Seatbelt signs: ON", "SEATBELT_SIGN",
+                v => v > 0.5, action: null),
+            Auto("CPC_ADIRS", "COCKPIT_PREP_CL", "ADIRS: NAV", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
+                v => Math.Abs(v - 1) < 0.5,
+                new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
+                action: null),
+            Reminder("CPC_ALTIMETERS", "COCKPIT_PREP_CL", "Altimeters: SET"),
+            Reminder("CPC_FMGS", "COCKPIT_PREP_CL", "F.M.G.S: SET"),
+        }
+    };
+
+    // 2a. Before Start Checklist
+    private static Group BuildBeforeStartCL() => new()
+    {
+        Id = "BEFORE_START_CL", Name = "Before Start Checklist",
+        Items = new()
+        {
+            Auto("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
+                v => v > 0.5, action: null),
+            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds: READBACK"),
+            Reminder("BSC_DOORS", "BEFORE_START_CL", "Doors: CLOSED"),
+            Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT_BEACON",
+                v => v > 0.5, action: null),
+        }
+    };
+
+    // 4a. After Start Checklist
+    private static Group BuildAfterStartCL() => new()
+    {
+        Id = "AFTER_START_CL", Name = "After Start Checklist",
+        Items = new()
+        {
+            Reminder("ASC_ANTIICE", "AFTER_START_CL", "Anti-ice: SET"),
+            Reminder("ASC_ECAM", "AFTER_START_CL", "ECAM status: CHECKED"),
+            Reminder("ASC_TRIM", "AFTER_START_CL", "Trim: SET"),
+        }
+    };
+
+    // 5a. Taxi Checklist
+    private static Group BuildTaxiCL() => new()
+    {
+        Id = "TAXI_CL", Name = "Taxi Checklist",
+        Items = new()
+        {
+            Reminder("TXC_TAXI", "TAXI_CL", "Taxi checklist"),
+            Reminder("TXC_FCTEST", "TAXI_CL", "Flight control test: CHECKED"),
+            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps: SET"),
+            Auto("TXC_WXR", "TAXI_CL", "Weather radar: ON", "XMLVAR_A320_WeatherRadar_Sys",
+                v => v > 0.5, action: null),
+            Auto("TXC_ENGMODE", "TAXI_CL", "Engine mode: SET", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 1) < 0.5, action: null),
+            Reminder("TXC_ECAMMEMO", "TAXI_CL", "ECAM memo: no blue, takeoff config normal"),
+        }
+    };
+
+    // 6a. Lineup Checklist
+    private static Group BuildLineupCL() => new()
+    {
+        Id = "LINEUP_CL", Name = "Lineup Checklist",
+        Items = new()
+        {
+            Reminder("LUC_LINEUP", "LINEUP_CL", "Lineup checklist"),
+            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: Confirmed"),
+            Reminder("LUC_TCAS", "LINEUP_CL", "TCAS: SET"),
+            Reminder("LUC_PACKS", "LINEUP_CL", "Packs: SET"),
+            Reminder("LUC_CABINCREW", "LINEUP_CL", "Cabin crew: NOTIFIED"),
+        }
+    };
+
+    // 13. Before Takeoff Checklist (readback-only briefing; no matching STATE/ACTION group)
+    private static Group BuildBeforeTakeoffCL() => new()
+    {
+        Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
+        Items = new()
+        {
+            Reminder("BTC_RUNWAY", "BEFORE_TAKEOFF_CL", "Takeoff runway: CHECKED"),
+            Reminder("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flaps: SET"),
+            Reminder("BTC_TOSPEEDS", "BEFORE_TAKEOFF_CL", "Takeoff speeds: READBACK"),
+            Reminder("BTC_ALTITUDE", "BEFORE_TAKEOFF_CL", "Altitude: READBACK"),
+        }
+    };
+
+    // 9a. Approach Checklist
+    private static Group BuildApproachCL() => new()
+    {
+        Id = "APPROACH_CL", Name = "Approach Checklist",
+        Items = new()
+        {
+            Reminder("APC_ALTIMETERS", "APPROACH_CL", "Altimeters: SET"),
+            Auto("APC_SEATBELT", "APPROACH_CL", "Seatbelt signs: ON", "SEATBELT_SIGN",
+                v => v > 0.5, action: null),
+            Reminder("APC_MINIMUMS", "APPROACH_CL", "Minimums: READBACK"),
+            Auto("APC_AUTOBRAKE", "APPROACH_CL", "Autobrakes: SET", "A32NX_AUTOBRAKES_SELECTED_MODE",
+                v => v > 0.5, action: null),
+            Auto("APC_ENGMODE", "APPROACH_CL", "Engine mode: SET", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 1) < 0.5, action: null),
+        }
+    };
+
+    // 10a. Landing Checklist
+    private static Group BuildLandingCL() => new()
+    {
+        Id = "LANDING_CL", Name = "Landing Checklist",
+        Items = new()
+        {
+            Reminder("LDC_MISSEDALT", "LANDING_CL", "Missed approach altitude: SET"),
+            // Real state var — NOT the write-only A380X_MSFSBA_SPOILERS_ARM Act key.
+            Auto("LDC_SPOILERS", "LANDING_CL", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+                v => v > 0.5, action: null),
+            Reminder("LDC_ECAMMEMO", "LANDING_CL", "ECAM memo: no blue, landing config normal"),
+        }
+    };
+
+    // 11a. After Landing Checklist
+    private static Group BuildAfterLandingCL() => new()
+    {
+        Id = "AFTER_LANDING_CL", Name = "After Landing Checklist",
+        Items = new()
+        {
+            Auto("ALC_WXR", "AFTER_LANDING_CL", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys",
+                v => v < 0.5, action: null),
+        }
+    };
+
+    // 12a. Parking Checklist
+    private static Group BuildParkingCL() => new()
+    {
+        Id = "PARKING_CL", Name = "Parking Checklist",
+        Items = new()
+        {
+            Reminder("PKC_PARKING", "PARKING_CL", "Parking checklist"),
+            Auto("PKC_PARKBRK", "PARKING_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
+                v => v > 0.5, action: null),
+            Auto("PKC_ENGINES", "PARKING_CL", "Engines: OFF", "FO_ENGINES_OFF",
+                v => v > 0.5, action: null),
+            Auto("PKC_WINGLT", "PARKING_CL", "Wing lights: OFF", "LIGHT_WING",
+                v => v < 0.5, action: null),
+            Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF", "FUELPUMP_FEEDTK1_MAIN",
+                v => v < 0.5, action: null),
         }
     };
 
