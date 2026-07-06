@@ -1,12 +1,531 @@
-using System.Collections.Generic;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
 
+using Item = Models.ChecklistItem<FbwA380ActionExecutor, FbwA380StateEvaluator>;
+using Group = Models.ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator>;
+using CheckFn = System.Func<FbwA380ActionExecutor, FbwA380StateEvaluator, System.Threading.Tasks.Task>;
+
 /// <summary>
-/// Checklist definitions for the FlyByWire A380 First Officer. Skeleton — populated in a later task.
+/// Data-driven FlyByWire A380 First-Officer checklist definitions — the STATE/ACTION layer
+/// that mirrors <see cref="FbwA380FlowDefinitions"/> 1:1. Every drivable flow step becomes an
+/// <c>Auto</c> item whose tick fires the SAME write the flow uses and whose auto-detect
+/// condition mirrors the flow's own Skip condition; every Captain flow step becomes a
+/// <see cref="Reminder"/>. Readback (*_CL) groups are added to <see cref="Build"/> by Task 7.
+///
+/// Every state item is RevertToState (live mirror), matching the Fenix/PMDG convention. State
+/// reads come from the SimConnect L:var cache via <see cref="FbwA380StateEvaluator"/> —
+/// OnRequest vars are polled by the FO window via OnRequestPollFields; an uncached var reads
+/// NaN (indeterminate: no tick, no revert).
 /// </summary>
 public static class FbwA380ChecklistDefinitions
 {
-    public static List<ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator>> Build() => new();
+    public static List<Group> Build() => new()
+    {
+        BuildCockpitPrep(),
+        BuildBeforeStart(),
+        BuildEngineStart(),
+        BuildAfterStart(),
+        BuildTaxi(),
+        BuildLineup(),
+        BuildAfterTakeoff(),
+        BuildClimb(),
+        BuildApproach(),
+        BuildLanding(),
+        BuildAfterLanding(),
+        BuildParking(),
+        // Readback (*_CL) groups are added in Build() by Task 7.
+    };
+
+    // -----------------------------------------------------------------------
+    // 1. Cockpit Preparation
+    // -----------------------------------------------------------------------
+    private static Group BuildCockpitPrep() => new()
+    {
+        Id = "COCKPIT_PREP", Name = "Cockpit Preparation",
+        Items = new()
+        {
+            Reminder("CP_WIPERS", "COCKPIT_PREP", "Wipers off"),
+            Auto("CP_GEAR", "COCKPIT_PREP", "Gear lever: DOWN", "A32NX_GEAR_HANDLE_POSITION",
+                v => v > 0.5, (e, _) => e.Set("A32NX_GEAR_HANDLE_POSITION", 1)),
+            Reminder("CP_FLAPS", "COCKPIT_PREP", "Flaps: confirm up"),
+            Auto("CP_SPOILERS", "COCKPIT_PREP", "Spoilers: disarmed", "A32NX_SPOILERS_ARMED",
+                v => v < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 0)),   // detect on real state, write the Act key
+            Auto("CP_PARKBRK", "COCKPIT_PREP", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
+                v => v > 0.5, (e, _) => e.Set("A32NX_PARK_BRAKE_LEVER_POS", 1)),
+            Reminder("CP_THROTTLES", "COCKPIT_PREP", "Confirm thrust levers idle"),
+            Auto("CP_ENGMODE", "COCKPIT_PREP", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
+            Multi("CP_MASTERS_OFF", "COCKPIT_PREP", "Engine masters 1 to 4: OFF",
+                "ENG_VALVE_SWITCH:1", v => v < 0.5,
+                new[] { "ENG_VALVE_SWITCH:2", "ENG_VALVE_SWITCH:3", "ENG_VALVE_SWITCH:4" },
+                async (e, _) =>
+                {
+                    await e.Set("ENG_VALVE_SWITCH:1", 0);
+                    await e.Set("ENG_VALVE_SWITCH:2", 0);
+                    await e.Set("ENG_VALVE_SWITCH:3", 0);
+                    await e.Set("ENG_VALVE_SWITCH:4", 0);
+                }),
+            Auto("CP_WXR", "COCKPIT_PREP", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 0)),
+            Auto("CP_BAT", "COCKPIT_PREP", "Batteries: ON", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
+                v => v > 0.5, new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO" },
+                async (e, _) => { await e.Set("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 1);
+                                  await e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1); }),
+            Reminder("CP_COCKPITLT", "COCKPIT_PREP", "Cockpit lights: set"),
+            Multi("CP_GPU", "COCKPIT_PREP", "Ground power: ON",
+                "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", v => v > 0.5,
+                new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
+                        "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 1);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 1);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 1);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 1);
+                }),
+            Reminder("CP_INSTRBRT", "COCKPIT_PREP", "Instrument brightness: high"),
+            Auto("CP_ADIRS", "COCKPIT_PREP", "ADIRS: NAV", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
+                v => Math.Abs(v - 1) < 0.5,
+                new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 1);
+                    await e.Set("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 1);
+                    await e.Set("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 1);
+                }),
+            Auto("CP_OXY", "COCKPIT_PREP", "Crew oxygen: ON", "PUSH_OVHD_OXYGEN_CREW",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 0)),
+            Reminder("CP_GNDCTL", "COCKPIT_PREP", "Ground control: on"),
+            Multi("CP_NAVLOGO", "COCKPIT_PREP", "Nav and logo lights: ON", "LIGHT_NAV", v => v > 0.5,
+                new[] { "LIGHT_LOGO" },
+                async (e, _) => { await e.Set("LIGHT_NAV", 1); await e.Set("LIGHT_LOGO", 1); }),
+            Auto("CP_SEATBELT", "COCKPIT_PREP", "Seatbelt signs: ON", "SEATBELT_SIGN",
+                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
+            Auto("CP_NOSMOKE", "COCKPIT_PREP", "No smoking signs: AUTO", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 1)),
+            Auto("CP_EMEREXIT", "COCKPIT_PREP", "Emergency exit lighting: ARM", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 1)),
+            Reminder("CP_LTSTEST", "COCKPIT_PREP", "Lights test"),
+            Auto("CP_WINGAI", "COCKPIT_PREP", "Wing anti-ice: OFF", "WING_ANTI_ICE_OVHD",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("WING_ANTI_ICE_OVHD", 0)),
+            Auto("CP_WINGLT", "COCKPIT_PREP", "Wing lights: OFF", "LIGHT_WING",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_WING", 0)),
+            Multi("CP_PACKS", "COCKPIT_PREP", "Packs: ON", "A32NX_OVHD_COND_PACK_1_PB_IS_ON", v => v > 0.5,
+                new[] { "A32NX_OVHD_COND_PACK_2_PB_IS_ON" },
+                async (e, _) => { await e.Set("A32NX_OVHD_COND_PACK_1_PB_IS_ON", 1);
+                                  await e.Set("A32NX_OVHD_COND_PACK_2_PB_IS_ON", 1); }),
+            Auto("CP_XBLEED", "COCKPIT_PREP", "Crossbleed: AUTO", "A32NX_KNOB_OVHD_AIRCOND_XBLEED_POSITION",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_KNOB_OVHD_AIRCOND_XBLEED_POSITION", 1)),
+            Auto("CP_PACKFLOW", "COCKPIT_PREP", "Pack flow: NORMAL", "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_POSITION",
+                v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_POSITION", 2)),
+            Multi("CP_HOTAIR", "COCKPIT_PREP", "Hot air: ON", "A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", v => v > 0.5,
+                new[] { "A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON" },
+                async (e, _) => { await e.Set("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1);
+                                  await e.Set("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1); }),
+            Reminder("CP_AIRTEMP", "COCKPIT_PREP", "Cabin temperature: set as required"),
+            Reminder("CP_FIRETEST", "COCKPIT_PREP", "Fire test: perform"),
+            Multi("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", "XMLVAR_Baro_Selector_HPA_1", v => v > 0.5,
+                new[] { "XMLVAR_Baro_Selector_HPA_2" },
+                async (e, _) => { await e.Set("XMLVAR_Baro_Selector_HPA_1", 1);
+                                  await e.Set("XMLVAR_Baro_Selector_HPA_2", 1); }),
+            Reminder("CP_ALTIMETERS", "COCKPIT_PREP", "Altimeters: set QNH"),
+            Auto("CP_ANTISKID", "COCKPIT_PREP", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE",
+                v => v > 0.5, (e, _) => e.Set("ANTISKID_BRAKES_ACTIVE", 1)),
+            Reminder("CP_ALTRPT", "COCKPIT_PREP", "Altitude reporting: on"),
+            Reminder("CP_TCASTRAFFIC", "COCKPIT_PREP", "TCAS traffic: all"),
+            Reminder("CP_TCASMODE", "COCKPIT_PREP", "TCAS mode: standby"),
+            Reminder("CP_XPDR", "COCKPIT_PREP", "Transponder: standby"),
+            Reminder("CP_WALKAROUND", "COCKPIT_PREP", "Exterior walk-around"),
+            Multi("CP_EFISMODE", "COCKPIT_PREP", "EFIS mode: ARC", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 3) < 0.5,
+                new[] { "A32NX_EFIS_R_ND_MODE" },
+                async (e, _) => { await e.Set("A32NX_EFIS_L_ND_MODE", 3); await e.Set("A32NX_EFIS_R_ND_MODE", 3); }),
+            Multi("CP_EFISRANGE", "COCKPIT_PREP", "EFIS range: 40", "A32NX_EFIS_L_ND_RANGE", v => Math.Abs(v - 3) < 0.5,
+                new[] { "A32NX_EFIS_R_ND_RANGE" },
+                async (e, _) => { await e.Set("A32NX_EFIS_L_ND_RANGE", 3); await e.Set("A32NX_EFIS_R_ND_RANGE", 3); }),
+            Multi("CP_FD", "COCKPIT_PREP", "Flight directors: ON", "FD_1_CTL", v => v > 0.5,
+                new[] { "FD_2_CTL" },
+                async (e, _) => { await e.Set("FD_1_CTL", 1); await e.Set("FD_2_CTL", 1); }),
+            Reminder("CP_CLOCK", "COCKPIT_PREP", "Clock: reset"),
+            Reminder("CP_ECAMPAGE", "COCKPIT_PREP", "ECAM page: door"),
+            Reminder("CP_IFR", "COCKPIT_PREP", "Obtain IFR clearance"),
+            Reminder("CP_PAYLOAD", "COCKPIT_PREP", "Load payload on the EFB"),
+            Reminder("CP_MCDU", "COCKPIT_PREP", "Program the MCDU"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 2. Before Start
+    // -----------------------------------------------------------------------
+    private static Group BuildBeforeStart() => new()
+    {
+        Id = "BEFORE_START", Name = "Before Start",
+        Items = new()
+        {
+            Auto("BS_COCKPITDOOR", "BEFORE_START", "Cockpit door: LOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
+                v => v > 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 1)),
+            ActionManual("BS_FCUSPD", "BEFORE_START", "FCU speed: managed",
+                (e, _) => e.Set("FCU_PUSH_SPEED", 1)),
+            ActionManual("BS_FCUHDG", "BEFORE_START", "FCU heading: managed",
+                (e, _) => e.Set("FCU_PUSH_HEADING", 1)),
+            Reminder("BS_ALT", "BEFORE_START", "Set cleared altitude on the FCU"),
+            ActionManual("BS_FCUALT", "BEFORE_START", "FCU altitude: pushed",
+                (e, _) => e.Set("FCU_PUSH_ALT", 1)),
+            Reminder("BS_ECAMPAGE", "BEFORE_START", "ECAM page: APU"),
+            Auto("BS_APU", "BEFORE_START", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1)),
+            Auto("BS_APUBLEED", "BEFORE_START", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
+            Multi("BS_GPU_OFF", "BEFORE_START", "Ground power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON",
+                v => v < 0.5,
+                new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
+                        "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0);
+                }),
+            Reminder("BS_GPU_DISC", "BEFORE_START", "Disconnect ground power on the EFB"),
+            Multi("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ON", "FUELPUMP_FEEDTK1_MAIN", v => v > 0.5,
+                new[]
+                {
+                    "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
+                    "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+                },
+                async (e, _) =>
+                {
+                    await e.Set("FUELPUMP_FEEDTK1_MAIN", 1);
+                    await e.Set("FUELPUMP_FEEDTK1_STBY", 1);
+                    await e.Set("FUELPUMP_FEEDTK2_MAIN", 1);
+                    await e.Set("FUELPUMP_FEEDTK2_STBY", 1);
+                    await e.Set("FUELPUMP_FEEDTK3_MAIN", 1);
+                    await e.Set("FUELPUMP_FEEDTK3_STBY", 1);
+                    await e.Set("FUELPUMP_FEEDTK4_MAIN", 1);
+                    await e.Set("FUELPUMP_FEEDTK4_STBY", 1);
+                }),
+            Auto("BS_BEACON", "BEFORE_START", "Beacon lights: ON", "LIGHT_BEACON",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_BEACON", 1)),
+            Reminder("BS_THROTTLES", "BEFORE_START", "Confirm thrust levers idle"),
+            Auto("BS_PARKBRK", "BEFORE_START", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
+                v => v > 0.5, (e, _) => e.Set("A32NX_PARK_BRAKE_LEVER_POS", 1)),
+            Reminder("BS_XPDR", "BEFORE_START", "Transponder: set for departure"),
+            Reminder("BS_TCAS", "BEFORE_START", "TCAS mode: TA/RA"),
+            Reminder("BS_TAXICLR", "BEFORE_START", "Obtain taxi clearance"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
+            Reminder("BS_MCDUPERF", "BEFORE_START", "Program the MCDU PERF page"),
+            Reminder("BS_TRIM", "BEFORE_START", "Set trim"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 3. Engine Start
+    // -----------------------------------------------------------------------
+    private static Group BuildEngineStart() => new()
+    {
+        Id = "ENGINE_START", Name = "Engine Start",
+        Items = new()
+        {
+            Reminder("ES_ECAMPAGE", "ENGINE_START", "ECAM page: engine"),
+            Auto("ES_APUBLEED", "ENGINE_START", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
+            Auto("ES_ENGMODE", "ENGINE_START", "Engine mode: IGN", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 2)),
+            Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: START", "ENG_VALVE_SWITCH:1",
+                v => v > 0.5, (e, _) => e.Set("ENG_VALVE_SWITCH:1", 1)),
+            Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: START", "ENG_VALVE_SWITCH:2",
+                v => v > 0.5, (e, _) => e.Set("ENG_VALVE_SWITCH:2", 1)),
+            Auto("ES_ENG3", "ENGINE_START", "Engine 3 master: START", "ENG_VALVE_SWITCH:3",
+                v => v > 0.5, (e, _) => e.Set("ENG_VALVE_SWITCH:3", 1)),
+            Auto("ES_ENG4", "ENGINE_START", "Engine 4 master: START", "ENG_VALVE_SWITCH:4",
+                v => v > 0.5, (e, _) => e.Set("ENG_VALVE_SWITCH:4", 1)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 4. After Start
+    // -----------------------------------------------------------------------
+    private static Group BuildAfterStart() => new()
+    {
+        Id = "AFTER_START", Name = "After Start",
+        Items = new()
+        {
+            Auto("AS_ENGMODE", "AFTER_START", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
+            Reminder("AS_WINGAI", "AFTER_START", "Wing anti-ice: set as required"),
+            Reminder("AS_ENGAI", "AFTER_START", "Engine anti-ice: set as required"),
+            Reminder("AS_ECAMPAGE", "AFTER_START", "ECAM page: APU"),
+            Auto("AS_APU_OFF", "AFTER_START", "APU: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
+            Auto("AS_APUBLEED_OFF", "AFTER_START", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
+            Auto("AS_NOSE_TAXI", "AFTER_START", "Nose lights: TAXI", "LIGHT_TAXI_OVHD",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 1)),
+            Reminder("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off"),
+            Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
+            ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET",
+                (e, _) => e.Set("A32NX_RUDDER_TRIM_RESET", 1)),
+            Reminder("AS_FLAPS", "AFTER_START", "Flaps: set for takeoff"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 5. Taxi
+    // -----------------------------------------------------------------------
+    private static Group BuildTaxi() => new()
+    {
+        Id = "TAXI", Name = "Taxi",
+        Items = new()
+        {
+            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED",
+                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1)),
+            Auto("TX_ENGMODE", "TAXI", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
+            Auto("TX_WXR", "TAXI", "Weather radar: ON", "XMLVAR_A320_WeatherRadar_Sys",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 1)),
+            Auto("TX_PWS", "TAXI", "Predictive windshear: ON", "A32NX_SWITCH_RADAR_PWS_Position",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_Position", 1)),
+            Reminder("TX_FLAPS", "TAXI", "Flaps: set for takeoff"),
+            Reminder("TX_ECAMPAGE", "TAXI", "ECAM page: flight controls"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 6. Lineup
+    // -----------------------------------------------------------------------
+    private static Group BuildLineup() => new()
+    {
+        Id = "LINEUP", Name = "Lineup",
+        Items = new()
+        {
+            Reminder("LU_TCAS", "LINEUP", "TCAS mode: TA/RA"),
+            Reminder("LU_PACKS", "LINEUP", "Packs: set for takeoff as required"),
+            Auto("LU_STROBE", "LINEUP", "Strobe lights: ON", "LIGHT_STROBE",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_STROBE", 1)),
+            Auto("LU_LANDING", "LINEUP", "Landing and nose lights: ON", "LIGHT_LANDING",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_LANDING", 1)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 7. After Takeoff
+    // -----------------------------------------------------------------------
+    private static Group BuildAfterTakeoff() => new()
+    {
+        Id = "AFTER_TAKEOFF", Name = "After Takeoff",
+        Items = new()
+        {
+            Auto("AT_SPOILERS_DISARM", "AFTER_TAKEOFF", "Spoilers: DISARM", "A32NX_SPOILERS_ARMED",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 0)),
+            Auto("AT_NOSE_TAXI", "AFTER_TAKEOFF", "Nose lights: TAXI", "LIGHT_TAXI_OVHD",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 1)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 8. Climb
+    // -----------------------------------------------------------------------
+    private static Group BuildClimb() => new()
+    {
+        Id = "CLIMB", Name = "Climb",
+        Items = new()
+        {
+            Auto("CL_AUTOBRAKE", "CLIMB", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
+            Auto("CL_SEATBELTS", "CLIMB", "Seatbelt signs: ON", "SEATBELT_SIGN",
+                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 9. Approach
+    // -----------------------------------------------------------------------
+    private static Group BuildApproach() => new()
+    {
+        Id = "APPROACH", Name = "Approach",
+        Items = new()
+        {
+            Reminder("AP_AUTOBRAKE", "APPROACH", "Autobrake: set for landing"),
+            Auto("AP_SEATBELTS", "APPROACH", "Seatbelt signs: ON", "SEATBELT_SIGN",
+                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
+            Multi("AP_EFISMODE", "APPROACH", "EFIS mode: ILS", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 0) < 0.5,
+                new[] { "A32NX_EFIS_R_ND_MODE" },
+                async (e, _) => { await e.Set("A32NX_EFIS_L_ND_MODE", 0); await e.Set("A32NX_EFIS_R_ND_MODE", 0); }),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 10. Landing
+    // -----------------------------------------------------------------------
+    private static Group BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Items = new()
+        {
+            Reminder("LD_MISSEDALT", "LANDING", "Set missed approach altitude"),
+            Auto("LD_SPOILERS_ARM", "LANDING", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 11. After Landing
+    // -----------------------------------------------------------------------
+    private static Group BuildAfterLanding() => new()
+    {
+        Id = "AFTER_LANDING", Name = "After Landing",
+        Items = new()
+        {
+            Auto("AL_WXR_OFF", "AFTER_LANDING", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 0)),
+            Auto("AL_PWS_OFF", "AFTER_LANDING", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_Position",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_Position", 0)),
+            Auto("AL_ENGMODE", "AFTER_LANDING", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
+            Reminder("AL_TCAS", "AFTER_LANDING", "TCAS mode: standby"),
+            Reminder("AL_FLAPS_UP", "AFTER_LANDING", "Flaps: up"),
+            Auto("AL_APU", "AFTER_LANDING", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1)),
+            Multi("AL_ENGAI_OFF", "AFTER_LANDING", "Engine anti-ice: OFF", "ENG1_ANTI_ICE", v => Math.Abs(v - 0) < 0.5,
+                new[] { "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE" },
+                async (e, _) =>
+                {
+                    await e.Set("ENG1_ANTI_ICE", 0);
+                    await e.Set("ENG2_ANTI_ICE", 0);
+                    await e.Set("ENG3_ANTI_ICE", 0);
+                    await e.Set("ENG4_ANTI_ICE", 0);
+                }),
+            Auto("AL_WINGAI_OFF", "AFTER_LANDING", "Wing anti-ice: OFF", "WING_ANTI_ICE_OVHD",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("WING_ANTI_ICE_OVHD", 0)),
+            Auto("AL_SPOILERS_OFF", "AFTER_LANDING", "Spoilers: OFF", "A32NX_SPOILERS_ARMED",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 0)),
+            Auto("AL_LANDING_OFF", "AFTER_LANDING", "Landing lights: OFF", "LIGHT_LANDING",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_LANDING", 0)),
+            Auto("AL_STROBE_OFF", "AFTER_LANDING", "Strobe lights: OFF", "LIGHT_STROBE",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_STROBE", 0)),
+            Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose lights: TAXI", "LIGHT_TAXI_OVHD",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 1)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 12. Parking
+    // -----------------------------------------------------------------------
+    private static Group BuildParking() => new()
+    {
+        Id = "PARKING", Name = "Parking",
+        Items = new()
+        {
+            Auto("PK_PARKBRK", "PARKING", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
+                v => v > 0.5, (e, _) => e.Set("A32NX_PARK_BRAKE_LEVER_POS", 1)),
+            Multi("PK_APU_GEN", "PARKING", "APU generators: ON", "ELEC_APU_GEN:1", v => v > 0.5,
+                new[] { "ELEC_APU_GEN:2" },
+                async (e, _) => { await e.Set("ELEC_APU_GEN:1", 1); await e.Set("ELEC_APU_GEN:2", 1); }),
+            Multi("PK_MASTERS_OFF", "PARKING", "Engine masters 1 to 4: OFF", "ENG_VALVE_SWITCH:1", v => v < 0.5,
+                new[] { "ENG_VALVE_SWITCH:2", "ENG_VALVE_SWITCH:3", "ENG_VALVE_SWITCH:4" },
+                async (e, _) =>
+                {
+                    await e.Set("ENG_VALVE_SWITCH:1", 0);
+                    await e.Set("ENG_VALVE_SWITCH:2", 0);
+                    await e.Set("ENG_VALVE_SWITCH:3", 0);
+                    await e.Set("ENG_VALVE_SWITCH:4", 0);
+                }),
+            Reminder("PK_COCKPITLT", "PARKING", "Cockpit lights: set"),
+            Auto("PK_BEACON_OFF", "PARKING", "Beacon lights: OFF", "LIGHT_BEACON",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_BEACON", 0)),
+            Auto("PK_WINGLT_OFF", "PARKING", "Wing lights: OFF", "LIGHT_WING",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_WING", 0)),
+            Auto("PK_NOSE_OFF", "PARKING", "Nose lights: OFF", "LIGHT_TAXI_OVHD",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 0)),
+            Multi("PK_ENGAI_OFF", "PARKING", "Engine anti-ice: OFF", "ENG1_ANTI_ICE", v => Math.Abs(v - 0) < 0.5,
+                new[] { "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE" },
+                async (e, _) =>
+                {
+                    await e.Set("ENG1_ANTI_ICE", 0);
+                    await e.Set("ENG2_ANTI_ICE", 0);
+                    await e.Set("ENG3_ANTI_ICE", 0);
+                    await e.Set("ENG4_ANTI_ICE", 0);
+                }),
+            Auto("PK_WINGAI_OFF", "PARKING", "Wing anti-ice: OFF", "WING_ANTI_ICE_OVHD",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("WING_ANTI_ICE_OVHD", 0)),
+            Auto("PK_APUBLEED", "PARKING", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
+            Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", "FUELPUMP_FEEDTK1_MAIN", v => v < 0.5,
+                new[]
+                {
+                    "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
+                    "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+                },
+                async (e, _) =>
+                {
+                    await e.Set("FUELPUMP_FEEDTK1_MAIN", 0);
+                    await e.Set("FUELPUMP_FEEDTK1_STBY", 0);
+                    await e.Set("FUELPUMP_FEEDTK2_MAIN", 0);
+                    await e.Set("FUELPUMP_FEEDTK2_STBY", 0);
+                    await e.Set("FUELPUMP_FEEDTK3_MAIN", 0);
+                    await e.Set("FUELPUMP_FEEDTK3_STBY", 0);
+                    await e.Set("FUELPUMP_FEEDTK4_MAIN", 0);
+                    await e.Set("FUELPUMP_FEEDTK4_STBY", 0);
+                }),
+            Auto("PK_SEATBELTS_OFF", "PARKING", "Seatbelt signs: OFF", "SEATBELT_SIGN",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("SEATBELT_SIGN", 0)),
+            Reminder("PK_XPDR", "PARKING", "Transponder: standby"),
+            Reminder("PK_TCAS", "PARKING", "TCAS mode: standby"),
+            Auto("PK_COCKPITDOOR", "PARKING", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 0)),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Item builders (mirror the Fenix file's helpers, retyped to FbwA380ActionExecutor/FbwA380StateEvaluator)
+    // -----------------------------------------------------------------------
+
+    private static Item Auto(string id, string groupId, string label,
+        string field, Func<double, bool> condition,
+        string[]? additionalFields, CheckFn? action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.AutoDetectable,
+        AutoCompleteAllowed = true,
+        ManualCompletionAllowed = true,
+        StateFieldName = field,
+        StateCondition = condition,
+        RevertBehavior = RevertBehavior.RevertToState,
+        AdditionalStateFields = additionalFields ?? Array.Empty<string>(),
+        AdditionalStateCondition = condition,
+        CheckAction = action,
+    };
+
+    private static Item Auto(string id, string groupId, string label,
+        string field, Func<double, bool> condition, CheckFn? action) =>
+        Auto(id, groupId, label, field, condition, null, action);
+
+    private static Item Multi(string id, string groupId, string label,
+        string primaryField, Func<double, bool> condition,
+        string[] additionalFields, CheckFn action) =>
+        Auto(id, groupId, label, primaryField, condition, additionalFields, action);
+
+    private static Item ActionManual(string id, string groupId, string label, CheckFn action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.Actionable,
+        ManualCompletionAllowed = true,
+        CheckAction = action,
+    };
+
+    private static Item Reminder(string id, string groupId, string text) => new()
+    {
+        Id = id, GroupId = groupId, Label = text,
+        Type = ChecklistItemType.CaptainReminder,
+        ManualCompletionAllowed = true,
+        ReminderText = text,
+    };
+
+    private static Item Info(string id, string groupId, string text) => new()
+    {
+        Id = id, GroupId = groupId, Label = text,
+        Type = ChecklistItemType.Informational,
+    };
 }
