@@ -521,12 +521,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "None", [1] = "Icing" });
 
         // ---- FIRE ----
+        // Each fire pushbutton sits under a GUARD (a hinged clear cover) that must be
+        // lifted to reach the button. The guard position is a real cockpit switch
+        // (A380X_OVHD_{ENGn,APU}_FIRE_GUARD, 0=Closed/1=Open — live-verified settable +
+        // held), exposed for completeness (no-omissions pass).
+        var fireGuardSw = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
         for (int n = 1; n <= 4; n++)
         {
+            Sel($"A380X_OVHD_ENG{n}_FIRE_GUARD", $"Engine {n} Fire Button Guard", fireGuardSw);
             Press($"A32NX_FIRE_BUTTON_ENG{n}", $"Engine {n} Fire Button");
             Mon($"A32NX_FIRE_DETECTED_ENG{n}", $"Engine {n} Fire",
                 new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
         }
+        Sel("A380X_OVHD_APU_FIRE_GUARD", "APU Fire Button Guard", fireGuardSw);
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
@@ -781,6 +788,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ENTERTAINMENT_CWS_OFF", "Cabin Crew Entertainment", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         Sel("A32NX_ENTERTAINMENT_IFEC_OFF", "Passenger Entertainment (IFE)", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
+        // ---- No-omissions completeness pass (2026-07, user request): every remaining
+        // pilot-operable A380 cockpit switch. All live-verified settable + held via the
+        // calculator path (the generic SetLVar / OVHD catch-all drives them).
+        OnOff("A380X_SWITCH_LAPTOP_POWER_LEFT", "Laptop Power (Capt)");
+        OnOff("A380X_SWITCH_LAPTOP_POWER_RIGHT", "Laptop Power (F/O)");
+        Sel("A32NX_SWITCH_DOORPANEL_LOCK", "Door Panel Lock",
+            new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" });
+        // ELT + Data Loading System are modelled but INOP on the FBW build — the switch
+        // holds its position (live-verified) but there is no working system behind it.
+        OnOff("A32NX_ELT_ON", "Emergency Locator Transmitter (inop)");
+        OnOff("A32NX_DLS_ON", "Data Loading System (inop)");
+        // Rain repellent (Capt/F/O) — momentary hold buttons; INOP on this build.
+        Btn("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent (Capt) (inop)");
+        Btn("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent (F/O) (inop)");
+        // Visual model toggles — hide/show cockpit objects. No system effect (purely
+        // cosmetic), but they are real cockpit-model switches, so exposed for
+        // completeness. Live-verified settable + held.
+        var shownHidden = new Dictionary<double, string> { [0] = "Shown", [1] = "Hidden" };
+        Sel("A380X_CABIN_HIDDEN", "Cabin Model", shownHidden);
+        Sel("A380X_CPT_SIDESTICK_HIDDEN", "Captain Sidestick Model", shownHidden);
+        Sel("A380X_FO_SIDESTICK_HIDDEN", "First Officer Sidestick Model", shownHidden);
+        Sel("A380X_CPT_EFB_HIDDEN", "Captain EFB Model", shownHidden);
+        Sel("A380X_FO_EFB_HIDDEN", "First Officer EFB Model", shownHidden);
         // Chronometer start/stop + reset (the glareshield CHRONO push). #107 gap.
         // Momentary actions driven by H-EVENTS (the FBW Clock subscribes to the
         // hEvent, NOT the L:var — writing the L:var does nothing). Rendered as push-
@@ -2860,8 +2890,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Fire"] = new List<string>
         {
-            "A32NX_FIRE_BUTTON_ENG1", "A32NX_FIRE_BUTTON_ENG2", "A32NX_FIRE_BUTTON_ENG3",
-            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU",
+            "A380X_OVHD_ENG1_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG1",
+            "A380X_OVHD_ENG2_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG2",
+            "A380X_OVHD_ENG3_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG3",
+            "A380X_OVHD_ENG4_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG4",
+            "A380X_OVHD_APU_FIRE_GUARD", "A32NX_FIRE_BUTTON_APU",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_1_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_1_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_2_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_2_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_3_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_3_IS_PRESSED",
@@ -2918,7 +2951,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD",
             // Armrest STOW toggles (fold the armrest away) — 2024-native-rebuild additions.
             "BIGARMREST_CPT_STOW", "BIGARMREST_FO_STOW",
-            "SMALLARMREST_CPT_STOW", "SMALLARMREST_FO_STOW"
+            "SMALLARMREST_CPT_STOW", "SMALLARMREST_FO_STOW",
+            // ---- Laptops / access-panel lock / visual model toggles (completeness pass) ----
+            "A380X_SWITCH_LAPTOP_POWER_LEFT", "A380X_SWITCH_LAPTOP_POWER_RIGHT",
+            "A32NX_SWITCH_DOORPANEL_LOCK",
+            "A380X_CABIN_HIDDEN", "A380X_CPT_SIDESTICK_HIDDEN", "A380X_FO_SIDESTICK_HIDDEN",
+            "A380X_CPT_EFB_HIDDEN", "A380X_FO_EFB_HIDDEN"
         };
         p["Signs"] = new List<string>
         {
@@ -2961,6 +2999,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // ENGMANSTARTALTN moved to the "Engine FADEC and Manual Start" overhead panel.
             "A32NX_ENTERTAINMENT_CWS_OFF",
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
+            // Completeness pass — ELT + DLS (inop but present), rain repellent (inop).
+            "A32NX_ELT_ON", "A32NX_DLS_ON",
+            "A32NX_RAIN_REPELLENT_LEFT_ON", "A32NX_RAIN_REPELLENT_RIGHT_ON",
         };
         // VHF-only — the non-VHF audio channels were dead L:vars (unmodelled by FBW),
         // pruned 2026-06-13. See the OnOff/Slider block above for the full rationale.
