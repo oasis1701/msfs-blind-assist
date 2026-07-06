@@ -6482,7 +6482,13 @@ public partial class MainForm : Form
             // instant the user moves from the page combo onto it to read.
             displayList.GotFocus += (s2, e2) =>
             {
-                try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+                try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); }
+                catch (Exception ex)
+                {
+                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                    // a known confusing-bug shape for this codebase (values that "never move").
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (GotFocus) failed for panel '{currentPanel}': {ex.Message}");
+                }
             };
 
             refreshButton.Click += async (s2, e2) =>
@@ -6519,7 +6525,13 @@ public partial class MainForm : Form
                 // it, so WITHOUT this call a manual F5 / Refresh re-printed the SAME stale
                 // snapshot and values like "FOB 13400 KG" never moved. Fire-and-forget: it
                 // pushes its own UpdateDisplayText when the fresh read completes (~0.6s).
-                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); }
+                catch (Exception ex)
+                {
+                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                    // a known confusing-bug shape for this codebase (values that "never move").
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (Refresh) failed for panel '{currentPanel}': {ex.Message}");
+                }
 
                 // Request all values. forceUpdate=true bypasses the
                 // ProcessIndividualVariableResponse suppression that drops
@@ -6572,7 +6584,13 @@ public partial class MainForm : Form
             // Auto-populate a multi-page status box (e.g. the SD-page combo) with the
             // combo's CURRENT page, so the user doesn't have to cycle it to get content
             // on first display. No-op for panels without such a box.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); } catch { }
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); }
+            catch (Exception ex)
+            {
+                // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                // a known confusing-bug shape for this codebase (values that "never move").
+                System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (initial show) failed for panel '{currentPanel}': {ex.Message}");
+            }
 
             // Start (or stop) the live status-box auto-refresh for THIS panel. Only panels
             // that actually built a status display (have a "_REFRESH_" button) get the timer;
@@ -6726,7 +6744,13 @@ public partial class MainForm : Form
             // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
             //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
             //     which drives UpdateDisplayText -> the list updates its changed rows in place.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); }
+            catch (Exception ex)
+            {
+                // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                // a known confusing-bug shape for this codebase (values that "never move").
+                System.Diagnostics.Debug.WriteLine($"[MainForm] OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
+            }
 
             // (b) Force-read the panel's own display vars so the cache is fresh (covers the
             //     non-override panels whose display vars ARE the content). Each force-read response

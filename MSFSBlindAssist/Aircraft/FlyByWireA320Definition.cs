@@ -8287,7 +8287,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private static void DeferReadback(Action readback)
     {
         _ = System.Threading.Tasks.Task.Run(async () =>
-        { try { await System.Threading.Tasks.Task.Delay(300); readback(); } catch { } });
+        {
+            try { await System.Threading.Tasks.Task.Delay(300); readback(); }
+            catch (Exception ex)
+            {
+                // A throw here silently drops the spoken confirmation for a user FCU
+                // set/push/pull — the pilot gets no feedback at all with no diagnostic trail.
+                System.Diagnostics.Debug.WriteLine($"[FlyByWireA320Definition] DeferReadback failed: {ex.Message}");
+            }
+        });
     }
 
     // Public readout wrappers (the windows call these on open + after a push/pull).
