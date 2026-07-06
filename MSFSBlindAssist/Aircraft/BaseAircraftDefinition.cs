@@ -709,4 +709,40 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 System.Windows.Forms.MessageBoxIcon.Error);
         }
     }
+
+    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
+    // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
+    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
+    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
+    // keep live windows (and the E/WD window's refresh timer) running against the
+    // new aircraft.
+    private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
+
+    protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
+    {
+        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed) { show((T)existing); return; }
+        var form = factory();
+        _trackedWindows[typeof(T)] = form;
+        form.FormClosed += (s, _) =>
+        {
+            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
+                _trackedWindows.Remove(typeof(T));
+        };
+        show(form);
+    }
+
+    protected void DisposeTrackedWindows()
+    {
+        foreach (var f in _trackedWindows.Values.ToList())
+        {
+            try
+            {
+                if (f.IsDisposed) continue;
+                if (f.IsHandleCreated) f.Close();
+                if (!f.IsDisposed) f.Dispose();
+            }
+            catch { /* best-effort teardown on aircraft swap */ }
+        }
+        _trackedWindows.Clear();
+    }
 }
