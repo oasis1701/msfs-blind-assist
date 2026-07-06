@@ -105,7 +105,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsGpuOn()          => IsOn("FO_GPU_ON");
     public int  StandbyPower()     => (int)Math.Round(GetValue("ELEC_StandbyPowerSelector")); // 0=BAT,1=OFF,2=AUTO
     public int  ApuSelector()      => (int)Math.Round(GetValue("APU_Selector"));              // 0=OFF,1=ON,2=START
-    public bool IsApuRunning()     => ApuSelector() == 1; // START springs back to ON when available
+    // EGT-based "APU running": the selector position only proves where the switch is (it
+    // reads ON the moment the flow sets it). A running/starting APU holds EGT well above
+    // ambient; cold reads near ambient. Threshold verified in-sim (test plan) — tune here.
+    public const double ApuRunningEgt = 100;
+    public double ApuEgt()         => GetValue("APU_EGTNeedle");
+    public bool IsApuRunning()     => ApuEgt() >= ApuRunningEgt;
 
     // -----------------------------------------------------------------------
     // Fuel + engine start levers (Run derived from the valve annunciator byte; <0.5 == open/Run)

@@ -142,11 +142,31 @@ public static class PMDG737FlowDefinitions
         {
             Captain("BS_MCP", "Set MCP airspeed, heading and initial altitude."),
             // APU start: ON → dwell → momentary START. A direct write to START (skipping ON)
-            // does not spool the APU up. START springs back to ON when self-sustaining.
-            SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
-            Wait("BS_APU_DWELL", "APU spinning up before start", 2),
-            SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
-            WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line", "APU_Selector", v => Math.Abs(v - 1) < 0.1, 90),
+            // does not spool the APU up. Each command step skips when the APU is already
+            // running (EGT-based), so a flow re-run never re-commands a running APU.
+            Skip(SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
+                s => s.IsApuRunning()),
+            Skip(Wait("BS_APU_DWELL", "APU spinning up before start", 2),
+                s => s.IsApuRunning()),
+            Skip(SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
+                s => s.IsApuRunning()),
+            // Starter cutout: START springs back to ON. Stop policy — if the APU never
+            // starts, abort the flow HERE, before the generator transfer and ground-power
+            // drop below. Re-run safe: with the APU already started the selector reads ON
+            // and this passes instantly.
+            WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line", "APU_Selector",
+                v => Math.Abs(v - 1) < 0.1, 90, onTimeout: FlowStepFailurePolicy.Stop),
+            // Generator availability: the blue APU GEN OFF BUS annunciator lights only once
+            // the generator is up and able to take a bus — strictly LATER than starter
+            // cutout, which happens while the APU is still spooling. Deliberately Skip, not
+            // Stop: "light off" also reads 0 when the APU is ALREADY powering the buses
+            // (re-run after a completed transfer), and no stateless NG3 signal separates
+            // that from "generator not up yet" at the moment this step is reached — a
+            // running-and-light-off SkipCondition would skip the gate in the normal
+            // just-past-cutout case. A post-transfer re-run costs one announced 30 s
+            // timeout, then everything below no-ops.
+            WaitForField("BS_APU_GEN_AVAIL", "Waiting for the APU generator",
+                "ELEC_annunAPU_GEN_OFF_BUS", v => v > 0.5, 30),
             // Transfer the electrical load to the APU: the 737's APU GEN switches are
             // momentary bus-transfer buttons that must be pressed AFTER the APU is on
             // line (unlike the 777, whose gen switch is armed during preflight). Then
