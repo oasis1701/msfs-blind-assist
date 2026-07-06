@@ -745,4 +745,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
         _trackedWindows.Clear();
     }
+
+    // Momentary L:var pulse: write 1 then auto-release to 0 (~250 ms) via the calc path so the
+    // systems logic latches on the rising edge; announce the press. Callers keep their own guard.
+    protected void PulseMomentaryLVar(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, string varKey, string displayName)
+    {
+        simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try { await System.Threading.Tasks.Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); }
+            catch { /* best-effort auto-release */ }
+        });
+        announcer.Announce($"{displayName} pressed");
+    }
 }

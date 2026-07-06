@@ -8072,12 +8072,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             if (value > 0.5)
             {
-                simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
-                _ = System.Threading.Tasks.Task.Run(async () =>
-                {
-                    try { await System.Threading.Tasks.Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
-                });
-                announcer.Announce($"{varDef.DisplayName} pressed");
+                PulseMomentaryLVar(simConnect, announcer, varKey, varDef.DisplayName);
             }
             return true;
         }

@@ -4553,12 +4553,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // "Off" does nothing (the pulse already returned the var to 0).
             if (value > 0.5)
             {
-                simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
-                _ = Task.Run(async () =>
-                {
-                    try { await Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
-                });
-                announcer.Announce($"{varDef.DisplayName} pressed");
+                PulseMomentaryLVar(simConnect, announcer, varKey, varDef.DisplayName);
             }
             return true;
         }
