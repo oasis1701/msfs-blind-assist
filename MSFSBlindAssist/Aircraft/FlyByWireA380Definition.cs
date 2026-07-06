@@ -1328,16 +1328,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         // Register every decoded SD-page row var (A380SdRows) OnRequest so the ECAM-CP
         // "System Display Page" combo can read it (RequestVariable no-ops on any
-        // unregistered var). Most A380SdRows vars are L:vars (underscore identifiers),
-        // but DON'T blindly register everything as an L:var — a stock SimVar name
-        // (contains a space or colon, e.g. "INTERACTIVE POINT OPEN:0") MUST register as
-        // a SimVar: forcing a stock-SimVar name through the L:var/MobiFlight path
-        // corrupts SimConnect registration and breaks aircraft detection.
+        // unregistered var). Classify by PREFIX, not by space/colon (matching the
+        // EisDisplayVars loop above): a stock SimVar never carries an FBW prefix, so
+        // "INTERACTIVE POINT OPEN:0" / "LIGHT TAXI:2" register as SimVar (forcing a
+        // stock name through the L:var path corrupts registration + breaks detection).
+        // But a colon-INDEXED FBW L:var — "A32NX_FUEL_USED:1", "A32NX_AUTOTHRUST_TLA:1"
+        // — is a real L:var: the old "any colon = SimVar" rule read it as a nonexistent
+        // stock SimVar (0), which is exactly why the SD Fuel/Cruise pages showed
+        // Engine 1-4 fuel used with NO value (live: the L:var reads ~38,700 kg, the
+        // stock read 0). Prefix classification keeps stock names on the SimVar path
+        // AND lets indexed FBW L:vars read correctly.
         for (int sdPage = 0; sdPage <= 13; sdPage++)
             foreach (var (_, rowVar, _) in A380SdRows(sdPage))
                 if (!vars.ContainsKey(rowVar))
                 {
-                    bool isStock = rowVar.Contains(' ') || rowVar.Contains(':');
+                    bool isStock = !rowVar.StartsWith("A32NX_", StringComparison.Ordinal)
+                                   && !rowVar.StartsWith("A380X_", StringComparison.Ordinal)
+                                   && !rowVar.StartsWith("FBW_", StringComparison.Ordinal);
                     vars[rowVar] = new SimVarDefinition
                     {
                         Name = rowVar, DisplayName = rowVar,
