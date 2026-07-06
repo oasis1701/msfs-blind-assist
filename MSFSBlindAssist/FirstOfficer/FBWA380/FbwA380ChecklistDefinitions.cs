@@ -181,8 +181,20 @@ public static class FbwA380ChecklistDefinitions
             ActionManual("BS_FCUALT", "BEFORE_START", "FCU altitude: pushed",
                 (e, _) => e.Set("FCU_PUSH_ALT", 1)),
             Reminder("BS_ECAMPAGE", "BEFORE_START", "ECAM page: APU"),
+            // Master alone does not start the FBW APU — the tick also presses the START
+            // PB (unless AVAIL is already lit). Auto-detect stays master-based; the
+            // checklist is pilot-paced, so there is no inline AVAIL wait (the After Start
+            // flow's AS_APU_START_OFF step releases a still-latched START PB).
             Auto("BS_APU", "BEFORE_START", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
-                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1)),
+                v => v > 0.5, async (e, s) =>
+                {
+                    await e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1);
+                    if (!s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE"))
+                    {
+                        await System.Threading.Tasks.Task.Delay(3000);
+                        await e.Set("A32NX_OVHD_APU_START_PB_IS_ON", 1);
+                    }
+                }),
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
             Multi("BS_GPU_OFF", "BEFORE_START", "Ground power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON",
@@ -401,8 +413,17 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
             Reminder("AL_TCAS", "AFTER_LANDING", "TCAS mode: standby"),
             Reminder("AL_FLAPS_UP", "AFTER_LANDING", "Flaps: up"),
+            // Same master → dwell → START press as the Before Start item.
             Auto("AL_APU", "AFTER_LANDING", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
-                v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1)),
+                v => v > 0.5, async (e, s) =>
+                {
+                    await e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1);
+                    if (!s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE"))
+                    {
+                        await System.Threading.Tasks.Task.Delay(3000);
+                        await e.Set("A32NX_OVHD_APU_START_PB_IS_ON", 1);
+                    }
+                }),
             // Engine anti-ice: ENGn_ANTI_ICE are write-only Act() keys (no backing
             // L:var — reading them returns a stale 0). Detect on the stock readout
             // ENG_ANTI_ICE:n (ENG ANTI ICE:n) instead; keep writing the Act keys.
