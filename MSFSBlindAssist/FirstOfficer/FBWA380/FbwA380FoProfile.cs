@@ -55,7 +55,7 @@ public sealed class FbwA380FoProfile : IFoProfile<FbwA380ActionExecutor, FbwA380
         {
             AutoGearUpEnabled   = s.FOAutoGearUpEnabled,
             AutoGearDownEnabled = s.FOAutoGearDownEnabled,
-            AutoFlapsEnabled    = s.FOAutoFlapsEnabled,   // stored; FBW A380 manager never acts on it
+            AutoFlapsEnabled    = s.FOAutoFlapsEnabled,   // speed-scheduled extension/retraction (takeoff setting stays a Captain item)
             AutoApEnabled       = s.FOAutoApEnabled,
         };
 
