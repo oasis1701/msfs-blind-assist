@@ -398,6 +398,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         {
             if (lat.HasValue && lon.HasValue)
             {
+                // NOT a Task/blocking call: GetTimeZone is synchronous and returns a
+                // TimeZoneResult struct whose .Result property is the primary IANA id
+                // (.Alternatives holds any others) — this is not async-Task.Result.
                 string ianaId = GeoTimeZone.TimeZoneLookup.GetTimeZone(lat.Value, lon.Value).Result;
                 if (!string.IsNullOrEmpty(ianaId)
                     && TimeZoneConverter.TZConvert.TryGetTimeZoneInfo(ianaId, out TimeZoneInfo? tz)

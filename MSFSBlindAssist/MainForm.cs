@@ -2759,21 +2759,32 @@ public partial class MainForm : Form
         }
     }
 
+    // Non-handler async void (called from the hotkey dispatcher, not subscribed to an
+    // event) — wrapped so a fault in the poll/announce path can't escape as an
+    // unobserved async-void exception.
     private async void AnnounceTrackedTcasTraffic()
     {
-        if (tcasService == null || !tcasService.HasTracked)
+        try
         {
-            announcer.AnnounceImmediate("No tracked aircraft. Add aircraft to track list from the TCAS window.");
-            return;
+            if (tcasService == null || !tcasService.HasTracked)
+            {
+                announcer.AnnounceImmediate("No tracked aircraft. Add aircraft to track list from the TCAS window.");
+                return;
+            }
+
+            // Kick off a fresh poll so SimConnect returns the latest positions.
+            // Wait ~600 ms for responses to arrive before reading announcements.
+            tcasService.PollNow();
+            await Task.Delay(600);
+
+            var items = tcasService.GetTrackedAnnouncements();
+            announcer.AnnounceImmediate(string.Join(". ", items));
         }
-
-        // Kick off a fresh poll so SimConnect returns the latest positions.
-        // Wait ~600 ms for responses to arrive before reading announcements.
-        tcasService.PollNow();
-        await Task.Delay(600);
-
-        var items = tcasService.GetTrackedAnnouncements();
-        announcer.AnnounceImmediate(string.Join(". ", items));
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in AnnounceTrackedTcasTraffic: {ex.Message}");
+            announcer.AnnounceImmediate("Error reading traffic.");
+        }
     }
 
     private void OpenSimBriefBriefing()
@@ -3910,34 +3921,45 @@ public partial class MainForm : Form
         simConnectManager.RequestILSGuidance(ilsData, runway, airport);
     }
 
+    // Non-handler async void (called from the hotkey dispatcher, not subscribed to an
+    // event) — wrapped so a fault in the callback/format path can't escape as an
+    // unobserved async-void exception (mirrors the guard already on RequestWindInfo).
     private async void RequestNavRadioInfo()
     {
-        if (simConnectManager == null || !simConnectManager.IsConnected)
+        try
         {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
+            if (simConnectManager == null || !simConnectManager.IsConnected)
+            {
+                announcer.AnnounceImmediate("Not connected to simulator.");
+                return;
+            }
+
+            bool received = false;
+            string announcement = "";
+
+            simConnectManager.RequestNavRadioInfo(navData =>
+            {
+                announcement = FormatNavRadioData(navData);
+                received = true;
+            });
+
+            var timeout = DateTime.Now.AddSeconds(2);
+            while (!received && DateTime.Now < timeout)
+            {
+                await Task.Delay(50);
+                Application.DoEvents();
+            }
+
+            if (received)
+                announcer.AnnounceImmediate(announcement);
+            else
+                announcer.AnnounceImmediate("NAV radio data unavailable.");
         }
-
-        bool received = false;
-        string announcement = "";
-
-        simConnectManager.RequestNavRadioInfo(navData =>
+        catch (Exception ex)
         {
-            announcement = FormatNavRadioData(navData);
-            received = true;
-        });
-
-        var timeout = DateTime.Now.AddSeconds(2);
-        while (!received && DateTime.Now < timeout)
-        {
-            await Task.Delay(50);
-            Application.DoEvents();
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in RequestNavRadioInfo: {ex.Message}");
+            announcer.AnnounceImmediate("Error getting NAV radio information");
         }
-
-        if (received)
-            announcer.AnnounceImmediate(announcement);
-        else
-            announcer.AnnounceImmediate("NAV radio data unavailable.");
     }
 
     private string FormatNavRadioData(SimConnect.SimConnectManager.NavRadioData data)
