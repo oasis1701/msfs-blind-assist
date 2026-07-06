@@ -537,6 +537,8 @@ actually started).
 Test (737):
 1. **Before Start flow** — cold-and-dark on ground power, run Electrical Power Up +
    Preflight + Before Start. After "Waiting for the APU to come on line", expect
+   "Waiting for: Waiting for the APU generator" (added by the 2026-07-06 APU-gating pass —
+   Part S supersedes this part's sequencing), then
    "APU generators: ON" (both transfer-bus source annunciators move to the APU) followed
    by "Ground power: OFF" (buses stay powered, now by the APU; GRD POWER AVAILABLE stays
    lit as long as the GPU is still connected). With no GPU connected, the Ground power

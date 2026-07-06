@@ -322,6 +322,9 @@ the master was set and external power was dropped immediately (APU never started
    button: released" → "APU bleed: ON" → "Ground power: OFF" → captain EFB-disconnect
    reminder. PASS: ECAM shows APU AVAIL before the EXT PWR pushbuttons go off; buses
    never drop to batteries.
+   NOT a bug: the background monitor may also speak "APU Start: On" / "APU Start: Off"
+   ~1 s after the FO's own step callouts — `A32NX_OVHD_APU_START_PB_IS_ON` is a
+   continuously-monitored var like the master/bleed, mutable via Ctrl+M if disliked.
 2. START PB auto-clear observation: at the "released" step, note which announcement fired.
    "Already set" = FBW cleared the latched PB itself; the explicit release = it did not.
    Report either way (informs whether the defensive clears stay).
