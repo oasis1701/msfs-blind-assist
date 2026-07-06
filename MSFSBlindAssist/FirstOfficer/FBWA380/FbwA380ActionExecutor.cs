@@ -29,10 +29,10 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     public void SetDefinition(FlyByWireA380Definition def) => _def = def;
     // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — inits NVDA/Tolk —
     // and has no parameterless ctor; NEVER construct a second instance). Writes wrap
-    // ApplyUIVariable in a Suppressed toggle (the HS787/monitor pattern) so the def's
-    // own Announce() calls ("<name> pressed", "Rudder trim reset") are dropped and the
-    // FO's step callouts stay the single voice. All FO-relevant HandleUIVariableSet
-    // paths announce via the suppressible Announce(), verified 2026-07.
+    // ApplyUIVariable in a Suppressed toggle (the HS787/monitor pattern) so any
+    // set-path Announce() the def makes ("<name> pressed", "Rudder trim reset") is
+    // dropped and the FO's step callouts stay the single voice. (Most branches the FO
+    // drives announce nothing; none uses the unsuppressible AnnounceImmediate.)
     public void SetAnnouncer(ScreenReaderAnnouncer a) => _announcer = a;
 
     public bool IsAvailable => _sc is { IsConnected: true } && _def != null && _announcer != null;
@@ -93,7 +93,17 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     {
         bool prior = _announcer!.Suppressed;
         _announcer.Suppressed = true;
-        try { return _def!.ApplyUIVariable(varKey, value, _sc!, _announcer); }
+        try
+        {
+            if (_def!.ApplyUIVariable(varKey, value, _sc!, _announcer)) return true;
+            // Mirror MainForm's combo-set fallback: a key HandleUIVariableSet doesn't
+            // claim (returns false) is written as a plain L:var via SetLVar (calc-path
+            // routed when MobiFlight is connected). Without this, a key with no def
+            // branch and no catch-all prefix — e.g. PUSH_OVHD_OXYGEN_CREW — would
+            // silently no-op through ApplyUIVariable alone.
+            _sc!.SetLVar(varKey, value);
+            return true;
+        }
         finally { _announcer.Suppressed = prior; }
     }
 

@@ -22,7 +22,9 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "LIGHT_LANDING", "LIGHT_TAXI_OVHD",
         "SEATBELT_SIGN",
         "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position",
-        "WING_ANTI_ICE_OVHD", "ENG1_ANTI_ICE", "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE",
+        // Engine anti-ice state = the stock ENG_ANTI_ICE:n readouts. The ENGn_ANTI_ICE
+        // write keys are Act() combos with NO backing L:var — polling them reads junk.
+        "WING_ANTI_ICE_OVHD", "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4",
         "A32NX_OVHD_COND_PACK_1_PB_IS_ON", "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
         "A32NX_KNOB_OVHD_AIRCOND_XBLEED_POSITION", "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_POSITION",
         "A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", "A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON",
@@ -47,10 +49,16 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     {
         if (field == "FO_ENGINES_OFF")
         {
-            bool allOff =
-                GetValue("ENG_VALVE_SWITCH:1") < 0.5 && GetValue("ENG_VALVE_SWITCH:2") < 0.5 &&
-                GetValue("ENG_VALVE_SWITCH:3") < 0.5 && GetValue("ENG_VALVE_SWITCH:4") < 0.5;
-            value = allOff ? 1 : 0;
+            double v1 = GetValue("ENG_VALVE_SWITCH:1"), v2 = GetValue("ENG_VALVE_SWITCH:2"),
+                   v3 = GetValue("ENG_VALVE_SWITCH:3"), v4 = GetValue("ENG_VALVE_SWITCH:4");
+            // Cold cache = indeterminate, not "engines running": propagate NaN so the
+            // ChecklistManager neither ticks nor reverts until the valves have been read.
+            if (double.IsNaN(v1) || double.IsNaN(v2) || double.IsNaN(v3) || double.IsNaN(v4))
+            {
+                value = double.NaN;
+                return true;
+            }
+            value = (v1 < 0.5 && v2 < 0.5 && v3 < 0.5 && v4 < 0.5) ? 1 : 0;
             return true;
         }
         value = double.NaN;

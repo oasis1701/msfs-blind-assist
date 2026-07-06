@@ -403,8 +403,11 @@ public static class FbwA380ChecklistDefinitions
             Reminder("AL_FLAPS_UP", "AFTER_LANDING", "Flaps: up"),
             Auto("AL_APU", "AFTER_LANDING", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1)),
-            Multi("AL_ENGAI_OFF", "AFTER_LANDING", "Engine anti-ice: OFF", "ENG1_ANTI_ICE", v => Math.Abs(v - 0) < 0.5,
-                new[] { "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE" },
+            // Engine anti-ice: ENGn_ANTI_ICE are write-only Act() keys (no backing
+            // L:var — reading them returns a stale 0). Detect on the stock readout
+            // ENG_ANTI_ICE:n (ENG ANTI ICE:n) instead; keep writing the Act keys.
+            Multi("AL_ENGAI_OFF", "AFTER_LANDING", "Engine anti-ice: OFF", "ENG_ANTI_ICE:1", v => Math.Abs(v - 0) < 0.5,
+                new[] { "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" },
                 async (e, _) =>
                 {
                     await e.Set("ENG1_ANTI_ICE", 0);
@@ -454,8 +457,9 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_WING", 0)),
             Auto("PK_NOSE_OFF", "PARKING", "Nose lights: OFF", "LIGHT_TAXI_OVHD",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 0)),
-            Multi("PK_ENGAI_OFF", "PARKING", "Engine anti-ice: OFF", "ENG1_ANTI_ICE", v => Math.Abs(v - 0) < 0.5,
-                new[] { "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE" },
+            // Detect on the stock ENG_ANTI_ICE:n readouts, write the Act keys (see AL_ENGAI_OFF).
+            Multi("PK_ENGAI_OFF", "PARKING", "Engine anti-ice: OFF", "ENG_ANTI_ICE:1", v => Math.Abs(v - 0) < 0.5,
+                new[] { "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" },
                 async (e, _) =>
                 {
                     await e.Set("ENG1_ANTI_ICE", 0);

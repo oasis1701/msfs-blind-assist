@@ -137,6 +137,18 @@ Checklist, Parking Checklist).
 6. Spot-check a few groups with **no matching STATE/ACTION group** — Before Takeoff Checklist
    is readback-only (runway/flaps/takeoff-speeds/altitude readback, all captain reminders with
    no auto-detect) — confirm it behaves as pure reminders with no auto-ticking.
+7. **WATCH ITEM — anti-skid tick stability.** Cockpit Preparation → "Anti-skid: ON" detects on
+   the stock `ANTISKID BRAKES ACTIVE` SimVar, which the A380 definition documents as reading
+   UNRELIABLY over the data-def path (the same batch has returned both 1 and 0). Leave the
+   Checklists tab open on Cockpit Preparation for a couple of minutes with anti-skid steady ON
+   and listen/watch for the item churning ticked↔unticked. The write side is safe either way
+   (the definition drives the toggle off its own tracked state, so a flaky read can never
+   double-toggle the switch). **If the item visibly/audibly flaps, report it — the fix is to
+   demote this one item to a manual action (no auto-detect).**
+8. **Engine anti-ice readbacks (After Landing / Parking → "Engine anti-ice: OFF").** These
+   detect on the stock `ENG ANTI ICE:n` readouts (the write keys have no readable state). Turn
+   engine anti-ice ON by hand, confirm the items UN-tick (RevertToState); run the flow or tick
+   the item and confirm they re-tick as all four switch off.
 
 ---
 
