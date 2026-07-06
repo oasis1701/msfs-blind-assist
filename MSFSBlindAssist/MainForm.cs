@@ -1810,21 +1810,6 @@ public partial class MainForm : Form
         }
     }
 
-    /// <summary>
-    /// Find which panel a variable belongs to for efficient variable requests
-    /// </summary>
-    private string? GetPanelForVariable(string varKey)
-    {
-        foreach (var panel in currentAircraft.GetPanelControls())
-        {
-            if (panel.Value.Contains(varKey))
-            {
-                return panel.Key;
-            }
-        }
-        return null; // Variable not found in any panel
-    }
-
     private void HandleButtonStateAnnouncement(string eventName)
     {
         // Check if this button has a corresponding state variable to announce
