@@ -250,42 +250,63 @@ public class NavigationDatabaseProvider
     /// <summary>
     /// Gets all distinct runways that have SID departures for an airport
     /// </summary>
-    public List<string> GetRunwaysForSIDs(string icao)
+    public List<string> GetRunwaysForSIDs(string icao) => GetProcedureRunways(icao, "D");
+
+    /// <summary>
+    /// The airport's runways that have a SID ('D') / STAR ('A') serving them, "ALL" first. A procedure
+    /// carries its runway EITHER in <c>runway_name</c> (e.g. KLAX "25R") OR — when that's NULL — in the
+    /// ARINC <c>arinc_name</c> (e.g. OMDB "RW30B" = 30L+30R, "RW25R", bare "RW35"). Both are honoured;
+    /// arinc runway tags are expanded against the airport's actual runways.
+    /// </summary>
+    private List<string> GetProcedureRunways(string icao, string suffix)
     {
-        var runways = new List<string>();
+        var result = new List<string> { "ALL" };
 
-        // Add "ALL" option first to show runway-independent SIDs
-        runways.Add("ALL");
-
+        // (runway_name, arinc_name) for every procedure of this suffix, plus the airport's
+        // actual runways — both on ONE connection (non-pooled opens are real file opens).
+        var rows = new List<(string? runwayName, string? arincName)>();
+        List<string> airportRunways;
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
-
-            string sql = @"SELECT DISTINCT runway_name
-                          FROM approach
-                          WHERE UPPER(airport_ident) = UPPER(@icao)
-                          AND suffix = 'D'
-                          AND runway_name IS NOT NULL
-                          AND runway_name != ''
-                          ORDER BY runway_name";
-
+            string sql = @"SELECT runway_name, arinc_name FROM approach
+                           WHERE UPPER(airport_ident) = UPPER(@icao) AND suffix = @suffix";
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
+                command.Parameters.AddWithValue("@suffix", suffix);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    rows.Add((SafeGetString(reader, "runway_name"), SafeGetString(reader, "arinc_name")));
+            }
+            airportRunways = GetAirportRunwayDesignators(connection, icao);
+        }
 
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string? runway = SafeGetString(reader, "runway_name");
-                        if (!string.IsNullOrEmpty(runway))
-                            runways.Add(runway);
-                    }
-                }
+        var covered = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Direct runway_name tags (already concrete runways).
+        foreach (var (runwayName, _) in rows)
+            if (!string.IsNullOrWhiteSpace(runwayName)) covered.Add(runwayName.Trim());
+        // ARINC runway tags on runway_name-less rows — expand against the airport's actual
+        // runways (RW30B → 30L, 30R). Tags are parsed ONCE here (not per runway×row pair);
+        // runway_name-tagged rows already contributed their concrete designator above.
+        var arincTags = rows.Where(r => string.IsNullOrWhiteSpace(r.runwayName))
+                            .Select(r => ParseArincRunway(r.arincName))
+                            .Where(a => a != null)
+                            .Select(a => a!.Value)
+                            .Distinct()
+                            .ToList();
+        if (arincTags.Count > 0)
+        {
+            foreach (var rw in airportRunways)
+            {
+                var target = SplitRunwayDesignator(rw);
+                if (target != null && arincTags.Any(tag => ArincCoversTarget(tag, target.Value)))
+                    covered.Add(rw);
             }
         }
 
-        return runways;
+        result.AddRange(covered);
+        return result;
     }
 
     /// <summary>
@@ -305,8 +326,11 @@ public class NavigationDatabaseProvider
             if (runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
                 // A named SID has a separate `approach` row per runway transition. The old
-                // MIN(approach_id) pick loaded an ARBITRARY runway's legs under "ALL". Prefer the
-                // runway-independent row (empty runway_name) per SID name instead.
+                // MIN(approach_id) pick loaded an ARBITRARY runway's legs under "ALL". Prefer, per
+                // SID name: (0) a fully runway-independent row — empty runway_name AND an arinc_name
+                // that is not an RW-runway tag (at Jeppesen-style airports like OMDB runway_name is
+                // NULL on EVERY row and the runway lives in arinc_name, so keying on runway_name
+                // alone degenerated to MIN(approach_id) again); (1) runway_name-less rows; (2) rest.
                 sql = @"SELECT a.approach_id, a.fix_ident, a.type
                           FROM approach a
                           WHERE UPPER(a.airport_ident) = UPPER(@icao)
@@ -315,46 +339,33 @@ public class NavigationDatabaseProvider
                                 SELECT a2.approach_id FROM approach a2
                                 WHERE a2.airport_ident = a.airport_ident AND a2.suffix = 'D'
                                   AND a2.fix_ident IS a.fix_ident
-                                ORDER BY (CASE WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 0 ELSE 1 END),
+                                ORDER BY (CASE
+                                            WHEN (a2.runway_name IS NULL OR a2.runway_name = '')
+                                                 AND IFNULL(a2.arinc_name, '') NOT GLOB 'RW[0-9]*' THEN 0
+                                            WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 1
+                                            ELSE 2 END),
                                          a2.approach_id
                                 LIMIT 1)
                           ORDER BY a.fix_ident";
             }
             else
             {
-                // Show SIDs for specific runway
-                sql = @"SELECT approach_id, fix_ident, type, runway_name
+                // Show SIDs serving this runway. The runway match is done in C# (ProcedureServesRunway)
+                // so a runway tagged in arinc_name (e.g. OMDB "RW30B" = 30L+30R) is honoured, not just
+                // runway_name (which is NULL at many Jeppesen-style airports).
+                sql = @"SELECT approach_id, fix_ident, type, runway_name, arinc_name
                           FROM approach
                           WHERE UPPER(airport_ident) = UPPER(@icao)
                           AND suffix = 'D'
-                          AND UPPER(runway_name) = UPPER(@runwayName)
                           ORDER BY fix_ident";
             }
 
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
-                if (!runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
-                {
-                    command.Parameters.AddWithValue("@runwayName", runwayName);
-                }
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        int approachId = reader.GetInt32(0);
-                        string? fixIdent = SafeGetString(reader, "fix_ident");
-                        string? type = SafeGetString(reader, "type");
-
-                        // SID name is the fix_ident (e.g., "DEEZZ5")
-                        string sidName = fixIdent ?? "SID";
-                        if (!string.IsNullOrEmpty(type))
-                            sidName += $" ({type})";
-
-                        sids.Add((sidName, fixIdent, approachId));
-                    }
-                }
+                // Non-ALL: no @runwayName SQL parameter — the runway match happens in C#
+                // (ReadProcedureRows -> ProcedureServesRunway) so arinc_name tags are honoured.
+                sids.AddRange(ReadProcedureRows(command, runwayName, "SID"));
             }
         }
 
@@ -364,42 +375,127 @@ public class NavigationDatabaseProvider
     /// <summary>
     /// Gets all distinct runways that have STAR arrivals for an airport
     /// </summary>
-    public List<string> GetRunwaysForSTARs(string icao)
+    public List<string> GetRunwaysForSTARs(string icao) => GetProcedureRunways(icao, "A");
+
+    /// <summary>The airport's runway designators (e.g. "30L", "12R") from the runway_end table.
+    /// Runs on the caller's open connection — one connection per dropdown build, not one per query.</summary>
+    private List<string> GetAirportRunwayDesignators(SqliteConnection connection, string icao)
     {
         var runways = new List<string>();
-
-        // Add "ALL" option first to show runway-independent STARs
-        runways.Add("ALL");
-
-        using (var connection = new SqliteConnection(_connectionString))
+        string sql = @"SELECT re.name FROM runway_end re
+                       JOIN runway r ON (re.runway_end_id = r.primary_end_id OR re.runway_end_id = r.secondary_end_id)
+                       JOIN airport ap ON r.airport_id = ap.airport_id
+                       WHERE UPPER(ap.ident) = UPPER(@icao)";
+        using var command = new SqliteCommand(sql, connection);
+        command.Parameters.AddWithValue("@icao", icao);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
         {
-            connection.Open();
+            string? name = SafeGetString(reader, "name");
+            if (!string.IsNullOrWhiteSpace(name)) runways.Add(name.Trim());
+        }
+        return runways;
+    }
 
-            string sql = @"SELECT DISTINCT runway_name
-                          FROM approach
-                          WHERE UPPER(airport_ident) = UPPER(@icao)
-                          AND suffix = 'A'
-                          AND runway_name IS NOT NULL
-                          AND runway_name != ''
-                          ORDER BY runway_name";
+    /// <summary>Parse a runway-style ARINC name ("RW30B" → 30/"B", "RW25R" → 25/"R", "RW35" → 35/"").
+    /// Returns null for non-runway arinc names (VORA, ALL, N33-D, RNVA, empty, …).</summary>
+    private static (int number, string side)? ParseArincRunway(string? arincName)
+    {
+        if (string.IsNullOrWhiteSpace(arincName)) return null;
+        string s = arincName.Trim().ToUpperInvariant();
+        if (!s.StartsWith("RW")) return null;
+        s = s.Substring(2);
+        if (s.Length == 0) return null;
+        string side = "";
+        char last = s[s.Length - 1];
+        if (last is 'L' or 'R' or 'C' or 'B') { side = last.ToString(); s = s.Substring(0, s.Length - 1); }
+        return int.TryParse(s, out int num) ? (num, side) : null;
+    }
 
-            using (var command = new SqliteCommand(sql, connection))
+    /// <summary>Split a concrete runway designator ("30R" → 30/"R", "03" → 3/"").</summary>
+    private static (int number, string side)? SplitRunwayDesignator(string? runway)
+    {
+        if (string.IsNullOrWhiteSpace(runway)) return null;
+        string s = runway.Trim().ToUpperInvariant();
+        string side = "";
+        char last = s[s.Length - 1];
+        if (last is 'L' or 'R' or 'C') { side = last.ToString(); s = s.Substring(0, s.Length - 1); }
+        return int.TryParse(s, out int num) ? (num, side) : null;
+    }
+
+    /// <summary>True when the parsed ARINC tag covers the parsed concrete runway — same number, and a
+    /// "B"/bare side covers either side (RW30B → 30L and 30R).</summary>
+    private static bool ArincCoversTarget((int number, string side) tag, (int number, string side) target)
+        => tag.number == target.number && (tag.side is "B" or "" || tag.side == target.side);
+
+    /// <summary>Does a procedure (its <paramref name="runwayName"/> + <paramref name="arincName"/>) serve
+    /// the concrete <paramref name="targetRunway"/>? A populated <c>runway_name</c> is AUTHORITATIVE (it
+    /// names the one runway this procedure serves); only when it's NULL/blank do we fall back to the
+    /// ARINC tag, where a "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
+    private static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
+    {
+        // A concrete runway_name is the definitive runway for this procedure row. Do NOT also consult
+        // arinc_name — a specific-runway procedure (runway_name "25L") that happens to carry a broad
+        // arinc tag ("RW25B") must not leak into a different side ("25R"). The compare is additionally
+        // normalized through SplitRunwayDesignator so a zero-padding divergence between
+        // approach.runway_name and runway_end.name ("7R" vs "07R") can't split one physical runway
+        // into two non-matching spellings.
+        if (!string.IsNullOrWhiteSpace(runwayName))
+        {
+            if (string.Equals(runwayName.Trim(), targetRunway.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+            var named = SplitRunwayDesignator(runwayName);
+            var wanted = SplitRunwayDesignator(targetRunway);
+            return named != null && wanted != null
+                && named.Value.number == wanted.Value.number
+                && named.Value.side == wanted.Value.side;
+        }
+
+        // runway_name is NULL/blank (Jeppesen-style field) — the runway lives in the ARINC tag.
+        var a = ParseArincRunway(arincName);
+        var t = SplitRunwayDesignator(targetRunway);
+        if (a == null || t == null) return false;
+        return ArincCoversTarget(a.Value, t.Value);
+    }
+
+    /// <summary>Executes a prepared SID/STAR query and reads its rows, applying the C# runway filter
+    /// (<see cref="ProcedureServesRunway"/>) for a concrete runway, then deduplicating to ONE row per
+    /// procedure name — a runway_name-tagged row is authoritative over an arinc-tagged sibling
+    /// (mixed-encoding DBs can carry both for the same procedure), ties broken by lowest approach_id.
+    /// Mirrors the ALL branch's per-name dedup, which its SQL subquery already performs.</summary>
+    private List<(string name, string? fixIdent, int approachId)> ReadProcedureRows(
+        SqliteCommand command, string runwayName, string defaultName)
+    {
+        bool isAll = runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase);
+        var matches = new List<(string name, string? fixIdent, int approachId, bool viaRunwayName)>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
             {
-                command.Parameters.AddWithValue("@icao", icao);
+                // ALL-branch SQL has no runway_name/arinc_name columns and is pre-filtered/deduped.
+                string? rowRunwayName = isAll ? null : SafeGetString(reader, "runway_name");
+                if (!isAll && !ProcedureServesRunway(rowRunwayName, SafeGetString(reader, "arinc_name"), runwayName))
+                    continue;
 
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string? runway = SafeGetString(reader, "runway_name");
-                        if (!string.IsNullOrEmpty(runway))
-                            runways.Add(runway);
-                    }
-                }
+                int approachId = reader.GetInt32(0);
+                string? fixIdent = SafeGetString(reader, "fix_ident");
+                string? type = SafeGetString(reader, "type");
+
+                string name = fixIdent ?? defaultName;
+                if (!string.IsNullOrEmpty(type))
+                    name += $" ({type})";
+
+                matches.Add((name, fixIdent, approachId, !string.IsNullOrWhiteSpace(rowRunwayName)));
             }
         }
 
-        return runways;
+        var result = new List<(string, string?, int)>();
+        foreach (var group in matches.GroupBy(m => m.fixIdent ?? m.name))
+        {
+            var pick = group.OrderByDescending(m => m.viaRunwayName).ThenBy(m => m.approachId).First();
+            result.Add((pick.name, pick.fixIdent, pick.approachId));
+        }
+        return result;
     }
 
     /// <summary>
@@ -418,8 +514,9 @@ public class NavigationDatabaseProvider
             // If "ALL" is selected, show all unique STARs at the airport (deduplicated by fix_ident)
             if (runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
-                // Prefer the runway-independent STAR body per name (see GetSIDsForRunway), and exclude
-                // circling approaches that share suffix 'A' (they have a missed-approach leg).
+                // Prefer the runway-independent STAR body per name — same arinc-aware tiering as
+                // GetSIDsForRunway — and exclude circling approaches that share suffix 'A' (they
+                // have a missed-approach leg).
                 sql = @"SELECT a.approach_id, a.fix_ident, a.type
                           FROM approach a
                           WHERE UPPER(a.airport_ident) = UPPER(@icao)
@@ -430,19 +527,24 @@ public class NavigationDatabaseProvider
                                 SELECT a2.approach_id FROM approach a2
                                 WHERE a2.airport_ident = a.airport_ident AND a2.suffix = 'A'
                                   AND a2.fix_ident IS a.fix_ident
-                                ORDER BY (CASE WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 0 ELSE 1 END),
+                                ORDER BY (CASE
+                                            WHEN (a2.runway_name IS NULL OR a2.runway_name = '')
+                                                 AND IFNULL(a2.arinc_name, '') NOT GLOB 'RW[0-9]*' THEN 0
+                                            WHEN a2.runway_name IS NULL OR a2.runway_name = '' THEN 1
+                                            ELSE 2 END),
                                          a2.approach_id
                                 LIMIT 1)
                           ORDER BY a.fix_ident";
             }
             else
             {
-                // Show STARs for specific runway (exclude circling approaches sharing suffix 'A')
-                sql = @"SELECT approach_id, fix_ident, type, runway_name
+                // Show STARs serving this runway (runway match in C# via ProcedureServesRunway so
+                // arinc_name tags like "RW30B" are honoured). Still exclude circling approaches (suffix 'A'
+                // with a missed-approach leg).
+                sql = @"SELECT approach_id, fix_ident, type, runway_name, arinc_name
                           FROM approach
                           WHERE UPPER(airport_ident) = UPPER(@icao)
                           AND suffix = 'A'
-                          AND UPPER(runway_name) = UPPER(@runwayName)
                           AND NOT EXISTS (SELECT 1 FROM approach_leg l
                                           WHERE l.approach_id = approach.approach_id AND l.is_missed = 1)
                           ORDER BY fix_ident";
@@ -451,27 +553,9 @@ public class NavigationDatabaseProvider
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@icao", icao);
-                if (!runwayName.Equals("ALL", StringComparison.OrdinalIgnoreCase))
-                {
-                    command.Parameters.AddWithValue("@runwayName", runwayName);
-                }
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        int approachId = reader.GetInt32(0);
-                        string? fixIdent = SafeGetString(reader, "fix_ident");
-                        string? type = SafeGetString(reader, "type");
-
-                        // STAR name is the fix_ident (e.g., "HAYNZ7")
-                        string starName = fixIdent ?? "STAR";
-                        if (!string.IsNullOrEmpty(type))
-                            starName += $" ({type})";
-
-                        stars.Add((starName, fixIdent, approachId));
-                    }
-                }
+                // Non-ALL: no @runwayName SQL parameter — the runway match happens in C#
+                // (ReadProcedureRows -> ProcedureServesRunway) so arinc_name tags are honoured.
+                stars.AddRange(ReadProcedureRows(command, runwayName, "STAR"));
             }
         }
 

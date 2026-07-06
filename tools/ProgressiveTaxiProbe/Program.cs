@@ -320,5 +320,401 @@ Console.WriteLine("\n-- alias collision skip with parens in canonical --");
     Check(!nm.Contains("K2 (RAMP (NORTH))"), "collision: mislabeled 'K2 (RAMP (NORTH))' is SKIPPED (alias normalizes to real 'K2')");
 }
 
+// ---------------------------------------------------------------------------
+// #7 — RouteRunwayCrossings: the route-summary "crossing runway X" clause.
+// KSFO 2026-07-01: a route whose only path onto the cleared taxiway re-crossed
+// the landing runway twice was summarised as just "2 hold short points" — the
+// pilot had no idea the route crossed a runway. The clause names them.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- route summary runway-crossing clause --");
+{
+    TaxiRouteSegment Seg(bool hold, string? label) => new TaxiRouteSegment
+    {
+        FromNode = new TaxiNode(),
+        ToNode = new TaxiNode(),
+        IsHoldShortPoint = hold,
+        HoldShortRunway = label,
+    };
+
+    // KSFO incident shape: two auto-inserted crossings of the same runway.
+    var ksfo = new List<TaxiRouteSegment>
+    {
+        Seg(false, null), Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
+    };
+    var (c1, o1) = RouteRunwayCrossings.Describe(ksfo, excludeLastSegment: false);
+    Check(c1 == "crossing runway 10L twice" && o1 == 0,
+        $"crossings: 2x same runway -> 'crossing runway 10L twice' (got '{c1}', others={o1})");
+
+    // KBOS shape: three distinct runways, taxi order preserved.
+    var kbos = new List<TaxiRouteSegment>
+    {
+        Seg(true, "runway 04L"), Seg(true, "runway 04R at C"), Seg(true, "runway 27"),
+    };
+    var (c2, o2) = RouteRunwayCrossings.Describe(kbos, excludeLastSegment: false);
+    Check(c2 == "crossing runways 04L, 04R and 27" && o2 == 0,
+        $"crossings: 3 distinct runways in taxi order (got '{c2}')");
+
+    // Mixed: centerline naming + threshold-fallback naming + non-runway holds.
+    var mixed = new List<TaxiRouteSegment>
+    {
+        Seg(true, "runway 15R at N"), Seg(true, "D5, Runway 22R"),
+        Seg(true, "end of taxiway B"), Seg(true, "A5"),
+    };
+    var (c3, o3) = RouteRunwayCrossings.Describe(mixed, excludeLastSegment: false);
+    Check(c3 == "crossing runways 15R and 22R" && o3 == 2,
+        $"crossings: label shapes parsed, non-runway holds counted separately (got '{c3}', others={o3})");
+
+    // Runway destination: the TruncateToHoldShort tag on the LAST segment is an
+    // internal countdown rail, not an ATC crossing — excluded.
+    var rwyDest = new List<TaxiRouteSegment>
+    {
+        Seg(true, "runway 04L"), Seg(false, null), Seg(true, "Runway 33L"),
+    };
+    var (c4, o4) = RouteRunwayCrossings.Describe(rwyDest, excludeLastSegment: true);
+    Check(c4 == "crossing runway 04L" && o4 == 0,
+        $"crossings: destination truncation tag excluded (got '{c4}')");
+
+    // No crossings at all.
+    var none = new List<TaxiRouteSegment> { Seg(false, null), Seg(false, null) };
+    var (c5, o5) = RouteRunwayCrossings.Describe(none, excludeLastSegment: false);
+    Check(c5 == "" && o5 == 0, "crossings: no hold-shorts -> empty clause");
+}
+
+// ---------------------------------------------------------------------------
+// #8 — HoldShortNodeResolver: designated hold-short nodes beat the geometric
+// scan. Mini-KSFO replica: runway due east (heading 90), width 194 ft; taxiway
+// Q approaches from the north with a plain node 38 m from the centerline, an
+// HSND at 90 m (the real hold line), an HSND at 160 m, and a plain node at
+// 250 m. The legacy geometric scan (Width/2 read as metres = 97 m floor) picked
+// the 160 m node; the resolver must pick the DESIGNATED 90 m node. A non-Q
+// hold node at 85 m checks the on-last-taxiway preference.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- hold-short runway node resolver --");
+{
+    // Lateral metres → latitude north of the 40.0 centerline.
+    double LatAt(double meters) => 40.0 + meters / 111320.0;
+
+    TaxiPath QPath(double m1, double lon1, string t1, double m2, double lon2, string t2) =>
+        new TaxiPath
+        {
+            Type = "T", Name = "Q", Width = 75,
+            StartLat = LatAt(m1), StartLon = lon1, StartType = t1,
+            EndLat = LatAt(m2), EndLon = lon2, EndType = t2,
+        };
+
+    var paths = new List<TaxiPath>
+    {
+        QPath(38, -90.0052, "N", 90, -90.0051, "HSND"),
+        QPath(90, -90.0051, "HSND", 160, -90.0050, "HSND"),
+        QPath(160, -90.0050, "HSND", 250, -90.0049, "N"),
+        // A hold node NOT on Q, slightly closer to the runway than Q's hold —
+        // the on-last-taxiway preference must still pick Q's. Shares Q's 250 m
+        // endpoint so the whole graph is one connected component (the resolver
+        // filters candidates to the aircraft's component).
+        new TaxiPath
+        {
+            Type = "T", Name = "X", Width = 75,
+            StartLat = LatAt(85), StartLon = -90.0060, StartType = "HSND",
+            EndLat = LatAt(250), EndLon = -90.0049, EndType = "N",
+        },
+    };
+    var hg = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+    var hsRwy = new Runway
+    {
+        RunwayID = "09", Heading = 90, HeadingMag = 90,
+        StartLat = 40.0, StartLon = -90.010, EndLat = 40.0, EndLon = -90.000,
+        Length = 2798,   // feet ≈ 853 m
+        Width = 194,     // feet (KSFO 28L width)
+    };
+
+    // Aircraft 200 m north of the centerline, mid-runway.
+    double acLat = LatAt(200), acLon = -90.0055;
+
+    var picked = HoldShortNodeResolver.ResolveNearSide(hg, hsRwy, acLat, acLon, 270, "Q");
+    Check(picked != null && Math.Abs(picked.Latitude - LatAt(90)) < 0.00002 &&
+          picked.TaxiwayNames.Contains("Q"),
+        $"resolver: designated HSND at 90 m on Q wins (got lat offset {(picked == null ? double.NaN : (picked.Latitude - 40.0) * 111320.0):F1} m)");
+
+    // Same layout with NO designated nodes: legacy geometric behaviour must be
+    // preserved byte-for-byte — closest node ≥ 97 m (Width/2-as-metres) = 160 m.
+    var plainPaths = new List<TaxiPath>
+    {
+        QPath(38, -90.0052, "N", 90, -90.0051, "N"),
+        QPath(90, -90.0051, "N", 160, -90.0050, "N"),
+        QPath(160, -90.0050, "N", 250, -90.0049, "N"),
+    };
+    var pg = TaxiGraph.Build(plainPaths, new List<ParkingSpot>(), new List<StartPosition>());
+    var pickedPlain = HoldShortNodeResolver.ResolveNearSide(pg, hsRwy, acLat, acLon, 270, "Q");
+    Check(pickedPlain != null && Math.Abs(pickedPlain.Latitude - LatAt(160)) < 0.00002,
+        $"resolver: no designated nodes -> legacy geometric pick at 160 m preserved (got lat offset {(pickedPlain == null ? double.NaN : (pickedPlain.Latitude - 40.0) * 111320.0):F1} m)");
+}
+
+// ---------------------------------------------------------------------------
+// #9 — 2026-07 review fixes: resolver preference tiers, HoldShortName runway
+// gate, near-side sign at the hold line, designated-node floor buffer, and the
+// reciprocal-designator merge in the summary clause.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --");
+{
+    double LatAt(double meters) => 40.0 + meters / 111320.0;
+
+    TaxiPath P(string name, double m1, double lon1, string t1, double m2, double lon2, string t2) =>
+        new TaxiPath
+        {
+            Type = "T", Name = name, Width = 75,
+            StartLat = LatAt(m1), StartLon = lon1, StartType = t1,
+            EndLat = LatAt(m2), EndLon = lon2, EndType = t2,
+        };
+
+    var tierRwy = new Runway
+    {
+        RunwayID = "09", Heading = 90, HeadingMag = 90,
+        StartLat = 40.0, StartLon = -90.010, EndLat = 40.0, EndLon = -90.000,
+        Length = 2798, Width = 194,
+    };
+    double acLat = LatAt(200), acLon = -90.0055;
+
+    // (a) Unnamed-stub tier: Q's plain chain ends at 105 m; the final approach
+    // stub to the hold line is a DIFFERENT-named connector "S" carrying the
+    // HSND at 90 m. The designated node doesn't carry "Q", but it sits at Q's
+    // junction (along-track within metres of Q's closest plain node), so it
+    // must still win over the plain 105 m node — this is the KSFO shape when
+    // the hold stub is unnamed.
+    var stub = new List<TaxiPath>
+    {
+        P("Q", 105, -90.00505, "N", 160, -90.0050, "N"),
+        P("Q", 160, -90.0050, "N", 250, -90.0049, "N"),
+        P("S", 105, -90.00505, "N", 90, -90.0051, "HSND"),
+        P("S", 90, -90.0051, "HSND", 38, -90.0052, "N"),
+    };
+    var sg = TaxiGraph.Build(stub, new List<ParkingSpot>(), new List<StartPosition>());
+    var pStub = HoldShortNodeResolver.ResolveNearSide(sg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pStub != null && Math.Abs(pStub.Latitude - LatAt(90)) < 0.00002,
+        $"tiers: designated node on unnamed stub at Q's junction wins (got {(pStub == null ? double.NaN : (pStub.Latitude - 40.0) * 111320.0):F1} m)");
+
+    // (b) A designated node FAR ALONG the runway on a different taxiway must
+    // NOT beat a plain node on the cleared taxiway: cleared "Q, hold short 09"
+    // with Q unmarked, but taxiway A carries an HSND ~180 m further down the
+    // runway. The old single-pass scan preferred Q; the resolver must too.
+    var farHs = new List<TaxiPath>
+    {
+        P("Q", 105, -90.00505, "N", 160, -90.0050, "N"),
+        P("Q", 160, -90.0050, "N", 250, -90.0049, "N"),
+        P("A", 100, -90.0030, "HSND", 250, -90.0049, "N"),
+    };
+    var fg = TaxiGraph.Build(farHs, new List<ParkingSpot>(), new List<StartPosition>());
+    var pFar = HoldShortNodeResolver.ResolveNearSide(fg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pFar != null && pFar.TaxiwayNames.Contains("Q") &&
+          Math.Abs(pFar.Latitude - LatAt(105)) < 0.00002,
+        $"tiers: far designated node on another taxiway loses to plain node on cleared taxiway (got {(pFar == null ? "null" : $"{(pFar.Latitude - 40.0) * 111320.0:F1} m, {string.Join("/", pFar.TaxiwayNames)}")})");
+
+    // (c) HoldShortName runway gate: a designated node whose name says it
+    // guards a DIFFERENT runway is rejected; the target's own designator or
+    // its reciprocal is accepted.
+    var gg = TaxiGraph.Build(stub, new List<ParkingSpot>(), new List<StartPosition>());
+    var hsNode = gg.Nodes.Values.First(n =>
+        n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort);
+    hsNode.HoldShortName = "runway 18 at S";
+    var pWrong = HoldShortNodeResolver.ResolveNearSide(gg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pWrong != null && Math.Abs(pWrong.Latitude - LatAt(105)) < 0.00002,
+        $"gate: designated node named for another runway rejected (got {(pWrong == null ? double.NaN : (pWrong.Latitude - 40.0) * 111320.0):F1} m)");
+    hsNode.HoldShortName = "runway 27 at S";   // reciprocal of 09 — same pavement
+    var pRecip = HoldShortNodeResolver.ResolveNearSide(gg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pRecip != null && Math.Abs(pRecip.Latitude - LatAt(90)) < 0.00002,
+        $"gate: reciprocal designator accepted (got {(pRecip == null ? double.NaN : (pRecip.Latitude - 40.0) * 111320.0):F1} m)");
+
+    // (c2) padding: an unpadded RunwayID must still match a padded node name.
+    var padRwy = new Runway
+    {
+        RunwayID = "9", Heading = 90, HeadingMag = 90,
+        StartLat = 40.0, StartLon = -90.010, EndLat = 40.0, EndLon = -90.000,
+        Length = 2798, Width = 194,
+    };
+    hsNode.HoldShortName = "runway 09 at S";
+    var pPad = HoldShortNodeResolver.ResolveNearSide(gg, padRwy, acLat, acLon, 270, "Q");
+    Check(pPad != null && Math.Abs(pPad.Latitude - LatAt(90)) < 0.00002,
+        $"gate: unpadded RunwayID '9' accepts node named 'runway 09' (got {(pPad == null ? double.NaN : (pPad.Latitude - 40.0) * 111320.0):F1} m)");
+
+    // (d) Near-side sign at the hold line: a pilot stopped AT the designated
+    // hold line (90 m — inside the legacy 97 m floor, outside the pavement)
+    // with a runway-PARALLEL heading is physically on the north side; the
+    // resolver must use the actual side, not the heading heuristic (which
+    // hard-coded south for parallel headings and returned null here).
+    var pParallel = HoldShortNodeResolver.ResolveNearSide(sg, tierRwy, LatAt(90), -90.0055, 90, "Q");
+    Check(pParallel != null && pParallel.Latitude > 40.0,
+        $"nearSign: pilot at the hold line, parallel heading -> own side used (got {(pParallel == null ? "null" : "north" )})");
+
+    // (e) Designated floor buffer: an HSND just off the pavement edge (35 m on
+    // a 194 ft runway — true half-width ~29.6 m) is a misplaced marker, not a
+    // hold line; the buffered floor rejects it and the 90 m node wins.
+    var lowHs = new List<TaxiPath>
+    {
+        P("Q", 38, -90.0052, "N", 90, -90.0051, "HSND"),
+        P("Q", 90, -90.0051, "HSND", 160, -90.0050, "HSND"),
+        P("Q", 160, -90.0050, "HSND", 250, -90.0049, "N"),
+        P("Q", 35, -90.00525, "HSND", 38, -90.0052, "N"),
+    };
+    var lg = TaxiGraph.Build(lowHs, new List<ParkingSpot>(), new List<StartPosition>());
+    var pLow = HoldShortNodeResolver.ResolveNearSide(lg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pLow != null && Math.Abs(pLow.Latitude - LatAt(90)) < 0.00002,
+        $"floor: designated node hugging the pavement edge rejected (got {(pLow == null ? double.NaN : (pLow.Latitude - 40.0) * 111320.0):F1} m)");
+
+    // (f) Summary reciprocal merge: one pavement crossed near opposite ends is
+    // tagged with reciprocal designators — the clause must merge them.
+    TaxiRouteSegment Seg(bool hold, string? label) => new TaxiRouteSegment
+    {
+        FromNode = new TaxiNode(),
+        ToNode = new TaxiNode(),
+        IsHoldShortPoint = hold,
+        HoldShortRunway = label,
+    };
+    var recipSegs = new List<TaxiRouteSegment>
+    {
+        Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 28R"),
+    };
+    var (cr, or_) = RouteRunwayCrossings.Describe(recipSegs, excludeLastSegment: false);
+    Check(cr == "crossing runway 10L/28R twice" && or_ == 0,
+        $"crossings: reciprocal designators merge as one pavement, BOTH names spoken (got '{cr}', others={or_})");
+
+    // Same-designator crossings must keep the single name — the dual form is
+    // only for a pavement whose two crossings carry reciprocal labels (the
+    // tactical callouts will speak each crossing's own closer-end label, so
+    // the summary must pre-announce both names the pilot will hear).
+    var sameSegs = new List<TaxiRouteSegment>
+    {
+        Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
+    };
+    var (cs, os_) = RouteRunwayCrossings.Describe(sameSegs, excludeLastSegment: false);
+    Check(cs == "crossing runway 10L twice" && os_ == 0,
+        $"crossings: same-designator crossings keep the single name (got '{cs}')");
+
+    // (g) Tier-2 connectivity: a NEIGHBOURING connector's HSND inside the 75 m
+    // along window must NOT hijack the hold from the cleared taxiway when it
+    // has no graph connection to it near the runway. P parallels Q, carries an
+    // HSND at 90 m, joins the component only far upfield (4 hops > the 3-hop
+    // stub budget). Pre-fix tier 2 returned P's HSND; the resolver must return
+    // Q's own plain node at 105 m.
+    var neighbor = new List<TaxiPath>
+    {
+        P("Q", 105, -90.00505, "N", 160, -90.0050, "N"),
+        P("Q", 160, -90.0050, "N", 250, -90.0049, "N"),
+        P("P", 90, -90.0044, "HSND", 130, -90.00435, "N"),
+        P("P", 130, -90.00435, "N", 170, -90.0043, "N"),
+        P("P", 170, -90.0043, "N", 210, -90.00425, "N"),
+        P("P", 210, -90.00425, "N", 250, -90.0049, "N"),
+    };
+    var ng = TaxiGraph.Build(neighbor, new List<ParkingSpot>(), new List<StartPosition>());
+    var pNbr = HoldShortNodeResolver.ResolveNearSide(ng, tierRwy, acLat, acLon, 270, "Q");
+    Check(pNbr != null && pNbr.TaxiwayNames.Contains("Q") &&
+          Math.Abs(pNbr.Latitude - LatAt(105)) < 0.00002,
+        $"tier2: unconnected neighbour connector's HSND rejected, Q's plain node wins (got {(pNbr == null ? "null" : $"{(pNbr.Latitude - 40.0) * 111320.0:F1} m, {string.Join("/", pNbr.TaxiwayNames)}")})");
+
+    // (g2) The legitimate unnamed-stub shape (case (a)) must still pass the
+    // connectivity gate — S's HSND is 1 hop from Q's junction node.
+    var pStub2 = HoldShortNodeResolver.ResolveNearSide(sg, tierRwy, acLat, acLon, 270, "Q");
+    Check(pStub2 != null && Math.Abs(pStub2.Latitude - LatAt(90)) < 0.00002,
+        "tier2: connected unnamed stub still wins after the connectivity gate");
+
+    // (h) Tier-4 along guard: with NO cleared-taxiway candidate at all, a
+    // designated node far along the runway must not beat the plain node next
+    // to the legacy pick. Plain "A" node at 98 m mid-runway; HSND on "B" at
+    // 100 m lateral but ~700 m further along. Legacy pick (98 m plain) wins.
+    var farT4 = new List<TaxiPath>
+    {
+        P("A", 98, -90.0052, "N", 200, -90.00515, "N"),
+        new TaxiPath
+        {
+            Type = "T", Name = "B", Width = 75,
+            StartLat = LatAt(100), StartLon = -89.9970, StartType = "HSND",
+            EndLat = LatAt(200), EndLon = -90.00515, EndType = "N",
+        },
+    };
+    var t4g = TaxiGraph.Build(farT4, new List<ParkingSpot>(), new List<StartPosition>());
+    var pT4 = HoldShortNodeResolver.ResolveNearSide(t4g, tierRwy, acLat, acLon, 270, "Z");
+    Check(pT4 != null && pT4.TaxiwayNames.Contains("A") &&
+          Math.Abs(pT4.Latitude - LatAt(98)) < 0.00002,
+        $"tier4: far-along designated node loses to the adjacent legacy pick (got {(pT4 == null ? "null" : $"{(pT4.Latitude - 40.0) * 111320.0:F1} m, {string.Join("/", pT4.TaxiwayNames)}")})");
+
+    // (i) Deliberate band-change lock (2026-07 review finding 3): an aircraft
+    // BETWEEN the true pavement edge (~30 m) and the legacy floor (~97 m) uses
+    // its POSITION sign, not the heading heuristic — a pilot at 50 m north
+    // heading north (away) is physically on the north side; pre-PR the heading
+    // heuristic picked SOUTH here. The sparse legacy path is otherwise
+    // unchanged (probe #8), so this is the one intentional divergence in the
+    // 30–97 m band — in-sim regression testing must cover it.
+    var bandPaths = new List<TaxiPath>
+    {
+        P("Q", 38, -90.0052, "N", 90, -90.0051, "N"),
+        P("Q", 90, -90.0051, "N", 160, -90.0050, "N"),
+        P("Q", 160, -90.0050, "N", 250, -90.0049, "N"),
+    };
+    var bg = TaxiGraph.Build(bandPaths, new List<ParkingSpot>(), new List<StartPosition>());
+    var pBand = HoldShortNodeResolver.ResolveNearSide(bg, tierRwy, LatAt(50), -90.0055, 0, "Q");
+    Check(pBand != null && pBand.Latitude > 40.0,
+        "nearSign: 30-97 m band uses position sign, not the heading heuristic (deliberate 2026-07 change)");
+}
+
+// ---------------------------------------------------------------------------
+// #10 — 2026-07 review fixes round 2: designator normalization (padding) and
+// the W (water-runway) suffix. fs2024 navdata carries 1,166 W-suffixed runway
+// ends (01W–36W), and the DB ecosystem documents unpadded spellings ("7R" in
+// approach tables) — the ordinal compares must not break on either.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- designator normalization + W suffix --");
+{
+    Check(RouteRunwayCrossings.NormalizeDesignator("9") == "09",
+        "normalize: '9' -> '09'");
+    Check(RouteRunwayCrossings.NormalizeDesignator("9l") == "09L",
+        "normalize: '9l' -> '09L'");
+    Check(RouteRunwayCrossings.NormalizeDesignator("28R") == "28R",
+        "normalize: padded passes through");
+    Check(RouteRunwayCrossings.NormalizeDesignator("NE") == "NE",
+        "normalize: compass-point designator untouched");
+    Check(RouteRunwayCrossings.Reciprocal("18W") == "36W",
+        $"reciprocal: water runway 18W -> 36W (got '{RouteRunwayCrossings.Reciprocal("18W")}')");
+    Check(RouteRunwayCrossings.Reciprocal("36W") == "18W",
+        "reciprocal: water runway 36W -> 18W");
+    Check(RouteRunwayCrossings.Reciprocal("9") == "27",
+        "reciprocal: unpadded '9' -> '27'");
+    Check(RouteRunwayCrossings.ExtractRunwayDesignator("runway 9 at Q") == "09",
+        "extract: unpadded label normalizes to '09'");
+
+    // Unpadded labels must merge with their padded reciprocal in the clause.
+    TaxiRouteSegment Seg10(bool hold, string? label) => new TaxiRouteSegment
+    {
+        FromNode = new TaxiNode(), ToNode = new TaxiNode(),
+        IsHoldShortPoint = hold, HoldShortRunway = label,
+    };
+    var unpadded = new List<TaxiRouteSegment>
+    {
+        Seg10(true, "runway 9"), Seg10(false, null), Seg10(true, "runway 27"),
+    };
+    var (cu, ou) = RouteRunwayCrossings.Describe(unpadded, excludeLastSegment: false);
+    Check(cu == "crossing runway 09/27 twice" && ou == 0,
+        $"crossings: unpadded reciprocal labels merge as one pavement, padded dual name (got '{cu}')");
+}
+
+// ---------------------------------------------------------------------------
+// #11 — ComposeCrossingLabel: the one label policy for auto-detected runway
+// crossings. Geometric truth (crossedRwy) wins over a DB node name that names
+// a DIFFERENT pavement; user labels and correct names are preserved.
+// ---------------------------------------------------------------------------
+Console.WriteLine("\n-- crossing label policy --");
+{
+    Check(RouteRunwayCrossings.ComposeCrossingLabel(null, "10L") == "runway 10L",
+        "label: empty -> 'runway 10L'");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("A5", "10L") == "runway 10L at A5",
+        "label: bare DB holding-point name upgraded");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("end of taxiway B", "10L") == null,
+        "label: user end-of-taxiway hold preserved");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("runway 10R", "28L") == null,
+        "label: user pick naming the same pavement (reciprocal) preserved");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("runway 28L at Q", "28L") == null,
+        "label: correct DB name preserved");
+    Check(RouteRunwayCrossings.ComposeCrossingLabel("runway 28R at Q", "28L") == "runway 28L",
+        "label: DB name for a DIFFERENT pavement corrected to geometric truth");
+}
+
 Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
 Environment.Exit(failures == 0 ? 0 : 1);

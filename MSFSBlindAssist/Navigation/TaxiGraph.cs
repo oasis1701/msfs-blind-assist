@@ -57,7 +57,10 @@ public class TaxiGraph
     // centerline for the node to be named after that runway. Above a CAT III /
     // code-F holding-position setback (~107 m) so real hold lines match, below
     // major-airport parallel-runway spacing so a node binds to its OWN runway.
-    private const double HOLDSHORT_RUNWAY_MATCH_M = 150.0;
+    // internal (not private): HoldShortNodeResolver.HS_NODE_MATCH_M references
+    // this directly so its designated-node trust window can never drift from
+    // the naming tolerance.
+    internal const double HOLDSHORT_RUNWAY_MATCH_M = 150.0;
 
     // Start at 1 so node ID 0 is a permanent "not set" sentinel. TaxiGuidanceManager
     // uses _destinationNodeId = 0 to mark a cleared route (e.g. after
