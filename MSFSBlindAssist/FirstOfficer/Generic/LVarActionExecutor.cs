@@ -7,8 +7,12 @@ public enum LVarDispatchKind
 {
     /// <summary>Held switch/selector: SetLVar(name, value). The default for unlisted keys.</summary>
     LVar,
-    /// <summary>Momentary pushbutton: SetLVar 0 → ~200 ms → SetLVar 1 (the Fenix
-    /// ExecuteButtonTransition convention — buttons trigger on the 0→1 transition).</summary>
+    /// <summary>Momentary pushbutton: SetLVar 0 → ~200 ms → SetLVar 1 → brief hold →
+    /// SetLVar 0 (the Fenix ExecuteButtonTransition convention — buttons trigger on the
+    /// 0→1 rising edge and latch their effect into a separate I_* indicator, so the
+    /// trailing RELEASE loses no state). Never leave a pulse held at 1: level-triggered
+    /// functions (the ECAM TO CONFIG test) re-fire a held button against the landing
+    /// config after touchdown (FWC phase 9) — the spurious CONFIG warning on rollout.</summary>
     LVarPulse,
     /// <summary>Stock K-event via SendEvent(name, param) — for future FBW controls
     /// (FUELSYSTEM_VALVE_*, ANTI_ICE_SET_ENGn, ...).</summary>
@@ -32,6 +36,11 @@ public abstract class LVarActionExecutor : IFoActionExecutor
 {
     private const int WriteSpacingMs = 150;
     private const int PulseGapMs = 200;
+
+    /// <summary>Default time a pulsed button is held at 1 before being RELEASED back to 0.
+    /// The release is the fix for the stuck-at-1 bug (a held S_ECAM_TO re-fired the takeoff-
+    /// config check after landing); edge-triggered buttons keep their latched I_* state.</summary>
+    private const int PulsePressHoldMs = 200;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTime _lastWriteUtc = DateTime.MinValue;
@@ -80,11 +89,18 @@ public abstract class LVarActionExecutor : IFoActionExecutor
         finally { _gate.Release(); }
     }
 
-    /// <summary>Gated momentary pulse (0 → gap → 1) regardless of table entry.</summary>
-    protected async Task<bool> PulseAsync(string name)
+    /// <summary>Gated momentary pulse (0 → gap → 1 → hold → 0) regardless of table entry.</summary>
+    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a
+    /// longer value for level-triggered tests whose result must be observed while held
+    /// (e.g. the Fenix TO CONFIG test).</param>
+    /// <param name="onHeld">Optional callback invoked while the button is still held at 1,
+    /// just before the release — lets a caller read the resulting state (e.g. the master-
+    /// warning outcome of the TO CONFIG test) before the level-triggered effect clears.</param>
+    protected async Task<bool> PulseAsync(string name, int pressHoldMs = PulsePressHoldMs,
+        Action? onHeld = null)
     {
         await _gate.WaitAsync();
-        try { return await PulseCoreAsync(name); }
+        try { return await PulseCoreAsync(name, pressHoldMs, onHeld); }
         finally { _gate.Release(); }
     }
 
@@ -142,7 +158,8 @@ public abstract class LVarActionExecutor : IFoActionExecutor
         }
     }
 
-    private async Task<bool> PulseCoreAsync(string name)
+    private async Task<bool> PulseCoreAsync(string name, int pressHoldMs = PulsePressHoldMs,
+        Action? onHeld = null)
     {
         var sc = _sc;
         if (sc is not { IsConnected: true }) return false;
@@ -151,6 +168,16 @@ public abstract class LVarActionExecutor : IFoActionExecutor
         _lastWriteUtc = DateTime.UtcNow;
         await Task.Delay(PulseGapMs);
         sc.SetLVar(name, 1);
+        _lastWriteUtc = DateTime.UtcNow;
+        await Task.Delay(pressHoldMs > 0 ? pressHoldMs : 1);
+        // Read the resulting state while the button is still held (e.g. TO CONFIG result).
+        // Gated on IsConnected so a disconnect mid-hold can't fire a reassuring
+        // "Takeoff config normal." off a stale/zero cache (main-branch fix parity).
+        if (sc.IsConnected) onHeld?.Invoke();
+        // RELEASE back to 0 — a Fenix pushbutton latches its effect on the 0→1 rising
+        // edge, so the release loses no state; leaving it held at 1 was the stuck TO
+        // CONFIG bug (spurious CONFIG + master warning after landing).
+        sc.SetLVar(name, 0);
         _lastWriteUtc = DateTime.UtcNow;
         return true;
     }

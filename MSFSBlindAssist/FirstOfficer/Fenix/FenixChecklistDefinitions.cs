@@ -249,8 +249,11 @@ public static class FenixChecklistDefinitions
             Auto("BT_XPDRAUTO", "BEFORE_TAKEOFF", "Transponder: AUTO",
                 "S_XPDR_OPERATION", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 1)),
             Reminder("BT_FCCHECK", "BEFORE_TAKEOFF", "Perform the flight control check"),
+            // Level-triggered test: TakeoffConfigTest holds 1.5 s, announces the result
+            // ("Takeoff config normal." / "check configuration."), then RELEASES — a plain
+            // pulse left the button stuck at 1 and re-fired the config check after landing.
             ActionManual("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff config test",
-                (e, _) => e.Pulse("S_ECAM_TO")),
+                (e, _) => e.TakeoffConfigTest()),
             Auto("BT_TURNOFF", "BEFORE_TAKEOFF", "Runway turn-off lights: ON",
                 "S_OH_EXT_LT_RWY_TURNOFF", v => v > 0.5, (e, _) => e.Set("S_OH_EXT_LT_RWY_TURNOFF", 1)),
             Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON",

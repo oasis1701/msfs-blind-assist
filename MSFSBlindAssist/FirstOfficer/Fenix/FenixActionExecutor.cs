@@ -28,8 +28,21 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     private const int CabinCallHoldMs = 600;   // Cabin CALL pushbutton: press, brief hold, release.
     private const int ApuMasterToStartMs = 3000;
 
+    /// <summary>Hold time (ms) for the TO CONFIG test button. Longer than the default pulse
+    /// hold because the test is level-triggered (active only while held): the button must
+    /// stay pressed long enough for the FWC to evaluate the config and drive the master
+    /// warning before we read the result and release (matches the panel path's
+    /// FenixA320Definition.TakeoffConfigTestHoldMs).</summary>
+    private const int TakeoffConfigTestHoldMs = 1500;
+
     // Anti-dedup sequence for the FCU push/pull atomic RPN write (see PushFcuManaged).
     private long _fcuPushSeq;
+
+    // The app announcer, injected by FenixFoProfile (FbwA380ActionExecutor precedent) —
+    // used only for the TO CONFIG result readout; all step narration stays FlowManager's.
+    private Accessibility.ScreenReaderAnnouncer? _announcer;
+
+    public void SetAnnouncer(Accessibility.ScreenReaderAnnouncer a) => _announcer = a;
 
     private static readonly Dictionary<string, LVarDispatchKind> Table = new()
     {
@@ -54,6 +67,9 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         ["S_FCU_EFIS1_FD"]         = LVarDispatchKind.LVarPulse,
         ["S_FCU_EFIS2_FD"]         = LVarDispatchKind.LVarPulse,
         ["S_FC_RUDDER_TRIM_RESET"] = LVarDispatchKind.LVarPulse,
+        // TO CONFIG normally routes through TakeoffConfigTest() (long hold + spoken
+        // result — intercepted in ExecuteStepAsync); this entry is a release-safe
+        // fallback for any stray plain dispatch.
         ["S_ECAM_TO"]              = LVarDispatchKind.LVarPulse,   // TO CONFIG test (takeoff)
         ["S_ECAM_STATUS"]          = LVarDispatchKind.LVarPulse,   // STS status page (landing review)
     };
@@ -76,6 +92,9 @@ public sealed class FenixActionExecutor : LVarActionExecutor
                 case "FIRE_TEST_ENG2":           return FireTest("S_OH_FIRE_ENG2_TEST");
                 case "CABIN_CALL_ALL":           return CabinCall("S_OH_CALLS_ALL");
                 case "LANDING_LIGHTS_BOTH":      return SetLandingLights(step.TargetValue ?? 2);
+                // TO CONFIG is level-triggered: intercept the real key so the flow's
+                // BT_CONFIG step gets the long hold + spoken result, not a plain pulse.
+                case "S_ECAM_TO":                return TakeoffConfigTest();
             }
         }
         return base.ExecuteStepAsync(step);
@@ -88,6 +107,39 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> Set(string lvar, int value) => DispatchAsync(lvar, value);
 
     public Task<bool> Pulse(string lvar) => PulseAsync(lvar);
+
+    /// <summary>ECAM TO CONFIG test: press-hold-release with the result spoken while the
+    /// button is still held. The test is level-triggered — it simulates takeoff power and
+    /// checks the config only WHILE pressed — so the button is held 1.5 s for the FWC to
+    /// evaluate, the cached master-warning outcome is announced (the blind-pilot equivalent
+    /// of the sighted "TO CONFIG NORMAL", which is otherwise completely silent on a good
+    /// config), then the button is RELEASED. The release is what prevents the held test
+    /// re-firing against the landing config after touchdown (FWC phase 9 → spurious red
+    /// CONFIG + master-warning aural on rollout — the original stuck-button bug).</summary>
+    public Task<bool> TakeoffConfigTest()
+        => PulseAsync("S_ECAM_TO", TakeoffConfigTestHoldMs, AnnounceTakeoffConfigResult);
+
+    /// <summary>Reads the master-warning outcome of the TO CONFIG test (while the button is
+    /// still held) and announces it. Deliberately reads the SHARED master-warning latch —
+    /// live L-var search (2026-07) confirmed the Fenix exposes NO TO-CONFIG-only indicator.
+    /// Fail-safe direction: an already-active unrelated warning yields a conservative
+    /// "check configuration" (never harmful); disambiguating via a pre-press baseline delta
+    /// would mask a genuinely-bad config behind a pre-existing warning as a DANGEROUS false
+    /// "normal". Mirrors FenixA320Definition.AnnounceTakeoffConfigResult (panel path).</summary>
+    private void AnnounceTakeoffConfigResult()
+    {
+        try
+        {
+            double masterWarning = Sc?.GetCachedVariableValue("I_MIP_MASTER_WARNING_CAPT") ?? 0.0;
+            _announcer?.AnnounceImmediate(masterWarning >= 0.5
+                ? "Takeoff config: check configuration."
+                : "Takeoff config normal.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixFO] AnnounceTakeoffConfigResult error: {ex.Message}");
+        }
+    }
 
     /// <summary>Held fire-test switch: TEST for 3 s, back to NORMAL. The fire bell is the
     /// audible verification for a blind pilot.</summary>

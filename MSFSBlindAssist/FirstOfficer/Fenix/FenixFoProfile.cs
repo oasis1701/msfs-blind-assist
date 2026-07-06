@@ -12,6 +12,12 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// </summary>
 public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateEvaluator>
 {
+    // The app announcer, handed to the executor for the TO CONFIG result readout
+    // (the FbwA380FoProfile precedent — all other narration stays FlowManager's).
+    private readonly ScreenReaderAnnouncer _announcer;
+
+    public FenixFoProfile(ScreenReaderAnnouncer announcer) => _announcer = announcer;
+
     public string Title => "First Officer — Fenix A320";
 
     public FenixActionExecutor CreateExecutor() => new();
@@ -22,7 +28,10 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
         => state.SetSimConnect(sc);
 
     public void SetExecutorSimConnect(FenixActionExecutor exec, SimConnectManager? sc)
-        => exec.SetSimConnect(sc);
+    {
+        exec.SetAnnouncer(_announcer);
+        exec.SetSimConnect(sc);
+    }
 
     public List<FlowDefinition<FenixStateEvaluator>> BuildFlows()
         => FenixFlowDefinitions.Build();

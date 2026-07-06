@@ -3322,7 +3322,7 @@ public partial class MainForm : Form
         if (fenixFirstOfficerForm == null || fenixFirstOfficerForm.IsDisposed)
         {
             fenixFirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>(
-                new FirstOfficer.Fenix.FenixFoProfile(),
+                new FirstOfficer.Fenix.FenixFoProfile(announcer),
                 simConnectManager,
                 announcer,
                 MSFSBlindAssist.Settings.SettingsManager.Current,

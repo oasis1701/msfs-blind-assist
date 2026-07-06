@@ -45,7 +45,10 @@ Start cold-and-dark at a gate, MSFSBA connected, Fenix FO window open.
    loaded — see Part C; if not loaded, confirm this step is skipped/no-ops rather than
    setting a wrong flap value), nose light TAXI.
 7. **Before Takeoff**: autobrake MAX, weather radar → SYSTEM 1, predictive windshear AUTO,
-   TCAS TA/RA, transponder AUTO, **takeoff config test** (`S_ECAM_TO`, a pulse), runway
+   TCAS TA/RA, transponder AUTO, **takeoff config test** (`S_ECAM_TO` — a press-HOLD-release:
+   held ~1.5 s, then the result is spoken — "Takeoff config normal." on a good config /
+   "Takeoff config: check configuration." on a bad one — then the button RELEASES back to 0;
+   see the momentary press-release regression section below), runway
    turnoff lights ON, **landing lights ON (both)**, nose light TAKEOFF, strobes ON.
 8. Confirm checklist items **auto-tick** as each flow step lands — open the Checklists tab
    alongside the Flows tab (or check it immediately after each flow) and verify the matching
@@ -221,6 +224,36 @@ PMDG 777/737 First Officers. Confirm nothing regressed in the shared form:
    only "PMDG 737 First Officer"; PMDG 777 shows only "PMDG 777 First Officer"; any other
    aircraft — A320 FBW, A380, HS787 — shows none). "First Officer Settings" likewise only
    appears when one of the three FO-capable aircraft is loaded.
+
+---
+
+## Momentary press-release regression (stuck TO CONFIG fix, 2026-07)
+
+The generic FO pulse (`LVarActionExecutor.PulseCoreAsync`) was changed from press-only
+(`0 → 200 ms → 1`, leaving the button held all flight) to a full press-release
+(`0 → 200 ms → 1 → hold → 0`), mirroring the panel-side `ExecuteButtonTransition` fix
+(PR #128). The held `S_ECAM_TO` was re-firing the level-triggered takeoff-config check
+against the landing config after touchdown (FWC phase 9, below 80 kt) — a spurious red
+`CONFIG` + master-warning aural on rollout. Verify:
+
+1. **TO CONFIG releases and announces.** On the ground with a GOOD takeoff config, run the
+   Before Takeoff flow (or tick the "Takeoff config test" checklist item). Expect
+   "Takeoff config normal." spoken ~1.7 s after the step fires, and `S_ECAM_TO` back at
+   **0** afterwards (read via the SimConnect MCP: `get_lvar S_ECAM_TO`). Repeat with a BAD
+   config (e.g. flaps 0) — expect "Takeoff config: check configuration." plus the master
+   warning while held, both clearing on release.
+2. **No CONFIG warning on rollout (the original bug).** Fly a full circuit with the FO
+   flows: Before Takeoff → takeoff → land → decelerate below 80 kt / stow reversers.
+   Confirm NO red `CONFIG` / `SLATS/FLAPS NOT IN T.O. CONFIG` / master-warning aural
+   appears during the rollout.
+3. **`S_ECAM_STATUS` releases.** Run the Approach flow (or tick "ECAM status page (STS)");
+   confirm `S_ECAM_STATUS` reads 0 afterwards and the STS page still displayed (the page
+   latches on the rising edge).
+4. **Edge-triggered pulses still land.** Spot-check the other pulsed buttons now that they
+   release: external power connect/disconnect, APU START (Before Start flow — APU must
+   still reach AVAIL), autobrake MAX/MED, AP1 engage, LS 1/2 on approach, rudder-trim
+   reset. Each effect must persist after the release (they latch into their `I_*`
+   indicators on the 0→1 edge — the main-branch fix live-verified this class of button).
 
 ---
 
