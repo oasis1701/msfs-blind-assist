@@ -697,13 +697,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- SIGNS ----
         // Seat-belt sign: the REAL state is the stock simvar CABIN SEATBELTS ALERT
-        // SWITCH (On/Off). The XMLVAR switch position is model-recomputed, so a direct
-        // L-var write to it just reverts (verified live) — that's why the old combo did
-        // nothing. Settable; the set fires CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE in
-        // HandleUIVariableSet when the desired state differs from current.
+        // SEAT BELTS is a real 3-POSITION switch — ON / AUTO / OFF (like No Smoking
+        // below), NOT On/Off. Position 1 = AUTO: the FBW model auto-drives the sign
+        // from engines-running + slats/gear-down (behaviour XML 500 ms Update). The
+        // switch position lives in XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position
+        // (0=On/1=Auto/2=Off), live-verified settable + HELD (an old note claimed it
+        // "reverts" — that was a mis-test; it holds like the No Smoking XMLVAR). The
+        // set (HandleUIVariableSet) writes the position AND, for On/Off, drives the
+        // stock CABIN SEATBELTS ALERT SWITCH (the model's one-shot manual sync doesn't
+        // re-run on an external position write); AUTO leaves the sign to the model.
         vars["SEATBELT_SIGN"] = new SimVarDefinition
         {
-            Name = "CABIN SEATBELTS ALERT SWITCH", DisplayName = "Seat Belts",
+            Name = "XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position", DisplayName = "Seat Belts",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = signSw
+        };
+        // Separate READ-ONLY status for the actual sign illumination (the stock bool),
+        // so a blind pilot hears the sign come on/off — including when AUTO illuminates
+        // it automatically at descent (which the position combo, unchanged at "Auto",
+        // wouldn't announce). Not a control; not paneled.
+        vars["SEATBELT_SIGN_LIGHT"] = new SimVarDefinition
+        {
+            Name = "CABIN SEATBELTS ALERT SWITCH", DisplayName = "Seat Belts Sign",
             Type = SimVarType.SimVar, Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -746,6 +762,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- RECORDER / MISC OVERHEAD ----
         OnOff("A32NX_AVIONICS_COMPLT_ON", "Avionics Compartment Light");
+        // Storm Light — a real 2-position ON/OFF switch (correct shape + polarity:
+        // A380X_OVHD_STORM_LT 0=Off/1=On, live-verified settable + held). NOTE: the
+        // FBW A380 build models it as a DUMMY switch (SWITCH_OVHD_INTLT_STORM =
+        // A32NX_GT_Switch_Dummy, empty CODE_POS, "TODO … Requires lighting logic to
+        // be added"), so the position holds but drives NO light yet — toggling it has
+        // no visible effect until FBW implements the storm-light lighting. Not an
+        // MSFSBA bug: the switch is faithfully represented; the effect is FBW's TODO.
         OnOff("A380X_OVHD_STORM_LT", "Storm Light");
         OnOff("A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE", "Cockpit Door Video");
         // Niche overhead/misc toggles (settable L:vars via the calculator catch-all;
@@ -4694,13 +4717,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"2 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
             return true;
         }
-        // Seat-belt sign: there is no SET event, only CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE,
-        // so toggle only when the desired state differs from the current (live) state.
+        // Seat-belt sign 3-position switch: On(0) / Auto(1) / Off(2). Write the switch
+        // POSITION (XMLVAR, held), then drive the sign: On/Off flip the stock
+        // CABIN SEATBELTS ALERT SWITCH via its TOGGLE event only when the desired state
+        // differs (the model's manual sync is one-shot at load, so an external position
+        // write doesn't move the sign by itself); Auto leaves the sign to the FBW model
+        // (its 500 ms Update illuminates it from engines + slats/gear). There is no
+        // absolute SET event for the sign — only the toggle.
         if (varKey == "SEATBELT_SIGN")
         {
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("SEATBELT_SIGN") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
-            if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+            int pos = (int)Math.Round(value);
+            if (pos < 0) pos = 0; else if (pos > 2) pos = 2;
+            simConnect.ExecuteCalculatorCode($"{pos} (>L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position)");
+            if (pos != 1) // On (0) or Off (2) — sync the stock sign; Auto (1) is model-driven
+            {
+                bool desiredOn = pos == 0;
+                bool currentOn = (simConnect.GetCachedVariableValue("SEATBELT_SIGN_LIGHT") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+                if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+            }
             return true;
         }
         // Anti-skid: TOGGLE-only event (K:ANTISKID_BRAKES_TOGGLE flips the switch). The
