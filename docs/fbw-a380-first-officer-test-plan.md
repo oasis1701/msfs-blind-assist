@@ -163,11 +163,57 @@ Checklist, Parking Checklist).
      engaged."** announced.
 3. On approach/descent, confirm gear auto-lowers descending through roughly 2000 ft AGL (and
    above 100 ft AGL, not already down) — **"Two thousand feet. Gear down."** announced.
-4. **Confirm Auto Flaps has NO effect on the A380.** Enable "Auto Flaps" in First Officer
-   Settings; fly a climb/descent and confirm flaps never move automatically — the A380's
-   `FbwA380FOAutoManager.AutoFlapsEnabled` is stored from settings but never acted on (there is
-   no reliable V-speed source wired into this profile, mirroring the Fenix decision). This is
-   a documented non-feature, not a bug.
+### Auto-flaps
+
+`FbwA380FOAutoManager.CheckFlaps` drives the flap lever from the published speed-tape L:vars
+(green dot / S / F / VFE-next). It moves **at most one step per tick** and enforces a **4-second
+dwell** (`FlapDwellSeconds`) between automatic lever movements. Nothing schedules while indicated
+airspeed is below **30 kt** (`MinActionIasKts`) or while the flaps-handle index reads unknown. All
+checks below require **"Auto Flaps"** enabled in Tools → First Officer Settings.
+
+4. **OFF = no movement (default).** Leave "Auto Flaps" **disabled**. Fly a full departure and
+   approach and confirm the FO **never** moves the flap lever automatically — the flaps schedule
+   is inert unless the setting is on.
+5. **Climbout retraction (flaps-2 takeoff).** Take off with flaps 2. Accelerating in the climb,
+   confirm: passing **F speed** (`A32NX_SPEEDS_F`) → lever to 1, **"Flaps 1."** announced; passing
+   **S speed** (`A32NX_SPEEDS_S`) → lever to 0, **"Flaps up."** announced. Repeat with a **flaps-3
+   takeoff** — same rule, same two announcements (retraction is deliberately independent of the
+   takeoff config: at F select 1, at S clean).
+6. **Retraction ignores the landing config.** Before departure, select **CONF 3** on the MFD PERF
+   APPR page (`A32NX_SPEEDS_LANDING_CONF3` = 1), then take off with flaps 2/3. Confirm the climbout
+   retraction to 1 then up is **unaffected** — CONF 3 only caps *extension*, never retraction.
+7. **Approach extension, FULL landing.** With CONF **FULL** selected (default; `LANDING_CONF3` = 0),
+   fly a decelerating approach, not climbing, below **5000 ft AGL**. Confirm each step fires as IAS
+   drops through the matching speed: below **green dot** (`A32NX_SPEEDS_GD`) → **"Speed checked.
+   Flaps 1."**; below **S** → **"Speed checked. Flaps 2."**; below **F** → **"Speed checked. Flaps
+   3."**; then with **GEAR DOWN** (`A32NX_GEAR_HANDLE_POSITION` down) → **"Speed checked. Flaps
+   full."** Confirm the **3 → FULL** step is **gear-gated**: with the gear still up, FULL is held
+   until the gear comes down.
+8. **Approach extension, CONF 3 landing.** Select **CONF 3** on the MFD PERF APPR page. Fly the same
+   approach and confirm the schedule stops at **"Speed checked. Flaps 3."** — the **2 → 3** step
+   still requires **gear down**, and **FULL is never commanded** (the schedule caps at 3 for a CONF 3
+   landing).
+9. **VFE-next guard.** On a descending approach below 5000 ft AGL, hold IAS **just above**
+   VFE-next (`A32NX_SPEEDS_VFEN`). Confirm **no extension** occurs until IAS drops below
+   **VFE-next − 5 kt** (`VfeNextMarginKts`) — the FO will not select the next flap setting while
+   still fast for it (or while VFE-next reads unknown).
+10. **Go-around, one-step SOP retraction.** From a **FULL** landing configuration, apply TOGA and
+    establish a climb. Confirm an **immediate, speed-independent** step: **"Go-around. Flaps 3."**,
+    then the normal F/S retraction schedule cleans up (Flaps 1 at F, Flaps up at S). Repeat from a
+    **CONF 3** approach (flaps 3) → **"Go-around. Flaps 2."** The go-around step is one lever move
+    (FULL → 3, or 3 → 2), then the climbout schedule takes over.
+11. **Turbulence immunity.** On a descending final in bumps, brief positive-VS spikes must **NOT**
+    trigger the go-around step. The detector requires a real climb-out signature: **VS > 500 fpm**
+    (`GaClimbFpm`) **and** at least **+200 ft AGL regained above the lowest AGL reached on the
+    approach** (`GaAglGainFt`, tracked as `_minAglInApproach`). Confirm a gust that momentarily
+    shows +VS without gaining 200 ft does not fire "Go-around. Flaps …".
+12. **Pilot override is respected (monotonic).** During the approach, after the FO has extended a
+    step, **manually pull the flap lever back one notch**. Confirm the FO does **not** re-extend
+    that step (extension is monotonic per approach — the target must exceed the last auto command).
+    Symmetrically, on climbout, re-extend a notch by hand and confirm the FO does not re-fight it.
+13. **No flap movement on the ground.** Confirm the FO makes **no automatic flap movement while on
+    the ground** — after landing, flaps-up stays a **Captain** item (the schedule resets its state
+    at touchdown and does not re-arm until airborne again).
 
 ---
 
@@ -236,9 +282,13 @@ switches. This is legitimate state feedback, not a double-announce bug.
   managed", "FCU altitude: pushed", "Rudder trim: RESET") — these have no readable resting
   state to auto-detect against (a push/pull knob action, not a persistent switch position), so
   they can only be manually ticked (which fires the action) — they never auto-tick from state.
-- **No auto-flaps** — `FbwA380FOAutoManager.AutoFlapsEnabled` is stored from settings but never
-  acted on, mirroring the Fenix A320 First Officer's decision. There is no V1/VR/V2/VAPP source
-  wired into this profile.
+- **Auto-flaps is speed-tape driven, not V-speed driven** — `FbwA380FOAutoManager.CheckFlaps`
+  schedules the flap lever off the published `A32NX_SPEEDS_*` L:vars (green dot / S / F / VFE-next)
+  and the MFD PERF APPR landing config (`A32NX_SPEEDS_LANDING_CONF3`), not off a V1/VR/V2/VAPP
+  source. It only runs when "Auto Flaps" is enabled (opt-in, default off). The **takeoff flap
+  setting itself is never automated** (Captain item); the manager only handles climbout retraction,
+  approach extension (gear-gated to FULL / capped at 3 for CONF 3), the Airbus-SOP go-around
+  one-step retraction, and VFE-next overspeed protection. See Part D checks 4–13.
 - **No engine-N2 gating in Engine Start** — unlike the Fenix and PMDG 737 First Officers (which
   wait for N2 to cross a running threshold before proceeding), the A380 Engine Start flow uses
   fixed 60-second dwell periods between engine pairs. Cross-check actual engine spool via the
