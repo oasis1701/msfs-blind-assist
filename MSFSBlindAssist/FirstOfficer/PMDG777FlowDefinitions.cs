@@ -205,12 +205,20 @@ public static class PMDG777FlowDefinitions
             Captain("BS_TRIM_SET",    "Set elevator, aileron, and rudder trim"),
             // APU Start — always done here regardless of GPU status.
             // Selector: OFF → ON (1) → START (2, spring-loads back to ON internally).
-            // Fixed 90-second wait because ELEC_APU_Selector returns to 1 immediately
-            // after the ON command and is not a reliable "APU running" indicator.
+            // Gate on the SDK's APURunning bool — the same field the System Display reads.
+            // (ELEC_APU_Selector returns to 1 immediately after the ON command and is not
+            // a reliable "APU running" indicator, and the old fixed 90 s wait disconnected
+            // ground power even when the APU never started.) Stop policy: a timeout aborts
+            // the flow BEFORE the ground-power disconnect steps below. Re-run safe:
+            // APURunning already 1 makes the wait pass instantly.
             SW("BS_APU_ON",    "APU selector: ON",    "EVT_OH_ELEC_APU_SEL_SWITCH", 1),
             Wait("BS_APU_ON_WAIT", "Waiting before APU start", 2),
             SW("BS_APU_START", "APU selector: START",  "EVT_OH_ELEC_APU_SEL_SWITCH", 2),
-            Wait("BS_APU_WAIT", "Waiting for APU to reach self-sustaining speed", 90),
+            WaitForField("BS_APU_WAIT", "Waiting for the APU to start", "APURunning",
+                v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // Short settle so the (preflight-armed) APU generator breaker has closed
+            // before the load leaves ground power.
+            Wait("BS_APU_SETTLE", "APU stabilising", 5),
             Skip(Multi("BS_HYD_ELEC",   "Hydraulic electric pumps: ON",
                 ("EVT_OH_HYD_ELEC1", 1), ("EVT_OH_HYD_ELEC2", 1)),
                 s => s.IsElecPump1On() && s.IsElecPump2On()),
@@ -452,12 +460,15 @@ public static class PMDG777FlowDefinitions
             Skip(Momentary("AL_SPEEDBRAKE_DN", "Speedbrake: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "AL_SPEEDBRAKE"),
                 s => s.IsSpeedbrakeDown()),
             SW("AL_XPNDR_STBY",   "Transponder: STBY",     "EVT_TCAS_MODE",               0),
-            // APU Start sequence for on-ground power
+            // APU Start sequence for on-ground power. Skip policy (not Stop): engines are
+            // running, so an APU failure here is announced but must not abort the
+            // remaining cleanup. ELEC_APU_Selector was the old wait field — it reads 1
+            // immediately after the ON command, so it proved nothing; APURunning is real.
             SW("AL_APU_ON",       "APU selector: ON",       "EVT_OH_ELEC_APU_SEL_SWITCH",  1),
             Wait("AL_APU_WAIT",   "Waiting for APU selector", 2),
             SW("AL_APU_START",    "APU selector: START",    "EVT_OH_ELEC_APU_SEL_SWITCH",  2),
-            WaitForField("AL_APU_RUNNING", "Waiting for APU",
-                "ELEC_APU_Selector", v => Math.Abs(v - 1) < 0.1, 90),
+            WaitForField("AL_APU_RUNNING", "Waiting for the APU to start",
+                "APURunning", v => v > 0.5, 120),
         }
     };
 
@@ -608,14 +619,15 @@ public static class PMDG777FlowDefinitions
     };
 
     private static FlowStep<AircraftStateEvaluator> WaitForField(string id, string label, string field,
-        Func<double, bool> condition, int timeoutSec) => new()
+        Func<double, bool> condition, int timeoutSec,
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitForCondition,
         ConditionFieldName = field,
         Condition = condition,
         TimeoutSeconds = timeoutSec,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        FailurePolicy = onTimeout,
         PostActionDelayMs = 0,
     };
 
