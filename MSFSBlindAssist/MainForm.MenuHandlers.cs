@@ -90,7 +90,7 @@ public partial class MainForm
     /// has a live effect adds its re-apply here (populated as panels are migrated).</summary>
     private void ApplyRuntimeSettings()
     {
-        // (SimBrief and Gemini have no live effect. Task 6 adds taxi/docking re-apply here.)
+        // (SimBrief and Gemini have no live effect.)
 
         // Announcements: mode, nearest-city timer, weather monitor interval, GSX background toggle.
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -148,89 +148,16 @@ public partial class MainForm
             settings.HandFlyToneVolume,
             settings.HandFlyMonitorHeading,
             settings.HandFlyMonitorVerticalSpeed);
-    }
 
-    private void TaxiGuidanceOptionsMenuItem_Click(object? sender, EventArgs e)
-    {
-        var currentSettings = SettingsManager.Current;
-        // Task 4 — Manual taxiway-name refresh callback.
-        // Only wired when the augmenting provider is available; null otherwise
-        // (the button in the dialog disables itself when the callback is null).
-        // The callback runs on a thread-pool thread and marshals the announce
-        // back to the UI thread via BeginInvoke so it is always SILENT unless
-        // the user explicitly pressed the button.
-        Func<Task>? refreshCallback = null;
-        if (_augmentingProvider != null && airportDataProvider != null)
-        {
-            var provider = _augmentingProvider;
-            var dataProvider = airportDataProvider;
-            refreshCallback = async () =>
-            {
-                var pos = simConnectManager.LastKnownPosition;
-                if (pos == null) return;
-
-                string? icao = await Task.Run(() =>
-                    dataProvider.GetNearbyAirportICAOs(pos.Value.Latitude, pos.Value.Longitude, 50.0)
-                        .Where(c => c != null && c.Length == 4)
-                        .FirstOrDefault());
-
-                if (icao == null) return;
-
-                await provider.PrefetchAsync(icao, force: true);
-
-                // Tell the pilot HOW MANY names the online sources added (new feature).
-                var cov = provider.GetLastCoverage(icao);
-                int added = cov == null ? 0
-                    : cov.NamesAdoptedFromOsm + cov.NamesAdoptedFromAptDat + cov.AliasesAdded;
-                string msg = added > 0
-                    ? $"Taxiway names refreshed for {icao}: {added} added."
-                    : $"Taxiway names refreshed for {icao}. No new names found.";
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(() => announcer.AnnounceImmediate(msg));
-            };
-        }
-
-        using (var settingsForm = new Forms.TaxiGuidanceOptionsForm(
-            currentSettings.TaxiGuidanceToneWaveform,
-            currentSettings.TaxiGuidanceToneVolume,
-            currentSettings.TaxiGuidanceInvertSteeringTone,
-            currentSettings.TaxiGuidanceHardPanTone,
-            currentSettings.TaxiGuidanceAnnounceCrossings,
-            currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
-            currentSettings.TakeoffAssistGroundSpeedAnnounceInterval,
-            currentSettings.GroundTrafficUseMetres,
-            currentSettings.GsxAutoSelectGateOnRoute,
-            currentSettings.DockingGuidanceEnabled,
-            currentSettings.DockingBeepWaveform,
-            currentSettings.DockingBeepVolume,
-            onRefreshTaxiwayNames: refreshCallback,
-            taxiAugmentEnabled: currentSettings.TaxiAugmentEnabled))
-        {
-            if (settingsForm.ShowDialog(this) == DialogResult.OK)
-            {
-                currentSettings.TaxiGuidanceToneWaveform = settingsForm.SelectedToneWaveform;
-                currentSettings.TaxiGuidanceToneVolume = settingsForm.SelectedVolume;
-                currentSettings.TaxiGuidanceInvertSteeringTone = settingsForm.InvertSteeringTone;
-                currentSettings.TaxiGuidanceHardPanTone = settingsForm.HardPanSteeringTone;
-                currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
-                currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
-                currentSettings.TakeoffAssistGroundSpeedAnnounceInterval = settingsForm.TakeoffGroundSpeedAnnounceInterval;
-                currentSettings.GroundDistanceUnit = settingsForm.SelectedDistanceUnit;
-                currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
-                currentSettings.GsxAutoSelectGateOnRoute = settingsForm.GsxAutoSelectGateOnRoute;
-                currentSettings.DockingGuidanceEnabled = settingsForm.DockingGuidanceEnabled;
-                currentSettings.DockingBeepWaveform = settingsForm.DockingBeepWaveform;
-                currentSettings.DockingBeepVolume = settingsForm.DockingBeepVolume;
-                currentSettings.TaxiAugmentEnabled = settingsForm.TaxiAugmentEnabled;
-                // Apply live (next route build) — no restart needed.
-                if (_augmentingProvider != null)
-                    _augmentingProvider.Enabled = settingsForm.TaxiAugmentEnabled;
-                SettingsManager.Save();
-
-                statusLabel.Text = "Taxi guidance options saved successfully";
-                announcer.Announce("Taxi guidance options saved successfully");
-            }
-        }
+        // Taxi Guidance / Docking — moved verbatim from the retired TaxiGuidanceOptionsMenuItem_Click.
+        // Every other taxi/docking setting (tone type/volume, invert/hard-pan, announce-crossings,
+        // ground-speed intervals, distance units, GSX auto-select, docking enabled/beep) is read
+        // live from SettingsManager.Current at point of use (TaxiGuidanceManager, DockingGuidanceManager,
+        // GroundSpeedAnnouncer, GroundTrafficMonitor, TaxiAssistForm) — no push needed for those.
+        // The online taxiway/gate-name augmentation toggle is the one setting with a live service
+        // to push into; apply it here so it takes effect immediately (next route build).
+        if (_augmentingProvider != null)
+            _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
     }
 
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)

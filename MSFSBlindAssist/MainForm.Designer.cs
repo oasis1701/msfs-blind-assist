@@ -7,7 +7,6 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
@@ -40,7 +39,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -79,7 +77,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
             this.settingsMenuItem,
-            this.taxiGuidanceOptionsMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.suspendHotkeysMenuItem,
@@ -106,15 +103,6 @@ namespace MSFSBlindAssist
             this.settingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.settingsMenuItem.Text = "&Settings…";
             this.settingsMenuItem.Click += new System.EventHandler(this.SettingsMenuItem_Click);
-            //
-            // taxiGuidanceOptionsMenuItem
-            //
-            this.taxiGuidanceOptionsMenuItem.AccessibleName = "Taxi Guidance Options";
-            this.taxiGuidanceOptionsMenuItem.AccessibleDescription = "Configure taxi guidance steering tone settings";
-            this.taxiGuidanceOptionsMenuItem.Name = "taxiGuidanceOptionsMenuItem";
-            this.taxiGuidanceOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.taxiGuidanceOptionsMenuItem.Text = "&Taxi Guidance Options";
-            this.taxiGuidanceOptionsMenuItem.Click += new System.EventHandler(this.TaxiGuidanceOptionsMenuItem_Click);
             //
             // fmcSettingsMenuItem
             //

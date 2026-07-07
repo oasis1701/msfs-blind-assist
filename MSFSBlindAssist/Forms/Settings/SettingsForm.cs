@@ -27,14 +27,14 @@ public class SettingsForm : Form
         _tabs.SelectedIndexChanged += (_, _) =>
         { if (_tabs.SelectedIndex >= 0 && _tabs.SelectedIndex < _panels.Count) _currentPanel = _panels[_tabs.SelectedIndex]; };
 
-        // Panels are added here in FINAL TAB ORDER by later tasks. Task 1 adds only SimBrief;
-        // subsequent tasks INSERT their AddPanel(...) calls so the final order is:
+        // Panels are added here in FINAL TAB ORDER:
         // Announcements, GeoNames, SimBrief, Gemini, HandFly, TaxiGuidance.
         AddPanel(new AnnouncementsPanel());
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
         AddPanel(new GeminiPanel());
         AddPanel(new HandFlyPanel());
+        AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AccessibleName = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
