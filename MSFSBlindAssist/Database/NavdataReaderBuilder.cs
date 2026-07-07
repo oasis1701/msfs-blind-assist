@@ -183,11 +183,11 @@ public class NavdataReaderBuilder
             };
 
             // Start process
-            Log.Debug("Database", $"[{DateTime.Now:HH:mm:ss.fff}] Starting navdatareader process...");
+            Log.Debug("Database", "Starting navdatareader process...");
             _process.Start();
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
-            Log.Debug("Database", $"[{DateTime.Now:HH:mm:ss.fff}] Navdatareader process started, monitoring output...");
+            Log.Debug("Database", "Navdatareader process started, monitoring output...");
 
             // Wait for completion with cancellation support
             while (!_process.HasExited)
