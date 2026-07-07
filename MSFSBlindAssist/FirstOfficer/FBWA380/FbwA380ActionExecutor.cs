@@ -37,6 +37,17 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
 
     public bool IsAvailable => _sc is { IsConnected: true } && _def != null && _announcer != null;
 
+    /// <summary>
+    /// IFoActionExecutor — acquire+release the serialize gate. SemaphoreSlim async
+    /// waiters queue FIFO, so by the time this acquires, every dispatch queued before
+    /// the call has fully completed (ChecklistManager's post-tick grace re-stamp).
+    /// </summary>
+    public async Task WaitForDispatchDrainAsync()
+    {
+        await _gate.WaitAsync();
+        _gate.Release();
+    }
+
     public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
     {
         switch (step.ActionType)

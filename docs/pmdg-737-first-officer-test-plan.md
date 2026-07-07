@@ -718,3 +718,55 @@ Hard to force without a scripted APU failure; the Stop mechanism is the same cod
 the shipped engine-start N2 aborts (Part tested earlier). If a start failure ever occurs
 naturally: expect "Timed out waiting for: …" then "Before Start flow stopped. Unable to
 complete: …", with ground power still connected.
+
+## Part T — checklist ticks stay ticked + position-lights walk (2026-07-06)
+
+Two fixes: (1) the manual-tick revert grace is now ACTION-AWARE — a tick's revert
+protection holds until its switch action has actually finished (covers the 4–20 s
+transponder walk and anything queued behind it on the dispatch gate), then a fresh
+10 s window covers the CDA readback; (2) `EVT_OH_LIGHTS_POS_STROBE` was live-proven
+CDA-deaf (like the transponder rotary) and now click-walks on BOTH the FO path and
+the panel's Position Lights combo.
+
+### T.1 Transponder checklist ticks stick (the reported bug)
+1. On the ground, transponder at STBY. Open the FO checklist, Before Start group.
+2. Tick "Transponder: TA/RA". Wait 30 s without touching anything.
+3. PASS: the item never unticks (previously it reverted ~10 s in, mid-walk, then
+   re-ticked when the walk landed). The transponder ends at TA/RA.
+4. Repeat for Shutdown "Transponder: STBY" (TA/RA → STBY walk). Same expectation.
+
+### T.2 Position-lights checklist ticks stick AND actually move the switch
+1. Position lights at STEADY. Before Takeoff group: tick
+   "Position lights: STROBE & STEADY".
+2. PASS: the overhead switch physically moves to STROBE & STEADY within ~3 s
+   (previously it NEVER moved — the event was a silent no-op) and the tick stays.
+   One intermediate detent may pass silently (the walk suppresses per-detent chatter).
+3. After Landing group: tick "Position lights: STEADY" — switch walks back down, tick
+   stays.
+
+### T.3 Tick queued behind a walk stays ticked
+1. Transponder at STBY, position lights STEADY. In quick succession tick
+   "Transponder: TA/RA" (Before Takeoff) and then immediately
+   "Position lights: STROBE & STEADY".
+2. PASS: both ticks hold; the position-light walk runs after the transponder walk
+   (writes are serialized) and both switches end on target.
+
+### T.4 A genuinely wrong state still reverts (regression guard)
+1. Tick any auto item, then within ~5 s move its switch to the WRONG position in the
+   virtual cockpit (e.g. tick "Taxi light: ON", then switch it OFF in the VC).
+2. PASS: the item unticks ~10–15 s after the switch settles wrong — revert still
+   works; the fix only protects ticks while their own action is in flight.
+
+### T.5 Panel Position Lights combo (was silently broken)
+1. Open the 737 Lights panel, Position Lights combo. Pick "STROBE & STEADY".
+2. PASS: the switch moves (previously nothing happened); no per-detent chatter; a
+   re-pick mid-walk announces "Still setting position lights, please wait." and the
+   newest pick wins. Pick "STEADY" to walk back.
+3. Regression spot-check while here: the panel Transponder Mode combo still walks
+   correctly (shares the counter that now also covers position-light walks).
+
+### T.6 Before Takeoff / After Landing flows set the position lights
+1. Run the Before Takeoff flow: the "Position lights: STROBE & STEADY" step must
+   physically move the switch (previously a silent no-op) and the checklist's
+   BTKO_STROBE auto-ticks.
+2. After Landing flow: "Position lights: STEADY" moves it back.

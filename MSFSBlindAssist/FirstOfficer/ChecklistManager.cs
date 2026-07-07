@@ -53,7 +53,7 @@ public class ChecklistManager<TExec, TState>
             // snapshot cadence mean the state can lag the tick by several seconds).
             item.LastManualCheckUtc = DateTime.UtcNow;
             if (item.CheckAction != null && _executor.IsAvailable)
-                _ = item.CheckAction(_executor, _state);
+                _ = RunCheckActionWithGraceAsync(item);
         }
 
         RaiseChanged(FindGroup(groupId)!, item);
@@ -133,6 +133,7 @@ public class ChecklistManager<TExec, TState>
                 }
                 else if (!stateMatches.Value && item.IsChecked
                     && item.RevertBehavior == RevertBehavior.RevertToState
+                    && !item.ActionSettling
                     && !WithinManualTickGrace(item))
                 {
                     item.IsChecked = false;
@@ -146,14 +147,55 @@ public class ChecklistManager<TExec, TState>
         }
     }
 
-    // Grace window after a manual tick during which RevertToState does not un-tick the
-    // item — the tick's CheckAction may still be issuing frame-spaced writes, and the CDA
-    // snapshot lags. Auto-TICKING is never delayed (an early truth is fine); only the
-    // revert is. 10 s covers the slowest multi-write actions (4-switch window heat).
+    // Grace window during which RevertToState does not un-tick the item, measured from
+    // BOTH the manual tick AND the tick's action-drained stamp (see
+    // RunCheckActionWithGraceAsync) — the CDA snapshot cadence means the state can lag
+    // the last write by a second or two. Auto-TICKING is never delayed (an early truth
+    // is fine); only the revert is. 10 s covers the readback lag with margin; SLOW
+    // actions are covered by ActionSettling, not by inflating this constant.
     private static readonly TimeSpan ManualTickGrace = TimeSpan.FromSeconds(10);
 
+    // Cap on waiting for the executor's dispatch queue to drain after a tick's action —
+    // generous headroom over the worst closed-loop selector walk (~23 s) plus writes
+    // queued ahead of it, while guaranteeing a wedged gate can't suppress revert forever.
+    private static readonly TimeSpan ActionDrainCap = TimeSpan.FromSeconds(45);
+
     private static bool WithinManualTickGrace(ChecklistItem<TExec, TState> item)
-        => item.LastManualCheckUtc is DateTime t && DateTime.UtcNow - t < ManualTickGrace;
+    {
+        var now = DateTime.UtcNow;
+        if (item.LastManualCheckUtc is DateTime t && now - t < ManualTickGrace) return true;
+        return item.ActionGraceUtc is DateTime g && now - g < ManualTickGrace;
+    }
+
+    /// <summary>
+    /// Runs a manual tick's CheckAction and keeps the RevertToState grace honest for
+    /// SLOW actions. A fixed grace measured from tick time loses to (a) the closed-loop
+    /// selector walks (transponder / position lights — 4–20+ s, unbounded by dropped
+    /// clicks and per-detent fresh-snapshot awaits) and (b) ANY write queued behind such
+    /// a walk on the executor's serialized dispatch gate — both reverted fresh ticks
+    /// mid-action (the 2026-07-06 "transponder / strobe won't stay ticked" bug).
+    /// ActionSettling suppresses revert from tick until the action completes AND the
+    /// dispatch queue drains past its writes (fire-and-forget actions return before
+    /// their writes clear the gate, so the drain wait is what actually covers them);
+    /// the post-drain grace stamp then gives the ~1 Hz readback a full window to show
+    /// the landed switch. A genuinely failed action (switch never moves) still
+    /// surfaces: settling clears, the grace expires, and the item reverts.
+    /// </summary>
+    private async Task RunCheckActionWithGraceAsync(ChecklistItem<TExec, TState> item)
+    {
+        item.BeginActionSettling();
+        try
+        {
+            try { await item.CheckAction!(_executor, _state); }
+            catch { /* an action failure must never wedge the settling count */ }
+            await Task.WhenAny(_executor.WaitForDispatchDrainAsync(), Task.Delay(ActionDrainCap));
+            item.StampActionGraceUtc();
+        }
+        finally
+        {
+            item.EndActionSettling();
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Lookup helpers

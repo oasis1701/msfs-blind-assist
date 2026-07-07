@@ -91,6 +91,43 @@ public class ChecklistItem<TExec, TState>
     public bool ManualCompletionAllowed { get; set; } = true;
 
     // -----------------------------------------------------------------------
+    // Manual-tick action settling (ChecklistManager.RunCheckActionWithGraceAsync)
+    // -----------------------------------------------------------------------
+
+    private int _actionSettlingCount;
+    private long _actionGraceUtcTicks;
+
+    /// <summary>
+    /// True from a manual tick until the tick's CheckAction has completed AND the
+    /// executor's dispatch queue has drained past its writes. RevertToState never
+    /// un-ticks while set — a fixed grace measured from tick time loses to the
+    /// closed-loop selector walks (transponder / position lights, 4–20+ s with
+    /// dropped clicks) and to writes queued behind one on the serialized dispatch
+    /// gate. A COUNT, not a bool: an untick + quick re-tick overlaps two settling
+    /// tasks, and the first one's completion must not strip the second's protection.
+    /// Written from background continuations, read by the UI evaluation timer.
+    /// </summary>
+    public bool ActionSettling => Volatile.Read(ref _actionSettlingCount) > 0;
+
+    public void BeginActionSettling() => Interlocked.Increment(ref _actionSettlingCount);
+    public void EndActionSettling() => Interlocked.Decrement(ref _actionSettlingCount);
+
+    /// <summary>Stamps the post-action grace clock. Ticks-based + Volatile because the
+    /// writer is a background continuation while the reader is the UI evaluation timer
+    /// (a DateTime? property write is not atomic).</summary>
+    public void StampActionGraceUtc() => Volatile.Write(ref _actionGraceUtcTicks, DateTime.UtcNow.Ticks);
+
+    /// <summary>UTC time the manual tick's action finished draining, or null if never.</summary>
+    public DateTime? ActionGraceUtc
+    {
+        get
+        {
+            long t = Volatile.Read(ref _actionGraceUtcTicks);
+            return t == 0 ? null : new DateTime(t, DateTimeKind.Utc);
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Auto-detection (state evaluation from PMDG data)
     // -----------------------------------------------------------------------
 

@@ -90,10 +90,11 @@ public class AircraftActionExecutor : IFoActionExecutor
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public bool IsAvailable => _sc is { IsConnected: true };
 
-    // Self-clearing count of transponder-mode closed-loop walks THIS executor
-    // is driving. PMDG737Definition.ProcessSimVarUpdate's XPDR_ModeSel case
-    // reads XpdrWalkInProgress to swallow the per-detent monitor callouts the
-    // walk produces (walking STBY→TA/RA passes ALT RPTG OFF/XPNDR/TA). The
+    // Self-clearing count of closed-loop selector walks THIS executor is
+    // driving (transponder mode AND position lights — every Table entry with
+    // Dispatch.WalkedSelector increments it). PMDG737Definition.ProcessSimVarUpdate's
+    // XPDR_ModeSel case reads XpdrWalkInProgress to swallow the per-detent monitor
+    // callouts the walk produces (walking STBY→TA/RA passes ALT RPTG OFF/XPNDR/TA). The
     // panel path suppresses via the def's own instance _xpdrWalkSuppress, but
     // the FO executor can't reach that def instance and ProcessSimVarUpdate has
     // no SimConnectManager handle to read the shared walk's instance counter —
@@ -152,6 +153,15 @@ public class AircraftActionExecutor : IFoActionExecutor
         // stepped 2→1, RIGHTSINGLE 1→2 — verified both directions). The PANEL is
         // deliberately left on the CDA path for now — FO-only fix per user direction.
         ["EVT_TCAS_MODE"]                    = new(Dispatch.WalkedSelector, StateField: "XPDR_ModeSel"),
+        // Position-lights switch: live-probed 2026-07-06 — the CDA write with a position
+        // parameter is a silent no-op on this switch (the identical CDUTest CDA write moved
+        // probe heat in the same session, so the transport itself was proven good), and
+        // transmit-with-target is ignored too. Only mouse-click walking moves it, one
+        // detent per click, RIGHTSINGLE up / LEFTSINGLE down (verified 0→1→2 and back) —
+        // the same inverted convention as EVT_TCAS_MODE, so it shares the closed-loop walk.
+        // This is why the BTKO_STROBE/AL_STROBE checklist ticks reverted permanently and
+        // the Before Takeoff / After Landing flows' position-light steps silently no-op'd.
+        ["EVT_OH_LIGHTS_POS_STROBE"]         = new(Dispatch.WalkedSelector, StateField: "LTS_PositionSw"),
 
         // --- Fuel-control levers ---
         ["EVT_CONTROL_STAND_ENG1_START_LEVER"] = new(Dispatch.FuelLever),
@@ -219,6 +229,18 @@ public class AircraftActionExecutor : IFoActionExecutor
             return ok;
         }
         finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>
+    /// IFoActionExecutor — acquire+release the dispatch gate. SemaphoreSlim async
+    /// waiters queue FIFO, so by the time this acquires, every dispatch queued before
+    /// the call (including a closed-loop walk holding the gate for many seconds, and
+    /// anything queued behind it) has fully completed.
+    /// </summary>
+    public async Task WaitForDispatchDrainAsync()
+    {
+        await _dispatchGate.WaitAsync();
+        _dispatchGate.Release();
     }
 
     // Single-write public entry — gated so it can't land in the same frame as a concurrent

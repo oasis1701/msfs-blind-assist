@@ -3490,7 +3490,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["LTS_RunwayTurnoffSw_1"]      = "EVT_OH_LIGHTS_R_TURNOFF",
             ["LTS_TaxiSw"]                 = "EVT_OH_LIGHTS_TAXI",
             ["LTS_LogoSw"]                 = "EVT_OH_LIGHTS_LOGO",
-            ["LTS_PositionSw"]             = "EVT_OH_LIGHTS_POS_STROBE",
+            // LTS_PositionSw is deliberately ABSENT: the position-lights switch ignores
+            // the CDA position write this map dispatches (live-probed 2026-07-06 — probe
+            // heat moved via the identical CDA write in the same session, this switch
+            // never did) — it is handled by the closed-loop click-walk branch (4c) in
+            // HandleUIVariableSet, which looks up EVT_OH_LIGHTS_POS_STROBE directly.
+            // Do not re-add it here.
             ["LTS_AntiCollisionSw"]        = "EVT_OH_LIGHTS_ANT_COL",
             ["LTS_WingSw"]                 = "EVT_OH_LIGHTS_WING",
             ["LTS_WheelWellSw"]            = "EVT_OH_LIGHTS_WHEEL_WELL",
@@ -4696,6 +4701,85 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 4c. Position lights (LTS_PositionSw) — the second CDA-deaf rotary.
+        //     Identical mechanism and handling to the transponder branch (4b)
+        //     above: the switch ignores the CDA position write (live-probed
+        //     2026-07-06 — probe heat moved via the identical write in the same
+        //     session, this switch never did) and transmit-with-target, and
+        //     only steps on transmit mouse-clicks (RIGHTSINGLE up / LEFTSINGLE
+        //     down, verified 0→1→2 and back). Shares the same closed-loop walk;
+        //     see 4b's comments for the chaining / suppression / off-target
+        //     replay rationale — this branch mirrors it with its own state trio.
+        // ------------------------------------------------------------------
+        if (varKey == "LTS_PositionSw")
+        {
+            if (_posLtWalkOp is { IsCompleted: false })
+            {
+                Interlocked.Exchange(ref _posLtPendingTarget, (int)value);
+                announcer.AnnounceImmediate("Still setting position lights, please wait.");
+                return true;
+            }
+            var posLtDm = simConnect.PMDGDataManager;
+            if (posLtDm == null || !posLtDm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if (EventIds.TryGetValue("EVT_OH_LIGHTS_POS_STROBE", out int posLtEvId))
+            {
+                int target = (int)value;
+                Interlocked.Exchange(ref _posLtPendingTarget, -1);
+                _posLtWalkSuppress = true;
+                async Task RunPosLtWalkAsync()
+                {
+                    try
+                    {
+                        int? landed = null;
+                        int currentTarget = target;
+                        while (true)
+                        {
+                            landed = await simConnect.WalkPMDGSelectorClosedLoop(
+                                (uint)posLtEvId, "LTS_PositionSw", currentTarget);
+                            if (!ReferenceEquals(simConnect.PMDGDataManager, posLtDm)) return;
+                            int next = Interlocked.Exchange(ref _posLtPendingTarget, -1);
+                            if (next >= 0 && next != currentTarget)
+                            {
+                                currentTarget = next;
+                                continue;
+                            }
+                            if (landed == currentTarget) return;
+                            if (landed is null)
+                            {
+                                await Task.Delay(1300);
+                                if (!ReferenceEquals(simConnect.PMDGDataManager, posLtDm)) return;
+                                if ((int)Math.Round(posLtDm.GetFieldValue("LTS_PositionSw")) == currentTarget) return;
+                                next = Interlocked.Exchange(ref _posLtPendingTarget, -1);
+                                if (next >= 0 && next != currentTarget)
+                                {
+                                    currentTarget = next;
+                                    continue;
+                                }
+                            }
+                            _posLtWalkSuppress = false;
+                            (posLtDm as SimConnect.PMDGNG3DataManager)?.RaiseFieldChanged("LTS_PositionSw");
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        // SimConnect drop mid-walk — never fault the fire-and-forget task.
+                    }
+                    finally
+                    {
+                        _posLtWalkSuppress = false;
+                    }
+                }
+                _posLtWalkOp = RunPosLtWalkAsync();
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 5. Generic _simpleEventMap lookup — covers every remaining mapped
         //    var-key. The parameter shape is determined by the var def:
         //
@@ -4828,6 +4912,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
                 return _xpdrWalkSuppress
+                    || MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
+
+            // -------------------------------------------------------------
+            // Position lights: same per-detent swallow as the transponder
+            // above — walking STEADY→STROBE & STEADY passes OFF, which would
+            // otherwise announce mid-walk and churn the combo off the user's
+            // pick. Same two self-clearing producers: the panel walk's own
+            // suppress flag (4c) and the FO executor's walk counter (which
+            // counts BOTH walked selectors; a concurrent cross-suppression
+            // window is at most one walk long and ends with the landed value
+            // either matching the pick, or replayed via RaiseFieldChanged).
+            // -------------------------------------------------------------
+            case "LTS_PositionSw":
+                return _posLtWalkSuppress
                     || MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
 
             // -------------------------------------------------------------
@@ -6051,6 +6149,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Target queued by a combo pick made while a walk is running (-1 = none).
     // Written on the UI thread, consumed by the walk task via Interlocked.
     private int _xpdrPendingTarget = -1;
+
+    // Position-lights closed-loop walk state — the same trio as the transponder's
+    // above (HandleUIVariableSet 4c). LTS_PositionSw is the second switch proven to
+    // ignore CDA position writes and step only on transmit mouse-clicks
+    // (live-probed 2026-07-06; RIGHTSINGLE up / LEFTSINGLE down, the EVT_TCAS_MODE
+    // convention, so it shares WalkSelectorClosedLoop unchanged).
+    private Task? _posLtWalkOp;
+    private volatile bool _posLtWalkSuppress;
+    private int _posLtPendingTarget = -1;
 
 
     /// <summary>

@@ -41,6 +41,17 @@ public class AircraftActionExecutor : IFoActionExecutor
         if (since < gap) await Task.Delay(gap - since);
     }
 
+    /// <summary>
+    /// IFoActionExecutor — acquire+release the dispatch gate. SemaphoreSlim async
+    /// waiters queue FIFO, so by the time this acquires, every dispatch queued before
+    /// the call has fully completed (ChecklistManager's post-tick grace re-stamp).
+    /// </summary>
+    public async Task WaitForDispatchDrainAsync()
+    {
+        await _dispatchGate.WaitAsync();
+        _dispatchGate.Release();
+    }
+
     /// <summary>Interface implementation: dispatches an <see cref="IFlowStepDispatch"/>,
     /// awaited by the flow engine so steps stay ordered and paced.</summary>
     public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
