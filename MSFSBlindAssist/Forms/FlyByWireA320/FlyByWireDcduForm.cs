@@ -246,7 +246,7 @@ public class FlyByWireDcduForm : Form
         // Soft keys — same scheme as the MCDU LSKs, honouring the shared
         // alternate-keys setting (FlyByWireMCDUForm precedent): standard =
         // Ctrl+1/2 left + Alt+1/2 right; alternate = F1/F2 left + F7/F8 right.
-        bool useAltKeys = Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
+        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
         if (useAltKeys)
         {
             if (!e.Control && !e.Alt && e.KeyCode is Keys.F1 or Keys.F2)
