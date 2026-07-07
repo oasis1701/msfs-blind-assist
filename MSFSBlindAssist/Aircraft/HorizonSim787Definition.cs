@@ -275,9 +275,6 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
         // first-pass dispatch — would toggle on every combo value change. Handled
         // separately in HandleUIVariableSet with state-aware press+release logic.
 
-        // Battery master.
-        ["HS787_Battery"]       = new[] { "ELECTRICAL_BATTERY_SWITCH" },
-
         // Fuel pumps — the WT model accepts the InputEvent directly with 0/1 values.
         ["HS787_FuelPump_LFwd"] = new[] { "FUEL_PUMP_FWD_L" },
         ["HS787_FuelPump_LAft"] = new[] { "FUEL_PUMP_AFT_L" },

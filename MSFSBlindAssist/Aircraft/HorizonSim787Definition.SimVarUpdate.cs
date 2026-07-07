@@ -1619,13 +1619,6 @@ public partial class HorizonSim787Definition
             case "HS787_EicasOilT_1":
             case "HS787_EicasOilT_2":
             case "HS787_EicasTat":
-            case "HS787_MCP_IAS":
-            case "HS787_MCP_Mach":
-            case "HS787_MCP_IsMach":
-            case "HS787_MCP_SpdManual":
-            case "HS787_MCP_Heading":
-            case "HS787_MCP_Altitude":
-            case "HS787_MCP_VS":
             case "HS787_MCP_FPA":
             case "HS787_FPAMode":
             case "HS787_TRKMode":

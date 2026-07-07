@@ -71,7 +71,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- local builders ------------------------------------------
         // Writable L:var rendered as a combo box of named positions.
         void Sel(string key, string display, Dictionary<double, string> vd,
-                 bool button = false, bool reverse = false)
+                 bool reverse = false)
         {
             vars[key] = new SimVarDefinition
             {
@@ -96,10 +96,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
         // Bool L:var: Off / On.
-        void OnOff(string key, string display, bool button = false) =>
+        void OnOff(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "On" });
         // Bool L:var: Off / Auto (FBW "_IS_AUTO" pushbuttons).
-        void OffAuto(string key, string display, bool button = false) =>
+        void OffAuto(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
         // Bool L:var: On / Auto (FBW "_ON_PB_IS_AUTO" pushbuttons — 0 = manually ON,
         // 1 = AUTO; the OFF-button variant uses OffAuto). Labelling the ON pushbutton
@@ -348,7 +348,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
         // APU auto-exit TEST pushbutton (momentary maintenance self-test).
         Btn("A32NX_APU_AUTOEXITING_TEST_ON", "APU Auto Exit Test");
-        OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
+        OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start");
         // APU Available auto-announces ("APU Available: Available") AND shows in the
         // APU status readout. It overlaps the E/WD "APU AVAIL" memo — that twin
         // call-out is intentional (the user prefers both, the memo being a legit
