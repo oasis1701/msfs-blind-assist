@@ -1,5 +1,6 @@
 using System.Globalization;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -125,7 +126,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
             // user doesn't get a stale announcement when AS comes back.
             if (!await _activeSky.IsRunningAsync())
             {
-                System.Diagnostics.Debug.WriteLine("[ASMonitor] tick: AS not detected; baseline reset");
+                Log.Debug("Services", "[ASMonitor] tick: AS not detected; baseline reset");
                 _lastTimeStamp = 0;
                 _lastNormalizedMetar = null;
                 _hasBaseline = false;
@@ -149,7 +150,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
             if (conditions == null || string.IsNullOrWhiteSpace(positionMetar))
             {
-                System.Diagnostics.Debug.WriteLine("[ASMonitor] tick: AS detected but data fetch failed");
+                Log.Debug("Services", "[ASMonitor] tick: AS detected but data fetch failed");
                 return;
             }
 
@@ -162,19 +163,19 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 _lastTimeStamp = conditions.TimeStamp;
                 _lastNormalizedMetar = normalized;
                 _hasBaseline = true;
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("Services", 
                     $"[ASMonitor] baseline: ts={_lastTimeStamp} normalized='{normalized}'");
                 return;
             }
 
             if (!isRefresh)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("Services", 
                     $"[ASMonitor] tick: unchanged (ts={conditions.TimeStamp}, last={_lastTimeStamp})");
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine(
+            Log.Debug("Services", 
                 $"[ASMonitor] tick: REFRESH detected ts {_lastTimeStamp}→{conditions.TimeStamp}");
 
             // User-configurable hard floor on announcement rate. Applied on TOP
@@ -188,7 +189,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 && _lastAnnouncedAt != DateTime.MinValue
                 && DateTime.UtcNow - _lastAnnouncedAt < TimeSpan.FromMinutes(IntervalMinutes))
             {
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("Services", 
                     $"[ASMonitor] tick: refresh detected but throttled — last announce was {(DateTime.UtcNow - _lastAnnouncedAt).TotalMinutes:F1}m ago, interval={IntervalMinutes}m");
                 return;
             }
@@ -207,14 +208,14 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
             if (!_disposed && !string.IsNullOrEmpty(spoken))
             {
-                System.Diagnostics.Debug.WriteLine($"[ASMonitor] announcing: \"{spoken}\"");
+                Log.Debug("Services", $"[ASMonitor] announcing: \"{spoken}\"");
                 _announcer.Announce(spoken);
                 _lastAnnouncedAt = DateTime.UtcNow;
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ASMonitor] tick error: {ex.GetType().Name}: {ex.Message}");
+            Log.Debug("Services", $"[ASMonitor] tick error: {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {

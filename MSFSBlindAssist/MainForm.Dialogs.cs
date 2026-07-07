@@ -13,6 +13,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -130,14 +131,14 @@ public partial class MainForm
                 catch (Exception ex)
                 {
                     announcer.AnnounceImmediate($"Error displaying location information: {ex.Message}");
-                    System.Diagnostics.Debug.WriteLine($"[MainForm] Error in position callback: {ex.Message}");
+                    Log.Debug("MainForm", $"[MainForm] Error in position callback: {ex.Message}");
                 }
             });
         }
         catch (Exception ex)
         {
             announcer.AnnounceImmediate($"Error requesting location information: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in ShowLocationInfoDialog: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error in ShowLocationInfoDialog: {ex.Message}");
         }
     }
 
@@ -151,7 +152,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error opening weather radar: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error opening weather radar: {ex.Message}");
         }
     }
 
@@ -186,7 +187,7 @@ public partial class MainForm
         catch (Exception ex)
         {
             announcer.AnnounceImmediate($"Error opening SimBrief briefing: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in OpenSimBriefBriefing: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error in OpenSimBriefBriefing: {ex.Message}");
         }
     }
 

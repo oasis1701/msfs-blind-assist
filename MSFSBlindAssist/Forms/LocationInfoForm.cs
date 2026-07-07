@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 public partial class LocationInfoForm : Form
@@ -340,7 +341,7 @@ public partial class LocationInfoForm : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[LocationInfoForm] Error announcing summary: {ex.Message}");
+            Log.Debug("Forms", $"[LocationInfoForm] Error announcing summary: {ex.Message}");
         }
     }
 

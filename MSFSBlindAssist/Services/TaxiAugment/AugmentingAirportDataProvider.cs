@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.TaxiAugment;
 
@@ -308,18 +309,18 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     /// implementation re-fetched the navdata and re-ran the full O(n×m) overlay just for this log
     /// line). Never throws — a logging failure must not surface to callers.
     /// </summary>
+    private static readonly LogChannel _log = Log.Channel("taxi-augment");
+
     private static void WriteTelemetryLog(string icao, CoverageReport cov)
     {
         try
         {
-            string line = $"{System.DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}  {icao}  " +
+            string line = $"{icao}  " +
                           $"navNamed={cov.NavNamedTaxiways} navUnnamed={cov.NavUnnamedSegments} " +
                           $"+osm={cov.NamesAdoptedFromOsm} +aptdat={cov.NamesAdoptedFromAptDat} " +
-                          $"aliases={cov.AliasesAdded} disagree={cov.OsmAptDatDisagreements}" +
-                          System.Environment.NewLine;
+                          $"aliases={cov.AliasesAdded} disagree={cov.OsmAptDatDisagreements}";
 
-            System.IO.File.AppendAllText(
-                MSFSBlindAssist.Utils.AppLogs.PathFor("taxi-augment.log"), line);
+            _log.Info(line);
         }
         catch
         {
