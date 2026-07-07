@@ -1,9 +1,9 @@
-using System.IO;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services.Gsx;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -74,12 +74,14 @@ public sealed class DockingGuidanceManager : IDisposable
     private const double DetailRangeMetres = 150.0;
 
     // Throttled telemetry so a live docking run can be diagnosed post-hoc.
-    private static readonly string DockLogPath = Utils.AppLogs.PathFor("docking.log");
+    private static readonly LogChannel _dockLog = Log.Channel("docking");
     private DateTime _lastDockLogUtc = DateTime.MinValue;
     // One-shot diagnostic for the occupancy clamp (written to docking-aircraft.log, the same
-    // file as the STOPOFFSET line). Reset per gate in ResetLocked so a re-dock re-logs once;
-    // NOT written per frame (the clamp math runs every frame but the file write is latched).
-    private static readonly string AircraftLogPath = Utils.AppLogs.PathFor("docking-aircraft.log");
+    // file as the STOPOFFSET line — also written by TaxiAssistForm/MainForm.AircraftSwitch/
+    // SimConnectManager.Dispatch, all now serialized through this same LogChannel). Reset per
+    // gate in ResetLocked so a re-dock re-logs once; NOT written per frame (the clamp math runs
+    // every frame but the file write is latched).
+    private static readonly LogChannel _aircraftLog = Log.Channel("docking-aircraft");
     private bool _occupancyClampLogged;
 
     public DockingGuidanceManager(ScreenReaderAnnouncer announcer)
@@ -513,17 +515,16 @@ public sealed class DockingGuidanceManager : IDisposable
         _lastDockLogUtc = now;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(DockLogPath)!);
-            File.AppendAllText(DockLogPath, string.Format(
+            _dockLog.Info(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss.fff} state={1} gs={2:F1} dist={3:F1} along={4:F1} " +
-                "hdgErr={5:F1} lineupErr={6:F1} crossFt={7:F1} stopHdgTrue={8:F1} acHdgTrue={9:F1} " +
-                "stopOffL={10:F2} stopOffLat={11:F2} deice={12} " +
-                "stopLat={13:F8} stopLon={14:F8} acLat={15:F8} acLon={16:F8}{17}",
-                DateTime.Now, _state, gs, distM, alongM,
+                "state={0} gs={1:F1} dist={2:F1} along={3:F1} " +
+                "hdgErr={4:F1} lineupErr={5:F1} crossFt={6:F1} stopHdgTrue={7:F1} acHdgTrue={8:F1} " +
+                "stopOffL={9:F2} stopOffLat={10:F2} deice={11} " +
+                "stopLat={12:F8} stopLon={13:F8} acLat={14:F8} acLon={15:F8}",
+                _state, gs, distM, alongM,
                 hdgErr, lineupErr, crossFt, stopHeadingTrue, acHdgTrue,
                 _stopOffset.LongitudinalMetres, _stopOffset.LateralMetres,
-                _gate?.IsDeiceArea == true, stopLat, stopLon, acLat, acLon, Environment.NewLine));
+                _gate?.IsDeiceArea == true, stopLat, stopLon, acLat, acLon));
         }
         catch { /* logging must never break docking */ }
     }
@@ -540,14 +541,13 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(AircraftLogPath)!);
-            File.AppendAllText(AircraftLogPath, string.Format(
+            _aircraftLog.Info(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss}  OCCUPANCY-CLAMP  icao='{1}' gate='{2}' vdgs='{3}' thr={4:F1} " +
-                "gap={5:F1} desired={6:F1} -> clamped={7:F1} (margin {8:F1}) stopLat={9:F8} stopLon={10:F8}{11}",
-                DateTime.Now, _gate?.AirportICAO ?? "", _gate?.ToString() ?? "", _gate?.VdgsType ?? "",
+                "OCCUPANCY-CLAMP  icao='{0}' gate='{1}' vdgs='{2}' thr={3:F1} " +
+                "gap={4:F1} desired={5:F1} -> clamped={6:F1} (margin {7:F1}) stopLat={8:F8} stopLon={9:F8}",
+                _gate?.AirportICAO ?? "", _gate?.ToString() ?? "", _gate?.VdgsType ?? "",
                 threshold, baseStopAlong, desiredAlong, clampedAlong,
-                DockingGeometry.OccupancyClampMarginMetres, sLat, sLon, Environment.NewLine));
+                DockingGeometry.OccupancyClampMarginMetres, sLat, sLon));
         }
         catch { /* logging must never break docking */ }
     }

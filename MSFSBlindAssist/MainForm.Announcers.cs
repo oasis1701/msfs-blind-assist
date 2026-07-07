@@ -506,11 +506,10 @@ public partial class MainForm
                     _diagLoggedFirstRolloutPos = true;
                     try
                     {
-                        string diagPath = MSFSBlindAssist.Utils.AppLogs.PathFor("landing_exit.log");
-                        System.IO.File.AppendAllText(diagPath,
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] First TAXI_GUIDANCE_POSITION in LandingRollout: " +
+                        _landingExitLog.Info(
+                            $"[MF] First TAXI_GUIDANCE_POSITION in LandingRollout: " +
                             $"lat={pos.Latitude:F6} lon={pos.Longitude:F6} hdgMag={pos.HeadingMagnetic:F1} " +
-                            $"magVar={pos.MagneticVariation:F2} gs={pos.GroundSpeedKnots:F1}{Environment.NewLine}");
+                            $"magVar={pos.MagneticVariation:F2} gs={pos.GroundSpeedKnots:F1}");
                     }
                     catch { }
                 }
@@ -1472,12 +1471,7 @@ public partial class MainForm
     {
         // DIAGNOSTIC: log state transitions to landing_exit.log so we can correlate
         // them with the rollout-phase per-frame log entries.
-        try
-        {
-            string diagPath = MSFSBlindAssist.Utils.AppLogs.PathFor("landing_exit.log");
-            System.IO.File.AppendAllText(diagPath,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] OnTaxiGuidanceStateChanged newState={newState}{Environment.NewLine}");
-        }
+        try { _landingExitLog.Info($"[MF] OnTaxiGuidanceStateChanged newState={newState}"); }
         catch { }
 
         // DIAGNOSTIC: reset the first-rollout-pos one-shot whenever we ENTER

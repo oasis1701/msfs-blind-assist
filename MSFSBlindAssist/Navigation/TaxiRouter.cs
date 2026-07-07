@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Navigation;
 
@@ -9,16 +10,11 @@ namespace MSFSBlindAssist.Navigation;
 public class TaxiRouter
 {
     private readonly TaxiGraph _graph;
-    private static readonly string LogPath = MSFSBlindAssist.Utils.AppLogs.PathFor("taxi_router.log");
-    private const long MAX_ROUTER_LOG_BYTES = 1_000_000;
+    private static readonly LogChannel _log = MSFSBlindAssist.Utils.Logging.Log.Channel("taxi_router");
 
     private static void Log(string message)
     {
-        try
-        {
-            string line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-            File.AppendAllText(LogPath, line + Environment.NewLine);
-        }
+        try { _log.Info(message); }
         catch { /* ignore logging failures */ }
     }
 
@@ -52,20 +48,11 @@ public class TaxiRouter
     public TaxiRoute? FindConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence,
         bool destinationIsRunway = false)
     {
-        // Append a session header (size-capped) — the old truncate-per-run
-        // destroyed the previous build's log: debugging the KIAH 2026-06-10
-        // 6 km loop was blinded because the 15:24 recalc wiped the 15:14
-        // initial build's entry. Mirrors taxi_guidance.log's cap-at-LoadRoute
-        // pattern.
-        try
-        {
-            var fi = new FileInfo(LogPath);
-            if (fi.Exists && fi.Length > MAX_ROUTER_LOG_BYTES)
-                File.WriteAllText(LogPath, string.Empty);
-            File.AppendAllText(LogPath,
-                $"=== Constrained Route {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}");
-        }
-        catch { }
+        // Append a session header. Size-capping/rotation is now handled by the
+        // shared LogWriter (5 MB cap, 3-file retention) rather than a hand-rolled
+        // per-call truncate, so a recalc can never wipe a prior build's entry
+        // (the old truncate-per-run blinded debugging of the KIAH 2026-06-10 6 km loop).
+        Log("=== Constrained Route ===");
 
         var startN = _graph.Nodes[startNodeId];
         var endN = _graph.Nodes[endNodeId];

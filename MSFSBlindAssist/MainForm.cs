@@ -13,6 +13,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 public partial class MainForm : Form
@@ -20,6 +21,14 @@ public partial class MainForm : Form
     // Event batching configuration - Proven pattern from aerospace/trading systems
     // Reduces UI thread marshaling overhead by ~95% for high-volume variable updates
     private const int EVENT_BATCH_INTERVAL_MS = 33; // ~30 batches/second (balances latency vs throughput)
+
+    // Shared diagnostic-log channels used across MainForm's partial-class files
+    // (MainForm.cs, MainForm.AircraftSwitch.cs, MainForm.Announcers.cs). Each
+    // channel serializes all writers of the same file through the one LogWriter
+    // background thread, fixing prior multi-writer interleaving/corruption.
+    private static readonly LogChannel _landingExitLog = Log.Channel("landing_exit");
+    private static readonly LogChannel _dockingAircraftLog = Log.Channel("docking-aircraft");
+    private static readonly LogChannel _taxiAugmentLog = Log.Channel("taxi-augment");
 
     private const int MAX_QUEUE_SIZE = 2000; // Safety limit to prevent unbounded memory growth
 
@@ -551,8 +560,7 @@ public partial class MainForm : Form
                 // Where-Am-I and friends pick up the fresh names on next use — no manual refresh.
                 taxiGuidanceManager?.OnAirportDataUpdated(icao);
 
-                string logLine = $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}  taxi-augment: data updated for {icao}{System.Environment.NewLine}";
-                try { System.IO.File.AppendAllText(MSFSBlindAssist.Utils.AppLogs.PathFor("taxi-augment.log"), logLine); }
+                try { _taxiAugmentLog.Info($"taxi-augment: data updated for {icao}"); }
                 catch { /* log failure must never surface */ }
             };
 

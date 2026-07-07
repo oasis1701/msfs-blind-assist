@@ -51,9 +51,9 @@
 //   and the final SetGate values.  IO exceptions never break the selector.
 
 using System.Diagnostics;
-using System.IO;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.Gsx;
 
@@ -100,7 +100,7 @@ public sealed class GsxGateSelector
     // Appended per run so a single real arrival captures the full menu tree.
     // Path: AppLogs canonical folder, gsx-gate-select.log.
     // IO exceptions are caught and never propagate.
-    private static readonly string WalkLogPath = Utils.AppLogs.PathFor("gsx-gate-select.log");
+    private static readonly LogChannel _walkLog = Log.Channel("gsx-gate-select");
 
     // ─── Dependencies ──────────────────────────────────────────────────────
     private readonly GsxService _gsx;
@@ -165,8 +165,7 @@ public sealed class GsxGateSelector
             try
             {
                 // Walk-log via a throwaway state so the concurrent attempt is visible in the log.
-                File.AppendAllText(WalkLogPath,
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] CONCURRENT: selection already in progress — ignoring this call.{Environment.NewLine}");
+                _walkLog.Info("CONCURRENT: selection already in progress — ignoring this call.");
             }
             catch { /* logging must never crash the selector */ }
             if (!discoveryOnly)
@@ -940,12 +939,7 @@ public sealed class GsxGateSelector
     private static void WalkLog(DfsState state, string message)
     {
         Debug.WriteLine($"[GsxGateSelector][LOG] {message}");
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(WalkLogPath)!);
-            File.AppendAllText(WalkLogPath,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}");
-        }
+        try { _walkLog.Info(message); }
         catch { /* logging must never crash the selector */ }
     }
 
@@ -962,18 +956,15 @@ public sealed class GsxGateSelector
         try
         {
             string indent = new string(' ', depth * 2);
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {indent}MENU {label} ({menu.Count} entries):");
+            _walkLog.Info($"{indent}MENU {label} ({menu.Count} entries):");
             foreach (var opt in menu)
             {
                 var kind = GsxMenuClassifier.Classify(opt, onFinalActionMenu: false);
                 bool forbidden = GsxMenuClassifier.IsForbiddenAction(opt.Text ?? string.Empty);
                 bool ignored   = GsxMenuClassifier.IsIgnored(opt.Text ?? string.Empty);
                 string extra   = forbidden ? " [FORBIDDEN]" : ignored ? " [IGNORE]" : string.Empty;
-                sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {indent}  [{opt.Choice}] \"{opt.Text}\" → {kind}{extra}");
+                _walkLog.Info($"{indent}  [{opt.Choice}] \"{opt.Text}\" → {kind}{extra}");
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(WalkLogPath)!);
-            File.AppendAllText(WalkLogPath, sb.ToString());
         }
         catch { /* logging must never crash the selector */ }
     }
