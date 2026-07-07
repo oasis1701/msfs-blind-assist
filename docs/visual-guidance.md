@@ -13,7 +13,7 @@ The visual guidance system uses a **PID controller** to generate pitch and bank 
 - `MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs` — default A320 profile
 - `MSFSBlindAssist/Settings/UserSettings.cs` — `VisualGuidanceToneWaveform/Volume`, `VisualGuidanceCurrentToneWaveform/Volume`, `VisualGuidanceHardPanTone`
 - `MSFSBlindAssist/Forms/Settings/HandFlyPanel.cs` — UI for all visual-guidance audio settings
-- `MSFSBlindAssist/MainForm.Announcers.cs` — `OnSimVarUpdated` method contains the `SIM_ON_GROUND` handler that auto-deactivates visual guidance on touchdown
+- `MSFSBlindAssist/MainForm.Announcers.cs` — `HandleSpecialAnnouncements` method contains the `SIM_ON_GROUND` handler that auto-deactivates visual guidance on touchdown
 
 ## Dual-Tone Audio Cue
 

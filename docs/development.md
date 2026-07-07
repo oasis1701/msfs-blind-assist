@@ -64,7 +64,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 - **`Services/TaxiGuidanceManager.cs`**: Real-time state machine, position tracking, announcements, re-routing
 - **`Services/TaxiSteeringTone.cs`**: Stereo-panned steering tone with hysteresis + min sustain + low-pass smoothing
 - **`Forms/TaxiAssistForm.cs`**: Route entry UI (destination combo, filtered taxiway ComboBoxes, hold-short checkboxes)
-- **`Forms/TaxiGuidanceOptionsForm.cs`**: User settings (waveform, volume, crossing announcements)
+- **`Forms/Settings/TaxiGuidancePanel.cs`**: User settings (waveform, volume, crossing announcements)
 
 See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 
