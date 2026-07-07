@@ -19,6 +19,8 @@ static class Program
 
         const int SW_HIDE = 0;
 
+        private static readonly LogChannel Startup = Log.Channel("startup", truncateOnLaunch: true);
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -30,17 +32,17 @@ static class Program
                 Log.Init();
 
                 // Initialize startup logging
-                StartupLogger.Log("========================================");
-                StartupLogger.Log("MSFS Blind Assist Starting");
-                StartupLogger.Log("========================================");
-                StartupLogger.LogSystemInfo();
+                Startup.Info("========================================");
+                Startup.Info("MSFS Blind Assist Starting");
+                Startup.Info("========================================");
+                LogSystemInfo();
 
                 // One-time, best-effort move of legacy log files (Roaming-root *.log and
                 // the former %LOCALAPPDATA% logs folder) into the canonical
                 // %APPDATA%\MSFSBlindAssist\logs folder, so testers have exactly ONE
                 // place to find logs even after running older builds.
                 AppLogs.MigrateLegacyLogs();
-                StartupLogger.Log($"Logs folder: {AppLogs.Dir}");
+                Startup.Info($"Logs folder: {AppLogs.Dir}");
 
                 // One-time, best-effort removal of the RETIRED Community-folder accessibility
                 // bridges (PMDG EFB zzz-pmdg-efb-accessibility + HorizonSim 787 zzz-hs787-accessibility
@@ -48,10 +50,10 @@ static class Program
                 // old HTML overrides are dead weight. Never throws; no-op once gone.
                 int removedLegacyBridges = LegacyEfbBridgeCleanup.RemoveRetiredBridges();
                 if (removedLegacyBridges > 0)
-                    StartupLogger.Log($"Removed retired accessibility bridge package(s) from {removedLegacyBridges} Community folder(s)");
+                    Startup.Info($"Removed retired accessibility bridge package(s) from {removedLegacyBridges} Community folder(s)");
 
                 // Allocate a console for NVDA to monitor (do this early for logging)
-                StartupLogger.Log("Allocating console window...");
+                Startup.Info("Allocating console window...");
                 AllocConsole();
 
                 // Hide the console window but keep it active for NVDA
@@ -59,22 +61,22 @@ static class Program
                 if (consoleWindow != IntPtr.Zero)
                 {
                     ShowWindow(consoleWindow, SW_HIDE);
-                    StartupLogger.Log("Console window allocated and hidden");
+                    Startup.Info("Console window allocated and hidden");
                 }
                 else
                 {
-                    StartupLogger.Log("WARNING: Console window handle is null");
+                    Startup.Info("WARNING: Console window handle is null");
                 }
 
                 Console.WriteLine("MSFS Blind Assist starting...");
 
                 // Phase 1: Perform runtime requirements check
-                StartupLogger.Log("Starting runtime requirements check...");
+                Startup.Info("Starting runtime requirements check...");
                 var runtimeCheck = RuntimeChecker.PerformRuntimeCheck();
 
                 if (!runtimeCheck.Success)
                 {
-                    StartupLogger.Log("Runtime check FAILED - showing error dialog");
+                    Startup.Info("Runtime check FAILED - showing error dialog");
                     string errorMessage = RuntimeChecker.GetUserFriendlyErrorMessage(runtimeCheck);
 
                     MessageBox.Show(
@@ -83,17 +85,17 @@ static class Program
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
 
-                    StartupLogger.Log("Application terminated due to failed runtime check");
+                    Startup.Info("Application terminated due to failed runtime check");
                     return;
                 }
 
-                StartupLogger.Log("Runtime check PASSED - all requirements met");
+                Startup.Info("Runtime check PASSED - all requirements met");
 
                 // Phase 2: Single-instance check
-                StartupLogger.Log("Checking for existing application instance...");
+                Startup.Info("Checking for existing application instance...");
                 if (!SingleInstanceManager.AcquireSingleInstanceLock())
                 {
-                    StartupLogger.Log("Another instance is already running - exiting");
+                    Startup.Info("Another instance is already running - exiting");
                     MessageBox.Show(
                         "MSFS Blind Assist is already running.\n\nOnly one instance can run at a time.",
                         "MSFS Blind Assist - Already Running",
@@ -101,63 +103,63 @@ static class Program
                         MessageBoxIcon.Information);
                     return;
                 }
-                StartupLogger.Log("Single-instance check PASSED - this is the first instance");
+                Startup.Info("Single-instance check PASSED - this is the first instance");
 
                 // Phase 3: Select and copy the correct SimConnect.dll
-                StartupLogger.Log("Checking SimConnect.dll...");
+                Startup.Info("Checking SimConnect.dll...");
                 if (!EnsureCorrectSimConnectDll())
                 {
-                    StartupLogger.Log("SimConnect.dll check FAILED");
+                    Startup.Info("SimConnect.dll check FAILED");
                     MessageBox.Show(
                         "Failed to load the correct SimConnect.dll version.\n\n" +
                         "Please ensure SimConnect_msfs_2020.dll and SimConnect_msfs_2024.dll are present in the application directory.\n\n" +
-                        $"Log file: {StartupLogger.GetLogFilePath()}",
+                        $"Log file: {AppLogs.PathFor("startup.log")}",
                         "SimConnect DLL Error",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                     return;
                 }
 
-                StartupLogger.Log("SimConnect.dll check PASSED");
+                Startup.Info("SimConnect.dll check PASSED");
 
                 // Phase 4: Initialize Windows Forms
-                StartupLogger.Log("Initializing Windows Forms application...");
+                Startup.Info("Initializing Windows Forms application...");
                 Application.SetHighDpiMode(HighDpiMode.SystemAware);
-                StartupLogger.Log("High DPI mode set to SystemAware");
+                Startup.Info("High DPI mode set to SystemAware");
 
                 ApplicationConfiguration.Initialize();
-                StartupLogger.Log("ApplicationConfiguration initialized");
+                Startup.Info("ApplicationConfiguration initialized");
 
                 // Install global exception handlers BEFORE the message loop so a stray
                 // exception from a background poll loop, timer tick, or async callback is
                 // LOGGED and (when it is a recoverable UI-thread fault) does NOT take the
                 // whole app down. This is the primary defence against "crashes while idle".
                 InstallGlobalExceptionHandlers();
-                StartupLogger.Log("Global exception handlers installed");
+                Startup.Info("Global exception handlers installed");
 
-                StartupLogger.Log("Creating main form...");
+                Startup.Info("Creating main form...");
                 var mainForm = new MainForm();
-                StartupLogger.Log("Main form created successfully");
+                Startup.Info("Main form created successfully");
 
-                StartupLogger.Log("Starting application message loop...");
+                Startup.Info("Starting application message loop...");
                 Application.Run(mainForm);
 
-                StartupLogger.Log("Application closed normally");
+                Startup.Info("Application closed normally");
 
                 // Release the single-instance lock
                 SingleInstanceManager.ReleaseSingleInstanceLock();
-                StartupLogger.Log("Single-instance lock released");
+                Startup.Info("Single-instance lock released");
             }
             catch (Exception ex)
             {
                 // Catch any unhandled exceptions during startup
-                StartupLogger.LogError("FATAL ERROR during application startup", ex);
+                Startup.Error("FATAL ERROR during application startup", ex);
 
                 string errorMessage = $"MSFS Blind Assist failed to start due to an unexpected error:\n\n" +
                                     $"Error: {ex.GetType().Name}\n" +
                                     $"Message: {ex.Message}\n\n" +
                                     $"A detailed log file has been saved to:\n" +
-                                    $"{StartupLogger.GetLogFilePath()}\n\n" +
+                                    $"{AppLogs.PathFor("startup.log")}\n\n" +
                                     $"Please send this log file when reporting the issue.";
 
                 MessageBox.Show(
@@ -176,6 +178,24 @@ static class Program
         }
 
         /// <summary>
+        /// Logs system information useful for diagnostics (re-homed from the retired
+        /// startup logger's LogSystemInfo — same lines, written via the startup channel).
+        /// </summary>
+        private static void LogSystemInfo()
+        {
+            Startup.Info("=== System Information ===");
+            Startup.Info($"OS Version: {Environment.OSVersion}");
+            Startup.Info($"OS Architecture: {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")}");
+            Startup.Info($"Process Architecture: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+            Startup.Info($".NET Runtime Version: {Environment.Version}");
+            Startup.Info($".NET Runtime Directory: {RuntimeEnvironment.GetRuntimeDirectory()}");
+            Startup.Info($"Application Directory: {AppDomain.CurrentDomain.BaseDirectory}");
+            Startup.Info($"Working Directory: {Environment.CurrentDirectory}");
+            Startup.Info($"Command Line: {Environment.CommandLine}");
+            Startup.Info("=========================");
+        }
+
+        /// <summary>
         /// Registers process-wide exception handlers so background/UI faults are logged
         /// (and, where recoverable, survived) instead of silently killing the app while
         /// it sits idle. The captured stack traces in the startup log let a specific
@@ -189,7 +209,7 @@ static class Program
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) =>
             {
-                try { StartupLogger.LogError("Unhandled UI-thread exception (recovered, app kept running)", e.Exception); }
+                try { Startup.Error("Unhandled UI-thread exception (recovered, app kept running)", e.Exception); }
                 catch { /* never let the handler itself throw */ }
             };
 
@@ -200,9 +220,9 @@ static class Program
                 try
                 {
                     if (e.ExceptionObject is Exception ex)
-                        StartupLogger.LogError($"Unhandled background exception (terminating={e.IsTerminating})", ex);
+                        Startup.Error($"Unhandled background exception (terminating={e.IsTerminating})", ex);
                     else
-                        StartupLogger.Log($"Unhandled non-CLR exception (terminating={e.IsTerminating}): {e.ExceptionObject}");
+                        Startup.Info($"Unhandled non-CLR exception (terminating={e.IsTerminating}): {e.ExceptionObject}");
                 }
                 catch { }
             };
@@ -211,7 +231,7 @@ static class Program
             // exception was never awaited. Observing them prevents a finalizer-time crash.
             TaskScheduler.UnobservedTaskException += (_, e) =>
             {
-                try { StartupLogger.LogError("Unobserved task exception (observed)", e.Exception); }
+                try { Startup.Error("Unobserved task exception (observed)", e.Exception); }
                 catch { }
                 e.SetObserved();
             };
