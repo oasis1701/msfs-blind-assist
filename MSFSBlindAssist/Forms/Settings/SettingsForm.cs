@@ -34,6 +34,7 @@ public class SettingsForm : Form
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
         AddPanel(new GeminiPanel());
+        AddPanel(new HandFlyPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AccessibleName = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };

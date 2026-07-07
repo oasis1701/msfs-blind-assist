@@ -7,7 +7,6 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
@@ -41,7 +40,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -81,7 +79,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
             this.settingsMenuItem,
-            this.handFlyOptionsMenuItem,
             this.taxiGuidanceOptionsMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
@@ -109,15 +106,6 @@ namespace MSFSBlindAssist
             this.settingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.settingsMenuItem.Text = "&Settings…";
             this.settingsMenuItem.Click += new System.EventHandler(this.SettingsMenuItem_Click);
-            //
-            // handFlyOptionsMenuItem
-            //
-            this.handFlyOptionsMenuItem.AccessibleName = "Hand Fly Options";
-            this.handFlyOptionsMenuItem.AccessibleDescription = "Configure hand fly mode audio tones and announcement settings";
-            this.handFlyOptionsMenuItem.Name = "handFlyOptionsMenuItem";
-            this.handFlyOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.handFlyOptionsMenuItem.Text = "&Hand Fly Options";
-            this.handFlyOptionsMenuItem.Click += new System.EventHandler(this.HandFlyOptionsMenuItem_Click);
             //
             // taxiGuidanceOptionsMenuItem
             //

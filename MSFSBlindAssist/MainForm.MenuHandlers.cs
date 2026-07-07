@@ -90,7 +90,7 @@ public partial class MainForm
     /// has a live effect adds its re-apply here (populated as panels are migrated).</summary>
     private void ApplyRuntimeSettings()
     {
-        // (SimBrief has no live effect. Later tasks add handfly/taxi re-apply here.)
+        // (SimBrief and Gemini have no live effect. Task 6 adds taxi/docking re-apply here.)
 
         // Announcements: mode, nearest-city timer, weather monitor interval, GSX background toggle.
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -109,97 +109,45 @@ public partial class MainForm
         // form drives speech). When the form is hidden the saved setting wins.
         if (_gsxService != null && (_accessGsxForm == null || !_accessGsxForm.Visible))
             _gsxService.AnnounceWhenFormHidden = settings.GsxBackgroundMonitoring;
-    }
 
-    private void HandFlyOptionsMenuItem_Click(object? sender, EventArgs e)
-    {
-        var currentSettings = SettingsManager.Current;
-        using (var settingsForm = new Forms.HandFlyOptionsForm(
-            currentSettings.HandFlyFeedbackMode,
-            currentSettings.HandFlyWaveType,
-            currentSettings.HandFlyToneVolume,
-            currentSettings.HandFlyMonitorHeading,
-            currentSettings.HandFlyMonitorVerticalSpeed,
-            currentSettings.VisualGuidanceToneWaveform,
-            currentSettings.VisualGuidanceToneVolume,
-            currentSettings.VisualGuidanceCurrentToneWaveform,
-            currentSettings.VisualGuidanceCurrentToneVolume,
-            currentSettings.VisualGuidanceHardPanTone,
-            currentSettings.TakeoffAssistToneWaveform,
-            currentSettings.TakeoffAssistToneVolume,
-            currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-            currentSettings.TakeoffAssistSteerTowardTone,
-            currentSettings.TakeoffAssistHardPanTone,
-            currentSettings.TakeoffAssistHeadingToneThreshold,
-            currentSettings.TakeoffAssistLegacyMode,
-            currentSettings.TakeoffAssistEnableCallouts,
-            currentSettings.TakeoffAssistAutoActivateOnLineup))
+        // Hand Fly / Visual Guidance / Takeoff Assist — moved verbatim from the retired
+        // HandFlyOptionsMenuItem_Click. Recreate TakeoffAssistManager to pick up new
+        // settings (steer-toward tone, legacy mode, tone, volume); its mode is set at
+        // construction time so there is no in-place setter.
+        if (takeoffAssistManager != null)
         {
-            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            // Preserve a teleport/taxi-lineup runway reference across the
+            // recreate — Reset() clears it, and losing it here silently
+            // downgraded the next Ctrl+T to "no runway selected". Restore
+            // is silent (SetRunwayReference only Debug-logs).
+            bool hadRunwayRef = takeoffAssistManager.TryGetRunwayReference(
+                out double refLat, out double refLon, out double refHdgTrue,
+                out double refHdgMag, out string refRunwayId, out string refIcao);
+
+            takeoffAssistManager.Reset();
+            takeoffAssistManager.Dispose();
+            takeoffAssistManager = new TakeoffAssistManager(announcer,
+                settings.TakeoffAssistToneWaveform, settings.TakeoffAssistToneVolume,
+                settings.TakeoffAssistMuteCenterlineAnnouncements,
+                settings.TakeoffAssistSteerTowardTone,
+                settings.TakeoffAssistHeadingToneThreshold, settings.TakeoffAssistLegacyMode,
+                settings.TakeoffAssistEnableCallouts);
+            takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+
+            if (hadRunwayRef)
             {
-                // Update settings
-                currentSettings.HandFlyFeedbackMode = settingsForm.SelectedFeedbackMode;
-                currentSettings.HandFlyWaveType = settingsForm.SelectedWaveType;
-                currentSettings.HandFlyToneVolume = settingsForm.SelectedVolume;
-                currentSettings.HandFlyMonitorHeading = settingsForm.MonitorHeading;
-                currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
-                currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
-                currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
-                currentSettings.VisualGuidanceCurrentToneWaveform = settingsForm.VisualGuidanceCurrentToneWaveform;
-                currentSettings.VisualGuidanceCurrentToneVolume = settingsForm.VisualGuidanceCurrentToneVolume;
-                currentSettings.VisualGuidanceHardPanTone = settingsForm.VisualGuidanceHardPanTone;
-                currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
-                currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
-                currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
-                currentSettings.TakeoffAssistSteerTowardTone = settingsForm.TakeoffAssistSteerTowardTone;
-                currentSettings.TakeoffAssistHardPanTone = settingsForm.TakeoffAssistHardPanTone;
-                currentSettings.TakeoffAssistHeadingToneThreshold = settingsForm.TakeoffAssistHeadingToneThreshold;
-                currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
-                currentSettings.TakeoffAssistEnableCallouts = settingsForm.TakeoffAssistEnableCallouts;
-                currentSettings.TakeoffAssistAutoActivateOnLineup = settingsForm.TakeoffAssistAutoActivateOnLineup;
-                SettingsManager.Save();
-
-                // Recreate TakeoffAssistManager to pick up new settings (steer-toward tone, legacy mode, tone, volume)
-                // The manager's mode is set at construction time
-                if (takeoffAssistManager != null)
-                {
-                    // Preserve a teleport/taxi-lineup runway reference across the
-                    // recreate — Reset() clears it, and losing it here silently
-                    // downgraded the next Ctrl+T to "no runway selected". Restore
-                    // is silent (SetRunwayReference only Debug-logs).
-                    bool hadRunwayRef = takeoffAssistManager.TryGetRunwayReference(
-                        out double refLat, out double refLon, out double refHdgTrue,
-                        out double refHdgMag, out string refRunwayId, out string refIcao);
-
-                    takeoffAssistManager.Reset();
-                    takeoffAssistManager.Dispose();
-                    takeoffAssistManager = new TakeoffAssistManager(announcer,
-                        currentSettings.TakeoffAssistToneWaveform, currentSettings.TakeoffAssistToneVolume,
-                        currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
-                        currentSettings.TakeoffAssistSteerTowardTone,
-                        currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode,
-                        currentSettings.TakeoffAssistEnableCallouts);
-                    takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
-
-                    if (hadRunwayRef)
-                    {
-                        takeoffAssistManager.SetRunwayReference(refLat, refLon,
-                            refHdgTrue, refHdgMag, refRunwayId, refIcao);
-                    }
-                }
-
-                // Update HandFlyManager if it's active
-                handFlyManager?.UpdateSettings(
-                    settingsForm.SelectedFeedbackMode,
-                    settingsForm.SelectedWaveType,
-                    settingsForm.SelectedVolume,
-                    settingsForm.MonitorHeading,
-                    settingsForm.MonitorVerticalSpeed);
-
-                statusLabel.Text = "Hand fly options saved successfully";
-                announcer.Announce("Hand fly options saved successfully");
+                takeoffAssistManager.SetRunwayReference(refLat, refLon,
+                    refHdgTrue, refHdgMag, refRunwayId, refIcao);
             }
         }
+
+        // Update HandFlyManager if it's active
+        handFlyManager?.UpdateSettings(
+            settings.HandFlyFeedbackMode,
+            settings.HandFlyWaveType,
+            settings.HandFlyToneVolume,
+            settings.HandFlyMonitorHeading,
+            settings.HandFlyMonitorVerticalSpeed);
     }
 
     private void TaxiGuidanceOptionsMenuItem_Click(object? sender, EventArgs e)
