@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Patching
 {
@@ -59,7 +60,7 @@ namespace MSFSBlindAssist.Patching
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] FS2020 folder delete failed for {communityFolderPath}: {ex.Message}");
+                Log.Debug("Patching", $"[Hs787LegacyUninstaller] FS2020 folder delete failed for {communityFolderPath}: {ex.Message}");
             }
 
             // FS2024: restore the in-place patch from its .msfsba_backup copies (no-op if unpatched).
@@ -74,7 +75,7 @@ namespace MSFSBlindAssist.Patching
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] FS2024 restore failed for {communityFolderPath}: {ex.Message}");
+                Log.Debug("Patching", $"[Hs787LegacyUninstaller] FS2024 restore failed for {communityFolderPath}: {ex.Message}");
             }
 
             return acted;
@@ -144,7 +145,7 @@ namespace MSFSBlindAssist.Patching
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] restore failed for {htmlPath}: {ex.Message}");
+                    Log.Debug("Patching", $"[Hs787LegacyUninstaller] restore failed for {htmlPath}: {ex.Message}");
                 }
             }
 
@@ -156,9 +157,9 @@ namespace MSFSBlindAssist.Patching
 
             // Delete bridge JS we dropped in.
             try { string mfdJs = Path.Combine(mfdDir, MfdBridgeJsFileName); if (File.Exists(mfdJs)) File.Delete(mfdJs); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] delete MFD JS failed: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Patching", $"[Hs787LegacyUninstaller] delete MFD JS failed: {ex.Message}"); }
             try { string efbJs = Path.Combine(efbDir, EfbBridgeJsFileName); if (File.Exists(efbJs)) File.Delete(efbJs); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] delete EFB JS failed: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Patching", $"[Hs787LegacyUninstaller] delete EFB JS failed: {ex.Message}"); }
 
             // Restore layout.json from backup if present.
             string layoutPath = Path.Combine(horizonsim, "layout.json");
@@ -171,11 +172,11 @@ namespace MSFSBlindAssist.Patching
                     File.Delete(layoutBackup);
                 }
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] restore layout.json failed: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Patching", $"[Hs787LegacyUninstaller] restore layout.json failed: {ex.Message}"); }
 
             // Clear our version marker.
             try { string versionFile = Path.Combine(horizonsim, VersionFileName); if (File.Exists(versionFile)) File.Delete(versionFile); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Hs787LegacyUninstaller] delete version marker failed: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Patching", $"[Hs787LegacyUninstaller] delete version marker failed: {ex.Message}"); }
         }
     }
 }

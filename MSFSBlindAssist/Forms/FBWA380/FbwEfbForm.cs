@@ -5,6 +5,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
@@ -247,7 +248,7 @@ public class FbwEfbForm : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[A380 flyPad] WebView2 init failed: {ex.Message}");
+            Log.Debug("Forms", $"[A380 flyPad] WebView2 init failed: {ex.Message}");
             _webViewFailed = true;
             _useBrowser = false;
             SafeBeginInvoke(() => { SwitchToListMode(); ApplyElements(); });
@@ -424,7 +425,7 @@ public class FbwEfbForm : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FBW flyPad] render push failed: {ex.Message}");
+            Log.Debug("Forms", $"[FBW flyPad] render push failed: {ex.Message}");
         }
         finally
         {
@@ -447,7 +448,7 @@ public class FbwEfbForm : Form
     // → Reload → NavigationCompleted must not fire against a disposed WebView2.
     private void OnWebViewProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs args)
     {
-        System.Diagnostics.Debug.WriteLine($"[FBW flyPad] WebView2 process failed: {args.ProcessFailedKind}");
+        Log.Debug("Forms", $"[FBW flyPad] WebView2 process failed: {args.ProcessFailedKind}");
         _webViewReady = false;
         _renderInFlight = false;
         try { if (!IsDisposed && _webView?.CoreWebView2 != null) _webView.CoreWebView2.Reload(); } catch { }
