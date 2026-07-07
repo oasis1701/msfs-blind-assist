@@ -307,7 +307,7 @@ static class Program
             catch (Exception ex)
             {
                 Console.WriteLine($"[Program] ERROR in EnsureCorrectSimConnectDll: {ex.Message}");
-                Debug.WriteLine($"[Program] ERROR in EnsureCorrectSimConnectDll: {ex}");
+                Log.Error("Program", "ERROR in EnsureCorrectSimConnectDll", ex);
                 return false;
             }
         }
