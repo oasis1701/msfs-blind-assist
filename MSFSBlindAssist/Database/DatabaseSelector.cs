@@ -23,18 +23,18 @@ public static class DatabaseSelector
 
         if (!File.Exists(navdataPath))
         {
-            Log.Debug("Database", $"[DatabaseSelector] Database not found for {simulatorVersion}: {navdataPath}");
+            Log.Debug("Database", $"Database not found for {simulatorVersion}: {navdataPath}");
             return null;
         }
 
         try
         {
-            Log.Debug("Database", $"[DatabaseSelector] Using navdatareader database for {simulatorVersion}: {navdataPath}");
+            Log.Debug("Database", $"Using navdatareader database for {simulatorVersion}: {navdataPath}");
             return new LittleNavMapProvider(navdataPath, simulatorVersion);
         }
         catch (Exception ex)
         {
-            Log.Debug("Database", $"[DatabaseSelector] Failed to load database: {ex.Message}");
+            Log.Debug("Database", $"Failed to load database: {ex.Message}");
             return null;
         }
     }

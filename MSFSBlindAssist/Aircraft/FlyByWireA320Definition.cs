@@ -8294,7 +8294,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 // A throw here silently drops the spoken confirmation for a user FCU
                 // set/push/pull — the pilot gets no feedback at all with no diagnostic trail.
-                Log.Debug("A320", $"[FlyByWireA320Definition] DeferReadback failed: {ex.Message}");
+                Log.Debug("A320", $"DeferReadback failed: {ex.Message}");
             }
         });
     }
@@ -8619,7 +8619,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                Log.Debug("A320", $"[A320] Error requesting FCU heading: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU heading: {ex.Message}");
             }
         }
     }
@@ -8639,7 +8639,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                Log.Debug("A320", $"[A320] Error requesting FCU speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU speed: {ex.Message}");
             }
         }
     }
@@ -8659,7 +8659,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                Log.Debug("A320", $"[A320] Error requesting FCU altitude: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU altitude: {ex.Message}");
             }
         }
     }
@@ -8679,7 +8679,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                Log.Debug("A320", $"[A320] Error requesting FCU vertical speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU vertical speed: {ex.Message}");
             }
         }
     }

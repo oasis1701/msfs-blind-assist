@@ -295,7 +295,7 @@ public partial class METARReportForm : Form
             {
                 statusLabel.Text = "Error fetching METAR";
                 metarTextBox.Text = $"Error retrieving METAR data for {icao}: {ex.Message}";
-                Log.Debug("Forms", $"[METARReportForm] Error fetching METAR: {ex.Message}");
+                Log.Debug("Forms", $"Error fetching METAR: {ex.Message}");
             }
             finally
             {

@@ -23,7 +23,7 @@ public static class SimulatorDetector
             var fs2024Processes = Process.GetProcessesByName("FlightSimulator2024");
             if (fs2024Processes != null && fs2024Processes.Length > 0)
             {
-                Log.Debug("Utils", "[SimulatorDetector] Detected FS2024 (FlightSimulator2024.exe)");
+                Log.Debug("Utils", "Detected FS2024 (FlightSimulator2024.exe)");
                 return "FS2024";
             }
 
@@ -31,16 +31,16 @@ public static class SimulatorDetector
             var fs2020Processes = Process.GetProcessesByName("FlightSimulator");
             if (fs2020Processes != null && fs2020Processes.Length > 0)
             {
-                Log.Debug("Utils", "[SimulatorDetector] Detected FS2020 (FlightSimulator.exe)");
+                Log.Debug("Utils", "Detected FS2020 (FlightSimulator.exe)");
                 return "FS2020";
             }
 
-            Log.Debug("Utils", "[SimulatorDetector] No recognized simulator process found");
+            Log.Debug("Utils", "No recognized simulator process found");
             return "Unknown";
         }
         catch (Exception ex)
         {
-            Log.Warn("Utils", $"[SimulatorDetector] Error detecting simulator: {ex.Message}");
+            Log.Warn("Utils", $"Error detecting simulator: {ex.Message}");
             return "Unknown";
         }
     }

@@ -236,7 +236,7 @@ namespace MSFSBlindAssist.Patching
                     string communityPath = Path.Combine(basePath, "Community");
                     if (Directory.Exists(communityPath))
                     {
-                        Log.Debug("Patching", $"[EFBModPackageManager] Found Community folder: {communityPath} (sim={runningSimulator})");
+                        Log.Debug("Patching", $"Found Community folder: {communityPath} (sim={runningSimulator})");
                         return communityPath;
                     }
                 }

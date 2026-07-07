@@ -341,7 +341,7 @@ public partial class LocationInfoForm : Form
         }
         catch (Exception ex)
         {
-            Log.Debug("Forms", $"[LocationInfoForm] Error announcing summary: {ex.Message}");
+            Log.Debug("Forms", $"Error announcing summary: {ex.Message}");
         }
     }
 
