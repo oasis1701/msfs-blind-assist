@@ -85,7 +85,7 @@ public class FlyByWireMCDUService : IDisposable
             {
                 if (!ct.IsCancellationRequested)
                 {
-                    Log.Debug("Services", $"[FbwMCDU] Connection error: {ex.Message}");
+                    Log.Debug("Services", $"Connection error: {ex.Message}");
                     SetConnected(false);
                 }
                 // Cancellation-path exceptions (socket disposed under a pending
@@ -179,7 +179,7 @@ public class FlyByWireMCDUService : IDisposable
             }
             catch (Exception ex)
             {
-                Log.Debug("Services", $"[FbwMCDU] Print parse error: {ex.Message}");
+                Log.Debug("Services", $"Print parse error: {ex.Message}");
             }
             return;
         }
@@ -202,7 +202,7 @@ public class FlyByWireMCDUService : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[FbwMCDU] Parse error: {ex.Message}");
+            Log.Debug("Services", $"Parse error: {ex.Message}");
         }
     }
 
@@ -239,7 +239,7 @@ public class FlyByWireMCDUService : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[FbwMCDU] Send error ({message}): {ex.Message}");
+            Log.Debug("Services", $"Send error ({message}): {ex.Message}");
         }
     }
 

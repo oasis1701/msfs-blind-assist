@@ -193,7 +193,7 @@ public class ScreenshotService
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[ScreenshotService] Error finding MSFS window: {ex.Message}");
+            Log.Debug("Services", $"Error finding MSFS window: {ex.Message}");
             return IntPtr.Zero;
         }
     }

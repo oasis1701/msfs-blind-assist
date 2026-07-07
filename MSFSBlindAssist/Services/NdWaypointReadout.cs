@@ -74,7 +74,7 @@ public static class NdWaypointReadout
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[NdWaypointReadout] Announce error: {ex.Message}");
+            Log.Debug("Services", $"Announce error: {ex.Message}");
         }
     }
 

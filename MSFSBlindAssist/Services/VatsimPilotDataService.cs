@@ -67,11 +67,11 @@ public static class VatsimPilotDataService
             Interlocked.Exchange(ref _routeByCallsign, routes);
             Interlocked.Exchange(ref _lastFetchTicks, DateTime.UtcNow.Ticks);
             Log.Debug("Services", 
-                $"[VatsimPilotDataService] Refreshed — {types.Count} pilots with aircraft type, {routes.Count} with route.");
+                $"Refreshed — {types.Count} pilots with aircraft type, {routes.Count} with route.");
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[VatsimPilotDataService] Refresh failed: {ex.Message}");
+            Log.Debug("Services", $"Refresh failed: {ex.Message}");
         }
         finally
         {
@@ -130,7 +130,7 @@ public static class VatsimPilotDataService
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[VatsimPilotDataService] Parse error: {ex.Message}");
+            Log.Debug("Services", $"Parse error: {ex.Message}");
         }
         return (types, routes);
     }

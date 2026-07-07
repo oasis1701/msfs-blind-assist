@@ -109,7 +109,7 @@ public class FenixMCDUService : IDisposable
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                Log.Debug("Services", $"[FenixMCDU] Connection error: {ex.Message}");
+                Log.Debug("Services", $"Connection error: {ex.Message}");
                 SetConnected(false);
             }
 
@@ -118,7 +118,7 @@ public class FenixMCDUService : IDisposable
             // Reconnect with backoff
             int delay = ReconnectDelays[Math.Min(_reconnectAttempt, ReconnectDelays.Length - 1)];
             _reconnectAttempt++;
-            Log.Debug("Services", $"[FenixMCDU] Reconnecting in {delay}ms (attempt {_reconnectAttempt})");
+            Log.Debug("Services", $"Reconnecting in {delay}ms (attempt {_reconnectAttempt})");
 
             try { await Task.Delay(delay, ct); }
             catch (TaskCanceledException) { break; }
@@ -156,7 +156,7 @@ public class FenixMCDUService : IDisposable
 
         _reconnectAttempt = 0;
         SetConnected(true);
-        Log.Debug("Services", "[FenixMCDU] Connected and subscribed");
+        Log.Debug("Services", "Connected and subscribed");
 
         // Receive loop
         while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
@@ -178,12 +178,12 @@ public class FenixMCDUService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Services", $"[FenixMCDU] Parse error: {ex.Message}");
+                    Log.Debug("Services", $"Parse error: {ex.Message}");
                 }
             }
             else if (msgType == "error" || msgType == "complete")
             {
-                Log.Debug("Services", $"[FenixMCDU] Received {msgType}");
+                Log.Debug("Services", $"Received {msgType}");
                 break;
             }
         }
@@ -219,11 +219,11 @@ public class FenixMCDUService : IDisposable
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(HTTP_URL, content);
             response.EnsureSuccessStatusCode();
-            Log.Debug("Services", $"[FenixMCDU] Key write sent: {keyName} = {value}");
+            Log.Debug("Services", $"Key write sent: {keyName} = {value}");
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[FenixMCDU] Key write error ({keyName} = {value}): {ex.Message}");
+            Log.Debug("Services", $"Key write error ({keyName} = {value}): {ex.Message}");
         }
     }
 
