@@ -29,7 +29,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] RequestAiTrafficData error: {ex.Message}");
+            Log.Debug("SimConnect", $"RequestAiTrafficData error: {ex.Message}");
         }
     }
 
@@ -71,14 +71,14 @@ public partial class SimConnectManager
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("SimConnect", $"[RequestPanelVariables] Error requesting variable {varKey}: {ex.Message}");
+                    Log.Debug("SimConnect", $"Error requesting variable {varKey}: {ex.Message}");
                     // Continue with other variables even if one fails
                 }
             }
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[RequestPanelVariables] Error requesting panel '{panelName}': {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting panel '{panelName}': {ex.Message}");
         }
     }
 
@@ -131,7 +131,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[RequestVariable] Error requesting variable {varKey}: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting variable {varKey}: {ex.Message}");
         }
     }
 
@@ -171,11 +171,11 @@ public partial class SimConnectManager
                 simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
                     varDef.Name, varDef.Units ?? "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
             simConnect.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)dataDefId);
-            Log.Debug("SimConnect", $"[Probe] data definition re-bound for {varKey} (def {dataDefId})");
+            Log.Debug("SimConnect", $"data definition re-bound for {varKey} (def {dataDefId})");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[Probe] rebind FAILED for {varKey}: {ex.Message}");
+            Log.Debug("SimConnect", $"rebind FAILED for {varKey}: {ex.Message}");
         }
     }
 
@@ -590,7 +590,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting aircraft position: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting aircraft position: {ex.Message}");
         }
     }
 
@@ -621,7 +621,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting aircraft position async: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting aircraft position async: {ex.Message}");
         }
     }
 
@@ -646,7 +646,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting NAV radio info: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting NAV radio info: {ex.Message}");
         }
     }
 
@@ -677,7 +677,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting wind info: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting wind info: {ex.Message}");
         }
     }
 
@@ -703,7 +703,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting weather data: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting weather data: {ex.Message}");
         }
     }
 
@@ -742,13 +742,13 @@ public partial class SimConnectManager
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("SimConnect", $"[SimConnectManager] Error calculating destination runway distance: {ex.Message}");
+                    Log.Debug("SimConnect", $"Error calculating destination runway distance: {ex.Message}");
                 }
             });
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting destination runway distance: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting destination runway distance: {ex.Message}");
         }
     }
 
@@ -778,7 +778,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting ILS guidance: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting ILS guidance: {ex.Message}");
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
             {
                 VarName = "ILS_GUIDANCE",

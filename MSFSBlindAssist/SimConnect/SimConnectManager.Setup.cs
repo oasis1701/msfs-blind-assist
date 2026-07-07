@@ -283,13 +283,13 @@ public partial class SimConnectManager
                         varDef.HighFrequency ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND,
                         varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
-                    Log.Debug("SimConnect", $"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
+                    Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
                 }
 
                 // Log visual guidance variables specifically
                 if (kvp.Key.StartsWith("VISUAL_GUIDANCE"))
                 {
-                    Log.Debug("SimConnect", $"[RegisterAllVariables] Registered {kvp.Key} -> ID {dataDefId}");
+                    Log.Debug("SimConnect", $"Registered {kvp.Key} -> ID {dataDefId}");
                 }
             }
             catch (Exception ex)
@@ -307,7 +307,7 @@ public partial class SimConnectManager
         string regSummary = $"[Registration] aircraft={CurrentAircraft?.GetType().Name} individualDefs={registeredCount} batchCovered={batchCoveredCount} capped={cappedCount} approxTotalDefs~{totalDefs} (SimConnect ceiling ~1000)";
         Log.Debug("SimConnect", regSummary);
         if (cappedCount > 0)
-            Log.Debug("SimConnect", $"[Registration] ⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
+            Log.Debug("SimConnect", $"⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
         try { _registrationLog.Info(regSummary); }
         catch { }
     }
@@ -316,11 +316,11 @@ public partial class SimConnectManager
     {
         batchSetupCounter++;
         string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-        Log.Debug("SimConnect", $"[StartContinuousMonitoring] ===== CALL #{batchSetupCounter} at {timestamp} =====");
+        Log.Debug("SimConnect", $"===== CALL #{batchSetupCounter} at {timestamp} =====");
 
         if (!IsConnected || simConnect == null)
         {
-            Log.Debug("SimConnect", "[StartContinuousMonitoring] Cannot start continuous monitoring - not connected");
+            Log.Debug("SimConnect", "Cannot start continuous monitoring - not connected");
             return;
         }
 
@@ -329,7 +329,7 @@ public partial class SimConnectManager
         // Clear previous batch setup (important when switching aircraft or adding/removing variables)
         int previousMapSize = continuousVariableIndexMap.Count;
         continuousVariableIndexMap.Clear();
-        Log.Debug("SimConnect", $"[StartContinuousMonitoring] Cleared previous map (had {previousMapSize} entries)");
+        Log.Debug("SimConnect", $"Cleared previous map (had {previousMapSize} entries)");
 
         // Get all continuous variables from current aircraft
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
@@ -361,18 +361,18 @@ public partial class SimConnectManager
             return string.CompareOrdinal(aFullName, bFullName);
         });
 
-        Log.Debug("SimConnect", $"[StartContinuousMonitoring] Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
-        Log.Debug("SimConnect", $"[StartContinuousMonitoring] Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
+        Log.Debug("SimConnect", $"Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
+        Log.Debug("SimConnect", $"Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
 
         if (continuousVariables.Count == 0)
         {
-            Log.Debug("SimConnect", "[SimConnectManager] No continuous variables to monitor");
+            Log.Debug("SimConnect", "No continuous variables to monitor");
             return;
         }
 
         if (continuousVariables.Count > 1500)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 1500 (5 batches × 300)! Variables past the cap (alphabetically last) will NOT auto-announce.");
+            Log.Debug("SimConnect", $"WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 1500 (5 batches × 300)! Variables past the cap (alphabetically last) will NOT auto-announce.");
             // Continue anyway - we'll use as many batches as needed
         }
 
@@ -410,7 +410,7 @@ public partial class SimConnectManager
             if (batchVarCount <= 0) break; // No more variables
 
             var config = batchConfigs[batchNum - 1];
-            Log.Debug("SimConnect", $"[StartContinuousMonitoring] Setting up Batch {batchNum}: variables {startIdx}-{endIdx - 1} ({batchVarCount} vars)");
+            Log.Debug("SimConnect", $"Setting up Batch {batchNum}: variables {startIdx}-{endIdx - 1} ({batchVarCount} vars)");
 
             // Clear previous batch definition. Done outside the try because a failure here
             // (typically a no-op on first call) shouldn't abort the batch setup.
@@ -451,7 +451,7 @@ public partial class SimConnectManager
                     // Throttle every 50 vars so SimConnect can drain its incoming queue
                     if (totalVariablesAdded % 50 == 0)
                     {
-                        Log.Debug("SimConnect", $"[StartContinuousMonitoring] Throttling after {totalVariablesAdded} total variables");
+                        Log.Debug("SimConnect", $"Throttling after {totalVariablesAdded} total variables");
                         Thread.Sleep(5);
                     }
                 }
@@ -496,11 +496,11 @@ public partial class SimConnectManager
                 );
 
                 batchesStarted++;
-                Log.Debug("SimConnect", $"[StartContinuousMonitoring] Batch {batchNum} monitoring started for {batchVarCount} variables");
+                Log.Debug("SimConnect", $"Batch {batchNum} monitoring started for {batchVarCount} variables");
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[StartContinuousMonitoring] Batch {batchNum} setup FAILED: {ex.GetType().Name}: {ex.Message}");
+                Log.Debug("SimConnect", $"Batch {batchNum} setup FAILED: {ex.GetType().Name}: {ex.Message}");
 
                 // Roll back the index map entries for THIS batch so callers don't try to
                 // read from a batch that won't fire — better to have the var be silently
@@ -512,7 +512,7 @@ public partial class SimConnectManager
             }
         }
 
-        Log.Debug("SimConnect", $"[StartContinuousMonitoring] Multi-batch monitoring started for {totalVariablesAdded} variables across {batchesStarted} batches (of {Math.Min(NUM_BATCHES, (continuousVariables.Count + BATCH_SIZE - 1) / BATCH_SIZE)} attempted)");
+        Log.Debug("SimConnect", $"Multi-batch monitoring started for {totalVariablesAdded} variables across {batchesStarted} batches (of {Math.Min(NUM_BATCHES, (continuousVariables.Count + BATCH_SIZE - 1) / BATCH_SIZE)} attempted)");
     }
 
     /// <summary>
@@ -521,7 +521,7 @@ public partial class SimConnectManager
     /// </summary>
     public void RestartContinuousMonitoring()
     {
-        Log.Debug("SimConnect", "[SimConnectManager] Restarting continuous monitoring for new aircraft");
+        Log.Debug("SimConnect", "Restarting continuous monitoring for new aircraft");
         StartContinuousMonitoring();
     }
 
@@ -553,12 +553,12 @@ public partial class SimConnectManager
                         SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0
                     );
-                    Log.Debug("SimConnect", $"[SafelyClearDataDefinition] Cancelled recurring request {requestId.Value} for definition {defId}");
+                    Log.Debug("SimConnect", $"Cancelled recurring request {requestId.Value} for definition {defId}");
                 }
                 catch (Exception ex)
                 {
                     // Ignore errors - request might not exist yet (first setup)
-                    Log.Debug("SimConnect", $"[SafelyClearDataDefinition] Error cancelling request (expected on first setup): {ex.Message}");
+                    Log.Debug("SimConnect", $"Error cancelling request (expected on first setup): {ex.Message}");
                 }
 
                 // CRITICAL: Wait for SimConnect to process the cancellation using message pumping
@@ -571,16 +571,16 @@ public partial class SimConnectManager
                     System.Windows.Forms.Application.DoEvents(); // CRITICAL: Pump SimConnect messages!
                     Thread.Sleep(10); // Small sleep to prevent CPU spinning
                 }
-                Log.Debug("SimConnect", $"[SafelyClearDataDefinition] Waited {delayMs}ms with message pumping for cancellation to process");
+                Log.Debug("SimConnect", $"Waited {delayMs}ms with message pumping for cancellation to process");
             }
 
             // Now it's safe to clear the data definition
             simConnect.ClearDataDefinition(defId);
-            Log.Debug("SimConnect", $"[SafelyClearDataDefinition] Successfully cleared data definition {defId}");
+            Log.Debug("SimConnect", $"Successfully cleared data definition {defId}");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SafelyClearDataDefinition] Error clearing data definition {defId}: {ex.Message}");
+            Log.Debug("SimConnect", $"Error clearing data definition {defId}: {ex.Message}");
         }
     }
 
@@ -590,7 +590,7 @@ public partial class SimConnectManager
     /// </summary>
     public void ReregisterAllVariables()
     {
-        Log.Debug("SimConnect", "[SimConnectManager] Re-registering all variables for new aircraft");
+        Log.Debug("SimConnect", "Re-registering all variables for new aircraft");
 
         // Clear old data definitions from SimConnect before losing track of their IDs
         if (simConnect != null)
@@ -603,10 +603,10 @@ public partial class SimConnectManager
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("SimConnect", $"[SimConnectManager] Error clearing data definition {kvp.Value} for {kvp.Key}: {ex.Message}");
+                    Log.Debug("SimConnect", $"Error clearing data definition {kvp.Value} for {kvp.Key}: {ex.Message}");
                 }
             }
-            Log.Debug("SimConnect", $"[SimConnectManager] Cleared {variableDataDefinitions.Count} old data definitions from SimConnect");
+            Log.Debug("SimConnect", $"Cleared {variableDataDefinitions.Count} old data definitions from SimConnect");
         }
 
         // Clear existing registrations
@@ -616,7 +616,7 @@ public partial class SimConnectManager
 
         // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
         nextDataDefinitionId = 1000;
-        Log.Debug("SimConnect", "[SimConnectManager] Reset nextDataDefinitionId to 1000");
+        Log.Debug("SimConnect", "Reset nextDataDefinitionId to 1000");
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
@@ -652,11 +652,11 @@ public partial class SimConnectManager
         {
             inputEventHashes.Clear();
             simConnect.EnumerateInputEvents(DATA_REQUESTS.REQUEST_ENUMERATE_INPUT_EVENTS);
-            Log.Debug("SimConnect", "[SimConnectManager] Requested InputEvent enumeration");
+            Log.Debug("SimConnect", "Requested InputEvent enumeration");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] EnumerateInputEvents failed: {ex.Message}");
+            Log.Debug("SimConnect", $"EnumerateInputEvents failed: {ex.Message}");
         }
     }
 
@@ -682,13 +682,13 @@ public partial class SimConnectManager
             if (data.dwEntryNumber + 1 >= data.dwOutOf)
             {
                 Log.Debug("SimConnect", 
-                    $"[SimConnectManager] InputEvent enumeration complete: {inputEventHashes.Count} events");
+                    $"InputEvent enumeration complete: {inputEventHashes.Count} events");
                 DumpInputEventCatalog();
             }
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] InputEvent enumerate handler error: {ex.Message}");
+            Log.Debug("SimConnect", $"InputEvent enumerate handler error: {ex.Message}");
         }
     }
 
@@ -712,7 +712,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Failed to dump InputEvent catalog: {ex.Message}");
+            Log.Debug("SimConnect", $"Failed to dump InputEvent catalog: {ex.Message}");
         }
     }
 
@@ -735,18 +735,18 @@ public partial class SimConnectManager
         if (!IsConnected || simConnect == null || string.IsNullOrEmpty(name)) return false;
         if (!inputEventHashes.TryGetValue(name, out ulong hash))
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] InputEvent not found: {name}");
+            Log.Debug("SimConnect", $"InputEvent not found: {name}");
             return false;
         }
         try
         {
             simConnect.SetInputEvent(hash, value);
-            Log.Debug("SimConnect", $"[SimConnectManager] SetInputEvent {name} = {value}");
+            Log.Debug("SimConnect", $"SetInputEvent {name} = {value}");
             return true;
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] SetInputEvent {name} failed: {ex.Message}");
+            Log.Debug("SimConnect", $"SetInputEvent {name} failed: {ex.Message}");
             return false;
         }
     }

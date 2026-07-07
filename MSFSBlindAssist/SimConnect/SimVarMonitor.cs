@@ -56,7 +56,7 @@ public class SimVarMonitor
     public void EnableAnnouncements()
     {
         AnnouncementsEnabled = true;
-        Log.Debug("SimConnect", "[SimVarMonitor] Announcements enabled - continuous monitoring active");
+        Log.Debug("SimConnect", "Announcements enabled - continuous monitoring active");
     }
 
     public void Reset()

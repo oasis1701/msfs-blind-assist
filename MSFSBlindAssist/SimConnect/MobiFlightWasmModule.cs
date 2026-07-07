@@ -160,36 +160,36 @@ public class MobiFlightWasmModule
         {
             try
             {
-                Log.Debug("SimConnect", "[MobiFlight] ===== INITIALIZING MOBIFLIGHT WASM INTEGRATION =====");
-                Log.Debug("SimConnect", $"[MobiFlight] Client Name: {CLIENT_NAME}");
+                Log.Debug("SimConnect", "===== INITIALIZING MOBIFLIGHT WASM INTEGRATION =====");
+                Log.Debug("SimConnect", $"Client Name: {CLIENT_NAME}");
 
                 // Map default MobiFlight client data areas
-                Log.Debug("SimConnect", "[MobiFlight] Step 1: Mapping client data areas...");
+                Log.Debug("SimConnect", "Step 1: Mapping client data areas...");
                 MapClientDataAreas();
 
                 // Set up data definitions
-                Log.Debug("SimConnect", "[MobiFlight] Step 2: Setting up data definitions...");
+                Log.Debug("SimConnect", "Step 2: Setting up data definitions...");
                 SetupDataDefinitions();
 
                 // Subscribe to response channels
-                Log.Debug("SimConnect", "[MobiFlight] Step 3: Subscribing to response channels...");
+                Log.Debug("SimConnect", "Step 3: Subscribing to response channels...");
                 SubscribeToResponses();
 
                 // Send a dummy command first (MobiFlight documentation recommends this)
-                Log.Debug("SimConnect", "[MobiFlight] Step 4: Sending dummy command...");
+                Log.Debug("SimConnect", "Step 4: Sending dummy command...");
                 SendDummyCommand();
 
                 // Register our client with MobiFlight
-                Log.Debug("SimConnect", "[MobiFlight] Step 5: Registering client...");
+                Log.Debug("SimConnect", "Step 5: Registering client...");
                 RegisterClient();
 
                 IsConnected = true;
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM connected");
-                Log.Debug("SimConnect", $"[MobiFlight] ===== INITIALIZATION COMPLETED - Status: {ConnectionStatus} =====");
+                Log.Debug("SimConnect", $"===== INITIALIZATION COMPLETED - Status: {ConnectionStatus} =====");
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] ===== INITIALIZATION FAILED: {ex.Message} =====");
+                Log.Debug("SimConnect", $"===== INITIALIZATION FAILED: {ex.Message} =====");
                 ConnectionStatusChanged?.Invoke(this, $"MobiFlight WASM connection failed: {ex.Message}");
             }
         }
@@ -201,7 +201,7 @@ public class MobiFlightWasmModule
             simConnect.MapClientDataNameToID("MobiFlight.Response", CLIENT_DATA_AREA_ID.MF_RESPONSE);
             simConnect.MapClientDataNameToID("MobiFlight.LVars", CLIENT_DATA_AREA_ID.MF_LVARS);
 
-            Log.Debug("SimConnect", "[MobiFlight] Default client data areas mapped");
+            Log.Debug("SimConnect", "Default client data areas mapped");
         }
 
         private void SetupDataDefinitions()
@@ -218,7 +218,7 @@ public class MobiFlightWasmModule
             simConnect.AddToClientDataDefinition(DATA_DEFINITION_ID.MF_LVAR_DATA, 0, MAX_LVARS_SIZE, 0, 0);
             simConnect.AddToClientDataDefinition(DATA_DEFINITION_ID.FBWBA_LVAR_DATA, 0, MAX_LVARS_SIZE, 0, 0);
 
-            Log.Debug("SimConnect", "[MobiFlight] Data definitions configured");
+            Log.Debug("SimConnect", "Data definitions configured");
         }
 
         private void SubscribeToResponses()
@@ -233,7 +233,7 @@ public class MobiFlightWasmModule
                 DATA_DEFINITION_ID.MF_LVAR_DATA, SIMCONNECT_CLIENT_DATA_PERIOD.ON_SET,
                 SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[MobiFlight] Subscribed to response and LVar channels");
+            Log.Debug("SimConnect", "Subscribed to response and LVar channels");
         }
 
         private void SendDummyCommand()
@@ -241,7 +241,7 @@ public class MobiFlightWasmModule
             // Send a dummy command as recommended by MobiFlight documentation
             // Sometimes the first command is ignored, so we send this first
             SendMFCommand("MF.Ping");
-            Log.Debug("SimConnect", "[MobiFlight] Sent dummy ping command");
+            Log.Debug("SimConnect", "Sent dummy ping command");
         }
 
         private void RegisterClient()
@@ -253,7 +253,7 @@ public class MobiFlightWasmModule
             // Start registration timeout timer
             registrationTimer.Start();
 
-            Log.Debug("SimConnect", $"[MobiFlight] Sent client registration: {registerCommand}");
+            Log.Debug("SimConnect", $"Sent client registration: {registerCommand}");
         }
 
         public void SendMFCommand(string command)
@@ -264,11 +264,11 @@ public class MobiFlightWasmModule
                 simConnect.SetClientData(CLIENT_DATA_AREA_ID.MF_COMMAND, DATA_DEFINITION_ID.MF_COMMAND_STRING,
                     SIMCONNECT_CLIENT_DATA_SET_FLAG.DEFAULT, 0, cmdData);
 
-                Log.Debug("SimConnect", $"[MobiFlight] Sent command: {command}");
+                Log.Debug("SimConnect", $"Sent command: {command}");
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Failed to send command '{command}': {ex.Message}");
+                Log.Debug("SimConnect", $"Failed to send command '{command}': {ex.Message}");
             }
         }
 
@@ -276,7 +276,7 @@ public class MobiFlightWasmModule
         {
             if (defaultChannelLVars.ContainsKey(lvarName))
             {
-                Log.Debug("SimConnect", $"[MobiFlight] LVar already registered in default channel: {lvarName}");
+                Log.Debug("SimConnect", $"LVar already registered in default channel: {lvarName}");
                 return;
             }
 
@@ -288,7 +288,7 @@ public class MobiFlightWasmModule
             string command = $"MF.SimVars.Add.(L:{lvarName})";
             SendMFCommand(command);
 
-            Log.Debug("SimConnect", $"[MobiFlight] Added default channel LVar: {lvarName} at offset {nextDefaultLVarOffset}");
+            Log.Debug("SimConnect", $"Added default channel LVar: {lvarName} at offset {nextDefaultLVarOffset}");
 
             // Increment offset for next variable (each float takes 4 bytes)
             nextDefaultLVarOffset += 4;
@@ -304,7 +304,7 @@ public class MobiFlightWasmModule
             // Track this read request
             pendingLedReads[lvarName] = DateTime.Now;
 
-            Log.Debug("SimConnect", $"[MobiFlight] Reading LED variable directly: {lvarName}");
+            Log.Debug("SimConnect", $"Reading LED variable directly: {lvarName}");
         }
 
         public void ReadStringLVar(string lvarName)
@@ -317,7 +317,7 @@ public class MobiFlightWasmModule
             // Track this read request
             pendingStringLVarReads[lvarName] = DateTime.Now;
 
-            Log.Debug("SimConnect", $"[MobiFlight] Reading string L-variable: {lvarName}");
+            Log.Debug("SimConnect", $"Reading string L-variable: {lvarName}");
         }
 
         private void SendFBWBACommand(string command)
@@ -326,7 +326,7 @@ public class MobiFlightWasmModule
             {
                 if (!IsRegistered)
                 {
-                    Log.Debug("SimConnect", $"[MobiFlight] Cannot send command - not registered yet: {command}");
+                    Log.Debug("SimConnect", $"Cannot send command - not registered yet: {command}");
                     return;
                 }
 
@@ -334,11 +334,11 @@ public class MobiFlightWasmModule
                 simConnect.SetClientData(CLIENT_DATA_AREA_ID.FBWBA_COMMAND, DATA_DEFINITION_ID.FBWBA_COMMAND_STRING,
                     SIMCONNECT_CLIENT_DATA_SET_FLAG.DEFAULT, 0, cmdData);
 
-                Log.Debug("SimConnect", $"[MobiFlight] Sent FBWBA command: {command}");
+                Log.Debug("SimConnect", $"Sent FBWBA command: {command}");
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Failed to send FBWBA command '{command}': {ex.Message}");
+                Log.Debug("SimConnect", $"Failed to send FBWBA command '{command}': {ex.Message}");
             }
         }
 
@@ -353,7 +353,7 @@ public class MobiFlightWasmModule
 
                     if (!string.IsNullOrEmpty(responseText))
                     {
-                        Log.Debug("SimConnect", $"[MobiFlight] Response: {responseText}");
+                        Log.Debug("SimConnect", $"Response: {responseText}");
                         ProcessResponse(responseText);
                         ResponseReceived?.Invoke(this, responseText);
                     }
@@ -370,7 +370,7 @@ public class MobiFlightWasmModule
 
                     if (!string.IsNullOrEmpty(responseText))
                     {
-                        Log.Debug("SimConnect", $"[MobiFlight] FBWBA Response: {responseText}");
+                        Log.Debug("SimConnect", $"FBWBA Response: {responseText}");
                         ResponseReceived?.Invoke(this, responseText);
                     }
                 }
@@ -382,7 +382,7 @@ public class MobiFlightWasmModule
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Error processing client data response: {ex.Message}");
+                Log.Debug("SimConnect", $"Error processing client data response: {ex.Message}");
             }
         }
 
@@ -398,7 +398,7 @@ public class MobiFlightWasmModule
 
         private void ProcessResponse(string response)
         {
-            Log.Debug("SimConnect", $"[MobiFlight] Received response: {response}");
+            Log.Debug("SimConnect", $"Received response: {response}");
             MarkModuleResponded();
 
             if (response.StartsWith($"MF.Clients.Add.{CLIENT_NAME}.Finished"))
@@ -406,7 +406,7 @@ public class MobiFlightWasmModule
                 // Stop registration timeout timer
                 registrationTimer.Stop();
 
-                Log.Debug("SimConnect", "[MobiFlight] ===== CLIENT REGISTRATION SUCCESSFUL =====");
+                Log.Debug("SimConnect", "===== CLIENT REGISTRATION SUCCESSFUL =====");
 
                 // Client registration completed - map our custom channels
                 MapCustomClientDataAreas();
@@ -416,12 +416,12 @@ public class MobiFlightWasmModule
                 // Start heartbeat
                 heartbeatTimer.Start();
 
-                Log.Debug("SimConnect", $"[MobiFlight] Status: {ConnectionStatus} - H-variables ready!");
+                Log.Debug("SimConnect", $"Status: {ConnectionStatus} - H-variables ready!");
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM client registered");
             }
             else if (response.StartsWith("MF.Pong"))
             {
-                Log.Debug("SimConnect", "[MobiFlight] Heartbeat pong received - connection healthy");
+                Log.Debug("SimConnect", "Heartbeat pong received - connection healthy");
             }
             else
             {
@@ -448,12 +448,12 @@ public class MobiFlightWasmModule
                             Value = response
                         });
 
-                        Log.Debug("SimConnect", $"[MobiFlight] String L-var received (FIFO): {lvarName} = '{response}' (Remaining: {pendingStringLVarReads.Count})");
+                        Log.Debug("SimConnect", $"String L-var received (FIFO): {lvarName} = '{response}' (Remaining: {pendingStringLVarReads.Count})");
                         return; // Don't continue processing - we consumed this response
                     }
                     else
                     {
-                        Log.Debug("SimConnect", $"[MobiFlight] String response received but no matching pending request (all timed out): {response}");
+                        Log.Debug("SimConnect", $"String response received but no matching pending request (all timed out): {response}");
                     }
                 }
 
@@ -478,12 +478,12 @@ public class MobiFlightWasmModule
                             Value = value
                         });
 
-                        Log.Debug("SimConnect", $"[MobiFlight] LED value received: {ledVariable} = {value}");
+                        Log.Debug("SimConnect", $"LED value received: {ledVariable} = {value}");
                     }
                 }
                 else if (pendingStringLVarReads.Count == 0 && pendingLedReads.Count == 0)
                 {
-                    Log.Debug("SimConnect", $"[MobiFlight] Unknown response (no pending requests): {response}");
+                    Log.Debug("SimConnect", $"Unknown response (no pending requests): {response}");
                 }
             }
         }
@@ -495,7 +495,7 @@ public class MobiFlightWasmModule
             simConnect.MapClientDataNameToID($"{CLIENT_NAME}.Response", CLIENT_DATA_AREA_ID.FBWBA_RESPONSE);
             simConnect.MapClientDataNameToID($"{CLIENT_NAME}.LVars", CLIENT_DATA_AREA_ID.FBWBA_LVARS);
 
-            Log.Debug("SimConnect", "[MobiFlight] Custom client data areas mapped");
+            Log.Debug("SimConnect", "Custom client data areas mapped");
         }
 
         private void SubscribeToCustomChannels()
@@ -509,7 +509,7 @@ public class MobiFlightWasmModule
                 DATA_DEFINITION_ID.FBWBA_LVAR_DATA, SIMCONNECT_CLIENT_DATA_PERIOD.ON_SET,
                 SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[MobiFlight] Subscribed to custom channels");
+            Log.Debug("SimConnect", "Subscribed to custom channels");
         }
 
         private void ProcessDefaultChannelLVarUpdate(LVarData lvarData)
@@ -532,13 +532,13 @@ public class MobiFlightWasmModule
                             Index = i
                         });
 
-                        Log.Debug("SimConnect", $"[MobiFlight] Default channel LVar updated: {varName} = {value}");
+                        Log.Debug("SimConnect", $"Default channel LVar updated: {varName} = {value}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Error processing default channel LVar update: {ex.Message}");
+                Log.Debug("SimConnect", $"Error processing default channel LVar update: {ex.Message}");
             }
         }
 
@@ -564,7 +564,7 @@ public class MobiFlightWasmModule
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Error processing LVar update: {ex.Message}");
+                Log.Debug("SimConnect", $"Error processing LVar update: {ex.Message}");
             }
         }
 
@@ -573,7 +573,7 @@ public class MobiFlightWasmModule
             if (!IsRegistered && !registrationTimeoutOccurred)
             {
                 // Pre-timeout startup window (≤2 s): the HVar is DROPPED, not queued.
-                Log.Debug("SimConnect", $"[MobiFlight] Cannot send H-variable - not registered and no timeout: {hvar}");
+                Log.Debug("SimConnect", $"Cannot send H-variable - not registered and no timeout: {hvar}");
                 return;
             }
 
@@ -582,14 +582,14 @@ public class MobiFlightWasmModule
                 // Use registered client channel
                 string command = $"MF.SimVars.Set.(>H:{hvar})";
                 SendFBWBACommand(command);
-                Log.Debug("SimConnect", $"[MobiFlight] Sent H-variable via client channel: {command}");
+                Log.Debug("SimConnect", $"Sent H-variable via client channel: {command}");
             }
             else
             {
                 // Fallback - use default MobiFlight channel
                 string command = $"MF.SimVars.Set.(>H:{hvar})";
                 SendMFCommand(command);
-                Log.Debug("SimConnect", $"[MobiFlight] Sent H-variable via default channel (fallback): {command}");
+                Log.Debug("SimConnect", $"Sent H-variable via default channel (fallback): {command}");
             }
         }
 
@@ -597,20 +597,20 @@ public class MobiFlightWasmModule
         {
             if (!IsRegistered)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Cannot add LVar - not registered: {lvarName}");
+                Log.Debug("SimConnect", $"Cannot add LVar - not registered: {lvarName}");
                 return;
             }
 
             if (registeredLVars.ContainsKey(lvarName))
             {
-                Log.Debug("SimConnect", $"[MobiFlight] LVar already registered: {lvarName}");
+                Log.Debug("SimConnect", $"LVar already registered: {lvarName}");
                 return;
             }
 
             int index = lvarList.Count;
             if (index >= MAX_LVARS_COUNT)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Maximum LVar count reached, cannot add: {lvarName}");
+                Log.Debug("SimConnect", $"Maximum LVar count reached, cannot add: {lvarName}");
                 return;
             }
 
@@ -620,14 +620,14 @@ public class MobiFlightWasmModule
             string command = $"MF.SimVars.Add.(L:{lvarName})";
             SendFBWBACommand(command);
 
-            Log.Debug("SimConnect", $"[MobiFlight] Added LVar: {lvarName} at index {index}");
+            Log.Debug("SimConnect", $"Added LVar: {lvarName} at index {index}");
         }
 
         public void ClearLVars()
         {
             if (!IsRegistered)
             {
-                Log.Debug("SimConnect", "[MobiFlight] Cannot clear LVars - not registered");
+                Log.Debug("SimConnect", "Cannot clear LVars - not registered");
                 return;
             }
 
@@ -635,7 +635,7 @@ public class MobiFlightWasmModule
             registeredLVars.Clear();
             lvarList.Clear();
 
-            Log.Debug("SimConnect", "[MobiFlight] Cleared all LVars");
+            Log.Debug("SimConnect", "Cleared all LVars");
         }
 
         private void HeartbeatTimer_Elapsed(object? sender, ElapsedEventArgs e)
@@ -665,7 +665,7 @@ public class MobiFlightWasmModule
             try
             {
                 registrationTimeoutOccurred = true;
-                Log.Debug("SimConnect", "[MobiFlight] Registration timeout - will allow H-variables through default channel");
+                Log.Debug("SimConnect", "Registration timeout - will allow H-variables through default channel");
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
                 // A present module can stay silent on a duplicate registration (e.g.
                 // MSFSBA restarted within one sim session) — elicit a pong on the
@@ -693,12 +693,12 @@ public class MobiFlightWasmModule
                 pendingLedReads.Clear();
                 pendingStringLVarReads.Clear();
 
-                Log.Debug("SimConnect", "[MobiFlight] Disconnected");
+                Log.Debug("SimConnect", "Disconnected");
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM disconnected");
             }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"[MobiFlight] Error during disconnect: {ex.Message}");
+                Log.Debug("SimConnect", $"Error during disconnect: {ex.Message}");
             }
         }
 

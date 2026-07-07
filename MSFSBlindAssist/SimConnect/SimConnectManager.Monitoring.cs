@@ -18,7 +18,7 @@ public partial class SimConnectManager
     public void EnableECAMAnnouncements()
     {
         SuppressECAMAnnouncements = false;
-        Log.Debug("SimConnect", "[SimConnectManager] ECAM announcements enabled");
+        Log.Debug("SimConnect", "ECAM announcements enabled");
     }
 
     /// <summary>
@@ -28,7 +28,7 @@ public partial class SimConnectManager
     public bool ToggleECAMMonitoring()
     {
         ECAMMonitoringEnabled = !ECAMMonitoringEnabled;
-        Log.Debug("SimConnect", $"[SimConnectManager] ECAM monitoring {(ECAMMonitoringEnabled ? "enabled" : "disabled")}");
+        Log.Debug("SimConnect", $"ECAM monitoring {(ECAMMonitoringEnabled ? "enabled" : "disabled")}");
         return ECAMMonitoringEnabled;
     }
 
@@ -133,11 +133,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.SIM_FRAME,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Takeoff assist monitoring started (consolidated data)");
+            Log.Debug("SimConnect", "Takeoff assist monitoring started (consolidated data)");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error starting takeoff assist monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error starting takeoff assist monitoring: {ex.Message}");
         }
     }
 
@@ -154,11 +154,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Takeoff assist monitoring stopped");
+            Log.Debug("SimConnect", "Takeoff assist monitoring stopped");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error stopping takeoff assist monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error stopping takeoff assist monitoring: {ex.Message}");
         }
     }
 
@@ -175,11 +175,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.SIM_FRAME,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Taxi guidance monitoring started");
+            Log.Debug("SimConnect", "Taxi guidance monitoring started");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error starting taxi guidance monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error starting taxi guidance monitoring: {ex.Message}");
         }
     }
 
@@ -195,11 +195,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Taxi guidance monitoring stopped");
+            Log.Debug("SimConnect", "Taxi guidance monitoring stopped");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error stopping taxi guidance monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error stopping taxi guidance monitoring: {ex.Message}");
         }
     }
 
@@ -255,11 +255,11 @@ public partial class SimConnectManager
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
 
-            Log.Debug("SimConnect", $"[SimConnectManager] Hand fly mode monitoring started (Heading: {monitorHeading}, VS: {monitorVerticalSpeed})");
+            Log.Debug("SimConnect", $"Hand fly mode monitoring started (Heading: {monitorHeading}, VS: {monitorVerticalSpeed})");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error starting hand fly mode monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error starting hand fly mode monitoring: {ex.Message}");
         }
     }
 
@@ -296,11 +296,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Hand fly mode monitoring stopped");
+            Log.Debug("SimConnect", "Hand fly mode monitoring stopped");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error stopping hand fly mode monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error stopping hand fly mode monitoring: {ex.Message}");
         }
     }
 
@@ -321,11 +321,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.SIM_FRAME,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Visual guidance monitoring started (consolidated data)");
+            Log.Debug("SimConnect", "Visual guidance monitoring started (consolidated data)");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error starting visual guidance monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error starting visual guidance monitoring: {ex.Message}");
         }
     }
 
@@ -342,11 +342,11 @@ public partial class SimConnectManager
                 SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            Log.Debug("SimConnect", "[SimConnectManager] Visual guidance monitoring stopped");
+            Log.Debug("SimConnect", "Visual guidance monitoring stopped");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error stopping visual guidance monitoring: {ex.Message}");
+            Log.Debug("SimConnect", $"Error stopping visual guidance monitoring: {ex.Message}");
         }
     }
 
@@ -364,7 +364,7 @@ public partial class SimConnectManager
     {
         destinationRunway = runway;
         destinationAirport = airport;
-        Log.Debug("SimConnect", $"[SimConnectManager] Destination runway set: {airport.ICAO} Runway {runway.RunwayID}");
+        Log.Debug("SimConnect", $"Destination runway set: {airport.ICAO} Runway {runway.RunwayID}");
     }
 
     public Runway? GetDestinationRunway()
@@ -396,7 +396,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] Error requesting aircraft position: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting aircraft position: {ex.Message}");
             return null;
         }
     }
