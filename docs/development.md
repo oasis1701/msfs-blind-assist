@@ -97,7 +97,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 - SimConnect.cfg configuration file is copied to output for connection settings
 - Application requires x64 build for proper SimConnect operation
 - C# 13 with nullable reference types enabled
-- **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
+- **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.Connect() in SimConnect/SimConnectManager.cs
 
 ### A380/A32NX live-debugging tools (`tools/`)
 
