@@ -49,7 +49,7 @@ The sections above document **Access GSX** — the accessible GSX menu/tooltip/s
 
 **Domain boundary with PR #84 ("Fix GSX active service") — do not cross.** The docking/positioning code owns POSITIONING only: gate/stand selection, docking geometry, deice-pad positioning. PR #84 owns live SERVICE STATE (boarding/refuel/catering/deice/pushback status, timers, `GsxSettingsForm`). Don't add service-state logic to the docking code, and don't let docking read service vars.
 
-**Feature:** Three coupled subsystems layered on taxi guidance — (1) selecting a GSX parking position by driving its in-sim menu, (2) audio docking guidance to the stop position (VDGS/marshalling analog), and (3) an app-wide metres/feet distance toggle. Verified with console probes under `tools/`, not xUnit (run `dotnet run --project tools/<Name> -p:Platform=x64`): `DockingProbe`, `DistanceUnitsProbe`, `GsxProfileProbe` (`--all` sweep / `--audit` robustness), `GsxAirplaneProbe`.
+**Feature:** Three coupled subsystems layered on taxi guidance — (1) selecting a GSX parking position by driving its in-sim menu, (2) audio docking guidance to the stop position (VDGS/marshalling analog), and (3) an app-wide metres/feet distance toggle. Verified with console probes under `tools/` plus xUnit characterization tests (`DockingGeometryTests`, `GsxOffsetTests`) run by CI (run `dotnet run --project tools/<Name> -p:Platform=x64`): `DockingProbe`, `DistanceUnitsProbe`, `GsxProfileProbe` (`--all` sweep / `--audit` robustness), `GsxAirplaneProbe`.
 
 **Key rules when touching this code:**
 
