@@ -453,7 +453,7 @@ public partial class MainForm
                 double? vr = foundVR ? vrVal : null;
                 takeoffAssistManager.SetFenixVSpeeds(v1, vr);
 
-                Log.Debug("MainForm", $"[TakeoffAssist] Fenix V-speeds from MCDU: V1={v1Val}, VR={vrVal}");
+                Log.Debug("MainForm", $"Fenix V-speeds from MCDU: V1={v1Val}, VR={vrVal}");
             }
         }
         else
@@ -630,7 +630,7 @@ public partial class MainForm
                 if (fmcVref > 0)
                 {
                     visualGuidanceManager.UpdateReferenceVref(fmcVref);
-                    Log.Debug("MainForm", $"[MainForm] VG: pushed PMDG FMC_LandingVREF={fmcVref:F0}kt as ReferenceVref");
+                    Log.Debug("MainForm", $"VG: pushed PMDG FMC_LandingVREF={fmcVref:F0}kt as ReferenceVref");
                 }
             }
 

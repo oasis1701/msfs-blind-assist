@@ -59,7 +59,7 @@ public class TolkWrapper : IDisposable
             }
             catch (Exception ex)
             {
-                Log.Debug("Accessibility", $"[TolkWrapper] Error in DetectScreenReader: {ex.Message}");
+                Log.Debug("Accessibility", $"Error in DetectScreenReader: {ex.Message}");
                 return "Error";
             }
         }
@@ -136,7 +136,7 @@ public class TolkWrapper : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Debug("Accessibility", $"[TolkWrapper] Error checking screen reader: {ex.Message}");
+            Log.Debug("Accessibility", $"Error checking screen reader: {ex.Message}");
             return false;
         }
     }

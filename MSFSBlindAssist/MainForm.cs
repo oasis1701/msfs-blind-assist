@@ -423,7 +423,7 @@ public partial class MainForm : Form
         System.Threading.Tasks.Task.Run(() =>
         {
             try { _gsxAirplaneProfile.GetDoorOffsetMetres("B77W"); } // warms the map
-            catch (Exception ex) { Log.Debug("MainForm", $"[MainForm] GsxAirplaneProfile warm failed: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("MainForm", $"GsxAirplaneProfile warm failed: {ex.Message}"); }
         });
 
         // MobiFlight end-to-end bridge probe: calc-write a nonce L:var, read it back
@@ -596,13 +596,13 @@ public partial class MainForm : Form
         eventBatchTimer.Interval = EVENT_BATCH_INTERVAL_MS;
         eventBatchTimer.Tick += ProcessEventBatch;
         // Timer starts when SimConnect connects (see OnConnectionStatusChanged)
-        Log.Debug("MainForm", $"[MainForm] Event batching initialized: {EVENT_BATCH_INTERVAL_MS}ms interval, max {MAX_BATCH_SIZE} events/batch");
+        Log.Debug("MainForm", $"Event batching initialized: {EVENT_BATCH_INTERVAL_MS}ms interval, max {MAX_BATCH_SIZE} events/batch");
 
         // Initialize panel loading debounce timer (prevents NVDA overload during rapid arrow navigation)
         _panelLoadTimer = new System.Windows.Forms.Timer();
         _panelLoadTimer.Interval = 150; // 150ms delay - allows rapid navigation while preventing event queue buildup
         _panelLoadTimer.Tick += PanelLoadTimer_Tick;
-        Log.Debug("MainForm", "[MainForm] Panel load debouncing initialized: 150ms delay");
+        Log.Debug("MainForm", "Panel load debouncing initialized: 150ms delay");
 
         // Initialize nearest city announcement timer (periodic automatic announcements)
         nearestCityAnnouncementTimer = new System.Windows.Forms.Timer();

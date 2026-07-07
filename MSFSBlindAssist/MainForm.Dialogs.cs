@@ -131,14 +131,14 @@ public partial class MainForm
                 catch (Exception ex)
                 {
                     announcer.AnnounceImmediate($"Error displaying location information: {ex.Message}");
-                    Log.Debug("MainForm", $"[MainForm] Error in position callback: {ex.Message}");
+                    Log.Debug("MainForm", $"Error in position callback: {ex.Message}");
                 }
             });
         }
         catch (Exception ex)
         {
             announcer.AnnounceImmediate($"Error requesting location information: {ex.Message}");
-            Log.Debug("MainForm", $"[MainForm] Error in ShowLocationInfoDialog: {ex.Message}");
+            Log.Debug("MainForm", $"Error in ShowLocationInfoDialog: {ex.Message}");
         }
     }
 
@@ -152,7 +152,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            Log.Debug("MainForm", $"[MainForm] Error opening weather radar: {ex.Message}");
+            Log.Debug("MainForm", $"Error opening weather radar: {ex.Message}");
         }
     }
 
@@ -187,7 +187,7 @@ public partial class MainForm
         catch (Exception ex)
         {
             announcer.AnnounceImmediate($"Error opening SimBrief briefing: {ex.Message}");
-            Log.Debug("MainForm", $"[MainForm] Error in OpenSimBriefBriefing: {ex.Message}");
+            Log.Debug("MainForm", $"Error in OpenSimBriefBriefing: {ex.Message}");
         }
     }
 
