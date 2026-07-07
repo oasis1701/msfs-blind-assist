@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -174,7 +175,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[WeatherService] Advisories error: {ex.Message}");
+            Log.Debug("Services", $"[WeatherService] Advisories error: {ex.Message}");
             return new List<WeatherAdvisory>();
         }
     }
@@ -234,7 +235,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[WeatherService] Winds aloft error: {ex.Message}");
+            Log.Debug("Services", $"[WeatherService] Winds aloft error: {ex.Message}");
             return new List<WindAtAltitude>();
         }
     }
@@ -272,7 +273,7 @@ public static class WeatherService
                     ValidFrom = from, ValidTo = to, RawText = raw
                 });
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WeatherService] Feature parse error: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Services", $"[WeatherService] Feature parse error: {ex.Message}"); }
         }
     }
 
@@ -316,7 +317,7 @@ public static class WeatherService
                     ValidFrom = from, ValidTo = to, RawText = raw
                 });
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WeatherService] Feature parse error: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Services", $"[WeatherService] Feature parse error: {ex.Message}"); }
         }
     }
 
@@ -364,14 +365,14 @@ public static class WeatherService
                         RawText = raw
                     });
                 }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WeatherService] Feature parse error: {ex.Message}"); }
+                catch (Exception ex) { Log.Debug("Services", $"[WeatherService] Feature parse error: {ex.Message}"); }
             }
 
             results.Sort((a, b) => a.DistanceNm.CompareTo(b.DistanceNm));
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[WeatherService] PIREP parse error: {ex.Message}");
+            Log.Debug("Services", $"[WeatherService] PIREP parse error: {ex.Message}");
         }
         return results;
     }
@@ -431,7 +432,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[WeatherService] Winds parse error: {ex.Message}");
+            Log.Debug("Services", $"[WeatherService] Winds parse error: {ex.Message}");
         }
         return results;
     }
@@ -553,7 +554,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[WeatherService] HTTP error: {ex.Message}");
+            Log.Debug("Services", $"[WeatherService] HTTP error: {ex.Message}");
         }
     }
 

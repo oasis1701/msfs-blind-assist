@@ -3,6 +3,7 @@ using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -359,11 +360,11 @@ public class VisualGuidanceManager : IDisposable
             currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
                                           profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
             tonesNeedStart = true;
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}° pitch, pan ±{profile.ToneBankRangeDeg}° bank); deferring Start until first ProcessUpdate");
+            Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}° pitch, pan ±{profile.ToneBankRangeDeg}° bank); deferring Start until first ProcessUpdate");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to instantiate tones: {ex.Message}");
+            Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Failed to instantiate tones: {ex.Message}");
             desiredAttitudeTone?.Dispose();
             desiredAttitudeTone = null;
             currentAttitudeTone?.Dispose();
@@ -372,7 +373,7 @@ public class VisualGuidanceManager : IDisposable
         }
 
         announcer.AnnounceImmediate($"Visual guidance active, runway {runway.RunwayID}");
-        System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Initialized for runway {runway.RunwayID}");
+        Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Initialized for runway {runway.RunwayID}");
     }
 
     /// <summary>
@@ -404,7 +405,7 @@ public class VisualGuidanceManager : IDisposable
         VisualGuidanceActiveChanged?.Invoke(this, false);
         if (announce)
             announcer.Announce("Visual guidance off");
-        System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Stopped (announce={announce})");
+        Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Stopped (announce={announce})");
     }
 
     /// <summary>
@@ -450,7 +451,7 @@ public class VisualGuidanceManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Desired-attitude tone Start threw (unexpected): {ex.Message}");
+            Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Desired-attitude tone Start threw (unexpected): {ex.Message}");
         }
 
         // If the desired tone failed to actually start (audio device error, driver issue),
@@ -458,7 +459,7 @@ public class VisualGuidanceManager : IDisposable
         // (nothing to match against) and would just play a constant 500 Hz background drone.
         if (desiredAttitudeTone == null || !desiredAttitudeTone.IsPlaying)
         {
-            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone did not start (or failed); tearing both down");
+            Log.Debug("VisualGuidance", "[VisualGuidanceManager] Desired-attitude tone did not start (or failed); tearing both down");
             desiredAttitudeTone?.Dispose();
             desiredAttitudeTone = null;
             currentAttitudeTone?.Dispose();
@@ -466,7 +467,7 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone started");
+        Log.Debug("VisualGuidance", "[VisualGuidanceManager] Desired-attitude tone started");
 
         if (currentAttitudeTone != null)
         {
@@ -476,18 +477,18 @@ public class VisualGuidanceManager : IDisposable
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Current-attitude tone Start threw (unexpected): {ex.Message}");
+                Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Current-attitude tone Start threw (unexpected): {ex.Message}");
             }
 
             if (currentAttitudeTone.IsPlaying)
             {
-                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone started");
+                Log.Debug("VisualGuidance", "[VisualGuidanceManager] Current-attitude tone started");
             }
             else
             {
                 // Follower failed to start — desired tone still plays alone, which is at least
                 // useful (pilot has the PID commands; just no current-attitude reference).
-                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone did not start; desired tone running alone");
+                Log.Debug("VisualGuidance", "[VisualGuidanceManager] Current-attitude tone did not start; desired tone running alone");
                 currentAttitudeTone.Dispose();
                 currentAttitudeTone = null;
             }
@@ -561,7 +562,7 @@ public class VisualGuidanceManager : IDisposable
         if (knots > 0)
         {
             airspeedReferenceKnots = knots;
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] ReferenceVref updated to {knots:F0} kt (live override)");
+            Log.Debug("VisualGuidance", $"[VisualGuidanceManager] ReferenceVref updated to {knots:F0} kt (live override)");
         }
     }
     public void UpdateHeading(double headingDegrees) => cachedHeading = headingDegrees;
@@ -647,7 +648,7 @@ public class VisualGuidanceManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Error processing update: {ex.Message}");
+            Log.Debug("VisualGuidance", $"[VisualGuidanceManager] Error processing update: {ex.Message}");
         }
     }
 
@@ -673,7 +674,7 @@ public class VisualGuidanceManager : IDisposable
         double wheelHeightAGL = calculatedAGL - flareAltitudeBiasFt;
 
         // Diagnostic logging to help identify sensor issues
-        System.Diagnostics.Debug.WriteLine(
+        Log.Debug("VisualGuidance", 
             $"[VisualGuidance] AGL: SimConnect={agl:F1}ft, Calculated={calculatedAGL:F1}ft, " +
             $"WheelHeight={wheelHeightAGL:F1}ft, Diff={Math.Abs(agl - calculatedAGL):F1}ft");
 
@@ -938,7 +939,7 @@ public class VisualGuidanceManager : IDisposable
                     lat, lon, runway.StartLat, runway.StartLon);
 
                 // Debug output for arc mode
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("VisualGuidance", 
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
                     $"IntAngle={interceptAngle:F1}°, Damped={dampedInterceptAngle:F1}°, " +
                     $"TgtHdg={targetHeading:F1}°, ActTrk={actualTrackAngle:F1}°, HdgErr={headingError:F1}°, " +
@@ -980,7 +981,7 @@ public class VisualGuidanceManager : IDisposable
                     lat, lon, runway.StartLat, runway.StartLon);
 
                 // Debug output for precision mode
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("VisualGuidance", 
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
                     $"TrkErr={trackAngleError:F1}°, P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° " +
                     $"→ Bank={desiredBank:F1}°, Dist={distanceNM:F1}NM, GS={currentGroundSpeedKnots:F0}kt");
@@ -993,7 +994,7 @@ public class VisualGuidanceManager : IDisposable
             double impliedMagVar = cachedGroundTrack.HasValue ?
                 NormalizeHeading(cachedGroundTrack.Value - heading) : 0.0;
 
-            System.Diagnostics.Debug.WriteLine(
+            Log.Debug("VisualGuidance", 
                 $"[VisualGuidance] MAGNETIC DEBUG: RunwayMag={runway.HeadingMag:F1}° AircraftHdg={heading:F1}° " +
                 $"GroundTrack={cachedGroundTrack?.ToString("F1") ?? "N/A"}° ActualTrack={actualTrackAngle:F1}° " +
                 $"TrackErr={trackAngleError:F1}° ImpliedMagVar={impliedMagVar:F1}°");
@@ -1001,7 +1002,7 @@ public class VisualGuidanceManager : IDisposable
             // Phase-specific debug output (INTERCEPT phases only - CAPTURE_TRACK logs inside its block)
             if (guidancePhase.StartsWith("INTERCEPT"))
             {
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("VisualGuidance", 
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, " +
                     $"ActualTrk={actualTrackAngle:F1}°, TrkErr={trackAngleError:F1}°, " +
                     $"GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
@@ -1044,11 +1045,11 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private double CalculateDesiredPitch(double lat, double lon, double agl, double altMSL)
     {
-        System.Diagnostics.Debug.WriteLine($"[VisualGuidance] CalculateDesiredPitch called: Phase={currentPhase}, AGL={agl:F0}ft, Runway={(runway != null ? "OK" : "NULL")}, GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, CurPitch={currentPitch:F2}°");
+        Log.Debug("VisualGuidance", $"[VisualGuidance] CalculateDesiredPitch called: Phase={currentPhase}, AGL={agl:F0}ft, Runway={(runway != null ? "OK" : "NULL")}, GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, CurPitch={currentPitch:F2}°");
 
         if (runway == null)
         {
-            System.Diagnostics.Debug.WriteLine("[VisualGuidance] Runway is NULL - returning 0.0");
+            Log.Debug("VisualGuidance", "[VisualGuidance] Runway is NULL - returning 0.0");
             return 0.0;
         }
 
@@ -1067,7 +1068,7 @@ public class VisualGuidanceManager : IDisposable
 
             lastFlarePitch = targetPitch;
 
-            System.Diagnostics.Debug.WriteLine(
+            Log.Debug("VisualGuidance", 
                 $"[VisualGuidance] Flare: AGL={agl:F0}ft, Commanding pitch: {targetPitch:F1}°");
 
             return targetPitch;
@@ -1123,7 +1124,7 @@ public class VisualGuidanceManager : IDisposable
                 // LOCK MODE: Maintain steady 3° descent rate, no altitude corrections
                 targetFPM = natural3DegDescentRateFPM;
 
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("VisualGuidance", 
                     $"[VisualGuidance] LOCK MODE: Dist={distanceToThresholdNM:F2}nm, " +
                     $"Maintaining steady 3° descent: {targetFPM:F0}fpm");
             }
@@ -1144,7 +1145,7 @@ public class VisualGuidanceManager : IDisposable
                 double effectiveMaxDescent = Math.Min(MAX_DESCENT_RATE_FPM, natural3DegDescentRateFPM * 1.3);
                 targetFPM = Math.Clamp(targetFPM, effectiveMaxDescent, 0.0);
 
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("VisualGuidance", 
                     $"[VisualGuidance] CORRECTION MODE: AltErr={altitudeError:F0}ft, " +
                     $"Natural={natural3DegDescentRateFPM:F0}fpm, Correction={correctionRateFPM:F0}fpm, " +
                     $"Target={targetFPM:F0}fpm, Dist={distanceToThresholdNM:F2}nm");
@@ -1241,7 +1242,7 @@ public class VisualGuidanceManager : IDisposable
             // Update for next iteration
             previousDesiredPitch = desiredPitch;
 
-            System.Diagnostics.Debug.WriteLine(
+            Log.Debug("VisualGuidance", 
                 $"[VisualGuidance] Vertical: Target={targetFPM:F0}fpm, Current={smoothedFPM:F0}fpm, Error={fpmError:F0}fpm, " +
                 $"AGL={currentAGL:F0}ft, IdealAGL={idealAltitudeAGL:F0}ft, AltErr={altitudeError:F0}ft, " +
                 $"Dist={distanceToThresholdNM:F2}nm, GS={currentGroundSpeedKnots:F0}kt, " +

@@ -172,7 +172,7 @@ public class TakeoffAssistManager : IDisposable
         referenceAirportICAO = airportICAO;
         hasRunwayReference = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
+        Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
     }
 
     /// <summary>
@@ -216,7 +216,7 @@ public class TakeoffAssistManager : IDisposable
         referenceAirportICAO = null;
         hasRunwayReference = false;
 
-        System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Runway reference cleared");
+        Log.Debug("TakeoffAssist", "[TakeoffAssistManager] Runway reference cleared");
     }
 
     /// <summary>
@@ -268,7 +268,7 @@ public class TakeoffAssistManager : IDisposable
                 // Use runway reference from teleport
                 string modeInfo = legacyMode ? "legacy mode" : "";
                 announcer.AnnounceImmediate($"Takeoff assist active{(legacyMode ? " legacy mode" : "")}, runway {referenceRunwayID} at {referenceAirportICAO}");
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
+                Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
 
                 // EXPLICIT heading sanity check at activation. The intercept tone
                 // now DOES cue an off-heading pilot (nonzero steerError), but the
@@ -311,7 +311,7 @@ public class TakeoffAssistManager : IDisposable
                 {
                     announcer.AnnounceImmediate($"Takeoff assist active, no runway selected, extending centerline from current position, heading {Math.Round(currentHeadingMagnetic)}");
                 }
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
+                Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
             }
 
             // Header AFTER the reference branch so a synthetic-centerline activation
@@ -335,7 +335,7 @@ public class TakeoffAssistManager : IDisposable
             ClearRunwayReference();
 
             announcer.AnnounceImmediate("Takeoff assist off");
-            System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Deactivated");
+            Log.Debug("TakeoffAssist", "[TakeoffAssistManager] Deactivated");
         }
 
         TakeoffAssistActiveChanged?.Invoke(this, isActive);
@@ -375,7 +375,7 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedHeadingDeviation = headingDiff;
                 lastHeadingAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Legacy mode: Heading={currentHeadingMagnetic:F1}°, Deviation={headingDiff:F1}° → {announcement}");
+                Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Legacy mode: Heading={currentHeadingMagnetic:F1}°, Deviation={headingDiff:F1}° → {announcement}");
             }
         }
         else
@@ -497,7 +497,7 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedCrossTrackFeet = crossTrackFeet;
                 lastCenterlineAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Position: Lat={currentLat:F6}, Lon={currentLon:F6}, CrossTrack={crossTrackFeet:F1}ft → {announcement}{(muteCenterlineAnnouncements ? " (muted)" : "")}");
+                Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Position: Lat={currentLat:F6}, Lon={currentLon:F6}, CrossTrack={crossTrackFeet:F1}ft → {announcement}{(muteCenterlineAnnouncements ? " (muted)" : "")}");
             }
         }
     }
@@ -523,7 +523,7 @@ public class TakeoffAssistManager : IDisposable
             lastAnnouncedPitch = currentPitch;
             lastPitchAnnouncement = DateTime.Now;
 
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Pitch: {currentPitch:F1}° → {announcement}");
+            Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Pitch: {currentPitch:F1}° → {announcement}");
         }
     }
 
@@ -547,7 +547,7 @@ public class TakeoffAssistManager : IDisposable
         {
             announcer.Announce("80 knots");
             hasAnnounced80Knots = true;
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 80 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Speed callout: 80 knots (IAS={currentIAS:F1})");
         }
 
         // 100 knots callout (all aircraft)
@@ -555,7 +555,7 @@ public class TakeoffAssistManager : IDisposable
         {
             announcer.Announce("100 knots");
             hasAnnounced100Knots = true;
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 100 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Speed callout: 100 knots (IAS={currentIAS:F1})");
         }
 
         // V1 callout (Fenix only, if V1 speed is configured)
@@ -565,7 +565,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 announcer.Announce("V1");
                 hasAnnouncedV1 = true;
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
+                Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
             }
         }
 
@@ -576,7 +576,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 announcer.Announce("rotate");
                 hasAnnouncedRotate = true;
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
+                Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
             }
         }
     }
@@ -592,7 +592,7 @@ public class TakeoffAssistManager : IDisposable
         fenixVRSpeed = (vr.HasValue && vr.Value > 0) ? vr : null;
         isFenixAircraft = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
+        Log.Debug("TakeoffAssist", $"[TakeoffAssistManager] Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
     }
 
     /// <summary>
@@ -723,7 +723,7 @@ public class TakeoffAssistManager : IDisposable
             centerlineTone?.Stop();
             isActive = false;
             TakeoffAssistActiveChanged?.Invoke(this, false);
-            System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Reset");
+            Log.Debug("TakeoffAssist", "[TakeoffAssistManager] Reset");
         }
 
         smoothedSteerError = 0;

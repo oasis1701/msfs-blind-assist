@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -84,7 +85,7 @@ public class FlyByWireMCDUService : IDisposable
             {
                 if (!ct.IsCancellationRequested)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Connection error: {ex.Message}");
+                    Log.Debug("Services", $"[FbwMCDU] Connection error: {ex.Message}");
                     SetConnected(false);
                 }
                 // Cancellation-path exceptions (socket disposed under a pending
@@ -178,7 +179,7 @@ public class FlyByWireMCDUService : IDisposable
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Print parse error: {ex.Message}");
+                Log.Debug("Services", $"[FbwMCDU] Print parse error: {ex.Message}");
             }
             return;
         }
@@ -201,7 +202,7 @@ public class FlyByWireMCDUService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Parse error: {ex.Message}");
+            Log.Debug("Services", $"[FbwMCDU] Parse error: {ex.Message}");
         }
     }
 
@@ -238,7 +239,7 @@ public class FlyByWireMCDUService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FbwMCDU] Send error ({message}): {ex.Message}");
+            Log.Debug("Services", $"[FbwMCDU] Send error ({message}): {ex.Message}");
         }
     }
 

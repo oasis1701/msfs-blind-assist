@@ -1,6 +1,7 @@
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -107,7 +108,7 @@ public class AudioToneGenerator : IDisposable
             catch (Exception ex)
             {
                 // Log error but don't crash - audio is optional feedback
-                System.Diagnostics.Debug.WriteLine($"AudioToneGenerator start failed: {ex.Message}");
+                Log.Debug("Services", $"AudioToneGenerator start failed: {ex.Message}");
                 Cleanup();
             }
         }

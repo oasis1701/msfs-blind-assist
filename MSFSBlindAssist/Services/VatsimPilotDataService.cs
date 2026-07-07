@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -65,12 +66,12 @@ public static class VatsimPilotDataService
             Interlocked.Exchange(ref _typeByCallsign, types);
             Interlocked.Exchange(ref _routeByCallsign, routes);
             Interlocked.Exchange(ref _lastFetchTicks, DateTime.UtcNow.Ticks);
-            System.Diagnostics.Debug.WriteLine(
+            Log.Debug("Services", 
                 $"[VatsimPilotDataService] Refreshed — {types.Count} pilots with aircraft type, {routes.Count} with route.");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VatsimPilotDataService] Refresh failed: {ex.Message}");
+            Log.Debug("Services", $"[VatsimPilotDataService] Refresh failed: {ex.Message}");
         }
         finally
         {
@@ -129,7 +130,7 @@ public static class VatsimPilotDataService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VatsimPilotDataService] Parse error: {ex.Message}");
+            Log.Debug("Services", $"[VatsimPilotDataService] Parse error: {ex.Message}");
         }
         return (types, routes);
     }

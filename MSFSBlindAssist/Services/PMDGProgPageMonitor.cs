@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -163,7 +164,7 @@ public class PMDGProgPageMonitor : IDisposable
         catch (Exception ex)
         {
             LastError = $"PROG init: {ex.GetType().Name}: {ex.Message}";
-            System.Diagnostics.Debug.WriteLine($"[PMDGProgPageMonitor] {LastError}");
+            Log.Debug("Services", $"[PMDGProgPageMonitor] {LastError}");
         }
     }
 

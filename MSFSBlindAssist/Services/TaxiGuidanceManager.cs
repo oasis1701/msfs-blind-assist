@@ -1050,7 +1050,7 @@ public partial class TaxiGuidanceManager : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    Log.Debug("Taxi", 
                         $"[TaxiGuidanceManager] TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
                     return false;
                 }

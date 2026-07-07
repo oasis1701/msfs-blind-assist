@@ -15,6 +15,7 @@ using System.Globalization;
 using Microsoft.FlightSimulator.SimConnect;
 using Microsoft.Win32;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -295,7 +296,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Couatl config sanitization failed: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Couatl config sanitization failed: {ex.Message}");
         }
     }
 
@@ -319,21 +320,21 @@ public sealed partial class GsxService : IDisposable
             HookSimConnectEvents();
             _statusText = "Status: Connected to Microsoft Flight Simulator";
             RaiseStateChanged();
-            System.Diagnostics.Debug.WriteLine("[GsxService] SimConnect client created.");
+            Log.Debug("Gsx", "[GsxService] SimConnect client created.");
         }
         catch (COMException ex)
         {
             _simConnect = null;
             _statusText = "Status: Can't open SimConnect. Is MSFS running?";
             RaiseStateChanged();
-            System.Diagnostics.Debug.WriteLine($"[GsxService] SimConnect unavailable: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] SimConnect unavailable: {ex.Message}");
         }
         catch (Exception ex)
         {
             _simConnect = null;
             _statusText = "Status: SimConnect initialization failed.";
             RaiseStateChanged();
-            System.Diagnostics.Debug.WriteLine($"[GsxService] SimConnect failed to initialize: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] SimConnect failed to initialize: {ex.Message}");
         }
     }
 
@@ -412,17 +413,17 @@ public sealed partial class GsxService : IDisposable
             }
             catch (COMException ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("Gsx", 
                     $"[GsxService] ReceiveMessage COM exception (expected during disconnect): {ex.Message}");
             }
             catch (NullReferenceException ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("Gsx", 
                     $"[GsxService] ReceiveMessage null reference (expected during disconnect): {ex.Message}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("Gsx", 
                     $"[GsxService] Unexpected exception in ProcessWindowMessage: {ex}");
             }
             finally
@@ -578,7 +579,7 @@ public sealed partial class GsxService : IDisposable
 
     private void OnSimConnectOpen(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_OPEN data)
     {
-        System.Diagnostics.Debug.WriteLine("[GsxService] SimConnect channel opened.");
+        Log.Debug("Gsx", "[GsxService] SimConnect channel opened.");
         try
         {
             DefineSimVars();
@@ -591,13 +592,13 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] OnSimConnectOpen failed: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] OnSimConnectOpen failed: {ex.Message}");
         }
     }
 
     private void OnSimConnectQuit(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV data)
     {
-        System.Diagnostics.Debug.WriteLine("[GsxService] Simulator has closed the connection.");
+        Log.Debug("Gsx", "[GsxService] Simulator has closed the connection.");
         _statusText = "Status: Simulator disconnected";
         _menuOpen = false;
         _menuOptions.Clear();
@@ -609,7 +610,7 @@ public sealed partial class GsxService : IDisposable
 
     private void OnSimConnectException(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
     {
-        System.Diagnostics.Debug.WriteLine($"[GsxService] SimConnect exception: {data.dwException}");
+        Log.Debug("Gsx", $"[GsxService] SimConnect exception: {data.dwException}");
     }
 
     private void OnSimConnectEvent(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EVENT data)
@@ -652,7 +653,7 @@ public sealed partial class GsxService : IDisposable
                 MenuTimedOut?.Invoke(this, EventArgs.Empty);
                 break;
             case 4:
-                System.Diagnostics.Debug.WriteLine("[GsxService] GSX toolbar panel closed.");
+                Log.Debug("Gsx", "[GsxService] GSX toolbar panel closed.");
                 break;
             case 12:
                 ReloadAndPublishSettings();
@@ -669,7 +670,7 @@ public sealed partial class GsxService : IDisposable
                 var value = (DoubleValue)data.dwData[0];
                 bool wasStarted = _couatlStarted;
                 _couatlStarted = value.Value != 0;
-                System.Diagnostics.Debug.WriteLine($"[GsxService] COUATL_STARTED = {value.Value}");
+                Log.Debug("Gsx", $"[GsxService] COUATL_STARTED = {value.Value}");
                 if (wasStarted && !_couatlStarted)
                 {
                     ClearLastTooltip();
@@ -682,7 +683,7 @@ public sealed partial class GsxService : IDisposable
             case DataRequestId.RequestRemote:
             {
                 var value = (DoubleValue)data.dwData[0];
-                System.Diagnostics.Debug.WriteLine($"[GsxService] REMOTECONTROL = {value.Value}");
+                Log.Debug("Gsx", $"[GsxService] REMOTECONTROL = {value.Value}");
                 // GSX sometimes clears the remote-control flag on its own.
                 // Re-assert it so menu/tooltip events keep flowing.
                 if (Math.Abs(value.Value) < double.Epsilon)
@@ -693,21 +694,21 @@ public sealed partial class GsxService : IDisposable
             {
                 var value = (DoubleValue)data.dwData[0];
                 SetGateName = (int)value.Value;
-                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Name = {SetGateName}");
+                Log.Debug("Gsx", $"[GsxService] SetGate_Name = {SetGateName}");
                 break;
             }
             case DataRequestId.RequestSetGateNumber:
             {
                 var value = (DoubleValue)data.dwData[0];
                 SetGateNumber = (int)value.Value;
-                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Number = {SetGateNumber}");
+                Log.Debug("Gsx", $"[GsxService] SetGate_Number = {SetGateNumber}");
                 break;
             }
             case DataRequestId.RequestSetGateSuffix:
             {
                 var value = (DoubleValue)data.dwData[0];
                 SetGateSuffix = (int)value.Value;
-                System.Diagnostics.Debug.WriteLine($"[GsxService] SetGate_Suffix = {SetGateSuffix}");
+                Log.Debug("Gsx", $"[GsxService] SetGate_Suffix = {SetGateSuffix}");
                 break;
             }
         }
@@ -802,7 +803,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to set {definition}: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to set {definition}: {ex.Message}");
         }
     }
 
@@ -982,7 +983,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to persist setting {item.Key}: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to persist setting {item.Key}: {ex.Message}");
         }
     }
 
@@ -1007,7 +1008,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to set {lvarName}: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to set {lvarName}: {ex.Message}");
         }
     }
 
@@ -1020,7 +1021,7 @@ public sealed partial class GsxService : IDisposable
         string? fsdtRoot = ReadRegistryValue(FsdtRegistrySubKey, FsdtRegistryValueName);
         if (string.IsNullOrWhiteSpace(fsdtRoot))
         {
-            System.Diagnostics.Debug.WriteLine("[GsxService] FSDT root not found in registry. GSX may not be installed.");
+            Log.Debug("Gsx", "[GsxService] FSDT root not found in registry. GSX may not be installed.");
             return;
         }
 
@@ -1028,7 +1029,7 @@ public sealed partial class GsxService : IDisposable
         _tooltipFilePath = Path.Combine(fsdtRoot, GsxPackageFolder, GsxPackageFolderHtml, GsxTooltipFileName);
         _settingsFilePath = Path.Combine(fsdtRoot, GsxPackageFolder, GsxPackageFolderHtml, GsxSettingsFileName);
         _statusFilePath = Path.Combine(fsdtRoot, GsxPackageFolder, GsxPackageFolderHtml, GsxStatusFileName);
-        System.Diagnostics.Debug.WriteLine($"[GsxService] FSDT root: {fsdtRoot}");
+        Log.Debug("Gsx", $"[GsxService] FSDT root: {fsdtRoot}");
     }
 
     private static string? ReadRegistryValue(string subKey, string valueName)
@@ -1048,7 +1049,7 @@ public sealed partial class GsxService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(_menuFilePath))
         {
-            System.Diagnostics.Debug.WriteLine("[GsxService] Menu file path not set — GSX paths unresolved.");
+            Log.Debug("Gsx", "[GsxService] Menu file path not set — GSX paths unresolved.");
             return;
         }
 
@@ -1059,13 +1060,13 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read menu file: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to read menu file: {ex.Message}");
             return;
         }
 
         if (lines.Count == 0)
         {
-            System.Diagnostics.Debug.WriteLine("[GsxService] Menu file is empty.");
+            Log.Debug("Gsx", "[GsxService] Menu file is empty.");
             return;
         }
 
@@ -1130,7 +1131,7 @@ public sealed partial class GsxService : IDisposable
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read tooltip file: {ex.Message}");
+                Log.Debug("Gsx", $"[GsxService] Failed to read tooltip file: {ex.Message}");
                 tooltip = string.Empty;
             }
 
@@ -1138,7 +1139,7 @@ public sealed partial class GsxService : IDisposable
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine("[GsxService] Tooltip file path not set.");
+            Log.Debug("Gsx", "[GsxService] Tooltip file path not set.");
         }
 
         if (!string.IsNullOrWhiteSpace(tooltip))
@@ -1166,7 +1167,7 @@ public sealed partial class GsxService : IDisposable
 
         if (string.IsNullOrWhiteSpace(_statusFilePath))
         {
-            System.Diagnostics.Debug.WriteLine("[GsxService] Status file path not set.");
+            Log.Debug("Gsx", "[GsxService] Status file path not set.");
             return false;
         }
 
@@ -1177,7 +1178,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read status file: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to read status file: {ex.Message}");
             return false;
         }
 
@@ -1280,7 +1281,7 @@ public sealed partial class GsxService : IDisposable
             try { _announcer.Announce(_lastAnnouncementText); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[GsxService] Background announce failed: {ex.Message}");
+                Log.Debug("Gsx", $"[GsxService] Background announce failed: {ex.Message}");
             }
         }
     }
@@ -1682,7 +1683,7 @@ public sealed partial class GsxService : IDisposable
             ResolveFsdtPaths();
             if (string.IsNullOrWhiteSpace(_settingsFilePath))
             {
-                System.Diagnostics.Debug.WriteLine("[GsxService] Settings file path not set.");
+                Log.Debug("Gsx", "[GsxService] Settings file path not set.");
                 PublishSettingsText("GSX Settings requested, but the GSX installation path could not be found.");
                 return;
             }
@@ -1695,7 +1696,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read settings file: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to read settings file: {ex.Message}");
             PublishSettingsText("GSX Settings requested, but GSX has not written its settings page yet. Try opening the GSX menu with F5, then press C again.");
             return;
         }
@@ -2036,11 +2037,11 @@ public sealed partial class GsxService : IDisposable
             }
             fs.Close();
             File.WriteAllBytes(path, body);
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Stripped UTF-8 BOM from {path}");
+            Log.Debug("Gsx", $"[GsxService] Stripped UTF-8 BOM from {path}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] BOM strip failed for {path}: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] BOM strip failed for {path}: {ex.Message}");
         }
     }
 
@@ -2093,7 +2094,7 @@ public sealed partial class GsxService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read saved GSX settings: {ex.Message}");
+            Log.Debug("Gsx", $"[GsxService] Failed to read saved GSX settings: {ex.Message}");
         }
 
         return result;
@@ -2836,7 +2837,7 @@ public sealed partial class GsxService : IDisposable
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read GSX receipt {path}: {ex.Message}");
+                Log.Debug("Gsx", $"[GsxService] Failed to read GSX receipt {path}: {ex.Message}");
                 continue;
             }
 
