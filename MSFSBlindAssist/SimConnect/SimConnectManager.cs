@@ -185,7 +185,6 @@ public partial class SimConnectManager
 
     // Variable tracking for individual registrations
     private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
-    private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
     // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
     // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
@@ -1024,7 +1023,6 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
-        pendingRequests.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         eventIds.Clear();
