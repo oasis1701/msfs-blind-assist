@@ -27,7 +27,7 @@ public partial class DatabaseSettingsForm : Form
 
     private void InitializeComponent()
     {
-        Text = "Database Management";
+        Text = "Nav Database";
         Size = new Size(600, 380);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -40,10 +40,10 @@ public partial class DatabaseSettingsForm : Form
         // Title Label
         titleLabel = new Label
         {
-            Text = "Database Management",
+            Text = "Nav Database",
             Location = new Point(20, yPos),
             Size = new Size(550, 25),
-            AccessibleName = "Database Management Title",
+            AccessibleName = "Nav Database Title",
             Font = new Font(Font.FontFamily, 12, FontStyle.Bold)
         };
         yPos += 40;

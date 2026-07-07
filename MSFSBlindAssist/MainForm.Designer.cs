@@ -88,11 +88,11 @@ namespace MSFSBlindAssist
             //
             // databaseSettingsMenuItem
             //
-            this.databaseSettingsMenuItem.AccessibleName = "Database Settings";
+            this.databaseSettingsMenuItem.AccessibleName = "Nav Database";
             this.databaseSettingsMenuItem.AccessibleDescription = "Configure database provider and paths for FS2020 and FS2024";
             this.databaseSettingsMenuItem.Name = "databaseSettingsMenuItem";
             this.databaseSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.databaseSettingsMenuItem.Text = "&Database Settings";
+            this.databaseSettingsMenuItem.Text = "&Nav Database…";
             this.databaseSettingsMenuItem.Click += new System.EventHandler(this.DatabaseSettingsMenuItem_Click);
             //
             // settingsMenuItem
