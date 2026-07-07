@@ -307,11 +307,7 @@ public partial class SimConnectManager
         System.Diagnostics.Debug.WriteLine(regSummary);
         if (cappedCount > 0)
             System.Diagnostics.Debug.WriteLine($"[Registration] ⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
-        try
-        {
-            string regLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
-            System.IO.File.AppendAllText(regLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {regSummary}{Environment.NewLine}");
-        }
+        try { _registrationLog.Info(regSummary); }
         catch { }
     }
 
@@ -695,19 +691,22 @@ public partial class SimConnectManager
         }
     }
 
+    // NOTE: this used to be a full StreamWriter(append:false) rewrite of input_events.txt on
+    // every call (a fresh per-aircraft snapshot). Routed through the shared LogChannel it is
+    // now append-only like every other diagnostic log (channels don't support "overwrite whole
+    // file" — only append + size-capped rotation), so a session with multiple aircraft switches
+    // accumulates one catalog dump per switch instead of only ever showing the latest. Each dump
+    // is still clearly delimited by its own header lines.
     private void DumpInputEventCatalog()
     {
         try
         {
-            string path = MSFSBlindAssist.Utils.AppLogs.PathFor("input_events.txt");
-            using var writer = new System.IO.StreamWriter(path, append: false);
-            writer.WriteLine($"# InputEvent catalog — generated {DateTime.Now:s}");
-            writer.WriteLine($"# Aircraft: {CurrentAircraft?.AircraftName ?? "(unknown)"}");
-            writer.WriteLine($"# Total events: {inputEventHashes.Count}");
-            writer.WriteLine();
+            _inputEventsLog.Info($"# InputEvent catalog — generated {DateTime.Now:s}");
+            _inputEventsLog.Info($"# Aircraft: {CurrentAircraft?.AircraftName ?? "(unknown)"}");
+            _inputEventsLog.Info($"# Total events: {inputEventHashes.Count}");
             foreach (var kvp in inputEventHashes.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
             {
-                writer.WriteLine($"{kvp.Key}\t0x{kvp.Value:X16}");
+                _inputEventsLog.Info($"{kvp.Key}\t0x{kvp.Value:X16}");
             }
         }
         catch (Exception ex)

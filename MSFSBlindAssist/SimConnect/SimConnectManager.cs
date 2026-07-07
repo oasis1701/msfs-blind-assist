@@ -4,10 +4,18 @@ using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 public partial class SimConnectManager
 {
+    // Shared diagnostic-log channels used across SimConnectManager's partial-class files
+    // (Dispatch.cs, Setup.cs). Each channel serializes every writer of the same file
+    // through the one LogWriter background thread.
+    private static readonly LogChannel _registrationLog = Log.Channel("registration");
+    private static readonly LogChannel _dockingAircraftLog = Log.Channel("docking-aircraft");
+    private static readonly LogChannel _inputEventsLog = Log.Channel("input_events.txt");
+
     private Microsoft.FlightSimulator.SimConnect.SimConnect? simConnect;
 
     /// <summary>

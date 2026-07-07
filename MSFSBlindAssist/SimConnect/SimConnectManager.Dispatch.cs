@@ -1242,11 +1242,7 @@ public partial class SimConnectManager
         IsFullyConnected = true; // Aircraft detection complete, hotkeys are now safe to use
         // Observability: log successful detection so the registration.log shows the full picture
         // (footprint + clean connect) and any future "not connected" regression is obvious by its absence.
-        try
-        {
-            string regLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
-            System.IO.File.AppendAllText(regLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [Detection] FULLY CONNECTED — '{info.title}' (hotkeys enabled){Environment.NewLine}");
-        }
+        try { _registrationLog.Info($"[Detection] FULLY CONNECTED — '{info.title}' (hotkeys enabled)"); }
         catch { }
 
         // Aircraft-specific InputEvents (WT Boeing 787 AT_Arm, bleed-air, engine start
@@ -1271,12 +1267,7 @@ public partial class SimConnectManager
         if (string.IsNullOrWhiteSpace(icao) && !string.IsNullOrWhiteSpace(currentAircraftTitle))
             TryResolveIcaoFromCatalog(currentAircraftTitle);
 
-        try
-        {
-            string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
-            System.IO.File.AppendAllText(logPath,
-                $"{DateTime.Now:HH:mm:ss}  raw ATC MODEL=\"{currentAircraftAtcModel}\"  -> extracted ICAO=\"{icao}\"{System.Environment.NewLine}");
-        }
+        try { _dockingAircraftLog.Info($"raw ATC MODEL=\"{currentAircraftAtcModel}\"  -> extracted ICAO=\"{icao}\""); }
         catch { /* never propagate log failures */ }
 
         AircraftIcaoTypeDetected?.Invoke(this, icao);
@@ -1338,12 +1329,7 @@ public partial class SimConnectManager
                 System.Diagnostics.Debug.WriteLine(
                     $"[SimConnectManager] ATC MODEL had no ICAO; aircraft.cfg catalog resolved TITLE='{titleSnapshot}' → ICAO='{catIcao}'");
 
-                try
-                {
-                    string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
-                    System.IO.File.AppendAllText(logPath,
-                        $"{DateTime.Now:HH:mm:ss}  catalog fallback: TITLE=\"{titleSnapshot}\"  -> ICAO=\"{catIcao}\"{System.Environment.NewLine}");
-                }
+                try { _dockingAircraftLog.Info($"catalog fallback: TITLE=\"{titleSnapshot}\"  -> ICAO=\"{catIcao}\""); }
                 catch { /* never propagate log failures */ }
 
                 AircraftIcaoTypeDetected?.Invoke(this, catIcao);
@@ -1503,11 +1489,7 @@ public partial class SimConnectManager
         // harmless NAME_UNRECOGNIZED noise from probing nonexistent simvars is NOT logged.)
         if (data.dwException == 11 /*TOO_MANY_OBJECTS*/ || data.dwException == 12 /*TOO_MANY_REQUESTS*/)
         {
-            try
-            {
-                string exLog = MSFSBlindAssist.Utils.AppLogs.PathFor("registration.log");
-                System.IO.File.AppendAllText(exLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [CEILING] SimConnect {exceptionName} (SendID {data.dwSendID}) — exceeded the ~1000 data-definition/request limit. Some vars are unregistered; detection is still protected.{Environment.NewLine}");
-            }
+            try { _registrationLog.Info($"[CEILING] SimConnect {exceptionName} (SendID {data.dwSendID}) — exceeded the ~1000 data-definition/request limit. Some vars are unregistered; detection is still protected."); }
             catch { }
         }
     }

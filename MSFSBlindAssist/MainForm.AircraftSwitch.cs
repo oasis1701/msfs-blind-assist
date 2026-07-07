@@ -292,12 +292,7 @@ public partial class MainForm
                 dockingGuidanceManager.SetDoorSide(side);
                 System.Diagnostics.Debug.WriteLine($"[MainForm] Door side for ICAO '{icaoType}': '{side}'");
 
-                try
-                {
-                    string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
-                    System.IO.File.AppendAllText(logPath,
-                        $"{DateTime.Now:HH:mm:ss}  ICAO=\"{icaoType}\"  doorSide={side}{System.Environment.NewLine}");
-                }
+                try { _dockingAircraftLog.Info($"ICAO=\"{icaoType}\"  doorSide={side}"); }
                 catch { /* never propagate log failures */ }
             }
             catch { }
