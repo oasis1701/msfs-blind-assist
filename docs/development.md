@@ -132,10 +132,9 @@ its product ships as `MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs`.
 
 Global exception handlers (`Program.cs` → `InstallGlobalExceptionHandlers`) catch UI-thread
 faults (recovered, app keeps running), background-thread faults (logged, CLR still terminates),
-and unobserved task exceptions. `StartupLogger` writes each line with `File.AppendAllText`
-(flushes per line), so **managed** crashes leave a stack trace at
-`%TEMP%\MSFSBlindAssist_Startup_<timestamp>.log`. A crash with **no** logged exception is
-almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
+and unobserved task exceptions. Startup diagnostics are wired through `Log.Channel("startup", truncateOnLaunch: true)`
+which writes to `%APPDATA%\MSFSBlindAssist\logs\startup.log`, so **managed** crashes leave a stack trace there.
+A crash with **no** logged exception is almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
 Application for the faulting module. Full procedure in [tooling.md §8](tooling.md).
 
 ## Dependencies

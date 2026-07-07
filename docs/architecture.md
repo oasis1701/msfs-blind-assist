@@ -199,7 +199,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[YourAircraft] Error requesting FCU heading: {ex.Message}");
+                Log.Error("Aircraft", $"Error requesting FCU heading: {ex.Message}");
             }
         }
     }

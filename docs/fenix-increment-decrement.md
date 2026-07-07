@@ -75,7 +75,7 @@ private void IncrementCounter(string varName, SimConnect.SimConnectManager simCo
         rmpCounters[varName]++;
         int newValue = rmpCounters[varName];
 
-        System.Diagnostics.Debug.WriteLine($"[FenixA320] IncrementCounter: {varName} -> {newValue}");
+        Log.Debug("FenixA320", $"IncrementCounter: {varName} -> {newValue}");
 
         // Set the LVar to the new counter value
         if (simConnect != null && simConnect.IsConnected)
@@ -85,7 +85,7 @@ private void IncrementCounter(string varName, SimConnect.SimConnectManager simCo
     }
     catch (Exception ex)
     {
-        System.Diagnostics.Debug.WriteLine($"[FenixA320] Error incrementing counter {varName}: {ex.Message}");
+        Log.Error("FenixA320", $"Error incrementing counter {varName}: {ex.Message}");
     }
 }
 
@@ -107,7 +107,7 @@ private void DecrementCounter(string varName, SimConnect.SimConnectManager simCo
         rmpCounters[varName]--;
         int newValue = rmpCounters[varName];
 
-        System.Diagnostics.Debug.WriteLine($"[FenixA320] DecrementCounter: {varName} -> {newValue}");
+        Log.Debug("FenixA320", $"DecrementCounter: {varName} -> {newValue}");
 
         // Set the LVar to the new counter value
         if (simConnect != null && simConnect.IsConnected)
@@ -117,7 +117,7 @@ private void DecrementCounter(string varName, SimConnect.SimConnectManager simCo
     }
     catch (Exception ex)
     {
-        System.Diagnostics.Debug.WriteLine($"[FenixA320] Error decrementing counter {varName}: {ex.Message}");
+        Log.Error("FenixA320", $"Error decrementing counter {varName}: {ex.Message}");
     }
 }
 ```
