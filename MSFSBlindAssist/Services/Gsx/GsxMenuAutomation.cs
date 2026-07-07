@@ -118,7 +118,7 @@ public sealed class GsxMenuAutomation
         catch (Exception ex)
         {
             Log.Debug("Gsx", 
-                $"[GsxMenuAutomation] CloseMenu best-effort failed (ignored): {ex.Message}");
+                $"CloseMenu best-effort failed (ignored): {ex.Message}");
         }
     }
 }

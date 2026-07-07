@@ -98,7 +98,7 @@ public class ScreenReaderAnnouncer : IDisposable
             catch (Exception ex)
             {
                 // Fallback to SAPI only
-                Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Initialization error: {ex.Message}, falling back to SAPI");
+                Log.Debug("Accessibility", $"Initialization error: {ex.Message}, falling back to SAPI");
                 currentMode = AnnouncementMode.SAPI;
             }
         }
@@ -151,35 +151,35 @@ public class ScreenReaderAnnouncer : IDisposable
 
         public void TestScreenReaderConnection()
         {
-            Log.Debug("Accessibility", "[ScreenReaderAnnouncer] === Screen Reader Diagnostic Test ===");
-            Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Current announcement mode: {currentMode}");
+            Log.Debug("Accessibility", "=== Screen Reader Diagnostic Test ===");
+            Log.Debug("Accessibility", $"Current announcement mode: {currentMode}");
 
             // Test NVDA Controller Client
             if (nvdaWrapper != null)
             {
                 bool nvdaRunning = nvdaWrapper.IsRunning;
-                Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] NVDA Controller - Running: {nvdaRunning}");
+                Log.Debug("Accessibility", $"NVDA Controller - Running: {nvdaRunning}");
 
                 if (nvdaRunning)
                 {
                     uint? pid = nvdaWrapper.ProcessId;
-                    Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] NVDA Process ID: {pid}");
+                    Log.Debug("Accessibility", $"NVDA Process ID: {pid}");
 
                     // Test speech (commented out to prevent test announcements)
-                    Log.Debug("Accessibility", "[ScreenReaderAnnouncer] NVDA Controller speech capability detected (test speech disabled)");
+                    Log.Debug("Accessibility", "NVDA Controller speech capability detected (test speech disabled)");
                     // bool speechResult = nvdaWrapper.Speak("NVDA test from FBWBA", false);
                     // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] NVDA Controller speech test result: {speechResult}");
                 }
             }
             else
             {
-                Log.Debug("Accessibility", "[ScreenReaderAnnouncer] NVDA Controller wrapper is null");
+                Log.Debug("Accessibility", "NVDA Controller wrapper is null");
             }
 
             // Test Tolk
             if (tolkWrapper != null)
             {
-                Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Tolk wrapper loaded: {tolkWrapper.IsLoaded}");
+                Log.Debug("Accessibility", $"Tolk wrapper loaded: {tolkWrapper.IsLoaded}");
 
                 if (tolkWrapper.IsLoaded)
                 {
@@ -188,32 +188,32 @@ public class ScreenReaderAnnouncer : IDisposable
                     bool hasSpeech = tolkWrapper.HasSpeech();
                     bool hasBraille = tolkWrapper.HasBraille();
 
-                    Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Tolk detected screen reader: {detected}");
-                    Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Tolk screen reader running: {isRunning}");
-                    Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Tolk has speech: {hasSpeech}");
-                    Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Tolk has braille: {hasBraille}");
+                    Log.Debug("Accessibility", $"Tolk detected screen reader: {detected}");
+                    Log.Debug("Accessibility", $"Tolk screen reader running: {isRunning}");
+                    Log.Debug("Accessibility", $"Tolk has speech: {hasSpeech}");
+                    Log.Debug("Accessibility", $"Tolk has braille: {hasBraille}");
 
                     // Test speech (commented out to prevent test announcements)
                     if (hasSpeech)
                     {
-                        Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Tolk speech capability detected (test speech disabled)");
+                        Log.Debug("Accessibility", "Tolk speech capability detected (test speech disabled)");
                         // bool speechResult = tolkWrapper.Speak("Tolk test from FBWBA", false);
                         // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Tolk speech test result: {speechResult}");
                     }
                 }
                 else
                 {
-                    Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Tolk wrapper not loaded");
+                    Log.Debug("Accessibility", "Tolk wrapper not loaded");
                 }
             }
             else
             {
-                Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Tolk wrapper is null");
+                Log.Debug("Accessibility", "Tolk wrapper is null");
             }
 
-            Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] SAPI available: {speechSynthesizer != null}");
-            Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Any screen reader running: {IsAnyScreenReaderRunning()}");
-            Log.Debug("Accessibility", "[ScreenReaderAnnouncer] === End Diagnostic Test ===");
+            Log.Debug("Accessibility", $"SAPI available: {speechSynthesizer != null}");
+            Log.Debug("Accessibility", $"Any screen reader running: {IsAnyScreenReaderRunning()}");
+            Log.Debug("Accessibility", "=== End Diagnostic Test ===");
         }
 
         public void Announce(string message)
@@ -250,10 +250,10 @@ public class ScreenReaderAnnouncer : IDisposable
 
                         if (!success)
                         {
-                            Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Tolk speech failed - checking screen reader status");
+                            Log.Debug("Accessibility", "Tolk speech failed - checking screen reader status");
                             string detectedSR = tolkWrapper.DetectedScreenReader;
                             bool hasSpeech = tolkWrapper.HasSpeech();
-                            Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Current status - Detected: {detectedSR}, HasSpeech: {hasSpeech}");
+                            Log.Debug("Accessibility", $"Current status - Detected: {detectedSR}, HasSpeech: {hasSpeech}");
                         }
                     }
                 }
@@ -268,12 +268,12 @@ public class ScreenReaderAnnouncer : IDisposable
 
                 if (!success)
                 {
-                    Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Warning: All speech methods failed");
+                    Log.Debug("Accessibility", "Warning: All speech methods failed");
                 }
             }
             catch (Exception ex)
             {
-                Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Error announcing: {ex.Message}");
+                Log.Debug("Accessibility", $"Error announcing: {ex.Message}");
             }
         }
 
@@ -319,12 +319,12 @@ public class ScreenReaderAnnouncer : IDisposable
 
                 if (!success)
                 {
-                    Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Warning: All immediate speech methods failed");
+                    Log.Debug("Accessibility", "Warning: All immediate speech methods failed");
                 }
             }
             catch (Exception ex)
             {
-                Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Error in immediate announce: {ex.Message}");
+                Log.Debug("Accessibility", $"Error in immediate announce: {ex.Message}");
             }
         }
 

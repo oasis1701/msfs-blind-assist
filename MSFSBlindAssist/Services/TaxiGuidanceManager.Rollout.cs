@@ -1843,7 +1843,7 @@ public partial class TaxiGuidanceManager
 
     private static void RolloutDiag(string msg)
     {
-        try { _rolloutDiagLog.Info($"[TGM] {msg}"); }
+        try { _rolloutDiagLog.Info($"{msg}"); }
         catch { /* never fail on diag */ }
     }
 

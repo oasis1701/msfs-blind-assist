@@ -43,19 +43,19 @@ namespace MSFSBlindAssist.Patching
                         {
                             removed++;
                             Log.Debug("Patching",
-                                $"[LegacyEfbBridgeCleanup] Removed retired PMDG EFB package from {simLabel}: {communityPath}");
+                                $"Removed retired PMDG EFB package from {simLabel}: {communityPath}");
                         }
                     }
                     catch (Exception ex)
                     {
                         Log.Debug("Patching",
-                            $"[LegacyEfbBridgeCleanup] PMDG remove failed for {communityPath}: {ex.Message}");
+                            $"PMDG remove failed for {communityPath}: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log.Debug("Patching", $"[LegacyEfbBridgeCleanup] PMDG sweep failed: {ex.Message}");
+                Log.Debug("Patching", $"PMDG sweep failed: {ex.Message}");
             }
             return removed;
         }
@@ -75,13 +75,13 @@ namespace MSFSBlindAssist.Patching
                     {
                         removed++;
                         Log.Debug("Patching",
-                            $"[LegacyEfbBridgeCleanup] Removed retired HS787 bridge from {simLabel}: {communityPath}");
+                            $"Removed retired HS787 bridge from {simLabel}: {communityPath}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log.Debug("Patching", $"[LegacyEfbBridgeCleanup] HS787 sweep failed: {ex.Message}");
+                Log.Debug("Patching", $"HS787 sweep failed: {ex.Message}");
             }
             return removed;
         }

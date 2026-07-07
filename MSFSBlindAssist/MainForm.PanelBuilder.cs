@@ -120,7 +120,7 @@ public partial class MainForm
             _panelLoadTimer.Stop(); // Cancel any pending load
             _pendingPanelLoad = newPanel; // Remember which panel to load
             _panelLoadTimer.Start(); // Start fresh timer
-            Log.Debug("MainForm", $"[Panel Nav] Debouncing load for '{newPanel}' panel");
+            Log.Debug("MainForm", $"Debouncing load for '{newPanel}' panel");
         }
     }
 
@@ -143,7 +143,7 @@ public partial class MainForm
         // Now do the actual heavy work (deferred to UI thread to avoid blocking)
         BeginInvoke(new Action(() =>
         {
-            Log.Debug("MainForm", $"[Panel Load] Loading controls and requesting variables for '{panelToLoad}' panel");
+            Log.Debug("MainForm", $"Loading controls and requesting variables for '{panelToLoad}' panel");
 
             // Gate all combo selection-change handlers off for the duration of this build.
             // Also schedule a post-build clear so that any deferred SIC events that WinForms
@@ -483,7 +483,7 @@ public partial class MainForm
                         // Debug logging for landing lights
                         if (varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3")
                         {
-                            Log.Debug("MainForm", $"[DEBUG] {varKey} received value: {currentValue}");
+                            Log.Debug("MainForm", $"{varKey} received value: {currentValue}");
                         }
 
                         if (varDef.ValueDescriptions.ContainsKey(currentValue))
@@ -494,7 +494,7 @@ public partial class MainForm
                             // Additional debug for landing lights
                             if (varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3")
                             {
-                                Log.Debug("MainForm", $"[DEBUG] {varKey} set to: {description} (value {currentValue})");
+                                Log.Debug("MainForm", $"{varKey} set to: {description} (value {currentValue})");
                             }
                         }
                         else
@@ -502,7 +502,7 @@ public partial class MainForm
                             // Debug if value doesn't match any description
                             if (varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3")
                             {
-                                Log.Debug("MainForm", $"[DEBUG] {varKey} value {currentValue} not found in descriptions!");
+                                Log.Debug("MainForm", $"{varKey} value {currentValue} not found in descriptions!");
                             }
                         }
                     }
@@ -513,7 +513,7 @@ public partial class MainForm
                         // Debug if no value found
                         if (varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3")
                         {
-                            Log.Debug("MainForm", $"[DEBUG] {varKey} not found in currentSimVarValues, defaulting to index 0");
+                            Log.Debug("MainForm", $"{varKey} not found in currentSimVarValues, defaulting to index 0");
                         }
                     }
 
@@ -700,7 +700,7 @@ public partial class MainForm
                             {
                                 bool handled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager!, announcer);
                                 if (!handled)
-                                    Log.Debug("MainForm", $"[PMDG] Unhandled PMDGVar set: {varKey}");
+                                    Log.Debug("MainForm", $"Unhandled PMDGVar set: {varKey}");
                                 currentSimVarValues[varKey] = selectedValue;
                             }
                             else if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
@@ -962,7 +962,7 @@ public partial class MainForm
                                     ledCheckTimer.Dispose();
                                     // Use existing LVar request system to read LED state
                                     simConnectManager?.RequestVariable(varDef.LedVariable);
-                                    Log.Debug("MainForm", $"[MainForm] Requesting LED state: {varDef.LedVariable}");
+                                    Log.Debug("MainForm", $"Requesting LED state: {varDef.LedVariable}");
                                 };
                                 ledCheckTimer.Start();
                             }
@@ -973,7 +973,7 @@ public partial class MainForm
                             simConnectManager?.SendHVar(varDef.PressEvent);
                         }
 
-                        Log.Debug("MainForm", $"[MainForm] H-variable button pressed: {varDef.DisplayName}");
+                        Log.Debug("MainForm", $"H-variable button pressed: {varDef.DisplayName}");
                     }
                     else if (varDef.Type == SimVarType.LVar)
                     {
@@ -1077,7 +1077,7 @@ public partial class MainForm
                 {
                     // A throw here silently leaves the SD-page snapshot stale with no clue why —
                     // a known confusing-bug shape for this codebase (values that "never move").
-                    Log.Debug("MainForm", $"[MainForm] OnDisplayPanelShown (GotFocus) failed for panel '{currentPanel}': {ex.Message}");
+                    Log.Debug("MainForm", $"OnDisplayPanelShown (GotFocus) failed for panel '{currentPanel}': {ex.Message}");
                 }
             };
 
@@ -1120,7 +1120,7 @@ public partial class MainForm
                 {
                     // A throw here silently leaves the SD-page snapshot stale with no clue why —
                     // a known confusing-bug shape for this codebase (values that "never move").
-                    Log.Debug("MainForm", $"[MainForm] OnDisplayPanelShown (Refresh) failed for panel '{currentPanel}': {ex.Message}");
+                    Log.Debug("MainForm", $"OnDisplayPanelShown (Refresh) failed for panel '{currentPanel}': {ex.Message}");
                 }
 
                 // Request all values. forceUpdate=true bypasses the
@@ -1179,7 +1179,7 @@ public partial class MainForm
             {
                 // A throw here silently leaves the SD-page snapshot stale with no clue why —
                 // a known confusing-bug shape for this codebase (values that "never move").
-                Log.Debug("MainForm", $"[MainForm] OnDisplayPanelShown (initial show) failed for panel '{currentPanel}': {ex.Message}");
+                Log.Debug("MainForm", $"OnDisplayPanelShown (initial show) failed for panel '{currentPanel}': {ex.Message}");
             }
 
             // Start (or stop) the live status-box auto-refresh for THIS panel. Only panels
@@ -1289,7 +1289,7 @@ public partial class MainForm
             {
                 // A throw here silently leaves the SD-page snapshot stale with no clue why —
                 // a known confusing-bug shape for this codebase (values that "never move").
-                Log.Debug("MainForm", $"[MainForm] OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
+                Log.Debug("MainForm", $"OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
             }
 
             // (b) Force-read the panel's own display vars so the cache is fresh (covers the

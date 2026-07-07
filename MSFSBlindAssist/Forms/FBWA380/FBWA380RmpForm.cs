@@ -295,7 +295,7 @@ public sealed class FBWA380RmpForm : Form
       }
       catch (Exception ex)
       {
-          Log.Debug("Forms", $"[FBWA380RmpForm] AnnounceSelectedStandby error: {ex.Message}");
+          Log.Debug("Forms", $"AnnounceSelectedStandby error: {ex.Message}");
       }
     }
 

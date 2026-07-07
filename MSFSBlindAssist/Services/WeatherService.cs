@@ -175,7 +175,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[WeatherService] Advisories error: {ex.Message}");
+            Log.Debug("Services", $"Advisories error: {ex.Message}");
             return new List<WeatherAdvisory>();
         }
     }
@@ -235,7 +235,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[WeatherService] Winds aloft error: {ex.Message}");
+            Log.Debug("Services", $"Winds aloft error: {ex.Message}");
             return new List<WindAtAltitude>();
         }
     }
@@ -273,7 +273,7 @@ public static class WeatherService
                     ValidFrom = from, ValidTo = to, RawText = raw
                 });
             }
-            catch (Exception ex) { Log.Debug("Services", $"[WeatherService] Feature parse error: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Services", $"Feature parse error: {ex.Message}"); }
         }
     }
 
@@ -317,7 +317,7 @@ public static class WeatherService
                     ValidFrom = from, ValidTo = to, RawText = raw
                 });
             }
-            catch (Exception ex) { Log.Debug("Services", $"[WeatherService] Feature parse error: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("Services", $"Feature parse error: {ex.Message}"); }
         }
     }
 
@@ -365,14 +365,14 @@ public static class WeatherService
                         RawText = raw
                     });
                 }
-                catch (Exception ex) { Log.Debug("Services", $"[WeatherService] Feature parse error: {ex.Message}"); }
+                catch (Exception ex) { Log.Debug("Services", $"Feature parse error: {ex.Message}"); }
             }
 
             results.Sort((a, b) => a.DistanceNm.CompareTo(b.DistanceNm));
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[WeatherService] PIREP parse error: {ex.Message}");
+            Log.Debug("Services", $"PIREP parse error: {ex.Message}");
         }
         return results;
     }
@@ -432,7 +432,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[WeatherService] Winds parse error: {ex.Message}");
+            Log.Debug("Services", $"Winds parse error: {ex.Message}");
         }
         return results;
     }
@@ -554,7 +554,7 @@ public static class WeatherService
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[WeatherService] HTTP error: {ex.Message}");
+            Log.Debug("Services", $"HTTP error: {ex.Message}");
         }
     }
 

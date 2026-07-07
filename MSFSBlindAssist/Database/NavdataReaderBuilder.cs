@@ -86,7 +86,7 @@ public class NavdataReaderBuilder
                 try
                 {
                     File.Delete(outputPath);
-                    Log.Debug("Database", $"[NavdataReaderBuilder] Deleted existing database: {outputPath}");
+                    Log.Debug("Database", $"Deleted existing database: {outputPath}");
                 }
                 catch (IOException ioEx)
                 {
@@ -122,11 +122,11 @@ public class NavdataReaderBuilder
                 if (!string.IsNullOrEmpty(basePath))
                 {
                     arguments += $" -b \"{basePath}\"";
-                    Log.Debug("Database", $"[NavdataReaderBuilder] Added base path parameter: -b \"{basePath}\"");
+                    Log.Debug("Database", $"Added base path parameter: -b \"{basePath}\"");
                 }
                 else
                 {
-                    Log.Debug("Database", $"[NavdataReaderBuilder] Warning: Could not detect {simulatorVersion} base path, relying on auto-detection");
+                    Log.Debug("Database", $"Warning: Could not detect {simulatorVersion} base path, relying on auto-detection");
                 }
             }
 
@@ -171,7 +171,7 @@ public class NavdataReaderBuilder
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     errorBuilder.AppendLine(e.Data);
-                    Log.Debug("Database", $"[NavdataReader Error] {e.Data}");
+                    Log.Debug("Database", $"{e.Data}");
 
                     // Detect SimConnect errors in stderr
                     if (e.Data.IndexOf("SimConnect", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -183,11 +183,11 @@ public class NavdataReaderBuilder
             };
 
             // Start process
-            Log.Debug("Database", $"[NavdataReaderBuilder] [{DateTime.Now:HH:mm:ss.fff}] Starting navdatareader process...");
+            Log.Debug("Database", "Starting navdatareader process...");
             _process.Start();
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
-            Log.Debug("Database", $"[NavdataReaderBuilder] [{DateTime.Now:HH:mm:ss.fff}] Navdatareader process started, monitoring output...");
+            Log.Debug("Database", "Navdatareader process started, monitoring output...");
 
             // Wait for completion with cancellation support
             while (!_process.HasExited)
@@ -328,7 +328,7 @@ public class NavdataReaderBuilder
         try
         {
             // Log all output for debugging
-            Log.Debug("Database", $"[NavdataReader] {line}");
+            Log.Debug("Database", $"{line}");
 
             string? detailMessage = null;
 

@@ -248,7 +248,7 @@ public class FbwEfbForm : Form
         }
         catch (Exception ex)
         {
-            Log.Debug("Forms", $"[A380 flyPad] WebView2 init failed: {ex.Message}");
+            Log.Debug("Forms", $"WebView2 init failed: {ex.Message}");
             _webViewFailed = true;
             _useBrowser = false;
             SafeBeginInvoke(() => { SwitchToListMode(); ApplyElements(); });
@@ -425,7 +425,7 @@ public class FbwEfbForm : Form
         }
         catch (Exception ex)
         {
-            Log.Debug("Forms", $"[FBW flyPad] render push failed: {ex.Message}");
+            Log.Debug("Forms", $"render push failed: {ex.Message}");
         }
         finally
         {
@@ -448,7 +448,7 @@ public class FbwEfbForm : Form
     // → Reload → NavigationCompleted must not fire against a disposed WebView2.
     private void OnWebViewProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs args)
     {
-        Log.Debug("Forms", $"[FBW flyPad] WebView2 process failed: {args.ProcessFailedKind}");
+        Log.Debug("Forms", $"WebView2 process failed: {args.ProcessFailedKind}");
         _webViewReady = false;
         _renderInFlight = false;
         try { if (!IsDisposed && _webView?.CoreWebView2 != null) _webView.CoreWebView2.Reload(); } catch { }

@@ -39,7 +39,7 @@ public static class VATSIMService
             }
             catch (Exception ex)
             {
-                Log.Debug("Services", $"[VATSIMService] Error getting wind for {icao}: {ex.Message}");
+                Log.Debug("Services", $"Error getting wind for {icao}: {ex.Message}");
                 return null;
             }
         }
@@ -78,7 +78,7 @@ public static class VATSIMService
             }
             catch (Exception ex)
             {
-                Log.Debug("Services", $"[VATSIMService] Error fetching METAR for {icao}: {ex.Message}");
+                Log.Debug("Services", $"Error fetching METAR for {icao}: {ex.Message}");
                 return string.Empty;
             }
         }
@@ -131,7 +131,7 @@ public static class VATSIMService
             }
             catch (Exception ex)
             {
-                Log.Debug("Services", $"[VATSIMService] Error parsing METAR wind: {ex.Message}");
+                Log.Debug("Services", $"Error parsing METAR wind: {ex.Message}");
                 return null;
             }
         }

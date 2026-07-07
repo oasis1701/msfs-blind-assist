@@ -361,7 +361,7 @@ public sealed class AccessGSXForm : Form
             try { _announcer.Announce(menuText); }
             catch (Exception ex)
             {
-                Log.Debug("Forms", $"[AccessGSXForm] menu announce failed: {ex.Message}");
+                Log.Debug("Forms", $"menu announce failed: {ex.Message}");
             }
         }
     }
@@ -397,7 +397,7 @@ public sealed class AccessGSXForm : Form
         try { _announcer.Announce("GSX menu timeout"); }
         catch (Exception ex)
         {
-            Log.Debug("Forms", $"[AccessGSXForm] timeout announce failed: {ex.Message}");
+            Log.Debug("Forms", $"timeout announce failed: {ex.Message}");
         }
     }
 
@@ -504,7 +504,7 @@ public sealed class AccessGSXForm : Form
         try { _announcer.Announce(announcement); }
         catch (Exception ex)
         {
-            Log.Debug("Forms", $"[AccessGSXForm] tooltip announce failed: {ex.Message}");
+            Log.Debug("Forms", $"tooltip announce failed: {ex.Message}");
         }
     }
 
@@ -536,7 +536,7 @@ public sealed class AccessGSXForm : Form
                 try { _announcer.Announce("GSX settings loaded."); }
                 catch (Exception ex)
                 {
-                    Log.Debug("Forms", $"[AccessGSXForm] settings announce failed: {ex.Message}");
+                    Log.Debug("Forms", $"settings announce failed: {ex.Message}");
                 }
             }
             return;

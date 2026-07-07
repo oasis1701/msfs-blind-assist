@@ -164,7 +164,7 @@ public class PMDGProgPageMonitor : IDisposable
         catch (Exception ex)
         {
             LastError = $"PROG init: {ex.GetType().Name}: {ex.Message}";
-            Log.Debug("Services", $"[PMDGProgPageMonitor] {LastError}");
+            Log.Debug("Services", $"{LastError}");
         }
     }
 

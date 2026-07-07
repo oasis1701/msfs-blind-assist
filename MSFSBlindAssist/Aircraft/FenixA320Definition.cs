@@ -12041,7 +12041,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] Error setting {varKey} to {value}: {ex.Message}");
+            Log.Debug("Fenix", $"Error setting {varKey} to {value}: {ex.Message}");
             announcer.Announce($"Error setting {varDef.DisplayName}");
             // Return true to indicate we handled it (even though it failed)
             // This prevents the generic handler from also failing
@@ -12545,7 +12545,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         string rpn = $"(L:{counterVar}) {op} (>L:{counterVar})";
         simConnect.ExecuteCalculatorCode(rpn);
 
-        Log.Debug("Fenix", $"[FenixA320] AdjustBaroCounter: {counterVar} delta={delta}");
+        Log.Debug("Fenix", $"AdjustBaroCounter: {counterVar} delta={delta}");
     }
 
     private void RequestGearPosition(SimConnect.SimConnectManager simConnectMgr)
@@ -12741,12 +12741,12 @@ public class FenixA320Definition : BaseAircraftDefinition
     {
         try
         {
-            Log.Debug("Fenix", $"[FenixA320] ExecuteButtonTransition START: {displayName} ({varName})");
+            Log.Debug("Fenix", $"ExecuteButtonTransition START: {displayName} ({varName})");
 
             // Phase 1: reset to 0 (establishes a clean rising edge if the button was left at 1)
             if (simConnect != null && simConnect.IsConnected)
             {
-                Log.Debug("Fenix", $"[FenixA320] Setting {varName} = 0 (Release)");
+                Log.Debug("Fenix", $"Setting {varName} = 0 (Release)");
                 simConnect.SetLVar(varName, 0);
             }
 
@@ -12762,7 +12762,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 {
                     if (simConnect != null && simConnect.IsConnected)
                     {
-                        Log.Debug("Fenix", $"[FenixA320] Setting {varName} = 1 (Press)");
+                        Log.Debug("Fenix", $"Setting {varName} = 1 (Press)");
                         simConnect.SetLVar(varName, 1);
                     }
 
@@ -12784,28 +12784,28 @@ public class FenixA320Definition : BaseAircraftDefinition
                                 // reassuring "Takeoff config normal." off a stale/zero cache.
                                 onHeld?.Invoke();
 
-                                Log.Debug("Fenix", $"[FenixA320] Setting {varName} = 0 (Release after hold)");
+                                Log.Debug("Fenix", $"Setting {varName} = 0 (Release after hold)");
                                 simConnect.SetLVar(varName, 0);
-                                Log.Debug("Fenix", $"[FenixA320] ExecuteButtonTransition COMPLETE: {displayName}");
+                                Log.Debug("Fenix", $"ExecuteButtonTransition COMPLETE: {displayName}");
                             }
                         }
                         catch (Exception ex)
                         {
-                            Log.Debug("Fenix", $"[FenixA320] Error in {displayName} transition (release phase): {ex.Message}");
+                            Log.Debug("Fenix", $"Error in {displayName} transition (release phase): {ex.Message}");
                         }
                     };
                     releaseTimer.Start();
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Fenix", $"[FenixA320] Error in {displayName} transition (press phase): {ex.Message}");
+                    Log.Debug("Fenix", $"Error in {displayName} transition (press phase): {ex.Message}");
                 }
             };
             pressTimer.Start();
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
+            Log.Debug("Fenix", $"Error in {displayName} transition (first phase): {ex.Message}");
             announcer.Announce($"Error pressing {displayName}");
         }
     }
@@ -12839,7 +12839,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] AnnounceTakeoffConfigResult error: {ex.Message}");
+            Log.Debug("Fenix", $"AnnounceTakeoffConfigResult error: {ex.Message}");
         }
     }
 
@@ -12864,7 +12864,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             rmpCounters[varName]++;
             int newValue = rmpCounters[varName];
 
-            Log.Debug("Fenix", $"[FenixA320] IncrementCounter: {varName} -> {newValue}");
+            Log.Debug("Fenix", $"IncrementCounter: {varName} -> {newValue}");
 
             // Set the LVar to the new counter value
             if (simConnect != null && simConnect.IsConnected)
@@ -12874,7 +12874,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] Error incrementing counter {varName}: {ex.Message}");
+            Log.Debug("Fenix", $"Error incrementing counter {varName}: {ex.Message}");
         }
     }
 
@@ -12896,7 +12896,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             rmpCounters[varName]--;
             int newValue = rmpCounters[varName];
 
-            Log.Debug("Fenix", $"[FenixA320] DecrementCounter: {varName} -> {newValue}");
+            Log.Debug("Fenix", $"DecrementCounter: {varName} -> {newValue}");
 
             // Set the LVar to the new counter value
             if (simConnect != null && simConnect.IsConnected)
@@ -12906,7 +12906,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] Error decrementing counter {varName}: {ex.Message}");
+            Log.Debug("Fenix", $"Error decrementing counter {varName}: {ex.Message}");
         }
     }
 
@@ -12927,7 +12927,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             rmpCounters[varName] += steps;
             int newValue = rmpCounters[varName];
 
-            Log.Debug("Fenix", $"[FenixA320] JumpCounter: {varName} += {steps} -> {newValue}");
+            Log.Debug("Fenix", $"JumpCounter: {varName} += {steps} -> {newValue}");
 
             if (simConnect != null && simConnect.IsConnected)
             {
@@ -12936,7 +12936,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] Error jumping counter {varName}: {ex.Message}");
+            Log.Debug("Fenix", $"Error jumping counter {varName}: {ex.Message}");
         }
     }
 
@@ -12963,22 +12963,22 @@ public class FenixA320Definition : BaseAircraftDefinition
         double? actualValue = simConnect.GetCachedVariableValue(readbackVar);
         if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
         {
-            Log.Debug("Fenix", $"[FenixA320] {valueName} single jump succeeded: target={targetValue}, actual={actualValue.Value}");
+            Log.Debug("Fenix", $"{valueName} single jump succeeded: target={targetValue}, actual={actualValue.Value}");
             return;
         }
 
         // Second check after additional delay — monitoring may not have refreshed yet
-        Log.Debug("Fenix", $"[FenixA320] {valueName} first check: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, waiting for second check");
+        Log.Debug("Fenix", $"{valueName} first check: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, waiting for second check");
         await System.Threading.Tasks.Task.Delay(750);
 
         actualValue = simConnect.GetCachedVariableValue(readbackVar);
         if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
         {
-            Log.Debug("Fenix", $"[FenixA320] {valueName} single jump succeeded on second check: target={targetValue}, actual={actualValue.Value}");
+            Log.Debug("Fenix", $"{valueName} single jump succeeded on second check: target={targetValue}, actual={actualValue.Value}");
             return;
         }
 
-        Log.Debug("Fenix", $"[FenixA320] {valueName} single jump missed: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, retrying with batched increments");
+        Log.Debug("Fenix", $"{valueName} single jump missed: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, retrying with batched increments");
 
         // Step 3: Calculate remaining delta and retry with batched increments
         if (actualValue != null)
@@ -13015,7 +13015,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Final verification
             await System.Threading.Tasks.Task.Delay(200);
             actualValue = simConnect.GetCachedVariableValue(readbackVar);
-            Log.Debug("Fenix", $"[FenixA320] {valueName} after batched retry: target={targetValue}, actual={actualValue?.ToString() ?? "null"}");
+            Log.Debug("Fenix", $"{valueName} after batched retry: target={targetValue}, actual={actualValue?.ToString() ?? "null"}");
         }
     }
 
@@ -13242,14 +13242,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Fenix", $"[FenixA320] Error in {displayName} transition (second phase): {ex.Message}");
+                    Log.Debug("Fenix", $"Error in {displayName} transition (second phase): {ex.Message}");
                 }
             };
             transitionTimer.Start();
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
+            Log.Debug("Fenix", $"Error in {displayName} transition (first phase): {ex.Message}");
             announcer.Announce($"Error executing {displayName}");
         }
     }

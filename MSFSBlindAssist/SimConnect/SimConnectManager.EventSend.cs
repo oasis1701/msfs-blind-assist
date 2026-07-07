@@ -238,24 +238,24 @@ public partial class SimConnectManager
 
     public void SendHVar(string hvar)
     {
-        Log.Debug("SimConnect", $"[SimConnectManager] Attempting to send H-variable: {hvar}");
-        Log.Debug("SimConnect", $"[SimConnectManager] MobiFlight Status: {MobiFlightStatus}");
-        Log.Debug("SimConnect", $"[SimConnectManager] Can Send H-Vars: {CanSendHVars}");
+        Log.Debug("SimConnect", $"Attempting to send H-variable: {hvar}");
+        Log.Debug("SimConnect", $"MobiFlight Status: {MobiFlightStatus}");
+        Log.Debug("SimConnect", $"Can Send H-Vars: {CanSendHVars}");
 
         if (mobiFlightWasm?.CanSendHVars == true)
         {
             mobiFlightWasm.SendHVar(hvar);
-            Log.Debug("SimConnect", $"[SimConnectManager] Successfully sent H-variable: {hvar}");
+            Log.Debug("SimConnect", $"Successfully sent H-variable: {hvar}");
         }
         else
         {
-            Log.Debug("SimConnect", $"[SimConnectManager] ❌ Cannot send H-variable - MobiFlight not ready: {hvar}");
-            Log.Debug("SimConnect", $"[SimConnectManager] MobiFlight module null: {mobiFlightWasm == null}");
+            Log.Debug("SimConnect", $"❌ Cannot send H-variable - MobiFlight not ready: {hvar}");
+            Log.Debug("SimConnect", $"MobiFlight module null: {mobiFlightWasm == null}");
             if (mobiFlightWasm != null)
             {
-                Log.Debug("SimConnect", $"[SimConnectManager] IsConnected: {mobiFlightWasm.IsConnected}");
-                Log.Debug("SimConnect", $"[SimConnectManager] IsRegistered: {mobiFlightWasm.IsRegistered}");
-                Log.Debug("SimConnect", $"[SimConnectManager] CanSendHVars: {mobiFlightWasm.CanSendHVars}");
+                Log.Debug("SimConnect", $"IsConnected: {mobiFlightWasm.IsConnected}");
+                Log.Debug("SimConnect", $"IsRegistered: {mobiFlightWasm.IsRegistered}");
+                Log.Debug("SimConnect", $"CanSendHVars: {mobiFlightWasm.CanSendHVars}");
             }
         }
     }
@@ -264,7 +264,7 @@ public partial class SimConnectManager
     {
         if (string.IsNullOrEmpty(pressEvent) || string.IsNullOrEmpty(releaseEvent))
         {
-            Log.Debug("SimConnect", "[SimConnectManager] Invalid press/release events");
+            Log.Debug("SimConnect", "Invalid press/release events");
             return;
         }
 
@@ -279,7 +279,7 @@ public partial class SimConnectManager
             releaseTimer.Stop();
             releaseTimer.Dispose();
             SendHVar(releaseEvent);
-            Log.Debug("SimConnect", $"[SimConnectManager] Button press/release completed: {pressEvent} -> {releaseEvent}");
+            Log.Debug("SimConnect", $"Button press/release completed: {pressEvent} -> {releaseEvent}");
         };
         releaseTimer.Start();
     }
@@ -290,7 +290,7 @@ public partial class SimConnectManager
         {
             // Use default MobiFlight channel to add L-variable for reading
             mobiFlightWasm.AddDefaultChannelLVar(ledVariable);
-            Log.Debug("SimConnect", $"[SimConnectManager] Added LED variable for monitoring via default channel: {ledVariable}");
+            Log.Debug("SimConnect", $"Added LED variable for monitoring via default channel: {ledVariable}");
         }
     }
 
@@ -300,7 +300,7 @@ public partial class SimConnectManager
         // MobiFlight will automatically send updates when any L-variable changes
         if (mobiFlightWasm != null)
         {
-            Log.Debug("SimConnect", "[SimConnectManager] LED variable updates will be received automatically from MobiFlight");
+            Log.Debug("SimConnect", "LED variable updates will be received automatically from MobiFlight");
         }
     }
 
@@ -309,7 +309,7 @@ public partial class SimConnectManager
         if (mobiFlightWasm != null && !string.IsNullOrEmpty(ledVariable))
         {
             mobiFlightWasm.ReadLedVariable(ledVariable);
-            Log.Debug("SimConnect", $"[SimConnectManager] Reading LED variable: {ledVariable}");
+            Log.Debug("SimConnect", $"Reading LED variable: {ledVariable}");
         }
     }
 

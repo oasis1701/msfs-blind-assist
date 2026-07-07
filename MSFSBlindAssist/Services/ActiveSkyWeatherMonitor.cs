@@ -126,7 +126,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
             // user doesn't get a stale announcement when AS comes back.
             if (!await _activeSky.IsRunningAsync())
             {
-                Log.Debug("Services", "[ASMonitor] tick: AS not detected; baseline reset");
+                Log.Debug("Services", "tick: AS not detected; baseline reset");
                 _lastTimeStamp = 0;
                 _lastNormalizedMetar = null;
                 _hasBaseline = false;
@@ -150,7 +150,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
             if (conditions == null || string.IsNullOrWhiteSpace(positionMetar))
             {
-                Log.Debug("Services", "[ASMonitor] tick: AS detected but data fetch failed");
+                Log.Debug("Services", "tick: AS detected but data fetch failed");
                 return;
             }
 
@@ -164,19 +164,19 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 _lastNormalizedMetar = normalized;
                 _hasBaseline = true;
                 Log.Debug("Services", 
-                    $"[ASMonitor] baseline: ts={_lastTimeStamp} normalized='{normalized}'");
+                    $"baseline: ts={_lastTimeStamp} normalized='{normalized}'");
                 return;
             }
 
             if (!isRefresh)
             {
                 Log.Debug("Services", 
-                    $"[ASMonitor] tick: unchanged (ts={conditions.TimeStamp}, last={_lastTimeStamp})");
+                    $"tick: unchanged (ts={conditions.TimeStamp}, last={_lastTimeStamp})");
                 return;
             }
 
             Log.Debug("Services", 
-                $"[ASMonitor] tick: REFRESH detected ts {_lastTimeStamp}→{conditions.TimeStamp}");
+                $"tick: REFRESH detected ts {_lastTimeStamp}→{conditions.TimeStamp}");
 
             // User-configurable hard floor on announcement rate. Applied on TOP
             // of the smart change-detection so a positive setting strictly
@@ -190,7 +190,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 && DateTime.UtcNow - _lastAnnouncedAt < TimeSpan.FromMinutes(IntervalMinutes))
             {
                 Log.Debug("Services", 
-                    $"[ASMonitor] tick: refresh detected but throttled — last announce was {(DateTime.UtcNow - _lastAnnouncedAt).TotalMinutes:F1}m ago, interval={IntervalMinutes}m");
+                    $"tick: refresh detected but throttled — last announce was {(DateTime.UtcNow - _lastAnnouncedAt).TotalMinutes:F1}m ago, interval={IntervalMinutes}m");
                 return;
             }
 
@@ -208,14 +208,14 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
             if (!_disposed && !string.IsNullOrEmpty(spoken))
             {
-                Log.Debug("Services", $"[ASMonitor] announcing: \"{spoken}\"");
+                Log.Debug("Services", $"announcing: \"{spoken}\"");
                 _announcer.Announce(spoken);
                 _lastAnnouncedAt = DateTime.UtcNow;
             }
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"[ASMonitor] tick error: {ex.GetType().Name}: {ex.Message}");
+            Log.Debug("Services", $"tick error: {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {

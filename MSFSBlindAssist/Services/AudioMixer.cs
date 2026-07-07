@@ -45,11 +45,11 @@ public class AudioMixer : IDisposable
                 waveOut.Play();
                 isPlaying = true;
 
-                Log.Debug("Services", "[AudioMixer] Started");
+                Log.Debug("Services", "Started");
             }
             catch (Exception ex)
             {
-                Log.Debug("Services", $"[AudioMixer] Start failed: {ex.Message}");
+                Log.Debug("Services", $"Start failed: {ex.Message}");
                 Cleanup();
             }
         }
@@ -70,7 +70,7 @@ public class AudioMixer : IDisposable
             {
                 mixer.AddMixerInput(source);
                 activeSources.Add(source);
-                Log.Debug("Services", $"[AudioMixer] Added source ({activeSources.Count} total)");
+                Log.Debug("Services", $"Added source ({activeSources.Count} total)");
             }
         }
     }
@@ -90,7 +90,7 @@ public class AudioMixer : IDisposable
             {
                 mixer.RemoveMixerInput(source);
                 activeSources.Remove(source);
-                Log.Debug("Services", $"[AudioMixer] Removed source ({activeSources.Count} remaining)");
+                Log.Debug("Services", $"Removed source ({activeSources.Count} remaining)");
             }
         }
     }
@@ -107,7 +107,7 @@ public class AudioMixer : IDisposable
 
             Cleanup();
             isPlaying = false;
-            Log.Debug("Services", "[AudioMixer] Stopped");
+            Log.Debug("Services", "Stopped");
         }
     }
 
