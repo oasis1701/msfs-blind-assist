@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect
 {
@@ -115,7 +116,7 @@ namespace MSFSBlindAssist.SimConnect
                 }
                 catch (HttpListenerException ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Failed to start on {Prefix}: {ex.Message}");
+                    Log.Debug("SimConnect", $"EFBBridgeServer: Failed to start on {Prefix}: {ex.Message}");
                     RaiseError($"EFB server failed to start: {ex.Message}");
                     _cts.Dispose();
                     _cts = null;
@@ -146,7 +147,7 @@ namespace MSFSBlindAssist.SimConnect
             {
                 if (_commandQueue.TryDequeue(out var dropped))
                 {
-                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Command queue full, dropped: {dropped.Command.Command}");
+                    Log.Debug("SimConnect", $"EFBBridgeServer: Command queue full, dropped: {dropped.Command.Command}");
                 }
             }
             _commandQueue.Enqueue((new EFBCommand { Command = command, Payload = payload }, DateTime.UtcNow));
@@ -187,15 +188,15 @@ namespace MSFSBlindAssist.SimConnect
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Listen error: {ex.Message}");
+                    Log.Debug("SimConnect", $"EFBBridgeServer: Listen error: {ex.Message}");
                     if (_restartCount >= MaxRestartAttempts)
                     {
-                        System.Diagnostics.Debug.WriteLine("EFBBridgeServer: Max restart attempts reached, stopping.");
+                        Log.Debug("SimConnect", "EFBBridgeServer: Max restart attempts reached, stopping.");
                         RaiseError("EFB server stopped after repeated failures");
                         break;
                     }
                     _restartCount++;
-                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Restarting listener (attempt {_restartCount}/{MaxRestartAttempts})...");
+                    Log.Debug("SimConnect", $"EFBBridgeServer: Restarting listener (attempt {_restartCount}/{MaxRestartAttempts})...");
                     try
                     {
                         await Task.Delay(RestartDelayMs, ct);
@@ -214,7 +215,7 @@ namespace MSFSBlindAssist.SimConnect
                     }
                     catch (Exception restartEx)
                     {
-                        System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Restart failed: {restartEx.Message}");
+                        Log.Debug("SimConnect", $"EFBBridgeServer: Restart failed: {restartEx.Message}");
                         RaiseError("EFB server restart failed");
                         break;
                     }
@@ -318,7 +319,7 @@ namespace MSFSBlindAssist.SimConnect
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Request error: {ex.Message}");
+                Log.Debug("SimConnect", $"EFBBridgeServer: Request error: {ex.Message}");
                 try
                 {
                     response.StatusCode = 500;
@@ -400,7 +401,7 @@ namespace MSFSBlindAssist.SimConnect
             }
             catch (JsonException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: JSON parse error: {ex.Message}");
+                Log.Debug("SimConnect", $"EFBBridgeServer: JSON parse error: {ex.Message}");
             }
 
             await WriteJson(response, new { received = true });
@@ -649,7 +650,7 @@ loadItems();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Display click error: {ex.Message}");
+                Log.Debug("SimConnect", $"EFBBridgeServer: Display click error: {ex.Message}");
                 await WriteJson(response, new { clicked = false, error = ex.Message });
             }
         }
@@ -692,7 +693,7 @@ loadItems();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Set value error: {ex.Message}");
+                Log.Debug("SimConnect", $"EFBBridgeServer: Set value error: {ex.Message}");
                 await WriteJson(response, new { set = false, error = ex.Message });
             }
         }

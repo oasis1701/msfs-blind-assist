@@ -4,6 +4,7 @@ using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -60,7 +61,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error setting LVar {varName}: {ex.Message}");
+            Log.Debug("SimConnect", $"Error setting LVar {varName}: {ex.Message}");
         }
     }
 
@@ -79,7 +80,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error executing calculator code: {ex.Message}");
+            Log.Debug("SimConnect", $"Error executing calculator code: {ex.Message}");
         }
     }
 
@@ -87,7 +88,7 @@ public partial class SimConnectManager
     {
         if (!IsConnected || simConnect == null) return;
 
-        System.Diagnostics.Debug.WriteLine($"Setting SimVar: {varName} = {value} ({units})");
+        Log.Debug("SimConnect", $"Setting SimVar: {varName} = {value} ({units})");
 
         // Create a temporary data definition for this specific SimVar
         // Use thread-safe counter to generate unique IDs (fixes crash from ID collision)
@@ -104,11 +105,11 @@ public partial class SimConnectManager
 
             SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
 
-            System.Diagnostics.Debug.WriteLine($"Successfully set SimVar {varName} to {value}");
+            Log.Debug("SimConnect", $"Successfully set SimVar {varName} to {value}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error setting SimVar {varName}: {ex.Message}");
+            Log.Debug("SimConnect", $"Error setting SimVar {varName}: {ex.Message}");
         }
     }   
 
@@ -116,7 +117,7 @@ public partial class SimConnectManager
     {
         if (!IsConnected || simConnect == null) return;
 
-        System.Diagnostics.Debug.WriteLine($"Sending event: {eventName} with data: {data}");
+        Log.Debug("SimConnect", $"Sending event: {eventName} with data: {data}");
 
         // Two FlyByWire event classes prefer the MobiFlight calculator path:
         //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — these have NO
@@ -172,7 +173,7 @@ public partial class SimConnectManager
             uint eventId = nextEventId++;
             eventIds[eventName] = eventId;
             simConnect.MapClientEventToSimEvent((EVENTS)eventId, eventName);
-            System.Diagnostics.Debug.WriteLine($"Registered new event: {eventName} with ID: {eventId}");
+            Log.Debug("SimConnect", $"Registered new event: {eventName} with ID: {eventId}");
         }
         
         // Send the event with the data parameter
@@ -237,24 +238,24 @@ public partial class SimConnectManager
 
     public void SendHVar(string hvar)
     {
-        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Attempting to send H-variable: {hvar}");
-        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight Status: {MobiFlightStatus}");
-        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Can Send H-Vars: {CanSendHVars}");
+        Log.Debug("SimConnect", $"[SimConnectManager] Attempting to send H-variable: {hvar}");
+        Log.Debug("SimConnect", $"[SimConnectManager] MobiFlight Status: {MobiFlightStatus}");
+        Log.Debug("SimConnect", $"[SimConnectManager] Can Send H-Vars: {CanSendHVars}");
 
         if (mobiFlightWasm?.CanSendHVars == true)
         {
             mobiFlightWasm.SendHVar(hvar);
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Successfully sent H-variable: {hvar}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Successfully sent H-variable: {hvar}");
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ❌ Cannot send H-variable - MobiFlight not ready: {hvar}");
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight module null: {mobiFlightWasm == null}");
+            Log.Debug("SimConnect", $"[SimConnectManager] ❌ Cannot send H-variable - MobiFlight not ready: {hvar}");
+            Log.Debug("SimConnect", $"[SimConnectManager] MobiFlight module null: {mobiFlightWasm == null}");
             if (mobiFlightWasm != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] IsConnected: {mobiFlightWasm.IsConnected}");
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] IsRegistered: {mobiFlightWasm.IsRegistered}");
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] CanSendHVars: {mobiFlightWasm.CanSendHVars}");
+                Log.Debug("SimConnect", $"[SimConnectManager] IsConnected: {mobiFlightWasm.IsConnected}");
+                Log.Debug("SimConnect", $"[SimConnectManager] IsRegistered: {mobiFlightWasm.IsRegistered}");
+                Log.Debug("SimConnect", $"[SimConnectManager] CanSendHVars: {mobiFlightWasm.CanSendHVars}");
             }
         }
     }
@@ -263,7 +264,7 @@ public partial class SimConnectManager
     {
         if (string.IsNullOrEmpty(pressEvent) || string.IsNullOrEmpty(releaseEvent))
         {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Invalid press/release events");
+            Log.Debug("SimConnect", "[SimConnectManager] Invalid press/release events");
             return;
         }
 
@@ -278,7 +279,7 @@ public partial class SimConnectManager
             releaseTimer.Stop();
             releaseTimer.Dispose();
             SendHVar(releaseEvent);
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Button press/release completed: {pressEvent} -> {releaseEvent}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Button press/release completed: {pressEvent} -> {releaseEvent}");
         };
         releaseTimer.Start();
     }
@@ -289,7 +290,7 @@ public partial class SimConnectManager
         {
             // Use default MobiFlight channel to add L-variable for reading
             mobiFlightWasm.AddDefaultChannelLVar(ledVariable);
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Added LED variable for monitoring via default channel: {ledVariable}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Added LED variable for monitoring via default channel: {ledVariable}");
         }
     }
 
@@ -299,7 +300,7 @@ public partial class SimConnectManager
         // MobiFlight will automatically send updates when any L-variable changes
         if (mobiFlightWasm != null)
         {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] LED variable updates will be received automatically from MobiFlight");
+            Log.Debug("SimConnect", "[SimConnectManager] LED variable updates will be received automatically from MobiFlight");
         }
     }
 
@@ -308,7 +309,7 @@ public partial class SimConnectManager
         if (mobiFlightWasm != null && !string.IsNullOrEmpty(ledVariable))
         {
             mobiFlightWasm.ReadLedVariable(ledVariable);
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Reading LED variable: {ledVariable}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Reading LED variable: {ledVariable}");
         }
     }
 

@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 public class SimVarMonitor
@@ -55,7 +56,7 @@ public class SimVarMonitor
     public void EnableAnnouncements()
     {
         AnnouncementsEnabled = true;
-        System.Diagnostics.Debug.WriteLine("[SimVarMonitor] Announcements enabled - continuous monitoring active");
+        Log.Debug("SimConnect", "[SimVarMonitor] Announcements enabled - continuous monitoring active");
     }
 
     public void Reset()

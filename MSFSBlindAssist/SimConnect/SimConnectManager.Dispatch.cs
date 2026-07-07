@@ -4,6 +4,7 @@ using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -16,15 +17,15 @@ public partial class SimConnectManager
         try
         {
             DetectedSimulatorVersion = Utils.SimulatorDetector.DetectRunningSimulator();
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Detected simulator: {DetectedSimulatorVersion}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Detected simulator: {DetectedSimulatorVersion}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error detecting simulator version: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Error detecting simulator version: {ex.Message}");
             DetectedSimulatorVersion = "Unknown";
         }
 
-        System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect connection opened, requesting aircraft info");
+        Log.Debug("SimConnect", "[SimConnectManager] SimConnect connection opened, requesting aircraft info");
     }
 
     private void SimConnect_OnRecvQuit(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV data)
@@ -40,7 +41,7 @@ public partial class SimConnectManager
     {
         if ((SYSTEM_EVENT_ID)data.uEventID == SYSTEM_EVENT_ID.AircraftLoaded)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AircraftLoaded system event: {data.szFileName}");
+            Log.Debug("SimConnect", $"[SimConnectManager] AircraftLoaded system event: {data.szFileName}");
             // Re-read ATC MODEL so AircraftIcaoTypeDetected fires for the newly loaded aircraft.
             RequestAircraftInfo();
         }
@@ -63,17 +64,17 @@ public partial class SimConnectManager
                 if (varKey == "A32NX_MASTER_WARNING")
                 {
                     ecamMasterWarning = specificValue.value;
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Master Warning updated: {specificValue.value}");
+                    Log.Debug("SimConnect", $"[SimConnectManager] ECAM Master Warning updated: {specificValue.value}");
                 }
                 else if (varKey == "A32NX_MASTER_CAUTION")
                 {
                     ecamMasterCaution = specificValue.value;
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Master Caution updated: {specificValue.value}");
+                    Log.Debug("SimConnect", $"[SimConnectManager] ECAM Master Caution updated: {specificValue.value}");
                 }
                 else if (varKey == "A32NX_STALL_WARNING")
                 {
                     ecamStallWarning = specificValue.value;
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Stall Warning updated: {specificValue.value}");
+                    Log.Debug("SimConnect", $"[SimConnectManager] ECAM Stall Warning updated: {specificValue.value}");
                 }
 
                 // Format the description based on variable type
@@ -130,19 +131,19 @@ public partial class SimConnectManager
             case DATA_REQUESTS.REQUEST_ATC_ID:
                 try
                 {
-                    System.Diagnostics.Debug.WriteLine("[SimConnectManager] Received ATC data, attempting to parse...");
+                    Log.Debug("SimConnect", "[SimConnectManager] Received ATC data, attempting to parse...");
                     AircraftAtcData atcData = (AircraftAtcData)data.dwData[0];
                     currentAircraftAtcId = atcData.atcId?.Trim() ?? "";
                     currentAircraftAirline = atcData.atcAirline?.Trim() ?? "";
                     currentAircraftFlightNumber = atcData.atcFlightNumber?.Trim() ?? "";
                     currentAircraftAtcModel = atcData.atcModel?.Trim() ?? "";
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Model: '{currentAircraftAtcModel}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
+                    Log.Debug("SimConnect", $"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Model: '{currentAircraftAtcModel}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
                     atcDataReceived = true;
                     TryAnnounceConnection();
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error parsing ATC data: {ex.Message}");
+                    Log.Debug("SimConnect", $"[SimConnectManager] Error parsing ATC data: {ex.Message}");
                     atcDataReceived = true; // Set flag even on error so we don't block announcement
                     TryAnnounceConnection();
                 }
@@ -899,7 +900,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing aircraft position: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Error processing aircraft position: {ex.Message}");
         }
     }
 
@@ -910,7 +911,7 @@ public partial class SimConnectManager
             // Validate we have all required data
             if (currentILSRequest == null || ilsRunway == null || ilsAirport == null)
             {
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] ILS guidance request incomplete - missing data");
+                Log.Debug("SimConnect", "[SimConnectManager] ILS guidance request incomplete - missing data");
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "ILS_GUIDANCE",
@@ -1038,11 +1039,11 @@ public partial class SimConnectManager
                 Description = announcement
             });
 
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ILS Guidance: {announcement}");
+            Log.Debug("SimConnect", $"[SimConnectManager] ILS Guidance: {announcement}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing ILS guidance: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Error processing ILS guidance: {ex.Message}");
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
             {
                 VarName = "ILS_GUIDANCE",
@@ -1060,7 +1061,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing wind data: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Error processing wind data: {ex.Message}");
         }
     }
 
@@ -1072,7 +1073,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing weather data: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Error processing weather data: {ex.Message}");
         }
     }
 
@@ -1101,14 +1102,14 @@ public partial class SimConnectManager
             if (!ECAMMonitoringEnabled)
             {
                 previousECAMMessages = currentMessages;
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM messages collected silently (monitoring disabled): {currentMessages.Count} messages");
+                Log.Debug("SimConnect", $"[SimConnectManager] ECAM messages collected silently (monitoring disabled): {currentMessages.Count} messages");
                 return;
             }
 
             if (SuppressECAMAnnouncements)
             {
                 previousECAMMessages = currentMessages;
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM messages collected silently (suppression active): {currentMessages.Count} messages");
+                Log.Debug("SimConnect", $"[SimConnectManager] ECAM messages collected silently (suppression active): {currentMessages.Count} messages");
                 return;
             }
 
@@ -1125,7 +1126,7 @@ public partial class SimConnectManager
             // Announce each new message
             foreach (var message in newMessages)
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] New ECAM message detected for announcement: '{message}'");
+                Log.Debug("SimConnect", $"[SimConnectManager] New ECAM message detected for announcement: '{message}'");
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "ECAM_MESSAGE",
@@ -1139,7 +1140,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error announcing ECAM changes: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Error announcing ECAM changes: {ex.Message}");
         }
     }
 
@@ -1198,19 +1199,19 @@ public partial class SimConnectManager
         if (mToken.Success)
         {
             string candidate = mToken.Groups[1].Value.ToUpperInvariant();
-            System.Diagnostics.Debug.WriteLine($"[ExtractIcao] token-match → '{candidate}' from '{s}'");
+            Log.Debug("SimConnect", $"[ExtractIcao] token-match → '{candidate}' from '{s}'");
             return candidate;
         }
 
         // 2. Bare ICAO: whole string is already the designator (letter + 1-5 alphanum).
         if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[A-Za-z][A-Za-z0-9]{1,5}$"))
         {
-            System.Diagnostics.Debug.WriteLine($"[ExtractIcao] bare-icao → '{s.ToUpperInvariant()}' from '{s}'");
+            Log.Debug("SimConnect", $"[ExtractIcao] bare-icao → '{s.ToUpperInvariant()}' from '{s}'");
             return s.ToUpperInvariant();
         }
 
         // 3. Unresolved — return empty so offset defaults to 0 (safe fallback).
-        System.Diagnostics.Debug.WriteLine($"[ExtractIcao] unresolved → '' from '{s}'");
+        Log.Debug("SimConnect", $"[ExtractIcao] unresolved → '' from '{s}'");
         return "";
     }
 
@@ -1258,7 +1259,7 @@ public partial class SimConnectManager
         // can look up per-aircraft door offsets from GSX gsx.cfg files.
         string icao = ExtractIcaoFromAtcModel(currentAircraftAtcModel);
         CurrentAircraftIcaoType = icao;
-        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC MODEL raw='{currentAircraftAtcModel}' → ICAO='{icao}'");
+        Log.Debug("SimConnect", $"[SimConnectManager] ATC MODEL raw='{currentAircraftAtcModel}' → ICAO='{icao}'");
 
         // FALLBACK: only when the ATC MODEL gave us nothing usable (rare add-on with no clean
         // ATC model), try the universal aircraft.cfg catalog by TITLE. The common case (ATC
@@ -1275,11 +1276,11 @@ public partial class SimConnectManager
         // Log whether this is the expected FBW A32NX aircraft
         if (info.title?.Contains("A32NX") == true || info.title?.Contains("A320") == true)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Successfully connected to FBW A32NX{identification}");
+            Log.Debug("SimConnect", $"[SimConnectManager] Successfully connected to FBW A32NX{identification}");
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Connected to {info.title}{identification} - not FBW A32NX");
+            Log.Debug("SimConnect", $"[SimConnectManager] Connected to {info.title}{identification} - not FBW A32NX");
         }
     }
 
@@ -1326,7 +1327,7 @@ public partial class SimConnectManager
                     return;
 
                 CurrentAircraftIcaoType = catIcao;
-                System.Diagnostics.Debug.WriteLine(
+                Log.Debug("SimConnect", 
                     $"[SimConnectManager] ATC MODEL had no ICAO; aircraft.cfg catalog resolved TITLE='{titleSnapshot}' → ICAO='{catIcao}'");
 
                 try { _dockingAircraftLog.Info($"catalog fallback: TITLE=\"{titleSnapshot}\"  -> ICAO=\"{catIcao}\""); }
@@ -1358,7 +1359,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AI traffic parse error: {ex.Message}");
+            Log.Debug("SimConnect", $"[SimConnectManager] AI traffic parse error: {ex.Message}");
         }
 
         // A RequestDataOnSimObjectType sweep is a finite series: dwentrynumber
@@ -1372,7 +1373,7 @@ public partial class SimConnectManager
             try { AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AiTrafficSweepCompleted handler error: {ex.Message}");
+                Log.Debug("SimConnect", $"[SimConnectManager] AiTrafficSweepCompleted handler error: {ex.Message}");
             }
         }
     }
@@ -1482,7 +1483,7 @@ public partial class SimConnectManager
             default: exceptionName = "UNKNOWN"; break;
         }
 
-        System.Diagnostics.Debug.WriteLine($"SimConnect Exception: {data.dwException} ({exceptionName}) - SendID: {data.dwSendID}, Index: {data.dwIndex}");
+        Log.Debug("SimConnect", $"SimConnect Exception: {data.dwException} ({exceptionName}) - SendID: {data.dwSendID}, Index: {data.dwIndex}");
         // Observability: TOO_MANY_OBJECTS / TOO_MANY_REQUESTS mean we hit SimConnect's ~1000
         // data-definition / request ceiling — the exact failure that used to silently break
         // aircraft detection. Persist these so the ceiling is never again a mystery. (Non-throwing;
