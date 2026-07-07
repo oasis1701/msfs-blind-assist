@@ -544,12 +544,6 @@ public partial class MainForm
             hs787FMCForm = null;
         }
 
-        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm.Dispose();
-            hs787SimBriefForm = null;
-        }
-
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
         if (hs787EicasForm != null && !hs787EicasForm.IsDisposed) hs787EicasForm.Dispose();
@@ -799,12 +793,6 @@ public partial class MainForm
         {
             hs787FMCForm.Dispose();
             hs787FMCForm = null;
-        }
-
-        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm.Dispose();
-            hs787SimBriefForm = null;
         }
 
         // PMDG data manager lifecycle
