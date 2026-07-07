@@ -31,6 +31,7 @@ public class SettingsForm : Form
         // subsequent tasks INSERT their AddPanel(...) calls so the final order is:
         // Announcements, GeoNames, SimBrief, Gemini, HandFly, TaxiGuidance.
         AddPanel(new AnnouncementsPanel());
+        AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };

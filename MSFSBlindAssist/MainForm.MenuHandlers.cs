@@ -41,18 +41,6 @@ public partial class MainForm
         }
     }
 
-    private void GeoNamesSettingsMenuItem_Click(object? sender, EventArgs e)
-    {
-        using (var settingsForm = new Forms.GeoNamesApiKeyForm())
-        {
-            if (settingsForm.ShowDialog(this) == DialogResult.OK)
-            {
-                statusLabel.Text = "GeoNames settings saved successfully";
-                announcer.Announce("GeoNames settings saved successfully");
-            }
-        }
-    }
-
     private void SettingsMenuItem_Click(object? sender, EventArgs e)
     {
         // Same inline refresh-taxiway-names callback TaxiGuidanceOptionsMenuItem_Click builds

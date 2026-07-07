@@ -6,7 +6,6 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.MenuStrip menuStrip = null!;
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
@@ -42,7 +41,6 @@ namespace MSFSBlindAssist
             this.menuStrip = new System.Windows.Forms.MenuStrip();
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -84,7 +82,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem.AccessibleName = "File menu";
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
-            this.geoNamesSettingsMenuItem,
             this.settingsMenuItem,
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
@@ -106,15 +103,6 @@ namespace MSFSBlindAssist
             this.databaseSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.databaseSettingsMenuItem.Text = "&Database Settings";
             this.databaseSettingsMenuItem.Click += new System.EventHandler(this.DatabaseSettingsMenuItem_Click);
-            //
-            // geoNamesSettingsMenuItem
-            //
-            this.geoNamesSettingsMenuItem.AccessibleName = "GeoNames Settings";
-            this.geoNamesSettingsMenuItem.AccessibleDescription = "Configure GeoNames API key and location information settings";
-            this.geoNamesSettingsMenuItem.Name = "geoNamesSettingsMenuItem";
-            this.geoNamesSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.geoNamesSettingsMenuItem.Text = "Define &GeoNames API Key";
-            this.geoNamesSettingsMenuItem.Click += new System.EventHandler(this.GeoNamesSettingsMenuItem_Click);
             //
             // settingsMenuItem
             //
