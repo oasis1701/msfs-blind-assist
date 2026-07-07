@@ -33,6 +33,7 @@ public class SettingsForm : Form
         AddPanel(new AnnouncementsPanel());
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
+        AddPanel(new GeminiPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AccessibleName = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };

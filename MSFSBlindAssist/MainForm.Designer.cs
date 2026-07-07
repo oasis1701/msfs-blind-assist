@@ -7,7 +7,6 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
@@ -42,7 +41,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -83,7 +81,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
             this.settingsMenuItem,
-            this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.taxiGuidanceOptionsMenuItem,
             this.fmcSettingsMenuItem,
@@ -112,15 +109,6 @@ namespace MSFSBlindAssist
             this.settingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.settingsMenuItem.Text = "&Settings…";
             this.settingsMenuItem.Click += new System.EventHandler(this.SettingsMenuItem_Click);
-            //
-            // geminiSettingsMenuItem
-            //
-            this.geminiSettingsMenuItem.AccessibleName = "Gemini Settings";
-            this.geminiSettingsMenuItem.AccessibleDescription = "Configure Google Gemini settings";
-            this.geminiSettingsMenuItem.Name = "geminiSettingsMenuItem";
-            this.geminiSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.geminiSettingsMenuItem.Text = "Ge&mini Settings";
-            this.geminiSettingsMenuItem.Click += new System.EventHandler(this.GeminiSettingsMenuItem_Click);
             //
             // handFlyOptionsMenuItem
             //

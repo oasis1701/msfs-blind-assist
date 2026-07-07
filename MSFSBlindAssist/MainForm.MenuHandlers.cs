@@ -111,18 +111,6 @@ public partial class MainForm
             _gsxService.AnnounceWhenFormHidden = settings.GsxBackgroundMonitoring;
     }
 
-    private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
-    {
-        using (var settingsForm = new Forms.GeminiSettingsForm())
-        {
-            if (settingsForm.ShowDialog(this) == DialogResult.OK)
-            {
-                statusLabel.Text = "Gemini settings saved successfully";
-                announcer.Announce("Gemini settings saved successfully");
-            }
-        }
-    }
-
     private void HandFlyOptionsMenuItem_Click(object? sender, EventArgs e)
     {
         var currentSettings = SettingsManager.Current;
