@@ -20,7 +20,6 @@ public partial class HS787FMCForm : Form
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private readonly CoherentHS787CduClient _cdu;
-    private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
 
     // Latest screen rows from the bridge (row0..row12)
@@ -43,7 +42,6 @@ public partial class HS787FMCForm : Form
         // bridge, no injected hs787-mfd-bridge.js, no HTML patching. The form owns the client.
         _cdu = new CoherentHS787CduClient();
         _cdu.Start();
-        _simConnect = simConnect;
         _announcer = announcer;
 
         InitializeComponent();

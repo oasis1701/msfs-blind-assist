@@ -5309,15 +5309,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // a raw "50.0" for an intermediate selector position.
     private int _prevPaxChatterOn = -1;
 
-    // Hydraulic-pump-model (switch_319_a / HYD_OPTION) announce tracker.
-    // -1 = unseen (first poll suppressed). The PMDG knob it repurposes is
-    // 3-position (0 / 50 / 100); xBAW only cares about Vickers 1 vs 2, so
-    // value 0 = "Vickers 1", any positive (50 mid-detent or 100) = "Vickers 2".
-    // Explicit handler so the generic exact-key path can't announce "50.0",
-    // and so the combo stays a clean 2-item list (adding [50] to
-    // ValueDescriptions would duplicate the "Vickers 2" combo entry).
-    private int _prevHydVickers2 = -1;
-
     // Cockpit Door echo suppression. The "Doors and Tables" combo writes
     // L:door_cockpit, which flips the SEPARATE monitored SDK bool
     // DOOR_CockpitDoorOpen — a different varKey, so MainForm's own
@@ -6170,7 +6161,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         // the generic exact-key path can't speak a raw "50.0" at the mid-detent.
         if (varName == "switch_319_a")
         {
-            _prevHydVickers2 = value <= 0 ? 0 : 1;
             return true;
         }
 
