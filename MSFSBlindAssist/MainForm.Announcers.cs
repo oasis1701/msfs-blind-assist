@@ -13,6 +13,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -37,7 +38,7 @@ public partial class MainForm
                 // Log overflow warning (throttled to prevent log spam)
                 if (droppedEventCount % 100 == 1)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: Event queue overflow! Dropped {droppedEventCount} events. Consider increasing MAX_QUEUE_SIZE or reducing variable count.");
+                    Log.Debug("MainForm", $"[MainForm] WARNING: Event queue overflow! Dropped {droppedEventCount} events. Consider increasing MAX_QUEUE_SIZE or reducing variable count.");
                 }
             }
             return;
@@ -991,7 +992,7 @@ public partial class MainForm
         // This dramatically improves connection performance.
         if (simConnectManager != null && simConnectManager.IsConnected)
         {
-            System.Diagnostics.Debug.WriteLine("Connection established - continuous monitoring active for critical variables");
+            Log.Debug("MainForm", "Connection established - continuous monitoring active for critical variables");
             // Continuous variables (IsAnnounced = true) are automatically requested every second
             // Panel variables are requested when panels are opened
             // Individual variables are requested on hotkey presses
@@ -1216,12 +1217,12 @@ public partial class MainForm
         if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
         {
             if (e.FieldName is "ELEC_GrdPwrSw" or "ELEC_GenSw_0" or "ELEC_GenSw_1" or "ELEC_APUGenSw_0" or "ELEC_APUGenSw_1")
-                System.Diagnostics.Debug.WriteLine($"[MainForm] PMDG event {e.FieldName} DROPPED (varKey not found in map)");
+                Log.Debug("MainForm", $"[MainForm] PMDG event {e.FieldName} DROPPED (varKey not found in map)");
             return;
         }
 
         if (e.FieldName is "ELEC_GrdPwrSw" or "ELEC_GenSw_0" or "ELEC_GenSw_1" or "ELEC_APUGenSw_0" or "ELEC_APUGenSw_1")
-            System.Diagnostics.Debug.WriteLine($"[MainForm] PMDG event {e.FieldName} -> varKey={varKey} value={e.Value} initial={e.IsInitialSnapshot}");
+            Log.Debug("MainForm", $"[MainForm] PMDG event {e.FieldName} -> varKey={varKey} value={e.Value} initial={e.IsInitialSnapshot}");
 
         // Route PMDG variable changes through the same pipeline as SimVar updates
         var simVarEvent = new SimVarUpdateEventArgs
@@ -1280,7 +1281,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in AnnounceTrackedTcasTraffic: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error in AnnounceTrackedTcasTraffic: {ex.Message}");
             announcer.AnnounceImmediate("Error reading traffic.");
         }
     }
@@ -1297,7 +1298,7 @@ public partial class MainForm
         if (coherentClient == null) { announcer.AnnounceImmediate("Flight info unavailable."); return; }
         string raw = "";
         try { raw = await coherentClient.EvalForResultAsync("window.__MSFSBA_A380 ? __MSFSBA_A380.flightInfo() : ''"); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[A380 flightInfo] {ex.Message}"); }
+        catch (Exception ex) { Log.Debug("MainForm", $"[A380 flightInfo] {ex.Message}"); }
         AnnounceFlightInfoJson(raw, tod);
     }
 
@@ -1313,7 +1314,7 @@ public partial class MainForm
         if (string.IsNullOrEmpty(js)) { announcer.AnnounceImmediate("Flight info unavailable."); return; }
         string raw = "";
         try { raw = await SimConnect.CoherentEvalClient.EvalAsync("A32NX_MCDU", js); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[A32NX flightInfo] {ex.Message}"); }
+        catch (Exception ex) { Log.Debug("MainForm", $"[A32NX flightInfo] {ex.Message}"); }
         AnnounceFlightInfoJson(raw, tod);
     }
 
@@ -1388,7 +1389,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[flightInfo] {ex.Message}");
+            Log.Debug("MainForm", $"[flightInfo] {ex.Message}");
             announcer.AnnounceImmediate("Flight info error.");
         }
     }
@@ -1539,7 +1540,7 @@ public partial class MainForm
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error reading tracked waypoint: {ex.Message}");
+                Log.Debug("MainForm", $"Error reading tracked waypoint: {ex.Message}");
                 announcer.AnnounceImmediate($"Error reading track slot {slotNumber}");
             }
         });
@@ -1654,7 +1655,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in RequestNavRadioInfo: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error in RequestNavRadioInfo: {ex.Message}");
             announcer.AnnounceImmediate("Error getting NAV radio information");
         }
     }
@@ -1754,7 +1755,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in RequestWindInfo: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error in RequestWindInfo: {ex.Message}");
             announcer.AnnounceImmediate("Error getting wind information");
         }
     }
@@ -1812,7 +1813,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in DescribeSceneAsync: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error in DescribeSceneAsync: {ex.Message}");
             announcer.AnnounceImmediate($"Error describing scene: {ex.Message}");
         }
     }
@@ -1850,11 +1851,11 @@ public partial class MainForm
         {
             nearestCityAnnouncementTimer.Interval = intervalSeconds * 1000; // Convert to milliseconds
             nearestCityAnnouncementTimer.Start();
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announcement timer restarted: {intervalSeconds} seconds interval");
+            Log.Debug("MainForm", $"[MainForm] Nearest city announcement timer restarted: {intervalSeconds} seconds interval");
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement timer stopped (disabled in settings)");
+            Log.Debug("MainForm", "[MainForm] Nearest city announcement timer stopped (disabled in settings)");
         }
     }
 
@@ -2017,7 +2018,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Weather proximity check error: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Weather proximity check error: {ex.Message}");
         }
     }
 
@@ -2032,7 +2033,7 @@ public partial class MainForm
             // Guard clause: Check if SimConnect is connected
             if (!simConnectManager.IsConnected)
             {
-                System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: Not connected to simulator");
+                Log.Debug("MainForm", "[MainForm] Nearest city announcement skipped: Not connected to simulator");
                 return;
             }
 
@@ -2077,7 +2078,7 @@ public partial class MainForm
                         }
 
                         announcer.Announce(announcement);
-                        System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announced: {announcement}");
+                        Log.Debug("MainForm", $"[MainForm] Nearest city announced: {announcement}");
                     }
                     else
                     {
@@ -2086,23 +2087,23 @@ public partial class MainForm
                         if (waterLandmark != null)
                         {
                             announcer.Announce($"Over {waterLandmark.Name}");
-                            System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announced: Over {waterLandmark.Name}");
+                            Log.Debug("MainForm", $"[MainForm] Nearest city announced: Over {waterLandmark.Name}");
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: No nearby cities found");
+                            Log.Debug("MainForm", "[MainForm] Nearest city announcement skipped: No nearby cities found");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[MainForm] Error in nearest city announcement callback: {ex.Message}");
+                    Log.Debug("MainForm", $"[MainForm] Error in nearest city announcement callback: {ex.Message}");
                 }
             });
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error during nearest city announcement: {ex.Message}");
+            Log.Debug("MainForm", $"[MainForm] Error during nearest city announcement: {ex.Message}");
             // Don't announce errors to avoid interrupting the user
         }
     }

@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Accessibility;
 public enum AnnouncementMode
@@ -53,12 +54,12 @@ public class TolkWrapper : IDisposable
 
                 // Tolk returns wide character strings
                 string result = Marshal.PtrToStringUni(ptr) ?? "None";
-                // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] DetectScreenReader returned: '{result}'");
+                // Log.Debug("Accessibility", $"[TolkWrapper] DetectScreenReader returned: '{result}'");
                 return result;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Error in DetectScreenReader: {ex.Message}");
+                Log.Debug("Accessibility", $"[TolkWrapper] Error in DetectScreenReader: {ex.Message}");
                 return "Error";
             }
         }
@@ -70,32 +71,32 @@ public class TolkWrapper : IDisposable
         {
             if (_isLoaded) return true;
 
-            // System.Diagnostics.Debug.WriteLine("[TolkWrapper] Initializing Tolk...");
+            // Log.Debug("Accessibility", "[TolkWrapper] Initializing Tolk...");
 
             // First load Tolk
             Tolk_Load();
-            // System.Diagnostics.Debug.WriteLine("[TolkWrapper] Tolk_Load() called");
+            // Log.Debug("Accessibility", "[TolkWrapper] Tolk_Load() called");
 
             _isLoaded = Tolk_IsLoaded();
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Tolk_IsLoaded() returned: {_isLoaded}");
+            // Log.Debug("Accessibility", $"[TolkWrapper] Tolk_IsLoaded() returned: {_isLoaded}");
 
             // Only configure SAPI after successful load
             if (_isLoaded)
             {
                 Tolk_TrySAPI(true); // Enable SAPI fallback after load
-                // System.Diagnostics.Debug.WriteLine("[TolkWrapper] TrySAPI(true) called after load");
+                // Log.Debug("Accessibility", "[TolkWrapper] TrySAPI(true) called after load");
 
                 // Check what we have available
                 string detected = DetectedScreenReader;
                 bool hasSpeech = HasSpeech();
-                // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Detected: {detected}, HasSpeech: {hasSpeech}");
+                // Log.Debug("Accessibility", $"[TolkWrapper] Detected: {detected}, HasSpeech: {hasSpeech}");
             }
 
             return _isLoaded;
         }
         catch (Exception)
         {
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Failed to initialize Tolk");
+            // Log.Debug("Accessibility", $"[TolkWrapper] Failed to initialize Tolk");
             return false;
         }
     }
@@ -104,20 +105,20 @@ public class TolkWrapper : IDisposable
     {
         if (!_isLoaded || string.IsNullOrEmpty(text))
         {
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Speak failed - IsLoaded: {_isLoaded}, Text empty: {string.IsNullOrEmpty(text)}");
+            // Log.Debug("Accessibility", $"[TolkWrapper] Speak failed - IsLoaded: {_isLoaded}, Text empty: {string.IsNullOrEmpty(text)}");
             return false;
         }
 
         try
         {
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Calling Tolk_Output with: '{text}', interrupt: {interrupt}");
+            // Log.Debug("Accessibility", $"[TolkWrapper] Calling Tolk_Output with: '{text}', interrupt: {interrupt}");
             bool result = Tolk_Output(text, interrupt);
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Tolk_Output returned: {result}");
+            // Log.Debug("Accessibility", $"[TolkWrapper] Tolk_Output returned: {result}");
             return result;
         }
         catch (Exception)
         {
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Failed to speak via Tolk");
+            // Log.Debug("Accessibility", $"[TolkWrapper] Failed to speak via Tolk");
             return false;
         }
     }
@@ -130,12 +131,12 @@ public class TolkWrapper : IDisposable
         {
             string detected = DetectedScreenReader;
             bool isRunning = !string.IsNullOrEmpty(detected) && detected != "None" && detected != "SAPI" && detected != "Error";
-            // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] IsScreenReaderRunning: {isRunning} (detected: {detected})");
+            // Log.Debug("Accessibility", $"[TolkWrapper] IsScreenReaderRunning: {isRunning} (detected: {detected})");
             return isRunning;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Error checking screen reader: {ex.Message}");
+            Log.Debug("Accessibility", $"[TolkWrapper] Error checking screen reader: {ex.Message}");
             return false;
         }
     }
@@ -178,7 +179,7 @@ public class TolkWrapper : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Error unloading Tolk: {ex.Message}");
+                    Log.Debug("Accessibility", $"Error unloading Tolk: {ex.Message}");
                 }
                 _isLoaded = false;
             }
