@@ -801,7 +801,7 @@ public partial class SimConnectManager
     /// <summary>
     /// Unpack waypoint name from FlyByWire encoded format
     /// </summary>
-    private string UnpackWaypointName(double ident0, double ident1)
+    internal string UnpackWaypointName(double ident0, double ident1)
     {
         double[] values = { ident0, ident1 };
         string result = "";
