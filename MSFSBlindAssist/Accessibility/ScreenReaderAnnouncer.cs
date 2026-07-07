@@ -266,9 +266,6 @@ public class ScreenReaderAnnouncer : IDisposable
                     success = true;
                 }
 
-                // Always output to console as fallback - some screen readers pick this up
-                Console.WriteLine(message);
-
                 if (!success)
                 {
                     Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Warning: All speech methods failed");
@@ -277,8 +274,6 @@ public class ScreenReaderAnnouncer : IDisposable
             catch (Exception ex)
             {
                 Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Error announcing: {ex.Message}");
-                // Final fallback: console only
-                Console.WriteLine(message);
             }
         }
 
@@ -322,9 +317,6 @@ public class ScreenReaderAnnouncer : IDisposable
                     success = true;
                 }
 
-                // Always output to console as fallback with priority marker
-                Console.WriteLine($"! {message}");
-
                 if (!success)
                 {
                     Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Warning: All immediate speech methods failed");
@@ -333,8 +325,6 @@ public class ScreenReaderAnnouncer : IDisposable
             catch (Exception ex)
             {
                 Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Error in immediate announce: {ex.Message}");
-                // Final fallback: console only
-                Console.WriteLine($"! {message}");
             }
         }
 

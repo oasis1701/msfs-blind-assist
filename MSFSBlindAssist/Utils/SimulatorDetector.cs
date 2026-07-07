@@ -40,8 +40,7 @@ public static class SimulatorDetector
         }
         catch (Exception ex)
         {
-            Log.Debug("Utils", $"[SimulatorDetector] Error detecting simulator: {ex.Message}");
-            Console.WriteLine($"[SimulatorDetector] Error detecting simulator: {ex.Message}");
+            Log.Warn("Utils", $"[SimulatorDetector] Error detecting simulator: {ex.Message}");
             return "Unknown";
         }
     }

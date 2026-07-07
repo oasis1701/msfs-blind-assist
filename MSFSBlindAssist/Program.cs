@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.Utils;
 using MSFSBlindAssist.Utils.Logging;
@@ -8,17 +7,6 @@ namespace MSFSBlindAssist;
 
 static class Program
     {
-        [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool AllocConsole();
-
-        [DllImport("kernel32.dll")]
-        static extern IntPtr GetConsoleWindow();
-
-        [DllImport("user32.dll")]
-        static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-        const int SW_HIDE = 0;
-
         private static readonly LogChannel Startup = Log.Channel("startup", truncateOnLaunch: true);
 
         /// <summary>
@@ -51,24 +39,6 @@ static class Program
                 int removedLegacyBridges = LegacyEfbBridgeCleanup.RemoveRetiredBridges();
                 if (removedLegacyBridges > 0)
                     Startup.Info($"Removed retired accessibility bridge package(s) from {removedLegacyBridges} Community folder(s)");
-
-                // Allocate a console for NVDA to monitor (do this early for logging)
-                Startup.Info("Allocating console window...");
-                AllocConsole();
-
-                // Hide the console window but keep it active for NVDA
-                IntPtr consoleWindow = GetConsoleWindow();
-                if (consoleWindow != IntPtr.Zero)
-                {
-                    ShowWindow(consoleWindow, SW_HIDE);
-                    Startup.Info("Console window allocated and hidden");
-                }
-                else
-                {
-                    Startup.Info("WARNING: Console window handle is null");
-                }
-
-                Console.WriteLine("MSFS Blind Assist starting...");
 
                 // Phase 1: Perform runtime requirements check
                 Startup.Info("Starting runtime requirements check...");
@@ -253,14 +223,14 @@ static class Program
                 string detectedSimulator = SimulatorDetector.DetectRunningSimulator();
                 string sourceDllName = SimulatorDetector.GetSimConnectDllName(detectedSimulator);
 
-                Console.WriteLine($"[Program] Detected simulator: {detectedSimulator} - using {sourceDllName}");
+                Log.Debug("Program", $"Detected simulator: {detectedSimulator} - using {sourceDllName}");
 
                 string sourceDllPath = Path.Combine(appDirectory, sourceDllName);
 
                 // Verify source DLL exists
                 if (!File.Exists(sourceDllPath))
                 {
-                    Console.WriteLine($"[Program] ERROR: Source DLL not found: {sourceDllPath}");
+                    Log.Error("Program", $"Source DLL not found: {sourceDllPath}");
                     return false;
                 }
 
@@ -276,7 +246,7 @@ static class Program
                         Math.Abs((sourceInfo.LastWriteTime - targetInfo.LastWriteTime).TotalSeconds) < 2)
                     {
                         needsCopy = false;
-                        Console.WriteLine($"[Program] SimConnect.dll already matches {sourceDllName}");
+                        Log.Debug("Program", $"SimConnect.dll already matches {sourceDllName}");
                     }
                 }
 
@@ -294,19 +264,18 @@ static class Program
                         {
                             // DLL is already loaded - can't replace it
                             // This is OK if it's already the right version
-                            Console.WriteLine("[Program] WARNING: SimConnect.dll is already loaded, cannot replace");
+                            Log.Warn("Program", "SimConnect.dll is already loaded, cannot replace");
                         }
                     }
 
                     File.Copy(sourceDllPath, targetDllPath, overwrite: true);
-                    Console.WriteLine($"[Program] Copied {sourceDllName} to SimConnect.dll");
+                    Log.Debug("Program", $"Copied {sourceDllName} to SimConnect.dll");
                 }
 
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Program] ERROR in EnsureCorrectSimConnectDll: {ex.Message}");
                 Log.Error("Program", "ERROR in EnsureCorrectSimConnectDll", ex);
                 return false;
             }
