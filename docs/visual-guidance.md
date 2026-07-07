@@ -12,8 +12,8 @@ The visual guidance system uses a **PID controller** to generate pitch and bank 
 - `MSFSBlindAssist/Aircraft/IAircraftDefinition.cs` — `VisualGuidanceProfile` (per-aircraft tunables incl. tone frequency range)
 - `MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs` — default A320 profile
 - `MSFSBlindAssist/Settings/UserSettings.cs` — `VisualGuidanceToneWaveform/Volume`, `VisualGuidanceCurrentToneWaveform/Volume`, `VisualGuidanceHardPanTone`
-- `MSFSBlindAssist/Forms/HandFlyOptionsForm.cs` — UI for all visual-guidance audio settings
-- `MSFSBlindAssist/MainForm.cs` (≈line 720) — `SIM_ON_GROUND` handler that auto-deactivates visual guidance on touchdown
+- `MSFSBlindAssist/Forms/Settings/HandFlyPanel.cs` — UI for all visual-guidance audio settings
+- `MSFSBlindAssist/MainForm.Announcers.cs` — `OnSimVarUpdated` method contains the `SIM_ON_GROUND` handler that auto-deactivates visual guidance on touchdown
 
 ## Dual-Tone Audio Cue
 
@@ -74,7 +74,7 @@ Also: the PID math, phase machine, and lateral arc-capture logic are untouched b
 
 ### Settings
 
-All exposed in the Hand Fly Options dialog (`Forms/HandFlyOptionsForm.cs`):
+All exposed in the Hand Fly Options dialog (`Forms/Settings/HandFlyPanel.cs`):
 
 | Setting | Default | Purpose |
 |---|---|---|

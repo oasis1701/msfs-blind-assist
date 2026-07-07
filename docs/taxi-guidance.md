@@ -22,7 +22,7 @@ Turn-by-turn taxi assistance for blind pilots. Combines a continuous stereo-pann
 - `MSFSBlindAssist/Database/Models/TaxiPath.cs`, `TaxiNode.cs`, `TaxiRoute.cs`, `StartPosition.cs`
 - `MSFSBlindAssist/Database/LittleNavMapProvider.cs` — `GetTaxiPaths()`, `GetRunwayStarts()` queries + taxiway name normalization
 - `MSFSBlindAssist/Forms/TaxiAssistForm.cs` — route entry UI
-- `MSFSBlindAssist/Forms/TaxiGuidanceOptionsForm.cs` — user settings dialog
+- `MSFSBlindAssist/Forms/Settings/TaxiGuidancePanel.cs` — user settings dialog
 - `MSFSBlindAssist/Forms/LandingExitForm.cs` — pre-touchdown runway-exit picker
 - `MSFSBlindAssist/Services/LandingExitPlanner.cs` — touchdown detection + auto-activation
 - `MSFSBlindAssist/Navigation/LandingExit.cs` — exit-node model returned by `TaxiGraph.GetLandingExits()`
