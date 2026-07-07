@@ -8,7 +8,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
@@ -45,7 +45,7 @@ namespace MSFSBlindAssist
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -88,7 +88,7 @@ namespace MSFSBlindAssist
             this.databaseSettingsMenuItem,
             this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
-            this.simbriefSettingsMenuItem,
+            this.settingsMenuItem,
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.taxiGuidanceOptionsMenuItem,
@@ -128,14 +128,14 @@ namespace MSFSBlindAssist
             this.geoNamesSettingsMenuItem.Text = "Define &GeoNames API Key";
             this.geoNamesSettingsMenuItem.Click += new System.EventHandler(this.GeoNamesSettingsMenuItem_Click);
             //
-            // simbriefSettingsMenuItem
+            // settingsMenuItem
             //
-            this.simbriefSettingsMenuItem.AccessibleName = "SimBrief Settings";
-            this.simbriefSettingsMenuItem.AccessibleDescription = "Configure SimBrief username for flight plan integration";
-            this.simbriefSettingsMenuItem.Name = "simbriefSettingsMenuItem";
-            this.simbriefSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.simbriefSettingsMenuItem.Text = "Define &SimBrief Username";
-            this.simbriefSettingsMenuItem.Click += new System.EventHandler(this.SimBriefSettingsMenuItem_Click);
+            this.settingsMenuItem.AccessibleName = "Settings";
+            this.settingsMenuItem.AccessibleDescription = "Open the unified Settings dialog";
+            this.settingsMenuItem.Name = "settingsMenuItem";
+            this.settingsMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.settingsMenuItem.Text = "&Settings…";
+            this.settingsMenuItem.Click += new System.EventHandler(this.SettingsMenuItem_Click);
             //
             // geminiSettingsMenuItem
             //

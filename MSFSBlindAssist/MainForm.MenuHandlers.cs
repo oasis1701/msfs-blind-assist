@@ -111,16 +111,56 @@ public partial class MainForm
         }
     }
 
-    private void SimBriefSettingsMenuItem_Click(object? sender, EventArgs e)
+    private void SettingsMenuItem_Click(object? sender, EventArgs e)
     {
-        using (var settingsForm = new Forms.SimBriefSettingsForm())
+        // Same inline refresh-taxiway-names callback TaxiGuidanceOptionsMenuItem_Click builds
+        // today; only wired when the augmenting provider is available (Task 6 moves this into
+        // the TaxiGuidancePanel wiring).
+        Func<Task>? refreshCallback = null;
+        if (_augmentingProvider != null && airportDataProvider != null)
         {
-            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            var provider = _augmentingProvider;
+            var dataProvider = airportDataProvider;
+            refreshCallback = async () =>
             {
-                statusLabel.Text = "SimBrief settings saved successfully";
-                announcer.Announce("SimBrief settings saved successfully");
-            }
+                var pos = simConnectManager.LastKnownPosition;
+                if (pos == null) return;
+
+                string? icao = await Task.Run(() =>
+                    dataProvider.GetNearbyAirportICAOs(pos.Value.Latitude, pos.Value.Longitude, 50.0)
+                        .Where(c => c != null && c.Length == 4)
+                        .FirstOrDefault());
+
+                if (icao == null) return;
+
+                await provider.PrefetchAsync(icao, force: true);
+
+                var cov = provider.GetLastCoverage(icao);
+                int added = cov == null ? 0
+                    : cov.NamesAdoptedFromOsm + cov.NamesAdoptedFromAptDat + cov.AliasesAdded;
+                string msg = added > 0
+                    ? $"Taxiway names refreshed for {icao}: {added} added."
+                    : $"Taxiway names refreshed for {icao}. No new names found.";
+                if (IsHandleCreated && !IsDisposed)
+                    BeginInvoke(() => announcer.AnnounceImmediate(msg));
+            };
         }
+
+        using var dlg = new Forms.Settings.SettingsForm(refreshTaxiwayNames: refreshCallback);
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
+            ApplyRuntimeSettings();
+            statusLabel.Text = "Settings saved";
+            announcer.Announce("Settings saved");
+        }
+    }
+
+    /// <summary>Re-applies saved UserSettings to the live runtime managers after the Settings
+    /// dialog is accepted, so changes take effect without restarting. Each settings section that
+    /// has a live effect adds its re-apply here (populated as panels are migrated).</summary>
+    private void ApplyRuntimeSettings()
+    {
+        // (SimBrief has no live effect. Later tasks add announcement/handfly/taxi re-apply here.)
     }
 
     private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
