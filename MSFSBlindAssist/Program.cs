@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.Utils;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -26,6 +27,8 @@ static class Program
         {
             try
             {
+                Log.Init();
+
                 // Initialize startup logging
                 StartupLogger.Log("========================================");
                 StartupLogger.Log("MSFS Blind Assist Starting");
@@ -165,6 +168,10 @@ static class Program
 
                 // Release the single-instance lock even on error
                 SingleInstanceManager.ReleaseSingleInstanceLock();
+            }
+            finally
+            {
+                Log.Shutdown();
             }
         }
 
