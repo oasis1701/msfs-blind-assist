@@ -41,64 +41,6 @@ public partial class MainForm
         }
     }
 
-    private void AnnouncementSettingsMenuItem_Click(object? sender, EventArgs e)
-    {
-        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-        var currentMode = announcer.GetAnnouncementMode();
-        using (var settingsForm = new AnnouncementSettingsForm(
-            currentMode,
-            settings.NearestCityAnnouncementInterval,
-            settings.WeatherAutoAnnounceEnabled,
-            settings.WeatherAutoAnnounceIntervalMinutes,
-            settings.SigmetProximityAlertsEnabled,
-            settings.PirepProximityAlertsEnabled,
-            settings.SigmetProximityRangeNm,
-            settings.AnnounceTimeWithSeconds,
-            settings.GsxBackgroundMonitoring))
-        {
-            if (settingsForm.ShowDialog(this) == DialogResult.OK)
-            {
-                // Announcement mode
-                var newMode = settingsForm.SelectedMode;
-                announcer.SetAnnouncementMode(newMode);
-
-                // Nearest city interval
-                settings.NearestCityAnnouncementInterval = settingsForm.NearestCityAnnouncementInterval;
-                RestartNearestCityAnnouncementTimer();
-
-                // Weather announcements
-                settings.WeatherAutoAnnounceEnabled = settingsForm.WeatherAutoAnnounceEnabled;
-                settings.WeatherAutoAnnounceIntervalMinutes = settingsForm.WeatherAutoAnnounceIntervalMinutes;
-                settings.SigmetProximityAlertsEnabled = settingsForm.SigmetProximityAlertsEnabled;
-                settings.PirepProximityAlertsEnabled = settingsForm.PirepProximityAlertsEnabled;
-                settings.SigmetProximityRangeNm = settingsForm.SigmetProximityRangeNm;
-
-                // Push the new interval to the live monitor so the change
-                // takes effect without restarting the app.
-                if (activeSkyWeatherMonitor != null)
-                    activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;
-
-                // Time-of-day format toggle (Output Z / Shift+Z).
-                settings.AnnounceTimeWithSeconds = settingsForm.AnnounceTimeWithSeconds;
-
-                // GSX background-monitoring toggle. Push the new value into
-                // the live service. The form's VisibleChanged handler will
-                // overwrite this when the form is open/hidden — that's
-                // intentional (form open = form drives speech). When the
-                // form is hidden the saved setting wins.
-                settings.GsxBackgroundMonitoring = settingsForm.GsxBackgroundMonitoring;
-                if (_gsxService != null && (_accessGsxForm == null || !_accessGsxForm.Visible))
-                    _gsxService.AnnounceWhenFormHidden = settings.GsxBackgroundMonitoring;
-
-                MSFSBlindAssist.Settings.SettingsManager.Save();
-
-                string modeText = newMode == AnnouncementMode.ScreenReader ? "screen reader" : "SAPI";
-                statusLabel.Text = $"Announcement settings saved (mode: {modeText})";
-                announcer.Announce("Announcement settings saved");
-            }
-        }
-    }
-
     private void GeoNamesSettingsMenuItem_Click(object? sender, EventArgs e)
     {
         using (var settingsForm = new Forms.GeoNamesApiKeyForm())
@@ -160,7 +102,25 @@ public partial class MainForm
     /// has a live effect adds its re-apply here (populated as panels are migrated).</summary>
     private void ApplyRuntimeSettings()
     {
-        // (SimBrief has no live effect. Later tasks add announcement/handfly/taxi re-apply here.)
+        // (SimBrief has no live effect. Later tasks add handfly/taxi re-apply here.)
+
+        // Announcements: mode, nearest-city timer, weather monitor interval, GSX background toggle.
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        var mode = Enum.TryParse(settings.AnnouncementMode, out AnnouncementMode parsedMode)
+            ? parsedMode
+            : AnnouncementMode.ScreenReader;
+        announcer.SetAnnouncementMode(mode);
+        RestartNearestCityAnnouncementTimer();
+
+        if (activeSkyWeatherMonitor != null)
+            activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;
+
+        // GSX background-monitoring toggle. Push the new value into the live
+        // service. The form's VisibleChanged handler will overwrite this
+        // when the form is open/hidden — that's intentional (form open =
+        // form drives speech). When the form is hidden the saved setting wins.
+        if (_gsxService != null && (_accessGsxForm == null || !_accessGsxForm.Visible))
+            _gsxService.AnnounceWhenFormHidden = settings.GsxBackgroundMonitoring;
     }
 
     private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)

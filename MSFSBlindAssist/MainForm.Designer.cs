@@ -6,7 +6,6 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.MenuStrip menuStrip = null!;
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
@@ -43,7 +42,6 @@ namespace MSFSBlindAssist
             this.menuStrip = new System.Windows.Forms.MenuStrip();
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -86,7 +84,6 @@ namespace MSFSBlindAssist
             this.fileMenuItem.AccessibleName = "File menu";
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
-            this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
             this.settingsMenuItem,
             this.geminiSettingsMenuItem,
@@ -109,15 +106,6 @@ namespace MSFSBlindAssist
             this.databaseSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.databaseSettingsMenuItem.Text = "&Database Settings";
             this.databaseSettingsMenuItem.Click += new System.EventHandler(this.DatabaseSettingsMenuItem_Click);
-            //
-            // announcementSettingsMenuItem
-            //
-            this.announcementSettingsMenuItem.AccessibleName = "Announcement Settings";
-            this.announcementSettingsMenuItem.AccessibleDescription = "Configure how aircraft state announcements are delivered";
-            this.announcementSettingsMenuItem.Name = "announcementSettingsMenuItem";
-            this.announcementSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.announcementSettingsMenuItem.Text = "&Announcement Settings";
-            this.announcementSettingsMenuItem.Click += new System.EventHandler(this.AnnouncementSettingsMenuItem_Click);
             //
             // geoNamesSettingsMenuItem
             //
