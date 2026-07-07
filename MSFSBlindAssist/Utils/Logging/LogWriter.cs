@@ -38,7 +38,11 @@ internal sealed class LogWriter
 
     public void RegisterTruncateOnLaunch(string fileName) { lock (_ioLock) _truncateOnLaunch.Add(fileName); }
     public void Start() => _thread.Start();
-    public void Enqueue(in LogEntry e) { if (!_queue.TryAdd(e)) Interlocked.Increment(ref _dropped); }
+    public void Enqueue(in LogEntry e)
+    {
+        try { if (!_queue.TryAdd(e)) Interlocked.Increment(ref _dropped); }
+        catch { /* queue completed during shutdown — drop silently, never throw into the caller */ }
+    }
 
     public void Shutdown(TimeSpan timeout)
     {

@@ -42,5 +42,8 @@ public static class Log
         });
 
     internal static void Emit(string fileName, LogLevel level, string category, string message, Exception? ex)
-        => Writer.Enqueue(new LogEntry(fileName, LogFormatter.Format(DateTime.Now, level, category, message, ex)));
+    {
+        try { Writer.Enqueue(new LogEntry(fileName, LogFormatter.Format(DateTime.Now, level, category, message, ex))); }
+        catch { /* logging must never throw into the caller */ }
+    }
 }

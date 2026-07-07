@@ -65,4 +65,14 @@ public class LogWriterTests : IDisposable
         var lines = File.ReadAllLines(Path4("s.log"));
         Assert.Equal(new[]{ "fresh" }, lines); // stale content gone
     }
+
+    [Fact]
+    public void Enqueue_after_shutdown_does_not_throw()
+    {
+        var w = new LogWriter(Path4); w.Start();
+        w.Enqueue(new LogEntry("z.log", "before"));
+        w.Shutdown(TimeSpan.FromSeconds(5));
+        var ex = Record.Exception(() => w.Enqueue(new LogEntry("z.log", "after-shutdown")));
+        Assert.Null(ex); // must not throw even though the queue is CompleteAdding
+    }
 }
