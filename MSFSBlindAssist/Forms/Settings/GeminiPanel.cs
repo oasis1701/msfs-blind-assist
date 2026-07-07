@@ -181,6 +181,10 @@ public class GeminiPanel : UserControl, ISettingsPanel
                 }
             }
 
+            // The Settings dialog may have been closed while the fetch was in flight — bail
+            // out before touching any control to avoid an ObjectDisposedException.
+            if (IsDisposed || Disposing) return;
+
             modelComboBox.BeginUpdate();
             try
             {
@@ -215,7 +219,8 @@ public class GeminiPanel : UserControl, ISettingsPanel
         finally
         {
             _populatingModels = false;
-            refreshModelsButton.Enabled = true;
+            if (!IsDisposed && !Disposing)
+                refreshModelsButton.Enabled = true;
         }
     }
 

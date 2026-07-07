@@ -689,11 +689,13 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     }
 
     /// <summary>Stops both the steering test tone and the docking-beep test whenever this tab
-    /// is left (tab switch or dialog close on any path — OK, Cancel, or the [X] button).
-    /// Idempotent and non-throwing.</summary>
+    /// is left (tab switch or dialog close on any path — OK, Cancel, or the [X] button), and
+    /// resets the steering Test Tone button's caption back to idle so re-entering the tab
+    /// never shows a stale "Stop Test". Idempotent and non-throwing.</summary>
     public void OnLeaving()
     {
         StopTestTone();
+        testToneButton.Text = "Test Tone";
         StopDockingBeepTest();
     }
 

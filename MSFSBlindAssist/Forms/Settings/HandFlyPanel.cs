@@ -788,10 +788,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     }
 
     /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on
-    /// any path — OK, Cancel, or the [X] button). Idempotent and non-throwing.</summary>
+    /// any path — OK, Cancel, or the [X] button), and resets the Test Tone button's caption
+    /// back to idle so re-entering the tab never shows a stale "Stop Test". Idempotent and
+    /// non-throwing.</summary>
     public void OnLeaving()
     {
         StopTestTone();
+        testToneButton.Text = "Test Tone";
     }
 
     protected override void Dispose(bool disposing)

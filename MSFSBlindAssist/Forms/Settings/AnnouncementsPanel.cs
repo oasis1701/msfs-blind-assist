@@ -36,6 +36,8 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
     private void InitializeComponent()
     {
+        AutoScroll = true;
+
         var generalGroup = BuildGeneralGroup();
         var weatherGroup = BuildWeatherGroup();
         weatherGroup.Location = new System.Drawing.Point(12, generalGroup.Bottom + 12);
