@@ -430,7 +430,7 @@ public partial class FlyByWireA380Definition
             if (Math.Abs(target - cur) <= step) { cur = target; _sliderTarget.Remove(lvar); }
             else cur += Math.Sign(target - cur) * step;
             _sliderCurrent[lvar] = cur;
-            sim.ExecuteCalculatorCode(cur.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")");
+            sim.ExecuteCalculatorCode(cur.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")", quiet: true);   // per-frame writer (40ms timer) -- skip per-command debug log
         }
         if (_sliderTarget.Count == 0) StopSliderRamp();
     }
@@ -520,7 +520,7 @@ public partial class FlyByWireA380Definition
             string expr = _seatMotorDir[v] > 0
                 ? seq + " 0 * (L:" + v + ") " + step.ToString(inv) + " + 100 min (>L:" + v + ")"
                 : seq + " 0 * (L:" + v + ") " + step.ToString(inv) + " - 0 max (>L:" + v + ")";
-            sim.ExecuteCalculatorCode(expr);
+            sim.ExecuteCalculatorCode(expr, quiet: true);   // per-frame writer (20ms timer) -- skip per-command debug log
             double pos = Math.Max(0.0, Math.Min(100.0, (_seatMotorPos.TryGetValue(v, out var p) ? p : 50.0) + _seatMotorDir[v] * step));
             _seatMotorPos[v] = pos;
             if (pos <= 0.01 || pos >= 99.99 || hitSafety) { _seatMotorDir.Remove(v); AnnounceSeatPosition(v); }

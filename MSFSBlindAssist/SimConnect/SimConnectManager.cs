@@ -65,7 +65,43 @@ public partial class SimConnectManager
     public event EventHandler<string>? AircraftIcaoTypeDetected;
 
     // Aircraft definition
-    public IAircraftDefinition? CurrentAircraft { get; set; }
+    private IAircraftDefinition? _currentAircraft;
+    public IAircraftDefinition? CurrentAircraft
+    {
+        get => _currentAircraft;
+        set
+        {
+            _currentAircraft = value;
+            RebuildLedVarMap();
+        }
+    }
+
+    // Cache of LedVariable -> owning SimVarDefinition for the current aircraft, rebuilt whenever
+    // CurrentAircraft changes. Replaces a per-event `variables.Values.FirstOrDefault(v =>
+    // v.LedVariable == e.VariableName)` LINQ scan over the full (~400-700 entry) variable set --
+    // one MobiFlight default-channel push can raise up to 64 LVar events, each of which used to pay
+    // for a fresh scan + closure. Built with TryAdd (first-wins in variables.Values enumeration
+    // order) to replicate FirstOrDefault's semantics if two defs ever share a LedVariable; as of
+    // this writing only FlyByWireA320Definition sets LedVariable and every value there is unique,
+    // so this is a defensive equivalence guarantee rather than an observed collision.
+    private Dictionary<string, SimVarDefinition> ledVarToDef = new();
+
+    private void RebuildLedVarMap()
+    {
+        var map = new Dictionary<string, SimVarDefinition>();
+        var variables = _currentAircraft?.GetVariables();
+        if (variables != null)
+        {
+            foreach (var v in variables.Values)
+            {
+                if (!string.IsNullOrEmpty(v.LedVariable))
+                {
+                    map.TryAdd(v.LedVariable, v);
+                }
+            }
+        }
+        ledVarToDef = map;
+    }
 
     // Connection state
     public bool IsConnected { get; private set; }
@@ -799,10 +835,8 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the corresponding variable definition
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.Values.FirstOrDefault(v =>
-                v.LedVariable == e.VariableName);
+            // Find the corresponding variable definition via the cached LED-var lookup
+            ledVarToDef.TryGetValue(e.VariableName, out var varDef);
 
             if (varDef != null)
             {
@@ -828,10 +862,8 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the corresponding variable definition
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.Values.FirstOrDefault(v =>
-                v.LedVariable == e.LedVariable);
+            // Find the corresponding variable definition via the cached LED-var lookup
+            ledVarToDef.TryGetValue(e.LedVariable, out var varDef);
 
             // Fallback: route a one-shot MobiFlight read by var KEY when no def
             // declares it as a LedVariable. Used for FCU readouts (e.g. the VS
@@ -839,7 +871,8 @@ public partial class SimConnectManager
             // ReadLedVariable(key) can deliver the correct MobiFlight value under
             // the var's own name without setting LedVariable (which would make
             // MainForm re-request it over the unreliable SimConnect path).
-            if (varDef == null && variables.TryGetValue(e.LedVariable, out var byKey))
+            var variables = CurrentAircraft?.GetVariables();
+            if (varDef == null && variables != null && variables.TryGetValue(e.LedVariable, out var byKey))
             {
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
