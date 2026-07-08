@@ -5,7 +5,7 @@ using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
-public class MobiFlightWasmModule
+public class MobiFlightWasmModule : IDisposable
     {
         private Microsoft.FlightSimulator.SimConnect.SimConnect simConnect;
         private const string CLIENT_NAME = "FBWBA";

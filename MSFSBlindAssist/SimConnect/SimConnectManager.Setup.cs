@@ -778,12 +778,12 @@ public partial class SimConnectManager
             if (kvp.Value.Type == SimVarType.Event)
             {
                 uint eventId = nextEventId++;
-                eventIds[kvp.Key] = eventId;
 
                 try
                 {
                     // Map the event
                     sc.MapClientEventToSimEvent((EVENTS)eventId, kvp.Value.Name);
+                    eventIds[kvp.Key] = eventId;
                     registeredCount++;
                 }
                 catch (Exception ex)
