@@ -480,6 +480,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- VENTILATION ----
         OnOff("A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", "Cabin Fans");
         OnOff("A32NX_OVHD_VENT_AIR_EXTRACT_PB_IS_ON", "Air Extract");
+        // Avionics ventilation BLOWER pushbutton (completeness pass — live-verified settable).
+        OnOff("A32NX_OVHD_VENT_BLOWER_PB_IS_ON", "Avionics Blower");
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
@@ -549,6 +551,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             Press($"A32NX_OVHD_FIRE_AGENT_2_ENG_{n}_IS_PRESSED", $"Engine {n} Agent 2 Discharge");
         }
         Press("A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED", "APU Agent Discharge");
+        // Cargo smoke fire-agent discharge locks (completeness pass — live-verified settable).
+        // Guarded discharge controls for the fwd/aft cargo fire bottles. Off/On combos.
+        Sel("A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE", "Cargo Smoke Discharge 1",
+            new Dictionary<double, string> { [0] = "Normal", [1] = "Discharge" });
+        Sel("A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE", "Cargo Smoke Discharge 2",
+            new Dictionary<double, string> { [0] = "Normal", [1] = "Discharge" });
         // Fire Test + Cargo Smoke Detection Test are HOLD on/off tests — they STAY combos
         // (Off/On): the user picks On (test runs, the EWD speaks the result), then Off, and
         // the combo always shows the current state. Only true one-shot momentary actions are

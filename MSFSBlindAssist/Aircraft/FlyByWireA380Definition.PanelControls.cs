@@ -84,7 +84,8 @@ public partial class FlyByWireA380Definition
         };
         p["Ventilation"] = new List<string>
         {
-            "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", "A32NX_OVHD_VENT_AIR_EXTRACT_PB_IS_ON"
+            "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", "A32NX_OVHD_VENT_AIR_EXTRACT_PB_IS_ON",
+            "A32NX_OVHD_VENT_BLOWER_PB_IS_ON"
         };
         p["Cargo Air"] = new List<string>
         {
@@ -109,6 +110,7 @@ public partial class FlyByWireA380Definition
             "A32NX_OVHD_FIRE_AGENT_1_ENG_3_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_3_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_4_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_4_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED",
+            "A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE", "A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE",
             "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "A32NX_FIRE_TEST_CARGO"
         };
         p["Oxygen"] = new List<string>
