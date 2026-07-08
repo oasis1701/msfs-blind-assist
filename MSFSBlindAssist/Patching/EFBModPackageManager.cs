@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Patching
 {
@@ -235,7 +236,7 @@ namespace MSFSBlindAssist.Patching
                     string communityPath = Path.Combine(basePath, "Community");
                     if (Directory.Exists(communityPath))
                     {
-                        System.Diagnostics.Debug.WriteLine($"[EFBModPackageManager] Found Community folder: {communityPath} (sim={runningSimulator})");
+                        Log.Debug("Patching", $"Found Community folder: {communityPath} (sim={runningSimulator})");
                         return communityPath;
                     }
                 }
@@ -345,7 +346,7 @@ namespace MSFSBlindAssist.Patching
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Install failed: {ex.Message}");
+                Log.Debug("Patching", $"EFBModPackageManager: Install failed: {ex.Message}");
                 // Clean up partial install
                 try
                 {
@@ -420,7 +421,7 @@ namespace MSFSBlindAssist.Patching
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Update failed: {ex.Message}");
+                Log.Debug("Patching", $"EFBModPackageManager: Update failed: {ex.Message}");
                 return ModPackageResult.InstallFailed;
             }
         }
@@ -442,7 +443,7 @@ namespace MSFSBlindAssist.Patching
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Remove failed: {ex.Message}");
+                Log.Debug("Patching", $"EFBModPackageManager: Remove failed: {ex.Message}");
                 return ModPackageResult.InstallFailed;
             }
         }

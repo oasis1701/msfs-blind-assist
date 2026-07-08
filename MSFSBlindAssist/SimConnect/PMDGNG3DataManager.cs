@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -113,8 +114,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] RegisterClientDataAreas failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RegisterClientDataAreas failed: {ex.Message}");
         }
 
         // Restart the 1Hz polling. We tried ON_SET push-subscription per the
@@ -130,7 +131,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         _pollTimer.Tick += PollTimer_Tick;
         _pollTimer.Start();
 
-        System.Diagnostics.Debug.WriteLine($"[PMDGNG3DataManager] Initialized.");
+        Log.Debug("SimConnect", $"Initialized.");
     }
 
     // ------------------------------------------------------------------
@@ -171,7 +172,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         _simConnect.RegisterStruct<SIMCONNECT_RECV_CLIENT_DATA, PMDGNG3CDUScreen>(
             PMDG_DATA_DEFINITION_ID.CDU_1);
 
-        System.Diagnostics.Debug.WriteLine("[PMDGNG3DataManager] Client data areas registered.");
+        Log.Debug("SimConnect", "Client data areas registered.");
     }
 
     // ------------------------------------------------------------------
@@ -213,8 +214,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] RequestData failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RequestData failed: {ex.Message}");
         }
     }
 
@@ -270,8 +271,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] ProcessClientData error: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"ProcessClientData error: {ex.Message}");
         }
     }
 
@@ -569,8 +570,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
                 return ToDouble(arr.GetValue(index));
         }
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDGNG3DataManager] GetFieldValue: unknown field '{fieldName}'");
+        Log.Debug("SimConnect", 
+            $"GetFieldValue: unknown field '{fieldName}'");
         return 0.0;
     }
 
@@ -612,8 +613,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] SendEvent '{eventName}' failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEvent '{eventName}' failed: {ex.Message}");
         }
     }
 
@@ -633,8 +634,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
             0,
             ctrl);
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDGNG3DataManager] SendViaCDA: eventId=0x{eventId:X} param={parameter}");
+        Log.Debug("SimConnect", 
+            $"SendViaCDA: eventId=0x{eventId:X} param={parameter}");
     }
 
     /// <summary>
@@ -671,8 +672,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
         }
     }
 
@@ -925,8 +926,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] RequestCDUScreen({cdu}) failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RequestCDUScreen({cdu}) failed: {ex.Message}");
         }
     }
 
@@ -1011,6 +1012,6 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // instead of burning its full timeout against a connection whose
         // responses now route to the replacement manager.
         _simConnect = null;
-        System.Diagnostics.Debug.WriteLine("[PMDGNG3DataManager] Disposed.");
+        Log.Debug("SimConnect", "Disposed.");
     }
 }

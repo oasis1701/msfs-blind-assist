@@ -1,12 +1,14 @@
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Settings;
 
-namespace MSFSBlindAssist.Forms;
+namespace MSFSBlindAssist.Forms.Settings;
 
-public partial class AnnouncementSettingsForm : Form
+/// <summary>Announcements section of the unified Settings dialog. Extracted from the retired
+/// standalone announcement-settings dialog — same controls, same AccessibleNames, but the old
+/// General/Weather inner TabControl is replaced with two stacked GroupBoxes.</summary>
+public class AnnouncementsPanel : UserControl, ISettingsPanel
 {
-    // ── General tab controls ────────────────────────────────────────────────
+    // ── General group ────────────────────────────────────────────────────────
     private RadioButton _screenReaderRadio = null!;
     private RadioButton _sapiRadio = null!;
     private Label _statusLabel = null!;
@@ -14,152 +16,77 @@ public partial class AnnouncementSettingsForm : Form
     private CheckBox _timeWithSecondsCheck = null!;
     private CheckBox _gsxBackgroundMonitoring = null!;
 
-    // ── Weather tab controls ────────────────────────────────────────────────
+    // ── Weather group ────────────────────────────────────────────────────────
     private CheckBox _weatherAutoAnnounce = null!;
     private ComboBox _weatherIntervalCombo = null!;
     private CheckBox _sigmetAlerts = null!;
     private CheckBox _pirepAlerts = null!;
     private NumericUpDown _proximityRange = null!;
 
-    // ── Buttons ─────────────────────────────────────────────────────────────
-    private Button _okButton = null!;
-    private Button _cancelButton = null!;
-
-    // ── Public results ──────────────────────────────────────────────────────
-    public AnnouncementMode SelectedMode { get; private set; }
-    public int NearestCityAnnouncementInterval { get; private set; }
-    public bool WeatherAutoAnnounceEnabled { get; private set; }
-    public int WeatherAutoAnnounceIntervalMinutes { get; private set; }
-    public bool SigmetProximityAlertsEnabled { get; private set; }
-    public bool PirepProximityAlertsEnabled { get; private set; }
-    public int SigmetProximityRangeNm { get; private set; }
-    public bool AnnounceTimeWithSeconds { get; private set; }
-    public bool GsxBackgroundMonitoring { get; private set; }
-
     /// <summary>Combo entries: minutes (0 = AS download interval, no extra throttle).</summary>
     private static readonly int[] IntervalChoicesMinutes = { 0, 5, 10, 15, 20, 30, 45, 60 };
 
-    public AnnouncementSettingsForm(
-        AnnouncementMode currentMode,
-        int nearestCityInterval,
-        bool weatherAutoAnnounce,
-        int weatherAutoAnnounceIntervalMinutes,
-        bool sigmetAlerts,
-        bool pirepAlerts,
-        int proximityRangeNm,
-        bool announceTimeWithSeconds,
-        bool gsxBackgroundMonitoring)
+    public string TabTitle => "Announcements";
+
+    public AnnouncementsPanel()
     {
-        SelectedMode = currentMode;
-        NearestCityAnnouncementInterval = nearestCityInterval;
-        WeatherAutoAnnounceEnabled = weatherAutoAnnounce;
-        WeatherAutoAnnounceIntervalMinutes = weatherAutoAnnounceIntervalMinutes;
-        SigmetProximityAlertsEnabled = sigmetAlerts;
-        PirepProximityAlertsEnabled = pirepAlerts;
-        SigmetProximityRangeNm = proximityRangeNm;
-        AnnounceTimeWithSeconds = announceTimeWithSeconds;
-        GsxBackgroundMonitoring = gsxBackgroundMonitoring;
         InitializeComponent();
-        SetupAccessibility();
         UpdateScreenReaderStatus();
     }
 
     private void InitializeComponent()
     {
-        Text = "Announcement Settings";
-        Size = new Size(480, 420);
-        StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowInTaskbar = false;
+        AutoScroll = true;
 
-        var tabs = new AccessibleTabControl
-        {
-            Dock = DockStyle.Fill,
-            AccessibleName = "Announcement settings tabs"
-        };
+        var generalGroup = BuildGeneralGroup();
+        var weatherGroup = BuildWeatherGroup();
+        weatherGroup.Location = new System.Drawing.Point(12, generalGroup.Bottom + 12);
 
-        tabs.TabPages.Add(BuildGeneralTab());
-        tabs.TabPages.Add(BuildWeatherTab());
-
-        var buttonPanel = new Panel
-        {
-            Dock = DockStyle.Bottom,
-            Height = 45,
-        };
-
-        _okButton = new Button
-        {
-            Text = "OK",
-            Location = new Point(300, 8),
-            Size = new Size(75, 28),
-            DialogResult = DialogResult.OK,
-            AccessibleName = "OK",
-            AccessibleDescription = "Save announcement settings"
-        };
-        _okButton.Click += OkButton_Click;
-
-        _cancelButton = new Button
-        {
-            Text = "Cancel",
-            Location = new Point(385, 8),
-            Size = new Size(75, 28),
-            DialogResult = DialogResult.Cancel,
-            AccessibleName = "Cancel",
-            AccessibleDescription = "Cancel without saving"
-        };
-
-        buttonPanel.Controls.AddRange(new Control[] { _okButton, _cancelButton });
-
-        Controls.Add(tabs);
-        Controls.Add(buttonPanel);
-
-        AcceptButton = _okButton;
-        CancelButton = _cancelButton;
+        Controls.Add(generalGroup);
+        Controls.Add(weatherGroup);
     }
 
-    private TabPage BuildGeneralTab()
+    private GroupBox BuildGeneralGroup()
     {
-        var tab = new TabPage("General")
+        var group = new GroupBox
         {
+            Text = "General",
+            Location = new System.Drawing.Point(12, 12),
+            Size = new System.Drawing.Size(460, 270),
             AccessibleName = "General",
             AccessibleDescription = "Announcement mode and location announcement settings",
-            Padding = new Padding(12),
         };
 
         var modeLabel = new Label
         {
             Text = "Choose how announcements are delivered:",
-            Location = new Point(12, 12),
-            Size = new Size(420, 20),
+            Location = new System.Drawing.Point(12, 24),
+            Size = new System.Drawing.Size(420, 20),
             AccessibleName = "Announcement mode"
         };
 
         _screenReaderRadio = new RadioButton
         {
             Text = "Screen Reader (NVDA, JAWS, etc.) - Recommended",
-            Location = new Point(12, 40),
-            Size = new Size(420, 25),
+            Location = new System.Drawing.Point(12, 52),
+            Size = new System.Drawing.Size(420, 25),
             AccessibleName = "Screen Reader Mode",
             AccessibleDescription = "Send announcements through your screen reader for natural speech integration",
-            Checked = SelectedMode == AnnouncementMode.ScreenReader
         };
 
         _sapiRadio = new RadioButton
         {
             Text = "SAPI (Windows Speech) - Fallback",
-            Location = new Point(12, 68),
-            Size = new Size(420, 25),
+            Location = new System.Drawing.Point(12, 80),
+            Size = new System.Drawing.Size(420, 25),
             AccessibleName = "SAPI Mode",
             AccessibleDescription = "Use Windows built-in speech synthesis for announcements",
-            Checked = SelectedMode == AnnouncementMode.SAPI
         };
 
         _statusLabel = new Label
         {
-            Location = new Point(12, 100),
-            Size = new Size(420, 40),
+            Location = new System.Drawing.Point(12, 112),
+            Size = new System.Drawing.Size(420, 40),
             AccessibleName = "Screen Reader Status",
             Text = "Checking screen reader status..."
         };
@@ -167,15 +94,15 @@ public partial class AnnouncementSettingsForm : Form
         var intervalLabel = new Label
         {
             Text = "Announce nearest city automatically:",
-            Location = new Point(12, 155),
-            Size = new Size(250, 20),
+            Location = new System.Drawing.Point(12, 167),
+            Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Announce nearest city automatically label"
         };
 
         _nearestCityIntervalCombo = new ComboBox
         {
-            Location = new Point(270, 152),
-            Size = new Size(170, 25),
+            Location = new System.Drawing.Point(270, 164),
+            Size = new System.Drawing.Size(170, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Nearest city announcement interval",
             AccessibleDescription = "Choose how often to automatically announce the nearest city"
@@ -190,37 +117,30 @@ public partial class AnnouncementSettingsForm : Form
             "Every 15 minutes",
             "Every 20 minutes"
         });
-        _nearestCityIntervalCombo.SelectedIndex = IntervalToIndex(NearestCityAnnouncementInterval);
 
         // Time-of-day seconds toggle (controls Output Z / Output Shift+Z format).
         _timeWithSecondsCheck = new CheckBox
         {
             Text = "Include seconds in time announcements (Output Z / Shift+Z)",
-            Location = new Point(12, 195),
-            Size = new Size(420, 25),
-            Checked = AnnounceTimeWithSeconds,
+            Location = new System.Drawing.Point(12, 207),
+            Size = new System.Drawing.Size(420, 25),
             AccessibleName = "Include seconds in time announcements",
             AccessibleDescription = "When checked, the local-time and Zulu-time hotkeys speak hours, minutes, and seconds. Default is hours and minutes only."
         };
-        _timeWithSecondsCheck.CheckedChanged += (s, e) =>
-            AnnounceTimeWithSeconds = _timeWithSecondsCheck.Checked;
 
         // GSX background-monitoring toggle. When checked, GSX tooltip
         // updates are spoken even when the Access GSX window is closed.
         _gsxBackgroundMonitoring = new CheckBox
         {
             Text = "Announce GSX tooltips when Access GSX window is closed",
-            Location = new Point(12, 225),
-            Size = new Size(440, 40),
-            Checked = GsxBackgroundMonitoring,
+            Location = new System.Drawing.Point(12, 235),
+            Size = new System.Drawing.Size(440, 30),
             AutoSize = false,
             AccessibleName = "Announce GSX tooltips in background",
             AccessibleDescription = "When checked, GSX tooltip updates (boarding, fuel, pushback) are read aloud by the screen reader even when the Access GSX window is hidden."
         };
-        _gsxBackgroundMonitoring.CheckedChanged += (s, e) =>
-            GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
 
-        tab.Controls.AddRange(new Control[]
+        group.Controls.AddRange(new Control[]
         {
             modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
             intervalLabel, _nearestCityIntervalCombo,
@@ -228,24 +148,25 @@ public partial class AnnouncementSettingsForm : Form
             _gsxBackgroundMonitoring
         });
 
-        return tab;
+        return group;
     }
 
-    private TabPage BuildWeatherTab()
+    private GroupBox BuildWeatherGroup()
     {
-        var tab = new TabPage("Weather")
+        var group = new GroupBox
         {
+            Text = "Weather",
+            Location = new System.Drawing.Point(12, 0),
+            Size = new System.Drawing.Size(460, 230),
             AccessibleName = "Weather",
             AccessibleDescription = "Weather and advisory auto-announcement settings",
-            Padding = new Padding(12),
         };
 
         _weatherAutoAnnounce = new CheckBox
         {
             Text = "Auto-announce &weather state changes",
-            Location = new Point(12, 12),
-            Size = new Size(420, 24),
-            Checked = WeatherAutoAnnounceEnabled,
+            Location = new System.Drawing.Point(12, 24),
+            Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Auto-announce weather state changes",
             AccessibleDescription = "Automatically announce when entering or leaving clouds and when precipitation starts or stops"
         };
@@ -253,9 +174,8 @@ public partial class AnnouncementSettingsForm : Form
         _sigmetAlerts = new CheckBox
         {
             Text = "Auto-announce approaching &SIGMETs and AIRMETs",
-            Location = new Point(12, 48),
-            Size = new Size(420, 24),
-            Checked = SigmetProximityAlertsEnabled,
+            Location = new System.Drawing.Point(12, 60),
+            Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Auto-announce approaching SIGMETs and AIRMETs",
             AccessibleDescription = "Announce when the aircraft enters the proximity range of an active SIGMET or AIRMET"
         };
@@ -263,9 +183,8 @@ public partial class AnnouncementSettingsForm : Form
         _pirepAlerts = new CheckBox
         {
             Text = "Auto-announce approaching pilot reports (&PIREPs)",
-            Location = new Point(12, 84),
-            Size = new Size(420, 24),
-            Checked = PirepProximityAlertsEnabled,
+            Location = new System.Drawing.Point(12, 96),
+            Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Auto-announce approaching PIREPs",
             AccessibleDescription = "Announce when the aircraft enters the proximity range of a significant pilot report of turbulence or icing"
         };
@@ -273,18 +192,17 @@ public partial class AnnouncementSettingsForm : Form
         var rangeLabel = new Label
         {
             Text = "&Proximity range (nautical miles):",
-            Location = new Point(12, 126),
-            Size = new Size(250, 20),
+            Location = new System.Drawing.Point(12, 138),
+            Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Proximity range label"
         };
 
         _proximityRange = new NumericUpDown
         {
-            Location = new Point(270, 122),
-            Size = new Size(80, 24),
+            Location = new System.Drawing.Point(270, 134),
+            Size = new System.Drawing.Size(80, 24),
             Minimum = 10,
             Maximum = 500,
-            Value = Math.Clamp(SigmetProximityRangeNm, 10, 500),
             AccessibleName = "Proximity range in nautical miles",
             AccessibleDescription = "Distance at which to announce approaching SIGMETs, AIRMETs, and PIREPs"
         };
@@ -292,15 +210,15 @@ public partial class AnnouncementSettingsForm : Form
         var intervalLabel = new Label
         {
             Text = "Weather announcement &interval:",
-            Location = new Point(12, 166),
-            Size = new Size(250, 20),
+            Location = new System.Drawing.Point(12, 178),
+            Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Weather announcement interval label"
         };
 
         _weatherIntervalCombo = new ComboBox
         {
-            Location = new Point(12, 190),
-            Size = new Size(338, 24),
+            Location = new System.Drawing.Point(12, 202),
+            Size = new System.Drawing.Size(338, 24),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Weather announcement interval",
             AccessibleDescription = "Minimum minutes between auto-announced ActiveSky weather updates. Active Sky download interval means no extra throttle; the announcer follows ActiveSky's own refresh cadence."
@@ -309,16 +227,15 @@ public partial class AnnouncementSettingsForm : Form
         {
             _weatherIntervalCombo.Items.Add(IntervalChoiceLabel(minutes));
         }
-        _weatherIntervalCombo.SelectedIndex = Math.Max(0, Array.IndexOf(IntervalChoicesMinutes, WeatherAutoAnnounceIntervalMinutes));
 
-        tab.Controls.AddRange(new Control[]
+        group.Controls.AddRange(new Control[]
         {
             _weatherAutoAnnounce, _sigmetAlerts, _pirepAlerts,
             rangeLabel, _proximityRange,
             intervalLabel, _weatherIntervalCombo
         });
 
-        return tab;
+        return group;
     }
 
     private static string IntervalChoiceLabel(int minutes)
@@ -364,13 +281,13 @@ public partial class AnnouncementSettingsForm : Form
 
     private static int IntervalToIndex(int seconds) => seconds switch
     {
-        60   => 1,
-        120  => 2,
-        300  => 3,
-        600  => 4,
-        900  => 5,
+        60 => 1,
+        120 => 2,
+        300 => 3,
+        600 => 4,
+        900 => 5,
         1200 => 6,
-        _    => 0
+        _ => 0
     };
 
     private static int IndexToInterval(int index) => index switch
@@ -384,39 +301,50 @@ public partial class AnnouncementSettingsForm : Form
         _ => 0
     };
 
-    private void SetupAccessibility()
+    public void LoadFrom(UserSettings settings)
     {
-        Load += (_, _) =>
-        {
-            BringToFront();
-            Activate();
-            _screenReaderRadio.Focus();
-        };
+        var mode = Enum.TryParse(settings.AnnouncementMode, out AnnouncementMode parsed)
+            ? parsed
+            : AnnouncementMode.ScreenReader;
+        _screenReaderRadio.Checked = mode == AnnouncementMode.ScreenReader;
+        _sapiRadio.Checked = mode == AnnouncementMode.SAPI;
+
+        _nearestCityIntervalCombo.SelectedIndex = IntervalToIndex(settings.NearestCityAnnouncementInterval);
+        _timeWithSecondsCheck.Checked = settings.AnnounceTimeWithSeconds;
+        _gsxBackgroundMonitoring.Checked = settings.GsxBackgroundMonitoring;
+
+        _weatherAutoAnnounce.Checked = settings.WeatherAutoAnnounceEnabled;
+        _sigmetAlerts.Checked = settings.SigmetProximityAlertsEnabled;
+        _pirepAlerts.Checked = settings.PirepProximityAlertsEnabled;
+        _proximityRange.Value = Math.Clamp(settings.SigmetProximityRangeNm, 10, 500);
+        _weatherIntervalCombo.SelectedIndex = Math.Max(0, Array.IndexOf(IntervalChoicesMinutes, settings.WeatherAutoAnnounceIntervalMinutes));
     }
 
-    private void OkButton_Click(object? sender, EventArgs e)
+    public bool Validate(out string error, out Control? focus)
     {
-        SelectedMode = _screenReaderRadio.Checked
+        error = "";
+        focus = null;
+        return true;
+    }
+
+    public void ApplyTo(UserSettings settings)
+    {
+        settings.AnnouncementMode = (_screenReaderRadio.Checked
             ? AnnouncementMode.ScreenReader
-            : AnnouncementMode.SAPI;
-        NearestCityAnnouncementInterval = IndexToInterval(_nearestCityIntervalCombo.SelectedIndex);
-        WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked;
-        WeatherAutoAnnounceIntervalMinutes = IntervalChoicesMinutes[
+            : AnnouncementMode.SAPI).ToString();
+        settings.NearestCityAnnouncementInterval = IndexToInterval(_nearestCityIntervalCombo.SelectedIndex);
+        settings.AnnounceTimeWithSeconds = _timeWithSecondsCheck.Checked;
+        settings.GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
+
+        settings.WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked;
+        settings.WeatherAutoAnnounceIntervalMinutes = IntervalChoicesMinutes[
             Math.Clamp(_weatherIntervalCombo.SelectedIndex, 0, IntervalChoicesMinutes.Length - 1)];
-        SigmetProximityAlertsEnabled = _sigmetAlerts.Checked;
-        PirepProximityAlertsEnabled = _pirepAlerts.Checked;
-        SigmetProximityRangeNm = (int)_proximityRange.Value;
-        GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
+        settings.SigmetProximityAlertsEnabled = _sigmetAlerts.Checked;
+        settings.PirepProximityAlertsEnabled = _pirepAlerts.Checked;
+        settings.SigmetProximityRangeNm = (int)_proximityRange.Value;
     }
 
-    protected override bool ProcessDialogKey(Keys keyData)
+    public void OnLeaving()
     {
-        if (keyData == Keys.Escape)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
-            return true;
-        }
-        return base.ProcessDialogKey(keyData);
     }
 }

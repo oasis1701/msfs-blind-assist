@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FenixA320;
 
@@ -251,7 +252,7 @@ public partial class FenixBaroWindow : Form
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error setting baro: {ex.Message}");
+                Log.Debug("Forms", $"Error setting baro: {ex.Message}");
                 announcer.AnnounceImmediate("Error setting altimeter");
             }
             finally
@@ -288,7 +289,7 @@ public partial class FenixBaroWindow : Form
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error setting baro: {ex.Message}");
+                Log.Debug("Forms", $"Error setting baro: {ex.Message}");
                 announcer.AnnounceImmediate("Error setting altimeter");
             }
             finally

@@ -1,5 +1,6 @@
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -44,11 +45,11 @@ public class AudioMixer : IDisposable
                 waveOut.Play();
                 isPlaying = true;
 
-                System.Diagnostics.Debug.WriteLine("[AudioMixer] Started");
+                Log.Debug("Services", "Started");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[AudioMixer] Start failed: {ex.Message}");
+                Log.Debug("Services", $"Start failed: {ex.Message}");
                 Cleanup();
             }
         }
@@ -69,7 +70,7 @@ public class AudioMixer : IDisposable
             {
                 mixer.AddMixerInput(source);
                 activeSources.Add(source);
-                System.Diagnostics.Debug.WriteLine($"[AudioMixer] Added source ({activeSources.Count} total)");
+                Log.Debug("Services", $"Added source ({activeSources.Count} total)");
             }
         }
     }
@@ -89,7 +90,7 @@ public class AudioMixer : IDisposable
             {
                 mixer.RemoveMixerInput(source);
                 activeSources.Remove(source);
-                System.Diagnostics.Debug.WriteLine($"[AudioMixer] Removed source ({activeSources.Count} remaining)");
+                Log.Debug("Services", $"Removed source ({activeSources.Count} remaining)");
             }
         }
     }
@@ -106,7 +107,7 @@ public class AudioMixer : IDisposable
 
             Cleanup();
             isPlaying = false;
-            System.Diagnostics.Debug.WriteLine("[AudioMixer] Stopped");
+            Log.Debug("Services", "Stopped");
         }
     }
 

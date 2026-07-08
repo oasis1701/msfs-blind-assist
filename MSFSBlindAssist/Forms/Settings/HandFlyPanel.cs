@@ -1,9 +1,14 @@
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 
-namespace MSFSBlindAssist.Forms;
+namespace MSFSBlindAssist.Forms.Settings;
 
-public partial class HandFlyOptionsForm : Form
+/// <summary>Hand Fly section of the unified Settings dialog. Extracted from the retired
+/// standalone Hand Fly Options dialog — same controls, same AccessibleNames/TabIndex, but the
+/// old OK/Cancel buttons are gone (the dialog owns OK/Cancel) and the tone lifecycle is tied to
+/// <see cref="OnLeaving"/>/<see cref="Dispose(bool)"/> instead of FormClosing/OK-click.
+/// The panel is taller than the tab viewport, so it scrolls (<c>AutoScroll = true</c>).</summary>
+public class HandFlyPanel : UserControl, ISettingsPanel
 {
     private Label titleLabel = null!;
     private GroupBox feedbackModeGroup = null!;
@@ -54,76 +59,19 @@ public partial class HandFlyOptionsForm : Form
     private CheckBox enableCalloutsCheckBox = null!;
     private CheckBox autoActivateOnLineupCheckBox = null!;
 
-    private Button okButton = null!;
-    private Button cancelButton = null!;
-
     private AudioToneGenerator? testToneGenerator;
 
-    public HandFlyFeedbackMode SelectedFeedbackMode { get; private set; }
-    public HandFlyWaveType SelectedWaveType { get; private set; }
-    public double SelectedVolume { get; private set; }
-    public bool MonitorHeading { get; private set; }
-    public bool MonitorVerticalSpeed { get; private set; }
-    public HandFlyWaveType GuidanceToneWaveform { get; private set; }
-    public double SelectedGuidanceVolume { get; private set; }
-    public HandFlyWaveType VisualGuidanceCurrentToneWaveform { get; private set; }
-    public double VisualGuidanceCurrentToneVolume { get; private set; }
-    public bool VisualGuidanceHardPanTone { get; private set; }
-    public HandFlyWaveType TakeoffToneWaveform { get; private set; }
-    public double TakeoffToneVolume { get; private set; }
-    public bool TakeoffAssistMuteCenterlineAnnouncements { get; private set; }
-    public bool TakeoffAssistSteerTowardTone { get; private set; }
-    public bool TakeoffAssistHardPanTone { get; private set; }
-    public int TakeoffAssistHeadingToneThreshold { get; private set; }
-    public bool TakeoffAssistLegacyMode { get; private set; }
-    public bool TakeoffAssistEnableCallouts { get; private set; }
-    public bool TakeoffAssistAutoActivateOnLineup { get; private set; }
+    public string TabTitle => "Hand Fly";
 
-    public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
-        bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
-        double currentGuidanceVolume,
-        HandFlyWaveType visualGuidanceCurrentToneWaveform,
-        double visualGuidanceCurrentToneVolume,
-        bool visualGuidanceHardPanTone,
-        HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
-        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistSteerTowardTone,
-        bool takeoffAssistHardPanTone,
-        int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode,
-        bool takeoffAssistEnableCallouts,
-        bool takeoffAssistAutoActivateOnLineup)
+    public HandFlyPanel()
     {
-        SelectedFeedbackMode = currentMode;
-        SelectedWaveType = currentWaveType;
-        SelectedVolume = currentVolume;
-        MonitorHeading = monitorHeading;
-        MonitorVerticalSpeed = monitorVerticalSpeed;
-        GuidanceToneWaveform = guidanceToneWaveform;
-        SelectedGuidanceVolume = currentGuidanceVolume;
-        VisualGuidanceCurrentToneWaveform = visualGuidanceCurrentToneWaveform;
-        VisualGuidanceCurrentToneVolume = visualGuidanceCurrentToneVolume;
-        VisualGuidanceHardPanTone = visualGuidanceHardPanTone;
-        TakeoffToneWaveform = takeoffToneWaveform;
-        TakeoffToneVolume = takeoffToneVolume;
-        TakeoffAssistMuteCenterlineAnnouncements = takeoffAssistMuteCenterlineAnnouncements;
-        TakeoffAssistSteerTowardTone = takeoffAssistSteerTowardTone;
-        TakeoffAssistHardPanTone = takeoffAssistHardPanTone;
-        TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
-        TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
-        TakeoffAssistEnableCallouts = takeoffAssistEnableCallouts;
-        TakeoffAssistAutoActivateOnLineup = takeoffAssistAutoActivateOnLineup;
         InitializeComponent();
         SetupAccessibility();
     }
 
     private void InitializeComponent()
     {
-        Text = "Hand Fly Options";
-        Size = new Size(500, 975);
-        StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowInTaskbar = false;
+        AutoScroll = true;
 
         // Title Label
         titleLabel = new Label
@@ -149,8 +97,7 @@ public partial class HandFlyOptionsForm : Form
             Location = new Point(15, 25),
             Size = new Size(420, 25),
             AccessibleName = "Tones Only",
-            AccessibleDescription = "Play audio tones without screen reader announcements",
-            Checked = SelectedFeedbackMode == HandFlyFeedbackMode.TonesOnly
+            AccessibleDescription = "Play audio tones without screen reader announcements"
         };
         tonesOnlyRadio.CheckedChanged += FeedbackMode_CheckedChanged;
 
@@ -160,8 +107,7 @@ public partial class HandFlyOptionsForm : Form
             Location = new Point(15, 55),
             Size = new Size(420, 25),
             AccessibleName = "Announcements Only",
-            AccessibleDescription = "Use screen reader announcements without audio tones",
-            Checked = SelectedFeedbackMode == HandFlyFeedbackMode.AnnouncementsOnly
+            AccessibleDescription = "Use screen reader announcements without audio tones"
         };
         announcementsOnlyRadio.CheckedChanged += FeedbackMode_CheckedChanged;
 
@@ -171,8 +117,7 @@ public partial class HandFlyOptionsForm : Form
             Location = new Point(15, 85),
             Size = new Size(420, 25),
             AccessibleName = "Both",
-            AccessibleDescription = "Use both audio tones and screen reader announcements",
-            Checked = SelectedFeedbackMode == HandFlyFeedbackMode.Both
+            AccessibleDescription = "Use both audio tones and screen reader announcements"
         };
         bothRadio.CheckedChanged += FeedbackMode_CheckedChanged;
 
@@ -203,7 +148,6 @@ public partial class HandFlyOptionsForm : Form
             "Sawtooth (Bright)",
             "Sine (Rich)"
         });
-        waveTypeCombo.SelectedIndex = (int)SelectedWaveType;
         waveTypeCombo.SelectedIndexChanged += WaveTypeCombo_SelectedIndexChanged;
 
         // Volume Label
@@ -223,7 +167,6 @@ public partial class HandFlyOptionsForm : Form
             Minimum = 0,
             Maximum = 100,
             TickFrequency = 10,
-            Value = (int)(SelectedVolume * 100),
             AccessibleName = "Volume Level",
             AccessibleDescription = "Adjust the audio tone volume from 0 to 100 percent"
         };
@@ -256,11 +199,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Monitor Heading (announce heading changes at 1-second intervals)",
             Location = new Point(20, 330),
             Size = new Size(450, 25),
-            Checked = MonitorHeading,
             AccessibleName = "Monitor Heading",
             AccessibleDescription = "Enable heading announcements during hand fly mode"
         };
-        monitorHeadingCheckBox.CheckedChanged += MonitorHeadingCheckBox_CheckedChanged;
 
         // Monitor Vertical Speed Checkbox
         monitorVSCheckBox = new CheckBox
@@ -268,11 +209,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Monitor Vertical Speed (announce VS changes at 1-second intervals)",
             Location = new Point(20, 365),
             Size = new Size(450, 25),
-            Checked = MonitorVerticalSpeed,
             AccessibleName = "Monitor Vertical Speed",
             AccessibleDescription = "Enable vertical speed announcements during hand fly mode"
         };
-        monitorVSCheckBox.CheckedChanged += MonitorVSCheckBox_CheckedChanged;
 
         // Visual Guidance - Tone Waveform Label
         guidanceToneLabel = new Label
@@ -299,8 +238,6 @@ public partial class HandFlyOptionsForm : Form
             "Sawtooth (Bright)",
             "Sine (Rich)"
         });
-        guidanceToneCombo.SelectedIndex = (int)GuidanceToneWaveform;
-        guidanceToneCombo.SelectedIndexChanged += GuidanceToneCombo_SelectedIndexChanged;
 
         // Visual Guidance Volume Label
         guidanceVolumeLabel = new Label
@@ -319,7 +256,6 @@ public partial class HandFlyOptionsForm : Form
             Minimum = 0,
             Maximum = 100,
             TickFrequency = 10,
-            Value = (int)(SelectedGuidanceVolume * 100),
             AccessibleName = "Visual Guidance Volume Level",
             AccessibleDescription = "Adjust the visual guidance tone volume from 0 to 100 percent"
         };
@@ -363,8 +299,6 @@ public partial class HandFlyOptionsForm : Form
             "Sawtooth (Bright)",
             "Sine (Rich)"
         });
-        currentToneCombo.SelectedIndex = (int)VisualGuidanceCurrentToneWaveform;
-        currentToneCombo.SelectedIndexChanged += CurrentToneCombo_SelectedIndexChanged;
 
         currentToneVolumeLabel = new Label
         {
@@ -381,7 +315,6 @@ public partial class HandFlyOptionsForm : Form
             Minimum = 0,
             Maximum = 100,
             TickFrequency = 10,
-            Value = (int)(VisualGuidanceCurrentToneVolume * 100),
             AccessibleName = "Current attitude tone volume level",
             AccessibleDescription = "Adjust the current-attitude (follower) tone volume from 0 to 100 percent"
         };
@@ -404,11 +337,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Hard-pan visual-guidance tones (speaker-friendly)",
             Location = new Point(20, 565),
             Size = new Size(450, 25),
-            Checked = VisualGuidanceHardPanTone,
             AccessibleName = "Hard-pan visual guidance tones",
             AccessibleDescription = "When enabled, both visual-guidance tones snap to full left or full right once bank exceeds about one degree, instead of a proportional pan. Useful on stereo speakers where partial pan is hard to distinguish from centred. Headphone users normally leave this off. Default off."
         };
-        visualGuidanceHardPanCheckBox.CheckedChanged += VisualGuidanceHardPanCheckBox_CheckedChanged;
 
         // Takeoff Assist - Tone Waveform Label
         takeoffToneLabel = new Label
@@ -435,8 +366,6 @@ public partial class HandFlyOptionsForm : Form
             "Sawtooth (Bright)",
             "Sine (Rich)"
         });
-        takeoffToneCombo.SelectedIndex = (int)TakeoffToneWaveform;
-        takeoffToneCombo.SelectedIndexChanged += TakeoffToneCombo_SelectedIndexChanged;
 
         // Takeoff Assist Volume Label
         takeoffVolumeLabel = new Label
@@ -455,7 +384,6 @@ public partial class HandFlyOptionsForm : Form
             Minimum = 0,
             Maximum = 100,
             TickFrequency = 10,
-            Value = (int)(TakeoffToneVolume * 100),
             AccessibleName = "Takeoff Assist Volume Level",
             AccessibleDescription = "Adjust the takeoff assist centerline tone volume from 0 to 100 percent"
         };
@@ -477,11 +405,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Mute centerline deviation announcements",
             Location = new Point(20, 665),
             Size = new Size(450, 25),
-            Checked = TakeoffAssistMuteCenterlineAnnouncements,
             AccessibleName = "Mute centerline deviation announcements",
             AccessibleDescription = "When enabled, mutes centerline deviation announcements in modern takeoff assist mode. Audio tone and pitch announcements continue."
         };
-        muteCenterlineCheckBox.CheckedChanged += MuteCenterlineCheckBox_CheckedChanged;
 
         // Steer-toward-the-tone checkbox. CHECKED = the tone plays on the side you
         // should steer toward (steer INTO it to centre) — binds 1:1 to
@@ -491,11 +417,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Steer toward the tone to stay on the centerline",
             Location = new Point(20, 700),
             Size = new Size(550, 25),
-            Checked = TakeoffAssistSteerTowardTone,
             AccessibleName = "Steer toward the tone to stay on the centerline",
             AccessibleDescription = "Checked (default for new installs): the tone plays on the side you should steer toward, so you steer into the tone to return to the centerline. With a tone threshold of 1 degree or higher it goes silent when you are tracking straight; at Always it plays continuously, centred when on track. Uncheck to reverse the panning, so you steer away from the tone instead."
         };
-        steerTowardToneCheckBox.CheckedChanged += SteerTowardToneCheckBox_CheckedChanged;
 
         // Hard-pan tone checkbox. Forces the centerline tone to full ±1
         // instead of the proportional headingDiff/5° curve. For users on
@@ -507,12 +431,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Hard-pan centerline tone (full left or full right; speaker-friendly)",
             Location = new Point(20, 730),
             Size = new Size(450, 25),
-            Checked = TakeoffAssistHardPanTone,
             AccessibleName = "Hard-pan centerline tone",
             AccessibleDescription = "When enabled, the takeoff-assist centerline tone plays at full pan to one side or the other instead of a proportional curve. Useful for stereo-speaker users who can't easily distinguish partial pan from centred. Default off."
         };
-        hardPanCheckBox.CheckedChanged += (s, e) =>
-            TakeoffAssistHardPanTone = hardPanCheckBox.Checked;
 
         // Heading Tone Threshold Label
         headingToneThresholdLabel = new Label
@@ -541,8 +462,6 @@ public partial class HandFlyOptionsForm : Form
             "At 4 degrees error",
             "At 5 degrees error"
         });
-        headingToneThresholdCombo.SelectedIndex = TakeoffAssistHeadingToneThreshold;
-        headingToneThresholdCombo.SelectedIndexChanged += HeadingToneThresholdCombo_SelectedIndexChanged;
 
         // Legacy Takeoff Assist Mode Checkbox
         legacyTakeoffCheckBox = new CheckBox
@@ -550,11 +469,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Legacy takeoff assist mode (heading-based, no tone)",
             Location = new Point(20, 800),
             Size = new Size(450, 25),
-            Checked = TakeoffAssistLegacyMode,
             AccessibleName = "Legacy takeoff assist mode",
             AccessibleDescription = "When enabled, takeoff assist announces heading deviation in degrees without audio tone. When disabled, uses centerline tracking with audio tone."
         };
-        legacyTakeoffCheckBox.CheckedChanged += LegacyTakeoffCheckBox_CheckedChanged;
 
         // Enable Takeoff Callouts Checkbox
         enableCalloutsCheckBox = new CheckBox
@@ -562,11 +479,9 @@ public partial class HandFlyOptionsForm : Form
             Text = "Enable takeoff assistant call outs",
             Location = new Point(20, 830),
             Size = new Size(450, 25),
-            Checked = TakeoffAssistEnableCallouts,
             AccessibleName = "Enable takeoff assistant call outs",
             AccessibleDescription = "When enabled, announces speed callouts during takeoff roll: 80 knots, 100 knots, V1, and rotate."
         };
-        enableCalloutsCheckBox.CheckedChanged += EnableCalloutsCheckBox_CheckedChanged;
 
         // Auto-Activate on Lineup Checkbox
         autoActivateOnLineupCheckBox = new CheckBox
@@ -574,36 +489,11 @@ public partial class HandFlyOptionsForm : Form
             Text = "Auto-activate Takeoff Assist on lineup",
             Location = new Point(20, 860),
             Size = new Size(450, 25),
-            Checked = TakeoffAssistAutoActivateOnLineup,
             AccessibleName = "Auto-activate Takeoff Assist on lineup",
             AccessibleDescription = "When enabled, Takeoff Assist activates automatically when taxi guidance reaches a stable runway lineup, so you don't have to press control T. One-shot per route: if you disable Takeoff Assist after it auto-activates, it won't re-engage until the next taxi route."
         };
-        autoActivateOnLineupCheckBox.CheckedChanged += AutoActivateOnLineupCheckBox_CheckedChanged;
 
-        // OK Button
-        okButton = new Button
-        {
-            Text = "OK",
-            Location = new Point(310, 905),
-            Size = new Size(75, 30),
-            DialogResult = DialogResult.OK,
-            AccessibleName = "Apply Settings",
-            AccessibleDescription = "Apply the hand fly mode settings"
-        };
-        okButton.Click += OkButton_Click;
-
-        // Cancel Button
-        cancelButton = new Button
-        {
-            Text = "Cancel",
-            Location = new Point(395, 905),
-            Size = new Size(75, 30),
-            DialogResult = DialogResult.Cancel,
-            AccessibleName = "Cancel",
-            AccessibleDescription = "Cancel without changing settings"
-        };
-
-        // Add controls to form
+        // Add controls to panel
         Controls.AddRange(new Control[]
         {
             titleLabel, feedbackModeGroup, waveTypeLabel, waveTypeCombo,
@@ -618,14 +508,11 @@ public partial class HandFlyOptionsForm : Form
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             muteCenterlineCheckBox, steerTowardToneCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
-            legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
-            okButton, cancelButton
+            legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox
         });
 
-        AcceptButton = okButton;
-        CancelButton = cancelButton;
-
-        // Update control states based on feedback mode
+        // Update control states based on feedback mode (defaults to TonesOnly disabled state
+        // until LoadFrom sets the real radio selection).
         UpdateControlStates();
     }
 
@@ -665,31 +552,12 @@ public partial class HandFlyOptionsForm : Form
         legacyTakeoffCheckBox.TabIndex = 30;
         enableCalloutsCheckBox.TabIndex = 31;
         autoActivateOnLineupCheckBox.TabIndex = 32;
-        okButton.TabIndex = 33;
-        cancelButton.TabIndex = 34;
-
-        // Focus and bring window to front when opened
-        Load += (sender, e) =>
-        {
-            BringToFront();
-            Activate();
-            TopMost = true;
-            TopMost = false; // Flash to bring to front
-            tonesOnlyRadio.Focus();
-        };
-
-        // Stop test tone when form closes
-        FormClosing += (sender, e) =>
-        {
-            StopTestTone();
-        };
     }
 
     private void UpdateControlStates()
     {
         // Enable/disable audio controls based on feedback mode
-        bool audioEnabled = SelectedFeedbackMode == HandFlyFeedbackMode.TonesOnly ||
-                           SelectedFeedbackMode == HandFlyFeedbackMode.Both;
+        bool audioEnabled = tonesOnlyRadio.Checked || bothRadio.Checked;
 
         waveTypeLabel.Enabled = audioEnabled;
         waveTypeCombo.Enabled = audioEnabled;
@@ -701,103 +569,31 @@ public partial class HandFlyOptionsForm : Form
 
     private void FeedbackMode_CheckedChanged(object? sender, EventArgs e)
     {
-        if (tonesOnlyRadio.Checked)
-            SelectedFeedbackMode = HandFlyFeedbackMode.TonesOnly;
-        else if (announcementsOnlyRadio.Checked)
-            SelectedFeedbackMode = HandFlyFeedbackMode.AnnouncementsOnly;
-        else if (bothRadio.Checked)
-            SelectedFeedbackMode = HandFlyFeedbackMode.Both;
-
         UpdateControlStates();
     }
 
     private void WaveTypeCombo_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        SelectedWaveType = (HandFlyWaveType)waveTypeCombo.SelectedIndex;
     }
 
     private void VolumeTrackBar_ValueChanged(object? sender, EventArgs e)
     {
-        SelectedVolume = volumeTrackBar.Value / 100.0;
         volumeValueLabel.Text = $"{volumeTrackBar.Value}%";
-    }
-
-    private void MonitorHeadingCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        MonitorHeading = monitorHeadingCheckBox.Checked;
-    }
-
-    private void MonitorVSCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        MonitorVerticalSpeed = monitorVSCheckBox.Checked;
-    }
-
-    private void GuidanceToneCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        GuidanceToneWaveform = (HandFlyWaveType)guidanceToneCombo.SelectedIndex;
     }
 
     private void GuidanceVolumeTrackBar_ValueChanged(object? sender, EventArgs e)
     {
-        SelectedGuidanceVolume = guidanceVolumeTrackBar.Value / 100.0;
         guidanceVolumeValueLabel.Text = $"{guidanceVolumeTrackBar.Value}%";
-    }
-
-    private void CurrentToneCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        VisualGuidanceCurrentToneWaveform = (HandFlyWaveType)currentToneCombo.SelectedIndex;
     }
 
     private void CurrentToneVolumeTrackBar_ValueChanged(object? sender, EventArgs e)
     {
-        VisualGuidanceCurrentToneVolume = currentToneVolumeTrackBar.Value / 100.0;
         currentToneVolumeValueLabel.Text = $"{currentToneVolumeTrackBar.Value}%";
-    }
-
-    private void VisualGuidanceHardPanCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        VisualGuidanceHardPanTone = visualGuidanceHardPanCheckBox.Checked;
-    }
-
-    private void TakeoffToneCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        TakeoffToneWaveform = (HandFlyWaveType)takeoffToneCombo.SelectedIndex;
     }
 
     private void TakeoffVolumeTrackBar_ValueChanged(object? sender, EventArgs e)
     {
-        TakeoffToneVolume = takeoffVolumeTrackBar.Value / 100.0;
         takeoffVolumeValueLabel.Text = $"{takeoffVolumeTrackBar.Value}%";
-    }
-
-    private void MuteCenterlineCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        TakeoffAssistMuteCenterlineAnnouncements = muteCenterlineCheckBox.Checked;
-    }
-
-    private void SteerTowardToneCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        TakeoffAssistSteerTowardTone = steerTowardToneCheckBox.Checked;
-    }
-
-    private void HeadingToneThresholdCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        TakeoffAssistHeadingToneThreshold = headingToneThresholdCombo.SelectedIndex;
-    }
-
-    private void LegacyTakeoffCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        TakeoffAssistLegacyMode = legacyTakeoffCheckBox.Checked;
-    }
-
-    private void EnableCalloutsCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
-    }
-
-    private void AutoActivateOnLineupCheckBox_CheckedChanged(object? sender, EventArgs e)
-    {
-        TakeoffAssistAutoActivateOnLineup = autoActivateOnLineupCheckBox.Checked;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)
@@ -818,8 +614,11 @@ public partial class HandFlyOptionsForm : Form
     {
         try
         {
+            var waveType = (HandFlyWaveType)waveTypeCombo.SelectedIndex;
+            double volume = volumeTrackBar.Value / 100.0;
+
             testToneGenerator = new AudioToneGenerator();
-            testToneGenerator.Start(SelectedWaveType, SelectedVolume);
+            testToneGenerator.Start(waveType, volume);
 
             // Simulate varying pitch and bank for demonstration with smooth transitions
             Task.Run(async () =>
@@ -872,11 +671,22 @@ public partial class HandFlyOptionsForm : Form
                 // Auto-stop after 6 seconds
                 if (testToneGenerator?.IsPlaying == true)
                 {
-                    Invoke(() =>
+                    if (IsHandleCreated && !IsDisposed)
                     {
-                        StopTestTone();
-                        testToneButton.Text = "Test Tone";
-                    });
+                        try
+                        {
+                            Invoke(() =>
+                            {
+                                StopTestTone();
+                                testToneButton.Text = "Test Tone";
+                            });
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Handle destroyed mid-flight (tab switched/dialog closed) — StopTestTone
+                            // is also called from OnLeaving/Dispose, so the tone still stops.
+                        }
+                    }
                 }
             });
         }
@@ -887,31 +697,112 @@ public partial class HandFlyOptionsForm : Form
         }
     }
 
+    /// <summary>Stops and disposes the test-tone generator. Idempotent and non-throwing —
+    /// safe to call whether or not a tone is currently playing.</summary>
     private void StopTestTone()
     {
-        testToneGenerator?.Stop();
-        testToneGenerator?.Dispose();
-        testToneGenerator = null;
+        try
+        {
+            testToneGenerator?.Stop();
+            testToneGenerator?.Dispose();
+        }
+        catch
+        {
+            // Non-throwing by contract (OnLeaving/Dispose callers must never fail).
+        }
+        finally
+        {
+            testToneGenerator = null;
+        }
     }
 
-    private void OkButton_Click(object? sender, EventArgs e)
+    public void LoadFrom(UserSettings settings)
+    {
+        tonesOnlyRadio.Checked = settings.HandFlyFeedbackMode == HandFlyFeedbackMode.TonesOnly;
+        announcementsOnlyRadio.Checked = settings.HandFlyFeedbackMode == HandFlyFeedbackMode.AnnouncementsOnly;
+        bothRadio.Checked = settings.HandFlyFeedbackMode == HandFlyFeedbackMode.Both;
+
+        waveTypeCombo.SelectedIndex = (int)settings.HandFlyWaveType;
+        volumeTrackBar.Value = (int)(settings.HandFlyToneVolume * 100);
+        volumeValueLabel.Text = $"{volumeTrackBar.Value}%";
+
+        monitorHeadingCheckBox.Checked = settings.HandFlyMonitorHeading;
+        monitorVSCheckBox.Checked = settings.HandFlyMonitorVerticalSpeed;
+
+        guidanceToneCombo.SelectedIndex = (int)settings.VisualGuidanceToneWaveform;
+        guidanceVolumeTrackBar.Value = (int)(settings.VisualGuidanceToneVolume * 100);
+        guidanceVolumeValueLabel.Text = $"{guidanceVolumeTrackBar.Value}%";
+
+        currentToneCombo.SelectedIndex = (int)settings.VisualGuidanceCurrentToneWaveform;
+        currentToneVolumeTrackBar.Value = (int)(settings.VisualGuidanceCurrentToneVolume * 100);
+        currentToneVolumeValueLabel.Text = $"{currentToneVolumeTrackBar.Value}%";
+        visualGuidanceHardPanCheckBox.Checked = settings.VisualGuidanceHardPanTone;
+
+        takeoffToneCombo.SelectedIndex = (int)settings.TakeoffAssistToneWaveform;
+        takeoffVolumeTrackBar.Value = (int)(settings.TakeoffAssistToneVolume * 100);
+        takeoffVolumeValueLabel.Text = $"{takeoffVolumeTrackBar.Value}%";
+
+        muteCenterlineCheckBox.Checked = settings.TakeoffAssistMuteCenterlineAnnouncements;
+        steerTowardToneCheckBox.Checked = settings.TakeoffAssistSteerTowardTone;
+        hardPanCheckBox.Checked = settings.TakeoffAssistHardPanTone;
+        headingToneThresholdCombo.SelectedIndex = settings.TakeoffAssistHeadingToneThreshold;
+        legacyTakeoffCheckBox.Checked = settings.TakeoffAssistLegacyMode;
+        enableCalloutsCheckBox.Checked = settings.TakeoffAssistEnableCallouts;
+        autoActivateOnLineupCheckBox.Checked = settings.TakeoffAssistAutoActivateOnLineup;
+
+        UpdateControlStates();
+    }
+
+    public bool Validate(out string error, out Control? focus)
+    {
+        error = "";
+        focus = null;
+        return true;
+    }
+
+    public void ApplyTo(UserSettings settings)
+    {
+        settings.HandFlyFeedbackMode = tonesOnlyRadio.Checked ? HandFlyFeedbackMode.TonesOnly
+            : announcementsOnlyRadio.Checked ? HandFlyFeedbackMode.AnnouncementsOnly
+            : HandFlyFeedbackMode.Both;
+        settings.HandFlyWaveType = (HandFlyWaveType)waveTypeCombo.SelectedIndex;
+        settings.HandFlyToneVolume = volumeTrackBar.Value / 100.0;
+        settings.HandFlyMonitorHeading = monitorHeadingCheckBox.Checked;
+        settings.HandFlyMonitorVerticalSpeed = monitorVSCheckBox.Checked;
+
+        settings.VisualGuidanceToneWaveform = (HandFlyWaveType)guidanceToneCombo.SelectedIndex;
+        settings.VisualGuidanceToneVolume = guidanceVolumeTrackBar.Value / 100.0;
+        settings.VisualGuidanceCurrentToneWaveform = (HandFlyWaveType)currentToneCombo.SelectedIndex;
+        settings.VisualGuidanceCurrentToneVolume = currentToneVolumeTrackBar.Value / 100.0;
+        settings.VisualGuidanceHardPanTone = visualGuidanceHardPanCheckBox.Checked;
+
+        settings.TakeoffAssistToneWaveform = (HandFlyWaveType)takeoffToneCombo.SelectedIndex;
+        settings.TakeoffAssistToneVolume = takeoffVolumeTrackBar.Value / 100.0;
+        settings.TakeoffAssistMuteCenterlineAnnouncements = muteCenterlineCheckBox.Checked;
+        settings.TakeoffAssistSteerTowardTone = steerTowardToneCheckBox.Checked;
+        settings.TakeoffAssistHardPanTone = hardPanCheckBox.Checked;
+        settings.TakeoffAssistHeadingToneThreshold = headingToneThresholdCombo.SelectedIndex;
+        settings.TakeoffAssistLegacyMode = legacyTakeoffCheckBox.Checked;
+        settings.TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
+        settings.TakeoffAssistAutoActivateOnLineup = autoActivateOnLineupCheckBox.Checked;
+    }
+
+    /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on
+    /// any path — OK, Cancel, or the [X] button), and resets the Test Tone button's caption
+    /// back to idle so re-entering the tab never shows a stale "Stop Test". Idempotent and
+    /// non-throwing.</summary>
+    public void OnLeaving()
     {
         StopTestTone();
-        DialogResult = DialogResult.OK;
-        Close();
+        testToneButton.Text = "Test Tone";
     }
 
-    protected override bool ProcessDialogKey(Keys keyData)
+    protected override void Dispose(bool disposing)
     {
-        // Handle Escape key
-        if (keyData == Keys.Escape)
+        if (disposing)
         {
             StopTestTone();
-            DialogResult = DialogResult.Cancel;
-            Close();
-            return true;
         }
-
-        return base.ProcessDialogKey(keyData);
+        base.Dispose(disposing);
     }
 }

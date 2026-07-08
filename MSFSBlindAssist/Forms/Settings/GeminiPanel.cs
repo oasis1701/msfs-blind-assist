@@ -1,17 +1,16 @@
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 
-namespace MSFSBlindAssist.Forms;
+namespace MSFSBlindAssist.Forms.Settings;
 
-/// <summary>
-/// Settings form for Gemini AI configuration
-/// </summary>
-public partial class GeminiSettingsForm : Form
+/// <summary>Gemini AI section of the unified Settings dialog. Extracted from the retired
+/// standalone Gemini settings dialog — same controls, same AccessibleNames, same async
+/// "Refresh models" fetch (with its offline fallback), but Save/Cancel are gone (the dialog
+/// owns OK/Cancel).</summary>
+public class GeminiPanel : UserControl, ISettingsPanel
 {
     private TextBox apiKeyTextBox = null!;
     private CheckBox searchGroundingCheckBox = null!;
-    private Button saveButton = null!;
-    private Button cancelButton = null!;
     private Label instructionsLabel = null!;
     private Label apiKeyLabel = null!;
     private LinkLabel linkLabel = null!;
@@ -26,21 +25,15 @@ public partial class GeminiSettingsForm : Form
 
     private bool _populatingModels;
 
-    public GeminiSettingsForm()
+    public string TabTitle => "Gemini";
+
+    public GeminiPanel()
     {
         InitializeComponent();
-        LoadCurrentSettings();
     }
 
     private void InitializeComponent()
     {
-        Text = "Gemini Settings";
-        Size = new System.Drawing.Size(550, 430);
-        StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-
         // Instructions label
         instructionsLabel = new Label
         {
@@ -133,32 +126,6 @@ public partial class GeminiSettingsForm : Form
             AccessibleDescription = "Enables Google Search grounding for route descriptions. This is a paid Gemini API feature that requires a billing account."
         };
 
-        // Save button
-        saveButton = new Button
-        {
-            Text = "Save",
-            Location = new System.Drawing.Point(330, 340),
-            Size = new System.Drawing.Size(90, 30),
-            DialogResult = DialogResult.OK,
-            AccessibleName = "Save",
-            AccessibleDescription = "Save Gemini settings"
-        };
-        saveButton.Click += SaveButton_Click;
-
-        // Cancel button
-        cancelButton = new Button
-        {
-            Text = "Cancel",
-            Location = new System.Drawing.Point(430, 340),
-            Size = new System.Drawing.Size(90, 30),
-            DialogResult = DialogResult.Cancel,
-            AccessibleName = "Cancel",
-            AccessibleDescription = "Cancel without saving"
-        };
-
-        AcceptButton = saveButton;
-        CancelButton = cancelButton;
-
         Controls.Add(instructionsLabel);
         Controls.Add(linkLabel);
         Controls.Add(apiKeyLabel);
@@ -168,8 +135,6 @@ public partial class GeminiSettingsForm : Form
         Controls.Add(refreshModelsButton);
         Controls.Add(modelStatusLabel);
         Controls.Add(searchGroundingCheckBox);
-        Controls.Add(saveButton);
-        Controls.Add(cancelButton);
 
         // Set tab order
         instructionsLabel.TabIndex = 0;
@@ -181,22 +146,15 @@ public partial class GeminiSettingsForm : Form
         refreshModelsButton.TabIndex = 6;
         modelStatusLabel.TabIndex = 7;
         searchGroundingCheckBox.TabIndex = 8;
-        saveButton.TabIndex = 9;
-        cancelButton.TabIndex = 10;
-
-        // Focus on API key textbox when form loads, then populate model list
-        Load += async (sender, e) =>
-        {
-            apiKeyTextBox.Focus();
-            await PopulateModelsAsync();
-        };
     }
 
-    private void LoadCurrentSettings()
+    public void LoadFrom(UserSettings settings)
     {
-        var settings = SettingsManager.Current;
         apiKeyTextBox.Text = settings.GeminiApiKey ?? "";
         searchGroundingCheckBox.Checked = settings.GeminiSearchGrounding;
+
+        // Populate the model list in the background, same as the old dialog's Load handler.
+        _ = PopulateModelsAsync();
     }
 
     private async Task PopulateModelsAsync()
@@ -222,6 +180,10 @@ public partial class GeminiSettingsForm : Form
                     models = null; // fall back to the curated list below
                 }
             }
+
+            // The Settings dialog may have been closed while the fetch was in flight — bail
+            // out before touching any control to avoid an ObjectDisposedException.
+            if (IsDisposed || Disposing) return;
 
             modelComboBox.BeginUpdate();
             try
@@ -257,7 +219,8 @@ public partial class GeminiSettingsForm : Form
         finally
         {
             _populatingModels = false;
-            refreshModelsButton.Enabled = true;
+            if (!IsDisposed && !Disposing)
+                refreshModelsButton.Enabled = true;
         }
     }
 
@@ -288,16 +251,25 @@ public partial class GeminiSettingsForm : Form
         }
     }
 
-    private void SaveButton_Click(object? sender, EventArgs e)
+    public bool Validate(out string error, out Control? focus)
     {
-        var settings = SettingsManager.Current;
+        error = "";
+        focus = null;
+        return true;
+    }
+
+    public void ApplyTo(UserSettings settings)
+    {
         settings.GeminiApiKey = apiKeyTextBox.Text.Trim();
         settings.GeminiSearchGrounding = searchGroundingCheckBox.Checked;
         if (modelComboBox.SelectedItem is GeminiService.GeminiModelInfo selectedModel)
         {
             settings.GeminiModel = selectedModel.Id;
         }
-        SettingsManager.Save(settings);
+    }
+
+    public void OnLeaving()
+    {
     }
 
     private void LinkLabel_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)

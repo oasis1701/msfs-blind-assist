@@ -10,6 +10,8 @@
 // No gate / DFS knowledge lives here — this is pure menu mechanics, reusable
 // by any future consumer (service dispatch, etc.).
 
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.Services.Gsx;
 
 /// <summary>
@@ -115,8 +117,8 @@ public sealed class GsxMenuAutomation
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[GsxMenuAutomation] CloseMenu best-effort failed (ignored): {ex.Message}");
+            Log.Debug("Gsx", 
+                $"CloseMenu best-effort failed (ignored): {ex.Message}");
         }
     }
 }
