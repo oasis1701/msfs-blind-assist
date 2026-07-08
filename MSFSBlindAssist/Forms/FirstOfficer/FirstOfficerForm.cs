@@ -192,7 +192,7 @@ public class FirstOfficerForm<TExec, TState> : Form
         _tabs.Focus();
     }
 
-    /// <summary>Apply updated automation settings (call after FirstOfficerSettingsForm saves).</summary>
+    /// <summary>Apply updated automation settings (call after the Settings dialog's First Officer panel saves).</summary>
     public void ApplySettings()
     {
         _foAutoMgr.AutoGearUpEnabled   = _settings.FOAutoGearUpEnabled;

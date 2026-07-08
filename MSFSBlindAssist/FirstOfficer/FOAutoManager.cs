@@ -33,7 +33,7 @@ public class FOAutoManager : IFoAutoManager
     private readonly ScreenReaderAnnouncer  _announcer;
 
     // -----------------------------------------------------------------------
-    // Settings (toggled by FirstOfficerSettingsForm)
+    // Settings (toggled by the Settings dialog's First Officer panel)
     // -----------------------------------------------------------------------
 
     public bool AutoGearUpEnabled   { get; set; }

@@ -552,25 +552,6 @@ public partial class MainForm
         fbwA380FirstOfficerForm.ShowForm();
     }
 
-    private void FOSettingsMenuItem_Click(object? sender, EventArgs e)
-    {
-        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-        using var dlg = new FirstOfficerSettingsForm(settings);
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-        {
-            MSFSBlindAssist.Settings.SettingsManager.Save();
-            // Push updated settings into the form if it's already open
-            if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
-                pmdg777FirstOfficerForm.ApplySettings();
-            if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
-                pmdg737FirstOfficerForm.ApplySettings();
-            if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
-                fenixFirstOfficerForm.ApplySettings();
-            if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
-                fbwA380FirstOfficerForm.ApplySettings();
-        }
-    }
-
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
     // crew side, reusing the generic FbwEfbForm. Mirrors ShowFbwEfbDialog's lazy
     // client/form creation + non-modal ShowForm pattern.

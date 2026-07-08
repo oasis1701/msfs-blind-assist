@@ -20,7 +20,6 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem pmdg737FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixFirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fbwA380FirstOfficerMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem foSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
@@ -57,7 +56,6 @@ namespace MSFSBlindAssist
             this.pmdg737FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixFirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fbwA380FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.foSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -91,7 +89,6 @@ namespace MSFSBlindAssist
             this.fenixFirstOfficerMenuItem,
             this.fbwA380FirstOfficerMenuItem,
             this.pmdg777FirstOfficerMenuItem,
-            this.foSettingsMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.suspendHotkeysMenuItem,
@@ -205,15 +202,6 @@ namespace MSFSBlindAssist
             this.pmdg777FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
             this.pmdg777FirstOfficerMenuItem.Text = "PMDG 777 &First Officer";
             this.pmdg777FirstOfficerMenuItem.Click += new System.EventHandler(this.PMDG777FirstOfficerMenuItem_Click);
-            //
-            // foSettingsMenuItem
-            //
-            this.foSettingsMenuItem.AccessibleName = "First Officer Settings";
-            this.foSettingsMenuItem.AccessibleDescription = "Configure First Officer automation options such as auto-gear and auto-flaps";
-            this.foSettingsMenuItem.Name = "foSettingsMenuItem";
-            this.foSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.foSettingsMenuItem.Text = "First Officer &Settings";
-            this.foSettingsMenuItem.Click += new System.EventHandler(this.FOSettingsMenuItem_Click);
             //
             // aircraftMenuItem
             //

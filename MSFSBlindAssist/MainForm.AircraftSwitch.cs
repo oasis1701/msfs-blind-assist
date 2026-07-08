@@ -935,7 +935,8 @@ public partial class MainForm
         fenixFirstOfficerMenuItem.Visible = isFenix;
         bool isFbwA380 = currentAircraft?.AircraftCode == "FBW_A380";
         fbwA380FirstOfficerMenuItem.Visible = isFbwA380;
-        foSettingsMenuItem.Visible = isPmdg777 || isPmdg737 || isFenix || isFbwA380;
+        // First Officer automation settings now live in the unified Settings dialog
+        // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.
     }
 
     /// <summary>
