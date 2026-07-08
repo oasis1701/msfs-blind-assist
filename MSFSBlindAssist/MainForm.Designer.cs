@@ -6,12 +6,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.MenuStrip menuStrip = null!;
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
@@ -43,12 +38,7 @@ namespace MSFSBlindAssist
             this.menuStrip = new System.Windows.Forms.MenuStrip();
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -86,12 +76,7 @@ namespace MSFSBlindAssist
             this.fileMenuItem.AccessibleName = "File menu";
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
-            this.announcementSettingsMenuItem,
-            this.geoNamesSettingsMenuItem,
-            this.simbriefSettingsMenuItem,
-            this.geminiSettingsMenuItem,
-            this.handFlyOptionsMenuItem,
-            this.taxiGuidanceOptionsMenuItem,
+            this.settingsMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.suspendHotkeysMenuItem,
@@ -103,66 +88,21 @@ namespace MSFSBlindAssist
             //
             // databaseSettingsMenuItem
             //
-            this.databaseSettingsMenuItem.AccessibleName = "Database Settings";
+            this.databaseSettingsMenuItem.AccessibleName = "Nav Database";
             this.databaseSettingsMenuItem.AccessibleDescription = "Configure database provider and paths for FS2020 and FS2024";
             this.databaseSettingsMenuItem.Name = "databaseSettingsMenuItem";
             this.databaseSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.databaseSettingsMenuItem.Text = "&Database Settings";
+            this.databaseSettingsMenuItem.Text = "&Nav Database…";
             this.databaseSettingsMenuItem.Click += new System.EventHandler(this.DatabaseSettingsMenuItem_Click);
             //
-            // announcementSettingsMenuItem
+            // settingsMenuItem
             //
-            this.announcementSettingsMenuItem.AccessibleName = "Announcement Settings";
-            this.announcementSettingsMenuItem.AccessibleDescription = "Configure how aircraft state announcements are delivered";
-            this.announcementSettingsMenuItem.Name = "announcementSettingsMenuItem";
-            this.announcementSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.announcementSettingsMenuItem.Text = "&Announcement Settings";
-            this.announcementSettingsMenuItem.Click += new System.EventHandler(this.AnnouncementSettingsMenuItem_Click);
-            //
-            // geoNamesSettingsMenuItem
-            //
-            this.geoNamesSettingsMenuItem.AccessibleName = "GeoNames Settings";
-            this.geoNamesSettingsMenuItem.AccessibleDescription = "Configure GeoNames API key and location information settings";
-            this.geoNamesSettingsMenuItem.Name = "geoNamesSettingsMenuItem";
-            this.geoNamesSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.geoNamesSettingsMenuItem.Text = "Define &GeoNames API Key";
-            this.geoNamesSettingsMenuItem.Click += new System.EventHandler(this.GeoNamesSettingsMenuItem_Click);
-            //
-            // simbriefSettingsMenuItem
-            //
-            this.simbriefSettingsMenuItem.AccessibleName = "SimBrief Settings";
-            this.simbriefSettingsMenuItem.AccessibleDescription = "Configure SimBrief username for flight plan integration";
-            this.simbriefSettingsMenuItem.Name = "simbriefSettingsMenuItem";
-            this.simbriefSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.simbriefSettingsMenuItem.Text = "Define &SimBrief Username";
-            this.simbriefSettingsMenuItem.Click += new System.EventHandler(this.SimBriefSettingsMenuItem_Click);
-            //
-            // geminiSettingsMenuItem
-            //
-            this.geminiSettingsMenuItem.AccessibleName = "AI Settings";
-            this.geminiSettingsMenuItem.AccessibleDescription = "Choose the AI provider (Gemini or Claude) and configure its API key, model, and route grounding";
-            this.geminiSettingsMenuItem.Name = "geminiSettingsMenuItem";
-            this.geminiSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.geminiSettingsMenuItem.Text = "&AI Settings";
-            this.geminiSettingsMenuItem.Click += new System.EventHandler(this.GeminiSettingsMenuItem_Click);
-            //
-            // handFlyOptionsMenuItem
-            //
-            this.handFlyOptionsMenuItem.AccessibleName = "Hand Fly Options";
-            this.handFlyOptionsMenuItem.AccessibleDescription = "Configure hand fly mode audio tones and announcement settings";
-            this.handFlyOptionsMenuItem.Name = "handFlyOptionsMenuItem";
-            this.handFlyOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.handFlyOptionsMenuItem.Text = "&Hand Fly Options";
-            this.handFlyOptionsMenuItem.Click += new System.EventHandler(this.HandFlyOptionsMenuItem_Click);
-            //
-            // taxiGuidanceOptionsMenuItem
-            //
-            this.taxiGuidanceOptionsMenuItem.AccessibleName = "Taxi Guidance Options";
-            this.taxiGuidanceOptionsMenuItem.AccessibleDescription = "Configure taxi guidance steering tone settings";
-            this.taxiGuidanceOptionsMenuItem.Name = "taxiGuidanceOptionsMenuItem";
-            this.taxiGuidanceOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.taxiGuidanceOptionsMenuItem.Text = "&Taxi Guidance Options";
-            this.taxiGuidanceOptionsMenuItem.Click += new System.EventHandler(this.TaxiGuidanceOptionsMenuItem_Click);
+            this.settingsMenuItem.AccessibleName = "Settings";
+            this.settingsMenuItem.AccessibleDescription = "Open the unified Settings dialog";
+            this.settingsMenuItem.Name = "settingsMenuItem";
+            this.settingsMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.settingsMenuItem.Text = "&Settings…";
+            this.settingsMenuItem.Click += new System.EventHandler(this.SettingsMenuItem_Click);
             //
             // fmcSettingsMenuItem
             //

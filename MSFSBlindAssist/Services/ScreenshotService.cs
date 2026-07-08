@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Utils;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -192,7 +193,7 @@ public class ScreenshotService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ScreenshotService] Error finding MSFS window: {ex.Message}");
+            Log.Debug("Services", $"Error finding MSFS window: {ex.Message}");
             return IntPtr.Zero;
         }
     }

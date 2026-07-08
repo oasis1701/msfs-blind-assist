@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Threading;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Database;
 /// <summary>
@@ -85,7 +86,7 @@ public class NavdataReaderBuilder
                 try
                 {
                     File.Delete(outputPath);
-                    Debug.WriteLine($"[NavdataReaderBuilder] Deleted existing database: {outputPath}");
+                    Log.Debug("Database", $"Deleted existing database: {outputPath}");
                 }
                 catch (IOException ioEx)
                 {
@@ -121,11 +122,11 @@ public class NavdataReaderBuilder
                 if (!string.IsNullOrEmpty(basePath))
                 {
                     arguments += $" -b \"{basePath}\"";
-                    Debug.WriteLine($"[NavdataReaderBuilder] Added base path parameter: -b \"{basePath}\"");
+                    Log.Debug("Database", $"Added base path parameter: -b \"{basePath}\"");
                 }
                 else
                 {
-                    Debug.WriteLine($"[NavdataReaderBuilder] Warning: Could not detect {simulatorVersion} base path, relying on auto-detection");
+                    Log.Debug("Database", $"Warning: Could not detect {simulatorVersion} base path, relying on auto-detection");
                 }
             }
 
@@ -170,7 +171,7 @@ public class NavdataReaderBuilder
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     errorBuilder.AppendLine(e.Data);
-                    Debug.WriteLine($"[NavdataReader Error] {e.Data}");
+                    Log.Debug("Database", $"{e.Data}");
 
                     // Detect SimConnect errors in stderr
                     if (e.Data.IndexOf("SimConnect", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -182,11 +183,11 @@ public class NavdataReaderBuilder
             };
 
             // Start process
-            Debug.WriteLine($"[NavdataReaderBuilder] [{DateTime.Now:HH:mm:ss.fff}] Starting navdatareader process...");
+            Log.Debug("Database", "Starting navdatareader process...");
             _process.Start();
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
-            Debug.WriteLine($"[NavdataReaderBuilder] [{DateTime.Now:HH:mm:ss.fff}] Navdatareader process started, monitoring output...");
+            Log.Debug("Database", "Navdatareader process started, monitoring output...");
 
             // Wait for completion with cancellation support
             while (!_process.HasExited)
@@ -275,7 +276,7 @@ public class NavdataReaderBuilder
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error killing navdatareader process: {ex.Message}");
+                Log.Debug("Database", $"Error killing navdatareader process: {ex.Message}");
             }
         }
     }
@@ -327,7 +328,7 @@ public class NavdataReaderBuilder
         try
         {
             // Log all output for debugging
-            Debug.WriteLine($"[NavdataReader] {line}");
+            Log.Debug("Database", $"{line}");
 
             string? detailMessage = null;
 
@@ -403,7 +404,7 @@ public class NavdataReaderBuilder
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error parsing progress: {ex.Message}");
+            Log.Debug("Database", $"Error parsing progress: {ex.Message}");
         }
     }
 
@@ -479,7 +480,7 @@ public class NavdataReaderBuilder
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error checking if simulator is running: {ex.Message}");
+            Log.Debug("Database", $"Error checking if simulator is running: {ex.Message}");
             return false; // Assume not running if we can't check
         }
     }
@@ -506,7 +507,7 @@ public class NavdataReaderBuilder
             string? basePath = TryParseUserCfgForBasePath(roamingPath);
             if (basePath != null)
             {
-                Debug.WriteLine($"Found {simulatorVersion} base path from UserCfg.opt: {basePath}");
+                Log.Debug("Database", $"Found {simulatorVersion} base path from UserCfg.opt: {basePath}");
                 return basePath;
             }
 
@@ -521,7 +522,7 @@ public class NavdataReaderBuilder
                 basePath = TryParseUserCfgForBasePath(localCachePath);
                 if (basePath != null)
                 {
-                    Debug.WriteLine($"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
+                    Log.Debug("Database", $"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
                     return basePath;
                 }
             }
@@ -537,17 +538,17 @@ public class NavdataReaderBuilder
                 basePath = TryParseUserCfgForBasePath(localCachePath);
                 if (basePath != null)
                 {
-                    Debug.WriteLine($"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
+                    Log.Debug("Database", $"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
                     return basePath;
                 }
             }
 
-            Debug.WriteLine($"Could not find base path for {simulatorVersion}");
+            Log.Debug("Database", $"Could not find base path for {simulatorVersion}");
             return null;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error getting MSFS base path: {ex.Message}");
+            Log.Debug("Database", $"Error getting MSFS base path: {ex.Message}");
             return null;
         }
     }
@@ -561,7 +562,7 @@ public class NavdataReaderBuilder
         {
             if (!File.Exists(configPath))
             {
-                Debug.WriteLine($"UserCfg.opt not found at: {configPath}");
+                Log.Debug("Database", $"UserCfg.opt not found at: {configPath}");
                 return null;
             }
 
@@ -585,7 +586,7 @@ public class NavdataReaderBuilder
                         }
                         else
                         {
-                            Debug.WriteLine($"InstalledPackagesPath found but directory doesn't exist: {path}");
+                            Log.Debug("Database", $"InstalledPackagesPath found but directory doesn't exist: {path}");
                         }
                     }
                 }
@@ -595,7 +596,7 @@ public class NavdataReaderBuilder
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error parsing UserCfg.opt: {ex.Message}");
+            Log.Debug("Database", $"Error parsing UserCfg.opt: {ex.Message}");
             return null;
         }
     }
