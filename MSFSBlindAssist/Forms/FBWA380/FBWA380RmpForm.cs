@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
@@ -294,7 +295,7 @@ public sealed class FBWA380RmpForm : Form
       }
       catch (Exception ex)
       {
-          System.Diagnostics.Debug.WriteLine($"[FBWA380RmpForm] AnnounceSelectedStandby error: {ex.Message}");
+          Log.Debug("Forms", $"AnnounceSelectedStandby error: {ex.Message}");
       }
     }
 

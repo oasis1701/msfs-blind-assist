@@ -1843,11 +1843,7 @@ public partial class TaxiGuidanceManager
 
     private static void RolloutDiag(string msg)
     {
-        try
-        {
-            System.IO.File.AppendAllText(_rolloutDiagPath,
-                $"[{System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [TGM] {msg}{System.Environment.NewLine}");
-        }
+        try { _rolloutDiagLog.Info($"{msg}"); }
         catch { /* never fail on diag */ }
     }
 

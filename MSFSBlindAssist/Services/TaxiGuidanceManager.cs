@@ -3,6 +3,7 @@ using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -446,17 +447,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // and outputs of the heading-error pipeline so erratic L/R tone flipping can be
     // analysed post-hoc. Re-headered on every LoadRoute. Rate-limited to ~10 Hz to keep
     // the file under ~100 KB for a typical 5-10 min taxi.
-    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms). Each LoadRoute
-    // APPENDS a session header (preserving prior sessions' traces for post-flight analysis),
-    // so the file grows across sessions. To bound that growth it is truncated at LoadRoute
-    // time once it exceeds MAX_GUIDANCE_LOG_BYTES.
-    private static readonly string GuidanceLogPath = Utils.AppLogs.PathFor("taxi_guidance.log");
+    // Always on while Taxiing — cheap (one enqueue per ~100 ms; the shared LogWriter
+    // background thread does the actual disk I/O and handles size-capped rotation).
+    private static readonly LogChannel _guidanceLog = Log.Channel("taxi_guidance");
     private DateTime _lastGuidanceLogTime = DateTime.MinValue;
     private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
-    // Size cap for the cross-session diagnostic trace. A single taxi tops out ≈2 MB
-    // (10-min taxi at ~10 Hz ≈ 18k lines), so a 5 MB cap holds a few recent sessions
-    // while preventing unbounded growth over months of daily use. Checked at LoadRoute.
-    private const long MAX_GUIDANCE_LOG_BYTES = 5L * 1024 * 1024;
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
@@ -1055,8 +1050,8 @@ public partial class TaxiGuidanceManager : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[TaxiGuidanceManager] TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
+                    Log.Debug("Taxi", 
+                        $"TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
                     return false;
                 }
             }
@@ -2491,13 +2486,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // --- DIAGNOSTIC LOGGING HELPER (debug/landing-rollout-instrumentation branch) ---
     // Writes to landing_exit.log alongside LandingExitPlanner.DiagLog so the
     // rollout-phase per-frame loop is interleaved with the planner's touchdown
-    // events. Cheap (one File.AppendAllText per ~few seconds during rollout);
-    // entirely removed once we've identified the root cause of the RJAA bug.
+    // events. Cheap (one enqueue per ~few seconds during rollout, now serialized
+    // through the shared LogWriter thread alongside every other landing_exit.log
+    // writer); entirely removed once we've identified the root cause of the RJAA bug.
     // NOTE: diag lines log raw FEET on purpose (unlike user-facing callouts, which
     // go through DistanceFormatter). The internal rollout math and its constants
     // are feet-native, and logs must be comparable across users regardless of the
     // GroundDistanceUnit setting — do not "fix" these to be unit-aware.
-    private static readonly string _rolloutDiagPath = Utils.AppLogs.PathFor("landing_exit.log");
+    private static readonly LogChannel _rolloutDiagLog = Log.Channel("landing_exit");
 
     /// <summary>
     /// Slew-rate limits the taxiing steering-tone heading error so a
@@ -2560,8 +2556,9 @@ public partial class TaxiGuidanceManager : IDisposable
         double rawHeadingError, double smoothedHeadingError)
     {
         // UTC for rate-limit math (monotonic, immune to DST / clock-change
-        // discontinuities); DateTime.Now is used below for the human-readable
-        // printed timestamp because users reading the file expect local time.
+        // discontinuities). The per-line timestamp is now supplied by the shared
+        // LogChannel formatter (local time, millisecond precision) instead of a
+        // hand-rolled leading field.
         var now = DateTime.UtcNow;
         if ((now - _lastGuidanceLogTime).TotalMilliseconds < GUIDANCE_LOG_INTERVAL_MS) return;
         _lastGuidanceLogTime = now;
@@ -2569,12 +2566,12 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             string line = string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss.fff},lat={1:F7},lon={2:F7},hdg={3:F1},gs={4:F1},seg={5},segBrg={6:F1},w={7:F0},nxtTurn={8},tLat={9:F7},tLon={10:F7},raw={11:F2},smooth={12:F2}",
-                DateTime.Now, lat, lon, headingTrue, groundSpeedKts,
+                "lat={0:F7},lon={1:F7},hdg={2:F1},gs={3:F1},seg={4},segBrg={5:F1},w={6:F0},nxtTurn={7},tLat={8:F7},tLon={9:F7},raw={10:F2},smooth={11:F2}",
+                lat, lon, headingTrue, groundSpeedKts,
                 segIdx, segBearing, pathWidthFeet,
                 nextIsTurn ? 1 : 0, targetLat, targetLon,
                 rawHeadingError, smoothedHeadingError);
-            File.AppendAllText(GuidanceLogPath, line + Environment.NewLine);
+            _guidanceLog.Info(line);
         }
         catch { /* diagnostic only — never crash guidance for a log failure */ }
     }

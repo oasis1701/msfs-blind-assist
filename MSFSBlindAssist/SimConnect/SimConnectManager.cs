@@ -4,10 +4,18 @@ using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 public partial class SimConnectManager
 {
+    // Shared diagnostic-log channels used across SimConnectManager's partial-class files
+    // (Dispatch.cs, Setup.cs). Each channel serializes every writer of the same file
+    // through the one LogWriter background thread.
+    private static readonly LogChannel _registrationLog = Log.Channel("registration");
+    private static readonly LogChannel _dockingAircraftLog = Log.Channel("docking-aircraft");
+    private static readonly LogChannel _inputEventsLog = Log.Channel("input_events.txt");
+
     private Microsoft.FlightSimulator.SimConnect.SimConnect? simConnect;
 
     /// <summary>
@@ -639,7 +647,7 @@ public partial class SimConnectManager
 
             // Detect and announce simulator version
             DetectedSimulatorVersion = Utils.SimulatorDetector.DetectRunningSimulator();
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Detected simulator in Connect(): {DetectedSimulatorVersion}");
+            Log.Debug("SimConnect", $"Detected simulator in Connect(): {DetectedSimulatorVersion}");
 
             if (DetectedSimulatorVersion == "FS2020")
             {
@@ -670,11 +678,11 @@ public partial class SimConnectManager
             {
                 ConnectionStatusChanged?.Invoke(this, "Disconnected from simulator");
                 wasConnected = false;
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Connection lost - announced disconnection");
+                Log.Debug("SimConnect", "Connection lost - announced disconnection");
             }
             else
             {
-                // System.Diagnostics.Debug.WriteLine("[SimConnectManager] Connection attempt failed - no announcement (not previously connected)");
+                // Log.Debug("SimConnect", "Connection attempt failed - no announcement (not previously connected)");
             }
 
             reconnectTimer.Start();
@@ -738,17 +746,17 @@ public partial class SimConnectManager
             catch (COMException ex)
             {
                 // SimConnect disposed or MSFS closed - log and ignore
-                System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage COM exception (expected during disconnect): {ex.Message}");
+                Log.Debug("SimConnect", $"SimConnect ReceiveMessage COM exception (expected during disconnect): {ex.Message}");
             }
             catch (NullReferenceException ex)
             {
                 // SimConnect became null between check and call - log and ignore
-                System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage null reference (expected during disconnect): {ex.Message}");
+                Log.Debug("SimConnect", $"SimConnect ReceiveMessage null reference (expected during disconnect): {ex.Message}");
             }
             catch (Exception ex)
             {
                 // Unexpected exception - log but don't crash
-                System.Diagnostics.Debug.WriteLine($"Unexpected exception in ProcessWindowMessage: {ex}");
+                Log.Debug("SimConnect", $"Unexpected exception in ProcessWindowMessage: {ex}");
             }
             finally
             {
@@ -767,7 +775,7 @@ public partial class SimConnectManager
             // Subscribe to MobiFlight events
             mobiFlightWasm.ConnectionStatusChanged += (sender, status) =>
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight status: {status}");
+                Log.Debug("SimConnect", $"MobiFlight status: {status}");
                 // Release any H: events queued during the connect window. Dotted events stay
                 // queued until the end-to-end probe concludes (see MarkCalcPathVerified /
                 // MarkCalcPathProbeConcluded).
@@ -778,17 +786,17 @@ public partial class SimConnectManager
             mobiFlightWasm.LedValueReceived += MobiFlightWasm_LedValueReceived;
             mobiFlightWasm.ResponseReceived += (sender, response) =>
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] MobiFlight response: {response}");
+                Log.Debug("SimConnect", $"MobiFlight response: {response}");
             };
 
             // Initialize the WASM module
             mobiFlightWasm.Initialize();
 
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] MobiFlight WASM module initialized");
+            Log.Debug("SimConnect", "MobiFlight WASM module initialized");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Failed to initialize MobiFlight: {ex.Message}");
+            Log.Debug("SimConnect", $"Failed to initialize MobiFlight: {ex.Message}");
             mobiFlightWasm = null;
         }
     }
@@ -813,12 +821,12 @@ public partial class SimConnectManager
                 };
 
                 SimVarUpdated?.Invoke(this, updateArgs);
-                // System.Diagnostics.Debug.WriteLine($"[SimConnectManager] LED update: {varDef.DisplayName} LED = {(e.Value > 0 ? "On" : "Off")}");
+                // Log.Debug("SimConnect", $"LED update: {varDef.DisplayName} LED = {(e.Value > 0 ? "On" : "Off")}");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing MobiFlight LVar update: {ex.Message}");
+            Log.Debug("SimConnect", $"Error processing MobiFlight LVar update: {ex.Message}");
         }
     }
 
@@ -859,16 +867,16 @@ public partial class SimConnectManager
                 };
 
                 SimVarUpdated?.Invoke(this, updateArgs);
-                // System.Diagnostics.Debug.WriteLine($"[SimConnectManager] LED value received: {varDef.DisplayName} LED = {(e.Value > 0 ? "On" : "Off")}");
+                // Log.Debug("SimConnect", $"LED value received: {varDef.DisplayName} LED = {(e.Value > 0 ? "On" : "Off")}");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] LED variable not found in definitions: {e.LedVariable}");
+                Log.Debug("SimConnect", $"LED variable not found in definitions: {e.LedVariable}");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing MobiFlight LED value: {ex.Message}");
+            Log.Debug("SimConnect", $"Error processing MobiFlight LED value: {ex.Message}");
         }
     }
 
@@ -897,7 +905,7 @@ public partial class SimConnectManager
         // Stop reconnect timer first to prevent it from firing during cleanup
         reconnectTimer.Stop();
         _detectRetryTimer.Stop();
-        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Reconnect timer stopped");
+        Log.Debug("SimConnect", "Reconnect timer stopped");
 
         // Disconnect MobiFlight WASM module
         if (mobiFlightWasm != null)
@@ -908,7 +916,7 @@ public partial class SimConnectManager
             CalcPathVerified = false;        // re-probe after the next bridge init
             CalcPathProbeConcluded = false;
             lock (pendingCalcEvents) pendingCalcEvents.Clear();   // don't carry queued events across a teardown
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] MobiFlight WASM module disconnected");
+            Log.Debug("SimConnect", "MobiFlight WASM module disconnected");
         }
 
         if (simConnect != null)
@@ -919,7 +927,7 @@ public partial class SimConnectManager
                 // Without this, data definitions and requests remain registered server-side,
                 // causing crashes when restarting the app quickly (< 5-10 seconds).
                 // This was the root cause of Fenix A320's intermittent crashes on restart.
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cleaning up SimConnect resources before disconnect...");
+                Log.Debug("SimConnect", "Cleaning up SimConnect resources before disconnect...");
 
                 // 1. Cancel all 5 continuous batch requests
                 var batchConfigs = new[]
@@ -943,11 +951,11 @@ public partial class SimConnectManager
                             SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                             0, 0, 0
                         );
-                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cancelled {name} request");
+                        Log.Debug("SimConnect", $"Cancelled {name} request");
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error cancelling {name} request (may not exist): {ex.Message}");
+                        Log.Debug("SimConnect", $"Error cancelling {name} request (may not exist): {ex.Message}");
                     }
                 }
 
@@ -964,11 +972,11 @@ public partial class SimConnectManager
                     catch (Exception ex)
                     {
                         // If MSFS closes during cleanup, DoEvents may throw - log and break
-                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Message pump exception during disconnect (expected if MSFS closed): {ex.Message}");
+                        Log.Debug("SimConnect", $"Message pump exception during disconnect (expected if MSFS closed): {ex.Message}");
                         break;
                     }
                 }
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Waited 500ms for batch request cancellations to process");
+                Log.Debug("SimConnect", "Waited 500ms for batch request cancellations to process");
 
                 // 3. Clear all 5 batch data definitions
                 foreach (var (request, definition, name) in batchConfigs)
@@ -976,11 +984,11 @@ public partial class SimConnectManager
                     try
                     {
                         simConnect.ClearDataDefinition(definition);
-                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cleared {name} definition");
+                        Log.Debug("SimConnect", $"Cleared {name} definition");
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error clearing {name} definition (may not exist): {ex.Message}");
+                        Log.Debug("SimConnect", $"Error clearing {name} definition (may not exist): {ex.Message}");
                     }
                 }
 
@@ -998,9 +1006,9 @@ public partial class SimConnectManager
                         // Ignore failures - definition may already be cleared
                     }
                 }
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cleared {clearedCount}/{variableDataDefinitions.Count} individual data definitions");
+                Log.Debug("SimConnect", $"Cleared {clearedCount}/{variableDataDefinitions.Count} individual data definitions");
 
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect resource cleanup complete!");
+                Log.Debug("SimConnect", "SimConnect resource cleanup complete!");
                 // ===== END OF CLEANUP SECTION =====
 
                 // Unregister event handlers before disposal to ensure clean disconnect
@@ -1012,16 +1020,16 @@ public partial class SimConnectManager
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
                 simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
 
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Event handlers unregistered, disposing SimConnect...");
+                Log.Debug("SimConnect", "Event handlers unregistered, disposing SimConnect...");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error unregistering event handlers: {ex.Message}");
+                Log.Debug("SimConnect", $"Error unregistering event handlers: {ex.Message}");
             }
 
             simConnect.Dispose();
             simConnect = null;
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect disposed");
+            Log.Debug("SimConnect", "SimConnect disposed");
         }
 
         // Clear all internal state dictionaries to ensure clean reconnection
@@ -1034,7 +1042,7 @@ public partial class SimConnectManager
         ecamStringData.Clear();
         ecamAnnouncementData.Clear();
         previousECAMMessages.Clear();
-        System.Diagnostics.Debug.WriteLine("[SimConnectManager] All internal state dictionaries cleared");
+        Log.Debug("SimConnect", "All internal state dictionaries cleared");
 
         IsConnected = false;
         IsFullyConnected = false;
@@ -1044,17 +1052,17 @@ public partial class SimConnectManager
         {
             ConnectionStatusChanged?.Invoke(this, "Disconnected from simulator");
             wasConnected = false;
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Intentional disconnect - announced disconnection");
+            Log.Debug("SimConnect", "Intentional disconnect - announced disconnection");
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Disconnect called but was not previously connected");
+            Log.Debug("SimConnect", "Disconnect called but was not previously connected");
         }
 
         // Restart reconnect timer AFTER cleanup is complete (we stopped it at the beginning)
         // This prevents race conditions during cleanup while still enabling auto-reconnect
         reconnectTimer.Start();
-        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Disconnect complete - reconnect timer restarted");
+        Log.Debug("SimConnect", "Disconnect complete - reconnect timer restarted");
     }
 
     private enum EVENTS

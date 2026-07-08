@@ -4,6 +4,7 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -22,6 +23,10 @@ namespace MSFSBlindAssist.Forms;
 /// </summary>
 public class TaxiAssistForm : Form
 {
+    // Shared with DockingGuidanceManager/MainForm.AircraftSwitch/SimConnectManager.Dispatch —
+    // all writers of docking-aircraft.log now serialize through this one channel.
+    private static readonly LogChannel _dockingAircraftLog = Log.Channel("docking-aircraft");
+
     private readonly IAirportDataProvider _dataProvider;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly TaxiGuidanceManager _guidanceManager;
@@ -2446,14 +2451,11 @@ public class TaxiAssistForm : Form
         // resolved aircraft id, and the final offset). Never throws.
         try
         {
-            // AppLogs.PathFor ensures the logs folder exists on a fresh install
-            // (AppendAllText throws DirectoryNotFoundException rather than creating it).
-            string p = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
-            System.IO.File.AppendAllText(p, string.Format(
+            _dockingAircraftLog.Info(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss}  STOPOFFSET  icao='{1}' gate#={2} suffix='{3}' stopLatSet={4} ac='{5}' acId={6} -> long={7:F2} lat={8:F2}{9}",
-                DateTime.Now, _currentIcao, dNumber, dSuffix, dStopLatSet, dIcaoType, dAcId,
-                offset.LongitudinalMetres, offset.LateralMetres, Environment.NewLine));
+                "STOPOFFSET  icao='{0}' gate#={1} suffix='{2}' stopLatSet={3} ac='{4}' acId={5} -> long={6:F2} lat={7:F2}",
+                _currentIcao, dNumber, dSuffix, dStopLatSet, dIcaoType, dAcId,
+                offset.LongitudinalMetres, offset.LateralMetres));
         }
         catch { }
 

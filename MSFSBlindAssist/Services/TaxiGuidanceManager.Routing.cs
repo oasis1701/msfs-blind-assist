@@ -413,24 +413,16 @@ public partial class TaxiGuidanceManager
             _holdShortAtDestination = false;
 
             // Append a session-start header + CSV column row to the diagnostic
-            // frame trace. Appending (vs the old WriteAllText, which OVERWROTE the
-            // file on every LoadRoute) preserves history across sessions: each
-            // "=== Guidance ... ===" line acts as a session separator so a
-            // post-flight reader can split on it, and a buggy session's trace
-            // survives a subsequent route load. To stop the file growing without
-            // bound over months of use, truncate it here once it exceeds
-            // MAX_GUIDANCE_LOG_BYTES — checked only at LoadRoute, so a single
-            // in-progress taxi (≈2 MB worst case) is never cut mid-session.
+            // frame trace. Each "=== Guidance ... ===" line acts as a session
+            // separator so a post-flight reader can split on it, and a buggy
+            // session's trace survives a subsequent route load. Size-capped
+            // rotation (so the file never grows without bound over months of
+            // use) is now handled by the shared LogWriter rather than a
+            // hand-rolled per-LoadRoute truncate.
             try
             {
-                if (File.Exists(GuidanceLogPath) &&
-                    new FileInfo(GuidanceLogPath).Length > MAX_GUIDANCE_LOG_BYTES)
-                {
-                    File.WriteAllText(GuidanceLogPath, string.Empty);  // start fresh; oldest sessions dropped
-                }
-                File.AppendAllText(GuidanceLogPath,
-                    $"=== Guidance {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===" + Environment.NewLine
-                    + "time,lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth" + Environment.NewLine);
+                _guidanceLog.Info($"=== Guidance icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===");
+                _guidanceLog.Info("lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth");
             }
             catch { /* diagnostic only */ }
             _lastGuidanceLogTime = DateTime.MinValue;

@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Navigation;
 
@@ -9,16 +10,11 @@ namespace MSFSBlindAssist.Navigation;
 public class TaxiRouter
 {
     private readonly TaxiGraph _graph;
-    private static readonly string LogPath = MSFSBlindAssist.Utils.AppLogs.PathFor("taxi_router.log");
-    private const long MAX_ROUTER_LOG_BYTES = 1_000_000;
+    private static readonly LogChannel _log = MSFSBlindAssist.Utils.Logging.Log.Channel("taxi_router");
 
     private static void Log(string message)
     {
-        try
-        {
-            string line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-            File.AppendAllText(LogPath, line + Environment.NewLine);
-        }
+        try { _log.Info(message); }
         catch { /* ignore logging failures */ }
     }
 
@@ -52,20 +48,11 @@ public class TaxiRouter
     public TaxiRoute? FindConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence,
         bool destinationIsRunway = false)
     {
-        // Append a session header (size-capped) — the old truncate-per-run
-        // destroyed the previous build's log: debugging the KIAH 2026-06-10
-        // 6 km loop was blinded because the 15:24 recalc wiped the 15:14
-        // initial build's entry. Mirrors taxi_guidance.log's cap-at-LoadRoute
-        // pattern.
-        try
-        {
-            var fi = new FileInfo(LogPath);
-            if (fi.Exists && fi.Length > MAX_ROUTER_LOG_BYTES)
-                File.WriteAllText(LogPath, string.Empty);
-            File.AppendAllText(LogPath,
-                $"=== Constrained Route {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}");
-        }
-        catch { }
+        // Append a session header. Size-capping/rotation is now handled by the
+        // shared LogWriter (5 MB cap, 3-file retention) rather than a hand-rolled
+        // per-call truncate, so a recalc can never wipe a prior build's entry
+        // (the old truncate-per-run blinded debugging of the KIAH 2026-06-10 6 km loop).
+        Log("=== Constrained Route ===");
 
         var startN = _graph.Nodes[startNodeId];
         var endN = _graph.Nodes[endNodeId];
@@ -94,7 +81,7 @@ public class TaxiRouter
         if (candidateEntries.Count == 0)
         {
             string reason = $"No nodes found on taxiway '{taxiwaySequence[0]}'";
-            Log($"[TaxiRouter] FALLBACK: {reason}");
+            Log($"FALLBACK: {reason}");
             return FallbackShortest(startNodeId, endNodeId, reason);
         }
 
@@ -125,12 +112,12 @@ public class TaxiRouter
                     firstTarget = exitNode;
                     firstBridgedAcrossRunway = true;
                     firstBridgeEntryOnSecond = entryNode;
-                    Log($"[TaxiRouter] Step 1: bridging '{taxiwaySequence[0]}' → '{secondTaxiway}' via runway crossing");
+                    Log($"Step 1: bridging '{taxiwaySequence[0]}' → '{secondTaxiway}' via runway crossing");
                 }
                 else
                 {
                     string reason = $"No intersection between '{taxiwaySequence[0]}' and '{secondTaxiway}'";
-                    Log($"[TaxiRouter] FALLBACK: {reason}");
+                    Log($"FALLBACK: {reason}");
                     return FallbackShortest(startNodeId, endNodeId, reason);
                 }
             }
@@ -157,7 +144,7 @@ public class TaxiRouter
                 {
                     firstTarget = far;
                     lastTaxiwayTerminal = true;
-                    Log($"[TaxiRouter] Single taxiway '{taxiwaySequence[0]}' branches off the destination — " +
+                    Log($"Single taxiway '{taxiwaySequence[0]}' branches off the destination — " +
                         $"routing along it to {far} (no bypass leg)");
                 }
             }
@@ -205,14 +192,14 @@ public class TaxiRouter
 
             currentNode = firstTarget;
             entryFound = true;
-            Log($"[TaxiRouter] Step 1 OK: '{taxiwaySequence[0]}' via node {entryNode} -> {firstTarget}");
+            Log($"Step 1 OK: '{taxiwaySequence[0]}' via node {entryNode} -> {firstTarget}");
             break;
         }
 
         if (!entryFound)
         {
             string reason = $"No viable entry to '{taxiwaySequence[0]}'. Tried {candidateEntries.Count}: {string.Join("; ", failedEntries)}";
-            Log($"[TaxiRouter] FALLBACK: {reason}");
+            Log($"FALLBACK: {reason}");
             return FallbackShortest(startNodeId, endNodeId, reason);
         }
 
@@ -226,14 +213,14 @@ public class TaxiRouter
             if (bridge == null)
             {
                 string reason = $"Step 1 bridge from '{taxiwaySequence[0]}' to '{secondTaxiway}' unreachable";
-                Log($"[TaxiRouter] FALLBACK: {reason}");
+                Log($"FALLBACK: {reason}");
                 return FallbackShortest(startNodeId, endNodeId, reason);
             }
             int sb = (fullPath.Count > 0 && bridge.Count > 0 && fullPath[^1] == bridge[0]) ? 1 : 0;
             for (int j = sb; j < bridge.Count; j++)
                 fullPath.Add(bridge[j]);
             currentNode = firstBridgeEntryOnSecond;
-            Log($"[TaxiRouter] Step 1 bridge OK: {bridge.Count} nodes across runway");
+            Log($"Step 1 bridge OK: {bridge.Count} nodes across runway");
         }
 
         // Step 2: For remaining taxiways in sequence
@@ -265,12 +252,12 @@ public class TaxiRouter
                         targetNode = exitNode;
                         bridgedAcrossRunway = true;
                         bridgeEntryOnNext = entryNode;
-                        Log($"[TaxiRouter] Step {i + 1}: bridging '{currentTaxiway}' → '{nextTaxiway}' via runway crossing");
+                        Log($"Step {i + 1}: bridging '{currentTaxiway}' → '{nextTaxiway}' via runway crossing");
                     }
                     else
                     {
                         string reason = $"Step {i + 1}: No intersection between '{currentTaxiway}' and '{nextTaxiway}'";
-                        Log($"[TaxiRouter] FALLBACK: {reason}");
+                        Log($"FALLBACK: {reason}");
                         return FallbackShortest(startNodeId, endNodeId, reason);
                     }
                 }
@@ -314,7 +301,7 @@ public class TaxiRouter
                     {
                         targetNode = holdEnd;
                         lastTaxiwayTerminal = true;
-                        Log($"[TaxiRouter] Last taxiway '{currentTaxiway}' branches off the destination — " +
+                        Log($"Last taxiway '{currentTaxiway}' branches off the destination — " +
                             $"routing along it to {holdEnd} (no bypass leg)");
                     }
                 }
@@ -329,11 +316,11 @@ public class TaxiRouter
                 if (segment == null)
                 {
                     string reason = $"Step {i + 1}: No path on '{currentTaxiway}' from {currentNode} to {targetNode}";
-                    Log($"[TaxiRouter] FALLBACK: {reason}");
+                    Log($"FALLBACK: {reason}");
                     return FallbackShortest(startNodeId, endNodeId, reason);
                 }
 
-                Log($"[TaxiRouter] Step {i + 1} OK: '{currentTaxiway}' {currentNode}->{targetNode} ({segment.Count} nodes)");
+                Log($"Step {i + 1} OK: '{currentTaxiway}' {currentNode}->{targetNode} ({segment.Count} nodes)");
 
                 int si = (fullPath.Count > 0 && segment.Count > 0 && fullPath[^1] == segment[0]) ? 1 : 0;
                 for (int j = si; j < segment.Count; j++)
@@ -352,14 +339,14 @@ public class TaxiRouter
                 if (bridge == null)
                 {
                     string reason = $"Step {i + 1}: Bridge across runway from '{currentTaxiway}' node {currentNode} to '{nextTaxiway}' node {bridgeEntryOnNext} unreachable";
-                    Log($"[TaxiRouter] FALLBACK: {reason}");
+                    Log($"FALLBACK: {reason}");
                     return FallbackShortest(startNodeId, endNodeId, reason);
                 }
                 int sb = (fullPath.Count > 0 && bridge.Count > 0 && fullPath[^1] == bridge[0]) ? 1 : 0;
                 for (int j = sb; j < bridge.Count; j++)
                     fullPath.Add(bridge[j]);
                 currentNode = bridgeEntryOnNext;
-                Log($"[TaxiRouter] Step {i + 1} bridge OK: {bridge.Count} nodes across runway");
+                Log($"Step {i + 1} bridge OK: {bridge.Count} nodes across runway");
             }
         }
 
@@ -372,7 +359,7 @@ public class TaxiRouter
             if (finalLeg == null)
             {
                 string reason = $"No path from last taxiway node {currentNode} to destination {endNodeId}";
-                Log($"[TaxiRouter] FALLBACK: {reason}");
+                Log($"FALLBACK: {reason}");
                 return FallbackShortest(startNodeId, endNodeId, reason);
             }
 
@@ -384,11 +371,11 @@ public class TaxiRouter
         if (fullPath.Count < 2)
         {
             string reason = $"Constrained path too short ({fullPath.Count} nodes)";
-            Log($"[TaxiRouter] FALLBACK: {reason}");
+            Log($"FALLBACK: {reason}");
             return FallbackShortest(startNodeId, endNodeId, reason);
         }
 
-        Log($"[TaxiRouter] Constrained path SUCCESS: {fullPath.Count} nodes");
+        Log($"Constrained path SUCCESS: {fullPath.Count} nodes");
         return BuildRoute(fullPath);
     }
 
@@ -632,7 +619,7 @@ public class TaxiRouter
             double gap = TaxiGraph.CalculateDistanceMeters(
                 _graph.Nodes[bestExit].Latitude, _graph.Nodes[bestExit].Longitude,
                 _graph.Nodes[bestEntry].Latitude, _graph.Nodes[bestEntry].Longitude);
-            Log($"[TaxiRouter] Runway bridge candidate: '{currentTaxiway}' node {bestExit} → '{nextTaxiway}' node {bestEntry}, gap {gap:F1} m, total score {bestScore:F0} m");
+            Log($"Runway bridge candidate: '{currentTaxiway}' node {bestExit} → '{nextTaxiway}' node {bestEntry}, gap {gap:F1} m, total score {bestScore:F0} m");
         }
 
         return (bestExit, bestEntry);

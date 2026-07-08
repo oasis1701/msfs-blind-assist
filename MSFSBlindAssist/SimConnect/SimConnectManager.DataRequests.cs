@@ -4,6 +4,7 @@ using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -28,7 +29,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] RequestAiTrafficData error: {ex.Message}");
+            Log.Debug("SimConnect", $"RequestAiTrafficData error: {ex.Message}");
         }
     }
 
@@ -60,7 +61,7 @@ public partial class SimConnectManager
             if (!panelControls.ContainsKey(panelName)) return;
 
             var panelVariables = panelControls[panelName];
-            System.Diagnostics.Debug.WriteLine($"Requesting {panelVariables.Count} variables for panel '{panelName}' after: {relatedAction}");
+            Log.Debug("SimConnect", $"Requesting {panelVariables.Count} variables for panel '{panelName}' after: {relatedAction}");
 
             foreach (string varKey in panelVariables)
             {
@@ -70,14 +71,14 @@ public partial class SimConnectManager
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[RequestPanelVariables] Error requesting variable {varKey}: {ex.Message}");
+                    Log.Debug("SimConnect", $"Error requesting variable {varKey}: {ex.Message}");
                     // Continue with other variables even if one fails
                 }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[RequestPanelVariables] Error requesting panel '{panelName}': {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting panel '{panelName}': {ex.Message}");
         }
     }
 
@@ -130,7 +131,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[RequestVariable] Error requesting variable {varKey}: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting variable {varKey}: {ex.Message}");
         }
     }
 
@@ -170,11 +171,11 @@ public partial class SimConnectManager
                 simConnect.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
                     varDef.Name, varDef.Units ?? "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
             simConnect.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)dataDefId);
-            System.Diagnostics.Debug.WriteLine($"[Probe] data definition re-bound for {varKey} (def {dataDefId})");
+            Log.Debug("SimConnect", $"data definition re-bound for {varKey} (def {dataDefId})");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Probe] rebind FAILED for {varKey}: {ex.Message}");
+            Log.Debug("SimConnect", $"rebind FAILED for {varKey}: {ex.Message}");
         }
     }
 
@@ -185,7 +186,7 @@ public partial class SimConnectManager
 
     public void RequestAltitudeAGL()
     {
-        System.Diagnostics.Debug.WriteLine("RequestAltitudeAGL called");
+        Log.Debug("SimConnect", "RequestAltitudeAGL called");
         if (IsConnected && simConnect != null)
         {
             try
@@ -202,7 +203,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting altitude AGL: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting altitude AGL: {ex.Message}");
             }
         }
     }
@@ -225,7 +226,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting altitude MSL: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting altitude MSL: {ex.Message}");
             }
         }
     }
@@ -248,7 +249,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting indicated airspeed: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting indicated airspeed: {ex.Message}");
             }
         }
     }
@@ -364,7 +365,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting true airspeed: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting true airspeed: {ex.Message}");
             }
         }
     }
@@ -387,7 +388,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting ground speed: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting ground speed: {ex.Message}");
             }
         }
     }
@@ -410,7 +411,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting vertical speed: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting vertical speed: {ex.Message}");
             }
         }
     }
@@ -433,7 +434,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting mach speed: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting mach speed: {ex.Message}");
             }
         }
     }
@@ -456,7 +457,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting bank angle: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting bank angle: {ex.Message}");
             }
         }
     }
@@ -479,7 +480,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting pitch: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting pitch: {ex.Message}");
             }
         }
     }
@@ -502,7 +503,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting outside temperature: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting outside temperature: {ex.Message}");
             }
         }
     }
@@ -525,7 +526,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting squawk code: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting squawk code: {ex.Message}");
             }
         }
     }
@@ -549,7 +550,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting magnetic heading: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting magnetic heading: {ex.Message}");
             }
         }
     }
@@ -567,7 +568,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting position for takeoff assist: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting position for takeoff assist: {ex.Message}");
             }
         }
     }
@@ -590,7 +591,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting true heading: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting true heading: {ex.Message}");
             }
         }
     }
@@ -613,7 +614,7 @@ public partial class SimConnectManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting {varName}: {ex.Message}");
+                Log.Debug("SimConnect", $"Error requesting {varName}: {ex.Message}");
             }
         }
     }
@@ -665,7 +666,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error requesting specific LVar {varName}: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting specific LVar {varName}: {ex.Message}");
         }
     }
 
@@ -682,7 +683,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting aircraft position: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting aircraft position: {ex.Message}");
         }
     }
 
@@ -713,7 +714,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting aircraft position async: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting aircraft position async: {ex.Message}");
         }
     }
 
@@ -738,7 +739,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting NAV radio info: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting NAV radio info: {ex.Message}");
         }
     }
 
@@ -769,7 +770,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting wind info: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting wind info: {ex.Message}");
         }
     }
 
@@ -795,7 +796,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting weather data: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting weather data: {ex.Message}");
         }
     }
 
@@ -834,13 +835,13 @@ public partial class SimConnectManager
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error calculating destination runway distance: {ex.Message}");
+                    Log.Debug("SimConnect", $"Error calculating destination runway distance: {ex.Message}");
                 }
             });
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting destination runway distance: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting destination runway distance: {ex.Message}");
         }
     }
 
@@ -870,7 +871,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ILS guidance: {ex.Message}");
+            Log.Debug("SimConnect", $"Error requesting ILS guidance: {ex.Message}");
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
             {
                 VarName = "ILS_GUIDANCE",

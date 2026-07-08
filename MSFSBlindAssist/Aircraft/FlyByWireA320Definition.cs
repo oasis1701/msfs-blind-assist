@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -8293,7 +8294,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 // A throw here silently drops the spoken confirmation for a user FCU
                 // set/push/pull — the pilot gets no feedback at all with no diagnostic trail.
-                System.Diagnostics.Debug.WriteLine($"[FlyByWireA320Definition] DeferReadback failed: {ex.Message}");
+                Log.Debug("A320", $"DeferReadback failed: {ex.Message}");
             }
         });
     }
@@ -8437,7 +8438,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
+                Log.Debug("A320", $"Error requesting fuel quantity: {ex.Message}");
             }
         }
     }
@@ -8464,7 +8465,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting GD speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting GD speed: {ex.Message}");
             }
         }
     }
@@ -8489,7 +8490,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting S speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting S speed: {ex.Message}");
             }
         }
     }
@@ -8514,7 +8515,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting F speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting F speed: {ex.Message}");
             }
         }
     }
@@ -8542,7 +8543,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting VFE speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting VFE speed: {ex.Message}");
             }
         }
     }
@@ -8567,7 +8568,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting VLS speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting VLS speed: {ex.Message}");
             }
         }
     }
@@ -8592,7 +8593,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting VS speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting VS speed: {ex.Message}");
             }
         }
     }
@@ -8618,7 +8619,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU heading: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU heading: {ex.Message}");
             }
         }
     }
@@ -8638,7 +8639,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU speed: {ex.Message}");
             }
         }
     }
@@ -8658,7 +8659,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU altitude: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU altitude: {ex.Message}");
             }
         }
     }
@@ -8678,7 +8679,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU vertical speed: {ex.Message}");
+                Log.Debug("A320", $"Error requesting FCU vertical speed: {ex.Message}");
             }
         }
     }

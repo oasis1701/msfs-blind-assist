@@ -13,6 +13,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -127,7 +128,7 @@ public partial class MainForm
         {
             // Start event batching timer for high-volume variable updates
             eventBatchTimer?.Start();
-            System.Diagnostics.Debug.WriteLine("[MainForm] Event batching timer started");
+            Log.Debug("MainForm", "Event batching timer started");
 
             announcer.Announce(status);
             announcer.Announce($"{currentAircraft.AircraftName} Profile and panels active");
@@ -137,7 +138,7 @@ public partial class MainForm
             try { _gsxService?.Start(); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MainForm] GsxService.Start failed: {ex.Message}");
+                Log.Debug("MainForm", $"GsxService.Start failed: {ex.Message}");
             }
 
             // After SimConnect connects, if current aircraft is a PMDG type, initialize data manager.
@@ -229,7 +230,7 @@ public partial class MainForm
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;
             droppedEventCount = 0;
-            System.Diagnostics.Debug.WriteLine("[MainForm] Event batching timer stopped, queue cleared");
+            Log.Debug("MainForm", "Event batching timer stopped, queue cleared");
 
             announcer.Announce(status);
             // Reset window title when disconnected
@@ -244,7 +245,7 @@ public partial class MainForm
             try { _gsxService?.Stop(); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MainForm] GsxService.Stop failed: {ex.Message}");
+                Log.Debug("MainForm", $"GsxService.Stop failed: {ex.Message}");
             }
         }
     }
@@ -300,14 +301,9 @@ public partial class MainForm
                     _ => ""
                 };
                 dockingGuidanceManager.SetDoorSide(side);
-                System.Diagnostics.Debug.WriteLine($"[MainForm] Door side for ICAO '{icaoType}': '{side}'");
+                Log.Debug("MainForm", $"Door side for ICAO '{icaoType}': '{side}'");
 
-                try
-                {
-                    string logPath = MSFSBlindAssist.Utils.AppLogs.PathFor("docking-aircraft.log");
-                    System.IO.File.AppendAllText(logPath,
-                        $"{DateTime.Now:HH:mm:ss}  ICAO=\"{icaoType}\"  doorSide={side}{System.Environment.NewLine}");
-                }
+                try { _dockingAircraftLog.Info($"ICAO=\"{icaoType}\"  doorSide={side}"); }
                 catch { /* never propagate log failures */ }
             }
             catch { }
@@ -649,10 +645,10 @@ public partial class MainForm
                 // Unconditional: clearing an already-false flag is harmless, and NOT
                 // clearing it would mute every queued announce forever.
                 announcer.Suppressed = false;
-                System.Diagnostics.Debug.WriteLine("[MainForm] Aircraft switch grace period ended - announcements enabled");
+                Log.Debug("MainForm", "Aircraft switch grace period ended - announcements enabled");
             };
             gracePeriodTimer.Start();
-            System.Diagnostics.Debug.WriteLine("[MainForm] Aircraft switch grace period started (5 seconds)");
+            Log.Debug("MainForm", "Aircraft switch grace period started (5 seconds)");
         }
 
         // Update window title
@@ -1003,7 +999,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error updating database status: {ex.Message}");
+            Log.Debug("MainForm", $"Error updating database status: {ex.Message}");
         }
     }
 
@@ -1064,7 +1060,7 @@ public partial class MainForm
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine("[MainForm] Closing database connections...");
+            Log.Debug("MainForm", "Closing database connections...");
 
             // Close EFB window if open - it holds database connections
             if (electronicFlightBagForm != null && !electronicFlightBagForm.IsDisposed)
@@ -1082,11 +1078,11 @@ public partial class MainForm
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            System.Diagnostics.Debug.WriteLine("[MainForm] Database connections closed");
+            Log.Debug("MainForm", "Database connections closed");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error closing database connections: {ex.Message}");
+            Log.Debug("MainForm", $"Error closing database connections: {ex.Message}");
         }
     }
 
@@ -1098,13 +1094,13 @@ public partial class MainForm
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine("[MainForm] Reopening database connections...");
+            Log.Debug("MainForm", "Reopening database connections...");
             RefreshDatabaseProvider();
-            System.Diagnostics.Debug.WriteLine("[MainForm] Database connections reopened");
+            Log.Debug("MainForm", "Database connections reopened");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error reopening database connections: {ex.Message}");
+            Log.Debug("MainForm", $"Error reopening database connections: {ex.Message}");
         }
     }
 
@@ -1120,7 +1116,7 @@ public partial class MainForm
             // Unknown simulator - no action needed
             if (detectedSim == "Unknown")
             {
-                System.Diagnostics.Debug.WriteLine("[MainForm] Simulator version unknown, keeping current database setting");
+                Log.Debug("MainForm", "Simulator version unknown, keeping current database setting");
                 return;
             }
 
@@ -1144,7 +1140,7 @@ public partial class MainForm
 
             if (needsSwitch && targetVersion != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[MainForm] Auto-switching database from {currentDbSetting} to {targetVersion}");
+                Log.Debug("MainForm", $"Auto-switching database from {currentDbSetting} to {targetVersion}");
 
                 // Update settings
                 settings.SimulatorVersion = targetVersion;
@@ -1155,17 +1151,17 @@ public partial class MainForm
 
                 // Announce the change to the user
                 string announcement = $"Database automatically switched to {targetVersion}";
-                System.Diagnostics.Debug.WriteLine($"[MainForm] {announcement}");
+                Log.Debug("MainForm", $"{announcement}");
                 announcer.Announce(announcement);
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[MainForm] Database setting ({currentDbSetting}) already matches detected simulator ({detectedSim})");
+                Log.Debug("MainForm", $"Database setting ({currentDbSetting}) already matches detected simulator ({detectedSim})");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in CheckAndSwitchDatabase: {ex.Message}");
+            Log.Debug("MainForm", $"Error in CheckAndSwitchDatabase: {ex.Message}");
         }
     }
 }

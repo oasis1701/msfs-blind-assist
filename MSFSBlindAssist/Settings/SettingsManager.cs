@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Settings;
 
@@ -68,7 +69,7 @@ public static class SettingsManager
                 // If settings file doesn't exist, create with defaults
                 if (!File.Exists(SettingsFilePath))
                 {
-                    System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings file not found, using defaults");
+                    Log.Debug("Settings", "Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
                     MigrateFOGearSplit(defaultSettings);
                     SeedTakeoffAssistToneConvention(defaultSettings, freshInstall: true);
@@ -83,13 +84,13 @@ public static class SettingsManager
 
                 if (settings == null)
                 {
-                    Debug.WriteLine("[SettingsManager] Failed to deserialize settings, using defaults");
+                    Log.Warn("Settings", "Failed to deserialize settings, using defaults");
                     settings = new UserSettings();
                     Save(settings);
                 }
                 else
                 {
-                    Debug.WriteLine("[SettingsManager] Settings loaded successfully from JSON");
+                    Log.Debug("Settings", "Settings loaded successfully from JSON");
                 }
 
                 MigrateFOGearSplit(settings);       // one-time: seed split gear flags from the legacy flag
@@ -108,7 +109,7 @@ public static class SettingsManager
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error loading settings: {ex.Message}");
+                Log.Error("Settings", "Error loading settings", ex);
                 // Return default settings on error
                 return new UserSettings();
             }
@@ -257,11 +258,11 @@ public static class SettingsManager
 
                 File.WriteAllText(SettingsFilePath, json);
 
-                Debug.WriteLine($"[SettingsManager] Settings saved to {SettingsFilePath}");
+                Log.Debug("Settings", $"Settings saved to {SettingsFilePath}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error saving settings: {ex.Message}");
+                Log.Error("Settings", "Error saving settings", ex);
                 throw;
             }
         }
@@ -284,7 +285,7 @@ public static class SettingsManager
             {
                 _currentSettings = new UserSettings();
                 Save(_currentSettings);
-                System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings reset to defaults");
+                Log.Debug("Settings", "Settings reset to defaults");
             }
         }
 
@@ -306,7 +307,7 @@ public static class SettingsManager
                 // Only migrate if legacy settings exist and new settings don't
                 if (File.Exists(LegacySettingsFilePath) && !File.Exists(SettingsFilePath))
                 {
-                    System.Diagnostics.Debug.WriteLine("[SettingsManager] Migrating settings from FBWBA to MSFSBlindAssist");
+                    Log.Debug("Settings", "Migrating settings from FBWBA to MSFSBlindAssist");
 
                     // Ensure new directory exists
                     if (!Directory.Exists(SettingsDirectory))
@@ -316,12 +317,12 @@ public static class SettingsManager
 
                     // Copy the settings file
                     File.Copy(LegacySettingsFilePath, SettingsFilePath);
-                    System.Diagnostics.Debug.WriteLine("[SettingsManager] Settings migration complete");
+                    Log.Debug("Settings", "Settings migration complete");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SettingsManager] Error migrating legacy settings: {ex.Message}");
+                Log.Error("Settings", "Error migrating legacy settings", ex);
                 // Migration failure is non-fatal; app will create new settings
             }
         }

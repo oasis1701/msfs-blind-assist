@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -96,8 +97,8 @@ public class PMDG777DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] RegisterClientDataAreas failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RegisterClientDataAreas failed: {ex.Message}");
         }
 
         _pollTimer = new System.Windows.Forms.Timer();
@@ -105,7 +106,7 @@ public class PMDG777DataManager : IPMDGDataManager
         _pollTimer.Tick += PollTimer_Tick;
         _pollTimer.Start();
 
-        System.Diagnostics.Debug.WriteLine($"[PMDG777DataManager] Initialized.");
+        Log.Debug("SimConnect", $"Initialized.");
     }
 
     // ------------------------------------------------------------------
@@ -151,7 +152,7 @@ public class PMDG777DataManager : IPMDGDataManager
         _simConnect.RegisterStruct<SIMCONNECT_RECV_CLIENT_DATA, PMDG777CDUScreen>(
             PMDG_DATA_DEFINITION_ID.CDU_2);
 
-        System.Diagnostics.Debug.WriteLine("[PMDG777DataManager] Client data areas registered.");
+        Log.Debug("SimConnect", "Client data areas registered.");
     }
 
     // ------------------------------------------------------------------
@@ -179,8 +180,8 @@ public class PMDG777DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] RequestData failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RequestData failed: {ex.Message}");
         }
     }
 
@@ -218,8 +219,8 @@ public class PMDG777DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] ProcessClientData error: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"ProcessClientData error: {ex.Message}");
         }
     }
 
@@ -329,8 +330,8 @@ public class PMDG777DataManager : IPMDGDataManager
                 return ToDouble(arr.GetValue(index));
         }
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDG777DataManager] GetFieldValue: unknown field '{fieldName}'");
+        Log.Debug("SimConnect", 
+            $"GetFieldValue: unknown field '{fieldName}'");
         return 0.0;
     }
 
@@ -349,8 +350,8 @@ public class PMDG777DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] SendEvent '{eventName}' failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEvent '{eventName}' failed: {ex.Message}");
         }
     }
 
@@ -403,13 +404,13 @@ public class PMDG777DataManager : IPMDGDataManager
                 TRANSMIT_GROUP_PRIORITY.HIGHEST, // same value SimConnectManager uses
                 SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
 
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] SendEventViaTransmit: '{eventName}' eventId=0x{eventId:X} mouseFlag=0x{mouseFlag:X8}");
+            Log.Debug("SimConnect", 
+                $"SendEventViaTransmit: '{eventName}' eventId=0x{eventId:X} mouseFlag=0x{mouseFlag:X8}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] SendEventViaTransmit '{eventName}' failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEventViaTransmit '{eventName}' failed: {ex.Message}");
         }
     }
 
@@ -440,8 +441,8 @@ public class PMDG777DataManager : IPMDGDataManager
             0,
             ctrl);
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDG777DataManager] SendViaCDA: eventId=0x{eventId:X} param={parameter}");
+        Log.Debug("SimConnect", 
+            $"SendViaCDA: eventId=0x{eventId:X} param={parameter}");
     }
 
     /// <summary>
@@ -479,8 +480,8 @@ public class PMDG777DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
         }
     }
 
@@ -580,8 +581,8 @@ public class PMDG777DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDG777DataManager] RequestCDUScreen({cdu}) failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RequestCDUScreen({cdu}) failed: {ex.Message}");
         }
     }
 
@@ -660,7 +661,7 @@ public class PMDG777DataManager : IPMDGDataManager
         _pollTimer?.Stop();
         _pollTimer?.Dispose();
         _pollTimer = null;
-        System.Diagnostics.Debug.WriteLine("[PMDG777DataManager] Disposed.");
+        Log.Debug("SimConnect", "Disposed.");
     }
 }
 

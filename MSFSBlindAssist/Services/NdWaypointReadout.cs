@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -73,7 +74,7 @@ public static class NdWaypointReadout
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[NdWaypointReadout] Announce error: {ex.Message}");
+            Log.Debug("Services", $"Announce error: {ex.Message}");
         }
     }
 

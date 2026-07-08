@@ -4,6 +4,7 @@ using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -65,7 +66,7 @@ public partial class SimConnectManager
 
                 ecamStringsReceived++;
 
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
+                Log.Debug("SimConnect", $"ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
 
                 // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
                 if (ecamStringsReceived % ecamTotalStringsExpected == 0)
@@ -92,7 +93,7 @@ public partial class SimConnectManager
                         StallWarning = ecamStallWarning > 0.5
                     });
 
-                    System.Diagnostics.Debug.WriteLine("[SimConnectManager] All ECAM data collected and event fired");
+                    Log.Debug("SimConnect", "All ECAM data collected and event fired");
 
                     // Announce new ECAM messages (batch processing after all 14 lines collected)
                     AnnounceECAMChanges();
@@ -147,7 +148,7 @@ public partial class SimConnectManager
 
             string description = FormatVariableValue(varKey, varDef, currentValue);
 
-            System.Diagnostics.Debug.WriteLine($"[ProcessIndividualVariableResponse] Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+            Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
             {
@@ -158,7 +159,7 @@ public partial class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error processing individual variable response: {ex.Message}");
+            Log.Debug("SimConnect", $"Error processing individual variable response: {ex.Message}");
         }
     }
 
@@ -344,7 +345,7 @@ public partial class SimConnectManager
         // SAFETY: Check if map is empty (possible race condition)
         if (continuousVariableIndexMap.Count == 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
+            Log.Debug("SimConnect", $"WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
             return;
         }
 
@@ -374,7 +375,7 @@ public partial class SimConnectManager
                         // Each batch struct has 300 doubles (matches BATCH_SIZE = 300)
                         if (index < 0 || index >= 300)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-299] for variable '{varKey}'");
+                            Log.Debug("SimConnect", $"ERROR: Batch {batchNum} index {index} out of bounds [0-299] for variable '{varKey}'");
                             invalidIndexCount++;
                             continue;
                         }
@@ -390,7 +391,7 @@ public partial class SimConnectManager
                             if (!variables.TryGetValue(varKey, out var varDef))
                             {
                                 skippedCount++;
-                                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Variable {varKey} not found in aircraft definition!");
+                                Log.Debug("SimConnect", $"WARNING: Variable {varKey} not found in aircraft definition!");
                                 continue;
                             }
 
@@ -441,7 +442,7 @@ public partial class SimConnectManager
                                     StallWarning = ecamStallWarning > 0.5
                                 });
 
-                                System.Diagnostics.Debug.WriteLine("[ProcessContinuousBatch] All ECAM data collected and event fired");
+                                Log.Debug("SimConnect", "All ECAM data collected and event fired");
 
                                 // Announce new ECAM messages (batch processing after all 14 lines collected)
                                 AnnounceECAMChanges();
@@ -506,7 +507,7 @@ public partial class SimConnectManager
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] EXCEPTION: Error accessing value for variable '{varKey}' at index {index}: {ex.GetType().Name}: {ex.Message}");
+                        Log.Debug("SimConnect", $"EXCEPTION: Error accessing value for variable '{varKey}' at index {index}: {ex.GetType().Name}: {ex.Message}");
                         exceptionCount++;
                     }
                 }  // end foreach
@@ -520,9 +521,9 @@ public partial class SimConnectManager
             // struct over-read fixed in 8cbb502) is NOT catchable by managed try/catch and will
             // FailFast regardless — there is intentionally no ExecutionEngineException catch here
             // (it is obsolete/never-raised on modern .NET). This handler covers ordinary exceptions.
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
+            Log.Debug("SimConnect", $"UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
+            Log.Debug("SimConnect", $"  Message: {ex.Message}");
+            Log.Debug("SimConnect", $"  Stack trace: {ex.StackTrace}");
             return;  // Abort processing to prevent crash
         }
     }

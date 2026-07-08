@@ -3,6 +3,7 @@ using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -46,15 +47,14 @@ public class LandingExitPlanner
     // Diagnostic log so we can see why activation didn't fire when only the
     // "On ground" callout was heard at touchdown. Lives with every other MSFSBA
     // log in the canonical AppLogs folder (%APPDATA%\MSFSBlindAssist\logs).
-    private static readonly string DiagLogPath = Utils.AppLogs.PathFor("landing_exit.log");
+    // Shared with TaxiGuidanceManager's rollout diag + MainForm.Announcers' — all
+    // now serialize through the same LogChannel/LogWriter instead of racing on
+    // File.AppendAllText.
+    private static readonly LogChannel _diagLog = Log.Channel("landing_exit");
 
     private static void DiagLog(string msg)
     {
-        try
-        {
-            File.AppendAllText(DiagLogPath,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {msg}{Environment.NewLine}");
-        }
+        try { _diagLog.Info(msg); }
         catch { }
     }
 
