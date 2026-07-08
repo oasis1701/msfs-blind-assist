@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -93,18 +94,18 @@ public class HandFlyManager : IDisposable
                 {
                     audioGenerator = new AudioToneGenerator();
                     audioGenerator.Start(waveType, volume);
-                    System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone started");
+                    Log.Debug("Services", "Audio tone started");
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Failed to start audio: {ex.Message}");
+                    Log.Debug("Services", $"Failed to start audio: {ex.Message}");
                     audioGenerator?.Dispose();
                     audioGenerator = null;
                 }
             }
 
             announcer.AnnounceImmediate("Hand fly mode active");
-            System.Diagnostics.Debug.WriteLine("[HandFlyManager] Activated");
+            Log.Debug("Services", "Activated");
         }
         else
         {
@@ -112,7 +113,7 @@ public class HandFlyManager : IDisposable
             StopAudio();
 
             announcer.AnnounceImmediate("Hand fly mode off");
-            System.Diagnostics.Debug.WriteLine("[HandFlyManager] Deactivated");
+            Log.Debug("Services", "Deactivated");
         }
 
         HandFlyModeActiveChanged?.Invoke(this, isActive);
@@ -148,7 +149,7 @@ public class HandFlyManager : IDisposable
                 lastAnnouncedPitch = currentPitch;
                 lastPitchAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Pitch: {currentPitch:F1}° → {announcement}");
+                Log.Debug("Services", $"Pitch: {currentPitch:F1}° → {announcement}");
             }
         }
     }
@@ -184,7 +185,7 @@ public class HandFlyManager : IDisposable
                 lastAnnouncedBank = currentBank;
                 lastBankAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Bank: {currentBank:F1}° → {announcement}");
+                Log.Debug("Services", $"Bank: {currentBank:F1}° → {announcement}");
             }
         }
     }
@@ -231,7 +232,7 @@ public class HandFlyManager : IDisposable
             lastAnnouncedHeading = currentHeading;
             lastHeadingAnnouncement = DateTime.Now;
 
-            System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Heading: {currentHeading:F0}° → {announcement}");
+            Log.Debug("Services", $"Heading: {currentHeading:F0}° → {announcement}");
         }
     }
 
@@ -269,7 +270,7 @@ public class HandFlyManager : IDisposable
             lastAnnouncedVS = currentVS;
             lastVSAnnouncement = DateTime.Now;
 
-            System.Diagnostics.Debug.WriteLine($"[HandFlyManager] VS: {currentVS:F0} fpm → {announcement}");
+            Log.Debug("Services", $"VS: {currentVS:F0} fpm → {announcement}");
         }
     }
 
@@ -345,7 +346,7 @@ public class HandFlyManager : IDisposable
             isActive = false;
             StopAudio();
             HandFlyModeActiveChanged?.Invoke(this, false);
-            System.Diagnostics.Debug.WriteLine("[HandFlyManager] Reset");
+            Log.Debug("Services", "Reset");
         }
     }
 
@@ -385,11 +386,11 @@ public class HandFlyManager : IDisposable
                     {
                         audioGenerator = new AudioToneGenerator();
                         audioGenerator.Start(waveType, volume);
-                        System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone started via settings update");
+                        Log.Debug("Services", "Audio tone started via settings update");
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Failed to start audio: {ex.Message}");
+                        Log.Debug("Services", $"Failed to start audio: {ex.Message}");
                     }
                 }
             }
@@ -401,7 +402,7 @@ public class HandFlyManager : IDisposable
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Settings updated: Mode={feedbackMode}, Wave={waveType}, Volume={volume:F2}");
+        Log.Debug("Services", $"Settings updated: Mode={feedbackMode}, Wave={waveType}, Volume={volume:F2}");
     }
 
     /// <summary>
@@ -414,7 +415,7 @@ public class HandFlyManager : IDisposable
             audioGenerator.Stop();
             audioGenerator.Dispose();
             audioGenerator = null;
-            System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone stopped");
+            Log.Debug("Services", "Audio tone stopped");
         }
     }
 
@@ -429,7 +430,7 @@ public class HandFlyManager : IDisposable
     {
         audioSuppressedByVG = true;
         StopAudio();
-        System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio suppressed by visual guidance");
+        Log.Debug("Services", "Audio suppressed by visual guidance");
     }
 
     /// <summary>
@@ -449,11 +450,11 @@ public class HandFlyManager : IDisposable
             {
                 audioGenerator = new AudioToneGenerator();
                 audioGenerator.Start(waveType, volume);
-                System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio resumed after visual guidance");
+                Log.Debug("Services", "Audio resumed after visual guidance");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Failed to resume audio: {ex.Message}");
+                Log.Debug("Services", $"Failed to resume audio: {ex.Message}");
                 audioGenerator?.Dispose();
                 audioGenerator = null;
             }

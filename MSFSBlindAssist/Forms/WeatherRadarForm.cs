@@ -220,9 +220,11 @@ public class WeatherRadarForm : Form
 
             await Task.WhenAll(ambientTask, advisoriesTask, windsTask);
 
-            _currentWeatherBox.Text = ambientTask.Result;
-            _advisoriesBox.Text     = advisoriesTask.Result;
-            _windsAloftBox.Text     = windsTask.Result;
+            // await, not .Result — the tasks are already completed (WhenAll above), so
+            // this doesn't block, but await avoids wrapping a fault in AggregateException.
+            _currentWeatherBox.Text = await ambientTask;
+            _advisoriesBox.Text     = await advisoriesTask;
+            _windsAloftBox.Text     = await windsTask;
 
             // Silent fallback by design — user shouldn't have to know whether
             // ActiveSky is the source or the SimConnect AMBIENT_* fallback is.
@@ -309,9 +311,10 @@ public class WeatherRadarForm : Form
             // station first, position second.
             var stationMetarTask = _activeSky.GetClosestStationMetarAsync();
             await Task.WhenAll(conditionsTask, posMetarTask, stationMetarTask);
-            var asConditions = conditionsTask.Result;
-            string? posMetar = posMetarTask.Result;
-            string? stationMetar = stationMetarTask.Result;
+            // await, not .Result — already completed by WhenAll above; avoids AggregateException wrapping.
+            var asConditions = await conditionsTask;
+            string? posMetar = await posMetarTask;
+            string? stationMetar = await stationMetarTask;
 
             if (asConditions != null)
                 return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar, stationMetar);

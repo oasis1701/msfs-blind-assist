@@ -7,7 +7,6 @@ namespace MSFSBlindAssist.Forms;
 public sealed class GsxSettingsForm : Form
 {
     private readonly GsxService _gsxService;
-    private readonly ScreenReaderAnnouncer _announcer;
     private IReadOnlyList<GsxService.GsxSettingItem> _items;
     private readonly ListBox _tabSelector = new();
     private readonly Panel _settingsHost = new();
@@ -21,7 +20,7 @@ public sealed class GsxSettingsForm : Form
         IReadOnlyList<GsxService.GsxSettingItem> items)
     {
         _gsxService = gsxService ?? throw new ArgumentNullException(nameof(gsxService));
-        _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
+        _ = announcer ?? throw new ArgumentNullException(nameof(announcer));
         // Snapshot: GsxService.SettingsItems returns its internal list, which it
         // mutates in place (Clear + AddRange) before raising SettingsChanged.
         // Holding a copy here means BuildItemsSignature can detect what changed.

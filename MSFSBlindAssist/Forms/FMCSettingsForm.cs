@@ -16,10 +16,10 @@ namespace MSFSBlindAssist.Forms;
 ///    ETA in Z time, landing fuel, TOC and step-climb data. No effect on
 ///    the Fenix A320.
 ///
-/// The form mirrors <see cref="TaxiGuidanceOptionsForm"/>'s pattern:
-/// caller reads the public properties after <c>ShowDialog() == DialogResult.OK</c>
-/// and writes them back to <see cref="UserSettings"/>. The form does not
-/// touch settings storage itself — that's the caller's responsibility.
+/// The form uses the property-return pattern: caller reads the public
+/// properties after <c>ShowDialog() == DialogResult.OK</c> and writes them
+/// back to <see cref="UserSettings"/>. The form does not touch settings
+/// storage itself — that's the caller's responsibility.
 /// </summary>
 public class FMCSettingsForm : Form
 {

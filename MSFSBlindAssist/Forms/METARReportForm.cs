@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -294,7 +295,7 @@ public partial class METARReportForm : Form
             {
                 statusLabel.Text = "Error fetching METAR";
                 metarTextBox.Text = $"Error retrieving METAR data for {icao}: {ex.Message}";
-                System.Diagnostics.Debug.WriteLine($"[METARReportForm] Error fetching METAR: {ex.Message}");
+                Log.Debug("Forms", $"Error fetching METAR: {ex.Message}");
             }
             finally
             {

@@ -267,12 +267,6 @@ public static class GsxMenuClassifier
         "stand", "gate", "parking",
     };
 
-    // A concourse-only token (single letter, used in menus like "Concourse C" or just "C").
-    // Only treated as a Category, never a leaf.
-    private static readonly Regex PureConcourseRegex = new Regex(
-        @"^[A-Za-z]{1,2}$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     // ─────────────────────────────────────────────────────────────────────────
     // Primary API.
     // ─────────────────────────────────────────────────────────────────────────
