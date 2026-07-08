@@ -241,6 +241,27 @@ public partial class SimConnectManager
     // batchNumber: 1-5, indexWithinBatch: 0-99
     private Dictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new Dictionary<string, (int batchNum, int index)>();
 
+    // Prebuilt per-batch arrays mirroring continuousVariableIndexMap, built once in
+    // StartContinuousMonitoring (SimConnectManager.Setup.cs) and reused by every 1 Hz batch
+    // delivery in ProcessContinuousBatchImpl (SimConnectManager.VarCache.cs). Avoids scanning the
+    // whole ~700-var map 5x/second (skipping the 4 batches that aren't the current one) AND
+    // re-resolving each SimVarDefinition via variables.TryGetValue per var — the varDef is
+    // pre-resolved into the tuple instead. Indexed directly by batchNum (1-5, matching
+    // continuousVariableIndexMap's batchNum); index 0 is unused padding so callers can index with
+    // batchVarArrays[batchNum] without a -1 offset. continuousVariableIndexMap itself is kept —
+    // other consumers (e.g. RequestVariable's ContainsKey check in DataRequests.cs) read it
+    // independently of the batch loop. Cleared in lockstep with continuousVariableIndexMap:
+    // rebuilt in StartContinuousMonitoring, reset to empty in Disconnect.
+    private (string key, int index, SimVarDefinition def)[][] batchVarArrays =
+    {
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // index 0 (unused)
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 1
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 2
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 3
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 4
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 5
+    };
+
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
     private uint nextEventId = 1000;
@@ -1064,6 +1085,8 @@ public partial class SimConnectManager
         requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
+        for (int i = 0; i < batchVarArrays.Length; i++)
+            batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         eventIds.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         ecamStringData.Clear();

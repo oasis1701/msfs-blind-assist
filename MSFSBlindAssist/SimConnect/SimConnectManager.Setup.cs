@@ -330,6 +330,8 @@ public partial class SimConnectManager
         // Clear previous batch setup (important when switching aircraft or adding/removing variables)
         int previousMapSize = continuousVariableIndexMap.Count;
         continuousVariableIndexMap.Clear();
+        for (int i = 0; i < batchVarArrays.Length; i++)
+            batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         Log.Debug("SimConnect", $"Cleared previous map (had {previousMapSize} entries)");
 
         // Get all continuous variables from current aircraft
@@ -423,6 +425,9 @@ public partial class SimConnectManager
 
             // Track entries added to the map for THIS batch so we can roll them back on failure.
             var batchMapKeys = new List<string>(batchVarCount);
+            // Mirrors batchMapKeys, but pre-resolving the varDef too — becomes batchVarArrays[batchNum]
+            // on success (see Step 2's prebuilt-array consumer in SimConnectManager.VarCache.cs).
+            var batchArrayEntries = new List<(string key, int index, SimVarDefinition def)>(batchVarCount);
 
             try
             {
@@ -446,6 +451,7 @@ public partial class SimConnectManager
 
                     continuousVariableIndexMap[kvp.Key] = (batchNum, indexWithinBatch);
                     batchMapKeys.Add(kvp.Key);
+                    batchArrayEntries.Add((kvp.Key, indexWithinBatch, varDef));
                     indexWithinBatch++;
                     totalVariablesAdded++;
 
@@ -497,6 +503,10 @@ public partial class SimConnectManager
                 );
 
                 batchesStarted++;
+                // Publish this batch's prebuilt array only once the batch is fully committed
+                // (mirrors continuousVariableIndexMap, which is only trusted for this batch's
+                // keys past this point too).
+                batchVarArrays[batchNum] = batchArrayEntries.ToArray();
                 Log.Debug("SimConnect", $"Batch {batchNum} monitoring started for {batchVarCount} variables");
             }
             catch (Exception ex)
@@ -508,6 +518,9 @@ public partial class SimConnectManager
                 // un-monitored than to dereference a stale (batchNum, index) pair forever.
                 foreach (var key in batchMapKeys)
                     continuousVariableIndexMap.Remove(key);
+                // batchVarArrays[batchNum] was never assigned from batchArrayEntries on this path
+                // (the assignment above only runs after a successful try), so it's still whatever
+                // the top-of-method reset left it at (empty) — no separate rollback needed here.
 
                 // Continue with the next batch.
             }

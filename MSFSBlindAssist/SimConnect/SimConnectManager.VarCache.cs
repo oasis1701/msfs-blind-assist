@@ -354,20 +354,27 @@ public partial class SimConnectManager
     /// </summary>
     private void ProcessContinuousBatchImpl<T>(int batchNum, in T batch) where T : unmanaged
     {
-        // Get variables dictionary once at the start
-        var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-
         int processedCount = 0;
-        int skippedCount = 0;
         int invalidIndexCount = 0;
         int exceptionCount = 0;
 
-        // SAFETY: Check if map is empty (possible race condition)
+        // SAFETY: Check if map is empty (possible race condition). Kept as a whole-map check
+        // (not per-batch) so a legitimately-empty batch (e.g. an aircraft with fewer than 300
+        // continuous+announced vars leaves batches 2-5 empty) does NOT log this warning every
+        // second — only a genuine race (nothing built yet at all) does.
         if (continuousVariableIndexMap.Count == 0)
         {
             Log.Debug("SimConnect", $"WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
             return;
         }
+
+        // Prebuilt per-batch array of (key, index, resolved varDef) — built once in
+        // StartContinuousMonitoring, in the same order vars were assigned indexWithinBatch there.
+        // Replaces a full scan of continuousVariableIndexMap (skipping every other batch's ~4/5 of
+        // entries) plus a per-var variables.TryGetValue re-resolution.
+        var batchVars = (batchNum >= 0 && batchNum < batchVarArrays.Length)
+            ? batchVarArrays[batchNum]
+            : Array.Empty<(string key, int index, SimVarDefinition def)>();
 
         // Use unsafe pointer access instead of reflection for performance and stability
         // Each batch struct is a sequential struct of 300 doubles, so we can access directly
@@ -381,16 +388,10 @@ public partial class SimConnectManager
                 {
                     double* values = (double*)batchPtr;  // Treat struct as array of doubles
 
-                    // Process each continuous variable using direct memory access (no reflection!)
-                    // Filter to only process variables belonging to this batch
-                    foreach (var kvp in continuousVariableIndexMap)
+                    // Process each variable belonging to this batch via direct memory access
+                    // (no reflection!) using the prebuilt array — no other-batch entries to skip.
+                    foreach (var (varKey, index, varDef) in batchVars)
                     {
-                        string varKey = kvp.Key;
-                        (int varBatchNum, int index) = kvp.Value;
-
-                        // Skip variables that don't belong to this batch
-                        if (varBatchNum != batchNum) continue;
-
                         // SAFETY: Validate index is within bounds
                         // Each batch struct has 300 doubles (matches BATCH_SIZE = 300)
                         if (index < 0 || index >= 300)
@@ -406,14 +407,6 @@ public partial class SimConnectManager
                         {
                             // Direct memory access - blazing fast, no reflection overhead!
                             value = values[index];
-
-                            // Get variable definition
-                            if (!variables.TryGetValue(varKey, out var varDef))
-                            {
-                                skippedCount++;
-                                Log.Debug("SimConnect", $"WARNING: Variable {varKey} not found in aircraft definition!");
-                                continue;
-                            }
 
                         // Special handling for ECAM variables (convert numeric codes to readable text)
                         if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
@@ -455,8 +448,15 @@ public partial class SimConnectManager
                             {
                                 // Check if value matches any defined detent (within tolerance)
                                 const double DETENT_TOLERANCE = 0.1;
-                                bool matchesDetent = varDef.ValueDescriptions.Keys.Any(key =>
-                                    Math.Abs(value - key) < DETENT_TOLERANCE);
+                                bool matchesDetent = false;
+                                foreach (var detentKey in varDef.ValueDescriptions.Keys)
+                                {
+                                    if (Math.Abs(value - detentKey) < DETENT_TOLERANCE)
+                                    {
+                                        matchesDetent = true;
+                                        break;
+                                    }
+                                }
 
                                 if (!matchesDetent)
                                 {
