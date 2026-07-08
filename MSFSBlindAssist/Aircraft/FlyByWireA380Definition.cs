@@ -2566,11 +2566,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("RUDDER_DEFLECTION", "RUDDER DEFLECTION", "Rudder Deflection", "degrees");
         Stock("SPOILERS_LEFT_POSITION", "SPOILERS LEFT POSITION", "Left Spoilers", "percent");
         Stock("SPOILERS_RIGHT_POSITION", "SPOILERS RIGHT POSITION", "Right Spoilers", "percent");
-        // FMS-computed takeoff THS / pitch-trim target (ARINC429) — the value the
-        // pilot must set the trim wheel to before takeoff (auto-trim isn't modeled
-        // on this build). Decoded in TryGetDisplayOverride; reads "Not computed"
-        // until the FMS has the perf data. (#107 transcript gap: predicted T.O trim.)
-        Read("A32NX_TO_PITCH_TRIM", "Takeoff Trim Target", "number");
+        // Takeoff THS ("THS FOR" — the takeoff CG in %MAC the pilot enters on the MFD
+        // PERF T.O page). CORRECTED 2026-07: read the ARINC429 word A32NX_FM1_TO_PITCH_TRIM
+        // (what the FMC actually writes, via setTakeoffTrim → FmArinc429OutputWord, and what
+        // the FWS reads for the TO-CONFIG stab check), NOT the bare A32NX_TO_PITCH_TRIM,
+        // which is a dead/unwritten var that reads 0 → decoded "Not computed" even with a
+        // value set. The word carries a PERCENT (%MAC), NOT degrees — the FWS compares it
+        // straight to fqmsGrossWeightCgPercent, and the PERF field is a PercentageFormat;
+        // the old "X.X degrees up/down" render was wrong. Decoded in TryGetDisplayOverride.
+        Read("A32NX_FM1_TO_PITCH_TRIM", "Takeoff Trim (THS for CG)", "number");
         // Rudder trim ("weather trim"). The stock RUDDER TRIM PCT does not track the
         // FBW SEC-computed value; the real figure the PFD/SD show is the ARINC429
         // word A32NX_SEC_1_RUDDER_ACTUAL_POSITION (degrees, positive = nose-Left).

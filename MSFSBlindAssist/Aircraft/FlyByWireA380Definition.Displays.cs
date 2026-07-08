@@ -382,16 +382,15 @@ public partial class FlyByWireA380Definition
                 displayText = $"{we.Value:0} degrees celsius";
                 return true;
             }
-            case "A32NX_TO_PITCH_TRIM":
+            case "A32NX_FM1_TO_PITCH_TRIM":
             {
-                // ARINC429 degrees; the FMS-computed takeoff trim. Positive = nose
-                // UP. Reads "Not computed" until the FMS has perf data.
+                // ARINC429 word = the takeoff "THS FOR" value = takeoff CG in %MAC (NOT
+                // degrees — the FWS compares it straight to the gross-weight CG percent and
+                // the PERF field is a PercentageFormat). Reads "Not computed" (NCD) until the
+                // pilot enters it on the MFD PERF T.O page.
                 var w = new Arinc429Word(value);
                 if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not computed"; return true; }
-                double deg = w.Value;
-                displayText = Math.Abs(deg) < 0.05
-                    ? "Neutral"
-                    : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                displayText = $"{w.Value:0.0} percent";
                 return true;
             }
             case "ELEVATOR_TRIM":
