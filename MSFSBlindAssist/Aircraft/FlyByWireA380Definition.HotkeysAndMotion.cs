@@ -167,7 +167,7 @@ public partial class FlyByWireA380Definition
             // repurpose the waypoint key). The MCDU/MFD covers waypoint data.
             case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds, center of gravity X% MAC"
                 announcer.AnnounceImmediate(_gwKgCache > 0
-                    ? $"Gross weight {_gwKgCache * 2.204625:0} pounds{CgMacPhrase()}"
+                    ? $"Gross weight {_gwKgCache * 2.204625:0} pounds{CgMacPhrase(_gwCgMac)}"
                     : "Gross weight not available");
                 return true;
             case HotkeyAction.ReadAltimeter:
@@ -193,7 +193,7 @@ public partial class FlyByWireA380Definition
                 return true;
             case HotkeyAction.ReadGrossWeightKg: // Shift+W -> "Gross weight N kilograms, center of gravity X% MAC"
                 announcer.AnnounceImmediate(_gwKgCache > 0
-                    ? $"Gross weight {_gwKgCache:0} kilograms{CgMacPhrase()}"
+                    ? $"Gross weight {_gwKgCache:0} kilograms{CgMacPhrase(_gwCgMac)}"
                     : "Gross weight not available");
                 return true;
             case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
@@ -567,10 +567,5 @@ public partial class FlyByWireA380Definition
         s.ExecuteCalculatorCode($"{(_metricAlt ? 0 : 1)} (>L:A32NX_METRIC_ALT_TOGGLE)");
     }
 
-    // Set the FCU altitude increment (100 or 1000 ft).
-    public void SetAltIncrement(int inc, SimConnectManager s)
-    {
-        if (!s.IsConnected) return;
-        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
-    }
+    // SetAltIncrement moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
 }

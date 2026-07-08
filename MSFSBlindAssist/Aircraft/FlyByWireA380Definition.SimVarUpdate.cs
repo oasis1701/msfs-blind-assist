@@ -37,12 +37,7 @@ public partial class FlyByWireA380Definition
         return s.Trim();
     }
 
-    private static string DecodeArmedModes(int v, (int bit, string name)[] bits)
-    {
-        var names = new List<string>();
-        foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
-        return string.Join(", ", names);
-    }
+    // DecodeArmedModes moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
@@ -774,7 +769,6 @@ public partial class FlyByWireA380Definition
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
-    // Spoken CG suffix for the gross-weight readouts. Empty (suppressed) when the CG
-    // isn't available/sane, so the gross-weight readout never breaks or says "CG 0".
-    private string CgMacPhrase() => (_gwCgMac > 5 && _gwCgMac < 60) ? $", center of gravity {_gwCgMac:0.0} percent MAC" : "";
+    // CgMacPhrase moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair,
+    // now parameterized on the cached %MAC value).
 }
