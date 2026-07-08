@@ -6,7 +6,7 @@
 
 **Feature:** Screen-reader-accessible Electronic Flight Bag (flyPad) for **both** FlyByWire aircraft. The **same** form, client, and in-page agent serve the A32NX flyPad and the A380X flyPad — only the window title differs. Opened via the shared `HotkeyAction.ShowPMDGEFB` dispatch, branched by `AircraftCode` (`"A320"` and `"FBW_A380"` both call `ShowFbwEfbDialog()`). It renders **whatever flyPad page is currently open** as a browsable document; there are no curated per-feature tabs.
 
-**Architecture — fundamentally different from the PMDG EFB bridge.** The PMDG/HS787 bridges inject JS via a Community mod package and talk over an HTTP server (`EFBBridgeServer`). The FBW flyPad uses **CDP (Chrome DevTools Protocol) over Coherent GT's devtools port (`:19999`)** with **no mod package and no Community-folder patching** — a generic in-page agent is installed at runtime via `Runtime.evaluate`. `EFBBridgeServer` stays for PMDG/HS787; the FBW flyPad does **not** use it.
+**Architecture — fundamentally different from the PMDG EFB bridge (historically).** The PMDG/HS787 bridges used to inject JS via a Community mod package and talk over an HTTP server (`EFBBridgeServer`). The FBW flyPad uses **CDP (Chrome DevTools Protocol) over Coherent GT's devtools port (`:19999`)** with **no mod package and no Community-folder patching** — a generic in-page agent is installed at runtime via `Runtime.evaluate`. `EFBBridgeServer` was deleted 2026-07; PMDG and HS787 now also connect directly through their own Coherent debugger clients, same as the flyPad.
 
 ```
 MSFS FBW flyPad (React / Coherent GT, devtools :19999)   — A32NX or A380X, same "- EFB" view

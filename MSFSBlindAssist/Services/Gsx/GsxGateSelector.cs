@@ -145,8 +145,8 @@ public sealed class GsxGateSelector
     /// <param name="target">The parking spot to select.</param>
     /// <param name="discoveryOnly">
     /// When <see langword="true"/>, navigates the tree without selecting
-    /// anything and writes the full discovered tree to
-    /// <see cref="Debug.WriteLine"/> (for Task E live tuning).
+    /// anything and writes the full discovered tree to the
+    /// <c>gsx-gate-select</c> log channel (for Task E live tuning).
     /// Safe to call at any airport.
     /// </param>
     /// <remarks>

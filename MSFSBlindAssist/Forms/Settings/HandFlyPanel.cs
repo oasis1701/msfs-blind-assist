@@ -148,7 +148,6 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             "Sawtooth (Bright)",
             "Sine (Rich)"
         });
-        waveTypeCombo.SelectedIndexChanged += WaveTypeCombo_SelectedIndexChanged;
 
         // Volume Label
         volumeLabel = new Label
@@ -570,10 +569,6 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private void FeedbackMode_CheckedChanged(object? sender, EventArgs e)
     {
         UpdateControlStates();
-    }
-
-    private void WaveTypeCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
     }
 
     private void VolumeTrackBar_ValueChanged(object? sender, EventArgs e)

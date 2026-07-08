@@ -27,10 +27,7 @@
   var A = {};
 
   A.activeMcdu = 1;            // 1 = Captain (left), 2 = First Officer (right)
-  A.GRID_WIDTH = 36;
-  A.MAX_BODY_ROWS = 28;
   A.ROW_Y_TOLERANCE_PX = 14;
-  A.KEY_FIRE_DELAY_MS = 50;
 
   A.INTERACTIVE_SELECTOR = [
     ".mfd-input-field-container", ".mfd-button", ".mfd-icon-button",
@@ -229,34 +226,6 @@
     if (!v || v.indexOf("▯") < 0) return v;
     if (/^[▯\s.\/:+\-]*$/.test(v)) return "blank";
     return clean(v.replace(/▯/g, ""));
-  };
-
-  A.elementLabel = function (node, kind) {
-    var text = "";
-    if (kind === "input") {
-      var inner = node.querySelector(".mfd-input-field-text-input");
-      if (inner) text = clean(inner.textContent);
-      var label = node.previousElementSibling;
-      if (label && label.classList && label.classList.contains("mfd-label")) {
-        var lbl = clean(label.textContent);
-        if (lbl) text = lbl + ": " + text;
-      }
-      return text || "blank";
-    }
-    if (kind === "button" || kind === "icon" || kind === "menu") {
-      var t = clean(node.textContent);
-      if (!t && node.getAttribute) t = clean(node.getAttribute("aria-label") || node.getAttribute("title") || "");
-      return t || "(unlabeled)";
-    }
-    if (kind === "dropdown") {
-      var di = node.querySelector(".mfd-dropdown-inner");
-      return clean(di ? di.textContent : node.textContent) || "blank";
-    }
-    if (kind === "tab") {
-      var t = node.querySelector(".mfd-page-selector-label");
-      return clean(t ? t.textContent : node.textContent) || "(tab)";
-    }
-    return "";
   };
 
   // Direct (own) text of a node — only its immediate text children, so a big
@@ -1735,10 +1704,6 @@
     A.dispatchKey(span, "keydown", 8);    // BACKSPACE → modifiedFieldValue = ''
     A.dispatchKey(span, "keypress", 13);  // ENTER → blur+validate('') → field cleared
   };
-
-  // Legacy no-op kept so older call sites don't break; the DOM path needs no
-  // KCCU keyboard-enable (that SimVar.Set doesn't even stick in-page anyway).
-  A.ensureKccuKeyboardOn = function () {};
 
   // The MFD instrument's own EventBus — the ONLY channel that delivers KCCU keys
   // to the MFD from an external tool. The instrument is the <a380x-mfd> custom
