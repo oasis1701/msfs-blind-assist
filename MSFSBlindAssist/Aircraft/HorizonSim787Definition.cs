@@ -203,7 +203,11 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousFuelPump_CtrL    = -1;
     private int  _previousFuelPump_CtrR    = -1;
     private int  _previousFuelPump_APU     = -1;
-    private int  _previousFuelXfeedFwd     = -1;
+    // Renamed from _previousFuelXfeedFwd: tracks HS787_FuelXfeed, a single crossfeed
+    // valve state ("Fuel Crossfeed Open/Closed") — there is no Aft counterpart, so the
+    // Fwd suffix (a copy-paste artifact from the Fwd/Aft fuel-pump fields above) was
+    // misleading.
+    private int  _previousFuelXfeed        = -1;
     private int  _previousBleedEng1        = -1;
     private int  _previousBleedEng2        = -1;
     private int  _previousBleedAPU         = -1;

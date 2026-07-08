@@ -6,6 +6,10 @@ namespace MSFSBlindAssist.Aircraft;
 
 public partial class FlyByWireA380Definition
 {
+    // Flaps-handle detent names (index = A32NX_FLAPS_HANDLE_INDEX) for the ReadFlaps
+    // hotkey handler below — hoisted out of the handler so it isn't allocated per call.
+    private static readonly string[] ReadFlapsDetents = { "Up", "1", "2", "3", "Full" };
+
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
@@ -89,9 +93,8 @@ public partial class FlyByWireA380Definition
                 double? fv = simConnect.GetCachedVariableValue("A32NX_FLAPS_HANDLE_INDEX");
                 if (fv.HasValue)
                 {
-                    string[] detents = { "Up", "1", "2", "3", "Full" };
                     int i = (int)Math.Round(fv.Value);
-                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : fv.Value.ToString()));
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < ReadFlapsDetents.Length ? ReadFlapsDetents[i] : fv.Value.ToString()));
                 }
                 else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;

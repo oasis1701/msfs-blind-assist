@@ -772,9 +772,19 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // static fields on each definition) and are passed in.
     protected static string DecodeArmedModes(int v, (int bit, string name)[] bits)
     {
+        return string.Join(", ", DecodeArmedModeNames(v, bits));
+    }
+
+    /// <summary>
+    /// Parts-returning counterpart of <see cref="DecodeArmedModes"/> for callers that
+    /// only need to iterate the individual names (e.g. to announce each one) — avoids a
+    /// join-then-re-Split round trip through a joined string.
+    /// </summary>
+    protected static List<string> DecodeArmedModeNames(int v, (int bit, string name)[] bits)
+    {
         var names = new List<string>();
         foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
-        return string.Join(", ", names);
+        return names;
     }
 
     // Spoken CG suffix for the gross-weight readouts (FBW A320/A380 parity). Empty

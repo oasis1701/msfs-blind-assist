@@ -141,7 +141,7 @@ public partial class MainForm
         // updates still run, only the speech is dropped.
         bool hs787 = currentAircraft!.AircraftCode == "HS_787";
         bool hs787Muted = hs787 &&
-            Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+            Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -235,7 +235,7 @@ public partial class MainForm
 
                 // Check if disabled in Fenix Monitor Manager
                 if (currentAircraft.AircraftCode == "FENIX_A320CEO" &&
-                    Settings.SettingsManager.Current.FenixDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.FenixDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -245,28 +245,28 @@ public partial class MainForm
                 // a single prefix check covers any future PMDG additions
                 // sharing the same disabled-variables list.
                 if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
-                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the A380 Monitor Manager.
                 if (currentAircraft.AircraftCode == "FBW_A380" &&
-                    Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the A32NX Monitor Manager.
                 if (currentAircraft.AircraftCode == "A320" &&
-                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the HS787 Monitor Manager.
                 if (currentAircraft.AircraftCode == "HS_787" &&
-                    Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -347,6 +347,19 @@ public partial class MainForm
         // NOTE: Aircraft-specific ProcessSimVarUpdate() is now called in the main flow (line 206)
         // to avoid duplicate calls. Flight phase window title updates happen there.
 
+        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
+        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
+        // HOISTED to the top of this ladder: G_FORCE is registered HighFrequency=true
+        // (BaseAircraftDefinition), i.e. it fires on every SIM_FRAME — every branch below
+        // this one otherwise re-tests its own (much lower frequency) VarName first on every
+        // single frame for no reason. Pure reorder; none of the string-equality checks below
+        // can also match "G_FORCE", so moving this first changes no other branch's behavior.
+        if (e.VarName == "G_FORCE")
+        {
+            landingRateAnnouncer.ProcessG(e.Value);
+            return true;
+        }
+
         // 1,000-foot crossing callouts. INDICATED_ALTITUDE is also a panel-display var, so
         // this is a NON-terminal feed (no early return) — processing continues so the
         // display box still updates. The var is registered IsAnnounced=false (per aircraft),
@@ -377,14 +390,6 @@ public partial class MainForm
             // destination (the airports you actually taxi at, both force-fresh) plus on demand when
             // you type an ICAO into the gate-teleport dialog. The old 50 NM geofence scan was removed
             // — it added background fetching for airports you never taxi at, with no benefit.
-            return true;
-        }
-
-        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
-        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
-        if (e.VarName == "G_FORCE")
-        {
-            landingRateAnnouncer.ProcessG(e.Value);
             return true;
         }
 

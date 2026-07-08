@@ -6038,9 +6038,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 double? fv = simConnect.GetCachedVariableValue("A32NX_FLAPS_HANDLE_INDEX");
                 if (fv.HasValue)
                 {
-                    string[] detents = { "Up", "1", "2", "3", "Full" };
                     int i = (int)Math.Round(fv.Value);
-                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : fv.Value.ToString()));
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < FlapsDetents.Length ? FlapsDetents[i] : fv.Value.ToString()));
                 }
                 else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
@@ -6131,6 +6130,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
     // DecodeArmedModes moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
+
+    // Flaps-handle detent names (index = A32NX_FLAPS_HANDLE_INDEX) — shared by the
+    // ReadFlaps hotkey handler and the on-demand flaps-readout ProcessSimVarUpdate
+    // branch, hoisted out of both so neither allocates a fresh array per call/event.
+    private static readonly string[] FlapsDetents = { "Up", "1", "2", "3", "Full" };
 
     // ---- A320 System Display (SD) + E/WD accessible read-out -------------------
     // The A32NX SD page index is system-written/read-only (verified PagesContainer.tsx:111),
@@ -7180,7 +7184,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (text == null) return;
         // Mute rides the TCAS_STATE monitor entry — one Ctrl+M checkbox governs
         // both the state announce and the composed guidance.
-        if (!Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains("A32NX_TCAS_STATE"))
+        if (!Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains("A32NX_TCAS_STATE"))
             announcer.AnnounceImmediate(text);
     }
 
@@ -7249,7 +7253,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 bool? prev = _doorOpen.TryGetValue(varName, out var pv) ? pv : null;
                 _doorOpen[varName] = open;
                 if (prev.HasValue && prev.Value != open
-                    && !Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(varName))
+                    && !Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName))
                     announcer.Announce($"{dd.Name} {(open ? "open" : "closed")}");
                 break;
             }
@@ -7264,7 +7268,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             int pct = value <= 1.0 ? (int)Math.Round(value * 100) : (int)Math.Round(value);
             pct = Math.Max(0, Math.Min(100, pct));
             if (pct <= 0) { _presetBucket = -1; return true; }   // idle / reset — silent
-            if (!Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(varName))
+            if (!Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName))
             {
                 if (pct >= 100)
                 {
@@ -7291,7 +7295,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _lastComKhz[varName] = value;
             if (seeded && Math.Abs(value - prevKhz) > 0.5
                 && value >= 118000 && value <= 137000
-                && !Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName))
             {
                 string com = varName.EndsWith(":2") ? "COM 2" : varName.EndsWith(":3") ? "COM 3" : "COM 1";
                 string kind = varName.Contains("ACTIVE") ? "active" : "standby";
@@ -7308,7 +7312,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             bool txKnown = _comTxOn.TryGetValue(varName, out bool txPrev);
             _comTxOn[varName] = txOn;
             if (txKnown && txOn && !txPrev
-                && !Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName))
             {
                 announcer.Announce($"Transmitting on VHF {varName[^1]}");
             }
@@ -7320,9 +7324,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (_reqFlaps && varName == "A32NX_FLAPS_HANDLE_INDEX")
         {
             _reqFlaps = false;
-            string[] detents = { "Up", "1", "2", "3", "Full" };
             int i = (int)Math.Round(value);
-            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString()));
+            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < FlapsDetents.Length ? FlapsDetents[i] : value.ToString()));
             return true;
         }
         if (_reqGear && varName == "GEAR_HANDLE_POSITION")
@@ -7440,7 +7443,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             _fmgcPhase = (int)Math.Round(value);
             var variables = GetVariables();
-            if (variables.ContainsKey(varName) && variables[varName].ValueDescriptions.TryGetValue(value, out string? phaseName))
+            if (variables.TryGetValue(varName, out var phaseVarDef) && phaseVarDef.ValueDescriptions.TryGetValue(value, out string? phaseName))
             {
                 // Only announce if phase has actually changed
                 if (currentFlightPhase != phaseName)
@@ -7489,9 +7492,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varName?.StartsWith("A32NX_ECP_LIGHT_") == true)
         {
             var variables = GetVariables();
-            if (variables.ContainsKey(varName))
+            if (variables.TryGetValue(varName, out var varDef))
             {
-                var varDef = variables[varName];
                 string state = value > 0 ? "On" : "Off";
                 announcer.AnnounceImmediate($"{varDef.DisplayName} {state}");
             }

@@ -101,6 +101,10 @@ public static class SettingsManager
                     Save(settings);
                 }
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
+                // Deserialization bypasses the property setters' usual mutation path, so the
+                // *DisabledMonitorVariablesSet sidecars (populated by field initializers to
+                // empty, pre-deserialization) must be rebuilt explicitly here.
+                settings.RebuildDisabledMonitorVariableCaches();
                 return settings;
             }
             catch (Exception ex)
@@ -189,6 +193,12 @@ public static class SettingsManager
             {
                 lock (_lock)
                 {
+                    // Every known mutation site for the five *DisabledMonitorVariables lists
+                    // (monitor-manager ItemCheck handlers, ToggleECAMMonitoring,
+                    // SeedFenixMonitorDefaults) calls Save immediately after mutating — so this
+                    // is the single choke point that keeps the HashSet sidecars from going stale.
+                    settings.RebuildDisabledMonitorVariableCaches();
+
                     // Serialize to JSON with formatting (reads the mutable shared
                     // object — must be under the lock).
                     json = JsonSerializer.Serialize(settings, JsonOptions);
