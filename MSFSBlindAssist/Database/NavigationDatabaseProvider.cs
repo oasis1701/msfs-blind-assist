@@ -610,41 +610,11 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<WaypointFix> GetApproachWaypoints(int approachId)
     {
-        var waypoints = new List<WaypointFix>();
-
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
-
-            string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
-                                 altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
-                                 course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                 time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 is_missed, fix_type, fix_airport_ident, recommended_fix_ident
-                          FROM approach_leg
-                          WHERE approach_id = @approachId
-                          ORDER BY approach_leg_id";
-
-            using (var command = new SqliteCommand(sql, connection))
-            {
-                command.Parameters.AddWithValue("@approachId", approachId);
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        var waypoint = ParseLegToWaypoint(connection, reader);
-                        if (waypoint != null)
-                        {
-                            waypoint.Section = FlightPlanSection.Approach;
-                            waypoints.Add(waypoint);
-                        }
-                    }
-                }
-            }
+            return GetLegs(connection, approachId, FlightPlanSection.Approach, airway: null);
         }
-
-        return waypoints;
     }
 
     /// <summary>
@@ -652,42 +622,11 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<WaypointFix> GetSIDWaypoints(int sidId)
     {
-        var waypoints = new List<WaypointFix>();
-
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
-
-            string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
-                                 altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
-                                 course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                 time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 is_missed, fix_type, fix_airport_ident, recommended_fix_ident
-                          FROM approach_leg
-                          WHERE approach_id = @sidId
-                          ORDER BY approach_leg_id";
-
-            using (var command = new SqliteCommand(sql, connection))
-            {
-                command.Parameters.AddWithValue("@sidId", sidId);
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        var waypoint = ParseLegToWaypoint(connection, reader);
-                        if (waypoint != null)
-                        {
-                            waypoint.Section = FlightPlanSection.SID;
-                            waypoint.InboundAirway = "SID";
-                            waypoints.Add(waypoint);
-                        }
-                    }
-                }
-            }
+            return GetLegs(connection, sidId, FlightPlanSection.SID, airway: "SID");
         }
-
-        return waypoints;
     }
 
     /// <summary>
@@ -695,36 +634,51 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<WaypointFix> GetSTARWaypoints(int starId)
     {
-        var waypoints = new List<WaypointFix>();
-
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
+            return GetLegs(connection, starId, FlightPlanSection.STAR, airway: "STAR");
+        }
+    }
 
-            string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
-                                 altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
-                                 course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                 time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 is_missed, fix_type, fix_airport_ident, recommended_fix_ident
-                          FROM approach_leg
-                          WHERE approach_id = @starId
-                          ORDER BY approach_leg_id";
+    /// <summary>
+    /// Shared leg reader for approach_leg-backed procedures (approach / SID / STAR). These three
+    /// were byte-identical except the section/airway tagging applied to each parsed waypoint
+    /// (ND-5: dedupe the triplicated SQL). GetTransitionWaypoints stays separate — it reads
+    /// transition_leg (no is_missed column) and applies no section/airway tagging.
+    /// </summary>
+    /// <param name="connection">Open connection shared with the leg-loop reader (ND-1: avoids a fresh non-pooled file open per leg)</param>
+    /// <param name="approachId">approach_leg.approach_id — despite the parameter name, this is also used for SID/STAR ids (same column)</param>
+    /// <param name="section">Flight-plan section to tag each parsed waypoint with</param>
+    /// <param name="airway">InboundAirway to tag each parsed waypoint with (null for approach)</param>
+    private List<WaypointFix> GetLegs(SqliteConnection connection, int approachId, FlightPlanSection section, string? airway)
+    {
+        var waypoints = new List<WaypointFix>();
 
-            using (var command = new SqliteCommand(sql, connection))
+        string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
+                             altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
+                             course, distance, is_flyover, turn_direction, rnp, vertical_angle,
+                             time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
+                             is_missed, fix_type, fix_airport_ident, recommended_fix_ident
+                      FROM approach_leg
+                      WHERE approach_id = @approachId
+                      ORDER BY approach_leg_id";
+
+        using (var command = new SqliteCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("@approachId", approachId);
+
+            using (var reader = command.ExecuteReader())
             {
-                command.Parameters.AddWithValue("@starId", starId);
-
-                using (var reader = command.ExecuteReader())
+                while (reader.Read())
                 {
-                    while (reader.Read())
+                    var waypoint = ParseLegToWaypoint(connection, reader);
+                    if (waypoint != null)
                     {
-                        var waypoint = ParseLegToWaypoint(connection, reader);
-                        if (waypoint != null)
-                        {
-                            waypoint.Section = FlightPlanSection.STAR;
-                            waypoint.InboundAirway = "STAR";
-                            waypoints.Add(waypoint);
-                        }
+                        waypoint.Section = section;
+                        if (airway != null)
+                            waypoint.InboundAirway = airway;
+                        waypoints.Add(waypoint);
                     }
                 }
             }
