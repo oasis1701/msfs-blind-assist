@@ -159,8 +159,9 @@ Checklist, Parking Checklist).
 2. Fly a takeoff and confirm:
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, **"Positive
      rate. Gear up."** announced.
-   - Climbing through 500 ft AGL → **AP1 engages**, **"Five hundred feet. Autopilot one
-     engaged."** announced.
+   - Climbing through the **configured AP altitude** (Settings → First Officer numeric
+     field, default **350 ft AGL**) → **AP1 engages**; the announcement speaks the
+     configured number (e.g. **"350 feet. Autopilot one engaged."**).
 3. On approach/descent, confirm gear auto-lowers descending through roughly 2000 ft AGL (and
    above 100 ft AGL, not already down) — **"Two thousand feet. Gear down."** announced.
 ### Auto-flaps

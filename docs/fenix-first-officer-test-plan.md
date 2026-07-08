@@ -109,8 +109,9 @@ electrical/pneumatic systems already configured for taxi).
 2. Fly a takeoff and confirm:
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, "Positive
      rate. Gear up." announced.
-   - Climbing through 500 ft AGL → **AP1 engages** ("Five hundred feet. Autopilot one
-     engaged.").
+   - Climbing through the **configured AP altitude** (Settings → First Officer numeric
+     field, default **350 ft AGL**) → **AP1 engages**; the announcement speaks the
+     configured number (e.g. "350 feet. Autopilot one engaged.").
 3. On approach/descent, confirm gear auto-lowers between 2000 ft and 100 ft AGL while
    descending (not already down), "Two thousand feet. Gear down." announced.
 4. **Confirm the Auto Flaps checkbox has NO effect on the Fenix.** Enable "Auto Flaps" in
@@ -252,7 +253,8 @@ against the landing config after touchdown (FWC phase 9, below 80 kt) — a spur
    latches on the rising edge).
 4. **Edge-triggered pulses still land.** Spot-check the other pulsed buttons now that they
    release: external power connect/disconnect, APU START (Before Start flow — APU must
-   still reach AVAIL), autobrake MAX/MED, AP1 engage, LS 1/2 on approach, rudder-trim
+   still reach AVAIL), autobrake MAX (Before Takeoff — the Descent MED pulse was removed
+   2026-07-08; landing autobrake is a Captain item), AP1 engage, LS 1/2 on approach, rudder-trim
    reset. Each effect must persist after the release (they latch into their `I_*`
    indicators on the 0→1 edge — the main-branch fix live-verified this class of button).
 
