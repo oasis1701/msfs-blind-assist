@@ -68,7 +68,11 @@
       if (st.display === "none" || st.visibility === "hidden") return false;
       var r = node.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
-    } catch (e) { return true; }
+    // Fail-CLOSED: every node this agent calls isVisible on is a plain HTML
+    // .mfd-* element (the MFD is an HTML/CSS React view, not SVG), so
+    // getComputedStyle/getBoundingClientRect don't throw here in practice —
+    // treat an exception as hidden rather than risk surfacing a dead node.
+    } catch (e) { return false; }
   };
 
   A.findRoot = function (idx) {

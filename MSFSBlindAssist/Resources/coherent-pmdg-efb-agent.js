@@ -54,6 +54,9 @@
       var r = el.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return false;
       return true;
+    // Fail-CLOSED: the PMDG EFB tablet is an HTML page; its only SVG content is
+    // font-awesome icon glyphs, which are presence-checked elsewhere (never
+    // passed through isVisible) — treat a style/rect-read exception as hidden.
     } catch (e) { return false; }
   };
 

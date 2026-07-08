@@ -50,6 +50,9 @@
       if (st.display === "none" || st.visibility === "hidden") return false;
       var r = n.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
+    // Fail-CLOSED: the flyPad DOM is HTML/React (divs/spans/inputs); the only
+    // SVGs it touches are small decorative icon glyphs (see A.hasIcon below),
+    // whose style/rect reads don't throw here — treat an exception as hidden.
     } catch (e) { return false; }
   };
 
