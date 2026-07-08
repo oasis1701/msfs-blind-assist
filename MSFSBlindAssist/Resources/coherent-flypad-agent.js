@@ -2374,6 +2374,7 @@
   A.setValue = function (index, value) {
     var node = A.findByIdx(index);
     if (!node) return "missing";
+    if (A.disabledFor(node)) return "disabled";
     var kind = A.classify(node);
     value = (value === null || value === undefined) ? "" : String(value);
 
