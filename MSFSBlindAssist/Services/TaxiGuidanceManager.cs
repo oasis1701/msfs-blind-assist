@@ -1874,7 +1874,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // Also suspend for a short grace window AFTER completing a turn — the
         // aircraft is still settling onto the new centerline while we've already
         // advanced _currentSegmentIndex. Uses segment-advance timestamp below.
-        if ((DateTime.Now - _lastSegmentAdvanceTime).TotalSeconds < POST_TURN_OFFROUTE_GRACE_SEC)
+        if ((DateTime.UtcNow - _lastSegmentAdvanceTime).TotalSeconds < POST_TURN_OFFROUTE_GRACE_SEC)
             nearTurn = true;
 
         // Route-joined latch (see field). Until the aircraft has reached the route
@@ -1895,9 +1895,9 @@ public partial class TaxiGuidanceManager : IDisposable
         if (offRouteNow && _lastGroundSpeedKts >= OFF_ROUTE_MIN_GS_KTS)
         {
             if (_offRouteSince == DateTime.MinValue)
-                _offRouteSince = DateTime.Now;
+                _offRouteSince = DateTime.UtcNow;
 
-            if ((DateTime.Now - _offRouteSince).TotalSeconds >= OFF_ROUTE_PERSISTENCE_SEC)
+            if ((DateTime.UtcNow - _offRouteSince).TotalSeconds >= OFF_ROUTE_PERSISTENCE_SEC)
             {
                 _offRouteSince = DateTime.MinValue;  // reset so next off-route starts fresh
                 TryRecalculateRoute(lat, lon, headingTrue);
@@ -2026,7 +2026,7 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_route == null) return;
         if (_lastGroundSpeedKts < 5) return;  // not taxiing
 
-        if ((DateTime.Now - _lastSpeedWarningTime).TotalSeconds < SPEED_WARNING_COOLDOWN_SEC)
+        if ((DateTime.UtcNow - _lastSpeedWarningTime).TotalSeconds < SPEED_WARNING_COOLDOWN_SEC)
             return;
 
         // Speed-scaled lookahead — at 20 kt (≈10 m/s), 6 s = 60 m of lead.
@@ -2051,17 +2051,17 @@ public partial class TaxiGuidanceManager : IDisposable
         if (sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_SHARP_TURN_KTS)
         {
             _announcer.AnnounceImmediate("Slow for sharp turn.");
-            _lastSpeedWarningTime = DateTime.Now;
+            _lastSpeedWarningTime = DateTime.UtcNow;
         }
         else if (normalTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_TURN_KTS)
         {
             _announcer.AnnounceImmediate("Slow for turn.");
-            _lastSpeedWarningTime = DateTime.Now;
+            _lastSpeedWarningTime = DateTime.UtcNow;
         }
         else if (!normalTurnComing && !sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_STRAIGHT_KTS)
         {
             _announcer.AnnounceImmediate($"Taxi speed, {(int)_lastGroundSpeedKts} knots.");
-            _lastSpeedWarningTime = DateTime.Now;
+            _lastSpeedWarningTime = DateTime.UtcNow;
         }
     }
 
@@ -2088,7 +2088,7 @@ public partial class TaxiGuidanceManager : IDisposable
         }
 
         if (_lastIncursionWarnedNodeId != -1 &&
-            (DateTime.Now - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
+            (DateTime.UtcNow - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
             return;
 
         // Build the set of HS node-IDs that lie on the remaining planned route
@@ -2165,7 +2165,7 @@ public partial class TaxiGuidanceManager : IDisposable
         }
 
         _lastIncursionWarnedNodeId = nearestHs.NodeId;
-        _lastIncursionWarningTime = DateTime.Now;
+        _lastIncursionWarningTime = DateTime.UtcNow;
     }
 
     /// <summary>
