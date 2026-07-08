@@ -20,10 +20,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Shift+T via the shared FbwEfbForm over CoherentPmdgEfbClient (no Community-folder bridge).
     public bool HasEFBSupport => true;
 
-    // Cached merged variables dictionary — built once on first access.
-    // All callers are read-only so sharing a single instance is safe.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -236,11 +232,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Variables — scaffold (populated in Tasks C5–C8)
     // =========================================================================
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null)
-            return _cachedVariables;
-
         var variables = GetBaseVariables();
         // The PMDG NG3 does not drive the stock ELEVATOR TRIM POSITION SimVar
         // (it stays pinned within ±0.04° regardless of actual stabilizer trim),
@@ -251,7 +244,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
-        _cachedVariables = variables;
         return variables;
     }
 

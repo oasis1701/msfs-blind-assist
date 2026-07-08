@@ -55,11 +55,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
-    // Cached variable-definition dictionary. The definitions are static, but this method
-    // rebuilds the whole dict (huge literal + the SD auto-register loops); the panel-build
-    // loop calls GetVariables() twice per control, so without this cache a panel switch
-    // rebuilt it dozens of times — the subpanel-navigation lag. Built once, then reused.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
     // Helper for fault annunciators: auto-announce-only (Continuous + IsAnnounced),
     // Normal/Fault, not placed in any panel list (faults aren't navigable controls —
     // mirrors the A380 ReadEnum-fault pattern; surfaced via change-announce + Ctrl+M).
@@ -84,9 +79,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // 1.6 (n=2). Re-fly to converge.
     public override double TaxiTurnLeadSeconds => 1.6;
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null) return _cachedVariables;
         // Start with common base variables (e.g., SIM ON GROUND)
         var variables = GetBaseVariables();
 
@@ -5097,7 +5091,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
         }
 
-        _cachedVariables = variables;
         return variables;
     }
 

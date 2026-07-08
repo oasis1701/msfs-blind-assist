@@ -66,13 +66,8 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
-    // Cached variable-definition dictionary (defs are static; rebuilding the whole dict
-    // on every call — and the panel-build loop calls GetVariables() twice per control —
-    // was wasted work. Same proven cache the PMDG defs already use.) Built once, reused.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null) return _cachedVariables;
         // Start with common base variables (e.g., SIM ON GROUND)
         var variables = GetBaseVariables();
 
@@ -8470,7 +8465,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
         }
 
-        _cachedVariables = variables;
         return variables;
     }
 

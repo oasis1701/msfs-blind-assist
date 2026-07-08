@@ -238,7 +238,7 @@ public partial class FlyByWireA380Definition
         if (varName == "A32NX_FMGC_FLIGHT_PHASE")
         {
             _fmgcPhaseA380 = (int)Math.Round(value);
-            if (_varCache != null && _varCache.TryGetValue(varName, out var fpDef)
+            if (GetVariables().TryGetValue(varName, out var fpDef)
                 && fpDef.ValueDescriptions != null && fpDef.ValueDescriptions.TryGetValue(value, out var phase)
                 && _lastFlightPhaseA380 != phase)
             {
@@ -256,8 +256,8 @@ public partial class FlyByWireA380Definition
         // ARINC-large (>= 2^32 -> an SSM is present) to its payload (0/1) and announce
         // the mapped state ON CHANGE only (default prev = 0 so the initial no-fault is
         // silent). Honours the Ctrl+M mute; returns true to suppress the raw announce.
-        if (value >= 4294967296.0 && _varCache != null
-            && _varCache.TryGetValue(varName, out var arDef)
+        if (value >= 4294967296.0
+            && GetVariables().TryGetValue(varName, out var arDef)
             && arDef.IsAnnounced
             && arDef.ValueDescriptions is { Count: > 0 } arDesc)
         {

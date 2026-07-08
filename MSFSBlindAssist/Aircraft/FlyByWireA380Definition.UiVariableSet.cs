@@ -580,7 +580,7 @@ public partial class FlyByWireA380Definition
     // CAPT_QNH_SET / *_EIS_BARO_IS_STD / XMLVAR_Baro_Selector routes.
     public bool ApplyUIVariable(string varKey, double value, SimConnectManager s, ScreenReaderAnnouncer a)
     {
-        SimVarDefinition def = (_varCache != null && _varCache.TryGetValue(varKey, out var d))
+        SimVarDefinition def = GetVariables().TryGetValue(varKey, out var d)
             ? d : new SimVarDefinition { Name = varKey, DisplayName = varKey };
         return HandleUIVariableSet(varKey, value, def, s, a);
     }

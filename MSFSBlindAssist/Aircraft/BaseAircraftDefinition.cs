@@ -11,6 +11,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 {
     // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
     private Dictionary<string, List<string>>? _cachedPanelControls;
+    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
 
     // Elevator trim announcement toggle and debounce.
     // Toggle is protected so aircraft that source trim from a custom variable
@@ -33,7 +34,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual string? CurrentFlightPhase => null;
 
-    public abstract Dictionary<string, SimConnect.SimVarDefinition> GetVariables();
+    public Dictionary<string, SimConnect.SimVarDefinition> GetVariables() => _cachedVariables ??= BuildVariables();
+    protected abstract Dictionary<string, SimConnect.SimVarDefinition> BuildVariables();
     public abstract Dictionary<string, List<string>> GetPanelStructure();
 
     /// <summary>

@@ -16,10 +16,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
     public bool HasEFBSupport => true;
 
-    // Cached merged variables dictionary — built once on first access.
-    // All callers are read-only so sharing a single instance is safe.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -126,17 +122,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // Variables — scaffold (populated in Tasks 6-8)
     // =========================================================================
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null)
-            return _cachedVariables;
-
         var variables = GetBaseVariables();
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
         RegisterSystemDisplayVars(variables);
-        _cachedVariables = variables;
         return variables;
     }
 
