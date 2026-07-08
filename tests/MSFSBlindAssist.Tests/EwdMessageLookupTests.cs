@@ -7,8 +7,9 @@
 //     colour map is <2m=Red,<4m=Amber,<3m=Green,<5m=White,<6m=Cyan,<7m=Gray.
 //   - A380 GetMessagePriority(long code) takes the CODE itself (looks up the raw
 //     message internally) and its colour map differs: <2m=Red,<4m=Amber,<3m=Green,
-//     <5m=Cyan,<6m=Magenta,<7m=White. No code in the current A380 table actually
-//     carries a <6m tag, so the Magenta branch has no real-data row here.
+//     <5m=Cyan,<6m=Magenta,<7m=White. The A380 table DOES carry <6m rows -- codes
+//     314000001 ("T.O INHIBIT") and 314000002 ("LDG INHIBIT") -- so the Magenta
+//     branch is pinned below with real data.
 //   - A320 has a public CleanANSICodes(string) doing multi-pass corruption cleanup
 //     (documented as compensating for SimConnect mangling \x1b escapes). A380 has NO
 //     public CleanANSICodes -- its ANSI stripping is inlined in GetMessage(long) via a
@@ -39,6 +40,8 @@ public class EwdMessageLookupTests
     [InlineData(260001002L, "\x1b<5m -THR LEVER 1.......IDLE")]               // action item (White)
     [InlineData(14001L, "\x1b<6mT.O INHIBIT")]                                // info (Cyan)
     [InlineData(213122104L, "\x1b<7m     .\x1b4mEMER DESCENT\x1bm:")]         // condition (Gray)
+    [InlineData(320000001L, "\x1b<4mAUTO BRK OFF")]                           // caution (Amber)
+    [InlineData(1002L, "\x1b<3m\x1b4mT.O\x1bm AUTO BRK MAX")]                 // memo (Green)
     public void A320_GetRawMessage_returns_exact_stored_text_for_known_code(long code, string expectedRaw)
     {
         Assert.Equal(expectedRaw, EWDMessageLookup.GetRawMessage(code));
@@ -150,6 +153,11 @@ public class EwdMessageLookupTests
         Assert.Equal($"{Esc}<2m{Esc}4mCAB PRESS{Esc}m EXCESS CAB ALT", EWDMessageLookupA380.GetRawMessage(213800001L));   // warning (Red)
         Assert.Equal($"{Esc}<5mMAX FL : 100/MEA-MORA", EWDMessageLookupA380.GetRawMessage(210400001L));                   // Cyan-tagged action item
         Assert.Equal($" {Esc}<7m{Esc}4mT.O{Esc}m", EWDMessageLookupA380.GetRawMessage(1001L));                            // White-tagged group header
+        Assert.Equal($"{Esc}<6mT.O INHIBIT", EWDMessageLookupA380.GetRawMessage(314000001L));                             // Magenta-tagged info (<6m)
+        Assert.Equal($"{Esc}<6mLDG INHIBIT", EWDMessageLookupA380.GetRawMessage(314000002L));                             // Magenta-tagged info (<6m)
+        Assert.Equal($"{Esc}<2mAP OFF", EWDMessageLookupA380.GetRawMessage(220000001L));                                  // warning (Red)
+        Assert.Equal($"{Esc}<4mA/THR OFF", EWDMessageLookupA380.GetRawMessage(220000002L));                               // caution (Amber)
+        Assert.Equal($"{Esc}<3mAPU BLEED", EWDMessageLookupA380.GetRawMessage(18001L));                                   // memo (Green)
     }
 
     [Fact]
@@ -179,13 +187,19 @@ public class EwdMessageLookupTests
     }
 
     // --- GetMessagePriority(long code): colour/priority classification, keyed by CODE
-    // (not raw text, unlike the A320 variant) ---
+    // (not raw text, unlike the A320 variant). Includes the Magenta (<6m) branch, pinned
+    // by real-data codes 314000001 ("T.O INHIBIT") and 314000002 ("LDG INHIBIT") ---
 
     [Theory]
     [InlineData(213800001L, "Red")]      // <2m
+    [InlineData(220000001L, "Red")]      // <2m
     [InlineData(211800009L, "Amber")]    // <4m
+    [InlineData(220000002L, "Amber")]    // <4m
     [InlineData(17001L, "Green")]        // <3m
+    [InlineData(18001L, "Green")]        // <3m
     [InlineData(210400001L, "Cyan")]     // <5m
+    [InlineData(314000001L, "Magenta")]  // <6m
+    [InlineData(314000002L, "Magenta")]  // <6m
     [InlineData(1001L, "White")]         // <7m
     public void A380_GetMessagePriority_classifies_known_code(long code, string expectedPriority)
     {
