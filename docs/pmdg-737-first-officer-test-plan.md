@@ -67,20 +67,19 @@ group starts the matching flow.
 - The **"IRS aligned"** item (Electrical Power Up group) ticks on its own once alignment completes.
 
 ### B4. Auto-fly (opt-in via Settings → First Officer)
-Enable Auto Gear / Auto Flaps / Auto AP in **File → Settings… → First Officer tab**, then fly:
-- Positive rate after takeoff → **"Gear up"**; ~500 ft → **autopilot CMD A engaged**.
-- Climb accelerating past V2 margins → flaps retract one step at a time (UP/1/2/5/10/15/25/30/40);
-  on approach below VREF margins → flaps extend. (Requires FMC V2/VREF programmed.)
+Enable Auto Gear / Auto AP in **File → Settings… → First Officer tab**, then fly:
+- Positive rate after takeoff → **"Gear up"**.
+- Climbing through the **configured AP altitude** (numeric field in the First Officer settings
+  tab, default **350 ft AGL**) → **autopilot CMD A engaged**; the announcement speaks the
+  configured number.
+- Climbing through **400 ft AGL** (fixed) → **LNAV/VNAV pushed** — only modes whose MCP
+  annunciators are unlit are pressed; the announcement names what was pushed ("400 feet. LNAV
+  and VNAV engaged."), and nothing is announced if both were already armed. Fires once per leg,
+  gated on the same Auto AP checkbox.
 - Descending through 2000 ft AGL with gear up → **"Gear down"**.
-- **Auto-flaps is now closed-loop**: it reads the actual flap position from the flap gauge
-  (`MAIN_TEFlapsNeedle`), so it tracks manual flap moves and does not depend on the takeoff-flap
-  assumption.
-  - **Calibration check (one minute):** with the 737 loaded and flaps set to **5**, read
-    `MAIN_TEFlapsNeedle` via the sim tools — it should read **≈ 5** (the needle is assumed to be
-    the flap **angle in degrees**). If it reads a different scale (e.g. ≈ 12.5 for "percent of
-    full travel"), tell me the value at flaps 5 / 15 / 30 and I'll adjust the one mapping in
-    `AircraftStateEvaluator.FlapDetent()`. If the read is implausible, auto-flaps falls back to
-    its internal command tracking, so it degrades to the previous behavior rather than failing.
+- **PMDG auto-flaps was REMOVED (2026-07-08, user decision)** — the "Auto-manage flaps
+  (FBW A380 only)" checkbox must have NO effect on the 737/777: with it enabled, verify flaps
+  never move on climbout/approach except by pilot input or an explicitly-run flow step.
 
 ### B5. Flight-phase + SimBrief
 - **Load SimBrief** (Flows tab) → confirm "Takeoff flaps: N" + transition alt/level announced.
@@ -413,7 +412,10 @@ Setup: PMDG 737 cold-and-dark at a gate, MSFSBA connected, FO window open.
 
 ---
 
-## Part K — auto-flaps fixes, BOTH aircraft (2026-07-02)
+## Part K — auto-flaps fixes, BOTH aircraft (2026-07-02) — **OBSOLETE: PMDG auto-flaps REMOVED 2026-07-08 (user decision)**
+
+> **Do not test this Part.** The PMDG flap schedule described below was deleted; only the
+> mouse-flag lesson survives (flow flap steps still need `MOUSE_FLAG_LEFTSINGLE`). Kept for history.
 
 Auto-flaps was non-operational on the 737 AND 777 for three stacked reasons, all fixed:
 (1) the per-detent `EVT_CONTROL_STAND_FLAPS_LEVER_*` events were dispatched with CDA
