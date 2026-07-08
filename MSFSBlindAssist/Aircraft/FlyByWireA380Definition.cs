@@ -1790,6 +1790,18 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_AUTOPILOT_SPEED_SELECTED", "Selected Speed");
         Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number"); // L:var — must be "number"
         Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA");
+        // The four FCU selected VALUES are continuously monitored so hardware knob turns
+        // (MobiFlight/FSUIPC dials, the cockpit knobs) announce on change — 777-MCP parity;
+        // the change block in ProcessSimVarUpdate does the SI-unit conversion + announce.
+        // ExcludeFromBatch keeps their individual data defs so the Shift+H/S/A/V readouts'
+        // RequestVariable(forceUpdate) stays instant (same reasoning as the managed legs below).
+        foreach (var fcuValKey in new[] { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_AUTOPILOT_SPEED_SELECTED",
+                                          "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_AUTOPILOT_FPA_SELECTED" })
+        {
+            vars[fcuValKey].UpdateFrequency = UpdateFrequency.Continuous;
+            vars[fcuValKey].IsAnnounced = true;
+            vars[fcuValKey].ExcludeFromBatch = true;
+        }
         // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
         // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
         // so pushing/pulling speed/heading/altitude/VS gave no audible feedback.
@@ -1815,6 +1827,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
+        // Same 777-MCP-parity continuous monitoring for the FCU altitude (see the L:var
+        // block above) — announces hardware altitude-knob turns on change.
+        vars["FCU_ALT_VALUE"].UpdateFrequency = UpdateFrequency.Continuous;
+        vars["FCU_ALT_VALUE"].IsAnnounced = true;
+        vars["FCU_ALT_VALUE"].ExcludeFromBatch = true;
         Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
 
         // ---- PFD / FMA live mode annunciations (ported from the A320; the

@@ -685,6 +685,62 @@ public partial class FlyByWireA380Definition
         if (varName == "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT" && DateTime.UtcNow < _altIncrAnnounceSuppressUntil)
             return true;
 
+        // ---- FCU selected-value CHANGE announcements (hardware knob turns; 777-MCP parity) ----
+        // These five vars are Continuous+IsAnnounced so an external hardware dial (MobiFlight,
+        // FSUIPC, the cockpit knob) is spoken as it changes, exactly like the PMDG 777 MCP
+        // ("Heading 250" / "Speed 250 knots" / "Altitude 10000" / "Vertical speed -1500").
+        // This block never consumes the event — the _req* readout branches below still see the
+        // same update — and the fcuValueVar return at the end of the section keeps the generic
+        // monitor from also speaking the raw SI-unit value. MSFSBA's own FCU windows suppress
+        // the echo via SuppressFcuValueChangeEcho() in the SetFCU*/FireFCUButton methods.
+        bool fcuValueVar = varName is "A32NX_AUTOPILOT_HEADING_SELECTED" or "A32NX_AUTOPILOT_SPEED_SELECTED"
+            or "FCU_ALT_VALUE" or "A32NX_AUTOPILOT_VS_SELECTED" or "A32NX_AUTOPILOT_FPA_SELECTED";
+        if (fcuValueVar)
+        {
+            bool fcuMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            switch (varName)
+            {
+                case "A32NX_AUTOPILOT_HEADING_SELECTED":
+                    // -1 = managed (dashes) — the managed-mode monitor announces that transition.
+                    // Angular L:var arrives in RADIANS (same heuristic as the readout below).
+                    if (value >= 0)
+                    {
+                        double hdgDeg = Math.Abs(value) <= (Math.PI * 2 + 0.05) ? value * 180.0 / Math.PI : value;
+                        hdgDeg = Math.Round(((hdgDeg % 360) + 360) % 360);
+                        AnnounceFcuValueChanged(varName, hdgDeg, 0.5, v => $"Heading {(int)v}", announcer, fcuMuted);
+                    }
+                    break;
+                case "A32NX_AUTOPILOT_SPEED_SELECTED":
+                    // -1 = managed (dashes). The var holds the target directly: a Mach number
+                    // when < 10, otherwise knots (no SI scaling — see the readout note below).
+                    if (value >= 0)
+                        AnnounceFcuValueChanged(varName, value, 0.005,
+                            v => v < 10 ? $"Mach {v:F2}" : $"Speed {(int)v} knots", announcer, fcuMuted);
+                    break;
+                case "FCU_ALT_VALUE":
+                    // Stock simvar, already feet; follow the metric-alt (MTRS) toggle for the unit.
+                    AnnounceFcuValueChanged(varName, value, 50, v =>
+                    {
+                        if (!_metricAlt) return $"Altitude {(int)v}";
+                        var (av, au) = AltUser(v);
+                        return $"Altitude {av:0} {au}";
+                    }, announcer, fcuMuted);
+                    break;
+                case "A32NX_AUTOPILOT_VS_SELECTED":
+                    // SI read: m/s -> fpm, rounded to the FCU's 100-fpm step (same conversion
+                    // as the readout below).
+                    AnnounceFcuValueChanged(varName, Math.Round(value * 196.8503937 / 100.0) * 100.0, 50,
+                        v => $"Vertical speed {(int)v}", announcer, fcuMuted);
+                    break;
+                case "A32NX_AUTOPILOT_FPA_SELECTED":
+                    // Angular: radians when in the radian range (FPA maxes at ~9.9 degrees).
+                    AnnounceFcuValueChanged(varName,
+                        Math.Abs(value) <= 0.2 ? value * 180.0 / Math.PI : value, 0.05,
+                        v => $"FPA {v:F1} degrees", announcer, fcuMuted);
+                    break;
+            }
+        }
+
         // ---- FCU readouts: value + managed-indicator pairs ----
         // Each Read* hotkey requests the value var(s) and the managed indicator
         // and force-updates them; we announce once the pair (or, for VS, the
@@ -770,6 +826,10 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
+
+        // FCU value vars are def-handled (the change block above + the readout branches) —
+        // never let the generic monitor speak their raw SI-unit values.
+        if (fcuValueVar) return true;
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }

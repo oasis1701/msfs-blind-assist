@@ -303,6 +303,7 @@ public partial class FlyByWireA380Definition
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
+        SuppressFcuValueChangeEcho();   // the explicit readback below is the single confirmation
         // Clean Fenix-style readback (NOT the racy RequestFCUHeadingWithStatus, which read the
         // cache via forceUpdate and spoke the STALE value first): announce the value we just
         // set plus the cached managed dot, once. The window's SelectAll gives the field echo.
@@ -316,6 +317,7 @@ public partial class FlyByWireA380Definition
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
+        SuppressFcuValueChangeEcho();
         // Clean Fenix-style readback (NOT the racy RequestFCUSpeedWithStatus): the value we set
         // plus the cached managed dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
         string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_SPD_MANAGED_DOT") ?? 0) > 0.5 ? "managed" : "selected";
@@ -343,6 +345,7 @@ public partial class FlyByWireA380Definition
             System.Threading.Thread.Sleep(50);
         }
         s.SendEvent("A32NX.FCU_ALT_SET", rounded);
+        SuppressFcuValueChangeEcho();
         // Fenix-style readback: speak the FCU altitude + managed/selected state once, using the
         // value we just set (no racy cache re-read) plus the cached managed dot — mirroring the
         // "FCU altitude 36000, managed/selected" Fenix announces. The window's SelectAll
@@ -367,6 +370,7 @@ public partial class FlyByWireA380Definition
         // gated on |value| < 100 — an ×100 encoding was silently IGNORED, not clamped).
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        SuppressFcuValueChangeEcho();
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
@@ -387,6 +391,9 @@ public partial class FlyByWireA380Definition
     public void FireFCUButton(string evt, SimConnectManager s, ScreenReaderAnnouncer a, bool readback = true)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
+        // A UI-origin knob push/pull often flips the value var (managed dashes <-> value);
+        // the readout/mode-monitor owns that confirmation — mute the change announcer briefly.
+        SuppressFcuValueChangeEcho();
         if (evt == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH") s.ExecuteCalculatorCode(SpdMachToggleRpn);
         // The A380's NEW FCU consumes EVERY A32NX.FCU_* button as a K-EVENT, not the A320-era
         // H-event the SendEvent path produces — live-verified: (>H:A32NX.FCU_SPD_PUSH) left the

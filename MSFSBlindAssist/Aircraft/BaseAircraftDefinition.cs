@@ -552,6 +552,44 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return true;
     }
 
+    // ---- Shared MCP/FCU selected-value change announcer (777-MCP parity) ----
+    // The PMDG 777 speaks every MCP value change ("Heading 250", "Altitude 10000",
+    // "Speed 250 knots", "Vertical speed -1500") as the pilot dials hardware, because its
+    // MCP display vars are continuously monitored and its def announces each change. This
+    // helper gives every other aircraft the same behaviour without duplicating the
+    // change-detection: call it from ProcessSimVarUpdate with the CONVERTED display value.
+    // The first sample seeds the baseline silently (no burst on aircraft load); later
+    // samples announce only when the value moves by at least the deadband. MSFSBA's own
+    // FCU/MCP set paths call SuppressFcuValueChangeEcho() right after speaking their
+    // explicit readback, so a value the user just typed is never spoken twice (the
+    // baseline still updates inside the window, so no stale change fires later).
+    private readonly Dictionary<string, double> _fcuValueBaseline = new();
+    private long _fcuValueEchoUntilTick;
+
+    /// <summary>Mute the FCU value-change announcer for a short window after MSFSBA itself
+    /// set a value (the set method already speaks its own confirmation).</summary>
+    protected void SuppressFcuValueChangeEcho(int windowMs = 2500)
+        => _fcuValueEchoUntilTick = Environment.TickCount64 + windowMs;
+
+    /// <summary>Announce an MCP/FCU selected value when it CHANGES (hardware knob turns).
+    /// Baseline-seeded (first sample silent), deadbanded, echo-suppressed; <paramref name="muted"/>
+    /// lets the caller honour its monitor-manager mute while still tracking the baseline.</summary>
+    protected void AnnounceFcuValueChanged(string key, double value, double deadband,
+        Func<double, string> phrase, ScreenReaderAnnouncer announcer, bool muted = false)
+    {
+        if (_fcuValueBaseline.TryGetValue(key, out double prev))
+        {
+            if (Math.Abs(value - prev) < deadband) return;
+            _fcuValueBaseline[key] = value;
+            if (muted || Environment.TickCount64 < _fcuValueEchoUntilTick) return;
+            announcer.Announce(phrase(value));
+        }
+        else
+        {
+            _fcuValueBaseline[key] = value; // silent first-sample baseline
+        }
+    }
+
     // Variable Update Processing
 
     /// <summary>
