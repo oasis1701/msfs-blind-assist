@@ -21,7 +21,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 ///                thresholds.
 ///
 /// Autopilot:
-///   Engages AP CMD (left seat) when climbing through 500 ft AGL on climbout.
+///   Engages AP CMD (left seat) when climbing through the configured height (default 350 ft AGL) on climbout.
 ///   Fires once per takeoff leg; resets on touchdown.
 ///
 /// Thread-safe: Update() can be called from any thread.
@@ -40,6 +40,7 @@ public class FOAutoManager : IFoAutoManager
     public bool AutoGearDownEnabled { get; set; }
     public bool AutoFlapsEnabled    { get; set; }
     public bool AutoApEnabled       { get; set; }
+    public int AutoApEngageAltitudeAgl { get; set; } = 350;
 
     // -----------------------------------------------------------------------
     // Gear state tracking
@@ -200,11 +201,11 @@ public class FOAutoManager : IFoAutoManager
 
     private void CheckAp(double agl, bool climbing)
     {
-        // Engage autopilot once per leg when climbing through 500 ft AGL
-        if (!_apEngagedThisLeg && climbing && agl >= 500)
+        // Engage autopilot once per leg when climbing through the configured height
+        if (!_apEngagedThisLeg && climbing && agl >= AutoApEngageAltitudeAgl)
         {
             _executor.PushAPCmd();
-            _announcer.AnnounceImmediate("Five hundred feet. Autopilot engaged.");
+            _announcer.AnnounceImmediate($"{AutoApEngageAltitudeAgl} feet. Autopilot engaged.");
             _apEngagedThisLeg = true;
         }
     }

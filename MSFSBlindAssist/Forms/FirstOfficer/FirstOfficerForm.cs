@@ -199,6 +199,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _foAutoMgr.AutoGearDownEnabled = _settings.FOAutoGearDownEnabled;
         _foAutoMgr.AutoFlapsEnabled    = _settings.FOAutoFlapsEnabled;
         _foAutoMgr.AutoApEnabled       = _settings.FOAutoApEnabled;
+        _foAutoMgr.AutoApEngageAltitudeAgl = _settings.FOAutoApEngageAltitudeAgl;
     }
 
     /// <summary>Update the data manager reference when SimConnect reconnects.</summary>

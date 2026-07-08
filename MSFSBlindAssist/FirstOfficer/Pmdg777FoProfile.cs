@@ -39,6 +39,7 @@ public sealed class Pmdg777FoProfile : IFoProfile<AircraftActionExecutor, Aircra
             AutoGearDownEnabled = s.FOAutoGearDownEnabled,
             AutoFlapsEnabled    = s.FOAutoFlapsEnabled,
             AutoApEnabled       = s.FOAutoApEnabled,
+            AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl,
         };
 
     public IFoPhaseMonitor CreatePhaseMonitor(

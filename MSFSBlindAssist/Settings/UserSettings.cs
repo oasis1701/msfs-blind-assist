@@ -195,6 +195,10 @@ public class UserSettings
         public bool FOAutoFlapsEnabled    { get; set; } = false;
         public bool FOAutoApEnabled       { get; set; } = false;
 
+        // Height (ft AGL) at which the FO auto-engages the autopilot on climbout —
+        // one global value shared by all four aircraft (default 350).
+        public int FOAutoApEngageAltitudeAgl { get; set; } = 350;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -440,6 +444,7 @@ public class UserSettings
             FOAutoGearSplitMigrated = FOAutoGearSplitMigrated,
             FOAutoFlapsEnabled = FOAutoFlapsEnabled,
             FOAutoApEnabled    = FOAutoApEnabled,
+            FOAutoApEngageAltitudeAgl = FOAutoApEngageAltitudeAgl,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
             PmdgMonitorDefaultsSeeded = PmdgMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),

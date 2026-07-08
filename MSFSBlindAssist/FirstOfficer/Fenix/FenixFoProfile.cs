@@ -48,6 +48,7 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
             AutoGearDownEnabled = s.FOAutoGearDownEnabled,
             AutoFlapsEnabled    = s.FOAutoFlapsEnabled,   // stored; Fenix manager never acts on it
             AutoApEnabled       = s.FOAutoApEnabled,
+            AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl,
         };
 
     public IFoPhaseMonitor CreatePhaseMonitor(

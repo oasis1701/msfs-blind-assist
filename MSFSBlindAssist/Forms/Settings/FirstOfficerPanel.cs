@@ -15,6 +15,8 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private CheckBox autoGearDownCheck = null!;
     private CheckBox autoFlapsCheck = null!;
     private CheckBox autoApCheck = null!;
+    private Label apAltitudeLabel = null!;
+    private TextBox apAltitudeText = null!;
 
     public string TabTitle => "First Officer";
 
@@ -66,16 +68,33 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
 
         autoApCheck = new CheckBox
         {
-            Text = "Auto-engage autopilot at 500 ft AGL on climbout",
+            Text = "Auto-engage autopilot on climbout",
             Location = new Point(20, 160),
             AutoSize = true,
             AccessibleName = "Auto-engage autopilot",
-            AccessibleDescription = "Automatically engage autopilot when climbing through 500 feet AGL after takeoff"
+            AccessibleDescription = "Automatically engage the autopilot when climbing through the engagement altitude after takeoff"
+        };
+
+        apAltitudeLabel = new Label
+        {
+            Text = "Autopilot engagement altitude (feet AGL):",
+            Location = new Point(20, 195),
+            AutoSize = true,
+            AccessibleName = "Autopilot engagement altitude label"
+        };
+
+        apAltitudeText = new TextBox
+        {
+            Location = new Point(320, 192),
+            Size = new Size(80, 23),
+            AccessibleName = "Autopilot engagement altitude in feet AGL",
+            AccessibleDescription = "Height above ground at which the First Officer engages the autopilot on climbout. 100 to 3000 feet."
         };
 
         Controls.AddRange(new Control[]
         {
-            titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck
+            titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
+            apAltitudeLabel, apAltitudeText
         });
     }
 
@@ -86,6 +105,8 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoGearDownCheck.TabIndex = 2;
         autoFlapsCheck.TabIndex = 3;
         autoApCheck.TabIndex = 4;
+        apAltitudeLabel.TabIndex = 5;
+        apAltitudeText.TabIndex = 6;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -94,10 +115,17 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoGearDownCheck.Checked = settings.FOAutoGearDownEnabled;
         autoFlapsCheck.Checked = settings.FOAutoFlapsEnabled;
         autoApCheck.Checked = settings.FOAutoApEnabled;
+        apAltitudeText.Text = settings.FOAutoApEngageAltitudeAgl.ToString();
     }
 
     public bool Validate(out string error, out Control? focus)
     {
+        if (!(int.TryParse(apAltitudeText.Text, out int apAlt) && apAlt >= 100 && apAlt <= 3000))
+        {
+            error = "Please enter an autopilot engagement altitude between 100 and 3000 feet AGL.";
+            focus = apAltitudeText;
+            return false;
+        }
         error = "";
         focus = null;
         return true;
@@ -109,6 +137,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoGearDownEnabled = autoGearDownCheck.Checked;
         settings.FOAutoFlapsEnabled = autoFlapsCheck.Checked;
         settings.FOAutoApEnabled = autoApCheck.Checked;
+        settings.FOAutoApEngageAltitudeAgl = int.Parse(apAltitudeText.Text);
     }
 
     /// <summary>No transient resources (no test tone) — nothing to stop when this tab is left.</summary>

@@ -22,6 +22,7 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
     public bool AutoGearDownEnabled { get; set; }
     public bool AutoFlapsEnabled    { get; set; }
     public bool AutoApEnabled       { get; set; }
+    public int AutoApEngageAltitudeAgl { get; set; } = 350;
 
     private bool _gearRaisedThisLeg;
     private bool _gearLoweredThisLeg;
@@ -144,10 +145,10 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
 
     private void CheckAp(double agl, bool climbing)
     {
-        if (!_apEngagedThisLeg && climbing && agl >= 500)
+        if (!_apEngagedThisLeg && climbing && agl >= AutoApEngageAltitudeAgl)
         {
             _ = _executor.EngageAp1();
-            _announcer.AnnounceImmediate("Five hundred feet. Autopilot one engaged.");
+            _announcer.AnnounceImmediate($"{AutoApEngageAltitudeAgl} feet. Autopilot one engaged.");
             _apEngagedThisLeg = true;
         }
     }
