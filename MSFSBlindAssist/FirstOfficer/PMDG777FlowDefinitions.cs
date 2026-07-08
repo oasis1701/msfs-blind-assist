@@ -403,12 +403,12 @@ public static class PMDG777FlowDefinitions
     {
         Id = "DESCENT_SETUP",
         Name = "Descent Setup",
-        Description = "Prepares FO instruments and autobrake for descent and approach.",
+        Description = "Prepares FO instruments for descent and approach; landing autobrake is a Captain item.",
         RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
         Steps = new()
         {
             Captain("DSC_LNDG_DATA",  "Set landing data in FMC — VREF and minimums"),
-            SW("DSC_AUTOBRAKE",       "Autobrake: AUTO (medium)", "EVT_ABS_AUTOBRAKE_SELECTOR", 6),
+            Captain("DSC_AUTOBRAKE",  "Set the landing autobrake — Forward Panel, Brakes, Autobrake Selector"),
             SW("DSC_EFIS_FO_MODE",    "FO EFIS: APP mode",        "EVT_EFIS_FO_MODE",           0),
             SW("DSC_EFIS_FO_RANGE",   "FO EFIS: 20nm range",      "EVT_EFIS_FO_RANGE",          1),
             Captain("DSC_RECALL",     "Recall: Check no unexpected messages"),

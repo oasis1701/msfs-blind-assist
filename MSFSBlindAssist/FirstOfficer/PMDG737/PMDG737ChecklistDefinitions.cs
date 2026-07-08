@@ -265,7 +265,7 @@ public static class PMDG737ChecklistDefinitions
             ActionManual("DSA_RECALL", "DESCENT", "Recall: checked", (e, _) => e.PressRecall()),
             Auto("DSA_BELTS", "DESCENT", "Seatbelt signs: ON", "COMM_FastenBeltsSelector", v => v > 1.5,
                 (e, _) => e.SetSeatBelts(2)),
-            Reminder("DSA_AB", "DESCENT", "Set the landing autobrake"),
+            Reminder("DSA_AB", "DESCENT", "Set the landing autobrake — Forward Panel, Autobrake"),
             Reminder("DSA_ILS", "DESCENT", "Set the ILS frequencies and course"),
             Reminder("DSA_DATA", "DESCENT", "Confirm landing data, VREF and minimums"),
         }

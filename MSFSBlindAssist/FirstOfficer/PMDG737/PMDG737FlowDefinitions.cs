@@ -315,7 +315,7 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             SW("DS_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2),
-            Captain("DS_AB", "Set the landing autobrake."),
+            Captain("DS_AB", "Set the landing autobrake — Forward Panel, Autobrake"),
             Captain("DS_ILS", "Set the ILS frequencies and course."),
             Captain("DS_DATA", "Confirm landing data, VREF and minimums."),
         }

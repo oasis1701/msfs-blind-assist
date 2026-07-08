@@ -294,10 +294,7 @@ public static class FenixChecklistDefinitions
         Id = "DESCENT", Name = "Descent",
         Items = new()
         {
-            // Guarded: momentary pulse on a latching light — act only when not armed.
-            Auto("DC_AUTOBRAKE", "DESCENT", "Autobrake: MED",
-                "I_MIP_AUTOBRAKE_MED_L", v => v > 0.5,
-                (e, s) => s.IsOn("I_MIP_AUTOBRAKE_MED_L") ? Task.CompletedTask : e.Pulse("S_MIP_AUTOBRAKE_MED")),
+            Reminder("DC_AUTOBRAKE", "DESCENT", "Set the landing autobrake — Main Instrument Panel, Auto Brakes"),
             Auto("DC_SEATBELTS", "DESCENT", "Seatbelt signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
             Reminder("DC_ARRPERF", "DESCENT", "Calculate arrival performance on the EFB"),

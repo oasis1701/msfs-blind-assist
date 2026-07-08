@@ -550,9 +550,7 @@ public static class PMDG777ChecklistDefinitions
         Items = new()
         {
             Reminder("DSCA_LNDG_DATA", "DESCENT", "Set landing data in FMC — VREF and minimums"),
-            Auto("DSCA_AUTOBRAKE", "DESCENT", "Autobrake: AUTO (medium)",
-                "BRAKES_AutobrakeSelector", v => v > 5.5 && v < 6.5,
-                action: (e, _) => e.SetAutobrake(6)),
+            Reminder("DSCA_AUTOBRAKE", "DESCENT", "Set the landing autobrake — Forward Panel, Brakes, Autobrake Selector"),
             Auto("DSCA_EFIS_FO_MODE", "DESCENT", "FO EFIS: APP mode",
                 "EFIS_ModeSel_1", v => v < 0.5,
                 action: (e, _) => e.SetEFISModeFO(0)),

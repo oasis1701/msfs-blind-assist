@@ -374,7 +374,7 @@ public static class FbwA380ChecklistDefinitions
         Id = "APPROACH", Name = "Approach",
         Items = new()
         {
-            Reminder("AP_AUTOBRAKE", "APPROACH", "Autobrake: set for landing"),
+            Reminder("AP_AUTOBRAKE", "APPROACH", "Set the landing autobrake — Instrument section, Autobrake panel"),
             Auto("AP_SEATBELTS", "APPROACH", "Seatbelt signs: ON", "SEATBELT_SIGN",
                 v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
             Multi("AP_EFISMODE", "APPROACH", "EFIS mode: ILS", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 0) < 0.5,

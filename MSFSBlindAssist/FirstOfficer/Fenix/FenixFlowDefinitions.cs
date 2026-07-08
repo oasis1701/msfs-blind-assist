@@ -326,12 +326,11 @@ public static class FenixFlowDefinitions
     private static Flow BuildDescent() => new()
     {
         Id = "DESCENT", Name = "Descent",
-        Description = "Autobrake, seatbelt signs, arrival preparation reminders.",
+        Description = "Seatbelt signs, arrival preparation reminders; landing autobrake is a Captain item.",
         RelatedChecklistGroupIds = new[] { "DESCENT" },
         Steps = new()
         {
-            Done(Skip(SW("DC_AUTOBRAKE", "Autobrake: MED", "S_MIP_AUTOBRAKE_MED", 1),
-                s => s.IsOn("I_MIP_AUTOBRAKE_MED_L")), "DC_AUTOBRAKE"),
+            Captain("DC_AUTOBRAKE", "Set the landing autobrake — Main Instrument Panel, Auto Brakes"),
             Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
                 s => s.IsOn("S_OH_SIGNS")), "DC_SEATBELTS"),
             Captain("DC_ARRPERF", "Calculate arrival performance on the EFB"),

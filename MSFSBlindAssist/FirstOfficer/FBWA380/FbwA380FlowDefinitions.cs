@@ -337,7 +337,7 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new[] { "APPROACH_CL" },
         Steps = new()
         {
-            Captain("AP_AUTOBRAKE", "Autobrake: set for landing"),
+            Captain("AP_AUTOBRAKE", "Set the landing autobrake — Instrument section, Autobrake panel"),
             Skip(SW("AP_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1), s => s.IsOn("SEATBELT_SIGN")),
             Multi("AP_EFISMODE", "EFIS mode: ILS", ("A32NX_EFIS_L_ND_MODE", 0), ("A32NX_EFIS_R_ND_MODE", 0)),
         }
