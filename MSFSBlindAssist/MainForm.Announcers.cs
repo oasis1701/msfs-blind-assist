@@ -1876,7 +1876,7 @@ public partial class MainForm
         if (settings.WeatherAutoAnnounceEnabled)
             CheckAmbientWeatherChanges();
 
-        if (settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled)
+        if ((settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled) && !_proximityCheckRunning)
             _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
                     settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
     }
@@ -1957,6 +1957,7 @@ public partial class MainForm
 
     private async Task CheckWeatherProximityAsync(int rangeNm, bool checkSigmets, bool checkPireps)
     {
+        _proximityCheckRunning = true;
         try
         {
             var lastPos = simConnectManager.LastKnownPosition;
@@ -1990,7 +1991,9 @@ public partial class MainForm
                     string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
                     if (!string.IsNullOrEmpty(adv.AltitudeRange)) msg += $", {adv.AltitudeRange}";
                     msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
-                    Invoke(() => announcer.Announce(msg));
+                    // No marshal needed: WeatherAnnouncementTimer_Tick fires on the UI thread and
+                    // WeatherService has no ConfigureAwait(false), so the await above resumes here.
+                    announcer.Announce(msg);
                 }
             }
 
@@ -2012,13 +2015,18 @@ public partial class MainForm
                     int fl = p.AltitudeFt / 100;
                     string msg = $"Pilot report: {p.HazardSummary} at FL{fl:D3}";
                     msg += $", bearing {p.BearingDeg:F0} degrees, {p.DistanceNm:F0} nautical miles";
-                    Invoke(() => announcer.Announce(msg));
+                    // No marshal needed: see comment above (advisories loop).
+                    announcer.Announce(msg);
                 }
             }
         }
         catch (Exception ex)
         {
             Log.Debug("MainForm", $"Weather proximity check error: {ex.Message}");
+        }
+        finally
+        {
+            _proximityCheckRunning = false;
         }
     }
 
