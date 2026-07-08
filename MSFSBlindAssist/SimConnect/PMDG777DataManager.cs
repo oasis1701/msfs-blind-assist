@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.FlightSimulator.SimConnect;
@@ -18,6 +19,11 @@ public class PMDG777DataManager : IPMDGDataManager
 
     private static readonly FieldInfo[] s_dataFields =
         typeof(PMDG777XDataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
+
+    // Built from s_dataFields (same BindingFlags as the per-call GetField
+    // lookups it replaces), so it resolves exactly the same names.
+    private static readonly Dictionary<string, FieldInfo> s_fieldsByName =
+        s_dataFields.ToDictionary(f => f.Name, f => f);
     // ------------------------------------------------------------------
     // Local enum IDs — SimConnect accepts any Enum type for these calls,
     // so we define our own enums rather than casting raw uints.
@@ -236,10 +242,18 @@ public class PMDG777DataManager : IPMDGDataManager
         }
 
         int changeCount = 0;
+        // Box each struct ONCE for the whole loop instead of once per field —
+        // FieldInfo.GetValue(struct) boxes its argument on every call, so the
+        // unboxed overload was copying the multi-KB struct per field (hundreds
+        // of copies/sec). Reading fields off a boxed copy returns identical
+        // values to reading off the struct directly (the box IS a bitwise
+        // copy of the same snapshot), so this is behavior-neutral.
+        object oldBox = _lastDataSnapshot;
+        object newBox = newData;
         foreach (var field in s_dataFields)
         {
-            object? oldVal = field.GetValue(_lastDataSnapshot);
-            object? newVal = field.GetValue(newData);
+            object? oldVal = field.GetValue(oldBox);
+            object? newVal = field.GetValue(newBox);
 
             if (field.FieldType.IsArray)
             {
@@ -309,13 +323,12 @@ public class PMDG777DataManager : IPMDGDataManager
             return 0.0;
         }
 
-        // Plain field
-        var field = typeof(PMDG777XDataStruct)
-            .GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+        object snapshotBox = _lastDataSnapshot;
 
-        if (field != null)
+        // Plain field
+        if (s_fieldsByName.TryGetValue(fieldName, out var field))
         {
-            return ToDouble(field.GetValue(_lastDataSnapshot));
+            return ToDouble(field.GetValue(snapshotBox));
         }
 
         // Array index suffix: "FieldName_N"
@@ -323,10 +336,9 @@ public class PMDG777DataManager : IPMDGDataManager
         if (lastUnderscore > 0 && int.TryParse(fieldName[(lastUnderscore + 1)..], out int index))
         {
             string baseName = fieldName[..lastUnderscore];
-            var baseField = typeof(PMDG777XDataStruct)
-                .GetField(baseName, BindingFlags.Public | BindingFlags.Instance);
 
-            if (baseField?.GetValue(_lastDataSnapshot) is Array arr && index < arr.Length)
+            if (s_fieldsByName.TryGetValue(baseName, out var baseField) &&
+                baseField.GetValue(snapshotBox) is Array arr && index < arr.Length)
                 return ToDouble(arr.GetValue(index));
         }
 
