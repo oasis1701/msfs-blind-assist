@@ -696,10 +696,11 @@ public partial class TaxiGuidanceManager : IDisposable
     private int    _backtrackConnectionNodeId;  // 0 = no graph node found within range
     private bool   _backtrackApproachAnnounced; // "taxiway ahead" callout fired
 
-    // --- DIAGNOSTIC LOGGING (debug/landing-rollout-instrumentation branch) ---
-    // Captures rollout-phase state to landing_exit.log so we can see why
-    // UpdateLandingRollout silently fails to fire approach callouts at some
-    // airports. Removed after the root cause is identified.
+    // --- DIAGNOSTIC LOGGING (permanent rollout diagnostics) ---
+    // Captures rollout-phase state to landing_exit.log for troubleshooting
+    // UpdateLandingRollout and approach-callout firing. Rate-limited
+    // (one snapshot per few seconds); kept as permanent diagnostic tooling
+    // (owner decision 2026-07).
     private bool _rolloutDiagFirstCallDone;
     private DateTime _rolloutDiagLastPeriodic = DateTime.MinValue;
     // Below this GS the aircraft is at taxi speed — graduate to normal taxi
@@ -2557,12 +2558,12 @@ public partial class TaxiGuidanceManager : IDisposable
         StateChanged?.Invoke(this, newState);
     }
 
-    // --- DIAGNOSTIC LOGGING HELPER (debug/landing-rollout-instrumentation branch) ---
+    // --- DIAGNOSTIC LOGGING HELPER (permanent rollout diagnostics) ---
     // Writes to landing_exit.log alongside LandingExitPlanner.DiagLog so the
     // rollout-phase per-frame loop is interleaved with the planner's touchdown
-    // events. Cheap (one enqueue per ~few seconds during rollout, now serialized
-    // through the shared LogWriter thread alongside every other landing_exit.log
-    // writer); entirely removed once we've identified the root cause of the RJAA bug.
+    // events. Rate-limited (one enqueue per few seconds during rollout),
+    // serialized through the shared LogWriter thread. Kept as permanent
+    // diagnostic tooling (owner decision 2026-07).
     // NOTE: diag lines log raw FEET on purpose (unlike user-facing callouts, which
     // go through DistanceFormatter). The internal rollout math and its constants
     // are feet-native, and logs must be comparable across users regardless of the
