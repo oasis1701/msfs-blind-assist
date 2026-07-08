@@ -38,61 +38,7 @@ public partial class SimConnectManager
             // block won't execute for them. Safe to keep aircraft-specific.
             if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
             {
-                // Convert numeric code to text message via EWDMessageLookup
-                long numericCode = (long)currentValue;
-
-                // Get raw message with ANSI codes
-                string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
-
-                // Store RAW message for ECAM Display window (it will clean and extract color itself)
-                ecamStringData[varKey] = rawMessage;
-
-                // Clean message for screen reader announcements
-                string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
-                string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
-
-                // Create announcement text WITH color appended for screen readers (with comma)
-                string announcementText = cleanText;
-                if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
-                {
-                    announcementText = $"{cleanText}, {priority}";
-                }
-                ecamAnnouncementData[varKey] = announcementText;
-
-                ecamStringsReceived++;
-
-                Log.Debug("SimConnect", $"ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
-
-                // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
-                if (ecamStringsReceived % ecamTotalStringsExpected == 0)
-                {
-                    // Fire the ECAM data received event with all collected data
-                    ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
-                    {
-                        LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
-                        LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
-                        LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
-                        LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
-                        LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
-                        LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
-                        LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
-                        RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
-                        RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
-                        RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
-                        RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
-                        RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
-                        RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
-                        RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
-                        MasterWarning = ecamMasterWarning > 0.5,
-                        MasterCaution = ecamMasterCaution > 0.5,
-                        StallWarning = ecamStallWarning > 0.5
-                    });
-
-                    Log.Debug("SimConnect", "All ECAM data collected and event fired");
-
-                    // Announce new ECAM messages (batch processing after all 14 lines collected)
-                    AnnounceECAMChanges();
-                }
+                ProcessEcamLine(varKey, currentValue, logReceipt: true);
 
                 // Don't continue with normal processing for ECAM codes - batch collection is handled above
                 return;
@@ -164,6 +110,76 @@ public partial class SimConnectManager
         catch (Exception ex)
         {
             Log.Debug("SimConnect", $"Error processing individual variable response: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Process one FlyByWire A32NX ECAM memo-line variable (A32NX_Ewd_LOWER_*): decode the
+    /// numeric code to text via EWDMessageLookup, store it for the ECAM Display window, and —
+    /// once all 14 lines for this cycle have arrived — fire ECAMDataReceived and announce.
+    /// Shared by both the individual-response path and the batch path; <paramref name="logReceipt"/>
+    /// preserves each call site's original per-line debug-log behavior (individual path logs
+    /// every line, batch path does not, to avoid churning the hot-path log).
+    /// </summary>
+    private void ProcessEcamLine(string varKey, double value, bool logReceipt)
+    {
+        // Convert numeric code to text message via EWDMessageLookup
+        long numericCode = (long)value;
+
+        // Get raw message with ANSI codes
+        string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
+
+        // Store RAW message for ECAM Display window (it will clean and extract color itself)
+        ecamStringData[varKey] = rawMessage;
+
+        // Clean message for screen reader announcements
+        string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
+        string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
+
+        // Create announcement text WITH color appended for screen readers (with comma)
+        string announcementText = cleanText;
+        if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
+        {
+            announcementText = $"{cleanText}, {priority}";
+        }
+        ecamAnnouncementData[varKey] = announcementText;
+
+        ecamStringsReceived++;
+
+        if (logReceipt)
+        {
+            Log.Debug("SimConnect", $"ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
+        }
+
+        // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
+        if (ecamStringsReceived % ecamTotalStringsExpected == 0)
+        {
+            // Fire the ECAM data received event with all collected data
+            ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
+            {
+                LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
+                LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
+                LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
+                LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
+                LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
+                LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
+                LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
+                RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
+                RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
+                RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
+                RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
+                RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
+                RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
+                RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
+                MasterWarning = ecamMasterWarning > 0.5,
+                MasterCaution = ecamMasterCaution > 0.5,
+                StallWarning = ecamStallWarning > 0.5
+            });
+
+            Log.Debug("SimConnect", "All ECAM data collected and event fired");
+
+            // Announce new ECAM messages (batch processing after all 14 lines collected)
+            AnnounceECAMChanges();
         }
     }
 
@@ -402,55 +418,7 @@ public partial class SimConnectManager
                         // Special handling for ECAM variables (convert numeric codes to readable text)
                         if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
                         {
-                            // Convert numeric code to readable message via EWDMessageLookup
-                            long numericCode = (long)value;
-                            string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
-                            string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
-                            string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
-
-                            // Store RAW message for ECAM Display window
-                            ecamStringData[varKey] = rawMessage;
-
-                            // Create announcement text WITH color appended for screen readers
-                            string announcementText = cleanText;
-                            if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
-                            {
-                                announcementText = $"{cleanText}, {priority}";
-                            }
-                            ecamAnnouncementData[varKey] = announcementText;
-
-                            ecamStringsReceived++;
-
-                            // Check if all 14 ECAM lines have been received
-                            if (ecamStringsReceived % ecamTotalStringsExpected == 0)
-                            {
-                                // Fire the ECAM data received event with all collected data
-                                ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
-                                {
-                                    LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
-                                    LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
-                                    LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
-                                    LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
-                                    LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
-                                    LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
-                                    LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
-                                    RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
-                                    RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
-                                    RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
-                                    RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
-                                    RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
-                                    RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
-                                    RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
-                                    MasterWarning = ecamMasterWarning > 0.5,
-                                    MasterCaution = ecamMasterCaution > 0.5,
-                                    StallWarning = ecamStallWarning > 0.5
-                                });
-
-                                Log.Debug("SimConnect", "All ECAM data collected and event fired");
-
-                                // Announce new ECAM messages (batch processing after all 14 lines collected)
-                                AnnounceECAMChanges();
-                            }
+                            ProcessEcamLine(varKey, value, logReceipt: false);
 
                             processedCount++;
                             continue; // Skip normal processing for ECAM variables
