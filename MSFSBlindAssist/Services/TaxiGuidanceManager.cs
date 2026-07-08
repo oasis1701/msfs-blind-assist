@@ -1226,13 +1226,29 @@ public partial class TaxiGuidanceManager : IDisposable
         // continuous variable) so callouts work in every phase — takeoff roll, landing
         // rollout, taxi — not just while taxi guidance is active. Do not re-add it here.
 
+        // Snapshot settings ONCE per frame (SV-5): SettingsManager.Current takes a
+        // static lock on every access, and this frame runs entirely inside
+        // _stateLock — two separate Current reads meant two lock acquisitions per
+        // 30 Hz sample, so an options-dialog Save (which briefly holds that lock to
+        // serialize/publish) could stall a position frame behind it. UserSettings is
+        // a mutable reference the settings dialog edits IN PLACE (SettingsForm.OnOk
+        // mutates the same `Current` object then calls Save(), which just republishes
+        // the identical reference) — so this per-call snapshot observes the same
+        // live-applied values a repeated Current read would; live-apply keeps working
+        // frame-to-frame. Only the separate SettingsManager.Reset() path swaps in a
+        // brand-new instance, and even then only the one frame whose snapshot was
+        // taken just before the reset would use the pre-reset object — equal or
+        // better than the old behavior, which could tear mid-frame between the two
+        // reads if a save landed between them.
+        var settings = SettingsManager.Current;
+
         // Refresh tone-direction settings once per frame, before any branch
         // (taxiing, lining-up, or runway-aligned hold) that can drive the
         // tone. This makes runtime toggles in Taxi Guidance Options take
         // effect on the very next sample without restarting taxi guidance.
         // Cheap — two property assignments per frame.
-        _steeringTone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
-        _steeringTone.HardPan   = SettingsManager.Current.TaxiGuidanceHardPanTone;
+        _steeringTone.InvertPan = settings.TaxiGuidanceInvertSteeringTone;
+        _steeringTone.HardPan   = settings.TaxiGuidanceHardPanTone;
 
         // Convert magnetic heading to true heading for bearing comparison
         // True heading = magnetic heading + magnetic variation (east positive)
