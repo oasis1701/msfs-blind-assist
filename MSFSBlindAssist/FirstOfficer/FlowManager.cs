@@ -17,6 +17,11 @@ public class FlowManager<TExec, TState>
     private readonly ChecklistManager<TExec, TState> _checklist;
     private readonly ScreenReaderAnnouncer _announcer;
 
+    // Minimum audible gap between flow steps — a screen-reader FO must read at a
+    // human pace, not zip (user request 2026-07-08). This is announcement pacing
+    // ON TOP of the executors' write spacing, never a replacement for it.
+    private const int InterStepPauseMs = 2000;
+
     private CancellationTokenSource? _cts;
     private Task? _runTask;
     private TaskCompletionSource<bool>? _pauseTcs;
@@ -144,6 +149,11 @@ public class FlowManager<TExec, TState>
                 StepCompleted?.Invoke(flow, step, i);
                 if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
                     _checklist.MarkComplete(step.CompletesChecklistItemId);
+                if (i < flow.Steps.Count - 1)
+                {
+                    try { await Task.Delay(InterStepPauseMs, ct); }
+                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
+                }
                 continue;
             }
 
@@ -190,10 +200,12 @@ public class FlowManager<TExec, TState>
                 if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
                     _checklist.MarkComplete(step.CompletesChecklistItemId);
 
-                // Delay between steps
-                if (step.PostActionDelayMs > 0)
+                // Delay between steps — at least InterStepPauseMs so flows read at
+                // a human pace; a longer per-step PostActionDelayMs still wins.
+                int pause = Math.Max(step.PostActionDelayMs, InterStepPauseMs);
+                if (i < flow.Steps.Count - 1 && pause > 0)
                 {
-                    try { await Task.Delay(step.PostActionDelayMs, ct); }
+                    try { await Task.Delay(pause, ct); }
                     catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
                 }
             }
