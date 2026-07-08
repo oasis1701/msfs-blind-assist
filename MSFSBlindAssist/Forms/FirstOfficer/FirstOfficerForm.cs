@@ -385,7 +385,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _runRelatedFlowBtn = MakeButton("Run Related Flow", "Run the flow associated with the selected section", RunRelatedFlow);
         _loadSimBriefChecklistBtn = MakeButton("Load SimBrief", "Load SimBrief flight plan and set transition altitudes", LoadSimBrief);
 
-        btnPanel.Controls.AddRange(new Control[] { _toggleItemBtn, _resetSectionBtn, _resetAllBtn, _runRelatedFlowBtn, _loadSimBriefChecklistBtn });
+        // Run Related Flow before the reset buttons (user request 2026-07-08) —
+        // starting a flow is the frequent action; resets are the exceptional one.
+        btnPanel.Controls.AddRange(new Control[] { _toggleItemBtn, _runRelatedFlowBtn, _resetSectionBtn, _resetAllBtn, _loadSimBriefChecklistBtn });
         layout.Controls.Add(btnPanel, 0, 2);
 
         _checklistTab.Controls.Add(layout);
