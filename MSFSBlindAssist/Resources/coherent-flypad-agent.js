@@ -50,9 +50,11 @@
       if (st.display === "none" || st.visibility === "hidden") return false;
       var r = n.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
-    // Fail-CLOSED: the flyPad DOM is HTML/React (divs/spans/inputs); the only
-    // SVGs it touches are small decorative icon glyphs (see A.hasIcon below),
-    // whose style/rect reads don't throw here — treat an exception as hidden.
+    // Fail-CLOSED: the flyPad DOM is HTML/React (divs/spans/inputs). Generic
+    // sweeps and helpers (e.g. A.refuelIconStarted) do pass inline icon
+    // <svg> elements directly to isVisible, but the SVGs this page contains
+    // are decorative icon glyphs with no readable text — so fail-closed
+    // loses nothing even when it lands on one of them.
     } catch (e) { return false; }
   };
 

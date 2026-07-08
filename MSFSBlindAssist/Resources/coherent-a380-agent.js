@@ -68,10 +68,14 @@
       if (st.display === "none" || st.visibility === "hidden") return false;
       var r = node.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
-    // Fail-CLOSED: every node this agent calls isVisible on is a plain HTML
-    // .mfd-* element (the MFD is an HTML/CSS React view, not SVG), so
-    // getComputedStyle/getBoundingClientRect don't throw here in practice —
-    // treat an exception as hidden rather than risk surfacing a dead node.
+    // Fail-CLOSED: chosen because the MFD's READABLE content is HTML text
+    // (.mfd-* React elements). The generic static-leaf sweep (enumerateLines,
+    // ~line 1210) does call isVisible on every element under the page,
+    // including SVG (e.g. the green-dot speed marker's <svg><circle>, ~line
+    // 510) — but the only known SVG here carries no textContent, so it's
+    // dropped by the empty-text check either way, whether isVisible reports
+    // true or false. If the MFD ever renders SVG TEXT content, this default
+    // must be revisited (see the EWD agent's fail-open for that case).
     } catch (e) { return false; }
   };
 
