@@ -53,9 +53,11 @@ public partial class FlyByWireA380Definition
         else if (varName == "A32NX_BETA_TARGET_ACTIVE") _betaTargetActive = value > 0.5;
 
         // Passengers on board: each station L:var is an integer seat-bitmask (set bit =
-        // filled seat). Popcount it, cache per station, and keep the running total.
-        // Value < 2^53 (≤ 50 seats/station), so (long)value is exact. Never announced.
-        if (varName.StartsWith("A32NX_PAX_", StringComparison.Ordinal) && varName.IndexOf("_DESIRED", StringComparison.Ordinal) < 0)
+        // filled seat). Popcount it, cache per station, and keep the running total. Value
+        // < 2^53 (≤ 50 seats/station), so (long)value is exact. Never announced. We sum the
+        // *_DESIRED* (target) stations — the planned load the flyPad/GSX/loadsheet agree on
+        // — NOT the boarded set (which lags under GSX boarding); see PaxStationVars.
+        if (varName.StartsWith("A32NX_PAX_", StringComparison.Ordinal) && varName.EndsWith("_DESIRED", StringComparison.Ordinal))
         {
             _paxFilledByStation[varName] = System.Numerics.BitOperations.PopCount((ulong)(long)Math.Round(value));
             int total = 0;
@@ -639,13 +641,14 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        // Minimums are ARINC429 words — decode and announce when a minimum is set
-        // or changed on the MCDU PERF APPR page (no announce on clear/NCD).
-        if (varName == "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE" || varName == "A32NX_FM1_DECISION_HEIGHT")
+        // Minimums (CORRECTED 2026-07): plain-feet L:vars the MFD PERF page writes
+        // (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA, AIRLINER_DECISION_HEIGHT = radio
+        // DH), NOT the ARINC429 FM1 words (which are NCD until approach range). Announce
+        // when a minimum is set/changed; no announce on clear (MDA <= 0 / DH < 0).
+        if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
         {
             bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
-            var w = new Arinc429Word(value);
-            int ft = (w.IsNormalOperation || w.IsFunctionalTest) ? (int)(Math.Round(w.Value / 10.0) * 10) : -1;
+            int ft = value > 0 ? (int)Math.Round(value) : -1; // both: <=0 baro / <0 dh → unset
             if (ft != (baro ? _lastBaroMin : _lastDh))
             {
                 if (baro) _lastBaroMin = ft; else _lastDh = ft;

@@ -1997,7 +1997,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // FBW exposes the lateral-deviation request as _L_/_R_ (per FMGC), NOT _1_ — the _1_
         // name does not exist in source and always read 0. Use the captain's (_L_).
         Read("A32NX_FMGC_L_LDEV_REQUEST", "FMGC L DEV Request");
-        // (A32NX_FM1_MINIMUM_DESCENT_ALTITUDE is registered once in the MINIMUMS section.)
+        // (Approach minimums are registered once in the MINIMUMS section, off the plain
+        //  AIRLINER_MINIMUM_DESCENT_ALTITUDE / AIRLINER_DECISION_HEIGHT feet L:vars.)
         Read("A32NX_DESTINATION_QNH", "Destination QNH");
 
         // FCU engage/mode toggles — settable combos that show live engage state
@@ -2164,11 +2165,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // are dead stubs too. (Squawk code + IDENT remain the only working surveillance writes.)
 
         // ============================ MINIMUMS ============================
-        // FMS-set decision minimums (best-effort; var reused from A32NX FM).
-        // Minimums are ARINC429 words (decoded + announced in ProcessSimVarUpdate);
-        // monitored so a minimum set/cleared on the MCDU PERF APPR page is spoken.
-        MonNum("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
-        MonNum("A32NX_FM1_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
+        // FMS-set approach minimums. CORRECTED 2026-07: read the PLAIN-feet L:vars the
+        // MFD PERF page writes directly (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA,
+        // AIRLINER_DECISION_HEIGHT = radio DH — the same vars the PFD/ISIS/GPWS read),
+        // NOT the ARINC429 words A32NX_FM1_MINIMUM_DESCENT_ALTITUDE / _DECISION_HEIGHT.
+        // Those FM1/FM2 words are NCD (read 2^32 → "Not set") until the FMC decides the
+        // aircraft is in approach range (shouldTransmitMinimums(distanceToDestination) in
+        // FmcAircraftInterface.ts), so at cruise a set minimum showed "Not set" (live-
+        // verified: MDA 940 / DH 200 set, but FM1 words both NCD). The plain L:vars hold
+        // the pilot's entry the instant it's set, at any phase. Unset sentinels: MDA <= 0,
+        // DH < 0 (FBW resets MDA→0, DH→-1). Plain feet — decoded/announced in
+        // ProcessSimVarUpdate + TryGetDisplayOverride (NOT ARINC429 now).
+        MonNum("AIRLINER_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
+        MonNum("AIRLINER_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
 
         // ============================ A32NX SHARED GAP CONTROLS/READOUTS ============================
         // Pulled from the FBW A32NX API docs (shared with the A380); see
@@ -2886,18 +2895,26 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // ---- Passengers on board (Status panel) ----
     // A32NX_FMS_PAX_NUMBER (the var the Status panel used to read) is written ONLY by
     // the MFD FUEL&LOAD page (MfdFmsFuelLoad.tsx) — so boarding via the flyPad never
-    // sets it and it reads 0. The real boarded count is the sum of occupied seats across
-    // the 14 per-station seat-bitmask L:vars (each holds an integer whose set-bit count =
-    // filled seats in that cabin zone; ≤ 50 seats/station, so the value is < 2^53 and is
-    // exact as a double — the same float64 the FBW EFB itself reads). We popcount each
-    // and sum; the result is shown for "A32NX_FMS_PAX_NUMBER" in TryGetDisplayOverride.
+    // sets it and it reads 0. The count is the sum of the per-station seat-bitmask L:vars
+    // (each holds an integer whose set-bit count = filled seats in that cabin zone; max
+    // 50 seats/station on the A380X, so every value is < 2^53 and exact as a double — the
+    // same float64 the FBW EFB itself reads). We popcount each and sum; the result is
+    // shown for "A32NX_FMS_PAX_NUMBER" in TryGetDisplayOverride.
+    // CORRECTED 2026-07: sum the *_DESIRED* (target) bitmasks, NOT the boarded ones. The
+    // flyPad headline number and GSX (FSDT_GSX_NUMPASSENGERS) both reflect totalPaxDesired
+    // — the planned load — while the boarded bitmask (A32NX_PAX_<st>, no suffix) lags and,
+    // under GSX-driven boarding, settles BELOW target and stays there (live: user planned
+    // 466, boarded bitmask summed 428). The desired total is the number that matches the
+    // flyPad, GSX, and the loadsheet, and is stable at every phase — that's what a pilot
+    // means by "passengers on board". (Popcount of the boarded set is itself correct — it's
+    // just the wrong quantity to show here.)
     private static readonly string[] PaxStationVars =
     {
-        "A32NX_PAX_MAIN_FWD_A", "A32NX_PAX_MAIN_FWD_B",
-        "A32NX_PAX_MAIN_MID_1A", "A32NX_PAX_MAIN_MID_1B", "A32NX_PAX_MAIN_MID_1C",
-        "A32NX_PAX_MAIN_MID_2A", "A32NX_PAX_MAIN_MID_2B", "A32NX_PAX_MAIN_MID_2C",
-        "A32NX_PAX_MAIN_AFT_A", "A32NX_PAX_MAIN_AFT_B",
-        "A32NX_PAX_UPPER_FWD", "A32NX_PAX_UPPER_MID_A", "A32NX_PAX_UPPER_MID_B", "A32NX_PAX_UPPER_AFT"
+        "A32NX_PAX_MAIN_FWD_A_DESIRED", "A32NX_PAX_MAIN_FWD_B_DESIRED",
+        "A32NX_PAX_MAIN_MID_1A_DESIRED", "A32NX_PAX_MAIN_MID_1B_DESIRED", "A32NX_PAX_MAIN_MID_1C_DESIRED",
+        "A32NX_PAX_MAIN_MID_2A_DESIRED", "A32NX_PAX_MAIN_MID_2B_DESIRED", "A32NX_PAX_MAIN_MID_2C_DESIRED",
+        "A32NX_PAX_MAIN_AFT_A_DESIRED", "A32NX_PAX_MAIN_AFT_B_DESIRED",
+        "A32NX_PAX_UPPER_FWD_DESIRED", "A32NX_PAX_UPPER_MID_A_DESIRED", "A32NX_PAX_UPPER_MID_B_DESIRED", "A32NX_PAX_UPPER_AFT_DESIRED"
     };
     private readonly Dictionary<string, int> _paxFilledByStation = new();
     private int _paxOnBoard;

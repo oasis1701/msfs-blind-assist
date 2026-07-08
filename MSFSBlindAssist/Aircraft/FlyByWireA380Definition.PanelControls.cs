@@ -609,10 +609,10 @@ public partial class FlyByWireA380Definition
         // d["Radios"] removed with the dead "Radios" panel — the RMP active/standby freqs are
         // in d["RMP"] (FBW L:vars) and the RMP window.
         d["Transponder"] = new List<string> { "XPNDR_CODE", "XPNDR_STATE", "A32NX_DCDU_ATC_MSG_WAITING" };
-        // Minimums are ARINC429 words — TryGetDisplayOverride decodes them to
-        // "200 feet" / "Not set" (the raw word reads ~4.29e9). They also
-        // auto-announce when set on the MCDU PERF APPR page.
-        d["Minimums"] = new List<string> { "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT" };
+        // Minimums are the plain-feet L:vars the MFD PERF page writes — TryGetDisplayOverride
+        // renders "200 feet" / "Not set". They also auto-announce when set. (The ARINC429
+        // FM1 words were dropped: NCD until approach range, so they read "Not set" at cruise.)
+        d["Minimums"] = new List<string> { "AIRLINER_MINIMUM_DESCENT_ALTITUDE", "AIRLINER_DECISION_HEIGHT" };
 
         // ---- A32NX shared gap readouts ----
         d["Autobrake"].AddRange(new[]

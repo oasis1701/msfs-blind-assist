@@ -38,8 +38,9 @@ public partial class FlyByWireA380Definition
     {
         displayText = "";
         // Passengers on board: A32NX_FMS_PAX_NUMBER only reflects the MFD FUEL&LOAD page
-        // entry (0 when boarding via the flyPad), so show the real boarded total summed
-        // from the per-station seat bitmasks (cached in ProcessSimVarUpdate).
+        // entry (0 when boarding via the flyPad), so show the planned total summed from the
+        // per-station *_DESIRED* seat bitmasks (cached in ProcessSimVarUpdate) — the number
+        // the flyPad headline and GSX report; the boarded set lags under GSX boarding.
         if (varKey == "A32NX_FMS_PAX_NUMBER")
         {
             displayText = _paxOnBoard.ToString();
@@ -330,13 +331,14 @@ public partial class FlyByWireA380Definition
                     : $"{hpa:0} hPa";
                 return true;
             }
-            case "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE":
-            case "A32NX_FM1_DECISION_HEIGHT":
+            case "AIRLINER_MINIMUM_DESCENT_ALTITUDE": // baro MDA — plain feet; unset when <= 0
             {
-                var w = new Arinc429Word(value);
-                int ft = (w.IsNormalOperation || w.IsFunctionalTest)
-                    ? (int)(Math.Round(w.Value / 10.0) * 10) : -1;
-                displayText = ft > 0 ? $"{ft} feet" : "Not set";
+                displayText = value > 0 ? $"{(int)Math.Round(value)} feet" : "Not set";
+                return true;
+            }
+            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset sentinel is -1
+            {
+                displayText = value >= 0 ? $"{(int)Math.Round(value)} feet" : "Not set";
                 return true;
             }
             case "A32NX_SEC_1_RUDDER_ACTUAL_POSITION":
