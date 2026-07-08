@@ -1955,7 +1955,10 @@
       var pw = gc.currentPseudoWaypoints || [];
       for (var p = 0; p < pw.length; p++) {
         if (!pw[p]) continue; // some pseudo-waypoint slots are null in flight; deref guard
-        var id = ((pw[p].ident || pw[p].mcduIdent || "") + "").toUpperCase();
+        // mcduIdent FIRST: a cruise StepDescent pseudo-waypoint has ident '(T/D)' but
+        // mcduIdent '(S/D)', and sits upstream of the real T/D — checking ident first
+        // latched onto the step (mirrors coherent-a32nx-flightinfo.js's identical fix).
+        var id = ((pw[p].mcduIdent || pw[p].ident || "") + "").toUpperCase();
         // Match ONLY the real Top of Descent / Top of Climb. NOT (DECEL): that is a
         // SEPARATE deceleration point that stays AHEAD during the descent, so matching it
         // made Shift+D keep reporting "N miles to top of descent" after the real T/D was
