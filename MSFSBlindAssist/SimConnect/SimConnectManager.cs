@@ -185,6 +185,11 @@ public partial class SimConnectManager
 
     // Variable tracking for individual registrations
     private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
+    // Reverse of variableDataDefinitions (data definition/request ID -> variable key), kept in exact
+    // sync at every add/remove/clear site of variableDataDefinitions. Lets the per-frame individual-var
+    // response dispatch (ProcessIndividualVariableResponse, fired at up to SIM_FRAME rate for
+    // HighFrequency vars like G_FORCE) do an O(1) TryGetValue instead of an O(n) FirstOrDefault scan.
+    private ConcurrentDictionary<int, string> requestIdToVarKey = new ConcurrentDictionary<int, string>();
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
     // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
     // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
@@ -1023,6 +1028,7 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
+        requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         eventIds.Clear();

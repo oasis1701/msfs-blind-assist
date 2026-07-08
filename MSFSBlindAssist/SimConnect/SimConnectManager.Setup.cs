@@ -265,6 +265,7 @@ public partial class SimConnectManager
 
                 // Only add to dictionary if registration was successful
                 variableDataDefinitions.TryAdd(kvp.Key, dataDefId);
+                requestIdToVarKey.TryAdd(dataDefId, kvp.Key);
                 registeredCount++;
 
                 // If the var asked to be excluded from the batched continuous monitoring
@@ -611,6 +612,7 @@ public partial class SimConnectManager
 
         // Clear existing registrations
         variableDataDefinitions.Clear();
+        requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
 

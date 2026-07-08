@@ -19,18 +19,13 @@ public partial class SimConnectManager
         try
         {
             // Find the variable key for this request ID
-            var variableEntry = variableDataDefinitions.FirstOrDefault(x => x.Value == requestId);
-            if (variableEntry.Key == null)
+            if (!requestIdToVarKey.TryGetValue(requestId, out var varKey) || varKey == null)
             {
                 return;
             }
 
-            string varKey = variableEntry.Key;
-
             var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.ContainsKey(varKey) ? variables[varKey] : null;
-
-            if (varDef == null)
+            if (!variables.TryGetValue(varKey, out var varDef) || varDef == null)
             {
                 return;
             }
@@ -112,11 +107,14 @@ public partial class SimConnectManager
 
             // Check for value changes
             bool hasChanged = true;
-            if (lastVariableValues.ContainsKey(varKey))
+            if (lastVariableValues.TryGetValue(varKey, out double previousValue))
             {
-                hasChanged = Math.Abs(lastVariableValues[varKey] - currentValue) > 0.001; // Small tolerance for floating point
+                hasChanged = Math.Abs(previousValue - currentValue) > 0.001; // Small tolerance for floating point
             }
-            lastVariableValues.AddOrUpdate(varKey, currentValue, (key, oldValue) => currentValue);
+            // Plain indexer write is equivalent to the prior AddOrUpdate here: the update-factory was
+            // value-replacing ((key, oldValue) => currentValue), not a merge of oldValue into the new
+            // value, so there is no concurrent-update logic being lost — see task-4.1-report.md.
+            lastVariableValues[varKey] = currentValue;
 
             // Suppress SimVarUpdated for unchanged ANNOUNCED CONTINUOUS variables. Previously we
             // fired unconditionally so that displays would refresh; the unintended consequence was
@@ -148,7 +146,13 @@ public partial class SimConnectManager
 
             string description = FormatVariableValue(varKey, varDef, currentValue);
 
-            Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+            // Skip the per-fire debug line (and its string interpolation) for HighFrequency vars
+            // (SIM_FRAME-rate, e.g. G_FORCE) — this path can fire 30-60x/sec and would otherwise
+            // churn the 5MB debug.log rotation continuously for the whole flight.
+            if (!varDef.HighFrequency)
+            {
+                Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+            }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
             {
