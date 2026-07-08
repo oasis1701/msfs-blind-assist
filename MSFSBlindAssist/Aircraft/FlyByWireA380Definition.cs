@@ -2346,22 +2346,36 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "NSS Data to Avionics");
         OnOff("A32NX_NSS_MASTER_OFF", "NSS Master Off");
 
-        // Wipers (3-speed; written via HandleUIVariableSet → circuit power events).
-        // Wipers (captain = electrical circuit 141, F/O = 143). The FBW wiper-knob
-        // template drives the circuit with K:ELECTRICAL_CIRCUIT_TOGGLE (on/off) +
-        // K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET (speed) — live-verified the toggle
-        // flips CIRCUIT SWITCH ON:141 0<->1 and "<pct> <circuit> (>K:2:…)" sets the
-        // power. The PREVIOUS code only set the power and never toggled the circuit
-        // on, so the wipers never started — the "inop" bug. The combo now reads the
-        // REAL circuit-switch state (so it shows On/Off correctly and auto-announces
-        // on change); the set toggles the circuit (handled in HandleUIVariableSet).
-        foreach (var (key, who, circuit) in new[]
-                 { ("WIPER_LEFT", "Captain Wiper", 141), ("WIPER_RIGHT", "First Officer Wiper", 143) })
+        // Wipers — 3-position OFF/SLOW/FAST selector per side (Capt = electrical circuit
+        // 141, F/O = 143), independent. CORRECTED 2026-07: the real FBW wiper knob
+        // (ASOBO_GT_Switch_3States, FBW_Airbus_Wiper_Knob template) has THREE positions —
+        // OFF = circuit switch off; SLOW = switch on + circuit POWER SETTING 75%; FAST =
+        // switch on + POWER 100% (ANIMTIP_0/1/2 = OFF/SLOW/FAST). The old combo was On/Off
+        // only, and On always drove 100%, so SLOW was unreachable. The live position is a
+        // TWO-var state (switch + power) — the power setting persists at its default (100%)
+        // while the switch is off, so a cold-start read of power=100 + switch=off must read
+        // OFF, not FAST. Neither var alone encodes the position, so the settable control is a
+        // SYNTHETIC 3-position combo (SelectedIndex authoritative, like the speed-brake) that
+        // drives the circuit in HandleUIVariableSet; the true live position is read back from
+        // the hidden switch+power vars below (WiperState → the "… Position" readouts).
+        Act("WIPER_LEFT", "Captain Wiper", new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" });
+        Act("WIPER_RIGHT", "First Officer Wiper", new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" });
+        // Hidden live-state backers (circuit switch + power per side): the switch var doubles
+        // as the OFF/SLOW/FAST readout (decoded in TryGetDisplayOverride from the cached pair,
+        // via _wiperState*), and the set handler reads the switch to decide whether to toggle.
+        foreach (var (key, who) in new[] { ("WIPER_L_SW", "Captain Wiper Position"), ("WIPER_R_SW", "First Officer Wiper Position") })
             vars[key] = new SimVarDefinition
             {
-                Name = $"CIRCUIT SWITCH ON:{circuit}", DisplayName = who, Type = SimVarType.SimVar,
-                Units = "bool", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+                Name = $"CIRCUIT SWITCH ON:{(key == "WIPER_L_SW" ? 141 : 143)}", DisplayName = who,
+                Type = SimVarType.SimVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, ExcludeFromMonitorManager = true
+            };
+        foreach (var key in new[] { "WIPER_L_PWR", "WIPER_R_PWR" })
+            vars[key] = new SimVarDefinition
+            {
+                Name = $"CIRCUIT POWER SETTING:{(key == "WIPER_L_PWR" ? 141 : 143)}", DisplayName = key,
+                Type = SimVarType.SimVar, Units = "percent",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, ExcludeFromMonitorManager = true
             };
 
         // EFIS-CP filter / overlay / baro unit (per side).
@@ -2922,6 +2936,23 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     };
     private readonly Dictionary<string, int> _paxFilledByStation = new();
     private int _paxOnBoard;
+    // Wiper live position per side (0 Off / 1 Slow / 2 Fast), computed from the hidden
+    // switch+power backers in ProcessSimVarUpdate; rendered by TryGetDisplayOverride.
+    // Default 0 = Off (the cold-start state, before the first circuit read arrives).
+    private int _wiperStateL, _wiperStateR;
+    // Last-seen circuit switch (0/1) + power (%) per side; power defaults 100 so a switch
+    // read arriving before the power read still classifies On correctly (Fast until proven Slow).
+    private double _wiperSwL, _wiperPwrL = 100.0, _wiperSwR, _wiperPwrR = 100.0;
+    // OFF when the circuit switch is off (regardless of the persisted power setting);
+    // else SLOW (~75%) vs FAST (~100%). Tolerates power read as ratio (0.75/1.0) or
+    // percent (75/100) so a unit surprise can't collapse the two speeds.
+    private static int WiperState(double? sw, double? pwr)
+    {
+        if (!(sw > 0.5)) return 0;
+        double p = pwr ?? 100.0; if (p <= 1.5) p *= 100.0;
+        return p < 87.5 ? 1 : 2;
+    }
+    private static string WiperText(int state) => state <= 0 ? "Off" : state == 1 ? "Slow" : "Fast";
     // ---- Doors (read-only status + auto-announce; NO settable combos — the user opens/closes
     // via the flyPad). ALL 18 modelled doors, authoritative ip→door mapping from the FBW SD
     // DoorPage.tsx: 16 passenger doors = stock SimVar INTERACTIVE POINT OPEN:0..15 (0..1 anim

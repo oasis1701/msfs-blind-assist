@@ -388,19 +388,26 @@ public partial class FlyByWireA380Definition
             simConnect.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
             return true;
         }
-        // Wipers: ON/OFF by TOGGLING the electrical circuit (the FBW knob template's
-        // mechanism) — only toggle when the desired state differs from the live
-        // circuit-switch state, then drive a visible speed when turning on. The old
-        // code set power only and never toggled the circuit on, so it never started.
+        // Wipers: 3-position OFF/SLOW/FAST via the electrical circuit (the FBW knob's
+        // mechanism). OFF toggles the circuit off; SLOW/FAST toggle it on (only if currently
+        // off — toggling an already-on circuit would turn it OFF) and set the circuit POWER
+        // SETTING to 75 / 100 (percent then circuit index — verified order). The live switch
+        // state is read from the hidden WIPER_*_SW backer.
         if (varKey == "WIPER_LEFT" || varKey == "WIPER_RIGHT")
         {
             int circuit = varKey == "WIPER_LEFT" ? 141 : 143;
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? 0.0) > 0.5;
-            if (desiredOn != currentOn)
-                simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
-            if (desiredOn)   // percent then circuit index (verified order)
-                simConnect.ExecuteCalculatorCode($"100 {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
+            string swKey = varKey == "WIPER_LEFT" ? "WIPER_L_SW" : "WIPER_R_SW";
+            int pos = (int)Math.Round(value); // 0 Off / 1 Slow / 2 Fast
+            bool on = (simConnect.GetCachedVariableValue(swKey) ?? 0.0) > 0.5;
+            if (pos <= 0)
+            {
+                if (on) simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+            }
+            else
+            {
+                if (!on) simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+                simConnect.ExecuteCalculatorCode($"{(pos == 1 ? 75 : 100)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
+            }
             return true;
         }
         // Engine anti-ice combo "ENGn_ANTI_ICE" -> stock K:ANTI_ICE_SET_ENGn

@@ -66,6 +66,18 @@ public partial class FlyByWireA380Definition
             return true;
         }
 
+        // Wipers — OFF/SLOW/FAST is a two-var state (circuit switch + power). Store each
+        // half as it arrives (ProcessSimVarUpdate has no SimConnect handle to read the
+        // partner) and recompute the per-side position so the "… Position" readout is live
+        // (rendered from _wiperState* in TryGetDisplayOverride). Never spoken (return true).
+        switch (varName)
+        {
+            case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperState(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperState(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperState(_wiperSwR, _wiperPwrR); return true;
+            case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperState(_wiperSwR, _wiperPwrR); return true;
+        }
+
         // Icing conditions — A32NX_ICING_STATE_ICING_STICK_INDICATOR is the cockpit
         // ice-accretion "stick" (the visual ice-evidence probe): a CONTINUOUS 0..1
         // ratio (ice builds over ~120 s in icing conditions, melts over ~200 s), NOT a

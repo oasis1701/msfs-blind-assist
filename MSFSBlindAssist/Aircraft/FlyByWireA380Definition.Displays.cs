@@ -46,6 +46,10 @@ public partial class FlyByWireA380Definition
             displayText = _paxOnBoard.ToString();
             return true;
         }
+        // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
+        // state comes from _wiperState*, computed from switch+power in ProcessSimVarUpdate).
+        if (varKey == "WIPER_L_SW") { displayText = WiperText(_wiperStateL); return true; }
+        if (varKey == "WIPER_R_SW") { displayText = WiperText(_wiperStateR); return true; }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
         // state + live level ("Icing, 30 percent" / "None") instead of a raw "0.3".
         if (varKey == "A32NX_ICING_STATE_ICING_STICK_INDICATOR")

@@ -707,7 +707,9 @@ public partial class FlyByWireA380Definition
         // the old A32NX_SD_MORE_SHOWN "more flag" line was dropped (it read as the
         // useless "SD more: no").
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
-        d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
+        // Live OFF/SLOW/FAST position readback (the synthetic combos above only hold the
+        // last SET value; these hidden switch-var backers show the true circuit state).
+        d["Wipers"] = new List<string> { "WIPER_L_SW", "WIPER_R_SW" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
 
         // ---- plain SD-page scalar readouts ----
