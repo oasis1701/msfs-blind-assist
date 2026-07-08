@@ -28,7 +28,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // Flight phase tracking
     private string currentFlightPhase = "";
-    public new string CurrentFlightPhase => currentFlightPhase;
+    public override string? CurrentFlightPhase => currentFlightPhase;
 
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";

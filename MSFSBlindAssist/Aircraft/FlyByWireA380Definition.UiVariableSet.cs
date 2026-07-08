@@ -297,7 +297,7 @@ public partial class FlyByWireA380Definition
         if (varKey == "PRESS_MAN_ALT_SET" || varKey == "PRESS_MAN_VS_SET")
         {
             string knob = varKey == "PRESS_MAN_ALT_SET" ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB";
-            simConnect.ExecuteCalculatorCode($"{value} (>L:{knob})");
+            simConnect.ExecuteCalculatorCode($"{value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} (>L:{knob})");
             announcer.Announce($"Set to {value:0.0}");
             return true;
         }
