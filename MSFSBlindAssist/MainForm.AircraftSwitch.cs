@@ -163,15 +163,9 @@ public partial class MainForm
                 EnsurePMDGProgPageMonitor();
             }
 
-            // Notify First Officer form so it can re-wire its data manager reference
-            if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
-                pmdg777FirstOfficerForm.OnSimConnectChanged();
-            if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
-                pmdg737FirstOfficerForm.OnSimConnectChanged();
-            if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
-                fenixFirstOfficerForm.OnSimConnectChanged();
-            if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
-                fbwA380FirstOfficerForm.OnSimConnectChanged();
+            // Notify First Officer forms so they can re-wire their data manager references
+            foreach (var foForm in OpenFirstOfficerForms())
+                foForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -754,27 +748,14 @@ public partial class MainForm
         coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
         coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
 
-        // Dispose PMDG First Officer forms when switching aircraft
-        if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
-        {
-            pmdg777FirstOfficerForm.Dispose();
-            pmdg777FirstOfficerForm = null;
-        }
-        if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
-        {
-            pmdg737FirstOfficerForm.Dispose();
-            pmdg737FirstOfficerForm = null;
-        }
-        if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
-        {
-            fenixFirstOfficerForm.Dispose();
-            fenixFirstOfficerForm = null;
-        }
-        if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
-        {
-            fbwA380FirstOfficerForm.Dispose();
-            fbwA380FirstOfficerForm = null;
-        }
+        // Dispose First Officer forms when switching aircraft. Per-field (not the
+        // OpenFirstOfficerForms() walk) because each typed field must also be nulled;
+        // Dispose() is idempotent, and unconditional nulling releases an already-disposed
+        // form the old `!IsDisposed` guard used to leave referenced.
+        pmdg777FirstOfficerForm?.Dispose(); pmdg777FirstOfficerForm = null;
+        pmdg737FirstOfficerForm?.Dispose(); pmdg737FirstOfficerForm = null;
+        fenixFirstOfficerForm?.Dispose(); fenixFirstOfficerForm = null;
+        fbwA380FirstOfficerForm?.Dispose(); fbwA380FirstOfficerForm = null;
 
         if (coherentNDClient != null)
         {

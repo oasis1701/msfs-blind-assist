@@ -77,6 +77,19 @@ public partial class MainForm : Form
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>? fenixFirstOfficerForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA380.FbwA380ActionExecutor, FirstOfficer.FBWA380.FbwA380StateEvaluator>? fbwA380FirstOfficerForm;
 
+    /// <summary>The ONE enumeration of the per-aircraft First Officer form fields, as their
+    /// shared non-generic view. Yields only live (created, not disposed) windows. Every
+    /// cross-form walk (settings push, SimConnect re-wire) goes through here — when adding
+    /// a First Officer for a new aircraft, extend THIS method, not the call sites.
+    /// (SwitchAircraft's dispose cleanup stays per-field: it must null the typed fields.)</summary>
+    private IEnumerable<Forms.FirstOfficer.IFirstOfficerWindow> OpenFirstOfficerForms()
+    {
+        if (pmdg777FirstOfficerForm is { IsDisposed: false }) yield return pmdg777FirstOfficerForm;
+        if (pmdg737FirstOfficerForm is { IsDisposed: false }) yield return pmdg737FirstOfficerForm;
+        if (fenixFirstOfficerForm is { IsDisposed: false }) yield return fenixFirstOfficerForm;
+        if (fbwA380FirstOfficerForm is { IsDisposed: false }) yield return fbwA380FirstOfficerForm;
+    }
+
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
 
     private Forms.FBWA380.FbwEfbForm? fbwEfbForm;

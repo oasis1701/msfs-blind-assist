@@ -160,16 +160,10 @@ public partial class MainForm
             _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
 
         // First Officer automation toggles — push the saved settings into any open First
-        // Officer window so a change takes effect without reopening it (moved verbatim from
-        // the retired FOSettingsMenuItem_Click).
-        if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
-            pmdg777FirstOfficerForm.ApplySettings();
-        if (pmdg737FirstOfficerForm != null && !pmdg737FirstOfficerForm.IsDisposed)
-            pmdg737FirstOfficerForm.ApplySettings();
-        if (fenixFirstOfficerForm != null && !fenixFirstOfficerForm.IsDisposed)
-            fenixFirstOfficerForm.ApplySettings();
-        if (fbwA380FirstOfficerForm != null && !fbwA380FirstOfficerForm.IsDisposed)
-            fbwA380FirstOfficerForm.ApplySettings();
+        // Officer window so a change takes effect without reopening it (moved from the
+        // retired FOSettingsMenuItem_Click).
+        foreach (var foForm in OpenFirstOfficerForms())
+            foForm.ApplySettings();
     }
 
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)

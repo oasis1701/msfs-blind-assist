@@ -34,11 +34,14 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             AccessibleName = "First Officer Settings Title"
         };
 
+        // AutoSize (matching the retired standalone dialog) so labels grow with the system
+        // font instead of clipping at >100% Windows text scaling — the app sets no
+        // AutoScaleDimensions, so fixed pixel widths never rescale while fonts do.
         autoGearUpCheck = new CheckBox
         {
             Text = "Auto-raise gear on positive rate (climb)",
             Location = new Point(20, 55),
-            Size = new Size(500, 25),
+            AutoSize = true,
             AccessibleName = "Auto-raise gear on climb",
             AccessibleDescription = "Automatically raise the landing gear on positive rate after takeoff"
         };
@@ -47,7 +50,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         {
             Text = "Auto-lower gear at 2000 ft AGL (descent)",
             Location = new Point(20, 90),
-            Size = new Size(500, 25),
+            AutoSize = true,
             AccessibleName = "Auto-lower gear on descent",
             AccessibleDescription = "Automatically lower the landing gear when descending through 2000 feet AGL"
         };
@@ -56,7 +59,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         {
             Text = "Auto-manage flaps (retract on climbout; extend on approach)",
             Location = new Point(20, 125),
-            Size = new Size(500, 25),
+            AutoSize = true,
             AccessibleName = "Auto-manage flaps",
             AccessibleDescription = "Automatically retract flaps on climbout and extend flaps on approach using FMC speeds"
         };
@@ -65,7 +68,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         {
             Text = "Auto-engage autopilot at 500 ft AGL on climbout",
             Location = new Point(20, 160),
-            Size = new Size(500, 25),
+            AutoSize = true,
             AccessibleName = "Auto-engage autopilot",
             AccessibleDescription = "Automatically engage autopilot when climbing through 500 feet AGL after takeoff"
         };

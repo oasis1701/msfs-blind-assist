@@ -26,7 +26,7 @@ namespace MSFSBlindAssist.Forms.FirstOfficer;
 /// - Flow steps are displayed in a ListBox (simple, screen-reader friendly)
 /// - All status changes are announced via ScreenReaderAnnouncer
 /// </summary>
-public class FirstOfficerForm<TExec, TState> : Form
+public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     where TExec : IFoActionExecutor
     where TState : IFoStateEvaluator
 {

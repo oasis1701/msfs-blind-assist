@@ -17,15 +17,15 @@ PMDG 777/737 and Fenix windows.
 
 ## Part A — Window & gating
 
-1. Load the FlyByWire A380. Confirm **Tools → "FlyByWire A380 First Officer"** appears, and
-   **Tools → "First Officer Settings"** also appears.
+1. Load the FlyByWire A380. Confirm **Tools → "FlyByWire A380 First Officer"** appears.
+   (First Officer automation settings live in **File → Settings… → First Officer**, a tab
+   that is visible for every aircraft — the old "First Officer Settings" menu item is retired.)
 2. Open the window — confirm it has exactly two tabs, **Flows** and **Checklists**, matching
    the other FO windows' layout.
 3. Switch to each of the other aircraft in turn (A320 FBW, Fenix A320, PMDG 737, PMDG 777, any
    other loaded aircraft e.g. HS787) and confirm **"FlyByWire A380 First Officer" is NOT
    visible** on any of them — only its own aircraft-specific FO item(s) show (Fenix shows only
-   "Fenix A320 First Officer"; PMDG 737/777 show only their own item). "First Officer Settings"
-   shows on Fenix/PMDG 737/PMDG 777/A380 and on no other aircraft.
+   "Fenix A320 First Officer"; PMDG 737/777 show only their own item).
 4. Switch back to the A380 — confirm the menu item reappears.
 
 ---
@@ -154,7 +154,7 @@ Checklist, Parking Checklist).
 
 ## Part D — Auto managers
 
-1. In **Tools → First Officer Settings**, enable **Auto Gear Up**, **Auto Gear Down**, and
+1. In **File → Settings… → First Officer**, enable **Auto Gear Up**, **Auto Gear Down**, and
    **Auto AP** for the A380.
 2. Fly a takeoff and confirm:
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, **"Positive
@@ -169,7 +169,7 @@ Checklist, Parking Checklist).
 (green dot / S / F / VFE-next). It moves **at most one step per tick** and enforces a **4-second
 dwell** (`FlapDwellSeconds`) between automatic lever movements. Nothing schedules while indicated
 airspeed is below **30 kt** (`MinActionIasKts`) or while the flaps-handle index reads unknown. All
-checks below require **"Auto Flaps"** enabled in Tools → First Officer Settings.
+checks below require **"Auto Flaps"** enabled in File → Settings… → First Officer.
 
 4. **OFF = no movement (default).** Leave "Auto Flaps" **disabled**. Fly a full departure and
    approach and confirm the FO **never** moves the flap lever automatically — the flaps schedule

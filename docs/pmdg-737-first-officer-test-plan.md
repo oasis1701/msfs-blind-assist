@@ -66,8 +66,8 @@ group starts the matching flow.
   battery moves), confirmed by the item staying ticked on the next poll.
 - The **"IRS aligned"** item (Electrical Power Up group) ticks on its own once alignment completes.
 
-### B4. Auto-fly (opt-in via First Officer Settings)
-Enable Auto Gear / Auto Flaps / Auto AP in **Tools → First Officer Settings**, then fly:
+### B4. Auto-fly (opt-in via Settings → First Officer)
+Enable Auto Gear / Auto Flaps / Auto AP in **File → Settings… → First Officer tab**, then fly:
 - Positive rate after takeoff → **"Gear up"**; ~500 ft → **autopilot CMD A engaged**.
 - Climb accelerating past V2 margins → flaps retract one step at a time (UP/1/2/5/10/15/25/30/40);
   on approach below VREF margins → flaps extend. (Requires FMC V2/VREF programmed.)
@@ -143,9 +143,12 @@ read-back instrument only.
 
 ### D1. Menu visibility (all aircraft)
 Each PMDG First Officer menu item is now gated to its own aircraft.
-- Load the PMDG 777 → Tools shows **"PMDG 777 First Officer"** and **First Officer Settings**, NOT "PMDG 737 First Officer".
-- Load the PMDG 737 → Tools shows **"PMDG 737 First Officer"** + Settings, NOT the 777 item.
-- Load any other aircraft (A320 / A380 / HS787) → **neither** FO item nor FO Settings appears.
+- Load the PMDG 777 → Tools shows **"PMDG 777 First Officer"**, NOT "PMDG 737 First Officer".
+- Load the PMDG 737 → Tools shows **"PMDG 737 First Officer"**, NOT the 777 item.
+- Load an aircraft with no FO support (A320 FBW / HS787) → **no** FO item appears (the Fenix
+  and A380 show only their own items).
+- First Officer automation settings are a tab in **File → Settings…** and are visible for
+  EVERY aircraft (the old aircraft-gated "First Officer Settings" menu item is retired).
 
 ### D2. 737 engine-driven hydraulic pumps (functional-hole fix)
 The 737 FO now manages the engine-driven hyd pumps (previously never set; the 777 already did). PMDG cold-dark starts the EDP switches OFF.
@@ -229,7 +232,7 @@ Selecting a new action group and pressing **Run Related Flow** starts the matchi
 All but H2/H8 are code-confident; H2 and H8 are the items to watch in-sim.
 
 ### H1. Split auto-gear into climb / descent (BOTH aircraft)  *(feature)*
-First Officer Settings now has **two** gear checkboxes: "Auto-raise gear on positive rate (climb)"
+The Settings dialog's **First Officer** tab now has **two** gear checkboxes: "Auto-raise gear on positive rate (climb)"
 and "Auto-lower gear at 2000 ft AGL (descent)". Verify:
 - Enable **only climb** → after takeoff the gear auto-raises (announce "Positive rate. Gear up."),
   and on the approach the gear does **NOT** auto-lower.
@@ -423,7 +426,7 @@ while climbing — level acceleration/deceleration segments never moved flaps. N
 retraction while not descending (suppressed once approach extension begins), extension
 while not climbing below 5000 ft AGL.
 
-Enable "Automatic flaps" in First Officer Settings. SimBrief loaded, V-speeds entered in
+Enable "Auto-manage flaps" in File → Settings… → First Officer. SimBrief loaded, V-speeds entered in
 the CDU (TAKEOFF REF). Repeat the full sequence on BOTH the 737 and the 777.
 
 1. **Retraction on climbout** — take off with planned flaps; after gear-up, as IAS

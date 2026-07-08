@@ -104,7 +104,7 @@ electrical/pneumatic systems already configured for taxi).
 
 ## Part D — Auto managers
 
-1. In **Tools → First Officer Settings**, enable **Auto Gear Up**, **Auto Gear Down**, and
+1. In **File → Settings… → First Officer**, enable **Auto Gear Up**, **Auto Gear Down**, and
    **Auto AP** for the Fenix.
 2. Fly a takeoff and confirm:
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, "Positive
@@ -114,7 +114,7 @@ electrical/pneumatic systems already configured for taxi).
 3. On approach/descent, confirm gear auto-lowers between 2000 ft and 100 ft AGL while
    descending (not already down), "Two thousand feet. Gear down." announced.
 4. **Confirm the Auto Flaps checkbox has NO effect on the Fenix.** Enable "Auto Flaps" in
-   First Officer Settings; fly a climb/descent and confirm flaps never move automatically —
+   the Settings dialog's First Officer tab; fly a climb/descent and confirm flaps never move automatically —
    the Fenix `FenixFOAutoManager` deliberately stores `AutoFlapsEnabled` but never acts on
    it (the Fenix exposes no V1/VR/V2/VAPP L:vars outside the MCDU display, so a speed-based
    auto-flap schedule would be weight-blind guesswork). This is a documented non-feature,
@@ -222,8 +222,9 @@ PMDG 777/737 First Officers. Confirm nothing regressed in the shared form:
    disposes/re-creates cleanly, and the Tools menu shows only the FO item(s) matching the
    currently loaded aircraft (Fenix shows only "Fenix A320 First Officer"; PMDG 737 shows
    only "PMDG 737 First Officer"; PMDG 777 shows only "PMDG 777 First Officer"; any other
-   aircraft — A320 FBW, A380, HS787 — shows none). "First Officer Settings" likewise only
-   appears when one of the three FO-capable aircraft is loaded.
+   aircraft — A320 FBW, HS787 — shows none; the A380 shows only its own). First Officer
+   automation settings live in the always-visible **File → Settings… → First Officer** tab
+   (no aircraft gating — the old standalone menu item is retired).
 
 ---
 
