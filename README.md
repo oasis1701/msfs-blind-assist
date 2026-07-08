@@ -161,6 +161,9 @@ Navdata Reader command-line tool by Alexander Barthel to build the airport and n
 ## Usage and Documentation
 MSFS Blind Assist is available to download in the releases page. It is currently in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.
 
+## Contributing
+Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
+
 ## Donations
 Consider donating to support me and my project! Every bit helps, and it would be extremely helpful. Thank you!
 [Support me on Ko-fi](https://ko-fi.com/oasis1701)
