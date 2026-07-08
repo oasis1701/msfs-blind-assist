@@ -545,6 +545,20 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Returns every node id that has at least one edge whose <see cref="TaxiEdge.TaxiwayName"/>
+    /// matches <paramref name="name"/> (case-insensitive, same comparer as the index and every
+    /// TaxiRouter scan site). Backed by the private <c>_taxiwayNodeIndex</c> built during
+    /// <see cref="Build"/> — O(1) lookup instead of a full <see cref="Adjacency"/> scan. Returns an
+    /// empty list (never null) for an unknown/unregistered taxiway name.
+    /// </summary>
+    public IReadOnlyList<int> GetNodesOnTaxiway(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return Array.Empty<int>();
+        return _taxiwayNodeIndex.TryGetValue(name, out var nodes) ? nodes : Array.Empty<int>();
+    }
+
+    /// <summary>
     /// Finds the nearest graph node to a given position. When
     /// <paramref name="requiredComponentId"/> is set, only nodes in that
     /// connected component are considered (the spatial-hash ring and the
