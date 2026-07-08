@@ -602,7 +602,7 @@ public class PMDG777DataManager : IPMDGDataManager
     /// Returns 14 text rows from the last received CDU screen for the given CDU index.
     /// Each row is CDU_COLS (24) characters wide.
     /// Returns null if no screen data has been received yet.
-    /// Symbol map: 0xA1 → '&lt;', 0xA2 → '&gt;', 0x20–0x7E → literal char, else ' '.
+    /// Symbol map: see <see cref="DecodeCellSymbol"/>.
     /// </summary>
     public string[]? GetCDURows(int cdu)
     {
@@ -619,14 +619,7 @@ public class PMDG777DataManager : IPMDGDataManager
             for (int col = 0; col < CDU_COLS; col++)
             {
                 byte sym = screen.Cells[col * CDU_ROWS + row].Symbol;
-                char ch  = sym switch
-                {
-                    0xA1                   => '<',
-                    0xA2                   => '>',
-                    >= 0x20 and <= 0x7E    => (char)sym,
-                    _                      => ' '
-                };
-                sb.Append(ch);
+                sb.Append(DecodeCellSymbol(sym));
             }
             rows[row] = sb.ToString();
         }
@@ -653,16 +646,28 @@ public class PMDG777DataManager : IPMDGDataManager
                 colors[row, col] = cell.Color;
                 flags[row, col] = cell.Flags;
 
-                if (sym == 0xA1) sb.Append('<');
-                else if (sym == 0xA2) sb.Append('>');
-                else if (sym >= 0x20 && sym <= 0x7E) sb.Append((char)sym);
-                else sb.Append(' ');
+                sb.Append(DecodeCellSymbol(sym));
             }
             rows[row] = sb.ToString();
         }
 
         return (rows, colors, flags);
     }
+
+    /// <summary>
+    /// Decodes a single PMDG CDU cell symbol byte into its display character.
+    /// Matches <see cref="PMDGNG3DataManager.DecodeCellSymbol"/> semantics
+    /// (line-select brackets, up/down arrows, printable ASCII passthrough, else space).
+    /// </summary>
+    internal static char DecodeCellSymbol(byte sym) => sym switch
+    {
+        0xA1                => '<',
+        0xA2                => '>',
+        0xA3                => '↑', // up arrow
+        0xA4                => '↓', // down arrow
+        >= 0x20 and <= 0x7E => (char)sym,
+        _                   => ' '
+    };
 
     // ------------------------------------------------------------------
     // IDisposable
