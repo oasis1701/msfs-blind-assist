@@ -2010,13 +2010,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_FMA_EXPEDITE_MODE", "Expedite", onOff);
 
         // ---- EFIS Control Panel: flight director + baro (per side) ----
-        // FD IS controllable after all: the per-side engage L:vars A32NX_FCU_EFIS_L/R_FD_ACTIVE
-        // are settable via the calculator path and STICK (live-verified again 2026-06: writing 1
-        // held for 2 s+, restored to 0). They are exposed as the "Flight Director 1/2" combos
-        // (registered above via OnOff). The earlier "FD toggle event removed / non-functional"
-        // conclusion was about the STOCK TOGGLE_FLIGHT_DIRECTOR event + the data-def write path,
-        // which don't work — the FBW L:var calc-path write does. FD_ACTIVE below is the stock
-        // COMBINED FD state, kept as an additional read-only status readout.
+        // FD control is the FD_1_CTL / FD_2_CTL combos registered above: per-side stock
+        // AUTOPILOT FLIGHT DIRECTOR ACTIVE:n state, actuated by K:TOGGLE_FLIGHT_DIRECTOR
+        // with the SIDE as the parameter (1 = Capt, 2 = F/O). The A32NX_FCU_EFIS_L/R_FD_ACTIVE
+        // L:vars are DEAD on the A380X (read 0 while the FD is on; a calc-path write holds but
+        // drives nothing — the stickiness trap), so DO NOT switch the combos back to them.
+        // FD_ACTIVE below is the stock COMBINED FD state, a read-only status readout only.
         Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
         // (Legacy XMLVAR_BaroN_Mode combos are DEAD on the A380X — verified live
         //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
