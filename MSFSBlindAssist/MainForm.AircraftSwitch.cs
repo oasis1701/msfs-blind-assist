@@ -534,7 +534,7 @@ public partial class MainForm
         return sb.ToString();
     }
 
-    // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
+    // Dispose the HS787 CDU / EFB windows + the IRS monitor (e.g. on aircraft swap)
     // so their Coherent debugger connections close. There is no HTTP bridge to stop.
     private void DisposeHS787Forms()
     {

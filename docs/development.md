@@ -45,7 +45,6 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 ### Database System
 
-- **`Database/AirportDatabase.cs`**: SQLite airport data management
 - **`Database/DatabaseBuilder.cs`**: BGL file processing for airport data
 - **`Database/Models/Airport.cs`**: Airport data model
 - **`Database/Models/Runway.cs`**: Runway data model

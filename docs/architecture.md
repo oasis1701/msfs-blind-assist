@@ -545,13 +545,6 @@ Dual-mode hotkey system:
 - Custom Windows Forms control optimized for screen reader navigation
 - Implements three-level navigation: Sections → Panels → Controls
 
-### AirportDatabase
-**File:** `Database/AirportDatabase.cs`
-
-- SQLite-based airport and runway data management
-- Stores ICAO codes, airport names, runway data, and parking spots
-- Supports teleport destination lookup and validation
-
 ### DatabaseBuilder
 **File:** `Database/DatabaseBuilder.cs`
 
