@@ -72,6 +72,16 @@ public class TaxiGraph
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Build-time-only dedup sidecar for <see cref="RegisterTaxiwayNode"/>: mirrors the node-id
+    /// SET for each taxiway in <see cref="_taxiwayNodeIndex"/> so the per-registration "already
+    /// added?" check is O(1) instead of an O(n) <see cref="List{T}.Contains"/> scan (large airports
+    /// register thousands of (taxiway, node) pairs during Build). The LIST in
+    /// <see cref="_taxiwayNodeIndex"/> remains the single source of truth for iteration order —
+    /// <see cref="GetNodesOnTaxiway"/> reads only the list, never this set.
+    /// </summary>
+    private readonly Dictionary<string, HashSet<int>> _taxiwayNodeIdSet = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Maps a normalized alias (see TaxiDataMerger.NormalizeTaxiwayName) to the canonical
     /// taxiway name stored in the graph. Populated during Build from TaxiPath.Aliases.
     /// Used by ResolveTaxiwayName so pilots can enter alternative names (e.g. "K" for
@@ -540,7 +550,15 @@ public class TaxiGraph
     {
         if (!_taxiwayNodeIndex.ContainsKey(taxiwayName))
             _taxiwayNodeIndex[taxiwayName] = new List<int>();
-        if (!_taxiwayNodeIndex[taxiwayName].Contains(nodeId))
+        if (!_taxiwayNodeIdSet.TryGetValue(taxiwayName, out var seen))
+        {
+            seen = new HashSet<int>();
+            _taxiwayNodeIdSet[taxiwayName] = seen;
+        }
+        // HashSet.Add returns false (and is a no-op) when nodeId is already present, so this
+        // preserves the exact same dedup semantics — and the exact same list order — as the
+        // original List.Contains check, just in O(1) instead of O(n).
+        if (seen.Add(nodeId))
             _taxiwayNodeIndex[taxiwayName].Add(nodeId);
     }
 
@@ -814,18 +832,52 @@ public class TaxiGraph
         TaxiEdge? bestRunwayEdge = null;  double bestRunwayEdgePerp = double.MaxValue;
         TaxiEdge? bestTaxiwayEdge = null; double bestTaxiwayEdgePerp = double.MaxValue;
 
-        // Collect candidate edges from adjacency of all nodes within EDGE_SCAN_RADIUS_M.
+        // Collect candidate edges from adjacency of nodes within EDGE_SCAN_RADIUS_M, using the
+        // same spatial-hash ring mechanism as Pass 1 (instead of scanning every node in the
+        // graph). The ring must be sized independently in the lat and lon directions to cover
+        // EDGE_SCAN_RADIUS_M in real METERS: a hash cell is a fixed DEGREE step (`step`, same in
+        // both dimensions), but a degree of longitude is only cos(latitude) as many meters as a
+        // degree of latitude — so a latitude-blind cell count under-covers longitude at higher
+        // latitudes (e.g. ENSB at 78°N, cos(78°) ≈ 0.21). Pass 1's fixed "ring 30" is calibrated
+        // for its own ≤60 m radii at the equator (and its own comment overstates that coverage —
+        // 30 cells is ≈33 m, not "330 m" — a pre-existing, unrelated Pass-1 limitation left
+        // untouched here); reusing "ring 30" as-is for this 120 m radius would silently drop real
+        // candidates, so Pass 2 computes its own ring from EDGE_SCAN_RADIUS_M. Candidates are a
+        // strict superset of what a latitude-correct 120 m circle would need (rectangular ring,
+        // +1 cell margin for rounding) — never a subset — so this is equivalence-preserving with
+        // the original full Adjacency scan, which itself is unconditionally correct because it
+        // filters by true FastDistanceMeters, not by ring geometry.
+        double metersPerDegLat = 111132.0;
+        double metersPerDegLon = metersPerDegLat * Math.Cos(lat * (Math.PI / 180.0));
+        if (metersPerDegLon < 1.0) metersPerDegLon = 1.0; // guard near-pole degeneracy (no real airport is this far north/south)
+        int edgeScanRingLat = (int)Math.Ceiling(EDGE_SCAN_RADIUS_M / (step * metersPerDegLat)) + 1;
+        int edgeScanRingLon = (int)Math.Ceiling(EDGE_SCAN_RADIUS_M / (step * metersPerDegLon)) + 1;
+
+        var edgeScanCandidates = new HashSet<int>();
+        for (int dlat = -edgeScanRingLat; dlat <= edgeScanRingLat; dlat++)
+        {
+            for (int dlon = -edgeScanRingLon; dlon <= edgeScanRingLon; dlon++)
+            {
+                string key = GetSpatialHashKey(lat + dlat * step, lon + dlon * step);
+                if (_spatialHash.TryGetValue(key, out var cellNodeIds))
+                {
+                    foreach (int nodeId in cellNodeIds)
+                        edgeScanCandidates.Add(nodeId);
+                }
+            }
+        }
+
         // We dedupe by (from,to) pair since adjacency holds both directions.
         var visitedEdges = new HashSet<long>();
 
-        foreach (var kvp in Adjacency)
+        foreach (int fromId in edgeScanCandidates)
         {
-            int fromId = kvp.Key;
+            if (!Adjacency.TryGetValue(fromId, out var edgesFromNode)) continue;
             var fromNode = Nodes[fromId];
             double fromDist = FastDistanceMeters(lat, lon, fromNode.Latitude, fromNode.Longitude);
             if (fromDist > EDGE_SCAN_RADIUS_M) continue;
 
-            foreach (var edge in kvp.Value)
+            foreach (var edge in edgesFromNode)
             {
                 // Dedupe
                 long edgeKey = Math.Min(edge.FromNodeId, edge.ToNodeId) * 1_000_000L + Math.Max(edge.FromNodeId, edge.ToNodeId);

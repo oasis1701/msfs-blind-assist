@@ -418,20 +418,6 @@ public class TaxiRouter
     }
 
     /// <summary>
-    /// Finds the node on a named taxiway whose shortest graph path to the
-    /// destination is minimal. Uses Dijkstra cost-from-destination rather
-    /// than Euclidean distance to dodge the dead-end-endpoint trap (KDEN
-    /// M4 northern endpoint sits closer to gate A 60 in a straight line,
-    /// but is a graph dead-end: the path forward from it round-trips back
-    /// down M4 plus the real route around the airport, ~1 km longer than
-    /// picking the southern endpoint).
-    ///
-    /// Falls back to Euclidean distance only when the target is unreachable
-    /// in the graph or no taxiway node sits in the destination's connected
-    /// component — both shouldn't happen during normal operation but keep
-    /// the helper defensive.
-    /// </summary>
-    /// <summary>
     /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
     /// whose geographic distance to (<paramref name="refLat"/>, <paramref name="refLon"/>) is minimal
     /// (<paramref name="farthest"/> = false) or maximal (true), or -1 if none. The two callers honor a
@@ -719,7 +705,10 @@ public class TaxiRouter
 
             if (current == goalId)
             {
-                Log($"Strict '{requiredTaxiway}': FOUND path in {iterations} iterations, {closedSet.Count} nodes explored, {bridgeCount} bridges used");
+                // bridgeCount counts every bridge-edge RELAXATION during the search (a candidate
+                // improvement considered, not necessarily kept) — it is not the number of bridges
+                // on the final reconstructed path, so the log wording says "relaxations" honestly.
+                Log($"Strict '{requiredTaxiway}': FOUND path in {iterations} iterations, {closedSet.Count} nodes explored, {bridgeCount} bridge-edge relaxations");
                 return ReconstructPath(cameFrom, current);
             }
 

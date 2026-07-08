@@ -90,12 +90,12 @@ public class NavdataReaderBuilder
                 }
                 catch (IOException ioEx)
                 {
-                    // File is locked - likely because FBWBA has connections open
+                    // File is locked - likely because MSFS Blind Assist has connections open
                     OnBuildCompleted(false,
                         $"Cannot delete existing database file - it is currently in use.\n\n" +
                         $"Error: {ioEx.Message}\n\n" +
-                        $"This usually means FBWBA or another application has the database file open.\n" +
-                        $"Please try closing and reopening FBWBA, or close any other applications that might be accessing the database.");
+                        $"This usually means MSFS Blind Assist or another application has the database file open.\n" +
+                        $"Please try closing and reopening MSFS Blind Assist, or close any other applications that might be accessing the database.");
                     return false;
                 }
                 catch (UnauthorizedAccessException uaEx)
@@ -476,7 +476,18 @@ public class NavdataReaderBuilder
                 : "FlightSimulator";
 
             var processes = Process.GetProcessesByName(processName);
-            return processes != null && processes.Length > 0;
+            try
+            {
+                return processes != null && processes.Length > 0;
+            }
+            finally
+            {
+                if (processes != null)
+                {
+                    foreach (var process in processes)
+                        process?.Dispose();
+                }
+            }
         }
         catch (Exception ex)
         {
