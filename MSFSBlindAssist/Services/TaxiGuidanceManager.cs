@@ -945,12 +945,19 @@ public partial class TaxiGuidanceManager : IDisposable
 
     /// <summary>
     /// Invalidates the "Where Am I" graph cache. Call on aircraft change or when the
-    /// user explicitly wants a fresh graph (rare).
+    /// user explicitly wants a fresh graph (rare). Takes _stateLock to serialize against
+    /// its twin OnAirportDataUpdated and the locked DescribeCurrentLocation/
+    /// GetStatusAnnouncement readers — both touch the same _whereAmICachedGraph/
+    /// _whereAmICachedIcao pair, so an unlocked write here could race a locked read/build
+    /// elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa).
     /// </summary>
     public void ClearWhereAmICache()
     {
-        _whereAmICachedGraph = null;
-        _whereAmICachedIcao = "";
+        lock (_stateLock)
+        {
+            _whereAmICachedGraph = null;
+            _whereAmICachedIcao = "";
+        }
     }
 
     /// <summary>
@@ -979,6 +986,8 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Returns true if the taxi is actively lining up to a runway (LiningUp state, runway target
     /// available), AND the aircraft has arrived at the runway (_hasLineupTarget set with valid
     /// coordinates). Used by takeoff assist to seed its reference without re-teleporting.
+    /// Takes _stateLock like every other accessor of _state/_hasLineupTarget/the lineup fields —
+    /// this is a public cross-thread read and must not observe a torn snapshot mid-update.
     /// </summary>
     public bool TryGetRunwayLineupReference(
         out double thresholdLat, out double thresholdLon,
@@ -989,25 +998,28 @@ public partial class TaxiGuidanceManager : IDisposable
         headingTrue = 0; headingMag = 0;
         runwayId = ""; airportIcao = "";
 
-        // Accept both LiningUp (actively aligning) and Arrived (lined up, brake set)
-        if (!_hasLineupTarget) return false;
-        if (!_isRunwayLineup) return false;
-        if (_state != TaxiGuidanceState.LiningUp && _state != TaxiGuidanceState.Arrived) return false;
+        lock (_stateLock)
+        {
+            // Accept both LiningUp (actively aligning) and Arrived (lined up, brake set)
+            if (!_hasLineupTarget) return false;
+            if (!_isRunwayLineup) return false;
+            if (_state != TaxiGuidanceState.LiningUp && _state != TaxiGuidanceState.Arrived) return false;
 
-        thresholdLat = _lineupTargetLat;
-        thresholdLon = _lineupTargetLon;
-        headingTrue = _lineupHeadingTrue;
-        headingMag = _lineupHeadingMag;
-        airportIcao = _icao;
+            thresholdLat = _lineupTargetLat;
+            thresholdLon = _lineupTargetLon;
+            headingTrue = _lineupHeadingTrue;
+            headingMag = _lineupHeadingMag;
+            airportIcao = _icao;
 
-        // Destination name is typically "Runway 27L" — strip the "Runway " prefix if present.
-        string dn = _destinationName ?? "";
-        if (dn.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
-            runwayId = dn.Substring(7).Trim();
-        else
-            runwayId = dn.Trim();
+            // Destination name is typically "Runway 27L" — strip the "Runway " prefix if present.
+            string dn = _destinationName ?? "";
+            if (dn.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
+                runwayId = dn.Substring(7).Trim();
+            else
+                runwayId = dn.Trim();
 
-        return true;
+            return true;
+        }
     }
 
     /// <summary>
