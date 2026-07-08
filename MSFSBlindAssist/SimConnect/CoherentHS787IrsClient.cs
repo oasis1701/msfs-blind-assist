@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect
 {
@@ -84,7 +85,7 @@ namespace MSFSBlindAssist.SimConnect
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"CoherentHS787IrsClient loop: {ex.Message}");
+                    Log.Debug("SimConnect", $"CoherentHS787IrsClient loop: {ex.Message}");
                     _agentInstalled = false;
                     try { _ws?.Abort(); } catch { }
                     _ws = null;
@@ -158,7 +159,7 @@ namespace MSFSBlindAssist.SimConnect
                     }
                 }
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"HS787 IRS ResolvePageId: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("SimConnect", $"HS787 IRS ResolvePageId: {ex.Message}"); }
             return null;
         }
 
@@ -216,7 +217,7 @@ namespace MSFSBlindAssist.SimConnect
                 }
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"CoherentHS787IrsClient receive: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("SimConnect", $"CoherentHS787IrsClient receive: {ex.Message}"); }
             finally { _agentInstalled = false; }
         }
 

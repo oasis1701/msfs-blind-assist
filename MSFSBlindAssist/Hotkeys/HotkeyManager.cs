@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Hotkeys;
 
@@ -223,7 +224,7 @@ public class HotkeyManager : IDisposable
 
             if (!registered || !inputRegistered)
             {
-                System.Diagnostics.Debug.WriteLine("Failed to register hotkeys");
+                Log.Debug("Hotkeys", "Failed to register hotkeys");
             }
         }
 
@@ -630,7 +631,7 @@ public class HotkeyManager : IDisposable
                     // query while hand-flying", and VG implies hand-flying with extra audio.
                     // Registration is reference-counted (see AcquireQuickAccessHotkeys), so
                     // either mode by itself or both active produces the same dispatch path.
-                    System.Diagnostics.Debug.WriteLine($"Quick-access hotkey: Received WM_HOTKEY id={hotkeyId} (handFly={handFlyHotkeysActive}, vg={visualGuidanceHotkeysActive})");
+                    Log.Debug("Hotkeys", $"Quick-access hotkey: Received WM_HOTKEY id={hotkeyId} (handFly={handFlyHotkeysActive}, vg={visualGuidanceHotkeysActive})");
                     switch (hotkeyId)
                     {
                         case HOTKEY_HANDFLY_HEADING:
@@ -663,7 +664,7 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ReadTargetFPM);
                             break;
                         default:
-                            System.Diagnostics.Debug.WriteLine($"Quick-access hotkey: Unknown hotkey ID {hotkeyId}");
+                            Log.Debug("Hotkeys", $"Quick-access hotkey: Unknown hotkey ID {hotkeyId}");
                             break;
                     }
                     return true;
@@ -1038,11 +1039,11 @@ public class HotkeyManager : IDisposable
                     if (!ok)
                     {
                         allOk = false;
-                        System.Diagnostics.Debug.WriteLine($"Quick-access hotkey: failed to register {QuickAccessKeys[i].label} (id={QuickAccessKeys[i].id})");
+                        Log.Debug("Hotkeys", $"Quick-access hotkey: failed to register {QuickAccessKeys[i].label} (id={QuickAccessKeys[i].id})");
                     }
                 }
             }
-            System.Diagnostics.Debug.WriteLine($"Quick-access hotkeys: refCount={quickAccessActiveModeCount}, allOk={allOk}");
+            Log.Debug("Hotkeys", $"Quick-access hotkeys: refCount={quickAccessActiveModeCount}, allOk={allOk}");
             return allOk;
         }
 
@@ -1065,11 +1066,11 @@ public class HotkeyManager : IDisposable
                         quickAccessKeyRegistered[i] = false;
                     }
                 }
-                System.Diagnostics.Debug.WriteLine("Quick-access hotkeys: all keys released (no active modes)");
+                Log.Debug("Hotkeys", "Quick-access hotkeys: all keys released (no active modes)");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"Quick-access hotkeys: refCount={quickAccessActiveModeCount} (other mode still active, keys kept)");
+                Log.Debug("Hotkeys", $"Quick-access hotkeys: refCount={quickAccessActiveModeCount} (other mode still active, keys kept)");
             }
         }
 
@@ -1083,12 +1084,12 @@ public class HotkeyManager : IDisposable
         {
             if (outputHotkeyModeActive || handFlyHotkeysActive)
             {
-                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Skipped registration (mode conflict or already active)");
+                Log.Debug("Hotkeys", "Hand fly hotkeys: Skipped registration (mode conflict or already active)");
                 return false;
             }
             bool ok = AcquireQuickAccessHotkeys();
             handFlyHotkeysActive = true;  // mode flag; dispatch reads it to know which actions to fire
-            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: registered (allKeysOk={ok})");
+            Log.Debug("Hotkeys", $"Hand fly hotkeys: registered (allKeysOk={ok})");
             return ok;
         }
 
@@ -1100,12 +1101,12 @@ public class HotkeyManager : IDisposable
         {
             if (!handFlyHotkeysActive)
             {
-                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregister skipped (not active)");
+                Log.Debug("Hotkeys", "Hand fly hotkeys: Unregister skipped (not active)");
                 return;
             }
             handFlyHotkeysActive = false;
             ReleaseQuickAccessHotkeys();
-            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
+            Log.Debug("Hotkeys", "Hand fly hotkeys: Unregistered successfully");
         }
 
         /// <summary>
@@ -1118,12 +1119,12 @@ public class HotkeyManager : IDisposable
         {
             if (outputHotkeyModeActive || visualGuidanceHotkeysActive)
             {
-                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Skipped registration (mode conflict or already active)");
+                Log.Debug("Hotkeys", "Visual guidance hotkeys: Skipped registration (mode conflict or already active)");
                 return false;
             }
             bool ok = AcquireQuickAccessHotkeys();
             visualGuidanceHotkeysActive = true;
-            System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: registered (allKeysOk={ok})");
+            Log.Debug("Hotkeys", $"Visual guidance hotkeys: registered (allKeysOk={ok})");
             return ok;
         }
 
@@ -1134,13 +1135,13 @@ public class HotkeyManager : IDisposable
         {
             if (!visualGuidanceHotkeysActive)
             {
-                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregister skipped (not active)");
+                Log.Debug("Hotkeys", "Visual guidance hotkeys: Unregister skipped (not active)");
                 return;
             }
 
             visualGuidanceHotkeysActive = false;
             ReleaseQuickAccessHotkeys();
-            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistered successfully");
+            Log.Debug("Hotkeys", "Visual guidance hotkeys: Unregistered successfully");
         }
 
         public void Suspend()
@@ -1167,7 +1168,7 @@ public class HotkeyManager : IDisposable
 
             if (!registered || !inputRegistered)
             {
-                System.Diagnostics.Debug.WriteLine("Failed to re-register hotkeys after resume");
+                Log.Debug("Hotkeys", "Failed to re-register hotkeys after resume");
                 return false;
             }
             return true;

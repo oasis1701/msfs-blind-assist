@@ -3,6 +3,7 @@ using System.Text;
 using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -108,7 +109,7 @@ public class FenixMCDUService : IDisposable
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Connection error: {ex.Message}");
+                Log.Debug("Services", $"Connection error: {ex.Message}");
                 SetConnected(false);
             }
 
@@ -117,7 +118,7 @@ public class FenixMCDUService : IDisposable
             // Reconnect with backoff
             int delay = ReconnectDelays[Math.Min(_reconnectAttempt, ReconnectDelays.Length - 1)];
             _reconnectAttempt++;
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Reconnecting in {delay}ms (attempt {_reconnectAttempt})");
+            Log.Debug("Services", $"Reconnecting in {delay}ms (attempt {_reconnectAttempt})");
 
             try { await Task.Delay(delay, ct); }
             catch (TaskCanceledException) { break; }
@@ -155,7 +156,7 @@ public class FenixMCDUService : IDisposable
 
         _reconnectAttempt = 0;
         SetConnected(true);
-        System.Diagnostics.Debug.WriteLine("[FenixMCDU] Connected and subscribed");
+        Log.Debug("Services", "Connected and subscribed");
 
         // Receive loop
         while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
@@ -177,12 +178,12 @@ public class FenixMCDUService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Parse error: {ex.Message}");
+                    Log.Debug("Services", $"Parse error: {ex.Message}");
                 }
             }
             else if (msgType == "error" || msgType == "complete")
             {
-                System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Received {msgType}");
+                Log.Debug("Services", $"Received {msgType}");
                 break;
             }
         }
@@ -218,11 +219,11 @@ public class FenixMCDUService : IDisposable
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(HTTP_URL, content);
             response.EnsureSuccessStatusCode();
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Key write sent: {keyName} = {value}");
+            Log.Debug("Services", $"Key write sent: {keyName} = {value}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Key write error ({keyName} = {value}): {ex.Message}");
+            Log.Debug("Services", $"Key write error ({keyName} = {value}): {ex.Message}");
         }
     }
 

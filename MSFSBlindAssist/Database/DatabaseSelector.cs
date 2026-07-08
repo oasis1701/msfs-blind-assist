@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Database;
 /// <summary>
@@ -22,18 +23,18 @@ public static class DatabaseSelector
 
         if (!File.Exists(navdataPath))
         {
-            System.Diagnostics.Debug.WriteLine($"[DatabaseSelector] Database not found for {simulatorVersion}: {navdataPath}");
+            Log.Debug("Database", $"Database not found for {simulatorVersion}: {navdataPath}");
             return null;
         }
 
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[DatabaseSelector] Using navdatareader database for {simulatorVersion}: {navdataPath}");
+            Log.Debug("Database", $"Using navdatareader database for {simulatorVersion}: {navdataPath}");
             return new LittleNavMapProvider(navdataPath, simulatorVersion);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DatabaseSelector] Failed to load database: {ex.Message}");
+            Log.Debug("Database", $"Failed to load database: {ex.Message}");
             return null;
         }
     }

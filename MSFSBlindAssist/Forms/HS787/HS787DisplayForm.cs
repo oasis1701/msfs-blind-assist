@@ -22,17 +22,13 @@ public sealed class HS787DisplayForm : Form
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private readonly CoherentDisplayClient _client;
-    private readonly ScreenReaderAnnouncer _announcer;
     private readonly DisplayListBox _text;
-    private readonly string _title;
     private readonly IntPtr _previousWindow;
     private bool _disposed;
 
     public HS787DisplayForm(string title, string coherentViewNeedle, ScreenReaderAnnouncer announcer)
     {
         _previousWindow = GetForegroundWindow();
-        _announcer = announcer;
-        _title = title;
 
         Text = title;
         Size = new Size(760, 560);

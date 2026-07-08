@@ -600,7 +600,7 @@ See [Taxi Guidance](taxi-guidance.md) for the full reference.
 - Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
 - Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
 - Wired in `MainForm` immediately after `DatabaseSelector.SelectProvider()`, guarded by `if (airportDataProvider != null)`
-- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` via `AppLogs.PathFor`
+- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log`, written via `Utils/Logging/Log.Channel("taxi-augment")` (path resolved underneath by `AppLogs.PathFor`) — see CLAUDE.md's Diagnostic Logs section for the facade
 - `Enabled` property (default `true`) wired to `UserSettings.TaxiAugmentEnabled` (in-dialog checkbox + ODbL / X-Plane attribution in Taxi Guidance Options); a "Refresh Taxiway Names" button force-fetches the nearby airport and announces the names-added count (`GetLastCoverage`)
 
 See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-data-augmentation-pipeline-phase-5) for the full reference.

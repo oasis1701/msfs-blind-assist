@@ -17,7 +17,6 @@ public class SimBriefService
 {
     private const string SIMBRIEF_API_URL = "https://www.simbrief.com/api/xml.fetcher.php";
     private const string SIMBRIEF_AIRCRAFT_LIST_URL = "https://www.simbrief.com/api/inputs.list.json";
-    private const int TIMEOUT_SECONDS = 30;
 
     private static readonly HttpClient _httpClient = new HttpClient
     {

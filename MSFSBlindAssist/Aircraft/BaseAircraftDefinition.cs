@@ -415,6 +415,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         {
             if (lat.HasValue && lon.HasValue)
             {
+                // NOT a Task/blocking call: GetTimeZone is synchronous and returns a
+                // TimeZoneResult struct whose .Result property is the primary IANA id
+                // (.Alternatives holds any others) — this is not async-Task.Result.
                 string ianaId = GeoTimeZone.TimeZoneLookup.GetTimeZone(lat.Value, lon.Value).Result;
                 if (!string.IsNullOrEmpty(ianaId)
                     && TimeZoneConverter.TZConvert.TryGetTimeZoneInfo(ianaId, out TimeZoneInfo? tz)
@@ -730,5 +733,54 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Error);
         }
+    }
+
+    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
+    // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
+    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
+    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
+    // keep live windows (and the E/WD window's refresh timer) running against the
+    // new aircraft.
+    private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
+
+    protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
+    {
+        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed) { show((T)existing); return; }
+        var form = factory();
+        _trackedWindows[typeof(T)] = form;
+        form.FormClosed += (s, _) =>
+        {
+            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
+                _trackedWindows.Remove(typeof(T));
+        };
+        show(form);
+    }
+
+    protected void DisposeTrackedWindows()
+    {
+        foreach (var f in _trackedWindows.Values.ToList())
+        {
+            try
+            {
+                if (f.IsDisposed) continue;
+                if (f.IsHandleCreated) f.Close();
+                if (!f.IsDisposed) f.Dispose();
+            }
+            catch { /* best-effort teardown on aircraft swap */ }
+        }
+        _trackedWindows.Clear();
+    }
+
+    // Momentary L:var pulse: write 1 then auto-release to 0 (~250 ms) via the calc path so the
+    // systems logic latches on the rising edge; announce the press. Callers keep their own guard.
+    protected void PulseMomentaryLVar(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, string varKey, string displayName)
+    {
+        simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try { await System.Threading.Tasks.Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); }
+            catch { /* best-effort auto-release */ }
+        });
+        announcer.Announce($"{displayName} pressed");
     }
 }

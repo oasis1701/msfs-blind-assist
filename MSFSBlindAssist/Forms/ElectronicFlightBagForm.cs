@@ -25,7 +25,6 @@ public partial class ElectronicFlightBagForm : Form
     private readonly SimConnectManager _simConnectManager;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _simbriefUsername;
-    private SimConnectManager.AircraftPosition? _lastKnownPosition;
     private IntPtr previousWindow;
 
     // Navigation tab controls
@@ -88,9 +87,6 @@ public partial class ElectronicFlightBagForm : Form
         SetupAccessibility();
         SetupWaypointContextMenu();
 
-        // Subscribe to aircraft position updates
-        _simConnectManager.AircraftPositionReceived += OnAircraftPositionReceived;
-
         // Only auto-load SimBrief if the flight plan is empty (first time opening)
         // This preserves user modifications (SID, STAR, approaches) across window open/close
         if (!string.IsNullOrEmpty(_simbriefUsername) && _flightPlanManager.CurrentFlightPlan.IsEmpty())
@@ -104,11 +100,6 @@ public partial class ElectronicFlightBagForm : Form
             if (!string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData))
                 describeRouteButton.Enabled = true;
         }
-    }
-
-    private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition position)
-    {
-        _lastKnownPosition = position;
     }
 
     public void ShowForm()
