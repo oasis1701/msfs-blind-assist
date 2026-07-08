@@ -548,6 +548,8 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetATArm(int targetOn, AircraftStateEvaluator state)
         => (state.IsATArmOn() ? 1 : 0) == targetOn || Fire("EVT_MCP_AT_ARM_SWITCH", null);
     public bool PushAPCmd()              => FireMomentaryToggle("EVT_MCP_CMD_A_SWITCH");
+    public bool PushLNAV()               => FireMomentaryToggle("EVT_MCP_LNAV_SWITCH");
+    public bool PushVNAV()               => FireMomentaryToggle("EVT_MCP_VNAV_SWITCH");
     public bool SetEFISModeCapt(int p)   => Fire("EVT_EFIS_CPT_MODE", p);
     public bool SetEFISModeFO(int p)     => Fire("EVT_EFIS_FO_MODE", p);
     public bool SetEFISRangeCapt(int p)  => Fire("EVT_EFIS_CPT_RANGE", p);

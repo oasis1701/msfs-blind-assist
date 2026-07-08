@@ -26,8 +26,9 @@ namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 ///   it is seeded from state.GetTakeoffFlaps() mapped to a lever index on the first airborne sample.
 ///
 /// Autopilot:
-///   Engages AP CMD A (left seat) when climbing through the configured height (default 350 ft AGL) on climbout.
-///   Fires once per takeoff leg; resets on touchdown.
+///   Engages AP CMD A (left seat) when climbing through the configured height
+///   (default 350 ft AGL) on climbout, and pushes LNAV/VNAV (annunciator-guarded)
+///   at 400 ft AGL. Both fire once per takeoff leg; reset on touchdown.
 ///
 /// Lever indices and corresponding degree positions:
 ///   0=UP(0°)  1=1°  2=2°  3=5°  4=10°  5=15°  6=25°  7=30°  8=40°
@@ -57,6 +58,7 @@ public class FOAutoManager : IFoAutoManager
     private bool _gearRaisedThisLeg;    // prevent re-raising after initial gear-up
     private bool _gearLoweredThisLeg;   // prevent re-lowering on same approach
     private bool _apEngagedThisLeg;     // prevent re-engaging AP after initial engagement
+    private bool _lnavVnavEngagedThisLeg; // one-shot: LNAV/VNAV pushes at 400 ft AGL
     private bool _wasOnGround = true;
 
     // -----------------------------------------------------------------------
@@ -145,6 +147,7 @@ public class FOAutoManager : IFoAutoManager
         _gearRaisedThisLeg    = false;
         _gearLoweredThisLeg   = false;
         _apEngagedThisLeg     = false;
+        _lnavVnavEngagedThisLeg = false;
         _wasOnGround          = true;
         _lastCommandedFlapPos = -1;
         _cachedV2             = 0;
@@ -174,6 +177,7 @@ public class FOAutoManager : IFoAutoManager
             {
                 _gearRaisedThisLeg    = false;
                 _apEngagedThisLeg     = false;
+                _lnavVnavEngagedThisLeg = false;
                 _lastCommandedFlapPos = -1;
                 _cachedV2             = 0;   // next leg's V-speeds must be re-captured
                 _cachedVref           = 0;
@@ -264,6 +268,31 @@ public class FOAutoManager : IFoAutoManager
             _executor.PushAPCmd();
             _announcer.AnnounceImmediate($"{AutoApEngageAltitudeAgl} feet. Autopilot engaged.");
             _apEngagedThisLeg = true;
+        }
+
+        // 737 SOP: select LNAV/VNAV at 400 ft AGL (fixed height, deliberately
+        // independent of the configurable AP altitude). The MCP pushes are TOGGLES —
+        // press only a mode whose annunciator is DEFINITIVELY unlit; NaN (no CDA
+        // snapshot) counts as unknown and skips the push rather than risking a
+        // wrong-way toggle.
+        if (!_lnavVnavEngagedThisLeg && climbing && agl >= 400)
+        {
+            double lnav = _state.GetValue("MCP_annunLNAV");
+            double vnav = _state.GetValue("MCP_annunVNAV");
+            bool pushLnav = !double.IsNaN(lnav) && lnav < 0.5;
+            bool pushVnav = !double.IsNaN(vnav) && vnav < 0.5;
+
+            if (pushLnav) _executor.PushLNAV();
+            if (pushVnav) _executor.PushVNAV();
+
+            if (pushLnav || pushVnav)
+            {
+                string modes = pushLnav && pushVnav ? "LNAV and VNAV"
+                             : pushLnav            ? "LNAV"
+                             :                       "VNAV";
+                _announcer.AnnounceImmediate($"400 feet. {modes} engaged.");
+            }
+            _lnavVnavEngagedThisLeg = true;
         }
     }
 
