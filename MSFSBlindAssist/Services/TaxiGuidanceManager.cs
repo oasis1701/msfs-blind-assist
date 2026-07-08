@@ -497,6 +497,31 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double INCURSION_WARN_DISTANCE_M = 40.0;
     private const double INCURSION_WARNING_COOLDOWN_SEC = 10.0;
 
+    // CheckRunwayIncursion runs at ~30 Hz (Taxiing AND Arrived states) inside
+    // _stateLock, so both of its per-frame allocations are cached here rather
+    // than rebuilt every frame:
+    //
+    // (a) Per-graph HS/ILS-HS node list. TaxiGraph is immutable once Build()
+    // returns — ResolveNode/UpgradeNodeType (the only writers of Nodes/Node.Type)
+    // are private and called only from within the static Build() method; no
+    // public TaxiGraph method mutates Nodes afterward (verified by inspection,
+    // 2026-07). So it's safe to rebuild only when the _graph REFERENCE changes
+    // (every _graph assignment site — LoadRoute's two branches, StopGuidance —
+    // installs a brand-new TaxiGraph or null, never mutates the existing one).
+    private TaxiGraph? _holdShortNodesGraph;
+    private List<TaxiNode>? _cachedHoldShortNodes;
+
+    // (b) Reference-keyed on-route HS node-ID set, mirroring the RoutePoints()
+    // idiom above: keyed on (_route reference, _currentSegmentIndex) since the
+    // set depends on the remaining segments from _currentSegmentIndex onward.
+    // _route.Segments is never mutated in place after being assigned to _route
+    // (every route mutation — TruncateToHoldShort, ApplyUserRunwayHoldShorts —
+    // runs on the local route/newRoute BEFORE it's assigned to the field), so a
+    // reference-equality check on _route is sufficient, same as RoutePoints().
+    private TaxiRoute? _onRouteHsSourceRoute;
+    private int _onRouteHsSourceSegmentIndex = -1;
+    private HashSet<int> _cachedOnRouteHsNodes = new();
+
     // Lineup state (active during LiningUp phase — for runways AND gates)
     private double _lineupTargetLat, _lineupTargetLon;
     private double _lineupHeadingTrue, _lineupHeadingMag;
@@ -2059,27 +2084,48 @@ public partial class TaxiGuidanceManager : IDisposable
         // When _route is null (e.g. after landing-exit arrival, before the pilot
         // opens the taxi planner) the set stays empty and every approaching
         // hold-short node triggers the "off route" warning — exactly what we want.
-        var onRouteHsNodes = new HashSet<int>();
-        if (_route != null)
+        // Cached: rebuilt only when _route's reference or _currentSegmentIndex
+        // changes since the last frame (see field comments above).
+        if (!ReferenceEquals(_onRouteHsSourceRoute, _route) ||
+            _onRouteHsSourceSegmentIndex != _currentSegmentIndex)
         {
-            for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
+            var set = new HashSet<int>();
+            if (_route != null)
             {
-                var seg = _route.Segments[i];
-                if (seg.ToNode != null &&
-                    (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+                for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
                 {
-                    onRouteHsNodes.Add(seg.ToNode.NodeId);
+                    var seg = _route.Segments[i];
+                    if (seg.ToNode != null &&
+                        (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+                    {
+                        set.Add(seg.ToNode.NodeId);
+                    }
                 }
             }
+            _cachedOnRouteHsNodes = set;
+            _onRouteHsSourceRoute = _route;
+            _onRouteHsSourceSegmentIndex = _currentSegmentIndex;
+        }
+        var onRouteHsNodes = _cachedOnRouteHsNodes;
+
+        // Per-graph HS/ILS-HS candidate list, cached (see field comments above).
+        if (!ReferenceEquals(_holdShortNodesGraph, _graph))
+        {
+            var list = new List<TaxiNode>();
+            foreach (var node in _graph.Nodes.Values)
+            {
+                if (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort)
+                    list.Add(node);
+            }
+            _cachedHoldShortNodes = list;
+            _holdShortNodesGraph = _graph;
         }
 
-        // Scan for nearby HS nodes
+        // Scan only the cached HS/ILS-HS candidates (not every graph node)
         TaxiNode? nearestHs = null;
         double bestDist = INCURSION_WARN_DISTANCE_M;
-        foreach (var node in _graph.Nodes.Values)
+        foreach (var node in _cachedHoldShortNodes!)
         {
-            if (node.Type != TaxiNodeType.HoldShort && node.Type != TaxiNodeType.ILSHoldShort)
-                continue;
             if (node.NodeId == scheduledHsNodeId)
                 continue; // countdown owns this one
 
