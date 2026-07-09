@@ -565,9 +565,12 @@ public partial class MainForm
                             // Asobo template polls LIGHTING_LANDING_x and manages the circuits; it
                             // does NOT on the current FBW build. Live-verified: an L:var write holds
                             // (nose) or reverts (wing, template-derived) and the lamp never changes.
-                            // The working actuator is the indexed stock event in the FBW template's
-                            // own RPN form "<value> <index> r (>K:2:...)" — the index-first form
-                            // without r is a no-op (live-verified both ways).
+                            // The working actuator is the indexed stock event, sent verbatim in the
+                            // FBW template's own RPN form "<value> <index> r (>K:2:...)". NOTE: RPN
+                            // "r" swaps the top two stack entries (SDK-documented), so this is
+                            // stack-EQUIVALENT to "<index> <value>" — an earlier live test blamed
+                            // the index-first form for a no-op, but the forms cannot differ; that
+                            // failure had some other cause. Keep the template-verbatim form.
                             if (capturedVarKey == "LIGHTING_LANDING_1") // Nose Light (T.O.=0/Taxi=1/Off=2)
                             {
                                 // L:var mirror already written by the generic SetLVar above (it holds
@@ -628,10 +631,12 @@ public partial class MainForm
                                 // TOGGLE_EVENT=TAXI_LIGHTS_SET) so LIGHT TAXI:2/3, FBW presets, and
                                 // the EFB all stay in sync. The old ELECTRICAL_CIRCUIT_TOGGLE path
                                 // drove circuits 21/22 directly, which desynchronised LIGHT TAXI:2/3.
-                                // RPN form CORRECTED 2026-07: the FBW template's own form is
-                                // "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" — live-verified the
-                                // old index-first "<index> <value>" form is a NO-OP (both on and
-                                // off), while value-then-index-with-r sets exactly the right index.
+                                // RPN form 2026-07: the FBW template-verbatim
+                                // "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" — live-verified to set
+                                // exactly the right index. (RPN "r" swaps the top two stack entries,
+                                // so this is stack-equivalent to "<index> <value>"; an earlier test
+                                // that read the index-first form as a no-op had some other confound
+                                // — FBW's own Airbus.xml switch template uses index-first, no r.)
                                 int on = selectedValue == 1 ? 1 : 0;
                                 simConnectManager?.ExecuteCalculatorCode($"{on} 2 r (>K:2:TAXI_LIGHTS_SET)");
                                 simConnectManager?.ExecuteCalculatorCode($"{on} 3 r (>K:2:TAXI_LIGHTS_SET)");

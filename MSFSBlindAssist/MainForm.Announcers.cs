@@ -1919,10 +1919,15 @@ public partial class MainForm
     private async void CheckAmbientWeatherChanges()
     {
         // SimConnect ambient (cloud in/out, visibility, and the precip fallback when AS is off).
-        var tcs = new TaskCompletionSource<MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData>();
+        // The timeout resolves to NULL, never default(AmbientWeatherData): an all-zeros struct
+        // reads as "left cloud, visibility 0 m, precip stopped" and would false-announce all
+        // three AND corrupt the change baselines whenever the sim stalls past 3 s (loading
+        // screen, menu pause). No data = skip this pass entirely; the next tick retries.
+        var tcs = new TaskCompletionSource<MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData?>();
         simConnectManager.RequestWeatherInfo(d => tcs.TrySetResult(d));
-        _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(default));
-        var data = await tcs.Task;
+        _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(null));
+        var maybeData = await tcs.Task;
+        if (maybeData is not { } data) return;
 
         // #129: under ActiveSky the SimConnect AMBIENT PRECIP STATE bitmask sticks, so
         // when AS is running source precip from the METAR. Use the SAME precedence as the

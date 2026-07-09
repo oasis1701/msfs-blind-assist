@@ -18,7 +18,7 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public class AltitudeCalloutAnnouncer
 {
-    private readonly ScreenReaderAnnouncer announcer;
+    private readonly Action<string> announce;
 
     private const int BandFeet = 1000;
 
@@ -36,8 +36,16 @@ public class AltitudeCalloutAnnouncer
     private int lastAnnouncedThousand = int.MinValue;
 
     public AltitudeCalloutAnnouncer(ScreenReaderAnnouncer screenReaderAnnouncer)
+        : this(screenReaderAnnouncer.Announce)
     {
-        announcer = screenReaderAnnouncer;
+    }
+
+    /// <summary>Announce-sink constructor — the state machine is pure apart from this
+    /// sink and the settings gate, so the characterization tests inject a list-collector
+    /// here instead of constructing a real ScreenReaderAnnouncer (Tolk/NVDA/SAPI).</summary>
+    public AltitudeCalloutAnnouncer(Action<string> announceSink)
+    {
+        announce = announceSink;
     }
 
     /// <summary>Re-baselines so the next sample is silent (after a teleport / long pause).</summary>
@@ -87,6 +95,6 @@ public class AltitudeCalloutAnnouncer
         // Plain Announce (queued) so a fading altitude callout doesn't displace the most
         // recent actionable instruction in any feature's Repeat-Last buffer. Bare number
         // ("32000", "5000") per Gus's preference; this is the ONLY altitude callout.
-        announcer.Announce($"{crossedThousand}");
+        announce($"{crossedThousand}");
     }
 }

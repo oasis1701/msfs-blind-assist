@@ -289,10 +289,15 @@ public class WeatherRadarForm : Form
         bool simConnected = _simConnect.IsConnected;
         if (simConnected)
         {
-            var tcs = new TaskCompletionSource<SimConnectManager.AmbientWeatherData>();
+            // Timeout resolves NULL, not default(...): an all-zeros struct would render as
+            // real data ("In cloud: No", visibility 0 m) when the sim stalls past 3 s —
+            // downgrade to the "sim not connected" rendering instead.
+            var tcs = new TaskCompletionSource<SimConnectManager.AmbientWeatherData?>();
             _simConnect.RequestWeatherInfo(d => tcs.TrySetResult(d));
-            _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(default));
-            simData = await tcs.Task;
+            _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(null));
+            var maybeData = await tcs.Task;
+            if (maybeData is { } d) simData = d;
+            else simConnected = false;
         }
 
         if (_activeSkyAvailable == true)
