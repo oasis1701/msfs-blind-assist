@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -114,12 +116,26 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<bool> IsRunningAsync()
     {
+        // MASTER SWITCH (Weather settings tab): when the user has not opted into
+        // ActiveSky, NO probe may run — the parallel probe has a ~1.2 s floor when
+        // AS is absent, which every non-AS user would otherwise pay on each call
+        // (output+I hotkey, radar open, monitor poll). This central gate covers
+        // every call site, present and future.
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled)
+        {
+            LastStatus = "disabled in settings";
+            return false;
+        }
+
+        var sw = Stopwatch.StartNew();
+
         // Fast path: cached port. Single probe, short timeout.
         if (LastSuccessfulPort is int cached)
         {
             if (await ProbePortAsync(cached) is { } cachedStatus && cachedStatus.success)
             {
                 LastStatus = $"detected on port {cached}";
+                Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
                 return true;
             }
             // Cached port failed (AS stopped or moved). Fall through to a
@@ -143,6 +159,7 @@ public class ActiveSkyClient
             {
                 LastSuccessfulPort = r.port;
                 LastStatus = $"detected on port {r.port}";
+                Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
                 return true;
             }
             results.Add(r);
@@ -153,6 +170,7 @@ public class ActiveSkyClient
         string firstErr = results.FirstOrDefault().err ?? "no candidate ports tried";
         LastSuccessfulPort = null;
         LastStatus = $"not detected ({firstErr})";
+        Log.Debug("ActiveSky", $"probe failed: {LastStatus} in {sw.ElapsedMilliseconds} ms");
         return false;
     }
 
@@ -224,6 +242,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetCurrentConditions failed (timeout or connection error)");
             return null;
         }
     }
