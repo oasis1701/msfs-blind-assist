@@ -448,6 +448,12 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - A32NX FCU baro STD/QNH polarity is PULL=STD/PUSH=QNH — the opposite of the A380's PUSH=STD/PULL=QNH; never harmonize them. → [a32nx.md](docs/a32nx.md)
 - The A32NX autobrake set must use the MobiFlight calculator path, never `SetLVar` (data-def write is unreliable for this FBW L:var). → [a32nx.md](docs/a32nx.md)
 - Never re-fold the A380's metric-ALTITUDE (MTRS) feature into the A32NX — the real A320 has no MTRS button (A330+/A380 only). → [a32nx.md](docs/a32nx.md)
+- A32NX approach minimums read the plain-feet `AIRLINER_*` L:vars, never the `A32NX_FM1_*` ARINC words — those are NCD until near-destination, so a gate-entered MDA/DH read "Not set" (same bug + fix as the A380). → [a32nx.md](docs/a32nx.md)
+- A32NX wing anti-ice writes `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION` (the Rust input), never `_SYSTEM_SELECTED` — that is a Rust per-frame OUTPUT and any write reverts (<2 s, any phase; the old "holds in flight" note was a mis-test). → [a32nx.md](docs/a32nx.md)
+- A32NX nose/landing lights are driven by the indexed stock events in the FBW template's RPN form `<value> <index> r (>K:2:LANDING_LIGHTS_SET/TAXI_LIGHTS_SET)` — the `LIGHTING_LANDING_x` L:vars drive nothing (nose holds-but-dead, wing template-owned/reverts), and the index-first no-`r` event form is a silent NO-OP. → [a32nx.md](docs/a32nx.md)
+- A32NX wipers are circuits 77 (Capt) / 80 (F/O) — not the A380's 141/143 — and the live OFF/SLOW/FAST position needs BOTH circuit switch AND power (power rests at 100% while off; the switch bool alone can't read back FAST); `XMLVAR_A320_WiperSwitch_*` does not exist in FBW. → [a32nx.md](docs/a32nx.md)
+- A32NX seat belts is genuinely 2-position ON/OFF in the FBW model (no AUTO — unlike the A380); don't "fix" it to 3-position. → [a32nx.md](docs/a32nx.md)
+- A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set (same lesson as the A380 pax fix). → [a32nx.md](docs/a32nx.md)
 
 ### Gemini AI (→ [gemini.md](docs/gemini.md))
 
