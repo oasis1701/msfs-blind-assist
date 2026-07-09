@@ -166,7 +166,7 @@ public partial class SimConnectManager
     /// <summary>
     /// Format variable value for display/announcement
     /// </summary>
-    private string FormatVariableValue(string varKey, SimVarDefinition varDef, double value)
+    internal string FormatVariableValue(string varKey, SimVarDefinition varDef, double value)
     {
         // Check for custom value descriptions
         if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
@@ -222,6 +222,15 @@ public partial class SimConnectManager
         else if (varDef.Units == "inHg" || varDef.Units == "inhg")
         {
             return $"{varDef.DisplayName}: {value:F2}";
+        }
+        else if (varDef.Units == "kilograms" || varDef.Units == "pounds")
+        {
+            // Weight readouts (e.g. FUEL_QUANTITY_KG via the generic cache path used by
+            // A320 Shift+F): round to whole units and speak the unit. Without this case
+            // they fell to the F1 default below and were announced as a raw "13139.6"
+            // with no unit. (The dedicated fuel dispatch requests build their own
+            // Description; this covers the RequestVariable cache-path delivery.)
+            return $"{varDef.DisplayName}: {value:F0} {varDef.Units}";
         }
 
         // Default formatting
