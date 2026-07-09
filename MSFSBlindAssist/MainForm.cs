@@ -297,6 +297,12 @@ public partial class MainForm : Form
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
+    // ActiveSky precip descriptor last seen (#129): null = no AS baseline yet
+    // (or AS not active), "" = no precip, else the parsed phrase ("light rain").
+    private string? _prevAsPrecip;
+    // On-demand ActiveSky client for the ambient-change precip source + the output+I
+    // wind readout (caches its port so repeated queries are cheap).
+    private readonly MSFSBlindAssist.Services.ActiveSkyClient weatherActiveSky = new();
 
     private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
 

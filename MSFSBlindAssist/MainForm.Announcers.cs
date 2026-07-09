@@ -1720,22 +1720,32 @@ public partial class MainForm
 
         try
         {
-            // Get current wind from SimConnect (synchronously for now)
+            // Current wind. #129: under ActiveSky the SimConnect ambient wind lags AS's
+            // interpolation (output+I disagreed with the radar's "wind at altitude"), so
+            // when AS is running read the AS ambient wind (same source as the radar) and
+            // append the surface gust when AS reports one.
             string currentWind = "unavailable";
-            bool currentWindReceived = false;
-
-            simConnectManager.RequestWindInfo(currentWindData =>
+            var asConditions = await TryGetActiveSkyConditionsAsync();
+            if (asConditions != null)
             {
-                currentWind = FormatWindData(currentWindData);
-                currentWindReceived = true;
-            });
-
-            // Wait briefly for current wind data
-            var timeout = DateTime.Now.AddSeconds(2);
-            while (!currentWindReceived && DateTime.Now < timeout)
+                currentWind = FormatActiveSkyWind(asConditions);
+            }
+            else
             {
-                await Task.Delay(50);
-                Application.DoEvents();
+                bool currentWindReceived = false;
+                simConnectManager.RequestWindInfo(currentWindData =>
+                {
+                    currentWind = FormatWindData(currentWindData);
+                    currentWindReceived = true;
+                });
+
+                // Wait briefly for current wind data
+                var timeout = DateTime.Now.AddSeconds(2);
+                while (!currentWindReceived && DateTime.Now < timeout)
+                {
+                    await Task.Delay(50);
+                    Application.DoEvents();
+                }
             }
 
             // Check if destination airport is set
@@ -1776,6 +1786,31 @@ public partial class MainForm
 
         // Format as "direction at speed"
         return $"{direction:000} at {speed}";
+    }
+
+    /// <summary>Best-effort ActiveSky conditions for the wind readout; null if AS is off
+    /// or the fetch fails (caller falls back to SimConnect). Cheap on repeat (cached port).</summary>
+    private async Task<MSFSBlindAssist.Services.ActiveSkyClient.Conditions?> TryGetActiveSkyConditionsAsync()
+    {
+        try
+        {
+            if (!await weatherActiveSky.IsRunningAsync()) return null;
+            return await weatherActiveSky.GetCurrentConditionsAsync();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>ActiveSky wind-at-altitude for output+I — matches the Weather Radar's
+    /// "Wind (at altitude)" line, plus the surface gust when AS reports one (#129).</summary>
+    private static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c)
+    {
+        int direction = (int)Math.Round(c.AmbientWindDirection);
+        int speed = (int)Math.Round(c.AmbientWindSpeed);
+        if (speed == 0) return "calm";
+        string text = $"{direction:000} at {speed}";
+        if (c.SurfaceGustSpeed > 0)
+            text += $", gusting {(int)Math.Round(c.SurfaceGustSpeed)}";
+        return text;
     }
 
     private async void DescribeSceneAsync()
@@ -1886,49 +1921,98 @@ public partial class MainForm
                     settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
     }
 
-    private void CheckAmbientWeatherChanges()
+    private async void CheckAmbientWeatherChanges()
     {
-        simConnectManager.RequestWeatherInfo(data =>
+        // SimConnect ambient (cloud in/out, visibility, and the precip fallback when AS is off).
+        // The timeout resolves to NULL, never default(AmbientWeatherData): an all-zeros struct
+        // reads as "left cloud, visibility 0 m, precip stopped" and would false-announce all
+        // three AND corrupt the change baselines whenever the sim stalls past 3 s (loading
+        // screen, menu pause). No data = skip this pass entirely; the next tick retries.
+        var tcs = new TaskCompletionSource<MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData?>();
+        simConnectManager.RequestWeatherInfo(d => tcs.TrySetResult(d));
+        _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(null));
+        var maybeData = await tcs.Task;
+        if (maybeData is not { } data) return;
+
+        // #129: under ActiveSky the SimConnect AMBIENT PRECIP STATE bitmask sticks, so
+        // when AS is running source precip from the METAR. Use the SAME precedence as the
+        // AS decoded-weather monitor AND the Weather Radar — closest-station METAR first,
+        // position METAR fallback — so all three features agree. null = AS not active
+        // (fall back to SimConnect); "" = AS says no precip.
+        string? asPrecip = null;
+        try
         {
-            if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data)); return; }
-            AnnounceAmbientChanges(data);
-        });
+            if (await weatherActiveSky.IsRunningAsync())
+            {
+                string? metar = await weatherActiveSky.GetClosestStationMetarAsync();
+                if (string.IsNullOrWhiteSpace(metar))
+                    metar = await weatherActiveSky.GetPositionMetarAsync();
+                if (!string.IsNullOrWhiteSpace(metar))
+                    asPrecip = MSFSBlindAssist.Services.WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metar);
+            }
+        }
+        catch { asPrecip = null; }
+
+        if (IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data, asPrecip)); return; }
+        AnnounceAmbientChanges(data, asPrecip);
     }
 
-    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data)
+    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data,
+        string? asPrecip = null)
     {
-        // Cloud entry/exit
+        // Cloud entry/exit — always from SimConnect (AS doesn't expose in-cloud).
         double inCloud = data.InCloud;
         if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
             announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
         _prevInCloud = inCloud;
 
-        // Precipitation — announce on start, stop, and intensity tier changes
-        double precipState = data.PrecipState;
-        double precipRate = data.PrecipRate;
-        bool wasRaining = _prevPrecipState > 0.5;
-        bool isRaining = precipState > 0.5;
-
-        if (_prevPrecipState >= 0)
+        if (asPrecip != null)
         {
-            if (!wasRaining && isRaining)
+            // ActiveSky path — announce on start / stop / phrase change. Trim + case-
+            // insensitive compare so an unchanged phrase NEVER repeats ("light rain" ->
+            // "light rain" stays silent; only a different phrase re-announces).
+            string cur = asPrecip.Trim();
+            if (_prevAsPrecip != null && !string.Equals(cur, _prevAsPrecip, StringComparison.OrdinalIgnoreCase))
             {
-                // Started
-                announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+                bool wasNone = _prevAsPrecip.Length == 0;
+                bool isNone = cur.Length == 0;
+                if (wasNone && !isNone)
+                    announcer.Announce($"Precipitation started: {cur}");
+                else if (!wasNone && isNone)
+                    announcer.Announce("Precipitation stopped");
+                else
+                    announcer.Announce($"Precipitation now {cur}");
             }
-            else if (wasRaining && !isRaining)
-            {
-                // Stopped
-                announcer.Announce("Precipitation stopped");
-            }
-            else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
-            {
-                // Intensity changed tier (light → moderate, moderate → heavy, etc.)
-                announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
-            }
+            _prevAsPrecip = cur;
+            // Keep the SimConnect precip baseline in step so switching back (AS closed
+            // mid-flight) doesn't fire a spurious change.
+            _prevPrecipState = data.PrecipState;
+            _prevPrecipRate = data.PrecipRate;
         }
-        _prevPrecipState = precipState;
-        _prevPrecipRate = precipRate;
+        else
+        {
+            // SimConnect path (AS not running). Reset the AS baseline so AS re-baselines
+            // silently if it comes back.
+            _prevAsPrecip = null;
+
+            double precipState = data.PrecipState;
+            double precipRate = data.PrecipRate;
+            bool wasRaining = _prevPrecipState > 0.5;
+            bool isRaining = precipState > 0.5;
+
+            if (_prevPrecipState >= 0)
+            {
+                if (!wasRaining && isRaining)
+                    announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+                else if (wasRaining && !isRaining)
+                    announcer.Announce("Precipitation stopped");
+                else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
+                    announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
+            }
+            _prevPrecipState = precipState;
+            _prevPrecipRate = precipRate;
+        }
 
         // Visibility — announce crossing the 1500 m threshold in either direction
         double vis = data.Visibility;

@@ -289,10 +289,15 @@ public class WeatherRadarForm : Form
         bool simConnected = _simConnect.IsConnected;
         if (simConnected)
         {
-            var tcs = new TaskCompletionSource<SimConnectManager.AmbientWeatherData>();
+            // Timeout resolves NULL, not default(...): an all-zeros struct would render as
+            // real data ("In cloud: No", visibility 0 m) when the sim stalls past 3 s —
+            // downgrade to the "sim not connected" rendering instead.
+            var tcs = new TaskCompletionSource<SimConnectManager.AmbientWeatherData?>();
             _simConnect.RequestWeatherInfo(d => tcs.TrySetResult(d));
-            _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(default));
-            simData = await tcs.Task;
+            _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(null));
+            var maybeData = await tcs.Task;
+            if (maybeData is { } d) simData = d;
+            else simConnected = false;
         }
 
         if (_activeSkyAvailable == true)
@@ -302,15 +307,22 @@ public class WeatherRadarForm : Form
             // precipitation tokens (`-RA`, `+SN`, `TSRA`, etc.) which the AS
             // JSON does NOT expose and which the SimConnect bitmask gets
             // wrong under ActiveSky.
-            var conditionsTask = _activeSky.GetCurrentConditionsAsync();
-            var posMetarTask   = _activeSky.GetPositionMetarAsync();
-            await Task.WhenAll(conditionsTask, posMetarTask);
+            var conditionsTask   = _activeSky.GetCurrentConditionsAsync();
+            var posMetarTask     = _activeSky.GetPositionMetarAsync();
+            // Also pull the closest-station METAR. #129: the precipitation line
+            // must MATCH the AS decoded-weather monitor (which is station-based)
+            // so the two never contradict — the user reported the radar showing
+            // rain while the decoded weather said none. Both now read the nearest
+            // station first, position second.
+            var stationMetarTask = _activeSky.GetClosestStationMetarAsync();
+            await Task.WhenAll(conditionsTask, posMetarTask, stationMetarTask);
             // await, not .Result — already completed by WhenAll above; avoids AggregateException wrapping.
             var asConditions = await conditionsTask;
             string? posMetar = await posMetarTask;
+            string? stationMetar = await stationMetarTask;
 
             if (asConditions != null)
-                return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar);
+                return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar, stationMetar);
             // AS pinged OK earlier but the conditions call failed — fall
             // through to SimConnect rather than returning an error.
         }
@@ -334,7 +346,8 @@ public class WeatherRadarForm : Form
         ActiveSkyClient.Conditions c,
         SimConnectManager.AmbientWeatherData simAmbient,
         bool simConnected,
-        string? positionMetar)
+        string? positionMetar,
+        string? closestStationMetar = null)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Wind (at altitude): {c.AmbientWindDirection:F0}° at {c.AmbientWindSpeed:F0} knots");
@@ -377,36 +390,35 @@ public class WeatherRadarForm : Form
             ? $"In cloud: {(simAmbient.InCloud >= 0.5 ? "Yes" : "No")}"
             : "In cloud: unknown (sim not connected)");
 
-        // Precipitation parsed from the position METAR returned by AS's
-        // /GetCurrentConditions endpoint. That endpoint returns a string like
-        // "@POS 070835Z 14707KT 9999 -RA FEW311 29/23 Q1006 RMK ADVANCED
-        // INTERPOLATION" — position-specific weather tokens (-RA = light rain,
-        // +SN = heavy snow, TSRA = thunderstorm with rain). This is what fixes
-        // the user-reported "always says extreme snow" bug — the SimConnect
-        // AMBIENT_PRECIP_STATE bitmask gets stuck under ActiveSky; the METAR
-        // is what the actual weather engine reports. Falls back to:
-        //   1. The closest-station METAR from the JSON response (if a station
-        //      list was supplied — currently we don't, but kept as belt-and-
-        //      braces in case we add station-aware fetching later).
-        //   2. The SimConnect bitmask, which is wrong under AS but better
-        //      than nothing if both METAR sources fail.
-        // Order of preference:
-        //   1. Position METAR (most accurate — aircraft position, AS-derived).
-        //   2. Closest-station METAR from JSON (only populated if we asked for
-        //      stations — currently empty, kept for future).
-        //   3. SimConnect bitmask (wrong under AS, but the only fallback if
-        //      both METAR sources fail).
-        // Important: "METAR present, no precip token" = "None", NOT a fall-
-        // through. Only an entirely missing METAR triggers the next source.
+        // Precipitation parsed from an AS METAR (precip tokens like -RA = light
+        // rain, +SN = heavy snow, TSRA = thunderstorm with rain — the METAR is
+        // what the AS weather engine actually reports, unlike the SimConnect
+        // AMBIENT_PRECIP_STATE bitmask, which sticks under ActiveSky).
+        // Order of preference (#129 — MUST match the AS decoded-weather monitor
+        // AND the precip auto-announce so the three features never contradict;
+        // the user reported the radar showing rain while the decoded weather
+        // said none — both were reading DIFFERENT METARs):
+        //   1. Closest-station METAR (the real nearest reporting station — the
+        //      same source the decoded-weather monitor labels and reads).
+        //   2. Closest-station METAR from the conditions JSON (belt-and-braces).
+        //   3. Position METAR (@POS — AS's interpolated point weather).
+        //   4. SimConnect bitmask (wrong under AS, last resort).
+        // "METAR present, no precip token" = "None", NOT a fall-through — only
+        // an entirely missing METAR triggers the next source.
         string precip;
-        if (!string.IsNullOrWhiteSpace(positionMetar))
+        if (!string.IsNullOrWhiteSpace(closestStationMetar))
         {
-            string parsed = ParsePrecipFromMetar(positionMetar);
+            string parsed = ParsePrecipFromMetar(closestStationMetar);
             precip = string.IsNullOrEmpty(parsed) ? "None" : parsed;
         }
         else if (!string.IsNullOrWhiteSpace(c.ClosestMetar))
         {
             string parsed = ParsePrecipFromMetar(c.ClosestMetar);
+            precip = string.IsNullOrEmpty(parsed) ? "None" : parsed;
+        }
+        else if (!string.IsNullOrWhiteSpace(positionMetar))
+        {
+            string parsed = ParsePrecipFromMetar(positionMetar);
             precip = string.IsNullOrEmpty(parsed) ? "None" : parsed;
         }
         else if (simConnected)
