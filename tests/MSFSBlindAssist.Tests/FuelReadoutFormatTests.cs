@@ -21,15 +21,15 @@ public class FuelReadoutFormatTests
         new SimVarDefinition { DisplayName = displayName, Units = units };
 
     [Theory]
-    [InlineData(12724.3, "Fuel on board: 12724 kilograms")] // the exact reported case (rounds down)
-    [InlineData(13139.6, "Fuel on board: 13140 kilograms")] // rounds up
-    [InlineData(5960.0, "Fuel on board: 5960 kilograms")]
+    [InlineData(12724.3, "Fuel on board 12724 kilograms")] // the exact reported case (rounds down)
+    [InlineData(13139.6, "Fuel on board 13140 kilograms")] // rounds up
+    [InlineData(5960.0, "Fuel on board 5960 kilograms")]
     public void Kilograms_readout_rounds_and_speaks_the_unit(double value, string expected)
         => Assert.Equal(expected, Mgr.FormatVariableValue("FUEL_QUANTITY_KG", Def("Fuel on board", "kilograms"), value));
 
     [Theory]
-    [InlineData(28001.4, "Fuel on board: 28001 pounds")]
-    [InlineData(6614.5, "Fuel on board: 6614 pounds")] // banker's rounding to even
+    [InlineData(28001.4, "Fuel on board 28001 pounds")]
+    [InlineData(6614.5, "Fuel on board 6614 pounds")] // banker's rounding to even
     public void Pounds_readout_rounds_and_speaks_the_unit(double value, string expected)
         => Assert.Equal(expected, Mgr.FormatVariableValue("FUEL_QTY", Def("Fuel on board", "pounds"), value));
 
