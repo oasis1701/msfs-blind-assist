@@ -5819,7 +5819,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if ((int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
             {
                 return true;
             }
@@ -5841,7 +5846,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 int targetPos = (int)value;
                 var dm = simConnect.PMDGDataManager;
-                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == targetPos)
+                if (dm == null || !dm.IsReady)
+                {
+                    announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                    return true;
+                }
+                if ((int)dm.GetFieldValue(varDef.Name) == targetPos)
                 {
                     return true; // already at target — no-op
                 }
@@ -5992,13 +6002,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null)
+            if (dm == null || !dm.IsReady)
             {
-                int current = (int)dm.GetFieldValue(varDef.Name);
-                if (current == target)
-                {
-                    return true;
-                }
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            int current = (int)dm.GetFieldValue(varDef.Name);
+            if (current == target)
+            {
+                return true;
             }
             const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
             simConnect.SendPMDGEvent(eventName, eventId, MOUSE_FLAG_LEFTSINGLE);
@@ -6021,7 +6033,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varKey == "ELEC_APU_Start")
         {
             var dm = simConnect.PMDGDataManager;
-            int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            int current = (int)dm.GetFieldValue("ELEC_APU_Selector");
             if (current == 1)
                 simConnect.SendPMDGEvent(eventName, eventId, 2); // 2 = Start position
             return true;
@@ -6040,7 +6057,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if ((int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
             {
                 return true;
             }
@@ -6085,13 +6107,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null)
+            if (dm == null || !dm.IsReady)
             {
-                int current = (int)dm.GetFieldValue(varDef.Name);
-                if (current == target)
-                {
-                    return true;
-                }
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            int current = (int)dm.GetFieldValue(varDef.Name);
+            if (current == target)
+            {
+                return true;
             }
             simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
