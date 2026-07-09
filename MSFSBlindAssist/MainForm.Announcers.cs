@@ -176,7 +176,7 @@ public partial class MainForm
             // Update window title if flight phase changed (for aircraft that track flight phases)
             if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
             {
-                this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
+                this.Text = $"MSFS Blind Assist - {currentAircraft.CurrentFlightPhase} phase active";
             }
             // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
             // which can interfere with aircraft-specific processing — we tried it and combo
