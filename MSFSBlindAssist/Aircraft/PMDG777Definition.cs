@@ -5802,7 +5802,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if ((int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
             {
                 return true;
             }
@@ -5824,7 +5829,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 int targetPos = (int)value;
                 var dm = simConnect.PMDGDataManager;
-                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == targetPos)
+                if (dm == null || !dm.IsReady)
+                {
+                    announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                    return true;
+                }
+                if ((int)dm.GetFieldValue(varDef.Name) == targetPos)
                 {
                     return true; // already at target — no-op
                 }
@@ -5975,13 +5985,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null)
+            if (dm == null || !dm.IsReady)
             {
-                int current = (int)dm.GetFieldValue(varDef.Name);
-                if (current == target)
-                {
-                    return true;
-                }
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            int current = (int)dm.GetFieldValue(varDef.Name);
+            if (current == target)
+            {
+                return true;
             }
             const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
             simConnect.SendPMDGEvent(eventName, eventId, MOUSE_FLAG_LEFTSINGLE);
@@ -6004,7 +6016,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varKey == "ELEC_APU_Start")
         {
             var dm = simConnect.PMDGDataManager;
-            int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            int current = (int)dm.GetFieldValue("ELEC_APU_Selector");
             if (current == 1)
                 simConnect.SendPMDGEvent(eventName, eventId, 2); // 2 = Start position
             return true;
@@ -6023,7 +6040,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if ((int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
             {
                 return true;
             }
@@ -6068,13 +6090,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             int target = (int)value;
             var dm = simConnect.PMDGDataManager;
-            if (dm != null)
+            if (dm == null || !dm.IsReady)
             {
-                int current = (int)dm.GetFieldValue(varDef.Name);
-                if (current == target)
-                {
-                    return true;
-                }
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            int current = (int)dm.GetFieldValue(varDef.Name);
+            if (current == target)
+            {
+                return true;
             }
             simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
@@ -6213,33 +6237,33 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varName == "MCP_IASMach")
         {
             if (value < 10)
-                announcer.Announce($"Mach {value:F2}");
+                announcer.Announce($"MCP Mach {value:F2}");
             else
-                announcer.Announce($"Speed {(int)value} knots");
+                announcer.Announce($"MCP speed {(int)Math.Round(value)} knots");
             return true;
         }
 
         if (varName == "MCP_Heading")
         {
-            announcer.Announce($"Heading {(int)value}");
+            announcer.Announce($"MCP heading {(int)Math.Round(value)}");
             return true;
         }
 
         if (varName == "MCP_Altitude")
         {
-            announcer.Announce($"Altitude {(int)value}");
+            announcer.Announce($"MCP altitude {(int)Math.Round(value)} feet");
             return true;
         }
 
         if (varName == "MCP_VertSpeed")
         {
-            announcer.Announce($"Vertical speed {(int)value}");
+            announcer.Announce($"VS {(int)Math.Round(value)} feet per minute");
             return true;
         }
 
         if (varName == "MCP_IASBlank" && value > 0)
         {
-            announcer.Announce("Speed blank");
+            announcer.Announce("Speed managed by FMC");
             return true;
         }
 
@@ -6340,25 +6364,25 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varName == "FMC_V1")
         {
             if (value > 0)
-                announcer.Announce($"V1 {(int)value} knots");
+                announcer.Announce($"V1 {(int)Math.Round(value)} knots");
             return true;
         }
         if (varName == "FMC_VR")
         {
             if (value > 0)
-                announcer.Announce($"VR {(int)value} knots");
+                announcer.Announce($"VR {(int)Math.Round(value)} knots");
             return true;
         }
         if (varName == "FMC_V2")
         {
             if (value > 0)
-                announcer.Announce($"V2 {(int)value} knots");
+                announcer.Announce($"V2 {(int)Math.Round(value)} knots");
             return true;
         }
         if (varName == "FMC_CruiseAlt")
         {
             if (value > 0)
-                announcer.Announce($"Cruise altitude {(int)value} feet");
+                announcer.Announce($"Cruise altitude {(int)Math.Round(value)} feet");
             return true;
         }
 
@@ -6466,14 +6490,14 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     string mode = "";
                     if ((int)dm.GetFieldValue("MCP_annunVNAV") > 0) mode = ", VNAV";
-                    announcer.AnnounceImmediate($"Speed blank{mode}");
+                    announcer.AnnounceImmediate($"Speed managed by FMC{mode}");
                 }
                 else
                 {
                     float speed = (float)dm.GetFieldValue("MCP_IASMach");
                     string speedText = speed < 10f
-                        ? $"Mach {speed:0.000}"
-                        : $"Speed {(int)speed} knots";
+                        ? $"Mach {speed:F2}"
+                        : $"Speed {(int)Math.Round(speed)} knots";
                     string speedMode = "";
                     if ((int)dm.GetFieldValue("MCP_annunFLCH") > 0) speedMode = ", FLCH";
                     announcer.AnnounceImmediate($"{speedText}{speedMode}");
@@ -6527,7 +6551,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int aux    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux"));
                 int total  = left + center + right + aux;
                 announcer.AnnounceImmediate(
-                    $"Left {left}, Center {center}, Right {right}, Aux {aux}, Total {total} pounds");
+                    $"Total {total} pounds, left {left}, center {center}, right {right}, aux {aux}");
                 return true;
             }
 
@@ -6762,7 +6786,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int auxKg    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux") * 0.453592);
                 int totalKg  = leftKg + centerKg + rightKg + auxKg;
                 announcer.AnnounceImmediate(
-                    $"Left {leftKg}, Center {centerKg}, Right {rightKg}, Aux {auxKg}, Total {totalKg} kilograms");
+                    $"Total {totalKg} kilograms, left {leftKg}, center {centerKg}, right {rightKg}, aux {auxKg}");
                 return true;
             }
 
@@ -6819,8 +6843,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (dm == null) return;
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
-            ? $"Mach {speed:0.000}"
-            : $"Speed {(int)speed} knots";
+            ? $"Mach {speed:F2}"
+            : $"Speed {(int)Math.Round(speed)} knots";
         announcer.AnnounceImmediate(speedText);
     }
 
@@ -6946,40 +6970,65 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         };
 
         var dialog = new ValueInputForm(
-            "MCP Speed", "speed", "IAS: 100-399 / Mach: 0.00-0.99", announcer,
+            "MCP Speed", "speed", "IAS: 100-399 / Mach: M0.00-M0.99", announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (TryParseSpeedInput(input, out bool isMach, out double val))
                 {
-                    if (val >= 100 && val <= 399) return (true, "");
-                    if (val >= 0.0 && val < 10.0) return (true, "");
+                    if (isMach && val >= 0.0 && val < 10.0) return (true, "");
+                    if (!isMach && val >= 100 && val <= 399) return (true, "");
                 }
-                return (false, "Enter knots (100-399) or Mach (0.00-0.99)");
+                return (false, "Enter knots (100-399) or Mach (M0.00-M0.99)");
             },
             toggles,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double spd))
+                if (!TryParseSpeedInput(input, out bool isMach, out double spd))
+                    return;
+                if (isMach)
                 {
-                    if (spd < 10.0)
-                    {
-                        int machVal = (int)Math.Round(spd * 1000);
-                        if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
-                            simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
-                    }
-                    else
-                    {
-                        int iasVal = (int)spd;
-                        if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
-                            simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
-                    }
+                    int machVal = (int)Math.Round(spd * 1000);
+                    if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
+                }
+                else
+                {
+                    int iasVal = (int)Math.Round(spd);
+                    if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
                 }
             });
 
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
+    }
+
+    /// <summary>
+    /// Parse the speed dialog input. Accepts "M0.85" / "m0.85" / ".85" / "0.85"
+    /// as Mach, or "250" as IAS. Anything in [0..10) is treated as Mach.
+    /// Ported from PMDG737Definition.TryParseSpeedInput (Task 9.8) so the 777
+    /// speed dialog accepts the same M-prefix Mach entries as the 737. Kept as
+    /// a separate copy — the two aircraft's speed dialogs build their own
+    /// ValueInputForm with different toggle sets and don't share a base
+    /// helper — see PMDG737Definition.cs for the canonical original.
+    /// </summary>
+    private static bool TryParseSpeedInput(string input, out bool isMach, out double value)
+    {
+        isMach = false;
+        value = 0;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+
+        string trimmed = input.Trim();
+        bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
+        if (hasMachPrefix) trimmed = trimmed.Substring(1);
+
+        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out value))
+            return false;
+
+        // Either explicit M prefix, or a value < 10 (interpreted as Mach).
+        isMach = hasMachPrefix || value < 10.0;
+        return true;
     }
 
     private void ShowPMDGAltitudeDialog(
