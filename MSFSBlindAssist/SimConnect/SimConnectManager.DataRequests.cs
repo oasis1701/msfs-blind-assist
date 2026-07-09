@@ -526,57 +526,6 @@ public partial class SimConnectManager
         }
     }
 
-    public void RequestLVarValue(string varName)
-    {
-        // For now, do nothing - values are updated through tier system
-    }
-
-    /// <summary>
-    /// Request specific L-variable (legacy compatibility method)
-    /// </summary>
-    [Obsolete("Use RequestVariable instead for better efficiency")]
-    public void RequestSpecificLVar(string varKey, string varName)
-    {
-        // Use the new system if the variable is already registered
-        if (variableDataDefinitions.ContainsKey(varKey))
-        {
-            RequestVariable(varKey);
-            return;
-        }
-
-        // Fallback to original behavior for backward compatibility
-        if (!IsConnected || simConnect == null) return;
-
-        try
-        {
-            // Create a unique request ID based on the variable key hash
-            int requestId = 400 + Math.Abs(varKey.GetHashCode() % 100);
-            var tempDefId = (DATA_DEFINITIONS)requestId;
-
-            // Track this pending request
-            pendingRequests[requestId] = varKey;
-
-            // Clear any existing definition
-            SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-
-            // Add the LVar to the definition
-            simConnect.AddToDataDefinition(tempDefId,
-                $"L:{varName}", "number",
-                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-
-            simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-
-            // Request the value once
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)requestId,
-                tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("SimConnect", $"Error requesting specific LVar {varName}: {ex.Message}");
-        }
-    }
-
     public void RequestAircraftPosition()
     {
         if (!IsConnected) return;

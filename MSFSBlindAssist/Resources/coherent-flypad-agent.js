@@ -28,7 +28,6 @@
   var A = {};
 
   A.ROW_Y_TOLERANCE_PX = 14;
-  A._elements = [];
 
   function clean(s) { return (s || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
   function lower(s) { return (s || "").toString().toLowerCase(); }
@@ -2161,7 +2160,6 @@
     for (var sx = 0; sx < items.length; sx++) items[sx]._selRoot = null;
 
     items = A.dedupe(items);
-    A._elements = items;
     return items;
   };
 

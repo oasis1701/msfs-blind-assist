@@ -127,8 +127,6 @@ public partial class MainForm : Form
 
     private HS787FMCForm? hs787FMCForm;
 
-    private HS787SimBriefForm? hs787SimBriefForm;
-
     // Background Coherent reader for the WT IRS "TIME TO ALIGN" state — writes the synthetic
     // MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the HS787 def reads. Runs while the HS787 is loaded.
     private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
@@ -752,7 +750,6 @@ public partial class MainForm : Form
 
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();
-        hs787SimBriefForm?.Dispose();
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
         hs787CasClient?.Dispose();

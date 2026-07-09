@@ -37,7 +37,7 @@ public partial class TaxiGuidanceManager
         return char.ToUpper(s[0]) + s[1..];
     }
 
-    private static double NormalizeAngle(double angle)
+    internal static double NormalizeAngle(double angle)
     {
         while (angle > 180) angle -= 360;
         while (angle < -180) angle += 360;
@@ -65,7 +65,7 @@ public partial class TaxiGuidanceManager
     /// 20–60° → slight, ≥60° → full. The "sharp" prefix is owned by callers
     /// that read `TurnAngleDegrees` separately.
     /// </summary>
-    private static string ComputeTurnVerbalFromHeading(double targetBearing, double aircraftHeadingTrue)
+    internal static string ComputeTurnVerbalFromHeading(double targetBearing, double aircraftHeadingTrue)
     {
         double turn = NormalizeAngle(targetBearing - aircraftHeadingTrue);
         double absTurn = Math.Abs(turn);
@@ -85,7 +85,7 @@ public partial class TaxiGuidanceManager
     /// along the runway in (east, north) coordinates is (sin H, cos H). The
     /// signed projection is the dot product of (dE, dN) with that unit vector.
     /// </summary>
-    private static double SignedAlongRunwayMeters(
+    internal static double SignedAlongRunwayMeters(
         double pointLat, double pointLon,
         double refLat, double refLon,
         double runwayHeadingTrueDeg)
@@ -108,7 +108,7 @@ public partial class TaxiGuidanceManager
     /// Used by the Progressive Taxi suppression pass to strip the cleared
     /// crossing hold-short without touching other auto-inserted holds.
     /// </summary>
-    private static bool RunwayDesignatorsMatch(string tagged, string target)
+    internal static bool RunwayDesignatorsMatch(string tagged, string target)
     {
         // Parse the designator out of the label with the shared extractor —
         // labels carry more than a bare "runway " prefix ("runway 15R at N",
@@ -157,7 +157,7 @@ public partial class TaxiGuidanceManager
     /// Companion to <see cref="SignedAlongRunwayMeters"/> — uses the perpendicular
     /// component of the same equirectangular projection.
     /// </summary>
-    private static double AbsLateralFromRunwayMeters(
+    internal static double AbsLateralFromRunwayMeters(
         double pointLat, double pointLon,
         double refLat, double refLon,
         double runwayHeadingTrueDeg)
@@ -176,7 +176,7 @@ public partial class TaxiGuidanceManager
     /// (a→b), clamped to endpoints so points beyond either end use the nearest endpoint.
     /// Uses equirectangular projection — sub-cm accuracy at taxi scale.
     /// </summary>
-    private static double PerpendicularDistanceToSegmentMeters(
+    internal static double PerpendicularDistanceToSegmentMeters(
         double plat, double plon,
         double alat, double alon,
         double blat, double blon)

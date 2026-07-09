@@ -493,7 +493,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
             IsInitialSnapshot = isInitialSnapshot,
         });
 
-    private static double ToDouble(object? val) => val switch
+    internal static double ToDouble(object? val) => val switch
     {
         bool   b => b ? 1.0 : 0.0,
         byte   b => (double)b,
@@ -987,7 +987,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         return (rows, colors, flags);
     }
 
-    private static char DecodeCellSymbol(byte sym) => sym switch
+    internal static char DecodeCellSymbol(byte sym) => sym switch
     {
         0xA1                => '<',
         0xA2                => '>',

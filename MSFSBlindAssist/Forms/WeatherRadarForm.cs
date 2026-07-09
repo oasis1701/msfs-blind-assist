@@ -436,7 +436,7 @@ public class WeatherRadarForm : Form
     /// found OR no METAR was provided. METAR format reference: WMO AMC 4444
     /// + ICAO Annex 3 weather phenomenon codes.
     /// </summary>
-    private static string ParsePrecipFromMetar(string metar)
+    internal static string ParsePrecipFromMetar(string metar)
     {
         if (string.IsNullOrWhiteSpace(metar)) return "";
         // Strip any annotation lines (Active Sky appends "(Cloned by: ...)" etc.)

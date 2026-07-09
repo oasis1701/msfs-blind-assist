@@ -275,9 +275,6 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
         // first-pass dispatch — would toggle on every combo value change. Handled
         // separately in HandleUIVariableSet with state-aware press+release logic.
 
-        // Battery master.
-        ["HS787_Battery"]       = new[] { "ELECTRICAL_BATTERY_SWITCH" },
-
         // Fuel pumps — the WT model accepts the InputEvent directly with 0/1 values.
         ["HS787_FuelPump_LFwd"] = new[] { "FUEL_PUMP_FWD_L" },
         ["HS787_FuelPump_LAft"] = new[] { "FUEL_PUMP_AFT_L" },
@@ -719,7 +716,7 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             },
 
             // Note: ExcludeFromBatch = true routes these through per-var continuous
-            // subscriptions instead of the shared GenericBatch struct. Required because
+            // subscriptions instead of the shared GenericBatch1..5 structs. Required because
             // the batched read was delivering wrong/oscillating values for these specific
             // vars (likely batch-struct alignment drift), producing the spurious
             // On→Off cascade announce.
@@ -4467,8 +4464,8 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
 
         // Force ALL HS787 Continuous+IsAnnounced variables onto per-var continuous
-        // subscriptions (ExcludeFromBatch = true) rather than the shared GenericBatch
-        // struct. The batched read was observed to deliver wrong/oscillating values for
+        // subscriptions (ExcludeFromBatch = true) rather than the shared GenericBatch1..5
+        // structs. The batched read was observed to deliver wrong/oscillating values for
         // certain slots in the HS787 var list under FS2024, producing the spurious
         // On→Off cascade for batteries/generators/avionics master. Likely cause: a
         // silent AddToDataDefinition failure earlier in the alphabetic sort, shifting

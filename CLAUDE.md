@@ -21,11 +21,17 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains three projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), and `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all three. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution.
+The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution.
 
 ## Testing
 
-No automated test project exists. Verification is done by running the app against a live sim (MSFS 2020 or 2024). When making changes, build, then describe an in-sim test plan in the PR — the human owner of the repo runs it. Don't add unit tests speculatively; this is a SimConnect-driven UI app where most code paths only execute against the real simulator.
+Pure-logic code is covered by an xUnit characterization suite at `tests/MSFSBlindAssist.Tests`
+(run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`).
+CI (`.github/workflows/tests.yml`) runs it on every PR and on pushes to main.
+Sim-facing behavior cannot be unit-tested: when changing SimConnect/UI paths, build, then
+describe an in-sim test plan in the PR — the human owner of the repo runs it. New pure logic
+(formatters, parsers, geometry, classifiers) should get characterization tests; don't add
+speculative tests for sim-driven paths.
 
 ## Git Workflow
 
@@ -55,7 +61,7 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### SimConnect Connection Timing
 
-**CRITICAL:** In SimConnectManager.cs, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`. Required for `StartContinuousMonitoring()` to execute properly (has guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
+**CRITICAL:** In SimConnectManager.cs, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`. Required for `StartContinuousMonitoring()` to execute properly (has guard clause requiring `IsConnected == true`). See SimConnectManager.Connect() in SimConnect/SimConnectManager.cs
 
 ### Accessible TreeView Controls
 
@@ -134,7 +140,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - RID-subfolder gotcha: `-r win-x64` (or `dotnet publish -r win-x64`) writes to a SEPARATE `net10.0-windows\win-x64\` tree that a plain `.sln` build never touches — always build/verify the exact folder the app launches from. → CLAUDE.md
 - The exe is file-locked while MSFSBA runs (MSB3021) — close the app before building a fresh exe. → CLAUDE.md
 - `tools/CDUTest` and `tools/CDUTest`-style standalone probes build on their own, NOT as part of the solution. → CLAUDE.md
-- Don't add unit tests speculatively — this is a SimConnect-driven UI app verified only against a live sim; describe an in-sim test plan instead. → CLAUDE.md
+- Sim-facing paths are verified only against a live sim — describe an in-sim test plan in the PR; pure logic belongs in `tests/MSFSBlindAssist.Tests` (CI-enforced). → CLAUDE.md
 - `main` is protected — never commit directly to main; always branch + PR. → CLAUDE.md
 
 ### Screen-reader announcements (→ CLAUDE.md — stays as full prose in the lean core)
