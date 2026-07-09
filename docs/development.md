@@ -45,7 +45,6 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 ### Database System
 
-- **`Database/AirportDatabase.cs`**: SQLite airport data management
 - **`Database/DatabaseBuilder.cs`**: BGL file processing for airport data
 - **`Database/Models/Airport.cs`**: Airport data model
 - **`Database/Models/Runway.cs`**: Runway data model
@@ -64,7 +63,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 - **`Services/TaxiGuidanceManager.cs`**: Real-time state machine, position tracking, announcements, re-routing
 - **`Services/TaxiSteeringTone.cs`**: Stereo-panned steering tone with hysteresis + min sustain + low-pass smoothing
 - **`Forms/TaxiAssistForm.cs`**: Route entry UI (destination combo, filtered taxiway ComboBoxes, hold-short checkboxes)
-- **`Forms/TaxiGuidanceOptionsForm.cs`**: User settings (waveform, volume, crossing announcements)
+- **`Forms/Settings/TaxiGuidancePanel.cs`**: User settings (waveform, volume, crossing announcements)
 
 See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 
@@ -97,7 +96,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 - SimConnect.cfg configuration file is copied to output for connection settings
 - Application requires x64 build for proper SimConnect operation
 - C# 13 with nullable reference types enabled
-- **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
+- **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.Connect() in SimConnect/SimConnectManager.cs
 
 ### A380/A32NX live-debugging tools (`tools/`)
 
@@ -132,10 +131,9 @@ its product ships as `MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs`.
 
 Global exception handlers (`Program.cs` → `InstallGlobalExceptionHandlers`) catch UI-thread
 faults (recovered, app keeps running), background-thread faults (logged, CLR still terminates),
-and unobserved task exceptions. `StartupLogger` writes each line with `File.AppendAllText`
-(flushes per line), so **managed** crashes leave a stack trace at
-`%TEMP%\MSFSBlindAssist_Startup_<timestamp>.log`. A crash with **no** logged exception is
-almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
+and unobserved task exceptions. Startup diagnostics are wired through `Log.Channel("startup", truncateOnLaunch: true)`
+which writes to `%APPDATA%\MSFSBlindAssist\logs\startup.log`, so **managed** crashes leave a stack trace there.
+A crash with **no** logged exception is almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
 Application for the faulting module. Full procedure in [tooling.md §8](tooling.md).
 
 ## Dependencies

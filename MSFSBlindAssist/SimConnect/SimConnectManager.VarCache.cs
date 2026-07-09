@@ -472,8 +472,9 @@ public partial class SimConnectManager
                         // Update cache
                         lastVariableValues[varKey] = value;
 
-                        // Only fire event if value changed, was force-requested, or it's the first time we see it
-                        if (hasChanged || isForceUpdate || !lastVariableValues.ContainsKey(varKey))
+                        // Only fire event if value changed or was force-requested (first delivery fires
+                        // via hasChanged defaulting to true when lastVariableValues has no prior entry)
+                        if (hasChanged || isForceUpdate)
                         {
                             // Check if we should only announce matches to ValueDescriptions (e.g., thrust lever detents)
                             if (varDef.OnlyAnnounceValueDescriptionMatches &&
