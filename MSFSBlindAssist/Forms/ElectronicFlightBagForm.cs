@@ -1949,6 +1949,52 @@ public partial class ElectronicFlightBagForm : Form
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Formats the runway-END-scoped HEADINGS + COORDINATES block from already-resolved
+    /// column values. Extracted as a minimal, behavior-neutral seam (2026-07,
+    /// characterization tests) out of <see cref="GetRunwayDetailedInfo"/> with zero logic
+    /// change, so a test can pin the runway_end column-aliasing fix without a live database
+    /// connection: <paramref name="endHeadingTrue"/>/<paramref name="endLonx"/>/
+    /// <paramref name="endLaty"/> must be the SELECTED runway end's own values (aliased in
+    /// the SQL as end_heading/end_lonx/end_laty), never the runway-center/primary-end value
+    /// a bare `re.*` join would silently resolve ambiguous columns to (the reciprocal-end,
+    /// 180°-off heading bug this guards against — see the SQL comment above the query in
+    /// <see cref="GetRunwayDetailedInfo"/>).
+    /// </summary>
+    internal static string FormatRunwayHeadingsAndCoordinates(double endHeadingTrue, double magVar, object? endLonx, object? endLaty)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("HEADINGS:");
+        sb.AppendLine($"  True Heading:         {endHeadingTrue:F1}°");
+        sb.AppendLine($"  Magnetic Heading:     {(endHeadingTrue - magVar):F1}°");
+        sb.AppendLine();
+
+        sb.AppendLine("COORDINATES:");
+        sb.AppendLine($"  Longitude:            {endLonx}");
+        sb.AppendLine($"  Latitude:             {endLaty}");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Formats the PATTERN block. <paramref name="endAltitudeMsl"/> must be the SELECTED
+    /// runway end's own altitude (aliased end_altitude), same aliasing-fix rationale as
+    /// <see cref="FormatRunwayHeadingsAndCoordinates"/>. Extracted with zero logic change.
+    /// </summary>
+    internal static string FormatRunwayPatternAltitude(object? patternAltitude, object? endAltitudeMsl)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("PATTERN:");
+        sb.AppendLine($"  Pattern Altitude:     {patternAltitude} ft");
+        sb.AppendLine($"  Altitude (MSL):       {endAltitudeMsl} ft");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
     private string GetRunwayDetailedInfo(string icao, string runwayId)
     {
         var settings = SettingsManager.Current;
@@ -2147,16 +2193,9 @@ public partial class ElectronicFlightBagForm : Form
                         // HEADINGS (use the selected runway END's heading, not the runway-center value)
                         var magVar = Convert.ToDouble(reader["mag_var"] ?? 0.0);
                         var heading = Convert.ToDouble(reader["end_heading"] ?? 0.0);
-                        sb.AppendLine("HEADINGS:");
-                        sb.AppendLine($"  True Heading:         {heading:F1}°");
-                        sb.AppendLine($"  Magnetic Heading:     {(heading - magVar):F1}°");
-                        sb.AppendLine();
-
-                        // COORDINATES (threshold of the selected runway end)
-                        sb.AppendLine("COORDINATES:");
-                        sb.AppendLine($"  Longitude:            {reader["end_lonx"]}");
-                        sb.AppendLine($"  Latitude:             {reader["end_laty"]}");
-                        sb.AppendLine();
+                        // Extracted, behavior-neutral seam (2026-07, characterization tests) — see
+                        // FormatRunwayHeadingsAndCoordinates for the pinned runway_end aliasing fix.
+                        sb.Append(FormatRunwayHeadingsAndCoordinates(heading, magVar, reader["end_lonx"], reader["end_laty"]));
 
                         // THRESHOLD DATA
                         sb.AppendLine("THRESHOLD DATA:");
@@ -2165,11 +2204,8 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine($"  Overrun:              {reader["overrun"]} ft");
                         sb.AppendLine();
 
-                        // PATTERN ALTITUDE
-                        sb.AppendLine("PATTERN:");
-                        sb.AppendLine($"  Pattern Altitude:     {reader["pattern_altitude"]} ft");
-                        sb.AppendLine($"  Altitude (MSL):       {reader["end_altitude"]} ft");
-                        sb.AppendLine();
+                        // PATTERN ALTITUDE — Altitude (MSL) uses the aliased runway-END altitude.
+                        sb.Append(FormatRunwayPatternAltitude(reader["pattern_altitude"], reader["end_altitude"]));
 
                         // LIGHTING
                         sb.AppendLine("LIGHTING:");
