@@ -2054,9 +2054,15 @@ public partial class ElectronicFlightBagForm : Form
             }
 
             // Query runway with runway_end join.
-            // runway and runway_end BOTH have heading/altitude/lonx/laty; with `r.*, re.*` those
-            // ambiguous names resolved to the runway-CENTER (r) values, so a secondary end (e.g. 24L)
-            // showed the primary end's heading (off by 180°). Alias the runway-end values explicitly.
+            // runway and runway_end BOTH declare heading/altitude/lonx/laty, so a bare name in
+            // `r.*, re.*` is ambiguous. (Microsoft.Data.Sqlite resolves such a duplicate to the LAST
+            // occurrence — here re, the runway-end — NOT the first/`r` as once assumed; verified by
+            // probe against this exact query shape.) Rather than depend on that positional accident,
+            // the runway-end values are aliased to explicit `end_*` names and read by those names
+            // below (see the reader["end_heading"]/["end_lonx"]/["end_laty"]/["end_altitude"] uses),
+            // so a secondary end (e.g. 24L) always reports its own heading, never the runway-table
+            // center value. Dropping an alias makes those reads throw "no such column" — the failure
+            // RunwayInfoAliasingTests pins.
             var sql = @"
                 SELECT r.*, re.*,
                        re.heading  AS end_heading,
