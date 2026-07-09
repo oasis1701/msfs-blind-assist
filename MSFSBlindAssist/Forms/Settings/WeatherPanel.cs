@@ -13,6 +13,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
     private CheckBox _weatherAutoAnnounce = null!;
     private ComboBox _weatherIntervalCombo = null!;
+    private Label _weatherIntervalLabel = null!;
     private CheckBox _sigmetAlerts = null!;
     private CheckBox _pirepAlerts = null!;
     private NumericUpDown _proximityRange = null!;
@@ -37,6 +38,20 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
         Controls.Add(activeSkyGroup);
         Controls.Add(announceGroup);
+
+        // The announcement interval throttles ACTIVESKY decoded-weather announcements
+        // only, so it's hidden (and out of the tab order) while the switch is off — a
+        // blind user tabbing the panel shouldn't meet an AS-specific setting they can't
+        // use. Hiding never resets the stored value (ApplyTo reads the combo regardless).
+        _activeSkyEnabled.CheckedChanged += (_, _) => UpdateActiveSkyDependentVisibility();
+        UpdateActiveSkyDependentVisibility();
+    }
+
+    private void UpdateActiveSkyDependentVisibility()
+    {
+        bool on = _activeSkyEnabled.Checked;
+        _weatherIntervalLabel.Visible = on;
+        _weatherIntervalCombo.Visible = on;
     }
 
     private GroupBox BuildActiveSkyGroup()
@@ -124,7 +139,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Distance at which to announce approaching SIGMETs, AIRMETs, and PIREPs"
         };
 
-        var intervalLabel = new Label
+        _weatherIntervalLabel = new Label
         {
             Text = "Weather announcement &interval:",
             Location = new System.Drawing.Point(12, 178),
@@ -149,7 +164,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         {
             _weatherAutoAnnounce, _sigmetAlerts, _pirepAlerts,
             rangeLabel, _proximityRange,
-            intervalLabel, _weatherIntervalCombo
+            _weatherIntervalLabel, _weatherIntervalCombo
         });
 
         return group;
