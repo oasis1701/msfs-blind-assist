@@ -405,7 +405,7 @@ public class NavigationDatabaseProvider
 
     /// <summary>Parse a runway-style ARINC name ("RW30B" → 30/"B", "RW25R" → 25/"R", "RW35" → 35/"").
     /// Returns null for non-runway arinc names (VORA, ALL, N33-D, RNVA, empty, …).</summary>
-    private static (int number, string side)? ParseArincRunway(string? arincName)
+    internal static (int number, string side)? ParseArincRunway(string? arincName)
     {
         if (string.IsNullOrWhiteSpace(arincName)) return null;
         string s = arincName.Trim().ToUpperInvariant();
@@ -419,7 +419,7 @@ public class NavigationDatabaseProvider
     }
 
     /// <summary>Split a concrete runway designator ("30R" → 30/"R", "03" → 3/"").</summary>
-    private static (int number, string side)? SplitRunwayDesignator(string? runway)
+    internal static (int number, string side)? SplitRunwayDesignator(string? runway)
     {
         if (string.IsNullOrWhiteSpace(runway)) return null;
         string s = runway.Trim().ToUpperInvariant();
@@ -431,14 +431,14 @@ public class NavigationDatabaseProvider
 
     /// <summary>True when the parsed ARINC tag covers the parsed concrete runway — same number, and a
     /// "B"/bare side covers either side (RW30B → 30L and 30R).</summary>
-    private static bool ArincCoversTarget((int number, string side) tag, (int number, string side) target)
+    internal static bool ArincCoversTarget((int number, string side) tag, (int number, string side) target)
         => tag.number == target.number && (tag.side is "B" or "" || tag.side == target.side);
 
     /// <summary>Does a procedure (its <paramref name="runwayName"/> + <paramref name="arincName"/>) serve
     /// the concrete <paramref name="targetRunway"/>? A populated <c>runway_name</c> is AUTHORITATIVE (it
     /// names the one runway this procedure serves); only when it's NULL/blank do we fall back to the
     /// ARINC tag, where a "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
-    private static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
+    internal static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
     {
         // A concrete runway_name is the definitive runway for this procedure row. Do NOT also consult
         // arinc_name — a specific-runway procedure (runway_name "25L") that happens to carry a broad
@@ -924,7 +924,7 @@ public class NavigationDatabaseProvider
     /// Builds a human-readable label for a path/terminator leg that has no terminating fix
     /// (CA/VA to-altitude, VM/FM vectors, CI/VI intercept, CD/VD to-DME, CR/VR to-radial).
     /// </summary>
-    private static string BuildManeuverLabel(string legType, double? course, string turnDir, double? alt1)
+    internal static string BuildManeuverLabel(string legType, double? course, string turnDir, double? alt1)
     {
         legType = (legType ?? "").ToUpperInvariant();
         string heading = legType.StartsWith("V") ? "heading" : "course";
@@ -955,7 +955,7 @@ public class NavigationDatabaseProvider
     /// <summary>
     /// Formats altitude restriction text
     /// </summary>
-    private string? FormatAltitudeRestriction(string? descriptor, double? alt1, double? alt2)
+    internal static string? FormatAltitudeRestriction(string? descriptor, double? alt1, double? alt2)
     {
         if (!alt1.HasValue && !alt2.HasValue)
             return null;
