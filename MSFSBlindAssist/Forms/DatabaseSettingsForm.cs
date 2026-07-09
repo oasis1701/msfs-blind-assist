@@ -27,7 +27,7 @@ public partial class DatabaseSettingsForm : Form
 
     private void InitializeComponent()
     {
-        Text = "Database Management";
+        Text = "Nav Database";
         Size = new Size(600, 380);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -40,10 +40,10 @@ public partial class DatabaseSettingsForm : Form
         // Title Label
         titleLabel = new Label
         {
-            Text = "Database Management",
+            Text = "Nav Database",
             Location = new Point(20, yPos),
             Size = new Size(550, 25),
-            AccessibleName = "Database Management Title",
+            AccessibleName = "Nav Database Title",
             Font = new Font(Font.FontFamily, 12, FontStyle.Bold)
         };
         yPos += 40;
@@ -53,7 +53,7 @@ public partial class DatabaseSettingsForm : Form
         {
             Text = "The active database is automatically selected based on the running simulator.\n" +
                    "Use the buttons below to build or rebuild databases for each version.\n" +
-                   "Databases are stored in: " + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), DatabasePathResolver.CanonicalFolderName, "databases"),
+                   "Databases are stored in: " + DatabasePathResolver.GetCanonicalDatabasesFolder(),
             Location = new Point(40, yPos),
             Size = new Size(520, 70),
             AccessibleName = "Database information",

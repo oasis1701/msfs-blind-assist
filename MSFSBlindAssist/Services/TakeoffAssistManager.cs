@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -56,8 +57,7 @@ public class TakeoffAssistManager : IDisposable
     // cross-track intercept behaved, so the CROSSTRACK_INTERCEPT_* constants can
     // be tuned from data. (There is NO yaw-rate lead in takeoff assist — that is
     // taxi guidance's TaxiTurnLeadSeconds; do not add one from a log hunch.)
-    private static readonly string TakeoffLogPath = Utils.AppLogs.PathFor("takeoff_assist.log");
-    private const long MAX_TAKEOFF_LOG_BYTES = 2 * 1024 * 1024;
+    private static readonly LogChannel _takeoffLog = Log.Channel("takeoff_assist");
     private DateTime lastTakeoffLogTime = DateTime.MinValue;
     // Last IAS seen by ProcessSpeedUpdate, cached ONLY so the trace can log a
     // speed column (tuning needs error-vs-speed). IAS, not ground speed — GS
@@ -172,7 +172,7 @@ public class TakeoffAssistManager : IDisposable
         referenceAirportICAO = airportICAO;
         hasRunwayReference = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
+        Log.Debug("TakeoffAssist", $"Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
     }
 
     /// <summary>
@@ -216,7 +216,7 @@ public class TakeoffAssistManager : IDisposable
         referenceAirportICAO = null;
         hasRunwayReference = false;
 
-        System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Runway reference cleared");
+        Log.Debug("TakeoffAssist", "Runway reference cleared");
     }
 
     /// <summary>
@@ -268,7 +268,7 @@ public class TakeoffAssistManager : IDisposable
                 // Use runway reference from teleport
                 string modeInfo = legacyMode ? "legacy mode" : "";
                 announcer.AnnounceImmediate($"Takeoff assist active{(legacyMode ? " legacy mode" : "")}, runway {referenceRunwayID} at {referenceAirportICAO}");
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
+                Log.Debug("TakeoffAssist", $"Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
 
                 // EXPLICIT heading sanity check at activation. The intercept tone
                 // now DOES cue an off-heading pilot (nonzero steerError), but the
@@ -311,7 +311,7 @@ public class TakeoffAssistManager : IDisposable
                 {
                     announcer.AnnounceImmediate($"Takeoff assist active, no runway selected, extending centerline from current position, heading {Math.Round(currentHeadingMagnetic)}");
                 }
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
+                Log.Debug("TakeoffAssist", $"Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
             }
 
             // Header AFTER the reference branch so a synthetic-centerline activation
@@ -335,7 +335,7 @@ public class TakeoffAssistManager : IDisposable
             ClearRunwayReference();
 
             announcer.AnnounceImmediate("Takeoff assist off");
-            System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Deactivated");
+            Log.Debug("TakeoffAssist", "Deactivated");
         }
 
         TakeoffAssistActiveChanged?.Invoke(this, isActive);
@@ -375,7 +375,7 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedHeadingDeviation = headingDiff;
                 lastHeadingAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Legacy mode: Heading={currentHeadingMagnetic:F1}°, Deviation={headingDiff:F1}° → {announcement}");
+                Log.Debug("TakeoffAssist", $"Legacy mode: Heading={currentHeadingMagnetic:F1}°, Deviation={headingDiff:F1}° → {announcement}");
             }
         }
         else
@@ -497,7 +497,7 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedCrossTrackFeet = crossTrackFeet;
                 lastCenterlineAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Position: Lat={currentLat:F6}, Lon={currentLon:F6}, CrossTrack={crossTrackFeet:F1}ft → {announcement}{(muteCenterlineAnnouncements ? " (muted)" : "")}");
+                Log.Debug("TakeoffAssist", $"Position: Lat={currentLat:F6}, Lon={currentLon:F6}, CrossTrack={crossTrackFeet:F1}ft → {announcement}{(muteCenterlineAnnouncements ? " (muted)" : "")}");
             }
         }
     }
@@ -523,7 +523,7 @@ public class TakeoffAssistManager : IDisposable
             lastAnnouncedPitch = currentPitch;
             lastPitchAnnouncement = DateTime.Now;
 
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Pitch: {currentPitch:F1}° → {announcement}");
+            Log.Debug("TakeoffAssist", $"Pitch: {currentPitch:F1}° → {announcement}");
         }
     }
 
@@ -547,7 +547,7 @@ public class TakeoffAssistManager : IDisposable
         {
             announcer.Announce("80 knots");
             hasAnnounced80Knots = true;
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 80 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: 80 knots (IAS={currentIAS:F1})");
         }
 
         // 100 knots callout (all aircraft)
@@ -555,7 +555,7 @@ public class TakeoffAssistManager : IDisposable
         {
             announcer.Announce("100 knots");
             hasAnnounced100Knots = true;
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 100 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: 100 knots (IAS={currentIAS:F1})");
         }
 
         // V1 callout (Fenix only, if V1 speed is configured)
@@ -565,7 +565,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 announcer.Announce("V1");
                 hasAnnouncedV1 = true;
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
+                Log.Debug("TakeoffAssist", $"Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
             }
         }
 
@@ -576,7 +576,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 announcer.Announce("rotate");
                 hasAnnouncedRotate = true;
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
+                Log.Debug("TakeoffAssist", $"Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
             }
         }
     }
@@ -592,7 +592,7 @@ public class TakeoffAssistManager : IDisposable
         fenixVRSpeed = (vr.HasValue && vr.Value > 0) ? vr : null;
         isFenixAircraft = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
+        Log.Debug("TakeoffAssist", $"Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
     }
 
     /// <summary>
@@ -667,28 +667,22 @@ public class TakeoffAssistManager : IDisposable
 
     /// <summary>
     /// Writes a session-start header + CSV column row to the takeoff trace.
-    /// Appends (like the taxi log) so history survives across rolls; truncates
-    /// once past MAX_TAKEOFF_LOG_BYTES so it can't grow without bound.
+    /// Appends (like the taxi log) so history survives across rolls. Size-capped
+    /// rotation is now handled by the shared LogWriter rather than a hand-rolled
+    /// per-roll truncate.
     /// </summary>
     private void BeginTakeoffLog()
     {
         lastTakeoffLogTime = DateTime.MinValue;
         try
         {
-            if (System.IO.File.Exists(TakeoffLogPath) &&
-                new System.IO.FileInfo(TakeoffLogPath).Length > MAX_TAKEOFF_LOG_BYTES)
-            {
-                System.IO.File.WriteAllText(TakeoffLogPath, string.Empty);
-            }
             int rwyHdg = referenceRunwayHeadingMagnetic.HasValue
                 ? (int)Math.Round(referenceRunwayHeadingMagnetic.Value) : -1;
-            System.IO.File.AppendAllText(TakeoffLogPath, string.Format(
+            _takeoffLog.Info(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "=== Takeoff {0:yyyy-MM-dd HH:mm:ss} icao={1} rwy={2} rwyHdgMag={3} ===",
-                DateTime.Now, referenceAirportICAO, referenceRunwayID, rwyHdg)
-                + Environment.NewLine
-                + "time,lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,smoothedErr,pan,toneOn,iasKt,crossTrackFt"
-                + Environment.NewLine);
+                "=== Takeoff icao={0} rwy={1} rwyHdgMag={2} ===",
+                referenceAirportICAO, referenceRunwayID, rwyHdg));
+            _takeoffLog.Info("lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,smoothedErr,pan,toneOn,iasKt,crossTrackFt");
         }
         catch { /* diagnostic only */ }
     }
@@ -709,12 +703,12 @@ public class TakeoffAssistManager : IDisposable
             // toneOn = what the pilot actually hears: the hysteresis gate's
             // output when a threshold is set, always-audible in "Always" mode.
             int toneOn = headingToneThreshold > 0 ? (toneUnmuted ? 1 : 0) : 1;
-            System.IO.File.AppendAllText(TakeoffLogPath, string.Format(
+            _takeoffLog.Info(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "{0:HH:mm:ss.fff},{1:F7},{2:F7},{3:F1},{4:F2},{5:F2},{6:F2},{7:F2},{8:F2},{9},{10:F1},{11:F1}",
-                DateTime.Now, lat, lon, hdgMag, headingDiff, desiredCrabDeg,
+                "{0:F7},{1:F7},{2:F1},{3:F2},{4:F2},{5:F2},{6:F2},{7:F2},{8},{9:F1},{10:F1}",
+                lat, lon, hdgMag, headingDiff, desiredCrabDeg,
                 steerError, smoothedSteerError, pan, toneOn,
-                lastIndicatedAirspeedKts, crossTrackFeet) + Environment.NewLine);
+                lastIndicatedAirspeedKts, crossTrackFeet));
         }
         catch { /* diagnostic only */ }
     }
@@ -729,7 +723,7 @@ public class TakeoffAssistManager : IDisposable
             centerlineTone?.Stop();
             isActive = false;
             TakeoffAssistActiveChanged?.Invoke(this, false);
-            System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Reset");
+            Log.Debug("TakeoffAssist", "Reset");
         }
 
         smoothedSteerError = 0;

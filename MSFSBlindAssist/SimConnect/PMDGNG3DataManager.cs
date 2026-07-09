@@ -1,8 +1,10 @@
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -26,6 +28,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
 
     private static readonly FieldInfo[] s_dataFields =
         typeof(PMDGNG3DataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
+
+    // Built from s_dataFields (same BindingFlags as the per-call GetField
+    // lookups it replaces), so it resolves exactly the same names.
+    private static readonly Dictionary<string, FieldInfo> s_fieldsByName =
+        s_dataFields.ToDictionary(f => f.Name, f => f);
 
     // ------------------------------------------------------------------
     // Local enum IDs — these are OUR app's internal SimConnect identifiers
@@ -113,8 +120,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] RegisterClientDataAreas failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RegisterClientDataAreas failed: {ex.Message}");
         }
 
         // Restart the 1Hz polling. We tried ON_SET push-subscription per the
@@ -130,7 +137,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         _pollTimer.Tick += PollTimer_Tick;
         _pollTimer.Start();
 
-        System.Diagnostics.Debug.WriteLine($"[PMDGNG3DataManager] Initialized.");
+        Log.Debug("SimConnect", $"Initialized.");
     }
 
     // ------------------------------------------------------------------
@@ -171,7 +178,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         _simConnect.RegisterStruct<SIMCONNECT_RECV_CLIENT_DATA, PMDGNG3CDUScreen>(
             PMDG_DATA_DEFINITION_ID.CDU_1);
 
-        System.Diagnostics.Debug.WriteLine("[PMDGNG3DataManager] Client data areas registered.");
+        Log.Debug("SimConnect", "Client data areas registered.");
     }
 
     // ------------------------------------------------------------------
@@ -213,8 +220,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] RequestData failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RequestData failed: {ex.Message}");
         }
     }
 
@@ -270,8 +277,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] ProcessClientData error: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"ProcessClientData error: {ex.Message}");
         }
     }
 
@@ -405,10 +412,18 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // never change after sim load).
         bool isFirstSnapshot = !_hasSnapshot;
 
+        // Box each struct ONCE for the whole loop instead of once per field —
+        // FieldInfo.GetValue(struct) boxes its argument on every call, so the
+        // unboxed overload was copying the multi-KB struct per field (hundreds
+        // of copies/sec). Reading fields off a boxed copy returns identical
+        // values to reading off the struct directly (the box IS a bitwise
+        // copy of the same snapshot), so this is behavior-neutral.
+        object oldBox = _lastDataSnapshot;
+        object newBox = newData;
         foreach (var field in s_dataFields)
         {
-            object? oldVal = field.GetValue(_lastDataSnapshot);
-            object? newVal = field.GetValue(newData);
+            object? oldVal = field.GetValue(oldBox);
+            object? newVal = field.GetValue(newBox);
 
             if (field.FieldType.IsArray)
             {
@@ -492,7 +507,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
             IsInitialSnapshot = isInitialSnapshot,
         });
 
-    private static double ToDouble(object? val) => val switch
+    internal static double ToDouble(object? val) => val switch
     {
         bool   b => b ? 1.0 : 0.0,
         byte   b => (double)b,
@@ -538,16 +553,15 @@ public class PMDGNG3DataManager : IPMDGDataManager
             return derived ? 1.0 : 0.0;
         }
 
-        // Plain field
-        var field = typeof(PMDGNG3DataStruct)
-            .GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+        object snapshotBox = _lastDataSnapshot;
 
-        if (field != null)
+        // Plain field
+        if (s_fieldsByName.TryGetValue(fieldName, out var field))
         {
             // ASCII string fields can't be coerced to a meaningful double.
             if (IsAsciiStringField(fieldName)) return 0.0;
 
-            object? value = field.GetValue(_lastDataSnapshot);
+            object? value = field.GetValue(snapshotBox);
             // Non-string byte[] arrays should be accessed via "_N" suffix below.
             if (value is Array) return 0.0;
             return ToDouble(value);
@@ -562,15 +576,13 @@ public class PMDGNG3DataManager : IPMDGDataManager
             // strings, not byte arrays from the caller's perspective.
             if (IsAsciiStringField(baseName)) return 0.0;
 
-            var baseField = typeof(PMDGNG3DataStruct)
-                .GetField(baseName, BindingFlags.Public | BindingFlags.Instance);
-
-            if (baseField?.GetValue(_lastDataSnapshot) is Array arr && index < arr.Length)
+            if (s_fieldsByName.TryGetValue(baseName, out var baseField) &&
+                baseField.GetValue(snapshotBox) is Array arr && index < arr.Length)
                 return ToDouble(arr.GetValue(index));
         }
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDGNG3DataManager] GetFieldValue: unknown field '{fieldName}'");
+        Log.Debug("SimConnect", 
+            $"GetFieldValue: unknown field '{fieldName}'");
         return 0.0;
     }
 
@@ -584,8 +596,9 @@ public class PMDGNG3DataManager : IPMDGDataManager
     {
         if (!_hasSnapshot) return null;
         if (!IsAsciiStringField(fieldName)) return null;
-        var field = typeof(PMDGNG3DataStruct).GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-        if (field?.GetValue(_lastDataSnapshot) is not byte[] bytes) return null;
+        if (!s_fieldsByName.TryGetValue(fieldName, out var field)) return null;
+        object snapshotBox = _lastDataSnapshot;
+        if (field.GetValue(snapshotBox) is not byte[] bytes) return null;
         int len = Array.IndexOf<byte>(bytes, 0);
         if (len < 0) len = bytes.Length;
         return Encoding.ASCII.GetString(bytes, 0, len);
@@ -612,8 +625,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] SendEvent '{eventName}' failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEvent '{eventName}' failed: {ex.Message}");
         }
     }
 
@@ -633,8 +646,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
             0,
             ctrl);
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDGNG3DataManager] SendViaCDA: eventId=0x{eventId:X} param={parameter}");
+        Log.Debug("SimConnect", 
+            $"SendViaCDA: eventId=0x{eventId:X} param={parameter}");
     }
 
     /// <summary>
@@ -671,8 +684,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
         }
     }
 
@@ -925,8 +938,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[PMDGNG3DataManager] RequestCDUScreen({cdu}) failed: {ex.Message}");
+            Log.Debug("SimConnect", 
+                $"RequestCDUScreen({cdu}) failed: {ex.Message}");
         }
     }
 
@@ -986,7 +999,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         return (rows, colors, flags);
     }
 
-    private static char DecodeCellSymbol(byte sym) => sym switch
+    internal static char DecodeCellSymbol(byte sym) => sym switch
     {
         0xA1                => '<',
         0xA2                => '>',
@@ -1011,6 +1024,6 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // instead of burning its full timeout against a connection whose
         // responses now route to the replacement manager.
         _simConnect = null;
-        System.Diagnostics.Debug.WriteLine("[PMDGNG3DataManager] Disposed.");
+        Log.Debug("SimConnect", "Disposed.");
     }
 }

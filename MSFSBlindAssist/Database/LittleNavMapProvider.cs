@@ -88,6 +88,32 @@ public class LittleNavMapProvider : IAirportDataProvider
                 return runways;
 
             // Query runways with both ends
+            // ILS is folded in via two LEFT JOINs (primary + secondary end) instead of a
+            // per-end GetILSData() query (was up to 2 extra queries per runway, ~2R-6R per
+            // airport including the spatial fallback). The join is airport-scoped
+            // (loc_airport_ident = @ICAO) for the same reason the retired GetILSData was:
+            // multiple airports can share an ILS ident (e.g. 'IDE' at EIDW/OTHH/ZUUU, 'IMA'
+            // at five airports) — an unscoped ident-only match returns whichever row has the
+            // lowest row-id, typically a DIFFERENT airport, and poisoned Runway.ILSFreq/
+            // ILSHeading/GlideslopeAngleDeg with foreign data (OMAM 31R showed Moscow's
+            // 108.75 MHz / 075°). An airport-scoped miss leaves the joined columns NULL and
+            // CreateRunwayFromReader falls through to the spatial+heading recovery
+            // (GetILSForRunwayFallback) exactly as before — a bare ident match is never
+            // trusted. Each join's ON clause is the EXACT predicate GetILSData used
+            // (`ident = <ils_ident> AND loc_airport_ident = @ICAO`, case-sensitive, no
+            // UPPER()) wrapped as a correlated `ils_id = (SELECT ... LIMIT 1)` subquery —
+            // this is required, not cosmetic: fs2024 has 9 (ident, loc_airport_ident)
+            // pairs with 2-3 duplicate ils rows (e.g. IWR/WMKK has 3), and a plain
+            // `ON ident = ... AND loc_airport_ident = @ICAO` LEFT JOIN would fan out and
+            // duplicate the runway row per extra match. The correlated-subquery form reuses
+            // GetILSData's identical SQL text (same predicate, same absent ORDER BY, same
+            // LIMIT 1) so it is guaranteed to pick the same single row GetILSData would have,
+            // via the same idx_ils_ident index — verified all 9 duplicate groups carry
+            // byte-identical frequency/loc_heading/gs_pitch, so row selection among duplicates
+            // is a non-issue for the values themselves, only for row-count fan-out. The
+            // `ils_ident IS NOT NULL AND ils_ident <> ''` guard reproduces
+            // CreateRunwayFromReader's old `!string.IsNullOrEmpty(ilsIdent)` gate around the
+            // GetILSData call.
             var sql = @"
                 SELECT
                     r.runway_id,
@@ -115,17 +141,38 @@ public class LittleNavMapProvider : IAirportDataProvider
                     re_secondary.has_closed_markings as secondary_closed,
                     re_secondary.is_landing as secondary_is_landing,
                     re_secondary.is_takeoff as secondary_is_takeoff,
-                    a.mag_var
+                    a.mag_var,
+                    ils_primary.frequency as primary_ils_freq,
+                    ils_primary.loc_heading as primary_ils_heading,
+                    ils_primary.gs_pitch as primary_ils_gs_pitch,
+                    ils_secondary.frequency as secondary_ils_freq,
+                    ils_secondary.loc_heading as secondary_ils_heading,
+                    ils_secondary.gs_pitch as secondary_ils_gs_pitch
                 FROM runway r
                 JOIN runway_end re_primary ON r.primary_end_id = re_primary.runway_end_id
                 JOIN runway_end re_secondary ON r.secondary_end_id = re_secondary.runway_end_id
                 JOIN airport a ON r.airport_id = a.airport_id
+                LEFT JOIN ils ils_primary
+                    ON re_primary.ils_ident IS NOT NULL AND re_primary.ils_ident <> ''
+                   AND ils_primary.ils_id = (
+                        SELECT i.ils_id FROM ils i
+                        WHERE i.ident = re_primary.ils_ident AND i.loc_airport_ident = @ICAO
+                        LIMIT 1
+                   )
+                LEFT JOIN ils ils_secondary
+                    ON re_secondary.ils_ident IS NOT NULL AND re_secondary.ils_ident <> ''
+                   AND ils_secondary.ils_id = (
+                        SELECT i.ils_id FROM ils i
+                        WHERE i.ident = re_secondary.ils_ident AND i.loc_airport_ident = @ICAO
+                        LIMIT 1
+                   )
                 WHERE r.airport_id = @AirportId
                 ORDER BY re_primary.name";
 
             using (var command = new SqliteCommand(sql, connection))
             {
                 command.Parameters.AddWithValue("@AirportId", airportId);
+                command.Parameters.AddWithValue("@ICAO", icao);
 
                 using (var reader = command.ExecuteReader())
                 {
@@ -156,47 +203,57 @@ public class LittleNavMapProvider : IAirportDataProvider
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
+            return GetILSForRunway(connection, icao, runwayName);
+        }
+    }
 
-            // Fast path: direct join via loc_airport_ident + loc_runway_name. Works
-            // for fs2020 (every ILS row populated) and the majority of fs2024 rows.
-            var sql = @"SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
-                              lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
-                       FROM ils
-                       WHERE UPPER(loc_airport_ident) = UPPER(@ICAO)
-                         AND UPPER(loc_runway_name) = UPPER(@RunwayName)
-                       LIMIT 1";
+    /// <summary>
+    /// Connection-reusing core of <see cref="GetILSForRunway(string, string)"/>. Callers that already
+    /// hold an open connection to the SAME database (e.g. the EFB Airport-Lookup runway-info box, which
+    /// runs on the UI thread on every runway-list SelectedIndexChanged) use this to skip a per-call
+    /// non-pooled connection open.
+    /// </summary>
+    public ILSData? GetILSForRunway(SqliteConnection connection, string icao, string runwayName)
+    {
+        // Fast path: direct join via loc_airport_ident + loc_runway_name. Works
+        // for fs2020 (every ILS row populated) and the majority of fs2024 rows.
+        var sql = @"SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
+                          lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
+                   FROM ils
+                   WHERE UPPER(loc_airport_ident) = UPPER(@ICAO)
+                     AND UPPER(loc_runway_name) = UPPER(@RunwayName)
+                   LIMIT 1";
 
-            using (var command = new SqliteCommand(sql, connection))
+        using (var command = new SqliteCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("@ICAO", icao);
+            command.Parameters.AddWithValue("@RunwayName", runwayName);
+
+            using (var reader = command.ExecuteReader())
             {
-                command.Parameters.AddWithValue("@ICAO", icao);
-                command.Parameters.AddWithValue("@RunwayName", runwayName);
-
-                using (var reader = command.ExecuteReader())
+                if (reader.Read())
                 {
-                    if (reader.Read())
-                    {
-                        return ReadILSFromReader(reader);
-                    }
+                    return ReadILSFromReader(reader);
                 }
             }
-
-            // Fallback: spatial+heading match against ILS rows where loc_airport_ident
-            // / loc_runway_name / loc_runway_end_id are all NULL. The fs2024 vanilla
-            // navdata extraction has 213 such orphans (KPHX 5, KORD 1, etc.) — the
-            // ILS rows are correct (right ident, frequency, location, heading) but
-            // the join columns weren't populated by navdatareader. fs2020 has zero
-            // orphans, so this fallback is a no-op there. We re-link by:
-            //   1. Finding the runway end at this airport with the requested name
-            //      (gives us threshold lat/lon and heading).
-            //   2. Searching unlinked ILS rows within a 0.1° (~11 km) bounding box
-            //      of the airport whose loc_heading is within ±5° of the runway
-            //      heading (with wrap handling).
-            //   3. Picking the closest by squared distance to the runway threshold.
-            // Localizer antennas sit on the runway centerline beyond the far end,
-            // so the closest unlinked ILS to a given threshold is the right one
-            // for that runway.
-            return GetILSForRunwayFallback(connection, icao, runwayName);
         }
+
+        // Fallback: spatial+heading match against ILS rows where loc_airport_ident
+        // / loc_runway_name / loc_runway_end_id are all NULL. The fs2024 vanilla
+        // navdata extraction has 213 such orphans (KPHX 5, KORD 1, etc.) — the
+        // ILS rows are correct (right ident, frequency, location, heading) but
+        // the join columns weren't populated by navdatareader. fs2020 has zero
+        // orphans, so this fallback is a no-op there. We re-link by:
+        //   1. Finding the runway end at this airport with the requested name
+        //      (gives us threshold lat/lon and heading).
+        //   2. Searching unlinked ILS rows within a 0.1° (~11 km) bounding box
+        //      of the airport whose loc_heading is within ±5° of the runway
+        //      heading (with wrap handling).
+        //   3. Picking the closest by squared distance to the runway threshold.
+        // Localizer antennas sit on the runway centerline beyond the far end,
+        // so the closest unlinked ILS to a given threshold is the right one
+        // for that runway.
+        return GetILSForRunwayFallback(connection, icao, runwayName);
     }
 
     /// <summary>
@@ -629,27 +686,28 @@ public class LittleNavMapProvider : IAirportDataProvider
         double thresholdOffset = Convert.ToDouble(reader[$"{prefix}_offset"] ?? 0.0);
         string ilsIdent = reader[$"{prefix}_ils_ident"]?.ToString() ?? "";
 
-        // Get ILS frequency if ILS exists
-        double ilsFreq = 0.0;
-        double ilsHeading = 0.0;
-        double ilsGsPitch = 0.0;  // Published glideslope angle (deg); 0 = unknown, caller falls back to 3°
+        // ILS frequency/heading/glideslope-pitch now come straight off the reader — the
+        // main GetRunways query LEFT JOINs the scoped `ils` row per end (see the SQL
+        // comment there for why a correlated subquery is required). SafeReadDouble
+        // covers both "no scoped ils row" (JOIN produced NULL — mirrors GetILSData's old
+        // (0,0,0) empty-scoped-lookup return) and "matched row has NULL gs_pitch"
+        // (LOC-only approach). frequency is stored in kHz; divide by 1000 for MHz, same
+        // as GetILSData did.
+        double ilsFreq = SafeReadDouble(reader, $"{prefix}_ils_freq", 0.0) / 1000.0;
+        double ilsHeading = SafeReadDouble(reader, $"{prefix}_ils_heading", 0.0);
+        double ilsGsPitch = SafeReadDouble(reader, $"{prefix}_ils_gs_pitch", 0.0);  // Published glideslope angle (deg); 0 = unknown, caller falls back to 3°
 
-        if (!string.IsNullOrEmpty(ilsIdent))
+        if (ilsFreq <= 0.0)
         {
-            var ilsData = GetILSData(connection, ilsIdent, icao);
-            ilsFreq = ilsData.freq;
-            ilsHeading = ilsData.heading;
-            ilsGsPitch = ilsData.gsPitch;
-        }
-        else
-        {
-            // fs2024 navdata extraction quirk: some runway_end.ils_ident columns
-            // are blank even when an ILS does exist for that runway — the ILS row
-            // sits in the table without `loc_airport_ident`/`loc_runway_name`/
-            // `loc_runway_end_id` populated (213 such orphans in vanilla fs2024,
-            // KPHX 07R among them). The spatial fallback in GetILSForRunwayFallback
-            // matches by airport-bbox + heading + nearest-to-threshold and finds
-            // the right row. fs2020 has zero orphans so this branch is a no-op
+            // No airport-scoped ils row for this runway end — either ils_ident is
+            // blank (fs2024 extraction quirk: 213 orphan rows whose join columns are
+            // NULL, KPHX 07R among them) or it is STALE (fs2024 dropped the airport's
+            // own ils row entirely while runway_end still names the ident — OMAM 31R
+            // 'IMA', whose only same-ident rows belong to UUEE/UAAA/RPLL/DNMA plus an
+            // orphan near Milan). GetILSForRunwayFallback matches orphan rows by
+            // airport-bbox + heading + nearest-to-threshold, so it recovers genuine
+            // orphans and correctly returns nothing for stale idents — never a foreign
+            // airport's data. fs2020 has zero orphans so the fallback is a no-op
             // there. We re-use the same SqliteConnection rather than opening a new
             // one for performance.
             var fallback = GetILSForRunwayFallback(connection, icao, runwayId);
@@ -756,54 +814,6 @@ public class LittleNavMapProvider : IAirportDataProvider
         {
             return defaultValue;
         }
-    }
-
-    private (double freq, double heading, double gsPitch) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
-    {
-        // Airport-scoped lookup first: multiple airports can share the same ILS ident
-        // (e.g. 'IDE' exists at EIDW, OTHH, and ZUUU). Without the airport filter,
-        // LIMIT 1 returns whichever row has the lowest row-id — typically a different
-        // airport — giving the wrong heading and frequency for the actual runway.
-        // gs_pitch is the published glideslope angle (degrees) — usually 3.0, but not
-        // always (LCY 5.5°, Aspen 6.59°). Defaults to 0.0 when missing → caller falls back.
-        if (!string.IsNullOrEmpty(icao))
-        {
-            var scopedSql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident AND loc_airport_ident = @ICAO LIMIT 1";
-            using (var cmd = new SqliteCommand(scopedSql, connection))
-            {
-                cmd.Parameters.AddWithValue("@Ident", ilsIdent);
-                cmd.Parameters.AddWithValue("@ICAO", icao);
-                using (var rdr = cmd.ExecuteReader())
-                {
-                    if (rdr.Read())
-                    {
-                        double freq = Convert.ToDouble(rdr["frequency"] ?? 0.0) / 1000.0;
-                        double heading = Convert.ToDouble(rdr["loc_heading"] ?? 0.0);
-                        double gsPitch = SafeReadDouble(rdr, "gs_pitch", 0.0);  // NULL on LOC-only rows
-                        return (freq, heading, gsPitch);
-                    }
-                }
-            }
-        }
-
-        // Fallback: no airport match (e.g. loc_airport_ident unpopulated in this DB build).
-        var sql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident LIMIT 1";
-        using (var command = new SqliteCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("@Ident", ilsIdent);
-            using (var reader = command.ExecuteReader())
-            {
-                if (reader.Read())
-                {
-                    double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0;
-                    double heading = Convert.ToDouble(reader["loc_heading"] ?? 0.0);
-                    double gsPitch = SafeReadDouble(reader, "gs_pitch", 0.0);  // NULL on LOC-only rows
-                    return (freq, heading, gsPitch);
-                }
-            }
-        }
-
-        return (0.0, 0.0, 0.0);
     }
 
     private int MapSurfaceType(string? littleNavMapSurface)

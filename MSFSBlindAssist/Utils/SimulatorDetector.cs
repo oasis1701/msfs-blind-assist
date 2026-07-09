@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Utils;
 /// <summary>
@@ -20,27 +21,42 @@ public static class SimulatorDetector
         {
             // Check for FS2024 process first (newer version takes priority)
             var fs2024Processes = Process.GetProcessesByName("FlightSimulator2024");
-            if (fs2024Processes != null && fs2024Processes.Length > 0)
+            try
             {
-                Debug.WriteLine("[SimulatorDetector] Detected FS2024 (FlightSimulator2024.exe)");
-                return "FS2024";
+                if (fs2024Processes != null && fs2024Processes.Length > 0)
+                {
+                    Log.Debug("Utils", "Detected FS2024 (FlightSimulator2024.exe)");
+                    return "FS2024";
+                }
+            }
+            finally
+            {
+                foreach (var process in fs2024Processes)
+                    process?.Dispose();
             }
 
             // Check for FS2020 process
             var fs2020Processes = Process.GetProcessesByName("FlightSimulator");
-            if (fs2020Processes != null && fs2020Processes.Length > 0)
+            try
             {
-                Debug.WriteLine("[SimulatorDetector] Detected FS2020 (FlightSimulator.exe)");
-                return "FS2020";
+                if (fs2020Processes != null && fs2020Processes.Length > 0)
+                {
+                    Log.Debug("Utils", "Detected FS2020 (FlightSimulator.exe)");
+                    return "FS2020";
+                }
+            }
+            finally
+            {
+                foreach (var process in fs2020Processes)
+                    process?.Dispose();
             }
 
-            Debug.WriteLine("[SimulatorDetector] No recognized simulator process found");
+            Log.Debug("Utils", "No recognized simulator process found");
             return "Unknown";
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[SimulatorDetector] Error detecting simulator: {ex.Message}");
-            Console.WriteLine($"[SimulatorDetector] Error detecting simulator: {ex.Message}");
+            Log.Warn("Utils", $"Error detecting simulator: {ex.Message}");
             return "Unknown";
         }
     }

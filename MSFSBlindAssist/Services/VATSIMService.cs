@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -38,7 +39,7 @@ public static class VATSIMService
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[VATSIMService] Error getting wind for {icao}: {ex.Message}");
+                Log.Debug("Services", $"Error getting wind for {icao}: {ex.Message}");
                 return null;
             }
         }
@@ -77,7 +78,7 @@ public static class VATSIMService
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[VATSIMService] Error fetching METAR for {icao}: {ex.Message}");
+                Log.Debug("Services", $"Error fetching METAR for {icao}: {ex.Message}");
                 return string.Empty;
             }
         }
@@ -130,7 +131,7 @@ public static class VATSIMService
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[VATSIMService] Error parsing METAR wind: {ex.Message}");
+                Log.Debug("Services", $"Error parsing METAR wind: {ex.Message}");
                 return null;
             }
         }

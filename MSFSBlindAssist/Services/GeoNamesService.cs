@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http;
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 public class GeoNamesService
@@ -90,7 +91,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting location info: {ex.Message}");
+            Log.Debug("Services", $"Error getting location info: {ex.Message}");
             throw;
         }
 
@@ -112,20 +113,20 @@ public class GeoNamesService
             const int MAX_RADIUS_KM = 300;
             if (radiusKm > MAX_RADIUS_KM)
             {
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Capping NearbyCities radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
+                Log.Debug("Services", $"Capping NearbyCities radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
                 radiusKm = MAX_RADIUS_KM;
             }
             var url = $"{BASE_URL}/findNearbyPlaceNameJSON?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lng={longitude.ToString(CultureInfo.InvariantCulture)}&radius={radiusKm}&maxRows=15&username={apiUsername}";
 
             var response = await GetCachedResponseAsync(url);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API URL: {url}");
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API Response length: {response?.Length ?? 0}");
+            Log.Debug("Services", $"API URL: {url}");
+            Log.Debug("Services", $"API Response length: {response?.Length ?? 0}");
 
             // Log first 500 chars of response for debugging
             if (!string.IsNullOrEmpty(response))
             {
                 var debugResponse = response.Length > 500 ? response.Substring(0, 500) + "..." : response;
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API Response: {debugResponse}");
+                Log.Debug("Services", $"API Response: {debugResponse}");
             }
 
             // Check for API errors
@@ -135,7 +136,7 @@ public class GeoNamesService
             }
 
             var parsedData = ParseNearbyPlacesJson(response ?? "", latitude, longitude);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Parsed {parsedData.Count} nearby places");
+            Log.Debug("Services", $"Parsed {parsedData.Count} nearby places");
 
             foreach (var data in parsedData)
             {
@@ -159,7 +160,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting nearby places: {ex.Message}");
+            Log.Debug("Services", $"Error getting nearby places: {ex.Message}");
         }
 
         return places;
@@ -180,7 +181,7 @@ public class GeoNamesService
             const int MAX_RADIUS_KM = 300;
             if (radiusKm > MAX_RADIUS_KM)
             {
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Capping radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
+                Log.Debug("Services", $"Capping radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
                 radiusKm = MAX_RADIUS_KM;
             }
 
@@ -192,8 +193,8 @@ public class GeoNamesService
             var url = $"{BASE_URL}/findNearbyPlaceNameJSON?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lng={longitude.ToString(CultureInfo.InvariantCulture)}&radius={radiusKm}&maxRows={maxRows}&cities={SettingsManager.Current.MajorCityAPIThreshold}&username={apiUsername}";
 
             var response = await GetCachedResponseAsync(url);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Major Cities API URL: {url}");
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Using maxRows={maxRows} for population threshold {SettingsManager.Current.MajorCityPopulationThreshold}");
+            Log.Debug("Services", $"Major Cities API URL: {url}");
+            Log.Debug("Services", $"Using maxRows={maxRows} for population threshold {SettingsManager.Current.MajorCityPopulationThreshold}");
 
             // Check for API errors
             if (CheckForApiError(response))
@@ -202,7 +203,7 @@ public class GeoNamesService
             }
 
             var parsedData = ParseNearbyPlacesJson(response, latitude, longitude);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Parsed {parsedData.Count} major cities from API (using {SettingsManager.Current.MajorCityAPIThreshold})");
+            Log.Debug("Services", $"Parsed {parsedData.Count} major cities from API (using {SettingsManager.Current.MajorCityAPIThreshold})");
 
             foreach (var data in parsedData)
             {
@@ -221,12 +222,12 @@ public class GeoNamesService
             // Filter by user's population threshold
             var beforeFiltering = majorCities.Count;
             majorCities = majorCities.Where(c => c.Population >= SettingsManager.Current.MajorCityPopulationThreshold).ToList();
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Population filtering (>= {SettingsManager.Current.MajorCityPopulationThreshold}): {beforeFiltering} cities -> {majorCities.Count} cities");
+            Log.Debug("Services", $"Population filtering (>= {SettingsManager.Current.MajorCityPopulationThreshold}): {beforeFiltering} cities -> {majorCities.Count} cities");
 
             if (majorCities.Count == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] WARNING: No major cities found within {SettingsManager.Current.MajorCitiesRange} radius with population >= {SettingsManager.Current.MajorCityPopulationThreshold}");
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API returned {beforeFiltering} cities using {SettingsManager.Current.MajorCityAPIThreshold} filter, all filtered out by population threshold");
+                Log.Debug("Services", $"WARNING: No major cities found within {SettingsManager.Current.MajorCitiesRange} radius with population >= {SettingsManager.Current.MajorCityPopulationThreshold}");
+                Log.Debug("Services", $"API returned {beforeFiltering} cities using {SettingsManager.Current.MajorCityAPIThreshold} filter, all filtered out by population threshold");
             }
 
             // Sort by a combination of population and distance (prioritize larger cities that are closer)
@@ -244,11 +245,11 @@ public class GeoNamesService
                 majorCities = majorCities.Take(SettingsManager.Current.MaxMajorCitiesToShow).ToList();
             }
 
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Returning {majorCities.Count} major cities");
+            Log.Debug("Services", $"Returning {majorCities.Count} major cities");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting major cities: {ex.Message}");
+            Log.Debug("Services", $"Error getting major cities: {ex.Message}");
         }
 
         return majorCities;
@@ -271,7 +272,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting country subdivision: {ex.Message}");
+            Log.Debug("Services", $"Error getting country subdivision: {ex.Message}");
         }
 
         return regional;
@@ -293,7 +294,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting timezone: {ex.Message}");
+            Log.Debug("Services", $"Error getting timezone: {ex.Message}");
         }
 
         return DateTime.Now.ToString("h:mm tt zzz");
@@ -310,7 +311,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting ocean info: {ex.Message}");
+            Log.Debug("Services", $"Error getting ocean info: {ex.Message}");
         }
 
         return null;
@@ -348,12 +349,12 @@ public class GeoNamesService
                 new[] { "MNMT", "MUS", "TOWR", "LTHSE", "PRK", "PRKS", "STAD", "AMTH", "ZOO", "PIER" }, "Tourist Landmarks", SettingsManager.Current.MaxTouristLandmarksToShow);
             categorizedLandmarks["Tourist Landmarks"] = tourist;
 
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Found categorized landmarks: " +
+            Log.Debug("Services", $"Found categorized landmarks: " +
                 $"Airports={airports.Count}, Terrain={terrain.Count}, Water={water.Count}, Tourist={tourist.Count}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting categorized landmarks: {ex.Message}");
+            Log.Debug("Services", $"Error getting categorized landmarks: {ex.Message}");
         }
 
         return categorizedLandmarks;
@@ -372,7 +373,7 @@ public class GeoNamesService
             const int MAX_RADIUS_KM = 300;
             if (radiusKm > MAX_RADIUS_KM)
             {
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Capping {categoryName} radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
+                Log.Debug("Services", $"Capping {categoryName} radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
                 radiusKm = MAX_RADIUS_KM;
             }
 
@@ -386,7 +387,7 @@ public class GeoNamesService
                     return (featureCode, new List<(string name, string state, string country, double distance, double bearing)>());
 
                 var parsedData = ParseNearbyFeaturesJson(response, latitude, longitude);
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Found {parsedData.Count} {featureCode} features in {categoryName}");
+                Log.Debug("Services", $"Found {parsedData.Count} {featureCode} features in {categoryName}");
 
                 return (featureCode, parsedData);
             }).ToList();
@@ -425,7 +426,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting {categoryName} features: {ex.Message}");
+            Log.Debug("Services", $"Error getting {categoryName} features: {ex.Message}");
         }
 
         return landmarks;
@@ -461,7 +462,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting cardinal directions: {ex.Message}");
+            Log.Debug("Services", $"Error getting cardinal directions: {ex.Message}");
         }
 
         return directions;
@@ -479,7 +480,7 @@ public class GeoNamesService
             const int MAX_RADIUS_KM = 300;
             if (radiusKm > MAX_RADIUS_KM)
             {
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Capping RegionalCities radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
+                Log.Debug("Services", $"Capping RegionalCities radius from {radiusKm}km to {MAX_RADIUS_KM}km (GeoNames API limit)");
                 radiusKm = MAX_RADIUS_KM;
             }
             var url = $"{BASE_URL}/findNearbyPlaceNameJSON?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lng={longitude.ToString(CultureInfo.InvariantCulture)}&radius={radiusKm}&maxRows=20&username={apiUsername}";
@@ -504,7 +505,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error finding feature in direction: {ex.Message}");
+            Log.Debug("Services", $"Error finding feature in direction: {ex.Message}");
         }
 
         return null;
@@ -532,7 +533,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error getting weather info: {ex.Message}");
+            Log.Debug("Services", $"Error getting weather info: {ex.Message}");
         }
 
         return weather;
@@ -622,14 +623,14 @@ public class GeoNamesService
             var geonamesStart = json.IndexOf("\"geonames\":[");
             if (geonamesStart == -1)
             {
-                System.Diagnostics.Debug.WriteLine("[GeoNamesService] No 'geonames' array found in response");
+                Log.Debug("Services", "No 'geonames' array found in response");
                 return results;
             }
 
             var arrayStart = json.IndexOf('[', geonamesStart);
             if (arrayStart == -1)
             {
-                System.Diagnostics.Debug.WriteLine("[GeoNamesService] No opening bracket found for geonames array");
+                Log.Debug("Services", "No opening bracket found for geonames array");
                 return results;
             }
 
@@ -637,15 +638,15 @@ public class GeoNamesService
             var arrayEnd = FindMatchingCloseBracket(json, arrayStart);
             if (arrayEnd == -1)
             {
-                System.Diagnostics.Debug.WriteLine("[GeoNamesService] No matching closing bracket found for geonames array");
+                Log.Debug("Services", "No matching closing bracket found for geonames array");
                 return results;
             }
 
             var itemsJson = json.Substring(arrayStart + 1, arrayEnd - arrayStart - 1);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Extracted items JSON length: {itemsJson.Length}");
+            Log.Debug("Services", $"Extracted items JSON length: {itemsJson.Length}");
 
             var items = itemsJson.Split(new[] { "},{" }, StringSplitOptions.RemoveEmptyEntries);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Split into {items.Length} JSON items");
+            Log.Debug("Services", $"Split into {items.Length} JSON items");
 
             foreach (var item in items)
             {
@@ -657,7 +658,7 @@ public class GeoNamesService
                 var lngStr = ExtractJsonValue(cleanItem, "lng");
                 var populationStr = ExtractJsonValue(cleanItem, "population");
 
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Parsing item: name='{name}', distance='{distanceStr}', lat='{latStr}', lng='{lngStr}'");
+                Log.Debug("Services", $"Parsing item: name='{name}', distance='{distanceStr}', lat='{latStr}', lng='{lngStr}'");
 
                 if (double.TryParse(distanceStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double distance) &&
                     double.TryParse(latStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double placeLat) &&
@@ -668,17 +669,17 @@ public class GeoNamesService
 
                     int.TryParse(populationStr, out int population);
                     results.Add((name, adminName1, distance, bearing, population));
-                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Successfully parsed place: {name}, calculated bearing: {bearing:F1}°");
+                    Log.Debug("Services", $"Successfully parsed place: {name}, calculated bearing: {bearing:F1}°");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Failed to parse distance or coordinates for: {name}");
+                    Log.Debug("Services", $"Failed to parse distance or coordinates for: {name}");
                 }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error parsing nearby places JSON: {ex.Message}");
+            Log.Debug("Services", $"Error parsing nearby places JSON: {ex.Message}");
         }
 
         return results;
@@ -694,14 +695,14 @@ public class GeoNamesService
             var geonamesStart = json.IndexOf("\"geonames\":[");
             if (geonamesStart == -1)
             {
-                System.Diagnostics.Debug.WriteLine("[GeoNamesService] No 'geonames' array found in features response");
+                Log.Debug("Services", "No 'geonames' array found in features response");
                 return results;
             }
 
             var arrayStart = json.IndexOf('[', geonamesStart);
             if (arrayStart == -1)
             {
-                System.Diagnostics.Debug.WriteLine("[GeoNamesService] No opening bracket found for geonames array");
+                Log.Debug("Services", "No opening bracket found for geonames array");
                 return results;
             }
 
@@ -709,15 +710,15 @@ public class GeoNamesService
             var arrayEnd = FindMatchingCloseBracket(json, arrayStart);
             if (arrayEnd == -1)
             {
-                System.Diagnostics.Debug.WriteLine("[GeoNamesService] No matching closing bracket found for geonames array");
+                Log.Debug("Services", "No matching closing bracket found for geonames array");
                 return results;
             }
 
             var itemsJson = json.Substring(arrayStart + 1, arrayEnd - arrayStart - 1);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Features JSON length: {itemsJson.Length}");
+            Log.Debug("Services", $"Features JSON length: {itemsJson.Length}");
 
             var items = itemsJson.Split(new[] { "},{" }, StringSplitOptions.RemoveEmptyEntries);
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Split into {items.Length} feature items");
+            Log.Debug("Services", $"Split into {items.Length} feature items");
 
             foreach (var item in items)
             {
@@ -729,7 +730,7 @@ public class GeoNamesService
                 var latStr = ExtractJsonValue(cleanItem, "lat");
                 var lngStr = ExtractJsonValue(cleanItem, "lng");
 
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Parsing feature: name='{name}', distance='{distanceStr}', lat='{latStr}', lng='{lngStr}'");
+                Log.Debug("Services", $"Parsing feature: name='{name}', distance='{distanceStr}', lat='{latStr}', lng='{lngStr}'");
 
                 if (double.TryParse(distanceStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double distance) &&
                     double.TryParse(latStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double featureLat) &&
@@ -739,17 +740,17 @@ public class GeoNamesService
                     double bearing = CalculateBearing(aircraftLat, aircraftLon, featureLat, featureLng);
 
                     results.Add((name, state, country, distance, bearing));
-                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Successfully parsed feature: {name}, calculated bearing: {bearing:F1}°");
+                    Log.Debug("Services", $"Successfully parsed feature: {name}, calculated bearing: {bearing:F1}°");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Failed to parse distance or coordinates for feature: {name}");
+                    Log.Debug("Services", $"Failed to parse distance or coordinates for feature: {name}");
                 }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error parsing nearby features JSON: {ex.Message}");
+            Log.Debug("Services", $"Error parsing nearby features JSON: {ex.Message}");
         }
 
         return results;
@@ -766,7 +767,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error parsing country subdivision JSON: {ex.Message}");
+            Log.Debug("Services", $"Error parsing country subdivision JSON: {ex.Message}");
             return ("", "", "");
         }
     }
@@ -779,7 +780,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error parsing timezone JSON: {ex.Message}");
+            Log.Debug("Services", $"Error parsing timezone JSON: {ex.Message}");
             return "";
         }
     }
@@ -800,7 +801,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error parsing ocean JSON: {ex.Message}");
+            Log.Debug("Services", $"Error parsing ocean JSON: {ex.Message}");
             return null;
         }
     }
@@ -834,7 +835,7 @@ public class GeoNamesService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Error parsing weather JSON: {ex.Message}");
+            Log.Debug("Services", $"Error parsing weather JSON: {ex.Message}");
             return (false, 0, "", "", "");
         }
     }
@@ -888,7 +889,7 @@ public class GeoNamesService
     {
         if (string.IsNullOrEmpty(response))
         {
-            System.Diagnostics.Debug.WriteLine("[GeoNamesService] Empty API response");
+            Log.Debug("Services", "Empty API response");
             return true;
         }
 
@@ -896,21 +897,21 @@ public class GeoNamesService
         if (response.Contains("\"status\"") && response.Contains("\"message\""))
         {
             var errorMessage = ExtractJsonValue(response, "message");
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API Error: {errorMessage}");
+            Log.Debug("Services", $"API Error: {errorMessage}");
             return true;
         }
 
         // Check for authentication errors
         if (response.Contains("user does not exist") || response.Contains("user account not enabled"))
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Authentication Error: {response}");
+            Log.Debug("Services", $"Authentication Error: {response}");
             return true;
         }
 
         // Check for rate limit errors
         if (response.Contains("daily limit") || response.Contains("hourly limit"))
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Rate Limit Error: {response}");
+            Log.Debug("Services", $"Rate Limit Error: {response}");
             return true;
         }
 

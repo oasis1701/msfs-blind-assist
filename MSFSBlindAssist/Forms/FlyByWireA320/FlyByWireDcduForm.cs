@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FlyByWireA320;
 
@@ -135,7 +136,7 @@ public class FlyByWireDcduForm : Form
             try { raw = await SimConnect.CoherentEvalClient.EvalAsync("DCDU", js); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DCDU] eval failed: {ex.Message}");
+                Log.Debug("Forms", $"eval failed: {ex.Message}");
                 // Keep the last good render; the next poll retries. But on the
                 // FIRST render there is nothing to keep — a silent blank window
                 // with no explanation is the worst outcome for a blind user.
@@ -245,7 +246,7 @@ public class FlyByWireDcduForm : Form
         // Soft keys — same scheme as the MCDU LSKs, honouring the shared
         // alternate-keys setting (FlyByWireMCDUForm precedent): standard =
         // Ctrl+1/2 left + Alt+1/2 right; alternate = F1/F2 left + F7/F8 right.
-        bool useAltKeys = Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
+        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
         if (useAltKeys)
         {
             if (!e.Control && !e.Alt && e.KeyCode is Keys.F1 or Keys.F2)
