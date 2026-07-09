@@ -6206,6 +6206,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private string _sdBoxContent = "";
     private int _sdRefreshSeq;   // "latest request wins" guard for SD-page refresh (mirrors A380)
 
+    // Supersede tokens for deferred WRITE-then-WRITE ordering delays (see HandleUIVariableSet /
+    // SetFCUAltitudeValue). All bumps happen on entry to the UI-thread-only handler that queues
+    // the deferred continuation, so plain int increment is safe (no concurrent writers).
+    private readonly int[] _comActiveSetSeq = new int[4]; // index 1..3 = COM1..COM3 (index 0 unused)
+    private int _fcuAltSetSeq;
+
     // ---- ND status-box cache ---------------------------------------------------
     // The TO-waypoint ident is packed 6-bit-per-char (8 chars in word 0 — enough for
     // any real ident; word 1 cached for completeness). Cached as it flows through
@@ -7694,7 +7700,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 // same 100 ms gap, same swap write, just off the UI thread. "handled" (return
                 // true below) doesn't depend on the swap having landed yet, so it's safe to
                 // return immediately; the COM_*_FREQUENCY monitor announces the eventual result.
-                DeferReadback(() => simConnect.SendEvent($"COM{idx}_RADIO_SWAP", 0), 100);
+                //
+                // Supersede token: COM{idx}_RADIO_SWAP is a TOGGLE, not an absolute "set active"
+                // event, so two ACTIVE-COM sets on the same radio within the 100ms window must
+                // NOT both fire their deferred swap — the second swap would toggle the first
+                // swap's result right back to the original active frequency. Bump the per-radio
+                // token now (UI-thread entry only, so a plain increment is race-free) and have
+                // the deferred continuation bail if a newer set has since bumped it again.
+                int comIdx = idx[0] - '0'; // idx is always "1", "2", or "3"
+                int token = ++_comActiveSetSeq[comIdx];
+                DeferReadback(() =>
+                {
+                    if (token != _comActiveSetSeq[comIdx]) return; // superseded by a later ACTIVE-COM set on this radio
+                    simConnect.SendEvent($"COM{idx}_RADIO_SWAP", 0);
+                }, 100);
             }
             return true;
         }
@@ -8346,10 +8365,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         uint rounded = (uint)(Math.Round(feet / 100) * 100);
+        // Supersede token: both the deferred (non-1000-multiple) branch and the synchronous
+        // (1000-multiple) branch bump this on entry, so whichever call is LATEST always wins
+        // regardless of which branch either call takes. Without this, an immediate 1000-multiple
+        // call B (synchronous) landing WHILE an earlier non-1000-multiple call A's deferred write
+        // is still pending would be overridden a beat later by A's stale continuation firing —
+        // the earlier input would win over the later one.
+        int token = ++_fcuAltSetSeq;
         // The actual ALT_SET write + readback announce — same action either way, just
         // possibly deferred (see below) when the increment write needs to land first.
         void SetAltitudeAndAnnounce()
         {
+            if (token != _fcuAltSetSeq) return; // superseded by a later SetFCUAltitudeValue call
             s.SendEvent("A32NX.FCU_ALT_SET", rounded);
             // Clean Fenix-style readback: value set + cached managed dot, bare number.
             string altStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
