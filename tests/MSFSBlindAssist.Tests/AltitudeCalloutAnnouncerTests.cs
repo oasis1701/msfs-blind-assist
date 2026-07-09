@@ -6,12 +6,14 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// Characterization tests for the 1,000-ft altitude-callout state machine (#130 fix:
-/// the callout fires AT the boundary — the band change IS the crossing — and the 80-ft
-/// hysteresis is ONLY a same-boundary hover debounce, never a delay on the first
-/// crossing; the announced value is the thousand CROSSED, same number climbing or
-/// descending). Uses the announce-sink constructor; the settings gate reads the
-/// process-global SettingsManager, so this class joins the shared no-parallelism
-/// collection and forces the flag around each test.
+/// the callout fires AT the boundary — the band change IS the crossing — and the
+/// announced value is the thousand CROSSED, same number climbing or descending).
+/// Re-crossing the LAST-announced thousand is ALWAYS silent (level-off flutter,
+/// turbulence at a round-thousand cruise altitude, an immediate reversal — re-announcing
+/// it is noise); it becomes announceable again only after a DIFFERENT thousand announces
+/// or a ground/teleport reset. Uses the announce-sink constructor; the settings gate
+/// reads the process-global SettingsManager, so this class joins the shared
+/// no-parallelism collection and forces the flag around each test.
 /// </summary>
 [Collection("SettingsManagerGlobalState")]
 public class AltitudeCalloutAnnouncerTests : IDisposable
@@ -73,12 +75,25 @@ public class AltitudeCalloutAnnouncerTests : IDisposable
     }
 
     [Fact]
-    public void RecrossingAnnouncedThousand_OutsideHysteresis_Announces()
+    public void RecrossingLastAnnouncedThousand_IsAlwaysSilent()
     {
-        // Climb through 36,000, keep climbing clear of the 80-ft window, then descend
-        // back through it from well above: a real re-crossing, not hover flutter.
-        Feed(35_900, 36_010, 36_500, 35_900);
-        Assert.Equal(new[] { "36000", "36000" }, spoken);
+        // Climb through 36,000, keep climbing, then descend back through it: the
+        // re-cross of the thousand just announced stays SILENT no matter how far the
+        // samples land from the boundary (re-announcing it is noise — user ruling).
+        // The next boundary down (35,000) is a different thousand and announces.
+        Feed(35_900, 36_010, 36_500, 35_900, 34_990);
+        Assert.Equal(new[] { "36000", "35000" }, spoken);
+    }
+
+    [Fact]
+    public void TurbulentCruiseOnAnnouncedThousand_StaysSilent()
+    {
+        // Turbulence at a round-thousand cruise altitude: excursions can step well
+        // beyond 80 ft between samples in one frame gap — every re-cross of the
+        // announced thousand must still stay silent (distance from the boundary is
+        // irrelevant; only announcing a DIFFERENT thousand re-arms it).
+        Feed(35_900, 36_010, 36_200, 35_850, 36_150, 35_880);
+        Assert.Equal(new[] { "36000" }, spoken);
     }
 
     [Fact]
@@ -91,6 +106,19 @@ public class AltitudeCalloutAnnouncerTests : IDisposable
         Assert.Empty(spoken);
         Feed(2_050);
         Assert.Equal(new[] { "2000" }, spoken);
+    }
+
+    [Fact]
+    public void GroundReset_ReArmsTheLastAnnouncedThousand()
+    {
+        // Descend through 2,000 on approach ("2000"), land, then take off again:
+        // climbing back through 2,000 is a NEW flight's crossing and must announce —
+        // the on-ground reset clears the announced-thousand latch, not just the band.
+        Feed(2_150, 1_990);
+        Assert.Equal(new[] { "2000" }, spoken);
+        sut.ProcessAltitude(1_200, onGround: true);
+        Feed(1_600, 2_050);
+        Assert.Equal(new[] { "2000", "2000" }, spoken);
     }
 
     [Fact]
