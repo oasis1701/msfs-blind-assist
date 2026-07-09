@@ -497,6 +497,31 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double INCURSION_WARN_DISTANCE_M = 40.0;
     private const double INCURSION_WARNING_COOLDOWN_SEC = 10.0;
 
+    // CheckRunwayIncursion runs at ~30 Hz (Taxiing AND Arrived states) inside
+    // _stateLock, so both of its per-frame allocations are cached here rather
+    // than rebuilt every frame:
+    //
+    // (a) Per-graph HS/ILS-HS node list. TaxiGraph is immutable once Build()
+    // returns — ResolveNode/UpgradeNodeType (the only writers of Nodes/Node.Type)
+    // are private and called only from within the static Build() method; no
+    // public TaxiGraph method mutates Nodes afterward (verified by inspection,
+    // 2026-07). So it's safe to rebuild only when the _graph REFERENCE changes
+    // (every _graph assignment site — LoadRoute's two branches, StopGuidance —
+    // installs a brand-new TaxiGraph or null, never mutates the existing one).
+    private TaxiGraph? _holdShortNodesGraph;
+    private List<TaxiNode>? _cachedHoldShortNodes;
+
+    // (b) Reference-keyed on-route HS node-ID set, mirroring the RoutePoints()
+    // idiom above: keyed on (_route reference, _currentSegmentIndex) since the
+    // set depends on the remaining segments from _currentSegmentIndex onward.
+    // _route.Segments is never mutated in place after being assigned to _route
+    // (every route mutation — TruncateToHoldShort, ApplyUserRunwayHoldShorts —
+    // runs on the local route/newRoute BEFORE it's assigned to the field), so a
+    // reference-equality check on _route is sufficient, same as RoutePoints().
+    private TaxiRoute? _onRouteHsSourceRoute;
+    private int _onRouteHsSourceSegmentIndex = -1;
+    private HashSet<int> _cachedOnRouteHsNodes = new();
+
     // Lineup state (active during LiningUp phase — for runways AND gates)
     private double _lineupTargetLat, _lineupTargetLon;
     private double _lineupHeadingTrue, _lineupHeadingMag;
@@ -671,10 +696,11 @@ public partial class TaxiGuidanceManager : IDisposable
     private int    _backtrackConnectionNodeId;  // 0 = no graph node found within range
     private bool   _backtrackApproachAnnounced; // "taxiway ahead" callout fired
 
-    // --- DIAGNOSTIC LOGGING (debug/landing-rollout-instrumentation branch) ---
-    // Captures rollout-phase state to landing_exit.log so we can see why
-    // UpdateLandingRollout silently fails to fire approach callouts at some
-    // airports. Removed after the root cause is identified.
+    // --- DIAGNOSTIC LOGGING (permanent rollout diagnostics) ---
+    // Captures rollout-phase state to landing_exit.log for troubleshooting
+    // UpdateLandingRollout and approach-callout firing. Rate-limited
+    // (one snapshot per few seconds); kept as permanent diagnostic tooling
+    // (owner decision 2026-07).
     private bool _rolloutDiagFirstCallDone;
     private DateTime _rolloutDiagLastPeriodic = DateTime.MinValue;
     // Below this GS the aircraft is at taxi speed — graduate to normal taxi
@@ -920,12 +946,19 @@ public partial class TaxiGuidanceManager : IDisposable
 
     /// <summary>
     /// Invalidates the "Where Am I" graph cache. Call on aircraft change or when the
-    /// user explicitly wants a fresh graph (rare).
+    /// user explicitly wants a fresh graph (rare). Takes _stateLock to serialize against
+    /// its twin OnAirportDataUpdated and the locked DescribeCurrentLocation/
+    /// GetStatusAnnouncement readers — both touch the same _whereAmICachedGraph/
+    /// _whereAmICachedIcao pair, so an unlocked write here could race a locked read/build
+    /// elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa).
     /// </summary>
     public void ClearWhereAmICache()
     {
-        _whereAmICachedGraph = null;
-        _whereAmICachedIcao = "";
+        lock (_stateLock)
+        {
+            _whereAmICachedGraph = null;
+            _whereAmICachedIcao = "";
+        }
     }
 
     /// <summary>
@@ -954,6 +987,8 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Returns true if the taxi is actively lining up to a runway (LiningUp state, runway target
     /// available), AND the aircraft has arrived at the runway (_hasLineupTarget set with valid
     /// coordinates). Used by takeoff assist to seed its reference without re-teleporting.
+    /// Takes _stateLock like every other accessor of _state/_hasLineupTarget/the lineup fields —
+    /// this is a public cross-thread read and must not observe a torn snapshot mid-update.
     /// </summary>
     public bool TryGetRunwayLineupReference(
         out double thresholdLat, out double thresholdLon,
@@ -964,25 +999,28 @@ public partial class TaxiGuidanceManager : IDisposable
         headingTrue = 0; headingMag = 0;
         runwayId = ""; airportIcao = "";
 
-        // Accept both LiningUp (actively aligning) and Arrived (lined up, brake set)
-        if (!_hasLineupTarget) return false;
-        if (!_isRunwayLineup) return false;
-        if (_state != TaxiGuidanceState.LiningUp && _state != TaxiGuidanceState.Arrived) return false;
+        lock (_stateLock)
+        {
+            // Accept both LiningUp (actively aligning) and Arrived (lined up, brake set)
+            if (!_hasLineupTarget) return false;
+            if (!_isRunwayLineup) return false;
+            if (_state != TaxiGuidanceState.LiningUp && _state != TaxiGuidanceState.Arrived) return false;
 
-        thresholdLat = _lineupTargetLat;
-        thresholdLon = _lineupTargetLon;
-        headingTrue = _lineupHeadingTrue;
-        headingMag = _lineupHeadingMag;
-        airportIcao = _icao;
+            thresholdLat = _lineupTargetLat;
+            thresholdLon = _lineupTargetLon;
+            headingTrue = _lineupHeadingTrue;
+            headingMag = _lineupHeadingMag;
+            airportIcao = _icao;
 
-        // Destination name is typically "Runway 27L" — strip the "Runway " prefix if present.
-        string dn = _destinationName ?? "";
-        if (dn.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
-            runwayId = dn.Substring(7).Trim();
-        else
-            runwayId = dn.Trim();
+            // Destination name is typically "Runway 27L" — strip the "Runway " prefix if present.
+            string dn = _destinationName ?? "";
+            if (dn.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
+                runwayId = dn.Substring(7).Trim();
+            else
+                runwayId = dn.Trim();
 
-        return true;
+            return true;
+        }
     }
 
     /// <summary>
@@ -1189,13 +1227,29 @@ public partial class TaxiGuidanceManager : IDisposable
         // continuous variable) so callouts work in every phase — takeoff roll, landing
         // rollout, taxi — not just while taxi guidance is active. Do not re-add it here.
 
+        // Snapshot settings ONCE per frame (SV-5): SettingsManager.Current takes a
+        // static lock on every access, and this frame runs entirely inside
+        // _stateLock — two separate Current reads meant two lock acquisitions per
+        // 30 Hz sample, so an options-dialog Save (which briefly holds that lock to
+        // serialize/publish) could stall a position frame behind it. UserSettings is
+        // a mutable reference the settings dialog edits IN PLACE (SettingsForm.OnOk
+        // mutates the same `Current` object then calls Save(), which just republishes
+        // the identical reference) — so this per-call snapshot observes the same
+        // live-applied values a repeated Current read would; live-apply keeps working
+        // frame-to-frame. Only the separate SettingsManager.Reset() path swaps in a
+        // brand-new instance, and even then only the one frame whose snapshot was
+        // taken just before the reset would use the pre-reset object — equal or
+        // better than the old behavior, which could tear mid-frame between the two
+        // reads if a save landed between them.
+        var settings = SettingsManager.Current;
+
         // Refresh tone-direction settings once per frame, before any branch
         // (taxiing, lining-up, or runway-aligned hold) that can drive the
         // tone. This makes runtime toggles in Taxi Guidance Options take
         // effect on the very next sample without restarting taxi guidance.
         // Cheap — two property assignments per frame.
-        _steeringTone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
-        _steeringTone.HardPan   = SettingsManager.Current.TaxiGuidanceHardPanTone;
+        _steeringTone.InvertPan = settings.TaxiGuidanceInvertSteeringTone;
+        _steeringTone.HardPan   = settings.TaxiGuidanceHardPanTone;
 
         // Convert magnetic heading to true heading for bearing comparison
         // True heading = magnetic heading + magnetic variation (east positive)
@@ -1837,7 +1891,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // Also suspend for a short grace window AFTER completing a turn — the
         // aircraft is still settling onto the new centerline while we've already
         // advanced _currentSegmentIndex. Uses segment-advance timestamp below.
-        if ((DateTime.Now - _lastSegmentAdvanceTime).TotalSeconds < POST_TURN_OFFROUTE_GRACE_SEC)
+        if ((DateTime.UtcNow - _lastSegmentAdvanceTime).TotalSeconds < POST_TURN_OFFROUTE_GRACE_SEC)
             nearTurn = true;
 
         // Route-joined latch (see field). Until the aircraft has reached the route
@@ -1858,9 +1912,9 @@ public partial class TaxiGuidanceManager : IDisposable
         if (offRouteNow && _lastGroundSpeedKts >= OFF_ROUTE_MIN_GS_KTS)
         {
             if (_offRouteSince == DateTime.MinValue)
-                _offRouteSince = DateTime.Now;
+                _offRouteSince = DateTime.UtcNow;
 
-            if ((DateTime.Now - _offRouteSince).TotalSeconds >= OFF_ROUTE_PERSISTENCE_SEC)
+            if ((DateTime.UtcNow - _offRouteSince).TotalSeconds >= OFF_ROUTE_PERSISTENCE_SEC)
             {
                 _offRouteSince = DateTime.MinValue;  // reset so next off-route starts fresh
                 TryRecalculateRoute(lat, lon, headingTrue);
@@ -1989,7 +2043,7 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_route == null) return;
         if (_lastGroundSpeedKts < 5) return;  // not taxiing
 
-        if ((DateTime.Now - _lastSpeedWarningTime).TotalSeconds < SPEED_WARNING_COOLDOWN_SEC)
+        if ((DateTime.UtcNow - _lastSpeedWarningTime).TotalSeconds < SPEED_WARNING_COOLDOWN_SEC)
             return;
 
         // Speed-scaled lookahead — at 20 kt (≈10 m/s), 6 s = 60 m of lead.
@@ -2014,17 +2068,17 @@ public partial class TaxiGuidanceManager : IDisposable
         if (sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_SHARP_TURN_KTS)
         {
             _announcer.AnnounceImmediate("Slow for sharp turn.");
-            _lastSpeedWarningTime = DateTime.Now;
+            _lastSpeedWarningTime = DateTime.UtcNow;
         }
         else if (normalTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_TURN_KTS)
         {
             _announcer.AnnounceImmediate("Slow for turn.");
-            _lastSpeedWarningTime = DateTime.Now;
+            _lastSpeedWarningTime = DateTime.UtcNow;
         }
         else if (!normalTurnComing && !sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_STRAIGHT_KTS)
         {
             _announcer.AnnounceImmediate($"Taxi speed, {(int)_lastGroundSpeedKts} knots.");
-            _lastSpeedWarningTime = DateTime.Now;
+            _lastSpeedWarningTime = DateTime.UtcNow;
         }
     }
 
@@ -2051,7 +2105,7 @@ public partial class TaxiGuidanceManager : IDisposable
         }
 
         if (_lastIncursionWarnedNodeId != -1 &&
-            (DateTime.Now - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
+            (DateTime.UtcNow - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
             return;
 
         // Build the set of HS node-IDs that lie on the remaining planned route
@@ -2059,27 +2113,48 @@ public partial class TaxiGuidanceManager : IDisposable
         // When _route is null (e.g. after landing-exit arrival, before the pilot
         // opens the taxi planner) the set stays empty and every approaching
         // hold-short node triggers the "off route" warning — exactly what we want.
-        var onRouteHsNodes = new HashSet<int>();
-        if (_route != null)
+        // Cached: rebuilt only when _route's reference or _currentSegmentIndex
+        // changes since the last frame (see field comments above).
+        if (!ReferenceEquals(_onRouteHsSourceRoute, _route) ||
+            _onRouteHsSourceSegmentIndex != _currentSegmentIndex)
         {
-            for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
+            var set = new HashSet<int>();
+            if (_route != null)
             {
-                var seg = _route.Segments[i];
-                if (seg.ToNode != null &&
-                    (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+                for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
                 {
-                    onRouteHsNodes.Add(seg.ToNode.NodeId);
+                    var seg = _route.Segments[i];
+                    if (seg.ToNode != null &&
+                        (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+                    {
+                        set.Add(seg.ToNode.NodeId);
+                    }
                 }
             }
+            _cachedOnRouteHsNodes = set;
+            _onRouteHsSourceRoute = _route;
+            _onRouteHsSourceSegmentIndex = _currentSegmentIndex;
+        }
+        var onRouteHsNodes = _cachedOnRouteHsNodes;
+
+        // Per-graph HS/ILS-HS candidate list, cached (see field comments above).
+        if (!ReferenceEquals(_holdShortNodesGraph, _graph))
+        {
+            var list = new List<TaxiNode>();
+            foreach (var node in _graph.Nodes.Values)
+            {
+                if (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort)
+                    list.Add(node);
+            }
+            _cachedHoldShortNodes = list;
+            _holdShortNodesGraph = _graph;
         }
 
-        // Scan for nearby HS nodes
+        // Scan only the cached HS/ILS-HS candidates (not every graph node)
         TaxiNode? nearestHs = null;
         double bestDist = INCURSION_WARN_DISTANCE_M;
-        foreach (var node in _graph.Nodes.Values)
+        foreach (var node in _cachedHoldShortNodes!)
         {
-            if (node.Type != TaxiNodeType.HoldShort && node.Type != TaxiNodeType.ILSHoldShort)
-                continue;
             if (node.NodeId == scheduledHsNodeId)
                 continue; // countdown owns this one
 
@@ -2107,7 +2182,7 @@ public partial class TaxiGuidanceManager : IDisposable
         }
 
         _lastIncursionWarnedNodeId = nearestHs.NodeId;
-        _lastIncursionWarningTime = DateTime.Now;
+        _lastIncursionWarningTime = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -2483,12 +2558,12 @@ public partial class TaxiGuidanceManager : IDisposable
         StateChanged?.Invoke(this, newState);
     }
 
-    // --- DIAGNOSTIC LOGGING HELPER (debug/landing-rollout-instrumentation branch) ---
+    // --- DIAGNOSTIC LOGGING HELPER (permanent rollout diagnostics) ---
     // Writes to landing_exit.log alongside LandingExitPlanner.DiagLog so the
     // rollout-phase per-frame loop is interleaved with the planner's touchdown
-    // events. Cheap (one enqueue per ~few seconds during rollout, now serialized
-    // through the shared LogWriter thread alongside every other landing_exit.log
-    // writer); entirely removed once we've identified the root cause of the RJAA bug.
+    // events. Rate-limited (one enqueue per few seconds during rollout),
+    // serialized through the shared LogWriter thread. Kept as permanent
+    // diagnostic tooling (owner decision 2026-07).
     // NOTE: diag lines log raw FEET on purpose (unlike user-facing callouts, which
     // go through DistanceFormatter). The internal rollout math and its constants
     // are feet-native, and logs must be comparable across users regardless of the
