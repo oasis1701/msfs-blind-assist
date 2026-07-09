@@ -60,7 +60,7 @@ radar data without also being spoken at.
 
 **Interfaces:**
 - Consumes: `MSFSBlindAssist.Settings.UserSettings` (`ActiveSkyEnabled`, `WeatherAutoAnnounceEnabled` — both `bool`), and the existing `ActiveSkyWeatherMonitor.Enabled { get; set; }` whose setter already does `if (value) Start(); else Stop();`.
-- Produces: `public static bool ActiveSkyWeatherMonitor.ShouldRun(UserSettings settings)`. Task 2 reproduces this predicate in the UI layer against `CheckBox.Checked` values (it cannot call it — the panel has no `UserSettings` at CheckedChanged time).
+- Produces: `public static bool ActiveSkyWeatherMonitor.ShouldRun(UserSettings settings)`. Task 2 calls it from `WeatherPanel` with a throwaway `UserSettings` built from the live checkbox state — so it must be `public`, not `internal`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -272,8 +272,8 @@ real governing condition.
 
 **Interfaces:**
 - Consumes: `UserSettings.ActiveSkyEnabled`, `UserSettings.WeatherAutoAnnounceEnabled`. The existing private fields `_activeSkyEnabled`, `_weatherAutoAnnounce`, `_weatherIntervalLabel`, `_weatherIntervalCombo` (all already declared).
+- Consumes (cont.): `ActiveSkyWeatherMonitor.ShouldRun(UserSettings)` from Task 1.
 - Produces: nothing consumed by later tasks.
-- Note: `WeatherPanel` cannot call `ActiveSkyWeatherMonitor.ShouldRun` — at `CheckedChanged` time there is no `UserSettings`, only live `CheckBox.Checked` values. The predicate is restated, and the tests below pin that the two agree.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -421,16 +421,32 @@ with:
         UpdateActiveSkyDependentVisibility();
     }
 
-    /// <summary>Mirrors ActiveSkyWeatherMonitor.ShouldRun against the live checkbox
-    /// state — the panel has no UserSettings to hand at CheckedChanged time. The two
-    /// are pinned in agreement by WeatherPanelTests + ActiveSkyWeatherMonitorGateTests.</summary>
+    /// <summary>Defers to ActiveSkyWeatherMonitor.ShouldRun — the single source of truth
+    /// for whether the monitor (and therefore its interval) is live. The panel has no
+    /// UserSettings at CheckedChanged time, so it builds a throwaway one from the live
+    /// checkbox state; one allocation per toggle is free at human interaction rates, and
+    /// it means the rule can never drift between the settings UI and the monitor.</summary>
     private void UpdateActiveSkyDependentVisibility()
     {
-        bool on = _activeSkyEnabled.Checked && _weatherAutoAnnounce.Checked;
+        bool on = Services.ActiveSkyWeatherMonitor.ShouldRun(new UserSettings
+        {
+            ActiveSkyEnabled = _activeSkyEnabled.Checked,
+            WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked
+        });
         _weatherIntervalLabel.Visible = on;
         _weatherIntervalCombo.Visible = on;
     }
 ```
+
+`WeatherPanel.cs` is in namespace `MSFSBlindAssist.Forms.Settings` and already has
+`using MSFSBlindAssist.Settings;` at the top, so `UserSettings` resolves unqualified.
+`Services.ActiveSkyWeatherMonitor` resolves via the root namespace — if the compiler
+disagrees, fully qualify as `MSFSBlindAssist.Services.ActiveSkyWeatherMonitor`. Do not
+add a `using` that shadows `Forms.Settings`.
+
+**Do NOT restate the predicate inline as `_activeSkyEnabled.Checked &&
+_weatherAutoAnnounce.Checked`.** That was the original draft; it was rejected because it
+encodes one rule in two places.
 
 **Ordering hazard:** `InitializeComponent` builds `activeSkyGroup` before `announceGroup`,
 so `_weatherAutoAnnounce` is null until `BuildAnnouncementsGroup()` has run. Both
