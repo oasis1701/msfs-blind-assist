@@ -44,13 +44,56 @@
     return false;
   };
 
-  A.isVisible = function (n) {
+  // Per-scrape memoization generation counter, bumped once at the top of
+  // A.enumerate(). A.isVisible/A.classify below are memoizing wrappers around
+  // the real (expensive) computation in A._isVisibleRaw/A._classifyRaw; a
+  // node's cached __msfsba* expandos are only trusted when its __msfsbaGen
+  // stamp equals the CURRENT A._gen — so nothing survives across scrapes (the
+  // page mutates between the 600ms polls). This turns enumerate()'s O(n^2)
+  // pattern (containsInteractive re-classifying whole subtrees, pass 2
+  // re-running classify per element) into one real computation per node per
+  // scrape plus cheap O(1) cache hits for every repeat visit.
+  //
+  // isVisible and classify share ONE __msfsbaGen stamp per node but are each
+  // filled by an INDEPENDENT call site, and either one can be the FIRST to
+  // touch a given node in a new generation (both call orders occur in this
+  // file: isVisible-then-classify in the scrape loops, but classify alone
+  // from A.setValue). So each wrapper, on seeing a stale gen, resets BOTH
+  // cached fields — not just its own — before recomputing. Without that, the
+  // wrapper that runs SECOND in a new generation would see a fresh
+  // __msfsbaGen (just stamped by the first wrapper) paired with the OTHER
+  // field's STALE value from the previous generation, and wrongly treat it as
+  // a same-gen cache hit.
+  //
+  // Between scrapes, A.setValue/A.clickElement (invoked directly by the C#
+  // side, not through enumerate) also call A.classify/A.isVisible; A._gen
+  // hasn't advanced since the last scrape, so those calls reuse whatever was
+  // cached during that scrape. That's correct, not a leak: setValue/
+  // clickElement only ever act on a data-fbw-efb-idx the LAST scrape itself
+  // assigned, so "reuse the last scrape's classification of this control" is
+  // exactly the intended semantics. The invariant that actually matters —
+  // never returning a value computed before the CURRENT scrape started once a
+  // new scrape begins — is enforced purely by the gen-mismatch check above.
+  A._gen = 0;
+
+  A._isVisibleRaw = function (n) {
     try {
       var st = window.getComputedStyle(n);
       if (st.display === "none" || st.visibility === "hidden") return false;
       var r = n.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
+    // Fail-CLOSED: the flyPad DOM is HTML/React (divs/spans/inputs). Generic
+    // sweeps and helpers (e.g. A.refuelIconStarted) do pass inline icon
+    // <svg> elements directly to isVisible, but the SVGs this page contains
+    // are decorative icon glyphs with no readable text — so fail-closed
+    // loses nothing even when it lands on one of them.
     } catch (e) { return false; }
+  };
+
+  A.isVisible = function (n) {
+    if (n.__msfsbaGen !== A._gen) { n.__msfsbaGen = A._gen; n.__msfsbaKind = undefined; n.__msfsbaVis = undefined; }
+    if (n.__msfsbaVis === undefined) n.__msfsbaVis = A._isVisibleRaw(n);
+    return n.__msfsbaVis;
   };
 
   // The React flyPad mounts under MSFS_REACT_MOUNT (#EFB is an empty shell).
@@ -159,7 +202,7 @@
 
   // Returns one of: link, input, slider, checkbox, select, heading, toggle,
   // tab, button, or null (not an element we surface as its own line).
-  A.classify = function (n) {
+  A._classifyRaw = function (n) {
     var c = lower(A.cls(n));
     var role = lower(n.getAttribute && n.getAttribute("role") || "");
     var tag = n.tagName.toLowerCase();
@@ -239,6 +282,16 @@
     // last so the specific branches above win first.
     if (A.isStatusBarIcon(n)) return "button";
     return null;
+  };
+
+  // Memoizing wrapper — see the A._gen comment above A.isVisible for the
+  // shared-stamp/gen-reset design. classify's result can legitimately be
+  // `null` (not-a-control), so the cache-hit test is `!== undefined`, not
+  // truthiness.
+  A.classify = function (n) {
+    if (n.__msfsbaGen !== A._gen) { n.__msfsbaGen = A._gen; n.__msfsbaVis = undefined; n.__msfsbaKind = undefined; }
+    if (n.__msfsbaKind === undefined) n.__msfsbaKind = A._classifyRaw(n);
+    return n.__msfsbaKind;
   };
 
   // The C# side maps "kind" to a native control. We collapse the rich classify
@@ -626,7 +679,12 @@
   // when n belongs to a SelectInput — isOpt=true for nodes inside the OPEN
   // options panel (the .absolute.z-10 child; the chevron svg is .absolute too,
   // so the z-10 token is required), isOpt=false for the value cell / chevron.
+  // Gated on A._pageHasSelectInput (set once per scrape, top of A.enumerate):
+  // a cheap page-level presence check so a page with NO SelectInput at all
+  // (most pages) skips every per-leaf 8-ancestor walk entirely, rather than
+  // walking up from every text leaf just to find nothing.
   A.selectInputContext = function (n) {
+    if (!A._pageHasSelectInput) return null;
     try {
       var cur = n, hops = 0, panel = null;
       while (cur && cur.nodeType === 1 && hops < 8) {
@@ -1885,6 +1943,20 @@
   };
 
   A.enumerate = function (root) {
+    // New scrape generation: invalidates every per-node isVisible/classify
+    // memo left over from the previous scrape (a node stamped with the old
+    // gen is recomputed the next time either wrapper touches it). See the
+    // A._gen comment above A.isVisible for the full design.
+    A._gen++;
+    // One-shot page-level gate for A.selectInputContext's per-leaf 8-ancestor
+    // walk (see that function). Deliberately an OVER-approximation (superset)
+    // of real SelectInput roots — matching the class-attribute substring is
+    // enough to decide "don't bother walking", and a false positive here just
+    // means the (still-correct) per-leaf walk runs and finds nothing; a false
+    // negative would wrongly hide real dropdowns, so this must never be made
+    // narrower than A.isSelectInputRoot's own requirements.
+    A._pageHasSelectInput = !!root.querySelector('[class*="border-theme-accent"]');
+
     var stale = root.querySelectorAll("[data-fbw-efb-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbw-efb-idx");
     var staleR = root.querySelectorAll("[data-fbw-ground-region]");
@@ -2374,6 +2446,7 @@
   A.setValue = function (index, value) {
     var node = A.findByIdx(index);
     if (!node) return "missing";
+    if (A.disabledFor(node)) return "disabled";
     var kind = A.classify(node);
     value = (value === null || value === undefined) ? "" : String(value);
 
