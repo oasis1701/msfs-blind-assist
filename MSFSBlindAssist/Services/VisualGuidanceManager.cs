@@ -98,7 +98,7 @@ public class VisualGuidanceManager : IDisposable
     // P pitch, S speed, etc.) while VG is active, the per-second bank-guidance and
     // centerline-deviation callouts — both AnnounceImmediate — would cut the readout
     // off mid-sentence. NotifyManualQuery() sets this timestamp; the two chatty
-    // callouts skip while DateTime.Now is before it. Skipped callouts lose nothing:
+    // callouts skip while DateTime.UtcNow is before it. Skipped callouts lose nothing:
     // both always reflect CURRENT state, so the next un-suppressed one carries fresh
     // data. One-shot announcements (phase changes, distance callouts) are NOT
     // suppressed — they're rare and important enough to let through.
@@ -258,11 +258,11 @@ public class VisualGuidanceManager : IDisposable
     public void NotifyManualQuery()
     {
         if (!isActive) return;
-        routineAnnouncementsSuppressedUntil = DateTime.Now.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
+        routineAnnouncementsSuppressedUntil = DateTime.UtcNow.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
     }
 
     /// <summary>True while a manual-query grace window is open (see <see cref="NotifyManualQuery"/>).</summary>
-    private bool RoutineAnnouncementsSuppressed => DateTime.Now < routineAnnouncementsSuppressedUntil;
+    private bool RoutineAnnouncementsSuppressed => DateTime.UtcNow < routineAnnouncementsSuppressedUntil;
 
     /// <summary>
     /// Initializes visual guidance with runway, audio preferences, and aircraft-specific tunables.
@@ -831,7 +831,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Calculate cross-track rate (derivative term) for damping using multi-sample averaging
             // Add current sample to history buffer
-            crossTrackHistory.Enqueue((signedCrossTrackNM, DateTime.Now));
+            crossTrackHistory.Enqueue((signedCrossTrackNM, DateTime.UtcNow));
 
             // Maintain history size limit (rolling window)
             while (crossTrackHistory.Count > CROSS_TRACK_HISTORY_SIZE)
@@ -1188,7 +1188,7 @@ public class VisualGuidanceManager : IDisposable
             double fpmErrorRate = 0.0;
             if (previousGlideslopeDeviation.HasValue && previousGlideslopeTimestamp.HasValue)
             {
-                double deltaTime = (DateTime.Now - previousGlideslopeTimestamp.Value).TotalSeconds;
+                double deltaTime = (DateTime.UtcNow - previousGlideslopeTimestamp.Value).TotalSeconds;
                 if (deltaTime > 0.01)
                 {
                     // Using previousGlideslopeDeviation to store previous FPM error
@@ -1198,7 +1198,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Update tracking state for next iteration
             previousGlideslopeDeviation = fpmError;  // Reusing field for FPM error history
-            previousGlideslopeTimestamp = DateTime.Now;
+            previousGlideslopeTimestamp = DateTime.UtcNow;
 
             // Calculate nominal pitch for descent.
             // Prefer LIVE angle of attack (SimConnect INCIDENCE ALPHA) over the static profile
@@ -1316,13 +1316,13 @@ public class VisualGuidanceManager : IDisposable
         if (currentlyBehind != wasBehindLastCheck)
         {
             // State is trying to change - check if enough time has passed
-            if ((DateTime.Now - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
+            if ((DateTime.UtcNow - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
             {
                 // Not enough time passed, return previous state (ignore this change)
                 return wasBehindLastCheck;
             }
             // Enough time passed, allow state change
-            lastBehindStateChange = DateTime.Now;
+            lastBehindStateChange = DateTime.UtcNow;
         }
 
         // Update tracking and return current state
@@ -1363,7 +1363,7 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private void AnnouncePhaseChange(string message)
     {
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         if ((now - lastPhaseAnnouncement).TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
         {
             announcer.Announce(message);
@@ -1378,7 +1378,7 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null) return;
 
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         if ((now - lastDistanceAnnouncement).TotalMilliseconds < ANNOUNCEMENT_INTERVAL_MS)
             return;
 
@@ -1407,7 +1407,7 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null || currentPhase != GuidancePhase.Extending) return;
 
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         if ((now - lastExtendingProgressAnnouncement).TotalMilliseconds < EXTENDING_PROGRESS_INTERVAL_MS)
             return;
 

@@ -250,6 +250,21 @@ public sealed partial class GsxService : IDisposable
     private string? _tooltipFilePath;
     private string? _settingsFilePath;
     private string? _statusFilePath;
+    // Change-gate memo for the 1 Hz tooltip poll's two file reads
+    // (status.html + the legacy tooltip-file fallback): mtime+length from
+    // the previous tick, plus the parse result that produced. See
+    // TryReadStatusText / ReadTooltipFallbackText for the equivalence
+    // argument — an unchanged file provably reparses to the same string,
+    // so these let the poll skip the read+parse (never the downstream
+    // publish/dedup logic) when nothing changed on disk.
+    private DateTime? _statusFileMemoWriteUtc;
+    private long _statusFileMemoLength = -1;
+    private string _statusFileMemoText = string.Empty;
+    private string _statusFileMemoStableText = string.Empty;
+    private bool _statusFileMemoWasReadable;
+    private DateTime? _tooltipFileMemoWriteUtc;
+    private long _tooltipFileMemoLength = -1;
+    private string _tooltipFileMemoText = string.Empty;
     private System.Windows.Forms.Timer? _settingsFallbackTimer;
     private System.Windows.Forms.Timer? _tooltipPollTimer;
     private DateTime _lastTimerOnlyStatusAnnouncementUtc = DateTime.MinValue;
@@ -1029,6 +1044,10 @@ public sealed partial class GsxService : IDisposable
         _tooltipFilePath = Path.Combine(fsdtRoot, GsxPackageFolder, GsxPackageFolderHtml, GsxTooltipFileName);
         _settingsFilePath = Path.Combine(fsdtRoot, GsxPackageFolder, GsxPackageFolderHtml, GsxSettingsFileName);
         _statusFilePath = Path.Combine(fsdtRoot, GsxPackageFolder, GsxPackageFolderHtml, GsxStatusFileName);
+        // Paths just changed (or are being (re)resolved) — any previous
+        // memo would be comparing against a different file's identity.
+        ResetStatusFileMemo();
+        ResetTooltipFileMemo();
         Log.Debug("Gsx", $"FSDT root: {fsdtRoot}");
     }
 
@@ -1121,26 +1140,7 @@ public sealed partial class GsxService : IDisposable
         // on `statusWasReadable` here silently swallowed those announcements.
         // The legacy-line stripper + the dedup in PublishLiveServiceText
         // together prevent stale-tooltip re-announcement.
-        string tooltip = string.Empty;
-        if (!string.IsNullOrWhiteSpace(_tooltipFilePath))
-        {
-            try
-            {
-                var lines = File.ReadAllLines(_tooltipFilePath, Encoding.UTF8);
-                tooltip = string.Join(Environment.NewLine, lines);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Gsx", $"Failed to read tooltip file: {ex.Message}");
-                tooltip = string.Empty;
-            }
-
-            tooltip = RemoveUnsupportedLegacyTooltipLines(tooltip);
-        }
-        else
-        {
-            Log.Debug("Gsx", "Tooltip file path not set.");
-        }
+        string tooltip = ReadTooltipFallbackText();
 
         if (!string.IsNullOrWhiteSpace(tooltip))
         {
@@ -1171,6 +1171,42 @@ public sealed partial class GsxService : IDisposable
             return false;
         }
 
+        DateTime writeUtc;
+        long length;
+        try
+        {
+            var info = new FileInfo(_statusFilePath);
+            if (!info.Exists)
+            {
+                ResetStatusFileMemo();
+                return false;
+            }
+            writeUtc = info.LastWriteTimeUtc;
+            length = info.Length;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"Failed to stat status file: {ex.Message}");
+            ResetStatusFileMemo();
+            return false;
+        }
+
+        // Change gate: an unchanged mtime+length means status.html's bytes
+        // — and therefore RenderStatusHtmlAsText/NormalizeStatusStableText's
+        // output — are provably identical to last tick, so reuse the
+        // memoized parse instead of re-reading + re-parsing. The caller
+        // still runs PublishLiveServiceText on this (identical) text every
+        // tick exactly as before, so dedup / force-announce / timer-only
+        // announcement behavior is unaffected — only the file I/O and
+        // HTML parse are skipped.
+        if (_statusFileMemoWriteUtc == writeUtc && _statusFileMemoLength == length)
+        {
+            statusText = _statusFileMemoText;
+            stableText = _statusFileMemoStableText;
+            statusWasReadable = _statusFileMemoWasReadable;
+            return !string.IsNullOrWhiteSpace(statusText) && !string.IsNullOrWhiteSpace(stableText);
+        }
+
         string html;
         try
         {
@@ -1179,6 +1215,7 @@ public sealed partial class GsxService : IDisposable
         catch (Exception ex)
         {
             Log.Debug("Gsx", $"Failed to read status file: {ex.Message}");
+            ResetStatusFileMemo();
             return false;
         }
 
@@ -1186,11 +1223,94 @@ public sealed partial class GsxService : IDisposable
             statusWasReadable = true;
 
         statusText = RenderStatusHtmlAsText(html);
-        if (string.IsNullOrWhiteSpace(statusText))
-            return false;
+        if (!string.IsNullOrWhiteSpace(statusText))
+            stableText = NormalizeStatusStableText(statusText);
 
-        stableText = NormalizeStatusStableText(statusText);
-        return !string.IsNullOrWhiteSpace(stableText);
+        _statusFileMemoWriteUtc = writeUtc;
+        _statusFileMemoLength = length;
+        _statusFileMemoText = statusText;
+        _statusFileMemoStableText = stableText;
+        _statusFileMemoWasReadable = statusWasReadable;
+
+        return !string.IsNullOrWhiteSpace(statusText) && !string.IsNullOrWhiteSpace(stableText);
+    }
+
+    private void ResetStatusFileMemo()
+    {
+        _statusFileMemoWriteUtc = null;
+        _statusFileMemoLength = -1;
+        _statusFileMemoText = string.Empty;
+        _statusFileMemoStableText = string.Empty;
+        _statusFileMemoWasReadable = false;
+    }
+
+    /// <summary>
+    /// Reads the legacy tooltip-file fallback, gated by the same
+    /// mtime+length change-check as <see cref="TryReadStatusText"/> (see
+    /// its comment for the equivalence argument). Returns the
+    /// already-<see cref="RemoveUnsupportedLegacyTooltipLines"/>-filtered
+    /// text.
+    /// </summary>
+    private string ReadTooltipFallbackText()
+    {
+        if (string.IsNullOrWhiteSpace(_tooltipFilePath))
+        {
+            Log.Debug("Gsx", "Tooltip file path not set.");
+            return string.Empty;
+        }
+
+        DateTime writeUtc;
+        long length;
+        try
+        {
+            var info = new FileInfo(_tooltipFilePath);
+            if (!info.Exists)
+            {
+                ResetTooltipFileMemo();
+                return string.Empty;
+            }
+            writeUtc = info.LastWriteTimeUtc;
+            length = info.Length;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"Failed to stat tooltip file: {ex.Message}");
+            ResetTooltipFileMemo();
+            return string.Empty;
+        }
+
+        if (_tooltipFileMemoWriteUtc == writeUtc && _tooltipFileMemoLength == length)
+        {
+            return _tooltipFileMemoText;
+        }
+
+        string tooltip;
+        try
+        {
+            var lines = File.ReadAllLines(_tooltipFilePath, Encoding.UTF8);
+            tooltip = string.Join(Environment.NewLine, lines);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"Failed to read tooltip file: {ex.Message}");
+            ResetTooltipFileMemo();
+            return string.Empty;
+        }
+
+        tooltip = RemoveUnsupportedLegacyTooltipLines(tooltip);
+
+        _tooltipFileMemoWriteUtc = writeUtc;
+        _tooltipFileMemoLength = length;
+        _tooltipFileMemoText = tooltip;
+
+        return tooltip;
+    }
+
+    private void ResetTooltipFileMemo()
+    {
+        _tooltipFileMemoWriteUtc = null;
+        _tooltipFileMemoLength = -1;
+        _tooltipFileMemoText = string.Empty;
     }
 
     private void PublishLiveServiceText(

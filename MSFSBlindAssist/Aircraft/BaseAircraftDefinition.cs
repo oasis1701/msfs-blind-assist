@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -11,6 +12,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 {
     // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
     private Dictionary<string, List<string>>? _cachedPanelControls;
+    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
 
     // Elevator trim announcement toggle and debounce.
     // Toggle is protected so aircraft that source trim from a custom variable
@@ -33,7 +35,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual string? CurrentFlightPhase => null;
 
-    public abstract Dictionary<string, SimConnect.SimVarDefinition> GetVariables();
+    public Dictionary<string, SimConnect.SimVarDefinition> GetVariables() => _cachedVariables ??= BuildVariables();
+    protected abstract Dictionary<string, SimConnect.SimVarDefinition> BuildVariables();
     public abstract Dictionary<string, List<string>> GetPanelStructure();
 
     /// <summary>
@@ -782,5 +785,153 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             catch { /* best-effort auto-release */ }
         });
         announcer.Announce($"{displayName} pressed");
+    }
+
+    // ---- FMA armed-mode decode (FBW A320/A380 parity) ----
+    // Legacy A32NX_FMA_*_ARMED bitmasks (bit 0 = ALT). Decodes to mode names so arming a
+    // mode speaks "Altitude armed" / "NAV armed" instead of the old raw bitmask number.
+    // The bit tables themselves stay per-aircraft (identical _vertArmedBits/_latArmedBits
+    // static fields on each definition) and are passed in.
+    protected static string DecodeArmedModes(int v, (int bit, string name)[] bits)
+    {
+        return string.Join(", ", DecodeArmedModeNames(v, bits));
+    }
+
+    /// <summary>
+    /// Parts-returning counterpart of <see cref="DecodeArmedModes"/> for callers that
+    /// only need to iterate the individual names (e.g. to announce each one) — avoids a
+    /// join-then-re-Split round trip through a joined string.
+    /// </summary>
+    protected static List<string> DecodeArmedModeNames(int v, (int bit, string name)[] bits)
+    {
+        var names = new List<string>();
+        foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
+        return names;
+    }
+
+    // Spoken CG suffix for the gross-weight readouts (FBW A320/A380 parity). Empty
+    // (suppressed) when the CG isn't available/sane, so the gross-weight readout never
+    // breaks or says "CG 0". Takes the cached %MAC value as a parameter since each
+    // aircraft caches its own _gwCgMac field.
+    protected static string CgMacPhrase(double gwCgMac) =>
+        (gwCgMac > 5 && gwCgMac < 60) ? $", center of gravity {gwCgMac:0.0} percent MAC" : "";
+
+    // Set the FCU altitude increment (100 or 1000 ft) — FBW A320/A380 parity. Kept as an
+    // instance method (not static) because it's invoked externally via an aircraft-typed
+    // instance reference (FBWA320AltitudeWindow/FBWA380AltitudeWindow), which a static
+    // member can't be called through.
+    public void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
+    }
+
+    // ---- PMDG 737/777 NG3 SDK ETA/distance read-outs (byte-identical pair) ----
+
+    /// <summary>
+    /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
+    /// and current ground speed in knots. Returns empty string at low ground
+    /// speed (taxi / ground) where the estimate is meaningless.
+    /// </summary>
+    protected static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    {
+        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
+        if (distanceNm <= 0) return "";
+
+        double hours = distanceNm / groundSpeedKnots;
+        int totalSeconds = (int)Math.Round(hours * 3600.0);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to top of descent on the NG3.
+    /// </summary>
+    protected static void AnnounceTODFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.IPMDGDataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Top of descent not available");
+            return;
+        }
+        if (dist < 0.1f)
+        {
+            announcer.AnnounceImmediate("Past top of descent");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+        });
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to destination on the NG3.
+    /// </summary>
+    protected static void AnnounceDestFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.IPMDGDataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Distance to destination not available");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+        });
+    }
+
+    // Cached set of RenderAsButton keys that are NOT annunciators (PMDG 737/777 parity).
+    // Used in ProcessSimVarUpdate to suppress raw value announcements without
+    // re-allocating GetVariables() on every call.
+    protected HashSet<string> BuildSuppressedButtonKeys()
+    {
+        var set = new HashSet<string>();
+        foreach (var kvp in GetVariables())
+        {
+            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
+                set.Add(kvp.Key);
+        }
+        return set;
+    }
+
+    // Fenix/FBW A320 parity: request the stock fuel-total-quantity SimVar via a
+    // temp data definition (ONCE period). logCategory parameterizes the Log.Debug
+    // category on failure (each caller's own aircraft-name tag).
+    protected static void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr, string logCategory)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(logCategory, $"Error requesting fuel quantity: {ex.Message}");
+            }
+        }
     }
 }

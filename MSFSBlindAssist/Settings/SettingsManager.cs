@@ -101,6 +101,10 @@ public static class SettingsManager
                     Save(settings);
                 }
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
+                // Deserialization bypasses the property setters' usual mutation path, so the
+                // *DisabledMonitorVariablesSet sidecars (populated by field initializers to
+                // empty, pre-deserialization) must be rebuilt explicitly here.
+                settings.RebuildDisabledMonitorVariableCaches();
                 return settings;
             }
             catch (Exception ex)
@@ -189,6 +193,12 @@ public static class SettingsManager
             {
                 lock (_lock)
                 {
+                    // Every known mutation site for the five *DisabledMonitorVariables lists
+                    // (monitor-manager ItemCheck handlers, ToggleECAMMonitoring,
+                    // SeedFenixMonitorDefaults) calls Save immediately after mutating — so this
+                    // is the single choke point that keeps the HashSet sidecars from going stale.
+                    settings.RebuildDisabledMonitorVariableCaches();
+
                     // Serialize to JSON with formatting (reads the mutable shared
                     // object — must be under the lock).
                     json = JsonSerializer.Serialize(settings, JsonOptions);
@@ -228,12 +238,24 @@ public static class SettingsManager
         /// </summary>
         public static void Reset()
         {
+            // Mirror Save's own discipline (see its comment above): only the
+            // in-memory publish of the new settings reference happens under
+            // _lock. Save() itself takes _lock again (reentrant) for its
+            // serialize+publish step and then writes the file OUTSIDE any
+            // lock — but calling it from inside this lock would keep _lock
+            // held for the full File.WriteAllText duration, stalling the
+            // 30 Hz SimConnect position path that also contends on _lock via
+            // SettingsManager.Current. So capture the new instance, release
+            // the lock, then Save it.
+            UserSettings newSettings;
             lock (_lock)
             {
-                _currentSettings = new UserSettings();
-                Save(_currentSettings);
-                Log.Debug("Settings", "Settings reset to defaults");
+                newSettings = new UserSettings();
+                _currentSettings = newSettings;
             }
+
+            Save(newSettings);
+            Log.Debug("Settings", "Settings reset to defaults");
         }
 
         /// <summary>

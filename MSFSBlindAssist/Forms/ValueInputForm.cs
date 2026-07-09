@@ -145,28 +145,36 @@ public partial class ValueInputForm : Form
                     // Wait for sim to process, then update ALL toggle buttons
                     Task.Delay(1200).ContinueWith(_ =>
                     {
-                        if (capturedBtn.IsDisposed || !capturedBtn.IsHandleCreated) return;
-                        capturedBtn.Invoke(() =>
+                        // try/catch closes the TOCTOU window: the form can be disposed between the
+                        // IsHandleCreated check and Invoke, which would throw on this threadpool
+                        // continuation as an unobserved task exception.
+                        try
                         {
-                            // Update all buttons — pressing one toggle can affect others
-                            for (int j = 0; j < _toggleButtons.Count; j++)
+                            if (capturedBtn.IsDisposed || !capturedBtn.IsHandleCreated) return;
+                            capturedBtn.Invoke(() =>
                             {
-                                var b = _toggleButtons[j];
-                                var d = _toggleDefs[j];
-                                string s = d.GetCurrentState();
-                                string lbl = string.IsNullOrEmpty(s) ? d.Label : $"{d.Label}: {s}";
-                                b.Text = lbl;
-                                b.AccessibleName = lbl.Replace("&", "");
-                            }
-                            UpdateInputEnabled();
-                            // Announce the pressed button's new state
-                            string newState = capturedDef.GetCurrentState();
-                            string announceLabel = capturedDef.Label.Replace("&", "");
-                            if (string.IsNullOrEmpty(newState))
-                                announcer.AnnounceImmediate(announceLabel);
-                            else
-                                announcer.AnnounceImmediate($"{announceLabel} {newState}");
-                        });
+                                // Update all buttons — pressing one toggle can affect others
+                                for (int j = 0; j < _toggleButtons.Count; j++)
+                                {
+                                    var b = _toggleButtons[j];
+                                    var d = _toggleDefs[j];
+                                    string s = d.GetCurrentState();
+                                    string lbl = string.IsNullOrEmpty(s) ? d.Label : $"{d.Label}: {s}";
+                                    b.Text = lbl;
+                                    b.AccessibleName = lbl.Replace("&", "");
+                                }
+                                UpdateInputEnabled();
+                                // Announce the pressed button's new state
+                                string newState = capturedDef.GetCurrentState();
+                                string announceLabel = capturedDef.Label.Replace("&", "");
+                                if (string.IsNullOrEmpty(newState))
+                                    announcer.AnnounceImmediate(announceLabel);
+                                else
+                                    announcer.AnnounceImmediate($"{announceLabel} {newState}");
+                            });
+                        }
+                        catch (ObjectDisposedException) { }
+                        catch (InvalidOperationException) { }
                     });
                 };
 

@@ -40,6 +40,12 @@
       var st = window.getComputedStyle(n);
       if (st.display === "none" || st.visibility === "hidden" || parseFloat(st.opacity) === 0) return false;
       return true;
+    // Fail-OPEN: this agent walks real SVG nodes (EclLine's <svg>/<tspan> text,
+    // .MemosLeft/.MemosRight <text> elements — see A.lineText/A.colour above),
+    // and getComputedStyle/getBoundingClientRect are unreliable on SVG in
+    // Coherent GT (Chromium 49). A thrown exception must not hide a genuine
+    // warning/memo line, so default to visible (matches coherent-display-agent's
+    // SVG fallback rationale).
     } catch (e) { return true; }
   };
 

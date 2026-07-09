@@ -51,6 +51,17 @@ public class PmdgCduDecodeTests
         Assert.Equal(expected, PMDGNG3DataManager.DecodeCellSymbol(sym));
     }
 
+    // Cross-decoder agreement: the PMDG 777 manager's decoder (ported from two duplicated
+    // inline copies as part of PR-4's SC-9) must match the NG3's semantics for every byte,
+    // including the 0xA3/0xA4 arrows the 777 previously rendered as plain spaces.
+    [Fact]
+    public void Pmdg777_decoder_agrees_with_NG3_for_all_bytes()
+    {
+        for (int b = 0; b <= 0xFF; b++)
+            Assert.Equal(PMDGNG3DataManager.DecodeCellSymbol((byte)b),
+                         PMDG777DataManager.DecodeCellSymbol((byte)b));
+    }
+
     // --- ToDouble -------------------------------------------------------------------
     //
     // Implementation (PMDGNG3DataManager.cs:496) is an 11-type switch (+ fallback):

@@ -25,39 +25,48 @@ public class NavigationDatabaseProvider
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
+            return GetWaypoint(connection, ident, region);
+        }
+    }
 
-            string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty, mag_var
-                          FROM waypoint
-                          WHERE UPPER(ident) = UPPER(@ident)";
+    /// <summary>
+    /// Connection-reusing core of <see cref="GetWaypoint(string, string?)"/>. Used internally by the
+    /// procedure-leg resolution chain, which already holds an open connection from its enclosing
+    /// reader loop (non-pooled opens are real file opens — see ND-1).
+    /// </summary>
+    private WaypointFix? GetWaypoint(SqliteConnection connection, string ident, string? region = null)
+    {
+        string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty, mag_var
+                      FROM waypoint
+                      WHERE UPPER(ident) = UPPER(@ident)";
 
+        if (!string.IsNullOrEmpty(region))
+            sql += " AND UPPER(region) = UPPER(@region)";
+
+        sql += " LIMIT 1";
+
+        using (var command = new SqliteCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("@ident", ident);
             if (!string.IsNullOrEmpty(region))
-                sql += " AND UPPER(region) = UPPER(@region)";
+                command.Parameters.AddWithValue("@region", region);
 
-            sql += " LIMIT 1";
-
-            using (var command = new SqliteCommand(sql, connection))
+            using (var reader = command.ExecuteReader())
             {
-                command.Parameters.AddWithValue("@ident", ident);
-                if (!string.IsNullOrEmpty(region))
-                    command.Parameters.AddWithValue("@region", region);
-
-                using (var reader = command.ExecuteReader())
+                if (reader.Read())
                 {
-                    if (reader.Read())
+                    return new WaypointFix
                     {
-                        return new WaypointFix
-                        {
-                            Ident = SafeGetString(reader, "ident") ?? "",
-                            Name = SafeGetString(reader, "name") ?? "",
-                            Region = SafeGetString(reader, "region") ?? "",
-                            Type = SafeGetString(reader, "type") ?? "Waypoint",
-                            ArincType = SafeGetString(reader, "arinc_type") ?? "",
-                            Longitude = SafeGetDouble(reader, "lonx"),
-                            Latitude = SafeGetDouble(reader, "laty"),
-                            // Local variation of this fix — the reference for a hand-entered magnetic course.
-                            ReferenceMagVar = SafeGetNullableDouble(reader, "mag_var")
-                        };
-                    }
+                        Ident = SafeGetString(reader, "ident") ?? "",
+                        Name = SafeGetString(reader, "name") ?? "",
+                        Region = SafeGetString(reader, "region") ?? "",
+                        Type = SafeGetString(reader, "type") ?? "Waypoint",
+                        ArincType = SafeGetString(reader, "arinc_type") ?? "",
+                        Longitude = SafeGetDouble(reader, "lonx"),
+                        Latitude = SafeGetDouble(reader, "laty"),
+                        // Local variation of this fix — the reference for a hand-entered magnetic course.
+                        ReferenceMagVar = SafeGetNullableDouble(reader, "mag_var")
+                    };
                 }
             }
         }
@@ -399,7 +408,7 @@ public class NavigationDatabaseProvider
 
     /// <summary>Parse a runway-style ARINC name ("RW30B" → 30/"B", "RW25R" → 25/"R", "RW35" → 35/"").
     /// Returns null for non-runway arinc names (VORA, ALL, N33-D, RNVA, empty, …).</summary>
-    private static (int number, string side)? ParseArincRunway(string? arincName)
+    internal static (int number, string side)? ParseArincRunway(string? arincName)
     {
         if (string.IsNullOrWhiteSpace(arincName)) return null;
         string s = arincName.Trim().ToUpperInvariant();
@@ -413,7 +422,7 @@ public class NavigationDatabaseProvider
     }
 
     /// <summary>Split a concrete runway designator ("30R" → 30/"R", "03" → 3/"").</summary>
-    private static (int number, string side)? SplitRunwayDesignator(string? runway)
+    internal static (int number, string side)? SplitRunwayDesignator(string? runway)
     {
         if (string.IsNullOrWhiteSpace(runway)) return null;
         string s = runway.Trim().ToUpperInvariant();
@@ -425,14 +434,14 @@ public class NavigationDatabaseProvider
 
     /// <summary>True when the parsed ARINC tag covers the parsed concrete runway — same number, and a
     /// "B"/bare side covers either side (RW30B → 30L and 30R).</summary>
-    private static bool ArincCoversTarget((int number, string side) tag, (int number, string side) target)
+    internal static bool ArincCoversTarget((int number, string side) tag, (int number, string side) target)
         => tag.number == target.number && (tag.side is "B" or "" || tag.side == target.side);
 
     /// <summary>Does a procedure (its <paramref name="runwayName"/> + <paramref name="arincName"/>) serve
     /// the concrete <paramref name="targetRunway"/>? A populated <c>runway_name</c> is AUTHORITATIVE (it
     /// names the one runway this procedure serves); only when it's NULL/blank do we fall back to the
     /// ARINC tag, where a "B"/bare tag covers any side of that number (RW30B → 30L and 30R).</summary>
-    private static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
+    internal static bool ProcedureServesRunway(string? runwayName, string? arincName, string targetRunway)
     {
         // A concrete runway_name is the definitive runway for this procedure row. Do NOT also consult
         // arinc_name — a specific-runway procedure (runway_name "25L") that happens to carry a broad
@@ -604,42 +613,11 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<WaypointFix> GetApproachWaypoints(int approachId)
     {
-        var waypoints = new List<WaypointFix>();
-
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
-
-            string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
-                                 altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
-                                 course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                 time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 is_missed, fix_type, fix_airport_ident, recommended_fix_ident,
-                                 recommended_fix_region
-                          FROM approach_leg
-                          WHERE approach_id = @approachId
-                          ORDER BY approach_leg_id";
-
-            using (var command = new SqliteCommand(sql, connection))
-            {
-                command.Parameters.AddWithValue("@approachId", approachId);
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        var waypoint = ParseLegToWaypoint(reader);
-                        if (waypoint != null)
-                        {
-                            waypoint.Section = FlightPlanSection.Approach;
-                            waypoints.Add(waypoint);
-                        }
-                    }
-                }
-            }
+            return GetLegs(connection, approachId, FlightPlanSection.Approach, airway: null);
         }
-
-        return waypoints;
     }
 
     /// <summary>
@@ -647,43 +625,11 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<WaypointFix> GetSIDWaypoints(int sidId)
     {
-        var waypoints = new List<WaypointFix>();
-
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
-
-            string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
-                                 altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
-                                 course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                 time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 is_missed, fix_type, fix_airport_ident, recommended_fix_ident,
-                                 recommended_fix_region
-                          FROM approach_leg
-                          WHERE approach_id = @sidId
-                          ORDER BY approach_leg_id";
-
-            using (var command = new SqliteCommand(sql, connection))
-            {
-                command.Parameters.AddWithValue("@sidId", sidId);
-
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        var waypoint = ParseLegToWaypoint(reader);
-                        if (waypoint != null)
-                        {
-                            waypoint.Section = FlightPlanSection.SID;
-                            waypoint.InboundAirway = "SID";
-                            waypoints.Add(waypoint);
-                        }
-                    }
-                }
-            }
+            return GetLegs(connection, sidId, FlightPlanSection.SID, airway: "SID");
         }
-
-        return waypoints;
     }
 
     /// <summary>
@@ -691,37 +637,51 @@ public class NavigationDatabaseProvider
     /// </summary>
     public List<WaypointFix> GetSTARWaypoints(int starId)
     {
-        var waypoints = new List<WaypointFix>();
-
         using (var connection = new SqliteConnection(_connectionString))
         {
             connection.Open();
+            return GetLegs(connection, starId, FlightPlanSection.STAR, airway: "STAR");
+        }
+    }
 
-            string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
-                                 altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
-                                 course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                 time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 is_missed, fix_type, fix_airport_ident, recommended_fix_ident,
-                                 recommended_fix_region
-                          FROM approach_leg
-                          WHERE approach_id = @starId
-                          ORDER BY approach_leg_id";
+    /// <summary>
+    /// Shared leg reader for approach_leg-backed procedures (approach / SID / STAR). These three
+    /// were byte-identical except the section/airway tagging applied to each parsed waypoint
+    /// (ND-5: dedupe the triplicated SQL). GetTransitionWaypoints stays separate — it reads
+    /// transition_leg (no is_missed column) and applies no section/airway tagging.
+    /// </summary>
+    /// <param name="connection">Open connection shared with the leg-loop reader (ND-1: avoids a fresh non-pooled file open per leg)</param>
+    /// <param name="approachId">approach_leg.approach_id — despite the parameter name, this is also used for SID/STAR ids (same column)</param>
+    /// <param name="section">Flight-plan section to tag each parsed waypoint with</param>
+    /// <param name="airway">InboundAirway to tag each parsed waypoint with (null for approach)</param>
+    private List<WaypointFix> GetLegs(SqliteConnection connection, int approachId, FlightPlanSection section, string? airway)
+    {
+        var waypoints = new List<WaypointFix>();
 
-            using (var command = new SqliteCommand(sql, connection))
+        string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
+                             altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
+                             course, distance, is_flyover, turn_direction, rnp, vertical_angle,
+                             time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
+                             is_missed, fix_type, fix_airport_ident, recommended_fix_ident
+                      FROM approach_leg
+                      WHERE approach_id = @approachId
+                      ORDER BY approach_leg_id";
+
+        using (var command = new SqliteCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("@approachId", approachId);
+
+            using (var reader = command.ExecuteReader())
             {
-                command.Parameters.AddWithValue("@starId", starId);
-
-                using (var reader = command.ExecuteReader())
+                while (reader.Read())
                 {
-                    while (reader.Read())
+                    var waypoint = ParseLegToWaypoint(connection, reader);
+                    if (waypoint != null)
                     {
-                        var waypoint = ParseLegToWaypoint(reader);
-                        if (waypoint != null)
-                        {
-                            waypoint.Section = FlightPlanSection.STAR;
-                            waypoint.InboundAirway = "STAR";
-                            waypoints.Add(waypoint);
-                        }
+                        waypoint.Section = section;
+                        if (airway != null)
+                            waypoint.InboundAirway = airway;
+                        waypoints.Add(waypoint);
                     }
                 }
             }
@@ -759,7 +719,7 @@ public class NavigationDatabaseProvider
                 {
                     while (reader.Read())
                     {
-                        var waypoint = ParseLegToWaypoint(reader, isApproachLeg: false);  // transition_leg doesn't have is_missed
+                        var waypoint = ParseLegToWaypoint(connection, reader, isApproachLeg: false);  // transition_leg doesn't have is_missed
                         if (waypoint != null)
                             waypoints.Add(waypoint);
                     }
@@ -773,9 +733,10 @@ public class NavigationDatabaseProvider
     /// <summary>
     /// Parses a leg record into a WaypointFix
     /// </summary>
+    /// <param name="connection">Open connection shared with the enclosing leg-loop reader (ND-1: avoids a fresh non-pooled file open per leg)</param>
     /// <param name="reader">Database reader positioned at a leg record</param>
     /// <param name="isApproachLeg">True if reading from approach_leg (has is_missed field), false if from transition_leg</param>
-    private WaypointFix? ParseLegToWaypoint(SqliteDataReader reader, bool isApproachLeg = true)
+    private WaypointFix? ParseLegToWaypoint(SqliteConnection connection, SqliteDataReader reader, bool isApproachLeg = true)
     {
         string? fixIdent = SafeGetString(reader, "fix_ident");
         string? fixRegion = SafeGetString(reader, "fix_region");
@@ -802,7 +763,7 @@ public class NavigationDatabaseProvider
         double latitude = 0.0;
         double longitude = 0.0;
         if (!fixless)
-            ResolveFixCoordinates(fixIdent!, fixRegion, fixType, fixAirport, out latitude, out longitude);
+            ResolveFixCoordinates(connection, fixIdent!, fixRegion, fixType, fixAirport, out latitude, out longitude);
 
         var waypoint = new WaypointFix
         {
@@ -878,13 +839,14 @@ public class NavigationDatabaseProvider
     /// The `waypoint` table only holds enroute/terminal waypoints; navaid, runway-threshold (RWxx) and
     /// airport fixes live in their own tables, so a waypoint-only lookup left them at (0,0).
     /// </summary>
-    private void ResolveFixCoordinates(string ident, string? region, string? fixType, string? fixAirport,
+    /// <param name="connection">Open connection shared with the enclosing leg-loop reader (ND-1: avoids a fresh non-pooled file open per leg)</param>
+    private void ResolveFixCoordinates(SqliteConnection connection, string ident, string? region, string? fixType, string? fixAirport,
                                        out double latitude, out double longitude)
     {
         latitude = 0.0;
         longitude = 0.0;
 
-        var wp = GetWaypoint(ident, region);
+        var wp = GetWaypoint(connection, ident, region);
         if (wp != null && !(wp.Latitude == 0.0 && wp.Longitude == 0.0))
         {
             latitude = wp.Latitude;
@@ -892,26 +854,36 @@ public class NavigationDatabaseProvider
             return;
         }
 
+        // Track which navaid tables the switch below already queried, so the blank/unresolved
+        // last-resort fallback never re-queries the same table twice (ND-9: was previously
+        // re-querying vor/ndb even when the switch had just tried one of them).
+        bool triedVor = false, triedNdb = false;
+
         switch ((fixType ?? "").ToUpperInvariant())
         {
-            case "V": if (TryGetNavaidCoords("vor", ident, region, out latitude, out longitude)) return; break;
-            case "N": if (TryGetNavaidCoords("ndb", ident, region, out latitude, out longitude)) return; break;
-            case "R": if (TryGetRunwayEndCoords(fixAirport, ident, out latitude, out longitude)) return; break;
-            case "A": if (TryGetAirportCoords(ident, out latitude, out longitude)) return; break;
+            case "V":
+                triedVor = true;
+                if (TryGetNavaidCoords(connection, "vor", ident, region, out latitude, out longitude)) return;
+                break;
+            case "N":
+                triedNdb = true;
+                if (TryGetNavaidCoords(connection, "ndb", ident, region, out latitude, out longitude)) return;
+                break;
+            case "R": if (TryGetRunwayEndCoords(connection, fixAirport, ident, out latitude, out longitude)) return; break;
+            case "A": if (TryGetAirportCoords(connection, ident, out latitude, out longitude)) return; break;
         }
 
-        // Last resort when fix_type is blank: try navaid tables by ident.
-        if (TryGetNavaidCoords("vor", ident, region, out latitude, out longitude)) return;
-        if (TryGetNavaidCoords("ndb", ident, region, out latitude, out longitude)) return;
+        // Last resort when fix_type is blank (or the typed lookup above missed): try navaid
+        // tables by ident, skipping any table already queried above.
+        if (!triedVor && TryGetNavaidCoords(connection, "vor", ident, region, out latitude, out longitude)) return;
+        if (!triedNdb && TryGetNavaidCoords(connection, "ndb", ident, region, out latitude, out longitude)) return;
     }
 
-    private bool TryGetNavaidCoords(string table, string ident, string? region, out double latitude, out double longitude)
+    private bool TryGetNavaidCoords(SqliteConnection connection, string table, string ident, string? region, out double latitude, out double longitude)
     {
         latitude = 0.0;
         longitude = 0.0;
         // `table` is a hardcoded literal ("vor" / "ndb"); ident/region are parameterized.
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
         string sql = $"SELECT lonx, laty FROM {table} WHERE UPPER(ident) = UPPER(@ident)";
         if (!string.IsNullOrEmpty(region)) sql += " AND UPPER(region) = UPPER(@region)";
         sql += " LIMIT 1";
@@ -928,7 +900,7 @@ public class NavigationDatabaseProvider
         return false;
     }
 
-    private bool TryGetRunwayEndCoords(string? airportIdent, string runwayFixIdent, out double latitude, out double longitude)
+    private bool TryGetRunwayEndCoords(SqliteConnection connection, string? airportIdent, string runwayFixIdent, out double latitude, out double longitude)
     {
         latitude = 0.0;
         longitude = 0.0;
@@ -936,8 +908,6 @@ public class NavigationDatabaseProvider
         // Runway fixes are stored as "RWxx" (e.g. RW06L); the runway_end name is the bare designator.
         string runwayName = runwayFixIdent.StartsWith("RW", StringComparison.OrdinalIgnoreCase)
             ? runwayFixIdent.Substring(2) : runwayFixIdent;
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
         string sql = @"SELECT re.lonx, re.laty
                        FROM runway_end re
                        JOIN runway r ON re.runway_end_id = r.primary_end_id OR re.runway_end_id = r.secondary_end_id
@@ -1007,12 +977,10 @@ public class NavigationDatabaseProvider
         }
     }
 
-    private bool TryGetAirportCoords(string ident, out double latitude, out double longitude)
+    private bool TryGetAirportCoords(SqliteConnection connection, string ident, out double latitude, out double longitude)
     {
         latitude = 0.0;
         longitude = 0.0;
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
         string sql = "SELECT lonx, laty FROM airport WHERE UPPER(icao) = UPPER(@id) OR UPPER(ident) = UPPER(@id) LIMIT 1";
         using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@id", ident);
@@ -1030,7 +998,7 @@ public class NavigationDatabaseProvider
     /// Builds a human-readable label for a path/terminator leg that has no terminating fix
     /// (CA/VA to-altitude, VM/FM vectors, CI/VI intercept, CD/VD to-DME, CR/VR to-radial).
     /// </summary>
-    private static string BuildManeuverLabel(string legType, double? course, string turnDir, double? alt1)
+    internal static string BuildManeuverLabel(string legType, double? course, string turnDir, double? alt1)
     {
         legType = (legType ?? "").ToUpperInvariant();
         string heading = legType.StartsWith("V") ? "heading" : "course";
@@ -1061,7 +1029,7 @@ public class NavigationDatabaseProvider
     /// <summary>
     /// Formats altitude restriction text
     /// </summary>
-    private string? FormatAltitudeRestriction(string? descriptor, double? alt1, double? alt2)
+    internal static string? FormatAltitudeRestriction(string? descriptor, double? alt1, double? alt2)
     {
         if (!alt1.HasValue && !alt2.HasValue)
             return null;

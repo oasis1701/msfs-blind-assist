@@ -1298,9 +1298,9 @@ public partial class HorizonSim787Definition
         if (variableKey == "HS787_FuelXfeed")
         {
             int now = value > 0.5 ? 1 : 0;
-            if (_previousFuelXfeedFwd >= 0 && now != _previousFuelXfeedFwd)
+            if (_previousFuelXfeed >= 0 && now != _previousFuelXfeed)
                 announcer.Announce(now == 1 ? "Fuel Crossfeed Open" : "Fuel Crossfeed Closed");
-            _previousFuelXfeedFwd = now;
+            _previousFuelXfeed = now;
             return true;
         }
         if (variableKey == "HS787_BleedEng1")

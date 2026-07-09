@@ -70,13 +70,24 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
-    // Cached variable-definition dictionary (defs are static; rebuilding the whole dict
-    // on every call — and the panel-build loop calls GetVariables() twice per control —
-    // was wasted work. Same proven cache the PMDG defs already use.) Built once, reused.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    // Shared ValueDescriptions dictionaries for the two exactly-identical patterns that
+    // recur hundreds of times across this aircraft's ~500 switch/knob definitions below.
+    // Safe to share a single instance: nothing in the codebase mutates a SimVarDefinition's
+    // ValueDescriptions dictionary at runtime (verified — no .Add/.Remove/indexer-assign
+    // sites anywhere), it is only ever read. Definitions whose wording varies even slightly
+    // (e.g. "Off"/"Activated", "Closed"/"Open") are left as their own inline dictionaries.
+    private static readonly Dictionary<double, string> OffOn = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
+    private static readonly Dictionary<double, string> PercentSteps5 = new Dictionary<double, string>
     {
-        if (_cachedVariables != null) return _cachedVariables;
+        [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+        [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+        [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+        [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+        [1.00] = "100%"
+    };
+
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
+    {
         // Start with common base variables (e.g., SIM ON GROUND)
         var variables = GetBaseVariables();
 
@@ -91,7 +102,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_IR3_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -100,7 +111,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_IR2_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
@@ -109,7 +120,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_IR2_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -118,7 +129,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_IR1_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
@@ -127,7 +138,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_IR1_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -136,7 +147,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADR1_L"] = new SimConnect.SimVarDefinition
             {
@@ -145,7 +156,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADR1_U"] = new SimConnect.SimVarDefinition
             {
@@ -154,7 +165,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADR2_L"] = new SimConnect.SimVarDefinition
             {
@@ -163,7 +174,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADR2_U"] = new SimConnect.SimVarDefinition
             {
@@ -172,7 +183,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADR3_L"] = new SimConnect.SimVarDefinition
             {
@@ -181,7 +192,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADR3_U"] = new SimConnect.SimVarDefinition
             {
@@ -190,7 +201,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADIRS_ON_BAT"] = new SimConnect.SimVarDefinition
             {
@@ -199,7 +210,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== AIR CONDITIONING AND PRESSURIZATION (22 variables) ==========
@@ -210,7 +221,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_EXTRACT_L"] = new SimConnect.SimVarDefinition
             {
@@ -219,7 +230,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_CAB_FANS_U"] = new SimConnect.SimVarDefinition
             {
@@ -228,7 +239,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_CAB_FANS_L"] = new SimConnect.SimVarDefinition
             {
@@ -237,7 +248,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_BLOWER_U"] = new SimConnect.SimVarDefinition
             {
@@ -246,7 +257,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_BLOWER_L"] = new SimConnect.SimVarDefinition
             {
@@ -255,7 +266,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_PRESS_MODE_U"] = new SimConnect.SimVarDefinition
             {
@@ -264,7 +275,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_PRESS_MODE_L"] = new SimConnect.SimVarDefinition
             {
@@ -273,7 +284,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_DITCHING_L"] = new SimConnect.SimVarDefinition
             {
@@ -282,7 +293,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_RAM_AIR_L"] = new SimConnect.SimVarDefinition
             {
@@ -291,7 +302,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_PACK_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -300,7 +311,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_PACK_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -309,7 +320,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_PACK_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -318,7 +329,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_PACK_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -327,7 +338,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_HOT_AIR_U"] = new SimConnect.SimVarDefinition
             {
@@ -336,7 +347,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_HOT_AIR_L"] = new SimConnect.SimVarDefinition
             {
@@ -345,7 +356,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG2_BLEED_U"] = new SimConnect.SimVarDefinition
             {
@@ -354,7 +365,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG2_BLEED_L"] = new SimConnect.SimVarDefinition
             {
@@ -363,7 +374,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG1_BLEED_U"] = new SimConnect.SimVarDefinition
             {
@@ -372,7 +383,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG1_BLEED_L"] = new SimConnect.SimVarDefinition
             {
@@ -381,7 +392,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_APU_BLEED_U"] = new SimConnect.SimVarDefinition
             {
@@ -390,7 +401,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_APU_BLEED_L"] = new SimConnect.SimVarDefinition
             {
@@ -399,7 +410,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== ANTI-ICE (8 variables) ==========
@@ -410,7 +421,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_WING_ANTI_ICE_L"] = new SimConnect.SimVarDefinition
             {
@@ -419,7 +430,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PROBE_HEAT_U"] = new SimConnect.SimVarDefinition
             {
@@ -428,7 +439,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PROBE_HEAT_L"] = new SimConnect.SimVarDefinition
             {
@@ -437,7 +448,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG2_ANTI_ICE_U"] = new SimConnect.SimVarDefinition
             {
@@ -446,7 +457,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG2_ANTI_ICE_L"] = new SimConnect.SimVarDefinition
             {
@@ -455,7 +466,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG1_ANTI_ICE_U"] = new SimConnect.SimVarDefinition
             {
@@ -464,7 +475,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_ENG1_ANTI_ICE_L"] = new SimConnect.SimVarDefinition
             {
@@ -473,7 +484,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== AUTOPILOT (21 variables) ==========
@@ -671,7 +682,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GPWS_TERRAIN_ON_ND_FO_L"] = new SimConnect.SimVarDefinition
             {
@@ -680,7 +691,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GPWS_TERRAIN_ON_ND_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -689,7 +700,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_ATC_MSG_FO_L"] = new SimConnect.SimVarDefinition
             {
@@ -698,7 +709,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_ATC_MSG_FO_U"] = new SimConnect.SimVarDefinition
             {
@@ -707,7 +718,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_ATC_MSG_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -716,7 +727,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_ATC_MSG_CAPT_U"] = new SimConnect.SimVarDefinition
             {
@@ -725,7 +736,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOLAND_FO"] = new SimConnect.SimVarDefinition
             {
@@ -734,7 +745,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOLAND_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -743,7 +754,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== CONTROLS (21 variables) ==========
@@ -754,7 +765,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FC_SIDESTICK_PRIORITY_FO"] = new SimConnect.SimVarDefinition
             {
@@ -763,7 +774,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FC_SIDESTICK_PRIORITY_CAPT_ARROW"] = new SimConnect.SimVarDefinition
             {
@@ -772,7 +783,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FC_SIDESTICK_PRIORITY_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -781,7 +792,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_SEC_3_U"] = new SimConnect.SimVarDefinition
             {
@@ -790,7 +801,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_SEC_3_L"] = new SimConnect.SimVarDefinition
             {
@@ -799,7 +810,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_SEC_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -808,7 +819,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_SEC_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -817,7 +828,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_SEC_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -826,7 +837,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_SEC_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -835,7 +846,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_FAC_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -844,7 +855,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_FAC_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -853,7 +864,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_FAC_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -862,7 +873,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_FAC_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -871,7 +882,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_ELAC_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -880,7 +891,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_ELAC_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -889,7 +900,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_ELAC_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -898,7 +909,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FLT_CTL_ELAC_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -907,7 +918,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["B_FC_RUDDER_TRIM_DASHED"] = new SimConnect.SimVarDefinition
             {
@@ -926,7 +937,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_STATUS"] = new SimConnect.SimVarDefinition
             {
@@ -935,7 +946,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_CAB_PRESS"] = new SimConnect.SimVarDefinition
             {
@@ -944,7 +955,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_HYD"] = new SimConnect.SimVarDefinition
             {
@@ -953,7 +964,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_FUEL"] = new SimConnect.SimVarDefinition
             {
@@ -962,7 +973,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_FCTL"] = new SimConnect.SimVarDefinition
             {
@@ -971,7 +982,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_ENGINE"] = new SimConnect.SimVarDefinition
             {
@@ -980,7 +991,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_ELEC"] = new SimConnect.SimVarDefinition
             {
@@ -989,7 +1000,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_DOOR"] = new SimConnect.SimVarDefinition
             {
@@ -998,7 +1009,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_COND"] = new SimConnect.SimVarDefinition
             {
@@ -1007,7 +1018,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_CLR_RIGHT"] = new SimConnect.SimVarDefinition
             {
@@ -1016,7 +1027,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_CLR_LEFT"] = new SimConnect.SimVarDefinition
             {
@@ -1025,7 +1036,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_BLEED"] = new SimConnect.SimVarDefinition
             {
@@ -1034,7 +1045,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_APU"] = new SimConnect.SimVarDefinition
             {
@@ -1043,7 +1054,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ECAM_EMER_CANCEL"] = new SimConnect.SimVarDefinition
             {
@@ -1052,7 +1063,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== DCDU (10 variables) ==========
@@ -1183,7 +1194,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS2_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -1192,7 +1203,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS2_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -1201,7 +1212,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS2_LS"] = new SimConnect.SimVarDefinition
             {
@@ -1210,7 +1221,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS2_FD"] = new SimConnect.SimVarDefinition
             {
@@ -1219,7 +1230,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS2_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -1228,7 +1239,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS2_ARPT"] = new SimConnect.SimVarDefinition
             {
@@ -1237,7 +1248,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -1246,7 +1257,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -1255,7 +1266,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -1264,7 +1275,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_LS"] = new SimConnect.SimVarDefinition
             {
@@ -1273,7 +1284,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_FD"] = new SimConnect.SimVarDefinition
             {
@@ -1282,7 +1293,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -1291,7 +1302,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_FCU_EFIS1_ARPT"] = new SimConnect.SimVarDefinition
             {
@@ -1300,7 +1311,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_FCU_EFIS1_BARO_MODE"] = new SimConnect.SimVarDefinition
             {
@@ -1384,7 +1395,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_IDG1_U"] = new SimConnect.SimVarDefinition
             {
@@ -1393,7 +1404,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GEN2_U"] = new SimConnect.SimVarDefinition
             {
@@ -1402,7 +1413,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GEN2_L"] = new SimConnect.SimVarDefinition
             {
@@ -1411,7 +1422,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GEN1_U"] = new SimConnect.SimVarDefinition
             {
@@ -1420,7 +1431,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GEN1_L"] = new SimConnect.SimVarDefinition
             {
@@ -1429,7 +1440,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GALY_U"] = new SimConnect.SimVarDefinition
             {
@@ -1438,7 +1449,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GALY_L"] = new SimConnect.SimVarDefinition
             {
@@ -1447,7 +1458,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_EXT_PWR_U"] = new SimConnect.SimVarDefinition
             {
@@ -1456,7 +1467,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_EXT_PWR_L"] = new SimConnect.SimVarDefinition
             {
@@ -1465,7 +1476,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_COMMERCIAL_U"] = new SimConnect.SimVarDefinition
             {
@@ -1474,7 +1485,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_COMMERCIAL_L"] = new SimConnect.SimVarDefinition
             {
@@ -1483,7 +1494,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_BUSTIE_L"] = new SimConnect.SimVarDefinition
             {
@@ -1492,7 +1503,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_BAT2_U"] = new SimConnect.SimVarDefinition
             {
@@ -1501,7 +1512,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_BAT2_L"] = new SimConnect.SimVarDefinition
             {
@@ -1510,7 +1521,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_BAT1_U"] = new SimConnect.SimVarDefinition
             {
@@ -1519,7 +1530,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_BAT1_L"] = new SimConnect.SimVarDefinition
             {
@@ -1528,7 +1539,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_APU_GENERATOR_U"] = new SimConnect.SimVarDefinition
             {
@@ -1537,7 +1548,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_APU_GENERATOR_L"] = new SimConnect.SimVarDefinition
             {
@@ -1546,7 +1557,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_AC_ESS_FEED_U"] = new SimConnect.SimVarDefinition
             {
@@ -1555,7 +1566,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_AC_ESS_FEED_L"] = new SimConnect.SimVarDefinition
             {
@@ -1564,7 +1575,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Switch Position Variables (combo boxes - read/write state)
@@ -1574,7 +1585,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Battery 1 Switch",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_BAT2"] = new SimConnect.SimVarDefinition
             {
@@ -1582,7 +1593,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Battery 2 Switch",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Button Controls (write-only - execute RPN operations)
@@ -1592,7 +1603,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Generator 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_GEN2"] = new SimConnect.SimVarDefinition
             {
@@ -1600,7 +1611,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Generator 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_EXT_PWR"] = new SimConnect.SimVarDefinition
             {
@@ -1617,7 +1628,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "APU Generator",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_BUS_TIE"] = new SimConnect.SimVarDefinition
             {
@@ -1625,7 +1636,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Bus Tie",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_AC_ESS_FEED"] = new SimConnect.SimVarDefinition
             {
@@ -1633,7 +1644,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "AC ESS Feed",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_IDG1"] = new SimConnect.SimVarDefinition
             {
@@ -1641,7 +1652,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "IDG 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_IDG2"] = new SimConnect.SimVarDefinition
             {
@@ -1649,7 +1660,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "IDG 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_GALY"] = new SimConnect.SimVarDefinition
             {
@@ -1657,7 +1668,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Galley",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_COMMERCIAL"] = new SimConnect.SimVarDefinition
             {
@@ -1665,7 +1676,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Commercial",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_APU_MASTER"] = new SimConnect.SimVarDefinition
             {
@@ -1673,7 +1684,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "APU Master",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_APU_START"] = new SimConnect.SimVarDefinition
             {
@@ -1690,7 +1701,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Emergency Gen 1 Line",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_EMER_GEN_TEST"] = new SimConnect.SimVarDefinition
             {
@@ -1698,7 +1709,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Emergency Gen Test",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_EMER_GEN_MAN_ON"] = new SimConnect.SimVarDefinition
             {
@@ -1706,7 +1717,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Emergency Gen Manual On",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELEC_EMER_GEN_MAN_ON_Cover"] = new SimConnect.SimVarDefinition
             {
@@ -1937,7 +1948,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RMP1 Power",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // RMP1 Mode Selection Buttons (Momentary)
@@ -2057,7 +2068,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RMP2 Power",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // RMP2 Mode Selection Buttons (Momentary)
@@ -2177,7 +2188,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RMP3 Power",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // RMP3 Mode Selection Buttons (Momentary)
@@ -2325,14 +2336,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VHF 1 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_VHF_2_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2340,14 +2344,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VHF 2 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_VHF_3_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2355,14 +2352,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VHF 3 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_HF_1_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2370,14 +2360,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP HF 1 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_HF_2_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2385,14 +2368,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP HF 2 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_CAB_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2400,14 +2376,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP CAB Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_PA_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2415,14 +2384,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP PA Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_INT_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2430,14 +2392,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP INT Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_ILS_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2445,14 +2400,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP ILS Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_MLS_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2460,14 +2408,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP MLS Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_ADF_1_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2475,14 +2416,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP ADF 1 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_ADF_2_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2490,14 +2424,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP ADF 2 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_MARKER_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2505,14 +2432,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP MARKER Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_VOR_1_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2520,14 +2440,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VOR 1 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
             ["A_ASP_VOR_2_VOLUME"] = new SimConnect.SimVarDefinition
             {
@@ -2535,14 +2448,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VOR 2 Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
-                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
-                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
-                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
-                    [1.00] = "100%"
-                }
+                ValueDescriptions = PercentSteps5
             },
 
             // INTRAD Switch
@@ -2654,7 +2560,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VHF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_HF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2662,7 +2568,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP HF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_CAB_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2670,7 +2576,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP CAB Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_PA_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2678,7 +2584,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP PA Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_ILS_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2686,7 +2592,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP ILS Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_VOR_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2694,7 +2600,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VOR 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_VOR_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2702,7 +2608,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP VOR 2 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_MARKER_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2710,7 +2616,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP MARKER Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_ADF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2718,7 +2624,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP ADF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ASP_ADF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -2726,7 +2632,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP ADF 2 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== EFIS LEFT (16 variables) ==========
@@ -2758,7 +2664,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "EFIS Left Baro STD",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Baro Knob Inc/Dec (Counter pattern)
@@ -2893,7 +2799,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "EFIS Right Baro STD",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Baro Knob Inc/Dec (Counter pattern)
@@ -3238,7 +3144,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "APU Bleed",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_ENG1_BLEED"] = new SimConnect.SimVarDefinition
             {
@@ -3246,7 +3152,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 1 Bleed",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_ENG2_BLEED"] = new SimConnect.SimVarDefinition
             {
@@ -3254,7 +3160,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 2 Bleed",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Pack Buttons
@@ -3264,7 +3170,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Pack 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_PACK_2"] = new SimConnect.SimVarDefinition
             {
@@ -3272,7 +3178,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Pack 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Air Buttons
@@ -3282,7 +3188,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Hot Air",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_RAM_AIR"] = new SimConnect.SimVarDefinition
             {
@@ -3290,7 +3196,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Ram Air",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Pressurization
@@ -3300,7 +3206,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Ditching",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_PRESS_MODE"] = new SimConnect.SimVarDefinition
             {
@@ -3334,7 +3240,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Blower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_EXTRACT"] = new SimConnect.SimVarDefinition
             {
@@ -3342,7 +3248,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Extract",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_CAB_FANS"] = new SimConnect.SimVarDefinition
             {
@@ -3350,7 +3256,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Cabin Fans",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Selectors
@@ -3404,7 +3310,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Aft Cargo Hot Air",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE"] = new SimConnect.SimVarDefinition
             {
@@ -3412,7 +3318,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Aft Isolation Valve",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== FIRE PANEL ==========
@@ -3518,7 +3424,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 1 Pump (Green)",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_HYD_ENG_2_PUMP"] = new SimConnect.SimVarDefinition
             {
@@ -3526,7 +3432,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 2 Pump (Yellow)",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Electric Pumps
@@ -3536,7 +3442,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Blue Electric Pump",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_HYD_YELLOW_ELEC_PUMP"] = new SimConnect.SimVarDefinition
             {
@@ -3555,7 +3461,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Power Transfer Unit (PTU)",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_HYD_RAT_MAN_ON"] = new SimConnect.SimVarDefinition
             {
@@ -3563,7 +3469,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RAT Manual On",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Low Mechanical Valves
@@ -3573,7 +3479,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "LMV Yellow",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_HYD_LMV_GREEN"] = new SimConnect.SimVarDefinition
             {
@@ -3581,7 +3487,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "LMV Green",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_HYD_LMV_BLUE"] = new SimConnect.SimVarDefinition
             {
@@ -3589,7 +3495,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "LMV Blue",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_HYD_BLUE_PUMP_OVERRIDE"] = new SimConnect.SimVarDefinition
             {
@@ -3597,7 +3503,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Blue Pump Override",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== FUEL PANEL ==========
@@ -3608,7 +3514,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Left Tank Pump 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_FUEL_LEFT_2"] = new SimConnect.SimVarDefinition
             {
@@ -3616,7 +3522,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Left Tank Pump 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Center Tank Pumps
@@ -3626,7 +3532,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Center Tank Pump 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_FUEL_CENTER_2"] = new SimConnect.SimVarDefinition
             {
@@ -3634,7 +3540,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Center Tank Pump 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Right Wing Tank Pumps
@@ -3644,7 +3550,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Right Tank Pump 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_FUEL_RIGHT_2"] = new SimConnect.SimVarDefinition
             {
@@ -3652,7 +3558,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Right Tank Pump 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Crossfeed and Mode
@@ -3670,7 +3576,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Mode Selector",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== ANTI-ICE PANEL ==========
@@ -3681,7 +3587,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 1 Anti-Ice",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_PNEUMATIC_ENG2_ANTI_ICE"] = new SimConnect.SimVarDefinition
             {
@@ -3689,7 +3595,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 2 Anti-Ice",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Wing Anti-Ice
@@ -3699,7 +3605,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Wing Anti-Ice",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Probe Heat
@@ -3817,7 +3723,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Brake Fan",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Anti-Skid
@@ -3827,7 +3733,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Anti-Skid",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Console Floor Lights
@@ -4471,7 +4377,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Crew Oxygen",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_OXYGEN_HIGH_ALT"] = new SimConnect.SimVarDefinition
             {
@@ -4479,7 +4385,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "High Altitude Landing",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_OXYGEN_MASK_MAN_ON"] = new SimConnect.SimVarDefinition
             {
@@ -4538,7 +4444,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Evac Capt/Purser Switch",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_EVAC_COMMAND"] = new SimConnect.SimVarDefinition
             {
@@ -4546,7 +4452,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Evac Command",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_EVAC_HORN_SHUTOFF"] = new SimConnect.SimVarDefinition
             {
@@ -4554,7 +4460,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Evac Horn Shutoff",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== CALLS PANEL ==========
@@ -4564,7 +4470,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls Mechanic",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CALLS_ALL"] = new SimConnect.SimVarDefinition
             {
@@ -4572,7 +4478,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls All",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CALLS_FWD"] = new SimConnect.SimVarDefinition
             {
@@ -4580,7 +4486,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls Forward",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CALLS_AFT"] = new SimConnect.SimVarDefinition
             {
@@ -4588,7 +4494,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls Aft",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CALLS_EMER"] = new SimConnect.SimVarDefinition
             {
@@ -4596,7 +4502,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls Emergency",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CALLS_EMER_Cover"] = new SimConnect.SimVarDefinition
             {
@@ -4630,7 +4536,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Captain Rain Repellent",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_MISC_WIPER_REPELLENT_FO"] = new SimConnect.SimVarDefinition
             {
@@ -4638,7 +4544,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "First Officer Rain Repellent",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== CARGO SMOKE PANEL ==========
@@ -4648,7 +4554,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Smoke Test",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CARGO_DISC_1_OLD_LAYOUT"] = new SimConnect.SimVarDefinition
             {
@@ -4656,7 +4562,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Discharge 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_CARGO_DISC_2_OLD_LAYOUT"] = new SimConnect.SimVarDefinition
             {
@@ -4664,7 +4570,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Discharge 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== GPWS PANEL ==========
@@ -4674,7 +4580,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "GPWS Terrain",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_GPWS_SYS"] = new SimConnect.SimVarDefinition
             {
@@ -4682,7 +4588,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "GPWS System",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_GPWS_LDG_FLAP3"] = new SimConnect.SimVarDefinition
             {
@@ -4690,7 +4596,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "GPWS Landing Flap 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_GPWS_GS_MODE"] = new SimConnect.SimVarDefinition
             {
@@ -4698,7 +4604,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "GPWS Glideslope Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_GPWS_FLAP_MODE"] = new SimConnect.SimVarDefinition
             {
@@ -4706,7 +4612,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "GPWS Flap Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== ENGINE PANEL ==========
@@ -4716,7 +4622,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 1 Manual Start",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ENG_MANSTART_2"] = new SimConnect.SimVarDefinition
             {
@@ -4724,7 +4630,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 2 Manual Start",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ENG_N1_MODE_1"] = new SimConnect.SimVarDefinition
             {
@@ -4732,7 +4638,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 1 N1 Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ENG_N1_MODE_2"] = new SimConnect.SimVarDefinition
             {
@@ -4740,7 +4646,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 2 N1 Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== MAINTENANCE PANEL ==========
@@ -4750,7 +4656,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FADEC Ground 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_AFT_FADEC_GND_2"] = new SimConnect.SimVarDefinition
             {
@@ -4758,7 +4664,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FADEC Ground 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELT"] = new SimConnect.SimVarDefinition
             {
@@ -4766,7 +4672,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Emergency Locator Transmitter",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ELT_TEST"] = new SimConnect.SimVarDefinition
             {
@@ -4774,7 +4680,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ELT Test",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_APU_AUTOEXTING_RESET"] = new SimConnect.SimVarDefinition
             {
@@ -4782,7 +4688,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "APU Auto Extinguishing Reset",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_APU_AUTOEXTING_TEST"] = new SimConnect.SimVarDefinition
             {
@@ -4790,7 +4696,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "APU Auto Extinguishing Test",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_SVCE_INT_OVRD"] = new SimConnect.SimVarDefinition
             {
@@ -4798,7 +4704,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Service Interphone Override",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_LIGHTING_AVIONICS_COMPT"] = new SimConnect.SimVarDefinition
             {
@@ -4806,7 +4712,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Avionics Compartment Light",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== PEDESTAL - ENGINES PANEL (3 variables) ==========
@@ -4824,7 +4730,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 1 Master",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_ENG_MASTER_2"] = new SimConnect.SimVarDefinition
             {
@@ -4832,7 +4738,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Engine 2 Master",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== PEDESTAL - WEATHER RADAR PANEL (7 variables) ==========
@@ -4863,7 +4769,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "GCS (Ground Clutter Suppression)",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Multiscan Switch (Combo box)
@@ -4873,7 +4779,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Multiscan",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // Tilt Knob (Combo box with 31 positions: -15 to +15)
@@ -4949,12 +4855,12 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_STANDBY_ATTITUDE_CAGE"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_ATTITUDE_CAGE", DisplayName = "Standby Attitude Cage", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Caged"} },
             ["S_JUMPSEAT"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT", DisplayName = "Jumpseat", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
             ["S_JUMPSEAT_HEADREST"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT_HEADREST", DisplayName = "Jumpseat Headrest", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
-            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"} },
+            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = OffOn },
             ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
             ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Extended"} },
-            ["S_HYD_GRAVITY_GEAR_EXTEND_ROTATION"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", DisplayName = "Gravity Gear Crank", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"} },
+            ["S_HYD_GRAVITY_GEAR_EXTEND_ROTATION"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", DisplayName = "Gravity Gear Crank", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = OffOn },
             ["S_DCDU2_DIM_BRT"] = new SimConnect.SimVarDefinition { Name = "S_DCDU2_DIM_BRT", DisplayName = "First Officer DCDU Brightness", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"} },
 
             // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
@@ -4965,7 +4871,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Upper ECAM Brightness",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%", [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%", [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%", [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%", [1.00] = "100%"}
+                ValueDescriptions = PercentSteps5
             },
             ["A_DISPLAY_BRIGHTNESS_ECAM_L"] = new SimConnect.SimVarDefinition
             {
@@ -4973,7 +4879,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Lower ECAM Brightness",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%", [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%", [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%", [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%", [1.00] = "100%"}
+                ValueDescriptions = PercentSteps5
             },
 
             // ECAM System Page Buttons (18 buttons)
@@ -5144,7 +5050,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Parking Brake",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["A_FC_SPEEDBRAKE"] = new SimConnect.SimVarDefinition
             {
@@ -5311,7 +5217,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Altitude Reporting",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // TCAS Traffic/Range Knob
@@ -5361,7 +5267,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Seat Belt Signs",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // No Smoking Signs
@@ -5412,7 +5318,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Beacon",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // WING
@@ -5422,7 +5328,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Wing",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // LANDING LEFT
@@ -5462,7 +5368,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Runway Turn Off",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // NOSE
@@ -5503,7 +5409,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Ice Standby",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // CAPTAIN READING (0.1 steps)
@@ -5544,7 +5450,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ELAC 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ELAC 2
@@ -5554,7 +5460,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ELAC 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // SEC 1
@@ -5564,7 +5470,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "SEC 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // SEC 2
@@ -5574,7 +5480,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "SEC 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // SEC 3
@@ -5584,7 +5490,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "SEC 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // FAC 1
@@ -5594,7 +5500,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FAC 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // FAC 2
@@ -5604,7 +5510,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FAC 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== VOICE RECORDER PANEL ==========
@@ -5626,7 +5532,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "CVR Erase",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // CVR TEST
@@ -5636,7 +5542,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "CVR Test",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== COCKPIT DOOR PANEL ==========
@@ -5647,7 +5553,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "VIDEO",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
@@ -5774,7 +5680,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_ENG_N1_MODE_1"] = new SimConnect.SimVarDefinition
             {
@@ -5783,7 +5689,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ENG_MANSTART_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -5792,7 +5698,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ENG_MANSTART_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -5801,7 +5707,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_APU_START_U"] = new SimConnect.SimVarDefinition
             {
@@ -5810,7 +5716,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_APU_START_L"] = new SimConnect.SimVarDefinition
             {
@@ -5819,7 +5725,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_APU_MASTER_U"] = new SimConnect.SimVarDefinition
             {
@@ -5828,7 +5734,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_APU_MASTER_L"] = new SimConnect.SimVarDefinition
             {
@@ -5837,7 +5743,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== FLIGHT CONTROLS (3 variables) ==========
@@ -5921,7 +5827,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["FNX2PLD_fcuSpdDashed"] = new SimConnect.SimVarDefinition
             {
@@ -5991,7 +5897,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_RIGHT_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -6000,7 +5906,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_RIGHT_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -6009,7 +5915,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_RIGHT_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -6018,7 +5924,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_LEFT_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -6027,7 +5933,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_LEFT_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -6036,7 +5942,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_LEFT_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -6045,7 +5951,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_LEFT_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -6054,7 +5960,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_MODE_SEL_U"] = new SimConnect.SimVarDefinition
             {
@@ -6063,7 +5969,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_MODE_SEL_L"] = new SimConnect.SimVarDefinition
             {
@@ -6072,7 +5978,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_XFEED_U"] = new SimConnect.SimVarDefinition
             {
@@ -6081,7 +5987,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_XFEED_L"] = new SimConnect.SimVarDefinition
             {
@@ -6090,7 +5996,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_CENTER_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -6099,7 +6005,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_CENTER_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -6108,7 +6014,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_CENTER_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -6117,7 +6023,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FUEL_CENTER_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -6126,7 +6032,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== GEAR (17 variables) ==========
@@ -6137,7 +6043,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GEAR_3_U"] = new SimConnect.SimVarDefinition
             {
@@ -6146,7 +6052,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GEAR_3_L"] = new SimConnect.SimVarDefinition
             {
@@ -6155,7 +6061,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GEAR_2_U"] = new SimConnect.SimVarDefinition
             {
@@ -6164,7 +6070,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GEAR_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -6173,7 +6079,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GEAR_1_U"] = new SimConnect.SimVarDefinition
             {
@@ -6182,7 +6088,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GEAR_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -6191,7 +6097,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_BRAKE_FAN_U"] = new SimConnect.SimVarDefinition
             {
@@ -6200,7 +6106,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_BRAKE_FAN_L"] = new SimConnect.SimVarDefinition
             {
@@ -6209,7 +6115,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOBRAKE_MED_U"] = new SimConnect.SimVarDefinition
             {
@@ -6218,7 +6124,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOBRAKE_MED_L"] = new SimConnect.SimVarDefinition
             {
@@ -6227,7 +6133,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOBRAKE_MAX_U"] = new SimConnect.SimVarDefinition
             {
@@ -6236,7 +6142,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOBRAKE_MAX_L"] = new SimConnect.SimVarDefinition
             {
@@ -6245,7 +6151,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOBRAKE_LO_U"] = new SimConnect.SimVarDefinition
             {
@@ -6254,7 +6160,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_AUTOBRAKE_LO_L"] = new SimConnect.SimVarDefinition
             {
@@ -6263,7 +6169,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_MIP_PARKING_BRAKE"] = new SimConnect.SimVarDefinition
             {
@@ -6272,7 +6178,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_FC_CAPT_TILLER_PEDAL_DISCONNECT"] = new SimConnect.SimVarDefinition
             {
@@ -6281,7 +6187,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== HYDRAULIC (13 variables) ==========
@@ -6292,7 +6198,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_PTU_L"] = new SimConnect.SimVarDefinition
             {
@@ -6301,7 +6207,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_ENG_2_PUMP_U"] = new SimConnect.SimVarDefinition
             {
@@ -6310,7 +6216,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_ENG_2_PUMP_L"] = new SimConnect.SimVarDefinition
             {
@@ -6319,7 +6225,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_ENG_1_PUMP_U"] = new SimConnect.SimVarDefinition
             {
@@ -6328,7 +6234,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_ENG_1_PUMP_L"] = new SimConnect.SimVarDefinition
             {
@@ -6337,7 +6243,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_YELLOW_ELEC_PUMP_U"] = new SimConnect.SimVarDefinition
             {
@@ -6346,7 +6252,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_YELLOW_ELEC_PUMP_L"] = new SimConnect.SimVarDefinition
             {
@@ -6355,7 +6261,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_BLUE_ELEC_PUMP_U"] = new SimConnect.SimVarDefinition
             {
@@ -6364,7 +6270,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_BLUE_ELEC_PUMP_L"] = new SimConnect.SimVarDefinition
             {
@@ -6373,7 +6279,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== ISIS (1 variables) ==========
@@ -6402,7 +6308,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["N_PED_LIGHTING_PEDESTAL"] = new SimConnect.SimVarDefinition
             {
@@ -6411,7 +6317,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== LIGHTS (INTERIOR) (1 variables) ==========
@@ -6424,7 +6330,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_RDY"] = new SimConnect.SimVarDefinition
             {
@@ -6433,7 +6339,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_MCDU_MENU"] = new SimConnect.SimVarDefinition
             {
@@ -6442,7 +6348,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_MCDU_MENU"] = new SimConnect.SimVarDefinition
             {
@@ -6451,7 +6357,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_IND"] = new SimConnect.SimVarDefinition
             {
@@ -6460,7 +6366,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_IND"] = new SimConnect.SimVarDefinition
             {
@@ -6469,7 +6375,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_FM2"] = new SimConnect.SimVarDefinition
             {
@@ -6478,7 +6384,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_FM2"] = new SimConnect.SimVarDefinition
             {
@@ -6487,7 +6393,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_FM1"] = new SimConnect.SimVarDefinition
             {
@@ -6496,7 +6402,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_FM1"] = new SimConnect.SimVarDefinition
             {
@@ -6505,7 +6411,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_FM"] = new SimConnect.SimVarDefinition
             {
@@ -6514,7 +6420,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_FM"] = new SimConnect.SimVarDefinition
             {
@@ -6523,7 +6429,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_FAIL"] = new SimConnect.SimVarDefinition
             {
@@ -6532,7 +6438,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_FAIL"] = new SimConnect.SimVarDefinition
             {
@@ -6541,7 +6447,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU2_DASH"] = new SimConnect.SimVarDefinition
             {
@@ -6550,7 +6456,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_CDU1_DASH"] = new SimConnect.SimVarDefinition
             {
@@ -6559,7 +6465,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["N_MISC_PERF_TO_V1"] = new SimConnect.SimVarDefinition
             {
@@ -6602,7 +6508,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_CARGO_SMOKE_AFT_U"] = new SimConnect.SimVarDefinition
             {
@@ -6611,7 +6517,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_U"] = new SimConnect.SimVarDefinition
             {
@@ -6620,7 +6526,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_L"] = new SimConnect.SimVarDefinition
             {
@@ -6629,7 +6535,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_U"] = new SimConnect.SimVarDefinition
             {
@@ -6638,7 +6544,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_L"] = new SimConnect.SimVarDefinition
             {
@@ -6647,7 +6553,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_RCRD_GND_CTL_L"] = new SimConnect.SimVarDefinition
             {
@@ -6656,7 +6562,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_SVCE_INT_OVRD"] = new SimConnect.SimVarDefinition
             {
@@ -6665,7 +6571,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_OXYGEN_TMR_RESET_U"] = new SimConnect.SimVarDefinition
             {
@@ -6674,7 +6580,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_OXYGEN_TMR_RESET_L"] = new SimConnect.SimVarDefinition
             {
@@ -6683,7 +6589,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_LMV_YELLOW_L"] = new SimConnect.SimVarDefinition
             {
@@ -6692,7 +6598,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_LMV_GREEN_L"] = new SimConnect.SimVarDefinition
             {
@@ -6701,7 +6607,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_LMV_BLUE_L"] = new SimConnect.SimVarDefinition
             {
@@ -6710,7 +6616,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_AFT_FADEC_GND_2_L"] = new SimConnect.SimVarDefinition
             {
@@ -6719,7 +6625,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_AFT_FADEC_GND_1_L"] = new SimConnect.SimVarDefinition
             {
@@ -6728,7 +6634,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
             {
@@ -6737,7 +6643,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_HYD_BLUE_PUMP_OVERRIDE_L"] = new SimConnect.SimVarDefinition
             {
@@ -6746,7 +6652,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_LIGHTING_AVIONICS_COMPT"] = new SimConnect.SimVarDefinition
             {
@@ -6755,7 +6661,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_APU_AUTOEXTING_TEST_U"] = new SimConnect.SimVarDefinition
             {
@@ -6764,7 +6670,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_APU_AUTOEXTING_TEST_L"] = new SimConnect.SimVarDefinition
             {
@@ -6773,7 +6679,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_DOOR_CTL_U"] = new SimConnect.SimVarDefinition
             {
@@ -6782,7 +6688,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_DOOR_CTL_L"] = new SimConnect.SimVarDefinition
             {
@@ -6791,7 +6697,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_TOILET"] = new SimConnect.SimVarDefinition
             {
@@ -6800,7 +6706,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_TRAY_TABLE_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -6851,7 +6757,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_COCKPIT_DOOR_L"] = new SimConnect.SimVarDefinition
             {
@@ -6860,7 +6766,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== NAVIGATION (3 variables) ==========
@@ -6871,7 +6777,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_NAV_ADIRS_QUEUE_ENT"] = new SimConnect.SimVarDefinition
             {
@@ -6880,7 +6786,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             // ========== RADIO (119 variables) ==========
             ["I_ASP3_VOICE"] = new SimConnect.SimVarDefinition
@@ -6890,7 +6796,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -6899,7 +6805,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_VHF_3_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -6908,7 +6814,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -6917,7 +6823,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_VHF_2_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -6926,7 +6832,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -6935,7 +6841,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_VHF_1_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -6944,7 +6850,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_INT_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -6953,7 +6859,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_INT_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -6962,7 +6868,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_HF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -6971,7 +6877,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -6980,7 +6886,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -6989,7 +6895,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_HF_1_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -6998,7 +6904,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7007,7 +6913,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VOICE"] = new SimConnect.SimVarDefinition
             {
@@ -7016,7 +6922,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7025,7 +6931,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VHF_3_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7034,7 +6940,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7043,7 +6949,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VHF_2_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7052,7 +6958,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7061,7 +6967,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_VHF_1_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7070,7 +6976,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_PA_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7079,7 +6985,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_INT_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7088,7 +6994,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_INT_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7097,7 +7003,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_HF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7106,7 +7012,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7115,7 +7021,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7124,7 +7030,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_HF_1_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7133,7 +7039,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7142,7 +7048,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VOICE"] = new SimConnect.SimVarDefinition
             {
@@ -7151,7 +7057,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7160,7 +7066,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_3_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7169,7 +7075,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7178,7 +7084,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_2_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7187,7 +7093,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7196,7 +7102,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_1_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7205,7 +7111,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_PA_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7214,7 +7120,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_INT_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7223,7 +7129,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_INT_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7232,7 +7138,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7241,7 +7147,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7250,7 +7156,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_HF_1_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -7259,7 +7165,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7268,7 +7174,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_VOR"] = new SimConnect.SimVarDefinition
             {
@@ -7277,7 +7183,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_VHF3"] = new SimConnect.SimVarDefinition
             {
@@ -7286,7 +7192,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_VHF2"] = new SimConnect.SimVarDefinition
             {
@@ -7295,7 +7201,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_VHF1"] = new SimConnect.SimVarDefinition
             {
@@ -7304,7 +7210,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_SEL"] = new SimConnect.SimVarDefinition
             {
@@ -7313,7 +7219,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_NAV"] = new SimConnect.SimVarDefinition
             {
@@ -7322,7 +7228,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_ILS"] = new SimConnect.SimVarDefinition
             {
@@ -7331,7 +7237,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_HF2"] = new SimConnect.SimVarDefinition
             {
@@ -7340,7 +7246,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_HF1"] = new SimConnect.SimVarDefinition
             {
@@ -7349,7 +7255,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_MLS"] = new SimConnect.SimVarDefinition
             {
@@ -7358,7 +7264,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_BFO"] = new SimConnect.SimVarDefinition
             {
@@ -7367,7 +7273,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_AM"] = new SimConnect.SimVarDefinition
             {
@@ -7376,7 +7282,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP3_ADF"] = new SimConnect.SimVarDefinition
             {
@@ -7385,7 +7291,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_VOR"] = new SimConnect.SimVarDefinition
             {
@@ -7394,7 +7300,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_VHF3"] = new SimConnect.SimVarDefinition
             {
@@ -7403,7 +7309,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_VHF2"] = new SimConnect.SimVarDefinition
             {
@@ -7412,7 +7318,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_VHF1"] = new SimConnect.SimVarDefinition
             {
@@ -7421,7 +7327,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_SEL"] = new SimConnect.SimVarDefinition
             {
@@ -7430,7 +7336,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_NAV"] = new SimConnect.SimVarDefinition
             {
@@ -7439,7 +7345,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_ILS"] = new SimConnect.SimVarDefinition
             {
@@ -7448,7 +7354,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_HF2"] = new SimConnect.SimVarDefinition
             {
@@ -7457,7 +7363,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_HF1"] = new SimConnect.SimVarDefinition
             {
@@ -7466,7 +7372,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_MLS"] = new SimConnect.SimVarDefinition
             {
@@ -7475,7 +7381,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_BFO"] = new SimConnect.SimVarDefinition
             {
@@ -7484,7 +7390,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_AM"] = new SimConnect.SimVarDefinition
             {
@@ -7493,7 +7399,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP2_ADF"] = new SimConnect.SimVarDefinition
             {
@@ -7502,7 +7408,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_VOR"] = new SimConnect.SimVarDefinition
             {
@@ -7511,7 +7417,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_VHF3"] = new SimConnect.SimVarDefinition
             {
@@ -7520,7 +7426,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_VHF2"] = new SimConnect.SimVarDefinition
             {
@@ -7529,7 +7435,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_VHF1"] = new SimConnect.SimVarDefinition
             {
@@ -7538,7 +7444,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_SEL"] = new SimConnect.SimVarDefinition
             {
@@ -7547,7 +7453,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_NAV"] = new SimConnect.SimVarDefinition
             {
@@ -7556,7 +7462,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_ILS"] = new SimConnect.SimVarDefinition
             {
@@ -7565,7 +7471,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_HF2"] = new SimConnect.SimVarDefinition
             {
@@ -7574,7 +7480,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_HF1"] = new SimConnect.SimVarDefinition
             {
@@ -7583,7 +7489,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_MLS"] = new SimConnect.SimVarDefinition
             {
@@ -7592,7 +7498,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_BFO"] = new SimConnect.SimVarDefinition
             {
@@ -7601,7 +7507,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_AM"] = new SimConnect.SimVarDefinition
             {
@@ -7610,7 +7516,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_PED_RMP1_ADF"] = new SimConnect.SimVarDefinition
             {
@@ -7619,7 +7525,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_PA_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -7628,7 +7534,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             // ========== COM RADIO FREQUENCIES (standard SimConnect for direct tuning) ==========
             ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
@@ -7735,7 +7641,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_2_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7744,7 +7650,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_VHF_3_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7753,7 +7659,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_HF_1_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7762,7 +7668,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_HF_2_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7771,7 +7677,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_INT_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7780,7 +7686,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_CAB_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7789,7 +7695,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_PA_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7798,7 +7704,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_NAV_1_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7807,7 +7713,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_NAV_2_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7816,7 +7722,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_MARKER_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7825,7 +7731,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_ILS_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7834,7 +7740,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_ADF_1_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7843,7 +7749,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP_ADF_2_REC"] = new SimConnect.SimVarDefinition
             {
@@ -7852,7 +7758,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // ========== SAFETY (20 variables) ==========
@@ -7863,7 +7769,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_OXYGEN_CREW_OXYGEN_L"] = new SimConnect.SimVarDefinition
             {
@@ -7872,7 +7778,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_OXYGEN_HIGH_ALT_L"] = new SimConnect.SimVarDefinition
             {
@@ -7881,7 +7787,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_CARGO_SMOKE_DISCHARGE_2"] = new SimConnect.SimVarDefinition
             {
@@ -7890,7 +7796,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_CARGO_SMOKE_DISCHARGE_1"] = new SimConnect.SimVarDefinition
             {
@@ -7899,7 +7805,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_CARGO_SMOKE_DISCHARGE_AGENT_2"] = new SimConnect.SimVarDefinition
             {
@@ -7908,7 +7814,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG2_AGENT2_U"] = new SimConnect.SimVarDefinition
             {
@@ -7917,7 +7823,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG2_AGENT2_L"] = new SimConnect.SimVarDefinition
             {
@@ -7926,7 +7832,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG2_AGENT1_U"] = new SimConnect.SimVarDefinition
             {
@@ -7935,7 +7841,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG2_AGENT1_L"] = new SimConnect.SimVarDefinition
             {
@@ -7944,7 +7850,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG1_AGENT2_U"] = new SimConnect.SimVarDefinition
             {
@@ -7953,7 +7859,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG1_AGENT2_L"] = new SimConnect.SimVarDefinition
             {
@@ -7962,7 +7868,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG1_AGENT1_U"] = new SimConnect.SimVarDefinition
             {
@@ -7971,7 +7877,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG1_AGENT1_L"] = new SimConnect.SimVarDefinition
             {
@@ -7980,7 +7886,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_APU_AGENT_U"] = new SimConnect.SimVarDefinition
             {
@@ -7989,7 +7895,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_APU_AGENT_L"] = new SimConnect.SimVarDefinition
             {
@@ -7998,7 +7904,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG1_BUTTON"] = new SimConnect.SimVarDefinition
             {
@@ -8007,7 +7913,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_ENG2_BUTTON"] = new SimConnect.SimVarDefinition
             {
@@ -8016,7 +7922,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_FIRE_APU_BUTTON"] = new SimConnect.SimVarDefinition
             {
@@ -8025,7 +7931,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["B_INT_CFSBLT"] = new SimConnect.SimVarDefinition
             {
@@ -8034,7 +7940,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["S_OH_SIGNS_SMOKING_STATE"] = new SimConnect.SimVarDefinition
             {
@@ -8083,7 +7989,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_EVAC_COMMAND_L"] = new SimConnect.SimVarDefinition
             {
@@ -8092,7 +7998,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_EMERG_GEN_FAULT"] = new SimConnect.SimVarDefinition
             {
@@ -8101,7 +8007,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GEN1_LINE_U"] = new SimConnect.SimVarDefinition
             {
@@ -8110,7 +8016,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_ELEC_GEN1_LINE_L"] = new SimConnect.SimVarDefinition
             {
@@ -8119,7 +8025,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_CALLS_EMER_U"] = new SimConnect.SimVarDefinition
             {
@@ -8128,7 +8034,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_CALLS_EMER_L"] = new SimConnect.SimVarDefinition
             {
@@ -8137,7 +8043,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ENG_FIRE_2"] = new SimConnect.SimVarDefinition
             {
@@ -8146,7 +8052,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ENG_FIRE_1"] = new SimConnect.SimVarDefinition
             {
@@ -8155,7 +8061,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ENG_FAULT_2"] = new SimConnect.SimVarDefinition
             {
@@ -8164,7 +8070,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ENG_FAULT_1"] = new SimConnect.SimVarDefinition
             {
@@ -8173,7 +8079,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_INT_LT_EMER_OFF"] = new SimConnect.SimVarDefinition
             {
@@ -8182,7 +8088,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GPWS_VISUAL_ALERT_FO_u"] = new SimConnect.SimVarDefinition
             {
@@ -8191,7 +8097,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GPWS_VISUAL_ALERT_FO_L"] = new SimConnect.SimVarDefinition
             {
@@ -8200,7 +8106,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GPWS_VISUAL_ALERT_CAPT_U"] = new SimConnect.SimVarDefinition
             {
@@ -8209,7 +8115,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_GPWS_VISUAL_ALERT_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -8218,7 +8124,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_TERR_U"] = new SimConnect.SimVarDefinition
             {
@@ -8227,7 +8133,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_TERR_L"] = new SimConnect.SimVarDefinition
             {
@@ -8236,7 +8142,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_SYS_U"] = new SimConnect.SimVarDefinition
             {
@@ -8245,7 +8151,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_SYS_L"] = new SimConnect.SimVarDefinition
             {
@@ -8254,7 +8160,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_LDG_FLAP3_L"] = new SimConnect.SimVarDefinition
             {
@@ -8263,7 +8169,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_GS_MODE_L"] = new SimConnect.SimVarDefinition
             {
@@ -8272,7 +8178,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_OH_GPWS_FLAP_MODE_L"] = new SimConnect.SimVarDefinition
             {
@@ -8281,7 +8187,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_WARNING_FO_L"] = new SimConnect.SimVarDefinition
             {
@@ -8290,7 +8196,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
             {
@@ -8299,7 +8205,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_WARNING_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -8308,7 +8214,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_WARNING_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -8317,7 +8223,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_CAUTION_FO_L"] = new SimConnect.SimVarDefinition
             {
@@ -8326,7 +8232,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_CAUTION_FO"] = new SimConnect.SimVarDefinition
             {
@@ -8335,7 +8241,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_CAUTION_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -8344,7 +8250,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_MIP_MASTER_CAUTION_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -8353,7 +8259,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
 
             // TAKEOFF ASSIST VARIABLES (dynamically monitored when takeoff assist is active)
@@ -8436,7 +8342,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP2_CAB_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -8445,7 +8351,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["I_ASP3_CAB_CALL"] = new SimConnect.SimVarDefinition
             {
@@ -8454,7 +8360,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = OffOn
             },
             ["N_FC_RUDDER_TRIM_DECIMAL"] = new SimConnect.SimVarDefinition
             {
@@ -8474,7 +8380,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
         }
 
-        _cachedVariables = variables;
         return variables;
     }
 
@@ -12676,30 +12581,8 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
-    private void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Fenix", $"Error requesting fuel quantity: {ex.Message}");
-            }
-        }
-    }
+    // RequestFuelQuantity moved to BaseAircraftDefinition (byte-identical Fenix/FBW A320
+    // pair, now parameterized on the Log.Debug category).
 
     /// <summary>
     /// Delay (ms) after the initial reset-to-0 before the button is pressed (0 → 1).
@@ -13341,7 +13224,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
 
             case HotkeyAction.ReadFuelQuantity:
-                RequestFuelQuantity(simConnect);
+                RequestFuelQuantity(simConnect, "Fenix");
                 return true;
 
             // Fenix has no waypoint info feature — W key repurposed for gross weight (lbs)

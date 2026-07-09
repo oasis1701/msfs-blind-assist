@@ -203,7 +203,11 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousFuelPump_CtrL    = -1;
     private int  _previousFuelPump_CtrR    = -1;
     private int  _previousFuelPump_APU     = -1;
-    private int  _previousFuelXfeedFwd     = -1;
+    // Renamed from _previousFuelXfeedFwd: tracks HS787_FuelXfeed, a single crossfeed
+    // valve state ("Fuel Crossfeed Open/Closed") — there is no Aft counterpart, so the
+    // Fwd suffix (a copy-paste artifact from the Fwd/Aft fuel-pump fields above) was
+    // misleading.
+    private int  _previousFuelXfeed        = -1;
     private int  _previousBleedEng1        = -1;
     private int  _previousBleedEng2        = -1;
     private int  _previousBleedAPU         = -1;
@@ -586,13 +590,8 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
     // Variables
     // =========================================================================
 
-    // Cached variable-definition dictionary (defs are static; rebuilding the whole dict
-    // on every call — and the panel-build loop calls GetVariables() twice per control —
-    // was wasted work. Same proven cache the PMDG defs already use.) Built once, reused.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null) return _cachedVariables;
         var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // -----------------------------------------------------------------
@@ -4513,7 +4512,6 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 v.ExcludeFromBatch = true;
         }
 
-        _cachedVariables = variables;
         return variables;
     }
 

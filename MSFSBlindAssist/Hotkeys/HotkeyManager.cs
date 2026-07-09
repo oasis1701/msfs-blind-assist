@@ -91,7 +91,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_NAV_RADIOS_SET = 9212;   // Input mode: Ctrl+N (Set NAV radios)
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
-        private const int HOTKEY_HAND_FLY_MODE = 9075;
+        private const int HOTKEY_HAND_FLY_MODE = 9110;
         private const int HOTKEY_VISUAL_GUIDANCE = 9076;
         private const int HOTKEY_WAYPOINT_FD = 9252;   // Output mode: Ctrl+F (Waypoint Flight Director)
         private const int HOTKEY_SLIP_CUE = 9253;      // Output mode: Ctrl+K (rudder coordination ticks)
@@ -108,7 +108,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_ALTIMETER = 9096;
         private const int HOTKEY_FCU_SET_BARO = 9097;
         private const int HOTKEY_GROSS_WEIGHT_KG = 9098;
-        private const int HOTKEY_TRACK_FIX = 9076;
+        private const int HOTKEY_TRACK_FIX = 9111;
 
         // Display reading hotkey IDs (Output mode - Alt+1-5, Fenix A320 only)
         private const int HOTKEY_READ_DISPLAY_PFD = 9069;
