@@ -91,7 +91,7 @@
   };
 
   A.isVisible = function (n) {
-    if (n.__msfsbaGen !== A._gen) { n.__msfsbaGen = A._gen; n.__msfsbaKind = undefined; }
+    if (n.__msfsbaGen !== A._gen) { n.__msfsbaGen = A._gen; n.__msfsbaKind = undefined; n.__msfsbaVis = undefined; }
     if (n.__msfsbaVis === undefined) n.__msfsbaVis = A._isVisibleRaw(n);
     return n.__msfsbaVis;
   };
@@ -289,7 +289,7 @@
   // `null` (not-a-control), so the cache-hit test is `!== undefined`, not
   // truthiness.
   A.classify = function (n) {
-    if (n.__msfsbaGen !== A._gen) { n.__msfsbaGen = A._gen; n.__msfsbaVis = undefined; }
+    if (n.__msfsbaGen !== A._gen) { n.__msfsbaGen = A._gen; n.__msfsbaVis = undefined; n.__msfsbaKind = undefined; }
     if (n.__msfsbaKind === undefined) n.__msfsbaKind = A._classifyRaw(n);
     return n.__msfsbaKind;
   };
