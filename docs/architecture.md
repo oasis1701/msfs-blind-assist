@@ -9,10 +9,20 @@ This document describes the core components and design patterns of MSFS Blind As
 
 - Handles all Microsoft Flight Simulator SimConnect communication
 - Manages connection state and auto-reconnection
-- Implements individual variable registration system (no limits)
+- Implements individual variable registration system
 - Processes both LVars (local variables) and standard SimVars
 - Supports teleport functionality via InitPosition structure
 - Integrates with MobiFlight WASM module for H-variable support
+
+### SimConnect data-definition ceiling
+
+**⚠️ THE SIMCONNECT DATA-DEFINITION CEILING — root-caused AND STRENGTHENED 2026-06 (commit 72ced22; see `tools/a380-finish-pass-2026-06.md`).** SimConnect caps a client connection at **1000 data definitions ("objects") + 1000 requests** ([MSFS SDK: "TOO_MANY_OBJECTS… maximum is 1000"](https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_EXCEPTION.htm)). MSFSBA registers each var as a native SimConnect data def (`AddToDataDefinition("L:NAME"…)`), so each counts against that budget — it is NOT MobiFlight's 64-string cap (MSFSBA bypasses that channel for bulk reads). The limit is **per SimConnect connection but RESETS on aircraft switch** (MSFSBA clears + re-registers, `nextDataDefinitionId`→1000), so effectively **per-aircraft**. It is identical on **MSFS 2020 and 2024**. This is a global rule that applies to every aircraft definition, not just one airframe — this is why it lives here rather than in a per-aircraft doc.
+
+- **The bug it caused:** `StartContinuousMonitoring` registered every Continuous+IsAnnounced var a SECOND time into a `CONTINUOUS_BATCH_n` def (on top of its individual def). The A380 used ~1083 defs and overflowed; the 2nd batch's `AddToDataDefinition` failed wholesale (`TOO_MANY_OBJECTS`/`UNRECOGNIZED_ID`), and that async exception disrupted the AIRCRAFT_INFO/ATC one-shot → `IsFullyConnected` never set → "MSFS detected but every hotkey says not connected".
+- **THE FIX (3 layers, all in `SimConnectManager.cs`):** (1) **Headroom** — `RegisterAllVariables` now SKIPS the individual def for batch-covered vars (Continuous+IsAnnounced+!ExcludeFromBatch); they read their on-demand value from `lastVariableValues`, the SAME cache the batch fills (panels fall back to `GetCachedVariableValue`, forms use `GetCachedVariableSnapshot`). **A380: ~1083 → ~530 defs, verified live, fully connects.** (2) **Resilience** — `SetupDataDefinitions` registers the bulk vars LAST, after the fixed/critical defs (AIRCRAFT_INFO/ATC/position/…), so detection can NEVER again be stranded by an overflow (it degrades gracefully). (3) **Guard + observability** — a 900 individual-def cap (skip+log past it) and a persistent `%APPDATA%\MSFSBlindAssist\logs\registration.log` recording the per-connect footprint, "[Detection] FULLY CONNECTED", and any "[CEILING]" `TOO_MANY_OBJECTS`.
+- **PRACTICAL RULE NOW:** the A380 has ~470 vars of headroom; net additions are fine again. Adding a var as **Continuous+IsAnnounced costs 1 batch slot** (no individual def); **OnRequest costs 1 individual def**. Keep an eye on `registration.log` (`approxTotalDefs` should stay well under 1000). **Diagnostic if it ever recurs:** read `registration.log`; if `[CEILING]` appears, the connection hit 1000 — reduce continuous/OnRequest count or split to a second SimConnect connection (each gets its own 1000 budget). (Dead-end theories ruled out: it was NOT MobiFlight's cap, NOT bad stock-SimVar names like `INDICATED ALTITUDE:3` — those `NAME_UNRECOGNIZED` are pre-existing/harmless — and NOT the continuous-vs-OnRequest split; it was the raw TOTAL def count vs 1000.)
+- **A32NX:** the strengthening is in the SHARED `SimConnectManager` — needs a live A32NX connect check (architecturally identical: fewer continuous vars, same cache reads).
+- **`forceUpdate` works on batch-covered vars too.** Because a Continuous+IsAnnounced var has NO individual data def, a `RequestVariable(key, forceUpdate:true)` is delivered via the batch stream, not `ProcessIndividualVariableResponse`. `ProcessContinuousBatch` therefore consults `forceUpdateVariables` (same `lock` + `Remove` as the individual path) and fires `SimVarUpdated` even when the value is unchanged — without that, a force-read of an unchanged batch-covered value would silently no-op. Keep both paths honoring `forceUpdate`.
 
 ### MobiFlightWasmModule
 **File:** `SimConnect/MobiFlightWasmModule.cs`
@@ -21,6 +31,22 @@ This document describes the core components and design patterns of MSFS Blind As
 - Implements automatic press/release mechanism for button interactions
 - Provides fallback operation when registration times out
 - Reusable for any panel requiring H-variable support
+
+### `SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06)
+
+**Every L:var write that reaches `SetLVar` is routed through the MobiFlight calculator path (`ExecuteCalculatorCode("{v} (>L:{var})")`) when MobiFlight is connected** — NOT the native `AddToDataDefinition` + `SetDataOnSimObject` write (which is unreliable for many add-on L:vars and silently reverts FBW vars a frame later). The routing lives in `SetLVar` (`SimConnectManager.cs` ~3896) and is gated:
+- **`CalcPathVerified`** must be true (the end-to-end nonce probe — `IsMobiFlightConnected` is true even with NO WASM module installed, so it must never gate writes) — otherwise it falls through to the data-def write so users without the WASM module still work; FBW installs verify within ~3 s of detection.
+- **Plain L:var names only** — a name containing a **space or colon** is a stock SimVar shape (`TRANSPONDER STATE:1`, `INTERACTIVE POINT OPEN:0`) and is left on the data-def path; `SetLVar` always prepends `L:` so a real caller never passes such a name through the calc branch.
+
+**So "with MobiFlight connected, does everything use the calc path except PMDG?" — essentially YES for L:var writes, with the precise scope being:**
+- **Routed through the calc path:** every plain-L:var write — panel combos/buttons (MainForm's `if (!handled) SetLVar(...)` fallback, ~MainForm.cs:5179/5217/5323/5484), the FBW per-prefix catch-alls, and every aircraft def's `SetLVar(key,value)` call (Fenix combos, etc.).
+- **NOT routed (use their own mechanism regardless of MobiFlight):** **PMDG** (writes via CDA `SetClientData`/`SendPMDGEvent` — never calls `SetLVar`), **K-events** (`SendEvent`/`TransmitClientEvent`), **H-events**, and **stock SimVars** (space/colon names, left on data-def). HS787 control writes are K/H-events, also unaffected.
+
+**`SendEvent` H:/dotted calc-path gate + pre-connection queue.** The H:/dotted FBW event classes (e.g. `H:A380X_EFIS_CP_BARO_PUSH_1`, `A32NX.FCU_AP_1_PUSH`) prefer the MobiFlight calc path. `SendEvent` splits them: **H: events** go to the MobiFlight channel whenever `IsMobiFlightConnected` (queued during the brief connect window — they have no other transport on any branch). **Dotted events** prefer the calc path only once **`CalcPathVerified`**; while the probe is still running they are queued in the bounded `pendingCalcEvents` (cap `MaxPendingCalcEvents = 64`), then flushed via calc on `MarkCalcPathVerified` or via the legacy `MapClientEventToSimEvent` + `TransmitClientEvent` transport on `MarkCalcPathProbeConcluded` (module absent, or a non-FBW aircraft that can't probe — MainForm concludes immediately for those). The queue is cleared on MobiFlight teardown so events never carry across a disconnect/aircraft swap. `FireCalcEvent` is the shared single-event dispatcher used by both the live path and the flush.
+
+**Catch-all standardization across aircraft — the verdict (verified, do NOT "fix" the Fenix):** the per-control explicit cases in `FenixA320Definition.HandleUIVariableSet` are **fine, not a gap**. MainForm ALREADY provides the effective catch-all: when `HandleUIVariableSet` returns false, the combo/button paths call `SetLVar(varKey, value)` (now calc-routed). So a plain Fenix L:var combo works with NO explicit case at all. The explicit Fenix cases that *matter* are the ones doing MORE than a plain write — button transitions (`ExecuteButtonTransition`, 0→1 pulse), COM frequency (validate + Hz + `SendEvent`), and encoder increment/decrement counters — and those **cannot** be replaced by a blanket `SetLVar` catch-all without breaking. A single cross-aircraft catch-all is impossible: **PMDG** (CDA struct offsets, inversions, momentary params) and **HS787** (K/H-event tables) don't write L:vars at all, so a string-keyed `SetLVar` catch-all is meaningless for them. The standard already exists at the MainForm `SetLVar`-fallback layer; each def only adds explicit cases for non-plain-write controls.
+
+**RPN number formatting must be invariant fixed-point** — `value.ToString("0.################", InvariantCulture)` (or `"0.###"`-style) — NEVER default `{0}` formatting or `$"{double}"` interpolation: the former emits scientific notation for small/large magnitudes (`1E-05`) and the latter uses CurrentCulture (`87,5` on comma-decimal locales); the MSFS RPN parser rejects both. Same rule for every `ExecuteCalculatorCode` call that embeds a computed double (the A380 temp-selector was bitten).
 
 ## Multi-Aircraft Support Architecture
 
@@ -173,7 +199,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[YourAircraft] Error requesting FCU heading: {ex.Message}");
+                Log.Error("Aircraft", $"Error requesting FCU heading: {ex.Message}");
             }
         }
     }
@@ -519,13 +545,6 @@ Dual-mode hotkey system:
 - Custom Windows Forms control optimized for screen reader navigation
 - Implements three-level navigation: Sections → Panels → Controls
 
-### AirportDatabase
-**File:** `Database/AirportDatabase.cs`
-
-- SQLite-based airport and runway data management
-- Stores ICAO codes, airport names, runway data, and parking spots
-- Supports teleport destination lookup and validation
-
 ### DatabaseBuilder
 **File:** `Database/DatabaseBuilder.cs`
 
@@ -552,7 +571,7 @@ Dual-mode hotkey system:
 See [Access GSX](gsx.md) for the full reference.
 
 ### TaxiGuidance subsystem
-**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/TaxiGuidanceOptionsForm.cs`
+**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/Settings/TaxiGuidancePanel.cs`
 
 - Turn-by-turn taxi assistance using the navdatareader `taxi_path` / `start` / `parking` tables
 - `TaxiGraph` merges path endpoints within ~1 m into shared nodes, indexes edges by taxiway name
@@ -574,7 +593,7 @@ See [Taxi Guidance](taxi-guidance.md) for the full reference.
 - Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
 - Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
 - Wired in `MainForm` immediately after `DatabaseSelector.SelectProvider()`, guarded by `if (airportDataProvider != null)`
-- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log` via `AppLogs.PathFor`
+- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log`, written via `Utils/Logging/Log.Channel("taxi-augment")` (path resolved underneath by `AppLogs.PathFor`) — see CLAUDE.md's Diagnostic Logs section for the facade
 - `Enabled` property (default `true`) wired to `UserSettings.TaxiAugmentEnabled` (in-dialog checkbox + ODbL / X-Plane attribution in Taxi Guidance Options); a "Refresh Taxiway Names" button force-fetches the nearby airport and announces the names-added count (`GetLastCoverage`)
 
 See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-data-augmentation-pipeline-phase-5) for the full reference.

@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect
 {
@@ -105,7 +106,7 @@ namespace MSFSBlindAssist.SimConnect
                 // fail loudly in Debug and log in Release rather than half-support it.
                 if (_cts.IsCancellationRequested)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    Log.Debug("SimConnect", 
                         "CoherentFwsFailureClient.Start() called after Stop() — not supported; create a new instance.");
                     System.Diagnostics.Debug.Assert(false,
                         "CoherentFwsFailureClient: Start() after Stop() is a no-op. Dispose and create a new client instead.");
@@ -136,7 +137,7 @@ namespace MSFSBlindAssist.SimConnect
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"CoherentFwsFailureClient loop: {ex.Message}");
+                    Log.Debug("SimConnect", $"CoherentFwsFailureClient loop: {ex.Message}");
                     try { _ws?.Abort(); } catch { }
                     _ws = null;
                     // Fail any in-flight Runtime.evaluate calls now instead of letting
@@ -203,7 +204,7 @@ namespace MSFSBlindAssist.SimConnect
                     }
                 }
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"FwsFailure ResolvePageId: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("SimConnect", $"FwsFailure ResolvePageId: {ex.Message}"); }
             return null;
         }
 
@@ -369,7 +370,7 @@ namespace MSFSBlindAssist.SimConnect
                 }
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"FwsFailure receive: {ex.Message}"); }
+            catch (Exception ex) { Log.Debug("SimConnect", $"FwsFailure receive: {ex.Message}"); }
         }
 
         private void DispatchMessage(string text)

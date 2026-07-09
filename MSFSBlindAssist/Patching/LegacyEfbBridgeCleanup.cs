@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.Patching
 {
     /// <summary>
@@ -40,20 +42,20 @@ namespace MSFSBlindAssist.Patching
                         if (EFBModPackageManager.Remove(communityPath) == ModPackageResult.Removed)
                         {
                             removed++;
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[LegacyEfbBridgeCleanup] Removed retired PMDG EFB package from {simLabel}: {communityPath}");
+                            Log.Debug("Patching",
+                                $"Removed retired PMDG EFB package from {simLabel}: {communityPath}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[LegacyEfbBridgeCleanup] PMDG remove failed for {communityPath}: {ex.Message}");
+                        Log.Debug("Patching",
+                            $"PMDG remove failed for {communityPath}: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LegacyEfbBridgeCleanup] PMDG sweep failed: {ex.Message}");
+                Log.Debug("Patching", $"PMDG sweep failed: {ex.Message}");
             }
             return removed;
         }
@@ -72,14 +74,14 @@ namespace MSFSBlindAssist.Patching
                     if (Hs787LegacyUninstaller.Remove(communityPath))
                     {
                         removed++;
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[LegacyEfbBridgeCleanup] Removed retired HS787 bridge from {simLabel}: {communityPath}");
+                        Log.Debug("Patching",
+                            $"Removed retired HS787 bridge from {simLabel}: {communityPath}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LegacyEfbBridgeCleanup] HS787 sweep failed: {ex.Message}");
+                Log.Debug("Patching", $"HS787 sweep failed: {ex.Message}");
             }
             return removed;
         }

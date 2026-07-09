@@ -54,6 +54,9 @@
       var r = el.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return false;
       return true;
+    // Fail-CLOSED: the PMDG EFB tablet is an HTML page; its only SVG content is
+    // font-awesome icon glyphs, which are presence-checked elsewhere (never
+    // passed through isVisible) — treat a style/rect-read exception as hidden.
     } catch (e) { return false; }
   };
 
@@ -230,9 +233,7 @@
   // keyed by the control id (efb_preferences_length_unit -> Settings.length_unit). Falls back ''.
   A.activeUnit = function (el) {
     try {
-      var S = null;
-      try { if (typeof window !== 'undefined' && window.Settings) S = window.Settings; } catch (e1) {}
-      if (!S) { try { if (typeof Settings !== 'undefined') S = Settings; } catch (e2) {} }
+      var S = A.settingsObj();
       if (el.id && S) {
         var key = el.id.replace(/^efb_preferences_/, '');
         if (key !== el.id) { var v = S[key]; if (v !== undefined && v !== null && String(v) !== '') return String(v); }
@@ -405,6 +406,12 @@
       // Map control buttons + the source select are SIBLINGS of .leaflet-container, so kept.
       var clsLeaf = (typeof el.className === 'string' ? el.className : '');
       if (clsLeaf.indexOf('leaflet-container') >= 0 || clsLeaf.indexOf('leaflet-marker-icon') >= 0) { skipUnder = el; continue; }
+      // The EFB alert/confirmation card (#alert_card: heading + message + OK button — e.g.
+      // "Success / Tablet preferences were updated.") is emitted as ONE announce-flagged 'alert'
+      // item by a dedicated pass below, so the screen reader speaks it the moment it pops up
+      // (it otherwise rendered as silent text and was never read). Skip the card's heading/message
+      // here to avoid a duplicate; KEEP the OK button (#alert_card_button) so it stays clickable.
+      if (el.id !== 'alert_card_button') { try { if (el.closest && el.closest('#alert_card')) continue; } catch (eac) {} }
       // Preformatted block (the SimBrief OFP is ONE <pre> of 800+ fragments). Emit its OWN
       // line breaks verbatim — that's the briefing exactly as a sighted pilot reads it
       // (aligned columns, fuel table, NOTAMs) — and skip its children so they don't fragment.
@@ -455,7 +462,13 @@
         // form label — capture it (with its sibling unit) instead of skipping it as a <label>.
         // It is tagged _isValue below so it can never be paired AS a control's label (the unit
         // makes it letter-bearing, so the letter-guard alone would not exclude it).
-        var isMeasure = (el.matches && el.matches('label.pmdg_measurement'));
+        // EXCEPT a label OWNED by a dedicated output pass (.groundops_ui_outputlabel / .opt-output):
+        // those also carry pmdg_measurement, and the dedicated pass emits them as a NAMED line
+        // ("Target Fuel: 5400 kg"). Capturing them here too produced an orphan bare "5400 kg"
+        // duplicate (issue #113 — masked while the value was the single-char "0", which the
+        // glyph-skip above drops). Treat them as non-measurement so the label-skip below owns them.
+        var isMeasure = (el.matches && el.matches('label.pmdg_measurement') &&
+                         !el.matches('.groundops_ui_outputlabel, .opt-output'));
         if (!isMeasure && el.closest && el.closest('button, a, select, .custom-select, label, [role=button], [role=tab], [role=link], [role=heading], h1, h2, h3, h4, h5, h6')) continue;
         if (isMeasure) {
           var mu = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.output-unit') : null;
@@ -586,6 +599,73 @@
       idx++;
       out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: oval ? (onm + ': ' + oval + (ounit ? ' ' + ounit : '')) : onm, src: 'output-row' });
     }
+    // GROUND OPS output values (Automated Ground Ops + every ground-ops sub-page): the live
+    // readouts — Turn Time, Turn Time Remaining, Fuel Uplift Remaining, Target Fuel, Uplift, ... —
+    // render as <label class="groundops_ui_outputlabel">value, preceded by a sibling
+    // <label class="groundops_ui_label">name (and a <br>), with an optional <span class="output-unit">.
+    // Like .opt-output above, the generic <label> text-skip dropped ALL of these, so the page showed
+    // only the settable Plan-Fuel input + the section headings — issue #113 ("turnaround time … not
+    // there"). Emit each visible one as a readable "Name: value unit" line. Skip empty values so a
+    // not-yet-running turn doesn't read a wall of blanks.
+    var gouts = document.querySelectorAll('.groundops_ui_outputlabel');
+    for (var gi = 0; gi < gouts.length; gi++) {
+      var gv = gouts[gi];
+      if (!A.isVisible(gv)) continue;
+      var gval = A.txt(gv);
+      if (!gval) continue;
+      // Name = the nearest PRECEDING .groundops_ui_label sibling (skip <br>/text between them).
+      var gnm = '';
+      var ps = gv.previousElementSibling;
+      while (ps) { if (ps.className && String(ps.className).indexOf('groundops_ui_label') >= 0) { gnm = A.txt(ps).replace(/:\s*$/, ''); break; } if (ps.tagName !== 'BR') { var pn = A.txt(ps); if (pn) break; } ps = ps.previousElementSibling; }
+      if (!gnm) gnm = gv.id ? A.idToLabel(gv.id) : '';
+      if (!gnm) continue;
+      // Unit = a following .output-unit sibling, else one inside the parent.
+      var gu = '';
+      var ns = gv.nextElementSibling;
+      if (ns && ns.className && String(ns.className).indexOf('output-unit') >= 0) gu = A.txt(ns);
+      if (!gu && gv.parentElement && gv.parentElement.querySelector) { var gue = gv.parentElement.querySelector('.output-unit'); if (gue) gu = A.txt(gue); }
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: gnm + ': ' + gval + (gu ? ' ' + gu : ''), src: 'groundops-output' });
+    }
+    // GROUND OPS progress bars (Turnaround / per-service): <div class="progress_bar"> holds a
+    // <label class="progress_label">Name<span>- NN%</span>. Emit "Name: NN%" so the screen reader
+    // gets the turnaround/service completion percentage (the visual bar alone is meaningless).
+    var pbars = document.querySelectorAll('.progress_bar');
+    for (var pbi = 0; pbi < pbars.length; pbi++) {
+      var pb = pbars[pbi];
+      if (!A.isVisible(pb)) continue;
+      var plab = pb.querySelector ? pb.querySelector('.progress_label') : null;
+      if (!plab) continue;
+      var pfull = A.txt(plab);                 // e.g. "Turnaround - 0%"
+      var pspan = plab.querySelector ? plab.querySelector('span') : null;
+      var ppct = pspan ? A.txt(pspan) : '';    // e.g. "- 0%"
+      var pname = pfull;
+      if (ppct) { pname = pfull.replace(ppct, '').trim(); }      // strip the % off the name
+      var pclean = ppct.replace(/^[\s\-]+/, '').trim();          // "- 0%" -> "0%"
+      if (!pname) pname = (pb.id ? A.idToLabel(pb.id) : 'Progress');
+      idx++;
+      out.push({ idx: idx, type: 'text-content', tag: 'LABEL', label: pname + (pclean ? ': ' + pclean : ''), src: 'groundops-progress' });
+    }
+    // ALERT / confirmation card (#alert_card: heading + message + OK button). These pop up on
+    // Save Preferences, errors, etc. ("Success — Tablet preferences were updated.") and previously
+    // rendered as silent text that was never announced — issue: the screen reader didn't read them.
+    // Emit ONE item flagged for ASSERTIVE announcement (type 'alert'); the host form speaks it the
+    // moment it appears (see FbwEfbForm). The card's heading/message are skipped in the main loop
+    // (above) so this is the single representation; the OK button is emitted separately + clickable.
+    var alertCard = document.getElementById('alert_card');
+    if (alertCard && A.isVisible(alertCard)) {
+      var ah = document.getElementById('alert_card_heading');
+      var am = document.getElementById('alert_card_message');
+      var ahTxt = ah ? A.txt(ah) : '';
+      // The message packs multiple sentences with no separating space ("updated.Hoppie ID …")
+      // because the source <p> joins separate text nodes; re-insert a space after .!? before a
+      // capital LETTER (a new sentence) so the screen reader reads "updated. Hoppie ID …" instead
+      // of one run-on token. Only [A-Z] — a digit after a dot is a decimal ("12.5"), never a new
+      // sentence, so it must not be split into "12. 5".
+      var amTxt = am ? A.txt(am).replace(/([.!?])([A-Z])/g, '$1 $2') : '';
+      var alertLabel = ahTxt && amTxt ? (ahTxt + ': ' + amTxt) : (ahTxt || amTxt);
+      if (alertLabel) { idx++; out.push({ idx: idx, type: 'alert', tag: 'DIV', label: alertLabel, src: 'alert-card' }); }
+    }
     // Drop standalone text that duplicates a control's label, and UPGRADE a weak id-derived
     // control label to a fuller standalone text that contains it ("Brightness" -> "Tablet
     // Brightness"). Both remove redundant text lines next to their control.
@@ -698,9 +778,9 @@
           // "first efb_preferences_ button" — the nav rail's own #efb_preferences_button matches
           // that id too and would jam the synthetics into the middle of the nav rail.
           var insAfter = -1;
-          for (var w = 0; w < merged.length; w++) {
-            var mw = merged[w];
-            if (mw.type !== 'button' && mw._id && mw._id.indexOf('efb_preferences_') === 0) insAfter = w;
+          for (var pw = 0; pw < merged.length; pw++) {
+            var mw = merged[pw];
+            if (mw.type !== 'button' && mw._id && mw._id.indexOf('efb_preferences_') === 0) insAfter = pw;
           }
           for (var si = 0; si < synItems.length; si++) {
             if (insAfter >= 0) merged.splice(insAfter + 1 + si, 0, synItems[si]); else merged.push(synItems[si]);
@@ -722,6 +802,7 @@
       case 'link': o.kind = 'link'; break;
       case 'heading': o.kind = 'heading'; o.level = it.level || 0; break;
       case 'status': o.kind = 'static'; o.live = 'polite'; break;
+      case 'alert': o.kind = 'alert'; o.live = 'assertive'; break;
       case 'text': case 'number': o.controlType = 'text'; o.value = String(it.value || ''); break;
       case 'range':
         o.controlType = 'range'; o.value = String(it.value || '');
@@ -743,11 +824,97 @@
     return o;
   };
 
+  // ---- Dirty gate (MutationObserver): skip collect()'s two full-tree traversals + per-element
+  // layout reads on a 600ms poll where the page hasn't actually changed. Chromium 49 (Coherent GT)
+  // supports MutationObserver. One observer on document.body with {subtree,childList,characterData,
+  // attributes} covers DOM structure/text-node changes and attribute-driven state (the class-based
+  // active/highlighted tab markers in A.activeMarker, the disabled attribute, etc).
+  //
+  // SELF-TRIGGER TRAP (why the observer is disconnected around collect(), not left running): collect()
+  // itself mutates the DOM — it stamps/clears the `data-pmdg-efb-idx` attribute on every element it
+  // enumerates (see the "Clear stale stamps" pass below + the two setAttribute call sites). Those are
+  // real attribute mutations on document.body's subtree, so a permanently-attached attributes:true
+  // observer would queue them as MutationRecords; its callback fires as a MICROTASK once the current
+  // synchronous script (this whole scrape() call) finishes — i.e. right after we've already returned
+  // the JSON, but BEFORE the next poll — which would re-arm `_dirty` from collect()'s OWN bookkeeping
+  // on every single scrape and make the gate never engage. Since JS is single-threaded and collect()
+  // never yields, NOTHING else can mutate the DOM while it runs, so it's always safe to disconnect the
+  // observer for the exact duration of the collect() call and reconnect immediately after — this drops
+  // only the self-caused idx-stamp mutations while still catching every genuine page-driven mutation
+  // that happens between polls (those occur on the page's own async tasks, fully outside this call).
+  //
+  // CHECKED-PROPERTY CAVEAT (verified against the WHATWG DOM spec): the Preference UNIT toggles
+  // (A.UNIT_PAIRS) are real <input type="checkbox"|"radio"> read via the LIVE `el.checked` IDL
+  // property. `.checked` is DECOUPLED from the `checked` CONTENT ATTRIBUTE once it is flipped by
+  // either a user tap or script — neither path touches the attribute, so MutationObserver's
+  // attributes:true NEVER fires for a toggle flip; this is a real gap in the DOM-mutation signal.
+  // Mitigated two ways: (1) a native click DOES fire a bubbling 'change'/'input' event as part of its
+  // default action — exactly how our own clickElement()'s el.click() and setValue()'s unit-toggle
+  // click() drive the real control — so a capture-phase 'change'/'input' listener on document closes
+  // the gap for every realistic input path (real tablet tap or our own driven click); (2) as a
+  // last-resort safety net against a hypothetical path that flips .checked with NEITHER a DOM mutation
+  // NOR a change/input event (e.g. a future controlled-component re-render setting the property
+  // directly), force a full scrape every FORCE_FULL_EVERY polls regardless of the dirty flag, bounding
+  // worst-case staleness to a few seconds instead of indefinitely.
+  A.OBSERVER_OPTS = { subtree: true, childList: true, characterData: true, attributes: true };
+  A.FORCE_FULL_EVERY = 10; // ~6s at the C# client's 600ms poll cadence
+  A._dirty = true;
+  A._everScraped = false;
+  A._pollCount = 0;
+  A._observer = null;
+  A._markDirty = function () { A._dirty = true; };
+
+  // Defensive install: EnsureConnected re-injects this whole script onto a STILL-OPEN Coherent
+  // socket whenever the agent goes missing (eval timeout, page re-evaluated) without necessarily a
+  // full page reload — that re-runs this IIFE and overwrites `A` with a brand new object, but any
+  // MutationObserver / event listener from a PRIOR injection keeps firing against the orphaned old
+  // closure unless torn down first. The live handles are stashed on `window` (which survives across
+  // injections into the same page, unlike `A`) so each (re)install disconnects its predecessor —
+  // guards double-install without depending on a page reload to clean up.
+  A._installObserver = function () {
+    try {
+      if (window.__MSFSBA_PMDG_EFB_OBS && typeof window.__MSFSBA_PMDG_EFB_OBS.disconnect === 'function') {
+        window.__MSFSBA_PMDG_EFB_OBS.disconnect();
+      }
+    } catch (e) {}
+    try {
+      var oldH = window.__MSFSBA_PMDG_EFB_HANDLERS;
+      if (oldH) {
+        try { document.removeEventListener('change', oldH.change, true); } catch (e2) {}
+        try { document.removeEventListener('input', oldH.input, true); } catch (e3) {}
+      }
+    } catch (e) {}
+    try {
+      var mo = new MutationObserver(A._markDirty);
+      mo.observe(document.body, A.OBSERVER_OPTS);
+      A._observer = mo;
+      window.__MSFSBA_PMDG_EFB_OBS = mo;
+    } catch (e) {}
+    try {
+      document.addEventListener('change', A._markDirty, true);
+      document.addEventListener('input', A._markDirty, true);
+      window.__MSFSBA_PMDG_EFB_HANDLERS = { change: A._markDirty, input: A._markDirty };
+    } catch (e) {}
+  };
+  A._installObserver();
+
   A.scrape = function () {
     try {
-      var raw = A.collect();
+      A._pollCount++;
+      var forceFull = !A._everScraped || (A._pollCount % A.FORCE_FULL_EVERY === 0);
+      if (!A._dirty && !forceFull) return JSON.stringify({ ok: true, unchanged: true });
+      // Clear BEFORE traversing: any mutation that lands mid-scrape must dirty the NEXT poll, never
+      // be silently lost. (In practice nothing CAN mutate the DOM mid-collect(), since JS is
+      // single-threaded and collect() never yields — this ordering is the safe-by-construction form
+      // regardless.) Disconnect around collect() only — see the SELF-TRIGGER TRAP note above.
+      A._dirty = false;
+      if (A._observer) { try { A._observer.disconnect(); } catch (e) {} }
+      var raw;
+      try { raw = A.collect(); }
+      finally { if (A._observer) { try { A._observer.observe(document.body, A.OBSERVER_OPTS); } catch (e2) {} } }
       var els = [];
       for (var i = 0; i < raw.length; i++) els.push(A._toContract(raw[i]));
+      A._everScraped = true;
       return JSON.stringify({ ok: true, side: A.side(), variant: A.variant(), elements: els });
     } catch (e) { return JSON.stringify({ ok: false, error: String(e && e.message || e) }); }
   };

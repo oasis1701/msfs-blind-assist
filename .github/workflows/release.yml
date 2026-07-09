@@ -14,12 +14,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup .NET 9
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Extract version from tag
         id: version
@@ -33,15 +33,15 @@ jobs:
         run: |
           gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
           Expand-Archive -Path Navdatareader-win-1.2.3.zip -DestinationPath temp-navdata
-          Move-Item temp-navdata\Navdatareader-win-1.2.3 MSFSBlindAssist\bin\x64\Release\net9.0-windows\navdatareader
-          Copy-Item MSFSBlindAssist\SimConnect.cfg MSFSBlindAssist\bin\x64\Release\net9.0-windows\navdatareader\
+          Move-Item temp-navdata\Navdatareader-win-1.2.3 MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader
+          Copy-Item MSFSBlindAssist\SimConnect.cfg MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader\
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Create release zip
         run: |
-          Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net9.0-windows\* -DestinationPath MSFSBA.zip
+          Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net10.0-windows\* -DestinationPath MSFSBA.zip
         shell: pwsh
 
       - name: Create GitHub Release

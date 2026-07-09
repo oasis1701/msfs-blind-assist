@@ -20,10 +20,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Shift+T via the shared FbwEfbForm over CoherentPmdgEfbClient (no Community-folder bridge).
     public bool HasEFBSupport => true;
 
-    // Cached merged variables dictionary — built once on first access.
-    // All callers are read-only so sharing a single instance is safe.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -32,16 +28,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private HashSet<string> SuppressedButtonKeys =>
         _suppressedButtonKeys ??= BuildSuppressedButtonKeys();
 
-    private HashSet<string> BuildSuppressedButtonKeys()
-    {
-        var set = new HashSet<string>();
-        foreach (var kvp in GetVariables())
-        {
-            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
-                set.Add(kvp.Key);
-        }
-        return set;
-    }
+    // BuildSuppressedButtonKeys moved to BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     // ---------------------------------------------------------------------
     // Suppression state for ProcessSimVarUpdate (Task C11).
@@ -53,6 +40,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // unsigned bytes the panel never sets to 0 deliberately.
     // ---------------------------------------------------------------------
     private double _lastAnnouncedAltimeter = double.NaN;
+    // Last-announced FLT/LAND ALT window values (feet). NaN = nothing announced
+    // yet; since `value == NaN` is always false, the FIRST change announces (the
+    // connect baseline never reaches ProcessSimVarUpdate — MainForm absorbs it on
+    // the initial-snapshot early-return). A panel-initiated set pre-loads these so
+    // the monitor does not double-announce after HandleUIVariableSet confirmed.
+    private double _lastFltAltWindow = double.NaN;
+    private double _lastLandAltWindow = double.NaN;
     private double _lastCom1Active = double.NaN;
     private double _lastCom2Active = double.NaN;
     private double _lastCom1Standby = double.NaN;
@@ -229,11 +223,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Variables — scaffold (populated in Tasks C5–C8)
     // =========================================================================
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null)
-            return _cachedVariables;
-
         var variables = GetBaseVariables();
         // The PMDG NG3 does not drive the stock ELEVATOR TRIM POSITION SimVar
         // (it stays pinned within ±0.04° regardless of actual stabilizer trim),
@@ -244,7 +235,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
-        _cachedVariables = variables;
         return variables;
     }
 
@@ -848,6 +838,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "CLOSE", "Neutral", "OPEN");
         d["AIR_PressurizationModeSelector"] = Selector("AIR_PressurizationModeSelector",
             "Pressurization Mode", "AUTO", "ALTN", "MAN");
+
+        // Pressurization flight/landing altitude ENTRY (numeric _SET inputs).
+        // Dispatched in HandleUIVariableSet to the PMDG "Direct Control" events
+        // EVT_OH_PRESS_FLT_ALT_SET / _LAND_ALT_SET (literal feet). Synthetic
+        // Name (not a struct field) + Never frequency, mirroring the existing
+        // EFIS_MinsValueFt_*_SET inputs.
+        d["AIR_FltAlt_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_AIR_FltAlt",
+            DisplayName = "Flight Altitude",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+        d["AIR_LandAlt_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_AIR_LandAlt",
+            DisplayName = "Landing Altitude",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+        d["AIR_FltAlt_SET"].CurrentValueSourceKey  = "AIR_FltAltWindow";
+        d["AIR_LandAlt_SET"].CurrentValueSourceKey = "AIR_LandAltWindow";
+
+        // Background monitors for FLT/LAND ALT — the numeric "window" values
+        // that track the knob live (the char[6] display strings are obsolete
+        // per the SDK; the uint windows update reliably — verified). Continuous
+        // + IsAnnounced so a change from ANY source (knob, add-on, state load)
+        // is spoken via ProcessSimVarUpdate. NOT placed on any panel.
+        d["AIR_FltAltWindow"]  = Numeric("AIR_FltAltWindow",  "Flight Altitude");
+        d["AIR_LandAltWindow"] = Numeric("AIR_LandAltWindow", "Landing Altitude");
 
         // Pressurization, duct-pressure, and cabin-temperature readouts —
         // continuous-numeric SDK fields rendered as read-only TextBoxes on
@@ -1883,6 +1905,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
                 "AIR_IsolationValveSwitch",
                 "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
+                "AIR_FltAlt_SET", "AIR_LandAlt_SET",
                 "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM",
                 // Continuous readouts (pressurization, duct pressure, cabin temp)
                 "AIR_CabinAltNeedle", "AIR_CabinDPNeedle", "AIR_CabinVSNeedle",
@@ -3534,7 +3557,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // CARGO_ArmedSw_0/1 are guarded — see _guardedMap
             ["XPDR_XpndrSelector_2"]       = "EVT_TCAS_XPNDR",
             ["XPDR_AltSourceSel_2"]        = "EVT_TCAS_ALTSOURCE",
-            ["XPDR_ModeSel"]               = "EVT_TCAS_MODE",
+            // XPDR_ModeSel is deliberately ABSENT: the mode rotary ignores the
+            // CDA position write this map dispatches — it is handled by the
+            // closed-loop click-walk branch (4b) in HandleUIVariableSet, which
+            // looks up EVT_TCAS_MODE directly. Do not re-add it here.
             ["XPDR_TcasTest"]              = "EVT_TCAS_TEST",
             ["XPDR_Ident"]                 = "EVT_TCAS_IDENT",
             // Overhead — Oxygen TEST (spring-loaded; release returns to NORMAL)
@@ -3903,6 +3929,37 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
             simConnect.SendEvent(varDef.Name);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // Pressurization FLT ALT / LAND ALT direct-set (numeric _SET inputs).
+        //   The PMDG "Direct Control" events take the literal altitude in feet.
+        //   The panel knob rounds DOWN — FLT ALT to 500 ft, LAND ALT to 50 ft —
+        //   and clamps; we mirror that so the spoken confirmation equals what the
+        //   cockpit window shows. Below-sea-level LAND ALT is out of scope (min 0).
+        // ------------------------------------------------------------------
+        if (varKey == "AIR_FltAlt_SET" || varKey == "AIR_LandAlt_SET")
+        {
+            bool isFlt = varKey == "AIR_FltAlt_SET";
+            string evtName = isFlt ? "EVT_OH_PRESS_FLT_ALT_SET" : "EVT_OH_PRESS_LAND_ALT_SET";
+            int step = isFlt ? 500 : 50;
+            int maxFt = isFlt ? 42000 : 14000;
+
+            int feet = (int)Math.Round(value);
+            if (feet < 0) feet = 0;
+            if (feet > maxFt) feet = maxFt;
+            feet = (feet / step) * step;   // round DOWN to the knob's step
+
+            if (EventIds.TryGetValue(evtName, out int pressEvId))
+            {
+                simConnect.SendPMDGEvent(evtName, (uint)pressEvId, feet);
+                string label = isFlt ? "Flight altitude" : "Landing altitude";
+                announcer.Announce($"{label} set to {feet} feet");
+                // Pre-load the monitor guard so the imminent window change does
+                // not re-announce the value we just confirmed.
+                if (isFlt) _lastFltAltWindow = feet; else _lastLandAltWindow = feet;
+            }
             return true;
         }
 
@@ -4505,6 +4562,123 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 4b. Transponder MODE rotary — closed-loop click-walk (2026-07-03,
+        //     live-probed). EVT_TCAS_MODE ignores BOTH the generic CDA write
+        //     with the position (step 5 below — the old path; the combo
+        //     silently did nothing) AND the 4a transmit-with-target shape;
+        //     it only steps on transmit mouse-clicks, which PMDG additionally
+        //     DROPS at random. The walk itself lives in the SimConnect layer
+        //     (PMDGNG3DataManager.WalkSelectorClosedLoop — see its doc for the
+        //     probe history); this branch only guards and dispatches.
+        // ------------------------------------------------------------------
+        if (varKey == "XPDR_ModeSel")
+        {
+            if (_xpdrWalkOp is { IsCompleted: false })
+            {
+                // Queue the newest pick (last one wins) — the running walk
+                // chains to it when its current leg lands, so a mid-walk
+                // correction is honored instead of silently discarded.
+                Interlocked.Exchange(ref _xpdrPendingTarget, (int)value);
+                announcer.AnnounceImmediate("Still setting transponder, please wait.");
+                return true;
+            }
+            var xpdrDm = simConnect.PMDGDataManager;
+            if (xpdrDm == null || !xpdrDm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if (EventIds.TryGetValue("EVT_TCAS_MODE", out int xpdrEvId))
+            {
+                int target = (int)value;
+                Interlocked.Exchange(ref _xpdrPendingTarget, -1);
+                // Gate up BEFORE the walk starts: the XPDR_ModeSel case in
+                // ProcessSimVarUpdate returns this flag, swallowing the
+                // per-detent callouts AND the combo churn while the walk runs
+                // (PMDG change events are delivered synchronously from
+                // ProcessClientData, so every mid-walk detent event fires
+                // while the flag is up). No walk-completion announce on
+                // success: the screen reader already spoke the combo pick and
+                // the combo already shows it — matching every other walked
+                // selector in this def. A walk that lands OFF target re-raises
+                // the field through the standard pipeline below, which
+                // re-syncs the combo to the real mode and announces it as a
+                // background change — the audible failure signal.
+                _xpdrWalkSuppress = true;
+                async Task RunWalkAsync()
+                {
+                    try
+                    {
+                        int? landed = null;
+                        int currentTarget = target;
+                        while (true)
+                        {
+                            landed = await simConnect.WalkPMDGSelectorClosedLoop(
+                                (uint)xpdrEvId, "XPDR_ModeSel", currentTarget);
+                            // If the aircraft — and thus the PMDG data manager —
+                            // was swapped out during the walk, xpdrDm is a
+                            // disposed instance; don't read its dead cache,
+                            // chain another leg, or re-raise into whatever
+                            // aircraft is now loaded.
+                            if (!ReferenceEquals(simConnect.PMDGDataManager, xpdrDm)) return;
+                            // A pick made while this leg walked chains into a
+                            // follow-up leg (the busy branch queued it).
+                            int next = Interlocked.Exchange(ref _xpdrPendingTarget, -1);
+                            if (next >= 0 && next != currentTarget)
+                            {
+                                currentTarget = next;
+                                continue;
+                            }
+                            // Verified on target: silent success (rule: never
+                            // re-announce a combo pick; the combo already shows
+                            // the target).
+                            if (landed == currentTarget) return;
+                            if (landed is null)
+                            {
+                                // Unverified — a snapshot request timed out with a
+                                // click possibly still in flight. The ambient poll
+                                // has resumed (the walk released its gate); give it
+                                // one cycle to refresh the cache, then re-check
+                                // before declaring failure.
+                                await Task.Delay(1300);
+                                if (!ReferenceEquals(simConnect.PMDGDataManager, xpdrDm)) return;
+                                if ((int)Math.Round(xpdrDm.GetFieldValue("XPDR_ModeSel")) == currentTarget) return;
+                                // A pick made during the wait chains too.
+                                next = Interlocked.Exchange(ref _xpdrPendingTarget, -1);
+                                if (next >= 0 && next != currentTarget)
+                                {
+                                    currentTarget = next;
+                                    continue;
+                                }
+                            }
+                            // Landed off target: open the gate FIRST, then replay
+                            // the field's landed state through the standard
+                            // pipeline (the walk swallowed its natural change
+                            // event and the value won't change again on its own).
+                            // MainForm re-syncs the combo to the REAL mode and the
+                            // monitor announces it — the pilot hears a transponder
+                            // mode other than their pick, which is the failure.
+                            _xpdrWalkSuppress = false;
+                            (xpdrDm as SimConnect.PMDGNG3DataManager)?.RaiseFieldChanged("XPDR_ModeSel");
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        // SimConnect drop mid-walk — never fault the
+                        // fire-and-forget task.
+                    }
+                    finally
+                    {
+                        _xpdrWalkSuppress = false;
+                    }
+                }
+                _xpdrWalkOp = RunWalkAsync();
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 5. Generic _simpleEventMap lookup — covers every remaining mapped
         //    var-key. The parameter shape is determined by the var def:
         //
@@ -4616,6 +4790,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         switch (varName)
         {
             // -------------------------------------------------------------
+            // Transponder mode: swallow the per-detent events produced by a
+            // transponder click-walk — walking STBY→TA/RA passes ALT RPTG
+            // OFF/XPNDR/TA and each detent would otherwise announce AND churn
+            // the combo (return-true also skips MainForm's combo re-sync,
+            // which is desired mid-walk: the combo holds the user's pick
+            // until the outcome). Gate = THIS def's _xpdrWalkSuppress, set by
+            // the 4b dispatch and cleared in the walk task's finally on every
+            // exit path, so leftover state can never mute a later genuine
+            // background change — a knob turned in the VC announces normally.
+            // A walk that lands off target replays the final state through
+            // RaiseFieldChanged after clearing the gate, so the combo re-syncs
+            // and the failure announces via the standard monitor path.
+            // -------------------------------------------------------------
+            case "XPDR_ModeSel":
+                return _xpdrWalkSuppress;
+
+            // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
             // ElevTrimTT (see GetPMDGVariables) because the NG3 does not drive
             // the stock ELEVATOR TRIM POSITION SimVar. Gated by the shared
@@ -4636,6 +4827,36 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true;
                 _lastAnnouncedStabTrim = rounded;
                 announcer.Announce($"Trim {rounded:F1}");
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // Pressurization FLT ALT / LAND ALT — auto-announce on change from
+            // any source. NO NaN-seed-and-swallow here: the connect baseline is
+            // absorbed upstream by MainForm.OnSimVarUpdated's initial-snapshot
+            // early-return (it caches the value and returns BEFORE calling
+            // ProcessSimVarUpdate), so this case only ever sees genuine changes —
+            // including the FIRST one, which must announce. _last* starts NaN and
+            // `value == NaN` is false, so the first change falls through and
+            // announces; a panel-initiated set pre-loads _last* (see
+            // HandleUIVariableSet) so this does not double-announce it. Do NOT
+            // re-add a `double.IsNaN(_last) -> seed; return` guard: with the
+            // baseline already absorbed it would silently eat the FIRST real
+            // change — and these are rare, discrete values, so that is the only
+            // callout the pilot gets.
+            // -------------------------------------------------------------
+            case "AIR_FltAltWindow":
+            {
+                if (value == _lastFltAltWindow) return true;
+                _lastFltAltWindow = value;
+                announcer.Announce($"Flight altitude {(int)Math.Round(value)} feet");
+                return true;
+            }
+            case "AIR_LandAltWindow":
+            {
+                if (value == _lastLandAltWindow) return true;
+                _lastLandAltWindow = value;
+                announcer.Announce($"Landing altitude {(int)Math.Round(value)} feet");
                 return true;
             }
 
@@ -4898,13 +5119,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // FMC speeds and cruise altitude — suppress when 0 (not set).
             // -------------------------------------------------------------
             case "FMC_V1":
-                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_VR":
-                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_V2":
-                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_CruiseAlt":
                 if (value > 0) announcer.Announce($"Cruise altitude {(int)Math.Round(value)} feet");
@@ -4942,7 +5163,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Active) < 0.0001) return true;
                 _lastCom1Active = value;
-                announcer.Announce($"COM 1 active {value:F3}");
+                announcer.Announce($"COM1 active {value:F3}");
                 return true;
 
             case "COM2_ActiveFreq":
@@ -4953,7 +5174,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Active) < 0.0001) return true;
                 _lastCom2Active = value;
-                announcer.Announce($"COM 2 active {value:F3}");
+                announcer.Announce($"COM2 active {value:F3}");
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:1":
@@ -4964,7 +5185,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Standby) < 0.0001) return true;
                 _lastCom1Standby = value;
-                announcer.Announce($"COM 1 standby {value:F3}");
+                announcer.Announce($"COM1 standby {value:F3}");
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:2":
@@ -4975,7 +5196,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Standby) < 0.0001) return true;
                 _lastCom2Standby = value;
-                announcer.Announce($"COM 2 standby {value:F3}");
+                announcer.Announce($"COM2 standby {value:F3}");
                 return true;
 
             // -------------------------------------------------------------
@@ -5130,8 +5351,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     float speed = (float)dm.GetFieldValue("MCP_IASMach");
                     string speedText = speed < 10f
-                        ? $"M{speed:F2}"
-                        : $"{(int)Math.Round(speed)} knots";
+                        ? $"Mach {speed:F2}"
+                        : $"Speed {(int)Math.Round(speed)} knots";
                     string speedMode = "";
                     if ((int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0) speedMode = ", LVL CHG";
                     announcer.AnnounceImmediate($"{speedText}{speedMode}");
@@ -5437,8 +5658,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
-            ? $"M{speed:F2}"
-            : $"{(int)Math.Round(speed)} knots";
+            ? $"Mach {speed:F2}"
+            : $"Speed {(int)Math.Round(speed)} knots";
         announcer.AnnounceImmediate(speedText);
     }
 
@@ -5476,70 +5697,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             _ = simConnect.SendPMDGMomentaryToggle((uint)evId, 1);
     }
 
-    /// <summary>
-    /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
-    /// and current ground speed in knots. Returns empty string at low ground
-    /// speed (taxi / ground) where the estimate is meaningless.
-    /// </summary>
-    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
-    {
-        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
-        if (distanceNm <= 0) return "";
-
-        double hours = distanceNm / groundSpeedKnots;
-        int totalSeconds = (int)Math.Round(hours * 3600.0);
-        int hh = totalSeconds / 3600;
-        int mm = (totalSeconds % 3600) / 60;
-        int ss = totalSeconds % 60;
-        return $": {hh:D2}:{mm:D2}:{ss:D2}";
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to top of descent on the NG3.
-    /// </summary>
-    private static void AnnounceTODFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Top of descent not available");
-            return;
-        }
-        if (dist < 0.1f)
-        {
-            announcer.AnnounceImmediate("Past top of descent");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
-        });
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to destination on the NG3.
-    /// </summary>
-    private static void AnnounceDestFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Distance to destination not available");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
-        });
-    }
+    // FormatEtaFromDistance, AnnounceTODFromSDK, AnnounceDestFromSDK moved to
+    // BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     private void ShowPMDGHeadingDialog(
         SimConnect.SimConnectManager simConnect,
@@ -5662,6 +5821,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// <summary>
     /// Parse the speed dialog input. Accepts "M0.85" / "m0.85" / ".85" / "0.85"
     /// as Mach, or "250" as IAS. Anything in [0..10) is treated as Mach.
+    /// Canonical original — PMDG777Definition.TryParseSpeedInput (Task 9.8) is
+    /// a ported copy of this method (the two aircraft's speed dialogs don't
+    /// share a base helper, so it's duplicated rather than moved to Base).
     /// </summary>
     private static bool TryParseSpeedInput(string input, out bool isMach, out double value)
     {
@@ -5795,6 +5957,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // so no synchronization is needed.
     private Task? _baroKnobOp;
     private Task? _minsKnobOp;
+
+    // Transponder-mode closed-loop walk re-entrancy guard (HandleUIVariableSet
+    // 4b; the walk itself is PMDGNG3DataManager.WalkSelectorClosedLoop).
+    private Task? _xpdrWalkOp;
+    // True while a transponder walk owns XPDR_ModeSel — the ProcessSimVarUpdate
+    // case returns it to swallow per-detent events. Set on dispatch (UI thread),
+    // cleared in the walk task's finally (pool thread).
+    private volatile bool _xpdrWalkSuppress;
+    // Target queued by a combo pick made while a walk is running (-1 = none).
+    // Written on the UI thread, consumed by the walk task via Interlocked.
+    private int _xpdrPendingTarget = -1;
 
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct

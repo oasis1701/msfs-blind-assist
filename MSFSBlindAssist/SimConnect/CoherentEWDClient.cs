@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect
 {
@@ -151,7 +152,7 @@ namespace MSFSBlindAssist.SimConnect
                 // fail loudly in Debug and log in Release rather than half-support it.
                 if (_cts.IsCancellationRequested)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    Log.Debug("SimConnect", 
                         "CoherentEWDClient.Start() called after Stop() — not supported; create a new instance.");
                     System.Diagnostics.Debug.Assert(false,
                         "CoherentEWDClient: Start() after Stop() is a no-op. Dispose and create a new client instead.");
@@ -209,7 +210,7 @@ namespace MSFSBlindAssist.SimConnect
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"CoherentEWDClient loop: {ex.Message}");
+                    Log.Debug("SimConnect", $"CoherentEWDClient loop: {ex.Message}");
                     _connected = false;
                     _agentInstalled = false;
                     // A view that goes away (page reload) means the baseline is gone;
@@ -350,7 +351,7 @@ namespace MSFSBlindAssist.SimConnect
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ResolveEwdPageId: {ex.Message}");
+                Log.Debug("SimConnect", $"ResolveEwdPageId: {ex.Message}");
             }
             return null;
         }
@@ -674,7 +675,7 @@ namespace MSFSBlindAssist.SimConnect
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"CoherentEWDClient receive: {ex.Message}");
+                Log.Debug("SimConnect", $"CoherentEWDClient receive: {ex.Message}");
             }
             finally
             {

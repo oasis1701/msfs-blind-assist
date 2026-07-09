@@ -214,12 +214,11 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     // REQUIRED (the LVFR A321 precedent): late-added Continuous vars have been observed
     // to slip out of the continuous batch, leaving the cache stuck at the initial value —
     // the per-var SIMCONNECT_PERIOD.SECOND subscription keeps them fresh independently.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _hwVariables;
-
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    // Overrides BuildVariables (not GetVariables) — the base caches GetVariables() and
+    // delegates the one-time build here; base.BuildVariables() yields the full A320 set.
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_hwVariables != null) return _hwVariables;
-        var vars = base.GetVariables();
+        var vars = base.BuildVariables();
 
         vars["KOHLSMAN SETTING MB:1"] = new SimConnect.SimVarDefinition
         {
@@ -253,7 +252,6 @@ public class HeadwindA330Definition : FlyByWireA320Definition
             ValueDescriptions = new Dictionary<double, string> { [0] = "hPa", [1] = "inHg" }
         };
 
-        _hwVariables = vars;
         return vars;
     }
 }

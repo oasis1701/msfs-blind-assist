@@ -17,7 +17,6 @@ public class SimBriefService
 {
     private const string SIMBRIEF_API_URL = "https://www.simbrief.com/api/xml.fetcher.php";
     private const string SIMBRIEF_AIRCRAFT_LIST_URL = "https://www.simbrief.com/api/inputs.list.json";
-    private const int TIMEOUT_SECONDS = 30;
 
     private static readonly HttpClient _httpClient = new HttpClient
     {
@@ -76,7 +75,7 @@ public class SimBriefService
     /// </summary>
     private string DownloadXML(string url)
     {
-        // Reuses the shared _httpClient (30 s timeout). TLS 1.2+ is the .NET 9 default — no
+        // Reuses the shared _httpClient (30 s timeout). TLS 1.2+ is the modern .NET default — no
         // ServicePointManager configuration needed (replaces the obsolete WebRequest path).
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd("FBWBA-EFB/1.0");

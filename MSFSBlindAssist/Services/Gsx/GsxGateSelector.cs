@@ -51,9 +51,9 @@
 //   and the final SetGate values.  IO exceptions never break the selector.
 
 using System.Diagnostics;
-using System.IO;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.Gsx;
 
@@ -100,7 +100,7 @@ public sealed class GsxGateSelector
     // Appended per run so a single real arrival captures the full menu tree.
     // Path: AppLogs canonical folder, gsx-gate-select.log.
     // IO exceptions are caught and never propagate.
-    private static readonly string WalkLogPath = Utils.AppLogs.PathFor("gsx-gate-select.log");
+    private static readonly LogChannel _walkLog = Log.Channel("gsx-gate-select");
 
     // ─── Dependencies ──────────────────────────────────────────────────────
     private readonly GsxService _gsx;
@@ -145,8 +145,8 @@ public sealed class GsxGateSelector
     /// <param name="target">The parking spot to select.</param>
     /// <param name="discoveryOnly">
     /// When <see langword="true"/>, navigates the tree without selecting
-    /// anything and writes the full discovered tree to
-    /// <see cref="Debug.WriteLine"/> (for Task E live tuning).
+    /// anything and writes the full discovered tree to the
+    /// <c>gsx-gate-select</c> log channel (for Task E live tuning).
     /// Safe to call at any airport.
     /// </param>
     /// <remarks>
@@ -161,12 +161,11 @@ public sealed class GsxGateSelector
         // menu, so we ignore this call (mirrors the "not found" announcement path).
         if (System.Threading.Interlocked.CompareExchange(ref _selectionInProgress, 1, 0) != 0)
         {
-            Debug.WriteLine("[GsxGateSelector] Selection already in progress — ignoring concurrent call.");
+            Log.Debug("Gsx", "Selection already in progress — ignoring concurrent call.");
             try
             {
                 // Walk-log via a throwaway state so the concurrent attempt is visible in the log.
-                File.AppendAllText(WalkLogPath,
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] CONCURRENT: selection already in progress — ignoring this call.{Environment.NewLine}");
+                _walkLog.Info("CONCURRENT: selection already in progress — ignoring this call.");
             }
             catch { /* logging must never crash the selector */ }
             if (!discoveryOnly)
@@ -179,7 +178,7 @@ public sealed class GsxGateSelector
         // ── Guard: user is already mid-menu ──────────────────────────────
         if (_gsx.IsMenuActive)
         {
-            Debug.WriteLine("[GsxGateSelector] Menu already active — aborting to avoid conflict.");
+            Log.Debug("Gsx", "Menu already active — aborting to avoid conflict.");
             return;
         }
 
@@ -187,7 +186,7 @@ public sealed class GsxGateSelector
             target.Name, target.Number, target.Suffix);
         string targetLabel = BuildShortLabel(target);
 
-        Debug.WriteLine($"[GsxGateSelector] SelectGateAsync: target={targetLabel} identity={targetIdentity} discoveryOnly={discoveryOnly}");
+        Log.Debug("Gsx", $"SelectGateAsync: target={targetLabel} identity={targetIdentity} discoveryOnly={discoveryOnly}");
 
         var overall = Stopwatch.StartNew();
         var state = new DfsState
@@ -243,7 +242,7 @@ public sealed class GsxGateSelector
             // Title comes from _gsx.MenuTitle (the real first line of the menu
             // file), NOT menu[0].Text (which is the first OPTION).
             string menuTitle = _gsx.MenuTitle ?? string.Empty;
-            Debug.WriteLine($"[GsxGateSelector] Context: SetGateName={_gsx.SetGateName} menuTitle=\"{menuTitle}\"");
+            Log.Debug("Gsx", $"Context: SetGateName={_gsx.SetGateName} menuTitle=\"{menuTitle}\"");
             WalkLog(state, $"CONTEXT: SetGateName={_gsx.SetGateName} menuTitle=\"{menuTitle}\"");
 
             // (2) If a gate is already selected, drill the "Change Facility" /
@@ -253,7 +252,7 @@ public sealed class GsxGateSelector
             if (changeEntry != null)
             {
                 WalkLog(state, $"CHANGE-FACILITY: drilling \"{changeEntry.Text}\" (choice={changeEntry.Choice}) to re-open the position selector.");
-                Debug.WriteLine($"[GsxGateSelector] Change-facility entry found — drilling choice {changeEntry.Choice}.");
+                Log.Debug("Gsx", $"Change-facility entry found — drilling choice {changeEntry.Choice}.");
                 try
                 {
                     menu = await _automation.ChooseAsync(changeEntry.Choice, StepTimeout).ConfigureAwait(true);
@@ -283,7 +282,7 @@ public sealed class GsxGateSelector
 
             // ── Traverse the position-selection menu ─────────────────────
             // Apron categories (A, B, C, …) are on this menu — run TraverseAsync at depth 0.
-            Debug.WriteLine("[GsxGateSelector] Position selector reached — running page-aware traversal at depth 0.");
+            Log.Debug("Gsx", "Position selector reached — running page-aware traversal at depth 0.");
             WalkLog(state, "DECISION: position selector reached — page-aware traversal at depth 0.");
 
             bool found = await TraverseAsync(state, menu, depth: 0).ConfigureAwait(true);
@@ -295,13 +294,13 @@ public sealed class GsxGateSelector
                 if (!discoveryOnly)
                     Announce($"GSX: {targetLabel} not found in GSX menu.");
                 else
-                    Debug.WriteLine($"[GsxGateSelector] DISCOVERY: finished traversal. Gate {targetLabel} not found (may not be listed yet).");
+                    Log.Debug("Gsx", $"DISCOVERY: finished traversal. Gate {targetLabel} not found (may not be listed yet).");
             }
         }
         catch (Exception ex)
         {
             // Catch-all — log, close menu, announce.
-            Debug.WriteLine($"[GsxGateSelector] Unexpected exception: {ex}");
+            Log.Debug("Gsx", $"Unexpected exception: {ex}");
             WalkLog(state, $"EXCEPTION: {ex.GetType().Name}: {ex.Message}");
             _automation.CloseMenu();
             if (!state.DiscoveryOnly)
@@ -369,17 +368,17 @@ public sealed class GsxGateSelector
         // ── Budget checks ─────────────────────────────────────────────────
         if (depth > MaxDepth)
         {
-            Debug.WriteLine($"[GsxGateSelector] Traverse: maxDepth={MaxDepth} exceeded at depth={depth}.");
+            Log.Debug("Gsx", $"Traverse: maxDepth={MaxDepth} exceeded at depth={depth}.");
             return false;
         }
         if (state.MenuReads >= MaxMenuReads)
         {
-            Debug.WriteLine($"[GsxGateSelector] Traverse: maxMenuReads={MaxMenuReads} reached.");
+            Log.Debug("Gsx", $"Traverse: maxMenuReads={MaxMenuReads} reached.");
             return false;
         }
         if (state.Overall.Elapsed >= OverallTimeout)
         {
-            Debug.WriteLine($"[GsxGateSelector] Traverse: overall timeout {OverallTimeout} reached.");
+            Log.Debug("Gsx", $"Traverse: overall timeout {OverallTimeout} reached.");
             return false;
         }
 
@@ -416,7 +415,7 @@ public sealed class GsxGateSelector
             if (state.Aborted) return false;
             if (state.MenuReads >= MaxMenuReads)
             {
-                Debug.WriteLine($"[GsxGateSelector] Traverse: maxMenuReads reached at depth={depth}.");
+                Log.Debug("Gsx", $"Traverse: maxMenuReads reached at depth={depth}.");
                 WalkLog(state, $"BUDGET: maxMenuReads={MaxMenuReads} reached at depth={depth} — stopping.");
                 break;
             }
@@ -454,7 +453,7 @@ public sealed class GsxGateSelector
                 if (showAll != null)
                 {
                     expandClicks++;
-                    Debug.WriteLine($"[GsxGateSelector] Expand: clicking \"{showAll.Text}\" choice={showAll.Choice} depth={depth} to reveal all positions.");
+                    Log.Debug("Gsx", $"Expand: clicking \"{showAll.Text}\" choice={showAll.Choice} depth={depth} to reveal all positions.");
                     WalkLog(state, $"EXPAND: clicking \"{showAll.Text}\" choice={showAll.Choice} depth={depth} to reveal all positions.");
                     try
                     {
@@ -479,20 +478,20 @@ public sealed class GsxGateSelector
                 if (kind != GsxMenuEntryKind.GateLeaf) continue;
                 if (!GsxMenuClassifier.LooksLikeGate(opt.Text, out string leafIdentity)) continue;
 
-                Debug.WriteLine($"[GsxGateSelector] GateLeaf: \"{opt.Text}\" → identity={leafIdentity} (target={state.TargetIdentity}) depth={depth} step={step}");
+                Log.Debug("Gsx", $"GateLeaf: \"{opt.Text}\" → identity={leafIdentity} (target={state.TargetIdentity}) depth={depth} step={step}");
 
                 if (!GsxMenuClassifier.LeafMatchesTarget(leafIdentity, state.TargetIdentity, out bool bareNumberFallback))
                     continue;
 
                 // ── MATCH ─────────────────────────────────────────────────
-                Debug.WriteLine($"[GsxGateSelector] MATCH: \"{opt.Text}\" depth={depth} step={step}.");
+                Log.Debug("Gsx", $"MATCH: \"{opt.Text}\" depth={depth} step={step}.");
                 WalkLog(state, $"MATCH: leaf=\"{opt.Text}\" choice={opt.Choice} depth={depth} step={step} → choosing (menu is on this page).");
                 if (bareNumberFallback)
                     WalkLog(state, $"MATCH-BARENUMBER: leaf \"{leafIdentity}\" has no concourse letter; matched target \"{state.TargetIdentity}\" by stripping the navdata-borrowed letter (e.g. EGLL 'P 209' vs GSX menu 'Parking 209').");
 
                 if (state.DiscoveryOnly)
                 {
-                    Debug.WriteLine($"[GsxGateSelector] DISCOVERY: found gate \"{opt.Text}\" at depth={depth} step={step}. Not choosing.");
+                    Log.Debug("Gsx", $"DISCOVERY: found gate \"{opt.Text}\" at depth={depth} step={step}. Not choosing.");
                     WalkLog(state, $"DISCOVERY: gate \"{opt.Text}\" found at depth={depth} step={step}. Not choosing.");
                     return true;
                 }
@@ -525,7 +524,7 @@ public sealed class GsxGateSelector
                 // properties until they match the target instead of reading once.
                 bool confirmed = await PollSetGateMatchAsync(state, SetGateConfirmTimeout).ConfigureAwait(true);
 
-                Debug.WriteLine($"[GsxGateSelector] SetGate confirm: Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} → confirmed={confirmed}");
+                Log.Debug("Gsx", $"SetGate confirm: Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} → confirmed={confirmed}");
                 WalkLog(state, $"SETGATE-CONFIRM: Name={_gsx.SetGateName} Number={_gsx.SetGateNumber} Suffix={_gsx.SetGateSuffix} confirmed={confirmed}");
 
                 if (confirmed)
@@ -574,13 +573,13 @@ public sealed class GsxGateSelector
                 if (bestCat != null)
                 {
                     drilledCats.Add(NormalizeCategoryKey(bestCat.Text));
-                    Debug.WriteLine($"[GsxGateSelector] Drill category \"{bestCat.Text}\" score={bestScore} choice={bestCat.Choice} depth={depth} (visited {drilledCats.Count}).");
+                    Log.Debug("Gsx", $"Drill category \"{bestCat.Text}\" score={bestScore} choice={bestCat.Choice} depth={depth} (visited {drilledCats.Count}).");
                     WalkLog(state, $"DRILL: \"{bestCat.Text}\" score={bestScore} choice={bestCat.Choice} depth={depth} (visited {drilledCats.Count}).");
 
                     var subMenu = await ChooseWithRetryAsync(state, bestCat.Choice, $"drill \"{bestCat.Text}\"").ConfigureAwait(true);
                     if (subMenu == null || subMenu.Count == 0)
                     {
-                        Debug.WriteLine($"[GsxGateSelector] Failed to drill category \"{bestCat.Text}\" after {MaxChooseAttempts} attempts.");
+                        Log.Debug("Gsx", $"Failed to drill category \"{bestCat.Text}\" after {MaxChooseAttempts} attempts.");
                         WalkLog(state, $"DRILL-GIVEUP: \"{bestCat.Text}\" — no submenu after {MaxChooseAttempts} attempts; re-reading parent and continuing.");
                         current = _gsx.MenuOptions.ToList();
                         continue;
@@ -623,19 +622,19 @@ public sealed class GsxGateSelector
                 // Defensive: GSX's last page has no "Next Page", so we normally
                 // stop above. This guards a hypothetical pagination loop without
                 // capping legitimately long lists below the limit.
-                Debug.WriteLine($"[GsxGateSelector] Page-advance cap ({MaxPageAdvancesPerLevel}) hit at depth={depth} — stopping paging.");
+                Log.Debug("Gsx", $"Page-advance cap ({MaxPageAdvancesPerLevel}) hit at depth={depth} — stopping paging.");
                 WalkLog(state, $"PAGE-CAP: hit {MaxPageAdvancesPerLevel} forward pages at depth={depth} — stopping paging this level.");
                 break;
             }
             pageAdvances++;
 
-            Debug.WriteLine($"[GsxGateSelector] Advance page at depth={depth} step={step} (page {pageAdvances}): \"{nextOpt.Text}\" (choice={nextOpt.Choice}).");
+            Log.Debug("Gsx", $"Advance page at depth={depth} step={step} (page {pageAdvances}): \"{nextOpt.Text}\" (choice={nextOpt.Choice}).");
             WalkLog(state, $"PAGE-ADVANCE: depth={depth} step={step} page={pageAdvances} → \"{nextOpt.Text}\" choice={nextOpt.Choice}.");
 
             var paged = await ChooseWithRetryAsync(state, nextOpt.Choice, $"page-advance depth={depth}").ConfigureAwait(true);
             if (paged == null || paged.Count == 0)
             {
-                Debug.WriteLine($"[GsxGateSelector] Page advance failed after {MaxChooseAttempts} attempts — stopping paging at depth={depth}.");
+                Log.Debug("Gsx", $"Page advance failed after {MaxChooseAttempts} attempts — stopping paging at depth={depth}.");
                 WalkLog(state, $"PAGE-ADVANCE-GIVEUP: depth={depth} — no page after {MaxChooseAttempts} attempts; stopping paging.");
                 break;
             }
@@ -653,7 +652,7 @@ public sealed class GsxGateSelector
         if (state.DiscoveryOnly)
         {
             // Note: we've already logged every page above via WalkLogMenu.
-            Debug.WriteLine($"[GsxGateSelector] DISCOVERY: traversal at depth={depth} complete.");
+            Log.Debug("Gsx", $"DISCOVERY: traversal at depth={depth} complete.");
             WalkLog(state, $"DISCOVERY: traversal at depth={depth} complete (no gate choice made).");
         }
 
@@ -816,14 +815,14 @@ public sealed class GsxGateSelector
         DfsState state,
         IReadOnlyList<GsxService.MenuOption> finalMenu)
     {
-        Debug.WriteLine($"[GsxGateSelector] TryChooseSafeAction: final menu ({finalMenu.Count} options):");
+        Log.Debug("Gsx", $"TryChooseSafeAction: final menu ({finalMenu.Count} options):");
         WalkLog(state, $"FINAL-ACTION-MENU scan ({finalMenu.Count} options) — gate already selected, this is best-effort:");
         foreach (var o in finalMenu)
         {
             bool forbidden = GsxMenuClassifier.IsForbiddenAction(o.Text ?? string.Empty);
             bool safe      = GsxMenuClassifier.IsSafeServicingAction(o.Text ?? string.Empty);
             string tag     = forbidden ? "FORBIDDEN" : safe ? "SAFE" : "unknown";
-            Debug.WriteLine($"  [{o.Choice}] \"{o.Text}\"  tag={tag}");
+            Log.Debug("Gsx", $"  [{o.Choice}] \"{o.Text}\"  tag={tag}");
             WalkLog(state, $"  [{o.Choice}] \"{o.Text}\"  tag={tag}");
         }
 
@@ -835,7 +834,7 @@ public sealed class GsxGateSelector
             // Skip anything forbidden immediately — never choose these.
             if (GsxMenuClassifier.IsForbiddenAction(opt.Text ?? string.Empty))
             {
-                Debug.WriteLine($"[GsxGateSelector] SAFETY: skipping forbidden entry \"{opt.Text}\".");
+                Log.Debug("Gsx", $"SAFETY: skipping forbidden entry \"{opt.Text}\".");
                 continue;
             }
 
@@ -843,7 +842,7 @@ public sealed class GsxGateSelector
             if (kind == GsxMenuEntryKind.Action && GsxMenuClassifier.IsSafeServicingAction(opt.Text ?? string.Empty))
             {
                 safeAction = opt;
-                Debug.WriteLine($"[GsxGateSelector] SAFETY: found safe action \"{opt.Text}\" (choice={opt.Choice}).");
+                Log.Debug("Gsx", $"SAFETY: found safe action \"{opt.Text}\" (choice={opt.Choice}).");
                 break;
             }
         }
@@ -855,7 +854,7 @@ public sealed class GsxGateSelector
             // CONFIRMED LIVE at OMDB: target entry = "Show me this spot and activate"
             // matched by SafeServicingPatterns "and activate". If this fires,
             // the final menu has no matching entry — check walk-log and tune patterns.
-            Debug.WriteLine("[GsxGateSelector] No safe servicing action identified — closing menu. Gate is already selected.");
+            Log.Debug("Gsx", "No safe servicing action identified — closing menu. Gate is already selected.");
             WalkLog(state, "ACTION: no safe servicing action found (check patterns vs walk-log). Gate already selected — closing menu.");
             _automation.CloseMenu();
             return;
@@ -866,12 +865,12 @@ public sealed class GsxGateSelector
         try
         {
             _gsx.Choose(safeAction.Choice);
-            Debug.WriteLine($"[GsxGateSelector] Chose safe action \"{safeAction.Text}\" (choice={safeAction.Choice}).");
+            Log.Debug("Gsx", $"Chose safe action \"{safeAction.Text}\" (choice={safeAction.Choice}).");
             WalkLog(state, $"ACTION: chose safe servicing action \"{safeAction.Text}\" choice={safeAction.Choice}.");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GsxGateSelector] Failed to send safe-action choice (non-fatal): {ex.Message}");
+            Log.Debug("Gsx", $"Failed to send safe-action choice (non-fatal): {ex.Message}");
             WalkLog(state, $"ACTION-FAIL (non-fatal): {ex.Message}. Gate already selected.");
             _automation.CloseMenu();
         }
@@ -883,26 +882,6 @@ public sealed class GsxGateSelector
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers.
     // ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Finds the parking-selection entry in a menu.
-    /// Prefers "Change Parking" over "Select Parking".
-    /// </summary>
-    private static GsxService.MenuOption? FindParkingEntry(
-        IReadOnlyList<GsxService.MenuOption> menu)
-    {
-        // Prefer "Change Parking facility" (parking already armed).
-        foreach (var opt in menu)
-            if (GsxMenuClassifier.IsChangeParkingEntry(opt.Text))
-                return opt;
-
-        // Fall back to "Select Parking".
-        foreach (var opt in menu)
-            if (GsxMenuClassifier.IsSelectParkingEntry(opt.Text))
-                return opt;
-
-        return null;
-    }
 
     // NOTE: leaf-vs-target matching (LeafMatchesTarget + ExtractConcoursePrefix) moved to
     // GsxMenuClassifier — the one tunable surface — so tools/GsxGateSelectProbe can pin the
@@ -945,11 +924,11 @@ public sealed class GsxGateSelector
         string label)
     {
         string indent = new string(' ', depth * 2);
-        Debug.WriteLine($"{indent}[GsxGateSelector] MENU {label} ({menu.Count} entries):");
+        Log.Debug("Gsx", $"{indent}[GsxGateSelector] MENU {label} ({menu.Count} entries):");
         foreach (var opt in menu)
         {
             var kind = GsxMenuClassifier.Classify(opt, onFinalActionMenu: false);
-            Debug.WriteLine($"{indent}  [{opt.Choice}] \"{opt.Text}\" → {kind}");
+            Log.Debug("Gsx", $"{indent}  [{opt.Choice}] \"{opt.Text}\" → {kind}");
         }
     }
 
@@ -959,13 +938,8 @@ public sealed class GsxGateSelector
     /// </summary>
     private static void WalkLog(DfsState state, string message)
     {
-        Debug.WriteLine($"[GsxGateSelector][LOG] {message}");
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(WalkLogPath)!);
-            File.AppendAllText(WalkLogPath,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}");
-        }
+        Log.Debug("Gsx", $"[LOG] {message}");
+        try { _walkLog.Info(message); }
         catch { /* logging must never crash the selector */ }
     }
 
@@ -982,18 +956,15 @@ public sealed class GsxGateSelector
         try
         {
             string indent = new string(' ', depth * 2);
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {indent}MENU {label} ({menu.Count} entries):");
+            _walkLog.Info($"{indent}MENU {label} ({menu.Count} entries):");
             foreach (var opt in menu)
             {
                 var kind = GsxMenuClassifier.Classify(opt, onFinalActionMenu: false);
                 bool forbidden = GsxMenuClassifier.IsForbiddenAction(opt.Text ?? string.Empty);
                 bool ignored   = GsxMenuClassifier.IsIgnored(opt.Text ?? string.Empty);
                 string extra   = forbidden ? " [FORBIDDEN]" : ignored ? " [IGNORE]" : string.Empty;
-                sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {indent}  [{opt.Choice}] \"{opt.Text}\" → {kind}{extra}");
+                _walkLog.Info($"{indent}  [{opt.Choice}] \"{opt.Text}\" → {kind}{extra}");
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(WalkLogPath)!);
-            File.AppendAllText(WalkLogPath, sb.ToString());
         }
         catch { /* logging must never crash the selector */ }
     }
@@ -1005,7 +976,7 @@ public sealed class GsxGateSelector
     private void Abort(DfsState state, string message)
     {
         state.Aborted = true;
-        Debug.WriteLine($"[GsxGateSelector] ABORT: {message}");
+        Log.Debug("Gsx", $"ABORT: {message}");
         WalkLog(state, $"ABORT: {message}");
         _automation.CloseMenu();
         if (!state.DiscoveryOnly)
@@ -1017,7 +988,7 @@ public sealed class GsxGateSelector
         try { _announcer.AnnounceImmediate(message); }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GsxGateSelector] Announce failed (ignored): {ex.Message}");
+            Log.Debug("Gsx", $"Announce failed (ignored): {ex.Message}");
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Settings;
@@ -74,7 +75,31 @@ public class UserSettings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
         public bool TakeoffAssistMuteCenterlineAnnouncements { get; set; } = false; // Mute centerline deviation announcements
-        public bool TakeoffAssistInvertPanning { get; set; } = false; // Invert panning direction
+        // LEGACY (pre-PR-#111): kept only so SeedTakeoffAssistToneConvention can read
+        // the user's old choice; no runtime code consults this anymore.
+        public bool TakeoffAssistInvertPanning { get; set; } = false;
+
+        /// <summary>
+        /// True (default) = the tone plays on the side to STEER TOWARD (taxi-tone
+        /// convention; steer into the tone to centre). False = steer away.
+        /// Replaces the runtime use of TakeoffAssistInvertPanning — under the OLD
+        /// heading-error tone, InvertPanning == true was the steer-toward mapping,
+        /// so the one-time migration in SettingsManager seeds this from that value
+        /// to preserve each existing user's experienced direction.
+        /// </summary>
+        public bool TakeoffAssistSteerTowardTone { get; set; } = true;
+
+        /// <summary>
+        /// One-time migration flag for the PR #111 tone changes. False in settings
+        /// files that predate TakeoffAssistSteerTowardTone; set true after
+        /// SettingsManager seeds (a) the steer-toward setting from the old
+        /// InvertPanning choice and (b) a stored threshold 0 ("Always") to 1° so
+        /// every user gets the new silent-on-track behavior once (deliberate 1–5
+        /// values are kept; post-migration choices — including re-selecting
+        /// "Always" — stick). See SeedTakeoffAssistToneConvention.
+        /// </summary>
+        public bool TakeoffAssistToneConventionMigrated { get; set; } = false;
+
         /// <summary>
         /// When true, the takeoff-assist centerline tone hard-pans to full
         /// ±1 instead of the proportional headingDiff / 5° curve. Useful
@@ -83,7 +108,10 @@ public class UserSettings
         /// </summary>
         public bool TakeoffAssistHardPanTone { get; set; } = false;
         public bool TakeoffAssistLegacyMode { get; set; } = false; // Legacy mode: heading-based instead of centerline tracking
-        public int TakeoffAssistHeadingToneThreshold { get; set; } = 0; // 0 = Always, 1-5 = degrees threshold
+        // 0 = Always play (continuous centred tone), 1-5 = silent until the steer
+        // error exceeds N degrees. Default 1 = silent when on track, only sounds
+        // when you need to steer back — matches "silent on the deadband".
+        public int TakeoffAssistHeadingToneThreshold { get; set; } = 1;
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
         /// <summary>
@@ -156,6 +184,15 @@ public class UserSettings
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
+        /// <summary>
+        /// Runtime-only HashSet sidecar of <see cref="FenixDisabledMonitorVariables"/> for
+        /// O(1) per-SimVar-event lookups (the list can be mutated live via the Ctrl+M monitor
+        /// manager). Rebuilt by <see cref="RebuildDisabledMonitorVariableCaches"/> — never
+        /// mutate this directly; mutate the List and let SettingsManager.Save rebuild it.
+        /// </summary>
+        [JsonIgnore]
+        public HashSet<string> FenixDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -174,20 +211,36 @@ public class UserSettings
         // doesn't have to re-tick on every launch.
         public List<string> PMDGDisabledMonitorVariables { get; set; } = new List<string>();
 
+        /// <summary>Runtime-only HashSet sidecar of <see cref="PMDGDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> PMDGDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // A380 Monitor Manager Settings — variable keys the user has unticked in
         // FBWA380MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
         // when AircraftCode == "FBW_A380". Persisted across sessions.
         public List<string> A380DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="A380DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> A380DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
         // Auto-announced HS787 variables the user has muted via the 787 Monitor Manager
         // (Ctrl+M, HS787MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated when
         // AircraftCode == "HS_787". Persisted across sessions.
         public List<string> HS787DisabledMonitorVariables { get; set; } = new List<string>();
 
+        /// <summary>Runtime-only HashSet sidecar of <see cref="HS787DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> HS787DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // FlyByWire A32NX Monitor Manager — variable keys the user has un-checked in
         // FlyByWireA320MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
         // when AircraftCode == "A320". Persisted across sessions.
         public List<string> A32NXDisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="A32NXDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> A32NXDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
@@ -328,11 +381,28 @@ public class UserSettings
         }
 
     /// <summary>
+    /// Rebuilds the five *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX monitor-manager
+    /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
+    /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
+    /// which calls this — so a mutation is never visible to the List without also being visible
+    /// to the HashSet. Also called after deserializing settings from disk (SettingsManager.Load).
+    /// </summary>
+    public void RebuildDisabledMonitorVariableCaches()
+    {
+        FenixDisabledMonitorVariablesSet = new HashSet<string>(FenixDisabledMonitorVariables);
+        PMDGDisabledMonitorVariablesSet = new HashSet<string>(PMDGDisabledMonitorVariables);
+        A380DisabledMonitorVariablesSet = new HashSet<string>(A380DisabledMonitorVariables);
+        HS787DisabledMonitorVariablesSet = new HashSet<string>(HS787DisabledMonitorVariables);
+        A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
+    }
+
+    /// <summary>
     /// Creates a copy of this settings instance.
     /// </summary>
     public UserSettings Clone()
     {
-        return new UserSettings
+        var clone = new UserSettings
         {
             AnnouncementMode = AnnouncementMode,
             AnnounceTimeWithSeconds = AnnounceTimeWithSeconds,
@@ -351,6 +421,8 @@ public class UserSettings
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,
             TakeoffAssistInvertPanning = TakeoffAssistInvertPanning,
+            TakeoffAssistSteerTowardTone = TakeoffAssistSteerTowardTone,
+            TakeoffAssistToneConventionMigrated = TakeoffAssistToneConventionMigrated,
             TakeoffAssistHardPanTone = TakeoffAssistHardPanTone,
             TakeoffAssistLegacyMode = TakeoffAssistLegacyMode,
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,
@@ -414,5 +486,7 @@ public class UserSettings
             DockingBeepWaveform = DockingBeepWaveform,
             DockingBeepVolume = DockingBeepVolume
         };
+        clone.RebuildDisabledMonitorVariableCaches();
+        return clone;
     }
 }

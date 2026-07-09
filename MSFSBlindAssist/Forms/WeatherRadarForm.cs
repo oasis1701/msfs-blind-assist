@@ -220,9 +220,11 @@ public class WeatherRadarForm : Form
 
             await Task.WhenAll(ambientTask, advisoriesTask, windsTask);
 
-            _currentWeatherBox.Text = ambientTask.Result;
-            _advisoriesBox.Text     = advisoriesTask.Result;
-            _windsAloftBox.Text     = windsTask.Result;
+            // await, not .Result — the tasks are already completed (WhenAll above), so
+            // this doesn't block, but await avoids wrapping a fault in AggregateException.
+            _currentWeatherBox.Text = await ambientTask;
+            _advisoriesBox.Text     = await advisoriesTask;
+            _windsAloftBox.Text     = await windsTask;
 
             // Silent fallback by design — user shouldn't have to know whether
             // ActiveSky is the source or the SimConnect AMBIENT_* fallback is.
@@ -303,8 +305,9 @@ public class WeatherRadarForm : Form
             var conditionsTask = _activeSky.GetCurrentConditionsAsync();
             var posMetarTask   = _activeSky.GetPositionMetarAsync();
             await Task.WhenAll(conditionsTask, posMetarTask);
-            var asConditions = conditionsTask.Result;
-            string? posMetar = posMetarTask.Result;
+            // await, not .Result — already completed by WhenAll above; avoids AggregateException wrapping.
+            var asConditions = await conditionsTask;
+            string? posMetar = await posMetarTask;
 
             if (asConditions != null)
                 return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar);
@@ -426,7 +429,7 @@ public class WeatherRadarForm : Form
     /// found OR no METAR was provided. METAR format reference: WMO AMC 4444
     /// + ICAO Annex 3 weather phenomenon codes.
     /// </summary>
-    private static string ParsePrecipFromMetar(string metar)
+    internal static string ParsePrecipFromMetar(string metar)
     {
         if (string.IsNullOrWhiteSpace(metar)) return "";
         // Strip any annotation lines (Active Sky appends "(Cloned by: ...)" etc.)

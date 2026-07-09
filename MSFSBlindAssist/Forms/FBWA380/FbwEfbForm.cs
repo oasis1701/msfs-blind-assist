@@ -5,6 +5,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
@@ -66,6 +67,9 @@ public class FbwEfbForm : Form
     private List<EFBElement> _elements = new();
     private string _currentPage = "";
     private string _previousAnnouncedPage = "";
+    // Last alert/confirmation card text we spoke, so a popped-up alert announces once (not every poll);
+    // cleared when no alert is present so re-showing the same alert announces again.
+    private string _lastAnnouncedAlert = "";
 
     // Browser mode = WebView2 semantic document; otherwise the native list.
     private bool _useBrowser = true;
@@ -244,7 +248,7 @@ public class FbwEfbForm : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[A380 flyPad] WebView2 init failed: {ex.Message}");
+            Log.Debug("Forms", $"WebView2 init failed: {ex.Message}");
             _webViewFailed = true;
             _useBrowser = false;
             SafeBeginInvoke(() => { SwitchToListMode(); ApplyElements(); });
@@ -339,6 +343,18 @@ public class FbwEfbForm : Form
     {
         _pageLabel.Text = $"Page: {(string.IsNullOrEmpty(_currentPage) ? "(unknown)" : _currentPage)}";
 
+        // Auto-announce a popped-up alert/confirmation card (e.g. "Success: Tablet preferences were
+        // updated.") the moment it appears. The agent flags it kind 'alert'; the browser/list render
+        // still SHOWS it (+ its OK button stays clickable), but a screen reader won't reliably speak
+        // a dynamically-injected alert, so we announce it app-side — immediate (it interrupts), once
+        // per appearance. Cleared when the alert is gone so re-showing it speaks again.
+        var alert = _elements.FirstOrDefault(e => e.Kind == "alert" && !string.IsNullOrWhiteSpace(e.Text));
+        if (alert != null)
+        {
+            if (alert.Text != _lastAnnouncedAlert) { _announcer.AnnounceImmediate(alert.Text); _lastAnnouncedAlert = alert.Text; }
+        }
+        else { _lastAnnouncedAlert = ""; }
+
         if (_useBrowser && !_webViewFailed)
         {
             // The browser document carries the page name in an aria-live region,
@@ -409,7 +425,7 @@ public class FbwEfbForm : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FBW flyPad] render push failed: {ex.Message}");
+            Log.Debug("Forms", $"render push failed: {ex.Message}");
         }
         finally
         {
@@ -432,7 +448,7 @@ public class FbwEfbForm : Form
     // → Reload → NavigationCompleted must not fire against a disposed WebView2.
     private void OnWebViewProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs args)
     {
-        System.Diagnostics.Debug.WriteLine($"[FBW flyPad] WebView2 process failed: {args.ProcessFailedKind}");
+        Log.Debug("Forms", $"WebView2 process failed: {args.ProcessFailedKind}");
         _webViewReady = false;
         _renderInFlight = false;
         try { if (!IsDisposed && _webView?.CoreWebView2 != null) _webView.CoreWebView2.Reload(); } catch { }

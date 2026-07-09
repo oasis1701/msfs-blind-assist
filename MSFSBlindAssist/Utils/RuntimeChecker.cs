@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Utils;
 
@@ -9,6 +10,10 @@ namespace MSFSBlindAssist.Utils;
 /// </summary>
 public static class RuntimeChecker
 {
+    // Same channel/file as Program.cs's Startup field (Log.Channel is a GetOrAdd by name,
+    // so both resolve to the one "startup.log" channel and the truncate-on-launch is idempotent).
+    private static readonly LogChannel Startup = Log.Channel("startup", truncateOnLaunch: true);
+
     /// <summary>
     /// Result of a runtime check operation.
     /// </summary>
@@ -42,7 +47,7 @@ public static class RuntimeChecker
     {
         var result = new CheckResult { Success = true };
 
-        StartupLogger.Log("=== Starting Runtime Check ===");
+        Startup.Info("=== Starting Runtime Check ===");
 
         // Check .NET Runtime
         CheckDotNetRuntime(result);
@@ -56,7 +61,7 @@ public static class RuntimeChecker
         // Check Windows version
         CheckWindowsVersion(result);
 
-        StartupLogger.Log($"=== Runtime Check Complete: {(result.Success ? "PASSED" : "FAILED")} ===");
+        Startup.Info($"=== Runtime Check Complete: {(result.Success ? "PASSED" : "FAILED")} ===");
 
         return result;
     }
@@ -66,24 +71,24 @@ public static class RuntimeChecker
         try
         {
             var runtimeVersion = Environment.Version;
-            StartupLogger.Log($".NET Runtime Version: {runtimeVersion}");
+            Startup.Info($".NET Runtime Version: {runtimeVersion}");
 
-            // Check if it's .NET 9 or higher
-            if (runtimeVersion.Major >= 9)
+            // Check if it's .NET 10 or higher
+            if (runtimeVersion.Major >= 10)
             {
                 result.Messages.Add($"✓ .NET Runtime {runtimeVersion} detected");
-                StartupLogger.Log($"✓ .NET Runtime version check passed");
+                Startup.Info($"✓ .NET Runtime version check passed");
             }
             else
             {
                 result.Success = false;
-                result.Errors.Add($"✗ .NET Runtime {runtimeVersion} detected (requires .NET 9 or higher)");
-                result.MissingComponents.Add(".NET 9 Runtime");
-                StartupLogger.Log($"✗ .NET Runtime version check FAILED - found {runtimeVersion}, need 9.0+");
+                result.Errors.Add($"✗ .NET Runtime {runtimeVersion} detected (requires .NET 10 or higher)");
+                result.MissingComponents.Add(".NET 10 Runtime");
+                Startup.Info($"✗ .NET Runtime version check FAILED - found {runtimeVersion}, need 10.0+");
             }
 
             // Check for Windows Desktop Runtime (Windows Forms support) using standard reflection approach
-            StartupLogger.Log("Checking for .NET Desktop Runtime (Windows Forms)...");
+            Startup.Info("Checking for .NET Desktop Runtime (Windows Forms)...");
             try
             {
                 // Try to load a Windows Forms type - this is the standard way to check for Desktop Runtime
@@ -91,35 +96,35 @@ public static class RuntimeChecker
                 if (formType != null)
                 {
                     result.Messages.Add("✓ .NET Desktop Runtime (Windows Forms) available");
-                    StartupLogger.Log("✓ Windows Forms type loaded successfully - Desktop Runtime present");
+                    Startup.Info("✓ Windows Forms type loaded successfully - Desktop Runtime present");
                 }
                 else
                 {
                     result.Success = false;
                     result.Errors.Add("✗ .NET Desktop Runtime not found");
-                    result.MissingComponents.Add(".NET 9 Desktop Runtime (Windows Forms)");
-                    StartupLogger.Log("✗ Windows Forms type could not be loaded - Desktop Runtime missing");
+                    result.MissingComponents.Add(".NET 10 Desktop Runtime (Windows Forms)");
+                    Startup.Info("✗ Windows Forms type could not be loaded - Desktop Runtime missing");
                 }
             }
             catch (Exception formEx)
             {
                 result.Success = false;
                 result.Errors.Add("✗ .NET Desktop Runtime not found");
-                result.MissingComponents.Add(".NET 9 Desktop Runtime (Windows Forms)");
-                StartupLogger.Log($"✗ Error loading Windows Forms type: {formEx.Message}");
+                result.MissingComponents.Add(".NET 10 Desktop Runtime (Windows Forms)");
+                Startup.Info($"✗ Error loading Windows Forms type: {formEx.Message}");
             }
 
             // Log runtime information for diagnostics
             string runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
             string frameworkDescription = RuntimeInformation.FrameworkDescription;
-            StartupLogger.Log($"Runtime Directory: {runtimeDir}");
-            StartupLogger.Log($"Framework Description: {frameworkDescription}");
+            Startup.Info($"Runtime Directory: {runtimeDir}");
+            Startup.Info($"Framework Description: {frameworkDescription}");
         }
         catch (Exception ex)
         {
             result.Success = false;
             result.Errors.Add($"✗ Error checking .NET Runtime: {ex.Message}");
-            StartupLogger.LogError("Error checking .NET Runtime", ex);
+            Startup.Error("Error checking .NET Runtime", ex);
         }
     }
 
@@ -130,19 +135,19 @@ public static class RuntimeChecker
             bool is64BitOS = Environment.Is64BitOperatingSystem;
             bool is64BitProcess = Environment.Is64BitProcess;
 
-            StartupLogger.Log($"OS Architecture: {(is64BitOS ? "64-bit" : "32-bit")}");
-            StartupLogger.Log($"Process Architecture: {(is64BitProcess ? "64-bit" : "32-bit")}");
+            Startup.Info($"OS Architecture: {(is64BitOS ? "64-bit" : "32-bit")}");
+            Startup.Info($"Process Architecture: {(is64BitProcess ? "64-bit" : "32-bit")}");
 
             if (is64BitProcess)
             {
                 result.Messages.Add("✓ Running as 64-bit process");
-                StartupLogger.Log("✓ Architecture check passed");
+                Startup.Info("✓ Architecture check passed");
             }
             else
             {
                 result.Success = false;
                 result.Errors.Add("✗ Application requires 64-bit process");
-                StartupLogger.Log("✗ Architecture check FAILED - not running as 64-bit");
+                Startup.Info("✗ Architecture check FAILED - not running as 64-bit");
             }
 
             if (!is64BitOS)
@@ -150,21 +155,21 @@ public static class RuntimeChecker
                 result.Success = false;
                 result.Errors.Add("✗ Application requires 64-bit Windows");
                 result.MissingComponents.Add("64-bit Windows Operating System");
-                StartupLogger.Log("✗ OS Architecture check FAILED - 32-bit Windows detected");
+                Startup.Info("✗ OS Architecture check FAILED - 32-bit Windows detected");
             }
         }
         catch (Exception ex)
         {
             result.Success = false;
             result.Errors.Add($"✗ Error checking architecture: {ex.Message}");
-            StartupLogger.LogError("Error checking architecture", ex);
+            Startup.Error("Error checking architecture", ex);
         }
     }
 
     private static void CheckRequiredDlls(CheckResult result)
     {
         string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        StartupLogger.Log($"Checking for required DLLs in: {appDirectory}");
+        Startup.Info($"Checking for required DLLs in: {appDirectory}");
 
         var requiredDlls = new[]
         {
@@ -181,14 +186,14 @@ public static class RuntimeChecker
             if (File.Exists(dllPath))
             {
                 result.Messages.Add($"✓ {dll} found");
-                StartupLogger.Log($"✓ Found: {dll}");
+                Startup.Info($"✓ Found: {dll}");
             }
             else
             {
                 result.Success = false;
                 result.Errors.Add($"✗ {dll} not found");
                 result.MissingComponents.Add(dll);
-                StartupLogger.Log($"✗ Missing: {dll}");
+                Startup.Info($"✗ Missing: {dll}");
             }
         }
 
@@ -197,14 +202,14 @@ public static class RuntimeChecker
         if (Directory.Exists(navdataPath))
         {
             result.Messages.Add("✓ navdatareader directory found");
-            StartupLogger.Log($"✓ Found: navdatareader directory");
+            Startup.Info($"✓ Found: navdatareader directory");
         }
         else
         {
             result.Success = false;
             result.Errors.Add("✗ navdatareader directory not found");
             result.MissingComponents.Add("navdatareader directory");
-            StartupLogger.Log($"✗ Missing: navdatareader directory");
+            Startup.Info($"✗ Missing: navdatareader directory");
         }
     }
 
@@ -213,26 +218,26 @@ public static class RuntimeChecker
         try
         {
             var osVersion = Environment.OSVersion;
-            StartupLogger.Log($"Windows Version: {osVersion}");
+            Startup.Info($"Windows Version: {osVersion}");
 
             // Windows 10 is version 10.0, Windows 11 is also 10.0 with higher build number
             if (osVersion.Platform == PlatformID.Win32NT && osVersion.Version.Major >= 10)
             {
                 result.Messages.Add($"✓ Windows {osVersion.Version} compatible");
-                StartupLogger.Log("✓ Windows version check passed");
+                Startup.Info("✓ Windows version check passed");
             }
             else
             {
                 result.Success = false;
                 result.Errors.Add($"✗ Windows 10 or higher required (detected: {osVersion})");
-                StartupLogger.Log($"✗ Windows version check FAILED - {osVersion}");
+                Startup.Info($"✗ Windows version check FAILED - {osVersion}");
             }
         }
         catch (Exception ex)
         {
             result.Success = false;
             result.Errors.Add($"✗ Error checking Windows version: {ex.Message}");
-            StartupLogger.LogError("Error checking Windows version", ex);
+            Startup.Error("Error checking Windows version", ex);
         }
     }
 
@@ -257,9 +262,9 @@ public static class RuntimeChecker
         if (checkResult.MissingComponents.Any(c => c.Contains(".NET")))
         {
             message += "To fix .NET Runtime issues:\n";
-            message += "1. Download and install .NET 9 Desktop Runtime (x64) from:\n";
-            message += "   https://dotnet.microsoft.com/download/dotnet/9.0\n";
-            message += "2. Look for 'Desktop Runtime' under '.NET Desktop Runtime 9.0'\n";
+            message += "1. Download and install .NET 10 Desktop Runtime (x64) from:\n";
+            message += "   https://dotnet.microsoft.com/download/dotnet/10.0\n";
+            message += "2. Look for 'Desktop Runtime' under '.NET Desktop Runtime 10.0'\n";
             message += "3. Download the 'x64' version\n";
             message += "4. Run the installer and restart this application\n\n";
         }
@@ -273,7 +278,7 @@ public static class RuntimeChecker
             message += "4. Re-download the application if files are missing\n\n";
         }
 
-        message += $"\nA detailed log file has been saved to:\n{StartupLogger.GetLogFilePath()}\n";
+        message += $"\nA detailed log file has been saved to:\n{AppLogs.PathFor("startup.log")}\n";
         message += "\nPlease send this log file when reporting issues.";
 
         return message;

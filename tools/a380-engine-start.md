@@ -3,6 +3,14 @@
 Investigated against the local FBW clone (`C:\Users\franc\Documents\development\fbw-aircraft`).
 All paths below are absolute. Engines are numbered 1-4 (left-outboard 1 ... right-outboard 4).
 
+> **⚠️ Path update (MSFS-2024-native modular rebuild, FBW #10758, 2026-06):** the cockpit
+> behaviour XMLs moved out of the old `SimObjects\AirPlanes\FlyByWire_A380_842\model\behaviour\`
+> tree into `SimObjects\AirPlanes\FlyByWire_A380X\attachments\flybywire\Part_Interior_Cockpit\model\behaviour\`.
+> When a path below shows `FlyByWire_A380_842\model\behaviour\...`, read it as the new
+> `FlyByWire_A380X\...\Part_Interior_Cockpit\model\behaviour\...`. (`runway.FLT` and other
+> non-behaviour assets were redistributed by the modular split — locate them under the
+> `FlyByWire_A380X` SimObject if the old path 404s.)
+
 The A380X reuses the A32NX `A32NX_*` naming convention for engine L:vars (the engine
 WASM module is shared logic), so the var families look "A32NX" but apply to all 4 engines.
 

@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -8,14 +9,15 @@ public class TakeoffAssistManager : IDisposable
 {
     private readonly ScreenReaderAnnouncer announcer;
     private readonly bool muteCenterlineAnnouncements;
-    private readonly bool invertPanning;
+    private readonly bool steerTowardTone;
     private readonly int headingToneThreshold;
     private readonly bool legacyMode;
     private readonly bool enableCallouts;
 
     /// <summary>
     /// When true, the centerline tone hard-pans to ±1 instead of using the
-    /// proportional headingDiff / PAN_FULL_RANGE_DEGREES curve. Speaker
+    /// proportional steerError / 5° curve (steer error = heading error plus
+    /// the centerline-intercept crab). Speaker
     /// users get unambiguous "left or right" — no in-between values that
     /// could be confused with centred. Read on every position update so a
     /// runtime toggle in Hand Fly Options applies without restarting
@@ -50,6 +52,23 @@ public class TakeoffAssistManager : IDisposable
     private double lastAnnouncedPitch = 0;
     private DateTime lastPitchAnnouncement = DateTime.MinValue;
 
+    // Diagnostic frame trace for the takeoff roll (one append per ~100 ms while
+    // active). Lets a post-flight reader see the actual swing and how the
+    // cross-track intercept behaved, so the CROSSTRACK_INTERCEPT_* constants can
+    // be tuned from data. (There is NO yaw-rate lead in takeoff assist — that is
+    // taxi guidance's TaxiTurnLeadSeconds; do not add one from a log hunch.)
+    private static readonly LogChannel _takeoffLog = Log.Channel("takeoff_assist");
+    private DateTime lastTakeoffLogTime = DateTime.MinValue;
+    // Last IAS seen by ProcessSpeedUpdate, cached ONLY so the trace can log a
+    // speed column (tuning needs error-vs-speed). IAS, not ground speed — GS
+    // never reaches this manager, and IAS is what the callouts key on anyway.
+    private double lastIndicatedAirspeedKts;
+
+    private double smoothedSteerError;
+    private bool steerErrorSmootherInitialized;
+    private int hardPanSide;        // -1 left / 0 centred / +1 right (hard-pan mode)
+    private bool toneUnmuted;       // threshold-gate state (threshold >= 1 only)
+
     // Speed callout state (for takeoff roll)
     private bool hasAnnounced80Knots = false;
     private bool hasAnnounced100Knots = false;
@@ -68,7 +87,37 @@ public class TakeoffAssistManager : IDisposable
     // Configuration constants - modern mode
     private const double CENTERLINE_TOLERANCE_FEET = 25.0; // Within ±25 feet is "center"
     private const double CENTERLINE_CHANGE_THRESHOLD_FEET = 10.0; // Announce if deviation changes by >10 feet
-    private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° heading deviation for full left/right pan
+    private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° tracking error for full left/right pan
+
+    // Smoothing/hysteresis for the DISCRETE audio switches (mute gate + hard-pan
+    // side). The proportional pan stays on the RAW steer error (continuous — can't
+    // flap); the on/off and left/right decisions use a lightly smoothed error with
+    // hysteresis so GPS cross-track jitter (0.1°/ft couples ~1 ft of noise into
+    // 0.1° of steer error) and the zero-crossings of normal convergence can't
+    // chatter the tone. Same lesson as TaxiSteeringTone's 3°/6° + min-sustain.
+    private const double STEER_SMOOTH_ALPHA = 0.3;          // EMA at ~30 Hz ≈ 100 ms
+    private const double HARDPAN_SIDE_ON_DEG = 0.5;         // enter a side
+    private const double HARDPAN_SIDE_OFF_DEG = 0.25;       // drop to centred
+    private const double MUTE_HYSTERESIS_DEG = 0.5;         // re-mute at threshold − this
+    private const double MUTE_OFF_FLOOR_DEG = 0.25;         // never re-mute below this gap
+
+    // Cross-track centerline tracking. The pan tone tracks an INTERCEPT
+    // heading that converges on the centerline, not the bare runway heading.
+    // Same IDEA as the taxi-guidance runway-lineup intercept (deadband → ramp →
+    // cap on cross-track), but a DELIBERATELY different curve: linear 0.1°/ft
+    // capped at 10°, vs taxi's sqrt ramp to 30° at 100 ft — a 30° crab command
+    // during a high-speed roll would be dangerous; gentle linear is right here.
+    // The 8 ft deadband intentionally matches taxi's LINEUP_NOISE_DEADBAND_FEET.
+    // A pure heading-only tone (the original design) left pilots unable to hold
+    // centerline: a small steady heading error silently integrates into a
+    // huge sideways drift (measured 800 ft off at EIDW 28R while the nose
+    // never strayed >12° from runway heading), and the tone gave no cue of it.
+    // Here the "desired" heading is biased back toward the centerline by an
+    // intercept angle proportional to cross-track, so nulling the tone means
+    // converging on centerline rather than merely pointing straight.
+    private const double CROSSTRACK_INTERCEPT_DEADBAND_FEET = 8.0;   // on centerline → hold heading, no crab
+    private const double CROSSTRACK_INTERCEPT_DEG_PER_FOOT = 0.1;    // crab angle commanded per foot off
+    private const double CROSSTRACK_MAX_INTERCEPT_DEG = 10.0;        // cap the commanded crab (gentle on the roll)
 
     // Configuration constants - legacy mode
     private const double HEADING_TOLERANCE_DEGREES = 1.0; // Within ±1 degree is "center"
@@ -81,7 +130,7 @@ public class TakeoffAssistManager : IDisposable
 
     public TakeoffAssistManager(ScreenReaderAnnouncer screenReaderAnnouncer,
         HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.05,
-        bool muteCenterline = false, bool useInvertPanning = false,
+        bool muteCenterline = false, bool steerTowardTone = true,
         int useHeadingToneThreshold = 0, bool useLegacyMode = false,
         bool useEnableCallouts = true)
     {
@@ -90,7 +139,7 @@ public class TakeoffAssistManager : IDisposable
         toneVolume = volume;
         muteCenterlineAnnouncements = muteCenterline;
         enableCallouts = useEnableCallouts;
-        invertPanning = useInvertPanning;
+        this.steerTowardTone = steerTowardTone;
         headingToneThreshold = useHeadingToneThreshold;
         legacyMode = useLegacyMode;
 
@@ -123,7 +172,35 @@ public class TakeoffAssistManager : IDisposable
         referenceAirportICAO = airportICAO;
         hasRunwayReference = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
+        Log.Debug("TakeoffAssist", $"Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
+    }
+
+    /// <summary>
+    /// Snapshot of the current teleport/taxi-lineup runway reference, so MainForm
+    /// can carry it across the settings-dialog manager recreate (Reset() clears it;
+    /// without this, teleport → Hand Fly Options OK → Ctrl+T lost the runway and
+    /// silently fell back to "no runway selected").
+    /// </summary>
+    public bool TryGetRunwayReference(out double thresholdLat, out double thresholdLon,
+        out double headingTrue, out double headingMagnetic,
+        out string runwayId, out string airportIcao)
+    {
+        if (hasRunwayReference &&
+            referenceThresholdLat.HasValue && referenceThresholdLon.HasValue &&
+            referenceRunwayHeadingTrue.HasValue && referenceRunwayHeadingMagnetic.HasValue &&
+            referenceRunwayID != null && referenceAirportICAO != null)
+        {
+            thresholdLat = referenceThresholdLat.Value;
+            thresholdLon = referenceThresholdLon.Value;
+            headingTrue = referenceRunwayHeadingTrue.Value;
+            headingMagnetic = referenceRunwayHeadingMagnetic.Value;
+            runwayId = referenceRunwayID;
+            airportIcao = referenceAirportICAO;
+            return true;
+        }
+        thresholdLat = thresholdLon = headingTrue = headingMagnetic = 0;
+        runwayId = airportIcao = string.Empty;
+        return false;
     }
 
     /// <summary>
@@ -139,7 +216,7 @@ public class TakeoffAssistManager : IDisposable
         referenceAirportICAO = null;
         hasRunwayReference = false;
 
-        System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Runway reference cleared");
+        Log.Debug("TakeoffAssist", "Runway reference cleared");
     }
 
     /// <summary>
@@ -165,6 +242,7 @@ public class TakeoffAssistManager : IDisposable
             hasAnnounced100Knots = false;
             hasAnnouncedV1 = false;
             hasAnnouncedRotate = false;
+            lastIndicatedAirspeedKts = 0;
 
             if (legacyMode)
             {
@@ -178,6 +256,11 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedCrossTrackFeet = 0;
                 lastCenterlineAnnouncement = DateTime.MinValue;
                 centerlineTone?.Start(toneWaveType, toneVolume, 600.0);
+
+                smoothedSteerError = 0;
+                steerErrorSmootherInitialized = false;
+                hardPanSide = 0;
+                toneUnmuted = false;
             }
 
             if (hasRunwayReference)
@@ -185,19 +268,14 @@ public class TakeoffAssistManager : IDisposable
                 // Use runway reference from teleport
                 string modeInfo = legacyMode ? "legacy mode" : "";
                 announcer.AnnounceImmediate($"Takeoff assist active{(legacyMode ? " legacy mode" : "")}, runway {referenceRunwayID} at {referenceAirportICAO}");
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
+                Log.Debug("TakeoffAssist", $"Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
 
-                // EXPLICIT heading sanity check at activation. The centerline tone
-                // pans on heading deviation but uses pan-only (no spoken cue), and
-                // the spoken "center" callout reflects CROSS-TRACK only — so a
-                // pilot who finishes lineup off-heading but on-CL gets "center"
-                // and starts the roll without realizing the nose is pointed
-                // off-runway. FAA AIM and standard pilot training require a
-                // pre-takeoff heading-vs-runway cross-check (sighted pilots do
-                // this visually against the heading indicator). For a blind
-                // pilot this has to be spoken. Threshold ≈ 3° matches the taxi-
-                // lineup tolerance used during alignment, so we only warn when
-                // the misalignment actually exceeds what lineup considered "good".
+                // EXPLICIT heading sanity check at activation. The intercept tone
+                // now DOES cue an off-heading pilot (nonzero steerError), but the
+                // tone is pan-only — this spoken pre-roll heading-vs-runway
+                // cross-check (FAA AIM standard practice; sighted pilots do it
+                // visually) gives the blind pilot explicit NUMBERS before the
+                // roll starts. Threshold ≈ 3° matches the taxi-lineup tolerance.
                 if (referenceRunwayHeadingMagnetic.HasValue)
                 {
                     double headingDiff = currentHeadingMagnetic - referenceRunwayHeadingMagnetic.Value;
@@ -233,8 +311,12 @@ public class TakeoffAssistManager : IDisposable
                 {
                     announcer.AnnounceImmediate($"Takeoff assist active, no runway selected, extending centerline from current position, heading {Math.Round(currentHeadingMagnetic)}");
                 }
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
+                Log.Debug("TakeoffAssist", $"Activated with current position reference (legacy={legacyMode}): HdgMag={currentHeadingMagnetic:F1}");
             }
+
+            // Header AFTER the reference branch so a synthetic-centerline activation
+            // logs the just-captured heading instead of "icao= rwy= rwyHdgMag=-1".
+            if (!legacyMode) BeginTakeoffLog();
         }
         else
         {
@@ -253,7 +335,7 @@ public class TakeoffAssistManager : IDisposable
             ClearRunwayReference();
 
             announcer.AnnounceImmediate("Takeoff assist off");
-            System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Deactivated");
+            Log.Debug("TakeoffAssist", "Deactivated");
         }
 
         TakeoffAssistActiveChanged?.Invoke(this, isActive);
@@ -293,7 +375,7 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedHeadingDeviation = headingDiff;
                 lastHeadingAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Legacy mode: Heading={currentHeadingMagnetic:F1}°, Deviation={headingDiff:F1}° → {announcement}");
+                Log.Debug("TakeoffAssist", $"Legacy mode: Heading={currentHeadingMagnetic:F1}°, Deviation={headingDiff:F1}° → {announcement}");
             }
         }
         else
@@ -305,7 +387,7 @@ public class TakeoffAssistManager : IDisposable
             // Unified centerline math — see RunwayCenterlineTracker sign convention.
             // We already have MAGNETIC heading here; pass TRUE via (mag + variation) isn't available so
             // use the mag heading as an approximation for the heading-error field (we don't use that
-            // field here — pan is computed from the explicit magnetic headingDiff above).
+            // field here — pan is computed from steerError (magnetic headingDiff + crab) below.
             var track = RunwayCenterlineTracker.Compute(
                 currentLat, currentLon,
                 currentHeadingMagnetic, // heading error not used by this caller
@@ -318,31 +400,84 @@ public class TakeoffAssistManager : IDisposable
             // manager. Cheap — single setting lookup.
             hardPanTone = SettingsManager.Current.TakeoffAssistHardPanTone;
 
-            // Audio pan based on heading deviation - centered tone = nose pointed down runway
-            // Positive headingDiff = pointed right of runway, pan right (unless inverted).
-            // Hard-pan mode forces ±1 (one speaker only) for users on stereo
-            // speakers; proportional curve otherwise.
+            // --- Cross-track intercept ----------------------------------------
+            // Bias the "ideal" heading back toward the centerline by a crab angle
+            // proportional to how far off-centerline we are (sign convention:
+            // crossTrackFeet + = left of centerline → command a right crab; - =
+            // right → left crab). The tone is silent on the heading that CONVERGES
+            // on centerline, not merely on runway heading — so a pilot pointed
+            // straight but drifting off-CL still gets a steer cue. Within the
+            // deadband we command no crab so a dead-on-centerline roll stays steady.
+            // Crab command: 0 inside the deadband (the negative pre-clamp value
+            // falls out of the 0 lower bound), then linear per foot, capped.
+            double desiredCrabDeg = Math.Clamp(
+                (Math.Abs(crossTrackFeet) - CROSSTRACK_INTERCEPT_DEADBAND_FEET)
+                    * CROSSTRACK_INTERCEPT_DEG_PER_FOOT,
+                0.0, CROSSTRACK_MAX_INTERCEPT_DEG) * Math.Sign(crossTrackFeet);
+
+            // steerError > 0 = steer RIGHT to reach the intercept heading; < 0 =
+            // steer LEFT. Matches the taxi steering-tone convention: the tone pans
+            // in the direction you should TURN and you steer TOWARD it to centre
+            // (steerTowardTone=false flips to steer-away for users trained on the
+            // pre-#111 heading-deviation tone).
+            double steerError = desiredCrabDeg - headingDiff;
+            // headingDiff is normalized to ±180 but adding the crab can push the sum
+            // past it (e.g. -175° heading error + 10° crab = 185°); re-wrap so a
+            // near-reciprocal activation still pans toward the SHORTER turn.
+            while (steerError > 180.0) steerError -= 360.0;
+            while (steerError < -180.0) steerError += 360.0;
+            // ------------------------------------------------------------------
+
+            smoothedSteerError = steerErrorSmootherInitialized
+                ? smoothedSteerError + STEER_SMOOTH_ALPHA * (steerError - smoothedSteerError)
+                : steerError;
+            steerErrorSmootherInitialized = true;
+
+            // Audio pan in the steer direction — silent/centred tone = on the
+            // heading that converges on centerline. Positive steerError = steer
+            // right → pan RIGHT (unless steer-away is configured).
             float pan;
             if (hardPanTone)
             {
-                // Sign(0) is 0 — leave pan = 0 so the dead-on-centerline
-                // case still reads as silent / centred via the existing
-                // headingToneThreshold gate below.
-                pan = (float)Math.Sign(headingDiff);
+                // Hard-pan holds its side with hysteresis: enter a side at ON,
+                // drop to centred below OFF, hold in between — so the ±1 slam
+                // can't alternate speakers on jitter or normal convergence
+                // zero-crossings (worst with the legacy threshold=0 "Always").
+                if (Math.Abs(smoothedSteerError) >= HARDPAN_SIDE_ON_DEG)
+                    hardPanSide = Math.Sign(smoothedSteerError);
+                else if (Math.Abs(smoothedSteerError) < HARDPAN_SIDE_OFF_DEG)
+                    hardPanSide = 0;
+                pan = hardPanSide;
             }
             else
             {
-                pan = (float)Math.Clamp(headingDiff / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
+                pan = (float)Math.Clamp(steerError / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
             }
-            if (invertPanning) pan = -pan;
+            if (!steerTowardTone) pan = -pan;
             centerlineTone?.SetPan(pan);
 
-            // Apply threshold - mute tone if deviation is below threshold
+            // Threshold mute with hysteresis: unmute at ≥ threshold, re-mute only
+            // once the smoothed error falls half a degree back inside (floored so
+            // the band never collapses). Being off-centerline un-mutes via the
+            // crab term even with the nose pointed straight down the runway.
             if (headingToneThreshold > 0)
             {
-                bool shouldPlayTone = Math.Abs(headingDiff) >= headingToneThreshold;
-                centerlineTone?.UpdateVolume(shouldPlayTone ? toneVolume : 0);
+                double offThresh = Math.Max(MUTE_OFF_FLOOR_DEG, headingToneThreshold - MUTE_HYSTERESIS_DEG);
+                if (!toneUnmuted && Math.Abs(smoothedSteerError) >= headingToneThreshold)
+                    toneUnmuted = true;
+                else if (toneUnmuted && Math.Abs(smoothedSteerError) <= offThresh)
+                    toneUnmuted = false;
+                centerlineTone?.UpdateVolume(toneUnmuted ? toneVolume : 0);
             }
+            else
+            {
+                // "Always" mode: re-assert volume every sounding frame (the
+                // TaxiSteeringTone lesson — never rely on caller-side volume state).
+                centerlineTone?.UpdateVolume(toneVolume);
+            }
+
+            AppendTakeoffLog(currentLat, currentLon, currentHeadingMagnetic,
+                headingDiff, desiredCrabDeg, steerError, pan, crossTrackFeet);
 
             // Check if we should announce centerline deviation
             double deviationChange = Math.Abs(crossTrackFeet - lastAnnouncedCrossTrackFeet);
@@ -362,7 +497,7 @@ public class TakeoffAssistManager : IDisposable
                 lastAnnouncedCrossTrackFeet = crossTrackFeet;
                 lastCenterlineAnnouncement = DateTime.Now;
 
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Position: Lat={currentLat:F6}, Lon={currentLon:F6}, CrossTrack={crossTrackFeet:F1}ft → {announcement}{(muteCenterlineAnnouncements ? " (muted)" : "")}");
+                Log.Debug("TakeoffAssist", $"Position: Lat={currentLat:F6}, Lon={currentLon:F6}, CrossTrack={crossTrackFeet:F1}ft → {announcement}{(muteCenterlineAnnouncements ? " (muted)" : "")}");
             }
         }
     }
@@ -388,7 +523,7 @@ public class TakeoffAssistManager : IDisposable
             lastAnnouncedPitch = currentPitch;
             lastPitchAnnouncement = DateTime.Now;
 
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Pitch: {currentPitch:F1}° → {announcement}");
+            Log.Debug("TakeoffAssist", $"Pitch: {currentPitch:F1}° → {announcement}");
         }
     }
 
@@ -399,6 +534,10 @@ public class TakeoffAssistManager : IDisposable
     /// <param name="currentIAS">Current indicated airspeed in knots</param>
     public void ProcessSpeedUpdate(double currentIAS)
     {
+        // Cache BEFORE the guards — the trace's iasKt column must stay fresh
+        // even when callouts are disabled.
+        lastIndicatedAirspeedKts = currentIAS;
+
         if (!isActive) return;
         if (!enableCallouts) return;
 
@@ -408,7 +547,7 @@ public class TakeoffAssistManager : IDisposable
         {
             announcer.Announce("80 knots");
             hasAnnounced80Knots = true;
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 80 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: 80 knots (IAS={currentIAS:F1})");
         }
 
         // 100 knots callout (all aircraft)
@@ -416,7 +555,7 @@ public class TakeoffAssistManager : IDisposable
         {
             announcer.Announce("100 knots");
             hasAnnounced100Knots = true;
-            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 100 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: 100 knots (IAS={currentIAS:F1})");
         }
 
         // V1 callout (Fenix only, if V1 speed is configured)
@@ -426,7 +565,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 announcer.Announce("V1");
                 hasAnnouncedV1 = true;
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
+                Log.Debug("TakeoffAssist", $"Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
             }
         }
 
@@ -437,7 +576,7 @@ public class TakeoffAssistManager : IDisposable
             {
                 announcer.Announce("rotate");
                 hasAnnouncedRotate = true;
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
+                Log.Debug("TakeoffAssist", $"Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
             }
         }
     }
@@ -453,7 +592,7 @@ public class TakeoffAssistManager : IDisposable
         fenixVRSpeed = (vr.HasValue && vr.Value > 0) ? vr : null;
         isFenixAircraft = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
+        Log.Debug("TakeoffAssist", $"Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
     }
 
     /// <summary>
@@ -527,6 +666,54 @@ public class TakeoffAssistManager : IDisposable
     }
 
     /// <summary>
+    /// Writes a session-start header + CSV column row to the takeoff trace.
+    /// Appends (like the taxi log) so history survives across rolls. Size-capped
+    /// rotation is now handled by the shared LogWriter rather than a hand-rolled
+    /// per-roll truncate.
+    /// </summary>
+    private void BeginTakeoffLog()
+    {
+        lastTakeoffLogTime = DateTime.MinValue;
+        try
+        {
+            int rwyHdg = referenceRunwayHeadingMagnetic.HasValue
+                ? (int)Math.Round(referenceRunwayHeadingMagnetic.Value) : -1;
+            _takeoffLog.Info(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "=== Takeoff icao={0} rwy={1} rwyHdgMag={2} ===",
+                referenceAirportICAO, referenceRunwayID, rwyHdg));
+            _takeoffLog.Info("lat,lon,hdgMag,headingDiff,desiredCrab,steerErr,smoothedErr,pan,toneOn,iasKt,crossTrackFt");
+        }
+        catch { /* diagnostic only */ }
+    }
+
+    /// <summary>
+    /// One frame of the takeoff trace, throttled to ~100 ms.
+    /// </summary>
+    private void AppendTakeoffLog(double lat, double lon, double hdgMag,
+        double headingDiff, double desiredCrabDeg, double steerError, float pan, double crossTrackFeet)
+    {
+        // UtcNow for the rate limit (monotonic across DST/clock changes; the
+        // taxi-guidance trace convention). Local time only in the display column.
+        var nowUtc = DateTime.UtcNow;
+        if ((nowUtc - lastTakeoffLogTime).TotalMilliseconds < 100) return;
+        lastTakeoffLogTime = nowUtc;
+        try
+        {
+            // toneOn = what the pilot actually hears: the hysteresis gate's
+            // output when a threshold is set, always-audible in "Always" mode.
+            int toneOn = headingToneThreshold > 0 ? (toneUnmuted ? 1 : 0) : 1;
+            _takeoffLog.Info(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:F7},{1:F7},{2:F1},{3:F2},{4:F2},{5:F2},{6:F2},{7:F2},{8},{9:F1},{10:F1}",
+                lat, lon, hdgMag, headingDiff, desiredCrabDeg,
+                steerError, smoothedSteerError, pan, toneOn,
+                lastIndicatedAirspeedKts, crossTrackFeet));
+        }
+        catch { /* diagnostic only */ }
+    }
+
+    /// <summary>
     /// Resets the takeoff assist manager state
     /// </summary>
     public void Reset()
@@ -536,8 +723,13 @@ public class TakeoffAssistManager : IDisposable
             centerlineTone?.Stop();
             isActive = false;
             TakeoffAssistActiveChanged?.Invoke(this, false);
-            System.Diagnostics.Debug.WriteLine("[TakeoffAssistManager] Reset");
+            Log.Debug("TakeoffAssist", "Reset");
         }
+
+        smoothedSteerError = 0;
+        steerErrorSmootherInitialized = false;
+        hardPanSide = 0;
+        toneUnmuted = false;
 
         // Clear all reference data on reset
         ClearRunwayReference();

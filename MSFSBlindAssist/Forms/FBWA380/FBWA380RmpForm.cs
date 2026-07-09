@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
@@ -47,7 +48,7 @@ public sealed class FBWA380RmpForm : Form
     private string _lastStandbyAnnounced = "";           // dedup key "row:freq" so it speaks once
 
     private ComboBox _side = null!;
-    private TextBox _display = null!;
+    private DisplayListBox _display = null!;
     private Label _status = null!;
 
     public FBWA380RmpForm(ScreenReaderAnnouncer announcer, FlyByWireA380Definition def, SimConnectManager sim)
@@ -75,14 +76,14 @@ public sealed class FBWA380RmpForm : Form
         _status = new Label { Location = new Point(240, 14), Size = new Size(360, 22), Text = "Connecting…", AccessibleName = "Status" };
 
         // The RMP SCREEN — read with the arrows AND type the digits for the CURRENT page (VHF freq or SQWK).
-        _display = new TextBox
+        _display = new DisplayListBox
         {
             Location = new Point(12, 44), Size = new Size(584, 312),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            SuppressTypeAhead = true,   // character keys are RADIO INPUT here, not list navigation
             Font = new Font("Consolas", 11),
             AccessibleName = "RMP screen — type the digits for the current page",
-            Text = "Loading…"
         };
+        _display.SetText("Loading…");
         _display.KeyPress += OnDisplayKeyPress;
         _display.KeyDown += OnDisplayKeyDown;
 
@@ -250,8 +251,14 @@ public sealed class FBWA380RmpForm : Form
     // force = an explicit action (Enter / re-press the selected radio) — always speak, even if the
     // typing-settle debounce already announced this same value. The debounce path passes force = false
     // (deduped) so continuous typing speaks only once.
+    // Non-handler async void (called from AnnounceVhfEntry, not subscribed to an event) —
+    // wrapped end-to-end so a fault in Finish()/Apply(rows) can't escape as an unobserved
+    // async-void exception; the scrape loop already had its own per-iteration guard, but
+    // the rest of the method didn't.
     private async void AnnounceSelectedStandby(bool force = false)
     {
+      try
+      {
         int row = _selectedRowIndex;
         // The FBW RMP auto-completes over a FEW FRAMES after the last keystroke, so a single scrape can
         // catch a transient mid-entry value (e.g. 123.400 while the final is 123.450 — the bug the user
@@ -285,6 +292,11 @@ public sealed class FBWA380RmpForm : Form
             Apply(rows);
         }
         if (InvokeRequired) { try { BeginInvoke((Action)Finish); } catch { } } else Finish();
+      }
+      catch (Exception ex)
+      {
+          Log.Debug("Forms", $"AnnounceSelectedStandby error: {ex.Message}");
+      }
     }
 
     // The SELECTED VHF row's standby frequency from a scrape row set ("" if none / not found).
@@ -573,7 +585,7 @@ public sealed class FBWA380RmpForm : Form
         if (_message.Length > 0) sb.AppendLine($"Message: {_message}");
 
         string text = sb.ToString().TrimEnd();
-        DisplayText.SetPreserveCaret(_display, text);
+        _display.SetText(text);
     }
 
     private static string Token(string row, string after)

@@ -45,7 +45,6 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 ### Database System
 
-- **`Database/AirportDatabase.cs`**: SQLite airport data management
 - **`Database/DatabaseBuilder.cs`**: BGL file processing for airport data
 - **`Database/Models/Airport.cs`**: Airport data model
 - **`Database/Models/Runway.cs`**: Runway data model
@@ -64,7 +63,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 - **`Services/TaxiGuidanceManager.cs`**: Real-time state machine, position tracking, announcements, re-routing
 - **`Services/TaxiSteeringTone.cs`**: Stereo-panned steering tone with hysteresis + min sustain + low-pass smoothing
 - **`Forms/TaxiAssistForm.cs`**: Route entry UI (destination combo, filtered taxiway ComboBoxes, hold-short checkboxes)
-- **`Forms/TaxiGuidanceOptionsForm.cs`**: User settings (waveform, volume, crossing announcements)
+- **`Forms/Settings/TaxiGuidancePanel.cs`**: User settings (waveform, volume, crossing announcements)
 
 See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 
@@ -89,15 +88,15 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 ## Development Notes
 
-- Project targets .NET 9 (`net9.0-windows`)
+- Project targets .NET 10 (`net10.0-windows`)
 - Uses modern SDK-style project format
-- Runtime Identifier: `win-x64`
+- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha in CLAUDE.md)
 - Uses Microsoft Flight Simulator SimConnect SDK
 - Post-build event copies SimConnect.dll to output directory
 - SimConnect.cfg configuration file is copied to output for connection settings
 - Application requires x64 build for proper SimConnect operation
 - C# 13 with nullable reference types enabled
-- **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
+- **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.Connect() in SimConnect/SimConnectManager.cs
 
 ### A380/A32NX live-debugging tools (`tools/`)
 
@@ -132,26 +131,28 @@ its product ships as `MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs`.
 
 Global exception handlers (`Program.cs` → `InstallGlobalExceptionHandlers`) catch UI-thread
 faults (recovered, app keeps running), background-thread faults (logged, CLR still terminates),
-and unobserved task exceptions. `StartupLogger` writes each line with `File.AppendAllText`
-(flushes per line), so **managed** crashes leave a stack trace at
-`%TEMP%\MSFSBlindAssist_Startup_<timestamp>.log`. A crash with **no** logged exception is
-almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
+and unobserved task exceptions. Startup diagnostics are wired through `Log.Channel("startup", truncateOnLaunch: true)`
+which writes to `%APPDATA%\MSFSBlindAssist\logs\startup.log`, so **managed** crashes leave a stack trace there.
+A crash with **no** logged exception is almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
 Application for the faulting module. Full procedure in [tooling.md §8](tooling.md).
 
 ## Dependencies
 
 - **Microsoft.FlightSimulator.SimConnect** (from MSFS SDK)
-- **System.Windows.Forms** (.NET 9)
-- **Microsoft.Data.Sqlite** (version 9.0.0) - Airport database functionality
+- **System.Windows.Forms** (.NET 10)
+- **Microsoft.Data.Sqlite** (version 10.0.x) - Airport database functionality
+- **SQLitePCLRaw.bundle_e_sqlite3** (version 3.0.x) - direct reference lifting the transitive
+  bundle above the vulnerable 2.1.11 (CVE-2025-6965); keep it >= the version
+  Microsoft.Data.Sqlite would otherwise pull
 - **Newtonsoft.Json** (version 13.0.3) - JSON serialization
-- **System.Speech** (version 9.0.0) - Text-to-speech fallback
-- **Microsoft.Extensions.Configuration** (version 9.0.0) - Configuration management
-- **Microsoft.Extensions.Configuration.Json** (version 9.0.0) - JSON configuration provider
-- **Microsoft.Extensions.Configuration.Binder** (version 9.0.0) - Configuration binding
+- **System.Speech** (version 10.0.x) - Text-to-speech fallback
+- **Microsoft.Extensions.Configuration** (version 10.0.x) - Configuration management
+- **Microsoft.Extensions.Configuration.Json** (version 10.0.x) - JSON configuration provider
+- **Microsoft.Extensions.Configuration.Binder** (version 10.0.x) - Configuration binding
 - **NVDA Controller Client** (included) - Direct NVDA integration
 - **Tolk wrapper** (included) - Universal screen reader support
 
-## Settings System (.NET 9)
+## Settings System
 
 Settings are now stored in JSON format at:
 - **Location:** `%APPDATA%\MSFSBlindAssist\settings.json`
