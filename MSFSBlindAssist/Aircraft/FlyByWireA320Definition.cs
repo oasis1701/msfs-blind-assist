@@ -7142,9 +7142,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             var w = new SimConnect.Arinc429Word(value);
             if (!w.IsNormalOperation && !w.IsFunctionalTest) displayText = "none";
-            else if (w.BitValueOr(25, false)) displayText = "LAND3 dual";
-            else if (w.BitValueOr(24, false)) displayText = "LAND3 single";
-            else if (w.BitValueOr(23, false)) displayText = "LAND2";
+            else if (w.BitValueOr(25, false)) displayText = "LAND 3 dual";
+            else if (w.BitValueOr(24, false)) displayText = "LAND 3 single";
+            else if (w.BitValueOr(23, false)) displayText = "LAND 2";
             else displayText = "none";
             return true;
         }

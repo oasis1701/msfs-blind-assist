@@ -5136,13 +5136,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // FMC speeds and cruise altitude — suppress when 0 (not set).
             // -------------------------------------------------------------
             case "FMC_V1":
-                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_VR":
-                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_V2":
-                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_CruiseAlt":
                 if (value > 0) announcer.Announce($"Cruise altitude {(int)Math.Round(value)} feet");
@@ -5180,7 +5180,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Active) < 0.0001) return true;
                 _lastCom1Active = value;
-                announcer.Announce($"COM 1 active {value:F3}");
+                announcer.Announce($"COM1 active {value:F3}");
                 return true;
 
             case "COM2_ActiveFreq":
@@ -5191,7 +5191,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Active) < 0.0001) return true;
                 _lastCom2Active = value;
-                announcer.Announce($"COM 2 active {value:F3}");
+                announcer.Announce($"COM2 active {value:F3}");
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:1":
@@ -5202,7 +5202,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Standby) < 0.0001) return true;
                 _lastCom1Standby = value;
-                announcer.Announce($"COM 1 standby {value:F3}");
+                announcer.Announce($"COM1 standby {value:F3}");
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:2":
@@ -5213,7 +5213,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Standby) < 0.0001) return true;
                 _lastCom2Standby = value;
-                announcer.Announce($"COM 2 standby {value:F3}");
+                announcer.Announce($"COM2 standby {value:F3}");
                 return true;
 
             // -------------------------------------------------------------
@@ -5368,8 +5368,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     float speed = (float)dm.GetFieldValue("MCP_IASMach");
                     string speedText = speed < 10f
-                        ? $"M{speed:F2}"
-                        : $"{(int)Math.Round(speed)} knots";
+                        ? $"Mach {speed:F2}"
+                        : $"Speed {(int)Math.Round(speed)} knots";
                     string speedMode = "";
                     if ((int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0) speedMode = ", LVL CHG";
                     announcer.AnnounceImmediate($"{speedText}{speedMode}");
@@ -5675,8 +5675,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
-            ? $"M{speed:F2}"
-            : $"{(int)Math.Round(speed)} knots";
+            ? $"Mach {speed:F2}"
+            : $"Speed {(int)Math.Round(speed)} knots";
         announcer.AnnounceImmediate(speedText);
     }
 
@@ -5900,6 +5900,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// <summary>
     /// Parse the speed dialog input. Accepts "M0.85" / "m0.85" / ".85" / "0.85"
     /// as Mach, or "250" as IAS. Anything in [0..10) is treated as Mach.
+    /// Canonical original — PMDG777Definition.TryParseSpeedInput (Task 9.8) is
+    /// a ported copy of this method (the two aircraft's speed dialogs don't
+    /// share a base helper, so it's duplicated rather than moved to Base).
     /// </summary>
     private static bool TryParseSpeedInput(string input, out bool isMach, out double value)
     {
