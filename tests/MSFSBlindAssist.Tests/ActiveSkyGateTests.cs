@@ -46,11 +46,36 @@ public class ActiveSkyGateTests : IDisposable
     }
 
     [Fact]
-    public async Task GetCurrentConditions_WhenDisabled_ReturnsNull()
+    public async Task IsRunningAsync_WhenDisabled_ClearsCachedPort()
     {
+        // The enable -> discover -> disable leak: a port discovered while the switch was
+        // on must not survive turning it off, or the per-method guards would be the only
+        // thing standing between a disabled integration and live HTTP traffic.
+        var client = new ActiveSkyClient { LastSuccessfulPort = 19285 };
         SettingsManager.Current.ActiveSkyEnabled = false;
-        var client = new ActiveSkyClient();
-        // No port was ever discovered (and none may be while disabled).
+
+        Assert.False(await client.IsRunningAsync());
+        Assert.Null(client.LastSuccessfulPort);
+        Assert.Equal("disabled in settings", client.LastStatus);
+    }
+
+    [Fact]
+    public async Task GetCurrentConditions_WhenDisabled_ReturnsNull_EvenWithCachedPort()
+    {
+        // Seed a port FIRST: without it this asserts only the pre-existing
+        // `if (LastSuccessfulPort is not int port) return null;` fallthrough and says
+        // nothing about the disabled state.
+        //
+        // HONEST LIMIT: this pins the observable CONTRACT (disabled + cached port =>
+        // null), not the mechanism. It cannot distinguish the master-switch guard from
+        // an attempted HTTP call that failed -- `_http` is a private static HttpClient
+        // with no injection seam, so there is no way to observe "no I/O happened" from a
+        // unit test. The airtight guarantee is IsRunningAsync_WhenDisabled_ClearsCachedPort
+        // below: with no cached port, the per-method guards have nothing to guard against.
+        // The guards remain worth keeping as defense in depth for a future call site.
+        var client = new ActiveSkyClient { LastSuccessfulPort = 19285 };
+        SettingsManager.Current.ActiveSkyEnabled = false;
+
         Assert.Null(await client.GetCurrentConditionsAsync());
     }
 }

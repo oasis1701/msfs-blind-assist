@@ -42,8 +42,11 @@ public class ActiveSkyClient
     //      AND no readable settings file)
     private const int DEFAULT_PORT = 19285;
 
-    /// <summary>The port we successfully reached AS on, or null if we haven't.</summary>
-    public int? LastSuccessfulPort { get; private set; }
+    /// <summary>The port we successfully reached AS on, or null if we haven't.
+    /// Setter is `internal` solely so the test assembly can seed a cached port and pin
+    /// the disabled-branch reset in <see cref="IsRunningAsync"/> (the enable → discover →
+    /// disable cached-port leak). App code must never assign it.</summary>
+    public int? LastSuccessfulPort { get; internal set; }
 
     /// <summary>Last detection result reason — surfaced to the UI so the user can diagnose.</summary>
     public string LastStatus { get; private set; } = "not yet checked";
