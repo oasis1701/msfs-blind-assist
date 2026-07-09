@@ -361,6 +361,14 @@ namespace MSFSBlindAssist.SimConnect
                 Raise("fbw_efb_connected", new Dictionary<string, string>());
             }
 
+            // Dirty-gate short-circuit: the agent's own MutationObserver saw no page change since
+            // its last full scrape, so it skipped both full-tree traversals entirely and returned
+            // no elements/page at all — keep whatever FbwEfbForm is already showing and skip the
+            // parse/diff/hash work below untouched. The agent always does the FIRST scrape after
+            // (re)injection in full (its own _everScraped latch), so this can only ever be true
+            // once a real element set has already been pushed at least once this connection.
+            if (result.unchanged) return;
+
             var elements = result.elements ?? new List<ScrapeElement>();
             var sb = new StringBuilder((result.page ?? "") + "|" + elements.Count + "|");
             foreach (var e in elements)
@@ -545,6 +553,10 @@ namespace MSFSBlindAssist.SimConnect
         private sealed class ScrapeResult
         {
             public bool ok { get; set; }
+            // Dirty-gate short-circuit token from the agent's MutationObserver: true means the page
+            // has not changed since the last full scrape, so `elements`/`page` are intentionally
+            // absent — see the check in PollOnce.
+            public bool unchanged { get; set; }
             public string? page { get; set; }
             public string? error { get; set; }
             public List<ScrapeElement>? elements { get; set; }
