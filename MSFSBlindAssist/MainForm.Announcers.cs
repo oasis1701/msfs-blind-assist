@@ -1720,10 +1720,13 @@ public partial class MainForm
 
         try
         {
-            // Current wind. #129: under ActiveSky the SimConnect ambient wind lags AS's
-            // interpolation (output+I disagreed with the radar's "wind at altitude"), so
-            // when AS is running read the AS ambient wind (same source as the radar) and
-            // append the surface gust when AS reports one.
+            // Current wind. #129: when the user has OPTED INTO ActiveSky (Weather
+            // settings tab) read the AS ambient wind + gust — under AS the SimConnect
+            // ambient wind can diverge (AS wind smoothing), and the radar's "wind at
+            // altitude" reads AS, so the two must match. When the switch is off,
+            // TryGetActiveSkyConditionsAsync returns null INSTANTLY (the central gate
+            // in ActiveSkyClient.IsRunningAsync — no probe, no ~1.2 s floor) and the
+            // SimConnect path below is authoritative.
             string currentWind = "unavailable";
             var asConditions = await TryGetActiveSkyConditionsAsync();
             if (asConditions != null)

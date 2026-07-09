@@ -104,7 +104,13 @@ public partial class MainForm
         RestartNearestCityAnnouncementTimer();
 
         if (activeSkyWeatherMonitor != null)
+        {
             activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;
+            // ActiveSky master switch (Weather tab) takes effect without restart:
+            // Start/Stop are idempotent timer calls.
+            if (settings.ActiveSkyEnabled) activeSkyWeatherMonitor.Start();
+            else activeSkyWeatherMonitor.Stop();
+        }
 
         // GSX background-monitoring toggle. Push the new value into the live
         // service. The form's VisibleChanged handler will overwrite this
