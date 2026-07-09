@@ -601,7 +601,7 @@ public class TaxiRouter
     /// intersection nodes that are closer in straight-line distance to
     /// either endpoint can require a long graph backtrack to escape).
     /// </summary>
-    private int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2)
+    internal int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2)
     {
         // Hybrid: the O(E)-per-node edge scan is replaced by an O(1) index-set lookup
         // (proven exactly equal in content — TaxiGraph.RegisterTaxiwayNode is called
@@ -940,7 +940,7 @@ public class TaxiRouter
     /// edges — runs in well under 50 ms on warm CPU. Called once per recalc,
     /// so the cost is dwarfed by the recalc cooldown (15 s).
     /// </summary>
-    private Dictionary<int, double> ComputeGraphDistancesFrom(int sourceId)
+    internal Dictionary<int, double> ComputeGraphDistancesFrom(int sourceId)
     {
         var dist = new Dictionary<int, double>();
         if (!_graph.Nodes.ContainsKey(sourceId)) return dist;
@@ -1128,7 +1128,7 @@ public class TaxiRouter
         return angle;
     }
 
-    private static string GetTurnDirection(double angle)
+    internal static string GetTurnDirection(double angle)
     {
         double absAngle = Math.Abs(angle);
         if (absAngle < 20) return "straight";
