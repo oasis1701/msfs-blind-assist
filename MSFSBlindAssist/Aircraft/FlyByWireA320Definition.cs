@@ -7689,8 +7689,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             simConnect.SendEvent(setEvent, hz);
             if (varKey.Contains("ACTIVE"))
             {
-                System.Threading.Thread.Sleep(100); // let the standby write land before swapping
-                simConnect.SendEvent($"COM{idx}_RADIO_SWAP", 0);
+                // WRITE-then-WRITE ordering delay (not a readback): let the standby write land
+                // before swapping. Deferred non-blocking (was a UI-thread Thread.Sleep(100)) —
+                // same 100 ms gap, same swap write, just off the UI thread. "handled" (return
+                // true below) doesn't depend on the swap having landed yet, so it's safe to
+                // return immediately; the COM_*_FREQUENCY monitor announces the eventual result.
+                DeferReadback(() => simConnect.SendEvent($"COM{idx}_RADIO_SWAP", 0), 100);
             }
             return true;
         }
@@ -8287,11 +8291,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // or a push reads the pre-push managed/selected state). Defer the read-out ~300 ms so the
     // FBW FCU has processed the event first. Non-blocking (RequestVariable just queues the read;
     // the response is announced from ProcessSimVarUpdate when it arrives).
-    private static void DeferReadback(Action readback)
+    // Also reused (with an explicit shorter delayMs) as the general "deferred action" idiom for
+    // WRITE-then-WRITE ordering delays that used to be a blocking Thread.Sleep on the UI thread
+    // (COM active-frequency swap, FCU altitude increment-then-set) — same timeline, non-blocking.
+    private static void DeferReadback(Action readback, int delayMs = 300)
     {
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
-            try { await System.Threading.Tasks.Task.Delay(300); readback(); }
+            try { await System.Threading.Tasks.Task.Delay(delayMs); readback(); }
             catch (Exception ex)
             {
                 // A throw here silently drops the spoken confirmation for a user FCU
@@ -8339,17 +8346,30 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         uint rounded = (uint)(Math.Round(feet / 100) * 100);
+        // The actual ALT_SET write + readback announce — same action either way, just
+        // possibly deferred (see below) when the increment write needs to land first.
+        void SetAltitudeAndAnnounce()
+        {
+            s.SendEvent("A32NX.FCU_ALT_SET", rounded);
+            // Clean Fenix-style readback: value set + cached managed dot, bare number.
+            string altStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
+            a.AnnounceImmediate($"FCU altitude {rounded}, {altStatus}");
+        }
         // Only force the 100-ft increment when the target isn't already a 1000-multiple (the
         // A320 doesn't announce its increment var, so no announce-suppression is needed here).
         if (rounded % 1000 != 0)
         {
             s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
-            System.Threading.Thread.Sleep(50);
+            // WRITE-then-WRITE ordering delay (not a readback): let the increment write land
+            // before setting the altitude. Deferred non-blocking (was a UI-thread
+            // Thread.Sleep(50)) — same 50 ms gap; the ALT_SET write + announce that used to run
+            // right after the sleep now run in the continuation, same order, same content.
+            DeferReadback(SetAltitudeAndAnnounce, 50);
         }
-        s.SendEvent("A32NX.FCU_ALT_SET", rounded);
-        // Clean Fenix-style readback: value set + cached managed dot, bare number.
-        string altStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
-        a.AnnounceImmediate($"FCU altitude {rounded}, {altStatus}");
+        else
+        {
+            SetAltitudeAndAnnounce();
+        }
         return true;
     }
 
