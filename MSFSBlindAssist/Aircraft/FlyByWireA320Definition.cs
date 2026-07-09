@@ -7506,7 +7506,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 var varDef = variables[varName];
                 string state = value > 0 ? "On" : "Off";
-                announcer.AnnounceImmediate($"{varDef.DisplayName} {state}");
+                announcer.Announce($"{varDef.DisplayName} {state}");
             }
             return true; // Processed
         }
@@ -8008,7 +8008,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_AUTOBRAKES_ARMED_MODE_SET)");
             simConnect.SendEvent("A32NX.AUTOBRAKE_SET", (uint)value);
-            announcer.Announce($"{varDef.DisplayName} set to {varDef.ValueDescriptions[value]}");
+            // No self-announce here: the screen reader already speaks the combo selection,
+            // and the separately-keyed A32NX_AUTOBRAKES_ARMED_MODE monitor (Continuous +
+            // IsAnnounced) announces the REAL state once the sim actually applies it.
             return true; // Handled
         }
 
