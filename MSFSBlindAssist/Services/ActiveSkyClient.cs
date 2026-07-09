@@ -123,6 +123,7 @@ public class ActiveSkyClient
         // every call site, present and future.
         if (!Settings.SettingsManager.Current.ActiveSkyEnabled)
         {
+            LastSuccessfulPort = null;
             LastStatus = "disabled in settings";
             return false;
         }
@@ -225,6 +226,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<Conditions?> GetCurrentConditionsAsync()
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         // 5 s is generous for a localhost call but bounded — without a
         // CancellationToken HttpClient.GetAsync inherits no timeout
@@ -254,6 +256,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<Conditions?> GetWeatherAreaAsync(IEnumerable<string> stations)
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -284,6 +287,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<string?> GetPositionMetarAsync()
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -310,6 +314,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<string?> GetClosestStationMetarAsync()
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -331,6 +336,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<string?> GetMetarAsync(string icao, int timeOffsetSec = 0)
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
