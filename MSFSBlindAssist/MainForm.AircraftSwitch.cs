@@ -201,6 +201,7 @@ public partial class MainForm
             _prevInCloud = -1;
             _prevVisibility = -1;
             _prevVisLow = false;
+            _prevAsPrecip = null;
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
