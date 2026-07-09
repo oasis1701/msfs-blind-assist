@@ -490,7 +490,7 @@ public sealed class DockingGuidanceManager : IDisposable
     ///   <item>Vgds*, Honeywell*, Dummy, "1", unknown → empty (no callout)</item>
     /// </list>
     /// </summary>
-    private static string FriendlyVdgs(string? v)
+    internal static string FriendlyVdgs(string? v)
     {
         if (string.IsNullOrWhiteSpace(v)) return string.Empty;
         if (v.StartsWith("Safedock", StringComparison.OrdinalIgnoreCase)) return "SafeDock display";
