@@ -273,6 +273,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetWeatherArea failed (timeout or connection error)");
             return null;
         }
     }
@@ -302,6 +303,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetPositionMetar failed (timeout or connection error)");
             return null;
         }
     }
@@ -329,6 +331,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetClosestStationMetar failed (timeout or connection error)");
             return null;
         }
     }
@@ -351,6 +354,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", $"GetMetar({icao}) failed (timeout or connection error)");
             return null;
         }
     }
