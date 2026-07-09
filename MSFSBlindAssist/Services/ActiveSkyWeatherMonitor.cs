@@ -109,6 +109,19 @@ public class ActiveSkyWeatherMonitor : IDisposable
     public void Stop() => _timer.Stop();
 
     /// <summary>
+    /// The single source of truth for whether this monitor may run. It is BOTH an
+    /// ActiveSky feature (it reads only the AS HTTP API — there is no SimConnect
+    /// fallback for decoded station weather) and an announcement feature (it speaks),
+    /// so it requires both opt-ins. Gating on <c>ActiveSkyEnabled</c> alone forced AS
+    /// users who only wanted accurate output+I wind and radar data to also be spoken at.
+    ///
+    /// Called from MainForm.InitializeManagers (launch) and ApplyRuntimeSettings (live
+    /// toggle) — never inline the condition at either site, or the two will drift.
+    /// </summary>
+    public static bool ShouldRun(Settings.UserSettings settings)
+        => settings.ActiveSkyEnabled && settings.WeatherAutoAnnounceEnabled;
+
+    /// <summary>
     /// User-facing toggle: enable/disable the announcement feature without
     /// disposing the monitor. When disabled we don't even poll.
     /// </summary>

@@ -106,10 +106,11 @@ public partial class MainForm
         if (activeSkyWeatherMonitor != null)
         {
             activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;
-            // ActiveSky master switch (Weather tab) takes effect without restart:
-            // Start/Stop are idempotent timer calls.
-            if (settings.ActiveSkyEnabled) activeSkyWeatherMonitor.Start();
-            else activeSkyWeatherMonitor.Stop();
+            // Both Weather-tab switches take effect without restart. The Enabled setter
+            // maps to Start()/Stop(), and System.Windows.Forms.Timer.Start/Stop are
+            // idempotent, so an unchanged setting is a no-op.
+            activeSkyWeatherMonitor.Enabled =
+                MSFSBlindAssist.Services.ActiveSkyWeatherMonitor.ShouldRun(settings);
         }
 
         // GSX background-monitoring toggle. Push the new value into the live
