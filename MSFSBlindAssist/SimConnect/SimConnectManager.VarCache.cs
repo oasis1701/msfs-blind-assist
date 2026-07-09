@@ -116,7 +116,7 @@ public partial class SimConnectManager
     /// <summary>
     /// Process one FlyByWire A32NX ECAM memo-line variable (A32NX_Ewd_LOWER_*): decode the
     /// numeric code to text via EWDMessageLookup, store it for the ECAM Display window, and —
-    /// once all 14 lines for this cycle have arrived — fire ECAMDataReceived and announce.
+    /// once all 14 lines for this cycle have arrived — announce new messages.
     /// Shared by both the individual-response path and the batch path; <paramref name="logReceipt"/>
     /// preserves each call site's original per-line debug-log behavior (individual path logs
     /// every line, batch path does not, to avoid churning the hot-path log).
@@ -154,29 +154,7 @@ public partial class SimConnectManager
         // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
         if (ecamStringsReceived % ecamTotalStringsExpected == 0)
         {
-            // Fire the ECAM data received event with all collected data
-            ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
-            {
-                LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
-                LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
-                LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
-                LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
-                LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
-                LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
-                LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
-                RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
-                RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
-                RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
-                RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
-                RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
-                RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
-                RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
-                MasterWarning = ecamMasterWarning > 0.5,
-                MasterCaution = ecamMasterCaution > 0.5,
-                StallWarning = ecamStallWarning > 0.5
-            });
-
-            Log.Debug("SimConnect", "All ECAM data collected and event fired");
+            Log.Debug("SimConnect", "All ECAM data collected");
 
             // Announce new ECAM messages (batch processing after all 14 lines collected)
             AnnounceECAMChanges();
