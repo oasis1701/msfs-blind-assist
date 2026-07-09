@@ -5,7 +5,7 @@ using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect;
 
-public class MobiFlightWasmModule
+public class MobiFlightWasmModule : IDisposable
     {
         private Microsoft.FlightSimulator.SimConnect.SimConnect simConnect;
         private const string CLIENT_NAME = "FBWBA";
@@ -256,7 +256,11 @@ public class MobiFlightWasmModule
             Log.Debug("SimConnect", $"Sent client registration: {registerCommand}");
         }
 
-        public void SendMFCommand(string command)
+        // quiet=true skips the per-command Log.Debug for high-rate calc-path writers (e.g. the
+        // A380 seat-motor/slider-ramp timer ticks, which fire at 20-40ms intervals) so their
+        // log spam doesn't drown out the debug.log for everything else. Default false preserves
+        // existing logging for every other (low-rate) caller.
+        public void SendMFCommand(string command, bool quiet = false)
         {
             try
             {
@@ -264,7 +268,7 @@ public class MobiFlightWasmModule
                 simConnect.SetClientData(CLIENT_DATA_AREA_ID.MF_COMMAND, DATA_DEFINITION_ID.MF_COMMAND_STRING,
                     SIMCONNECT_CLIENT_DATA_SET_FLAG.DEFAULT, 0, cmdData);
 
-                Log.Debug("SimConnect", $"Sent command: {command}");
+                if (!quiet) Log.Debug("SimConnect", $"Sent command: {command}");
             }
             catch (Exception ex)
             {
@@ -531,8 +535,10 @@ public class MobiFlightWasmModule
                             Value = value,
                             Index = i
                         });
-
-                        Log.Debug("SimConnect", $"Default channel LVar updated: {varName} = {value}");
+                        // Per-lvar debug logging removed (2026-07 perf pass): one default-channel
+                        // CDA push can raise up to 64 of these events, each paying for a Log.Debug
+                        // format+enqueue. Re-fire semantics (no change-filtering) are unchanged --
+                        // only this log line was removed.
                     }
                 }
             }

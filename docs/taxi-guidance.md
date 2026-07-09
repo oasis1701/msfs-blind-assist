@@ -22,7 +22,7 @@ Turn-by-turn taxi assistance for blind pilots. Combines a continuous stereo-pann
 - `MSFSBlindAssist/Database/Models/TaxiPath.cs`, `TaxiNode.cs`, `TaxiRoute.cs`, `StartPosition.cs`
 - `MSFSBlindAssist/Database/LittleNavMapProvider.cs` — `GetTaxiPaths()`, `GetRunwayStarts()` queries + taxiway name normalization
 - `MSFSBlindAssist/Forms/TaxiAssistForm.cs` — route entry UI
-- `MSFSBlindAssist/Forms/TaxiGuidanceOptionsForm.cs` — user settings dialog
+- `MSFSBlindAssist/Forms/Settings/TaxiGuidancePanel.cs` — user settings dialog
 - `MSFSBlindAssist/Forms/LandingExitForm.cs` — pre-touchdown runway-exit picker
 - `MSFSBlindAssist/Services/LandingExitPlanner.cs` — touchdown detection + auto-activation
 - `MSFSBlindAssist/Navigation/LandingExit.cs` — exit-node model returned by `TaxiGraph.GetLandingExits()`
@@ -131,7 +131,7 @@ When the LAST taxiway in the clearance branches *off* the runway rather than ont
 
 A single `_stateLock` in `TaxiGuidanceManager` serializes all of these. Without it, a UI-thread `StopGuidance` can null out `_route` while the SimConnect thread is mid-traversal of `_route.Segments[_currentSegmentIndex]`, producing `NullReferenceException` / `IndexOutOfRangeException`. The critical sections do no I/O — audio is already async through NAudio's mixer — so lock contention is negligible.
 
-`TaxiSteeringTone` has its own `_lock`. `UpdateHeadingError`, `Pause`, `Resume`, `Start`, `Stop` all acquire it so that `SetPan` / `UpdateVolume` can't race with `Dispose` freeing the underlying NAudio buffer. `ClearWhereAmICache` is unlocked by design: readers of `_whereAmICachedGraph` / `_whereAmICachedIcao` capture the reference into a local before use, so a concurrent clear is safe.
+`TaxiSteeringTone` has its own `_lock`. `UpdateHeadingError`, `Pause`, `Resume`, `Start`, `Stop` all acquire it so that `SetPan` / `UpdateVolume` can't race with `Dispose` freeing the underlying NAudio buffer. `ClearWhereAmICache` takes `_stateLock` like its twin `OnAirportDataUpdated` — both mutate the same `_whereAmICachedGraph` / `_whereAmICachedIcao` pair, and an unlocked write here could race a locked read/build elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa). `TryGetRunwayLineupReference` likewise takes `_stateLock` — it reads `_state`, `_hasLineupTarget`, `_isRunwayLineup`, and the lineup lat/lon/heading fields, the same fields every other locked accessor protects.
 
 ## Steering Tone
 
@@ -226,7 +226,7 @@ The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**,
 | Runway incursion | non-route hold-short within 40 m | `Runway crossing ahead. Hold short.` (10 s cooldown) |
 | Exit approach (landing rollout) | 1500 / 900 / 500 ft **or** 500 / 300 / 150 m (per Distance units setting) | `Approaching high-speed exit Sierra 5, 500 metres.` / `Sierra 5, 300 metres.` / `Sierra 5, 150 metres. Slow down.` Unit-native spacing via `DistanceMilestones.ExitApproach`. |
 | Runway-end countdown (missed last exit) | 1500 / 500 / 100 ft **or** 500 / 150 / 30 m (per Distance units setting) | `Runway end in 500 metres.` / `Runway end in 150 metres. Slow down.` / `Runway end in 30 metres. Stop.` Unit-native spacing via `DistanceMilestones.RunwayEnd`. |
-| Ground traffic alert | live distance, unit-aware | `Slow down, traffic ahead, 150 metres.` (metres default) or `Slow down, traffic ahead, 500 feet.` (feet mode). Via `DistanceFormatter.FromFeet` in `GroundTrafficMonitor`. |
+| Ground traffic alert | live distance, unit-aware | `Slow down, traffic ahead, 150 metres.` (metres default) or `Slow down, traffic ahead, 500 feet.` (feet mode). Via `GroundTrafficMonitor`'s private `FormatDistance`, keyed on the independent `GroundTrafficUseMetres` toggle (see gsx.md: never fold it into `GroundDistanceUnit`). |
 | On-demand status | Output > `Y` | `Taxiway Bravo. In 400 metres turn right onto Kilo. 0.8 miles to destination.` (distances in active unit; NM used for totals over ~1 NM regardless of unit setting). |
 | Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — two peripheral sites still call plain `_announcer.Announce` without populating `_lastInstruction`: (a) the LoadRoute route summary, (b) the periodic ground-speed bucket announcer — so the Repeat-Last buffer keeps the most recent actionable callout. |
 | Where am I | Output > `Alt+Y` | `Taxiway Bravo at KJFK.` / `Gate A25 at KJFK.` / `Runway 22L at KJFK.` Works with or without active guidance. |

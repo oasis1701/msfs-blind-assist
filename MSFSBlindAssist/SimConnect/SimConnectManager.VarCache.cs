@@ -19,18 +19,13 @@ public partial class SimConnectManager
         try
         {
             // Find the variable key for this request ID
-            var variableEntry = variableDataDefinitions.FirstOrDefault(x => x.Value == requestId);
-            if (variableEntry.Key == null)
+            if (!requestIdToVarKey.TryGetValue(requestId, out var varKey) || varKey == null)
             {
                 return;
             }
 
-            string varKey = variableEntry.Key;
-
             var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.ContainsKey(varKey) ? variables[varKey] : null;
-
-            if (varDef == null)
+            if (!variables.TryGetValue(varKey, out var varDef) || varDef == null)
             {
                 return;
             }
@@ -43,61 +38,7 @@ public partial class SimConnectManager
             // block won't execute for them. Safe to keep aircraft-specific.
             if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
             {
-                // Convert numeric code to text message via EWDMessageLookup
-                long numericCode = (long)currentValue;
-
-                // Get raw message with ANSI codes
-                string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
-
-                // Store RAW message for ECAM Display window (it will clean and extract color itself)
-                ecamStringData[varKey] = rawMessage;
-
-                // Clean message for screen reader announcements
-                string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
-                string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
-
-                // Create announcement text WITH color appended for screen readers (with comma)
-                string announcementText = cleanText;
-                if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
-                {
-                    announcementText = $"{cleanText}, {priority}";
-                }
-                ecamAnnouncementData[varKey] = announcementText;
-
-                ecamStringsReceived++;
-
-                Log.Debug("SimConnect", $"ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
-
-                // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
-                if (ecamStringsReceived % ecamTotalStringsExpected == 0)
-                {
-                    // Fire the ECAM data received event with all collected data
-                    ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
-                    {
-                        LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
-                        LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
-                        LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
-                        LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
-                        LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
-                        LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
-                        LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
-                        RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
-                        RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
-                        RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
-                        RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
-                        RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
-                        RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
-                        RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
-                        MasterWarning = ecamMasterWarning > 0.5,
-                        MasterCaution = ecamMasterCaution > 0.5,
-                        StallWarning = ecamStallWarning > 0.5
-                    });
-
-                    Log.Debug("SimConnect", "All ECAM data collected and event fired");
-
-                    // Announce new ECAM messages (batch processing after all 14 lines collected)
-                    AnnounceECAMChanges();
-                }
+                ProcessEcamLine(varKey, currentValue, logReceipt: true);
 
                 // Don't continue with normal processing for ECAM codes - batch collection is handled above
                 return;
@@ -112,11 +53,14 @@ public partial class SimConnectManager
 
             // Check for value changes
             bool hasChanged = true;
-            if (lastVariableValues.ContainsKey(varKey))
+            if (lastVariableValues.TryGetValue(varKey, out double previousValue))
             {
-                hasChanged = Math.Abs(lastVariableValues[varKey] - currentValue) > 0.001; // Small tolerance for floating point
+                hasChanged = Math.Abs(previousValue - currentValue) > 0.001; // Small tolerance for floating point
             }
-            lastVariableValues.AddOrUpdate(varKey, currentValue, (key, oldValue) => currentValue);
+            // Plain indexer write is equivalent to the prior AddOrUpdate here: the update-factory was
+            // value-replacing ((key, oldValue) => currentValue), not a merge of oldValue into the new
+            // value, so there is no concurrent-update logic being lost — see task-4.1-report.md.
+            lastVariableValues[varKey] = currentValue;
 
             // Suppress SimVarUpdated for unchanged ANNOUNCED CONTINUOUS variables. Previously we
             // fired unconditionally so that displays would refresh; the unintended consequence was
@@ -148,7 +92,13 @@ public partial class SimConnectManager
 
             string description = FormatVariableValue(varKey, varDef, currentValue);
 
-            Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+            // Skip the per-fire debug line (and its string interpolation) for HighFrequency vars
+            // (SIM_FRAME-rate, e.g. G_FORCE) — this path can fire 30-60x/sec and would otherwise
+            // churn the 5MB debug.log rotation continuously for the whole flight.
+            if (!varDef.HighFrequency)
+            {
+                Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+            }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
             {
@@ -164,9 +114,79 @@ public partial class SimConnectManager
     }
 
     /// <summary>
+    /// Process one FlyByWire A32NX ECAM memo-line variable (A32NX_Ewd_LOWER_*): decode the
+    /// numeric code to text via EWDMessageLookup, store it for the ECAM Display window, and —
+    /// once all 14 lines for this cycle have arrived — fire ECAMDataReceived and announce.
+    /// Shared by both the individual-response path and the batch path; <paramref name="logReceipt"/>
+    /// preserves each call site's original per-line debug-log behavior (individual path logs
+    /// every line, batch path does not, to avoid churning the hot-path log).
+    /// </summary>
+    private void ProcessEcamLine(string varKey, double value, bool logReceipt)
+    {
+        // Convert numeric code to text message via EWDMessageLookup
+        long numericCode = (long)value;
+
+        // Get raw message with ANSI codes
+        string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
+
+        // Store RAW message for ECAM Display window (it will clean and extract color itself)
+        ecamStringData[varKey] = rawMessage;
+
+        // Clean message for screen reader announcements
+        string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
+        string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
+
+        // Create announcement text WITH color appended for screen readers (with comma)
+        string announcementText = cleanText;
+        if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
+        {
+            announcementText = $"{cleanText}, {priority}";
+        }
+        ecamAnnouncementData[varKey] = announcementText;
+
+        ecamStringsReceived++;
+
+        if (logReceipt)
+        {
+            Log.Debug("SimConnect", $"ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
+        }
+
+        // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
+        if (ecamStringsReceived % ecamTotalStringsExpected == 0)
+        {
+            // Fire the ECAM data received event with all collected data
+            ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
+            {
+                LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
+                LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
+                LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
+                LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
+                LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
+                LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
+                LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
+                RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
+                RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
+                RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
+                RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
+                RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
+                RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
+                RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
+                MasterWarning = ecamMasterWarning > 0.5,
+                MasterCaution = ecamMasterCaution > 0.5,
+                StallWarning = ecamStallWarning > 0.5
+            });
+
+            Log.Debug("SimConnect", "All ECAM data collected and event fired");
+
+            // Announce new ECAM messages (batch processing after all 14 lines collected)
+            AnnounceECAMChanges();
+        }
+    }
+
+    /// <summary>
     /// Format variable value for display/announcement
     /// </summary>
-    private string FormatVariableValue(string varKey, SimVarDefinition varDef, double value)
+    internal string FormatVariableValue(string varKey, SimVarDefinition varDef, double value)
     {
         // Check for custom value descriptions
         if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
@@ -222,6 +242,15 @@ public partial class SimConnectManager
         else if (varDef.Units == "inHg" || varDef.Units == "inhg")
         {
             return $"{varDef.DisplayName}: {value:F2}";
+        }
+        else if (varDef.Units == "kilograms" || varDef.Units == "pounds")
+        {
+            // Weight readouts (e.g. FUEL_QUANTITY_KG via the generic cache path used by
+            // A320 Shift+F): round to whole units and speak the unit. Without this case
+            // they fell to the F1 default below and were announced as a raw "13139.6"
+            // with no unit. No colon after the DisplayName — matches the dedicated fuel
+            // dispatch requests' wording ("Fuel on board 28001 pounds").
+            return $"{varDef.DisplayName} {value:F0} {varDef.Units}";
         }
 
         // Default formatting
@@ -334,20 +363,27 @@ public partial class SimConnectManager
     /// </summary>
     private void ProcessContinuousBatchImpl<T>(int batchNum, in T batch) where T : unmanaged
     {
-        // Get variables dictionary once at the start
-        var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-
         int processedCount = 0;
-        int skippedCount = 0;
         int invalidIndexCount = 0;
         int exceptionCount = 0;
 
-        // SAFETY: Check if map is empty (possible race condition)
+        // SAFETY: Check if map is empty (possible race condition). Kept as a whole-map check
+        // (not per-batch) so a legitimately-empty batch (e.g. an aircraft with fewer than 300
+        // continuous+announced vars leaves batches 2-5 empty) does NOT log this warning every
+        // second — only a genuine race (nothing built yet at all) does.
         if (continuousVariableIndexMap.Count == 0)
         {
             Log.Debug("SimConnect", $"WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
             return;
         }
+
+        // Prebuilt per-batch array of (key, index, resolved varDef) — built once in
+        // StartContinuousMonitoring, in the same order vars were assigned indexWithinBatch there.
+        // Replaces a full scan of continuousVariableIndexMap (skipping every other batch's ~4/5 of
+        // entries) plus a per-var variables.TryGetValue re-resolution.
+        var batchVars = (batchNum >= 0 && batchNum < batchVarArrays.Length)
+            ? batchVarArrays[batchNum]
+            : Array.Empty<(string key, int index, SimVarDefinition def)>();
 
         // Use unsafe pointer access instead of reflection for performance and stability
         // Each batch struct is a sequential struct of 300 doubles, so we can access directly
@@ -361,16 +397,10 @@ public partial class SimConnectManager
                 {
                     double* values = (double*)batchPtr;  // Treat struct as array of doubles
 
-                    // Process each continuous variable using direct memory access (no reflection!)
-                    // Filter to only process variables belonging to this batch
-                    foreach (var kvp in continuousVariableIndexMap)
+                    // Process each variable belonging to this batch via direct memory access
+                    // (no reflection!) using the prebuilt array — no other-batch entries to skip.
+                    foreach (var (varKey, index, varDef) in batchVars)
                     {
-                        string varKey = kvp.Key;
-                        (int varBatchNum, int index) = kvp.Value;
-
-                        // Skip variables that don't belong to this batch
-                        if (varBatchNum != batchNum) continue;
-
                         // SAFETY: Validate index is within bounds
                         // Each batch struct has 300 doubles (matches BATCH_SIZE = 300)
                         if (index < 0 || index >= 300)
@@ -387,66 +417,10 @@ public partial class SimConnectManager
                             // Direct memory access - blazing fast, no reflection overhead!
                             value = values[index];
 
-                            // Get variable definition
-                            if (!variables.TryGetValue(varKey, out var varDef))
-                            {
-                                skippedCount++;
-                                Log.Debug("SimConnect", $"WARNING: Variable {varKey} not found in aircraft definition!");
-                                continue;
-                            }
-
                         // Special handling for ECAM variables (convert numeric codes to readable text)
                         if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
                         {
-                            // Convert numeric code to readable message via EWDMessageLookup
-                            long numericCode = (long)value;
-                            string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
-                            string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
-                            string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
-
-                            // Store RAW message for ECAM Display window
-                            ecamStringData[varKey] = rawMessage;
-
-                            // Create announcement text WITH color appended for screen readers
-                            string announcementText = cleanText;
-                            if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
-                            {
-                                announcementText = $"{cleanText}, {priority}";
-                            }
-                            ecamAnnouncementData[varKey] = announcementText;
-
-                            ecamStringsReceived++;
-
-                            // Check if all 14 ECAM lines have been received
-                            if (ecamStringsReceived % ecamTotalStringsExpected == 0)
-                            {
-                                // Fire the ECAM data received event with all collected data
-                                ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
-                                {
-                                    LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
-                                    LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
-                                    LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
-                                    LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
-                                    LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
-                                    LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
-                                    LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
-                                    RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
-                                    RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
-                                    RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
-                                    RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
-                                    RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
-                                    RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
-                                    RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
-                                    MasterWarning = ecamMasterWarning > 0.5,
-                                    MasterCaution = ecamMasterCaution > 0.5,
-                                    StallWarning = ecamStallWarning > 0.5
-                                });
-
-                                Log.Debug("SimConnect", "All ECAM data collected and event fired");
-
-                                // Announce new ECAM messages (batch processing after all 14 lines collected)
-                                AnnounceECAMChanges();
-                            }
+                            ProcessEcamLine(varKey, value, logReceipt: false);
 
                             processedCount++;
                             continue; // Skip normal processing for ECAM variables
@@ -472,8 +446,9 @@ public partial class SimConnectManager
                         // Update cache
                         lastVariableValues[varKey] = value;
 
-                        // Only fire event if value changed, was force-requested, or it's the first time we see it
-                        if (hasChanged || isForceUpdate || !lastVariableValues.ContainsKey(varKey))
+                        // Only fire event if value changed or was force-requested (first delivery fires
+                        // via hasChanged defaulting to true when lastVariableValues has no prior entry)
+                        if (hasChanged || isForceUpdate)
                         {
                             // Check if we should only announce matches to ValueDescriptions (e.g., thrust lever detents)
                             if (varDef.OnlyAnnounceValueDescriptionMatches &&
@@ -482,8 +457,15 @@ public partial class SimConnectManager
                             {
                                 // Check if value matches any defined detent (within tolerance)
                                 const double DETENT_TOLERANCE = 0.1;
-                                bool matchesDetent = varDef.ValueDescriptions.Keys.Any(key =>
-                                    Math.Abs(value - key) < DETENT_TOLERANCE);
+                                bool matchesDetent = false;
+                                foreach (var detentKey in varDef.ValueDescriptions.Keys)
+                                {
+                                    if (Math.Abs(value - detentKey) < DETENT_TOLERANCE)
+                                    {
+                                        matchesDetent = true;
+                                        break;
+                                    }
+                                }
 
                                 if (!matchesDetent)
                                 {

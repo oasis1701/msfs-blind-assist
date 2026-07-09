@@ -71,8 +71,11 @@ public partial class MainForm
                 string msg = added > 0
                     ? $"Taxiway names refreshed for {icao}: {added} added."
                     : $"Taxiway names refreshed for {icao}. No new names found.";
+                // No marshal needed: this callback is invoked from
+                // TaxiGuidancePanel's Button.Click handler (UI thread), and neither await
+                // above uses ConfigureAwait(false), so we're still on the UI thread here.
                 if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(() => announcer.AnnounceImmediate(msg));
+                    announcer.AnnounceImmediate(msg);
             };
         }
 

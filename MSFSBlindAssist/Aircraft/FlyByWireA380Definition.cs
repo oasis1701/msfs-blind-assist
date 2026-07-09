@@ -58,20 +58,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Variables
     // ===================================================================
-    public override Dictionary<string, SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimVarDefinition> BuildVariables()
     {
-        // CACHE: the variable DEFINITIONS are static, but this method rebuilt the whole
-        // ~400-var dictionary (every Sel/Stock/Mon + the SD-register loops) on EVERY call
-        // — and the panel-build loop calls GetVariables() twice per control, so an A380
-        // overhead subpanel rebuilt the dict ~30× per switch. That was the subpanel lag.
-        // Build once, then return the cached instance (also reused by ProcessSimVarUpdate).
-        if (_varCache != null) return _varCache;
         var vars = GetBaseVariables();
 
         // ---- local builders ------------------------------------------
         // Writable L:var rendered as a combo box of named positions.
         void Sel(string key, string display, Dictionary<double, string> vd,
-                 bool button = false, bool reverse = false)
+                 bool reverse = false)
         {
             vars[key] = new SimVarDefinition
             {
@@ -96,10 +90,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
         // Bool L:var: Off / On.
-        void OnOff(string key, string display, bool button = false) =>
+        void OnOff(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "On" });
         // Bool L:var: Off / Auto (FBW "_IS_AUTO" pushbuttons).
-        void OffAuto(string key, string display, bool button = false) =>
+        void OffAuto(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
         // Bool L:var: On / Auto (FBW "_ON_PB_IS_AUTO" pushbuttons — 0 = manually ON,
         // 1 = AUTO; the OFF-button variant uses OffAuto). Labelling the ON pushbutton
@@ -348,7 +342,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
         // APU auto-exit TEST pushbutton (momentary maintenance self-test).
         Btn("A32NX_APU_AUTOEXITING_TEST_ON", "APU Auto Exit Test");
-        OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
+        OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start");
         // APU Available auto-announces ("APU Available: Available") AND shows in the
         // APU status readout. It overlaps the E/WD "APU AVAIL" memo — that twin
         // call-out is intentional (the user prefers both, the memo being a legit
@@ -480,25 +474,28 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- VENTILATION ----
         OnOff("A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", "Cabin Fans");
         OnOff("A32NX_OVHD_VENT_AIR_EXTRACT_PB_IS_ON", "Air Extract");
+        // Avionics ventilation BLOWER pushbutton (completeness pass — live-verified settable).
+        OnOff("A32NX_OVHD_VENT_BLOWER_PB_IS_ON", "Avionics Blower");
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
-        // Wing anti-ice (CORRECTED 2026-06 — the old _SYSTEM_SELECTED combo was DEAD on
-        // the A380X). Live-verified against the running build: writing
-        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED is read by NOTHING — the stock
-        // STRUCTURAL DEICE SWITCH stayed 0 and _SYSTEM_ON stayed 0 (even airborne), so
-        // the combo actuated nothing. The A380's real wing anti-ice is the stock
-        // STRUCTURAL DEICE SWITCH (the EWD reads it via 'A:STRUCTURAL DEICE SWITCH'),
-        // and the only working actuator is the stock TOGGLE_STRUCTURAL_DEICE event
-        // (live-verified 0->1; the absolute STRUCTURAL_DEICE_SET event is a no-op on
-        // this build). So back the combo on the stock SimVar and toggle-if-differs via
-        // HandleUIVariableSet — same pattern as the ENG GEN / taxi-light combos.
-        // NOTE: source/WASM grep could NOT have found this (the FBW consumer is in the
-        // compiled systems.wasm / base avionics); only live downstream testing did.
+        // Wing anti-ice (CORRECTED 2026-07 — back the combo on the var the REAL cockpit
+        // button writes). The A380 overhead WING anti-ice PB (FBW_Airbus_AntiIce_Wing
+        // template) toggles A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION; the PB light reads
+        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED. The previous combo drove the stock
+        // STRUCTURAL DEICE SWITCH, which the cockpit button does NOT touch — so MSFSBA's
+        // combo diverged from the actual switch. Backing it on the button-position L:var
+        // (live-verified settable + held) keeps the two in sync and drives the real input.
+        // ⚠️ FBW-BUILD LIMITATION: the A380 wing anti-ice PNEUMATIC is not modelled yet —
+        // live-verified that setting the button (or SELECTED, or the stock switch, or the
+        // PB_IS_ON) at cruise with TAT -15 C leaves _SYSTEM_ON at 0 (no valve/flow), and
+        // the a380_systems Rust has no wing-anti-ice pneumatic. So the SWITCH is faithful
+        // and future-proof, but the flow won't engage until FBW implements it — the
+        // read-only "Wing Anti-Ice Flowing" status (_SYSTEM_ON) correctly reports that.
         vars["WING_ANTI_ICE_OVHD"] = new SimVarDefinition
         {
-            Name = "STRUCTURAL DEICE SWITCH", DisplayName = "Wing Anti-Ice",
-            Type = SimVarType.SimVar, Units = "bool",
+            Name = "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", DisplayName = "Wing Anti-Ice",
+            Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = onOff
         };
@@ -520,12 +517,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "None", [1] = "Icing" });
 
         // ---- FIRE ----
+        // Each fire pushbutton sits under a GUARD (a hinged clear cover) that must be
+        // lifted to reach the button. The guard position is a real cockpit switch
+        // (A380X_OVHD_{ENGn,APU}_FIRE_GUARD, 0=Closed/1=Open — live-verified settable +
+        // held), exposed for completeness (no-omissions pass).
+        var fireGuardSw = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
         for (int n = 1; n <= 4; n++)
         {
+            Sel($"A380X_OVHD_ENG{n}_FIRE_GUARD", $"Engine {n} Fire Button Guard", fireGuardSw);
             Press($"A32NX_FIRE_BUTTON_ENG{n}", $"Engine {n} Fire Button");
             Mon($"A32NX_FIRE_DETECTED_ENG{n}", $"Engine {n} Fire",
                 new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
         }
+        Sel("A380X_OVHD_APU_FIRE_GUARD", "APU Fire Button Guard", fireGuardSw);
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
@@ -541,6 +545,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             Press($"A32NX_OVHD_FIRE_AGENT_2_ENG_{n}_IS_PRESSED", $"Engine {n} Agent 2 Discharge");
         }
         Press("A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED", "APU Agent Discharge");
+        // Cargo smoke fire-agent discharge locks (completeness pass — live-verified settable).
+        // Guarded discharge controls for the fwd/aft cargo fire bottles. Off/On combos.
+        Sel("A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE", "Cargo Smoke Discharge 1",
+            new Dictionary<double, string> { [0] = "Normal", [1] = "Discharge" });
+        Sel("A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE", "Cargo Smoke Discharge 2",
+            new Dictionary<double, string> { [0] = "Normal", [1] = "Discharge" });
         // Fire Test + Cargo Smoke Detection Test are HOLD on/off tests — they STAY combos
         // (Off/On): the user picks On (test runs, the EWD speaks the result), then Off, and
         // the combo always shows the current state. Only true one-shot momentary actions are
@@ -697,13 +707,29 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- SIGNS ----
         // Seat-belt sign: the REAL state is the stock simvar CABIN SEATBELTS ALERT
-        // SWITCH (On/Off). The XMLVAR switch position is model-recomputed, so a direct
-        // L-var write to it just reverts (verified live) — that's why the old combo did
-        // nothing. Settable; the set fires CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE in
-        // HandleUIVariableSet when the desired state differs from current.
+        // SEAT BELTS is a real 3-POSITION switch — ON / AUTO / OFF (like No Smoking
+        // below), NOT On/Off. Position 1 = AUTO: the FBW model auto-drives the sign
+        // from engines-running + slats/gear-down (behaviour XML 500 ms Update). The
+        // switch position lives in XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position
+        // (0=On/1=Auto/2=Off), live-verified settable + HELD (an old note claimed it
+        // "reverts" — that was a mis-test; it holds like the No Smoking XMLVAR). The
+        // set (HandleUIVariableSet) writes the position AND, for On/Off, drives the
+        // stock CABIN SEATBELTS ALERT SWITCH (the model's one-shot manual sync doesn't
+        // re-run on an external position write); AUTO leaves the sign to the model.
         vars["SEATBELT_SIGN"] = new SimVarDefinition
         {
-            Name = "CABIN SEATBELTS ALERT SWITCH", DisplayName = "Seat Belts",
+            Name = "XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position", DisplayName = "Seat Belts",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = signSw
+        };
+        // Separate READ-ONLY status for the actual sign illumination (the stock bool),
+        // so a blind pilot hears the sign come on/off — including when AUTO illuminates
+        // it automatically at descent (which the position combo, unchanged at "Auto",
+        // wouldn't announce). Not a control; not paneled.
+        vars["SEATBELT_SIGN_LIGHT"] = new SimVarDefinition
+        {
+            Name = "CABIN SEATBELTS ALERT SWITCH", DisplayName = "Seat Belts Sign",
             Type = SimVarType.SimVar, Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -746,6 +772,13 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- RECORDER / MISC OVERHEAD ----
         OnOff("A32NX_AVIONICS_COMPLT_ON", "Avionics Compartment Light");
+        // Storm Light — a real 2-position ON/OFF switch (correct shape + polarity:
+        // A380X_OVHD_STORM_LT 0=Off/1=On, live-verified settable + held). NOTE: the
+        // FBW A380 build models it as a DUMMY switch (SWITCH_OVHD_INTLT_STORM =
+        // A32NX_GT_Switch_Dummy, empty CODE_POS, "TODO … Requires lighting logic to
+        // be added"), so the position holds but drives NO light yet — toggling it has
+        // no visible effect until FBW implements the storm-light lighting. Not an
+        // MSFSBA bug: the switch is faithfully represented; the effect is FBW's TODO.
         OnOff("A380X_OVHD_STORM_LT", "Storm Light");
         OnOff("A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE", "Cockpit Door Video");
         // Niche overhead/misc toggles (settable L:vars via the calculator catch-all;
@@ -757,6 +790,29 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ENTERTAINMENT_CWS_OFF", "Cabin Crew Entertainment", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         Sel("A32NX_ENTERTAINMENT_IFEC_OFF", "Passenger Entertainment (IFE)", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
+        // ---- No-omissions completeness pass (2026-07, user request): every remaining
+        // pilot-operable A380 cockpit switch. All live-verified settable + held via the
+        // calculator path (the generic SetLVar / OVHD catch-all drives them).
+        OnOff("A380X_SWITCH_LAPTOP_POWER_LEFT", "Laptop Power (Capt)");
+        OnOff("A380X_SWITCH_LAPTOP_POWER_RIGHT", "Laptop Power (F/O)");
+        Sel("A32NX_SWITCH_DOORPANEL_LOCK", "Door Panel Lock",
+            new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" });
+        // ELT + Data Loading System are modelled but INOP on the FBW build — the switch
+        // holds its position (live-verified) but there is no working system behind it.
+        OnOff("A32NX_ELT_ON", "Emergency Locator Transmitter (inop)");
+        OnOff("A32NX_DLS_ON", "Data Loading System (inop)");
+        // Rain repellent (Capt/F/O) — momentary hold buttons; INOP on this build.
+        Btn("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent (Capt) (inop)");
+        Btn("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent (F/O) (inop)");
+        // Visual model toggles — hide/show cockpit objects. No system effect (purely
+        // cosmetic), but they are real cockpit-model switches, so exposed for
+        // completeness. Live-verified settable + held.
+        var shownHidden = new Dictionary<double, string> { [0] = "Shown", [1] = "Hidden" };
+        Sel("A380X_CABIN_HIDDEN", "Cabin Model", shownHidden);
+        Sel("A380X_CPT_SIDESTICK_HIDDEN", "Captain Sidestick Model", shownHidden);
+        Sel("A380X_FO_SIDESTICK_HIDDEN", "First Officer Sidestick Model", shownHidden);
+        Sel("A380X_CPT_EFB_HIDDEN", "Captain EFB Model", shownHidden);
+        Sel("A380X_FO_EFB_HIDDEN", "First Officer EFB Model", shownHidden);
         // Chronometer start/stop + reset (the glareshield CHRONO push). #107 gap.
         // Momentary actions driven by H-EVENTS (the FBW Clock subscribes to the
         // hEvent, NOT the L:var — writing the L:var does nothing). Rendered as push-
@@ -856,19 +912,44 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Light("LIGHT_STROBE", "LIGHT STROBE", "Strobe");
         Light("LIGHT_WING", "LIGHT WING", "Wing Lights");
         Light("LIGHT_LOGO", "LIGHT LOGO", "Logo Lights");
-        Light("LIGHT_LANDING", "LIGHT LANDING", "Landing Lights");
-        // Taxi light: On / Off. The real nose switch is 3-position (T.O/Taxi/Off) on
-        // the FBW L:var A380X_OVHD_EXTLT_NOSE, but that L:var is DEAD on the shipping
-        // model — writing it drives nothing (live-verified: writing 0/1/2 leaves
-        // LIGHT TAXI/LANDING unchanged; the var isn't read anywhere in the FBW
-        // source). The takeoff position lights the nose LANDING light, already
-        // covered by "Landing Lights". The taxi function is the stock taxi light
-        // (LIGHT TAXI:2), toggled by the stock TOGGLE_TAXI_LIGHTS event
-        // (live-verified). State-mirrored combo: selecting the other option toggles.
-        vars["LIGHT_TAXI_OVHD"] = new SimVarDefinition
+        // Wing LANDING lights (LDG LT L/R) are the stock LIGHT LANDING:2 (systems.cfg
+        // Type:5#Index:2 = LIGHT_ASOBO_LAND_1/2 LH+RH), driven by indexed
+        // `2 <value> (>K:2:LANDING_LIGHTS_SET)` (live-verified). The bare LIGHT LANDING
+        // (index 0/1) hit the NOSE takeoff light, not the wing landing lights.
+        Light("LIGHT_LANDING", "LIGHT LANDING:2", "Landing Lights");
+        // NOSE light — a real 3-POSITION selector (T.O. / Taxi / Off), so it is exposed
+        // as a 3-position combo exactly like the cockpit switch (never split into
+        // separate On/Off controls). State = the FBW switch-position L:var
+        // LIGHTING_LANDING_1 (0=T.O., 1=Taxi, 2=Off — live-verified readable). Writing
+        // that L:var is DEAD on the shipping model (it HOLDS but drives no light —
+        // live-verified: `1 (>L:LIGHTING_LANDING_1)` left LIGHT TAXI:1 = 0), so
+        // HandleUIVariableSet writes it (state mirror) AND fires the working indexed
+        // stock events per position (nose takeoff = LIGHT LANDING:1, nose taxi =
+        // LIGHT TAXI:1; the separate RWY TURN OFF switch is LIGHT TAXI:2/3 below):
+        //   T.O. → LANDING:1 on + TAXI:1 on ("allow TAXI LT with TO LT", per the
+        //          SWITCH_OVHD_EXTLT_NOSE behaviour template) · Taxi → LANDING:1 off,
+        //          TAXI:1 on · Off → both off.
+        vars["NOSE_LIGHT"] = new SimVarDefinition
+        {
+            Name = "LIGHTING_LANDING_1",
+            DisplayName = "Nose Light",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "T.O.", [1] = "Taxi", [2] = "Off" }
+        };
+        // Runway Turnoff lights: On / Off. The A380 RWY TURN OFF switch is
+        // OnOff_TwoSimvars over SIMVAR_INDEX 2 + 3 (A380_Cockpit_Behavior.xml, the
+        // SWITCH_OVHD_EXTLT_RWY template) = the stock LIGHT TAXI:2 (turnoff LEFT,
+        // LIGHT_ASOBO_TURNOFF_LH) + LIGHT TAXI:3 (turnoff RIGHT). The FBW
+        // A380X_OVHD_EXTLT_RWY_TURNOFF L:var is DEAD; the working actuator is the
+        // indexed `<index> <value> (>K:2:TAXI_LIGHTS_SET)` for BOTH indices —
+        // live-verified 2026-07 (`2 1 …SET` → LIGHT TAXI:2 = 1, `3 1 …SET` → :3 = 1).
+        // State mirrors LIGHT TAXI:2 (both indices move together with the switch).
+        vars["LIGHT_RWY_TURNOFF"] = new SimVarDefinition
         {
             Name = "LIGHT TAXI:2",
-            DisplayName = "Taxi Light",
+            DisplayName = "Runway Turnoff Lights",
             Type = SimVarType.SimVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -1303,16 +1384,23 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         // Register every decoded SD-page row var (A380SdRows) OnRequest so the ECAM-CP
         // "System Display Page" combo can read it (RequestVariable no-ops on any
-        // unregistered var). Most A380SdRows vars are L:vars (underscore identifiers),
-        // but DON'T blindly register everything as an L:var — a stock SimVar name
-        // (contains a space or colon, e.g. "INTERACTIVE POINT OPEN:0") MUST register as
-        // a SimVar: forcing a stock-SimVar name through the L:var/MobiFlight path
-        // corrupts SimConnect registration and breaks aircraft detection.
+        // unregistered var). Classify by PREFIX, not by space/colon (matching the
+        // EisDisplayVars loop above): a stock SimVar never carries an FBW prefix, so
+        // "INTERACTIVE POINT OPEN:0" / "LIGHT TAXI:2" register as SimVar (forcing a
+        // stock name through the L:var path corrupts registration + breaks detection).
+        // But a colon-INDEXED FBW L:var — "A32NX_FUEL_USED:1", "A32NX_AUTOTHRUST_TLA:1"
+        // — is a real L:var: the old "any colon = SimVar" rule read it as a nonexistent
+        // stock SimVar (0), which is exactly why the SD Fuel/Cruise pages showed
+        // Engine 1-4 fuel used with NO value (live: the L:var reads ~38,700 kg, the
+        // stock read 0). Prefix classification keeps stock names on the SimVar path
+        // AND lets indexed FBW L:vars read correctly.
         for (int sdPage = 0; sdPage <= 13; sdPage++)
             foreach (var (_, rowVar, _) in A380SdRows(sdPage))
                 if (!vars.ContainsKey(rowVar))
                 {
-                    bool isStock = rowVar.Contains(' ') || rowVar.Contains(':');
+                    bool isStock = !rowVar.StartsWith("A32NX_", StringComparison.Ordinal)
+                                   && !rowVar.StartsWith("A380X_", StringComparison.Ordinal)
+                                   && !rowVar.StartsWith("FBW_", StringComparison.Ordinal);
                     vars[rowVar] = new SimVarDefinition
                     {
                         Name = rowVar, DisplayName = rowVar,
@@ -1903,7 +1991,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // FBW exposes the lateral-deviation request as _L_/_R_ (per FMGC), NOT _1_ — the _1_
         // name does not exist in source and always read 0. Use the captain's (_L_).
         Read("A32NX_FMGC_L_LDEV_REQUEST", "FMGC L DEV Request");
-        // (A32NX_FM1_MINIMUM_DESCENT_ALTITUDE is registered once in the MINIMUMS section.)
+        // (Approach minimums are registered once in the MINIMUMS section, off the plain
+        //  AIRLINER_MINIMUM_DESCENT_ALTITUDE / AIRLINER_DECISION_HEIGHT feet L:vars.)
         Read("A32NX_DESTINATION_QNH", "Destination QNH");
 
         // FCU engage/mode toggles — settable combos that show live engage state
@@ -1916,13 +2005,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_FMA_EXPEDITE_MODE", "Expedite", onOff);
 
         // ---- EFIS Control Panel: flight director + baro (per side) ----
-        // FD IS controllable after all: the per-side engage L:vars A32NX_FCU_EFIS_L/R_FD_ACTIVE
-        // are settable via the calculator path and STICK (live-verified again 2026-06: writing 1
-        // held for 2 s+, restored to 0). They are exposed as the "Flight Director 1/2" combos
-        // (registered above via OnOff). The earlier "FD toggle event removed / non-functional"
-        // conclusion was about the STOCK TOGGLE_FLIGHT_DIRECTOR event + the data-def write path,
-        // which don't work — the FBW L:var calc-path write does. FD_ACTIVE below is the stock
-        // COMBINED FD state, kept as an additional read-only status readout.
+        // FD control is the FD_1_CTL / FD_2_CTL combos registered above: per-side stock
+        // AUTOPILOT FLIGHT DIRECTOR ACTIVE:n state, actuated by K:TOGGLE_FLIGHT_DIRECTOR
+        // with the SIDE as the parameter (1 = Capt, 2 = F/O). The A32NX_FCU_EFIS_L/R_FD_ACTIVE
+        // L:vars are DEAD on the A380X (read 0 while the FD is on; a calc-path write holds but
+        // drives nothing — the stickiness trap), so DO NOT switch the combos back to them.
+        // FD_ACTIVE below is the stock COMBINED FD state, a read-only status readout only.
         Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
         // (Legacy XMLVAR_BaroN_Mode combos are DEAD on the A380X — verified live
         //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
@@ -2071,11 +2159,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // are dead stubs too. (Squawk code + IDENT remain the only working surveillance writes.)
 
         // ============================ MINIMUMS ============================
-        // FMS-set decision minimums (best-effort; var reused from A32NX FM).
-        // Minimums are ARINC429 words (decoded + announced in ProcessSimVarUpdate);
-        // monitored so a minimum set/cleared on the MCDU PERF APPR page is spoken.
-        MonNum("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
-        MonNum("A32NX_FM1_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
+        // FMS-set approach minimums. CORRECTED 2026-07: read the PLAIN-feet L:vars the
+        // MFD PERF page writes directly (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA,
+        // AIRLINER_DECISION_HEIGHT = radio DH — the same vars the PFD/ISIS/GPWS read),
+        // NOT the ARINC429 words A32NX_FM1_MINIMUM_DESCENT_ALTITUDE / _DECISION_HEIGHT.
+        // Those FM1/FM2 words are NCD (read 2^32 → "Not set") until the FMC decides the
+        // aircraft is in approach range (shouldTransmitMinimums(distanceToDestination) in
+        // FmcAircraftInterface.ts), so at cruise a set minimum showed "Not set" (live-
+        // verified: MDA 940 / DH 200 set, but FM1 words both NCD). The plain L:vars hold
+        // the pilot's entry the instant it's set, at any phase. Unset sentinels: MDA <= 0,
+        // DH < 0 (FBW resets MDA→0, DH→-1). Plain feet — decoded/announced in
+        // ProcessSimVarUpdate + TryGetDisplayOverride (NOT ARINC429 now).
+        MonNum("AIRLINER_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
+        MonNum("AIRLINER_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
 
         // ============================ A32NX SHARED GAP CONTROLS/READOUTS ============================
         // Pulled from the FBW A32NX API docs (shared with the A380); see
@@ -2244,22 +2340,36 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "NSS Data to Avionics");
         OnOff("A32NX_NSS_MASTER_OFF", "NSS Master Off");
 
-        // Wipers (3-speed; written via HandleUIVariableSet → circuit power events).
-        // Wipers (captain = electrical circuit 141, F/O = 143). The FBW wiper-knob
-        // template drives the circuit with K:ELECTRICAL_CIRCUIT_TOGGLE (on/off) +
-        // K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET (speed) — live-verified the toggle
-        // flips CIRCUIT SWITCH ON:141 0<->1 and "<pct> <circuit> (>K:2:…)" sets the
-        // power. The PREVIOUS code only set the power and never toggled the circuit
-        // on, so the wipers never started — the "inop" bug. The combo now reads the
-        // REAL circuit-switch state (so it shows On/Off correctly and auto-announces
-        // on change); the set toggles the circuit (handled in HandleUIVariableSet).
-        foreach (var (key, who, circuit) in new[]
-                 { ("WIPER_LEFT", "Captain Wiper", 141), ("WIPER_RIGHT", "First Officer Wiper", 143) })
+        // Wipers — 3-position OFF/SLOW/FAST selector per side (Capt = electrical circuit
+        // 141, F/O = 143), independent. CORRECTED 2026-07: the real FBW wiper knob
+        // (ASOBO_GT_Switch_3States, FBW_Airbus_Wiper_Knob template) has THREE positions —
+        // OFF = circuit switch off; SLOW = switch on + circuit POWER SETTING 75%; FAST =
+        // switch on + POWER 100% (ANIMTIP_0/1/2 = OFF/SLOW/FAST). The old combo was On/Off
+        // only, and On always drove 100%, so SLOW was unreachable. The live position is a
+        // TWO-var state (switch + power) — the power setting persists at its default (100%)
+        // while the switch is off, so a cold-start read of power=100 + switch=off must read
+        // OFF, not FAST. Neither var alone encodes the position, so the settable control is a
+        // SYNTHETIC 3-position combo (SelectedIndex authoritative, like the speed-brake) that
+        // drives the circuit in HandleUIVariableSet; the true live position is read back from
+        // the hidden switch+power vars below (WiperState → the "… Position" readouts).
+        Act("WIPER_LEFT", "Captain Wiper", new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" });
+        Act("WIPER_RIGHT", "First Officer Wiper", new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" });
+        // Hidden live-state backers (circuit switch + power per side): the switch var doubles
+        // as the OFF/SLOW/FAST readout (decoded in TryGetDisplayOverride from the cached pair,
+        // via _wiperState*), and the set handler reads the switch to decide whether to toggle.
+        foreach (var (key, who) in new[] { ("WIPER_L_SW", "Captain Wiper Position"), ("WIPER_R_SW", "First Officer Wiper Position") })
             vars[key] = new SimVarDefinition
             {
-                Name = $"CIRCUIT SWITCH ON:{circuit}", DisplayName = who, Type = SimVarType.SimVar,
-                Units = "bool", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+                Name = $"CIRCUIT SWITCH ON:{(key == "WIPER_L_SW" ? 141 : 143)}", DisplayName = who,
+                Type = SimVarType.SimVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, ExcludeFromMonitorManager = true
+            };
+        foreach (var key in new[] { "WIPER_L_PWR", "WIPER_R_PWR" })
+            vars[key] = new SimVarDefinition
+            {
+                Name = $"CIRCUIT POWER SETTING:{(key == "WIPER_L_PWR" ? 141 : 143)}", DisplayName = key,
+                Type = SimVarType.SimVar, Units = "percent",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, ExcludeFromMonitorManager = true
             };
 
         // EFIS-CP filter / overlay / baro unit (per side).
@@ -2468,11 +2578,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("RUDDER_DEFLECTION", "RUDDER DEFLECTION", "Rudder Deflection", "degrees");
         Stock("SPOILERS_LEFT_POSITION", "SPOILERS LEFT POSITION", "Left Spoilers", "percent");
         Stock("SPOILERS_RIGHT_POSITION", "SPOILERS RIGHT POSITION", "Right Spoilers", "percent");
-        // FMS-computed takeoff THS / pitch-trim target (ARINC429) — the value the
-        // pilot must set the trim wheel to before takeoff (auto-trim isn't modeled
-        // on this build). Decoded in TryGetDisplayOverride; reads "Not computed"
-        // until the FMS has the perf data. (#107 transcript gap: predicted T.O trim.)
-        Read("A32NX_TO_PITCH_TRIM", "Takeoff Trim Target", "number");
+        // Takeoff THS ("THS FOR" — the takeoff CG in %MAC the pilot enters on the MFD
+        // PERF T.O page). CORRECTED 2026-07: read the ARINC429 word A32NX_FM1_TO_PITCH_TRIM
+        // (what the FMC actually writes, via setTakeoffTrim → FmArinc429OutputWord, and what
+        // the FWS reads for the TO-CONFIG stab check), NOT the bare A32NX_TO_PITCH_TRIM,
+        // which is a dead/unwritten var that reads 0 → decoded "Not computed" even with a
+        // value set. The word carries a PERCENT (%MAC), NOT degrees — the FWS compares it
+        // straight to fqmsGrossWeightCgPercent, and the PERF field is a PercentageFormat;
+        // the old "X.X degrees up/down" render was wrong. Decoded in TryGetDisplayOverride.
+        Read("A32NX_FM1_TO_PITCH_TRIM", "Takeoff Trim (THS for CG)", "number");
         // Rudder trim ("weather trim"). The stock RUDDER TRIM PCT does not track the
         // FBW SEC-computed value; the real figure the PFD/SD show is the ARINC429
         // word A32NX_SEC_1_RUDDER_ACTUAL_POSITION (degrees, positive = nose-Left).
@@ -2677,12 +2791,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        _varCache = vars;   // for ProcessSimVarUpdate lookups (ARINC429 enum decode)
         return vars;
     }
 
-    // Cached variable map + per-var last announced state for the ARINC429 enum guard.
-    private Dictionary<string, SimVarDefinition>? _varCache;
+    // Per-var last announced state for the ARINC429 enum guard.
     private readonly Dictionary<string, int> _arincEnumState = new();
 
     // ===================================================================
@@ -2797,21 +2909,46 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // ---- Passengers on board (Status panel) ----
     // A32NX_FMS_PAX_NUMBER (the var the Status panel used to read) is written ONLY by
     // the MFD FUEL&LOAD page (MfdFmsFuelLoad.tsx) — so boarding via the flyPad never
-    // sets it and it reads 0. The real boarded count is the sum of occupied seats across
-    // the 14 per-station seat-bitmask L:vars (each holds an integer whose set-bit count =
-    // filled seats in that cabin zone; ≤ 50 seats/station, so the value is < 2^53 and is
-    // exact as a double — the same float64 the FBW EFB itself reads). We popcount each
-    // and sum; the result is shown for "A32NX_FMS_PAX_NUMBER" in TryGetDisplayOverride.
+    // sets it and it reads 0. The count is the sum of the per-station seat-bitmask L:vars
+    // (each holds an integer whose set-bit count = filled seats in that cabin zone; max
+    // 50 seats/station on the A380X, so every value is < 2^53 and exact as a double — the
+    // same float64 the FBW EFB itself reads). We popcount each and sum; the result is
+    // shown for "A32NX_FMS_PAX_NUMBER" in TryGetDisplayOverride.
+    // CORRECTED 2026-07: sum the *_DESIRED* (target) bitmasks, NOT the boarded ones. The
+    // flyPad headline number and GSX (FSDT_GSX_NUMPASSENGERS) both reflect totalPaxDesired
+    // — the planned load — while the boarded bitmask (A32NX_PAX_<st>, no suffix) lags and,
+    // under GSX-driven boarding, settles BELOW target and stays there (live: user planned
+    // 466, boarded bitmask summed 428). The desired total is the number that matches the
+    // flyPad, GSX, and the loadsheet, and is stable at every phase — that's what a pilot
+    // means by "passengers on board". (Popcount of the boarded set is itself correct — it's
+    // just the wrong quantity to show here.)
     private static readonly string[] PaxStationVars =
     {
-        "A32NX_PAX_MAIN_FWD_A", "A32NX_PAX_MAIN_FWD_B",
-        "A32NX_PAX_MAIN_MID_1A", "A32NX_PAX_MAIN_MID_1B", "A32NX_PAX_MAIN_MID_1C",
-        "A32NX_PAX_MAIN_MID_2A", "A32NX_PAX_MAIN_MID_2B", "A32NX_PAX_MAIN_MID_2C",
-        "A32NX_PAX_MAIN_AFT_A", "A32NX_PAX_MAIN_AFT_B",
-        "A32NX_PAX_UPPER_FWD", "A32NX_PAX_UPPER_MID_A", "A32NX_PAX_UPPER_MID_B", "A32NX_PAX_UPPER_AFT"
+        "A32NX_PAX_MAIN_FWD_A_DESIRED", "A32NX_PAX_MAIN_FWD_B_DESIRED",
+        "A32NX_PAX_MAIN_MID_1A_DESIRED", "A32NX_PAX_MAIN_MID_1B_DESIRED", "A32NX_PAX_MAIN_MID_1C_DESIRED",
+        "A32NX_PAX_MAIN_MID_2A_DESIRED", "A32NX_PAX_MAIN_MID_2B_DESIRED", "A32NX_PAX_MAIN_MID_2C_DESIRED",
+        "A32NX_PAX_MAIN_AFT_A_DESIRED", "A32NX_PAX_MAIN_AFT_B_DESIRED",
+        "A32NX_PAX_UPPER_FWD_DESIRED", "A32NX_PAX_UPPER_MID_A_DESIRED", "A32NX_PAX_UPPER_MID_B_DESIRED", "A32NX_PAX_UPPER_AFT_DESIRED"
     };
     private readonly Dictionary<string, int> _paxFilledByStation = new();
     private int _paxOnBoard;
+    // Wiper live position per side (0 Off / 1 Slow / 2 Fast), computed from the hidden
+    // switch+power backers in ProcessSimVarUpdate; rendered by TryGetDisplayOverride.
+    // Default 0 = Off (the cold-start state, before the first circuit read arrives).
+    private int _wiperStateL, _wiperStateR;
+    // Last-seen circuit switch (0/1) + power (%) per side; power defaults 100 so a switch
+    // read arriving before the power read still classifies On correctly (Fast until proven Slow).
+    private double _wiperSwL, _wiperPwrL = 100.0, _wiperSwR, _wiperPwrR = 100.0;
+    // OFF when the circuit switch is off (regardless of the persisted power setting);
+    // else SLOW (~75%) vs FAST (~100%). Tolerates power read as ratio (0.75/1.0) or
+    // percent (75/100) so a unit surprise can't collapse the two speeds.
+    private static int WiperState(double? sw, double? pwr)
+    {
+        if (!(sw > 0.5)) return 0;
+        double p = pwr ?? 100.0; if (p <= 1.5) p *= 100.0;
+        return p < 87.5 ? 1 : 2;
+    }
+    private static string WiperText(int state) => state <= 0 ? "Off" : state == 1 ? "Slow" : "Fast";
     // ---- Doors (read-only status + auto-announce; NO settable combos — the user opens/closes
     // via the flyPad). ALL 18 modelled doors, authoritative ip→door mapping from the FBW SD
     // DoorPage.tsx: 16 passenger doors = stock SimVar INTERACTIVE POINT OPEN:0..15 (0..1 anim
@@ -2886,7 +3023,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ["LIGHT_NAV"] = "NAV_LIGHTS_SET",
         ["LIGHT_WING"] = "WING_LIGHTS_SET",
         ["LIGHT_LOGO"] = "LOGO_LIGHTS_SET",
-        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET",
+        // LIGHT_LANDING + NOSE_LIGHT use the INDEXED LANDING_LIGHTS_SET (handled below).
         ["LIGHT_STROBE"] = "STROBES_SET"
     };
 

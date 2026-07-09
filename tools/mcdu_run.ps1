@@ -2,7 +2,7 @@ param(
   [string]$Page = "",       # nav-rail link text to click first (optional)
   [string]$ExprFile,        # JS to eval after navigating
   [string]$Title = "A380X_MFD",
-  [string]$AgentFile = "C:/Users/franc/Documents/development/MSFSBA/msfs-blind-assist/MSFSBlindAssist/Resources/coherent-a380-agent.js"
+  [string]$AgentFile = (Join-Path $PSScriptRoot "../MSFSBlindAssist/Resources/coherent-a380-agent.js")
 )
 $ErrorActionPreference = "Stop"
 $base = "http://127.0.0.1:19999"

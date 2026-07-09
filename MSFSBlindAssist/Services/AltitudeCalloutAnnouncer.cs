@@ -22,13 +22,18 @@ public class AltitudeCalloutAnnouncer
 
     private const int BandFeet = 1000;
 
-    // Once a band has been announced, the altitude must be at least this many feet past the
-    // 1,000-ft boundary into the new band before re-announcing — kills flutter when the
-    // aircraft levels off right on a round thousand.
+    // Flutter guard: while the aircraft hovers within this many feet of a round thousand it
+    // just announced, the band index flips back and forth across the line — those re-crossings
+    // must NOT repeat the callout. This is ONLY a same-boundary debounce; it does not delay the
+    // first announcement of a crossing (that fires AT the band change — see ProcessAltitude).
     private const double HysteresisFeet = 80.0;
 
     // -1 = no baseline yet (first sample establishes it silently).
     private int lastAnnouncedBand = -1;
+
+    // The 1,000-ft boundary value last spoken (int.MinValue = none yet). Only used by the
+    // same-boundary hover debounce above.
+    private int lastAnnouncedThousand = int.MinValue;
 
     public AltitudeCalloutAnnouncer(ScreenReaderAnnouncer screenReaderAnnouncer)
     {
@@ -36,7 +41,7 @@ public class AltitudeCalloutAnnouncer
     }
 
     /// <summary>Re-baselines so the next sample is silent (after a teleport / long pause).</summary>
-    public void ResetBaseline() => lastAnnouncedBand = -1;
+    public void ResetBaseline() { lastAnnouncedBand = -1; lastAnnouncedThousand = int.MinValue; }
 
     /// <summary>
     /// Feed a fresh indicated-altitude sample (feet) plus the current air/ground state.
@@ -64,11 +69,21 @@ public class AltitudeCalloutAnnouncer
         bool climbing = newBand > lastAnnouncedBand;
         int crossedThousand = (climbing ? newBand : newBand + 1) * BandFeet;
 
-        // Hysteresis: require HysteresisFeet past that boundary before committing, so leveling
-        // off right on a round thousand doesn't flutter the callout.
-        if (System.Math.Abs(altitudeFeet - (double)crossedThousand) < HysteresisFeet) return;
+        // Announce AT the boundary — the band change IS the crossing, so the callout fires when
+        // the aircraft actually reaches the round thousand (not ~80 ft past it, which was the old
+        // hysteresis-delay bug: "36,000" spoke at ~36,100 climbing / below 36,000 descending).
+        // The ONLY suppression is a hover on the SAME thousand we just announced: leveling off on
+        // a round thousand flips the band across the line, and those re-crossings must not repeat
+        // the callout. A crossing to a DIFFERENT thousand always announces immediately.
+        if (crossedThousand == lastAnnouncedThousand &&
+            System.Math.Abs(altitudeFeet - (double)crossedThousand) < HysteresisFeet)
+        {
+            lastAnnouncedBand = newBand;   // track the flip so the hover doesn't re-fire each frame
+            return;
+        }
 
         lastAnnouncedBand = newBand;
+        lastAnnouncedThousand = crossedThousand;
         // Plain Announce (queued) so a fading altitude callout doesn't displace the most
         // recent actionable instruction in any feature's Repeat-Last buffer. Bare number
         // ("32000", "5000") per Gus's preference; this is the ONLY altitude callout.

@@ -6,9 +6,7 @@ using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect
 {
-    // EFBStateUpdateEventArgs lives in EFBBridgeServer.cs (the HTTP bridge is retained on this
-    // branch because HS787 still uses it; PR #106 only moves the PMDG EFB to the Coherent
-    // transport). The Coherent clients + IMcduBridge below reference that same type (same namespace).
+    // The legacy HTTP bridge (EFBBridgeServer) was removed 2026-07; all Coherent transports connect directly via this client.
 
     /// <summary>
     /// The surface the FBW A380X MCDU window depends on. The no-injection

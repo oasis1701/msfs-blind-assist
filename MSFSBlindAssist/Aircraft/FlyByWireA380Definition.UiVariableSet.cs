@@ -213,23 +213,50 @@ public partial class FlyByWireA380Definition
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:{apuGenI}:APU_GENERATOR_SWITCH_SET)");
             return true;
         }
-        // Taxi light: state mirrors LIGHT TAXI:2; the only working actuator is the
-        // stock TOGGLE_TAXI_LIGHTS (no indexed SET reaches the shipping model), so
-        // toggle only when the desired state differs from the live state.
-        if (varKey == "LIGHT_TAXI_OVHD")
+        // NOSE light 3-position selector (T.O.=0 / Taxi=1 / Off=2). Write the FBW
+        // state L:var (display mirror) AND fire the working indexed stock events:
+        // nose takeoff = LIGHT LANDING:1, nose taxi = LIGHT TAXI:1 (TAXI:1 on for
+        // both T.O. and Taxi, per the cockpit "allow TAXI LT with TO LT").
+        if (varKey == "NOSE_LIGHT")
         {
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("LIGHT_TAXI_OVHD") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
-            if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_TAXI_LIGHTS");
+            int pos = (int)Math.Round(value);
+            int takeoff = pos == 0 ? 1 : 0;
+            int taxi = (pos == 0 || pos == 1) ? 1 : 0;
+            simConnect.ExecuteCalculatorCode(
+                $"{pos} (>L:LIGHTING_LANDING_1) 1 {takeoff} (>K:2:LANDING_LIGHTS_SET) 1 {taxi} (>K:2:TAXI_LIGHTS_SET)");
             return true;
         }
-        // Seat-belt sign: there is no SET event, only CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE,
-        // so toggle only when the desired state differs from the current (live) state.
+        // Runway Turnoff lights: the cockpit switch drives LIGHT TAXI:2 (left) AND :3
+        // (right) together, so set BOTH indices via the indexed stock event.
+        if (varKey == "LIGHT_RWY_TURNOFF")
+        {
+            int v = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"2 {v} (>K:2:TAXI_LIGHTS_SET) 3 {v} (>K:2:TAXI_LIGHTS_SET)");
+            return true;
+        }
+        // Wing LANDING lights = indexed LIGHT LANDING:2 (nose takeoff is index 1).
+        if (varKey == "LIGHT_LANDING")
+        {
+            simConnect.ExecuteCalculatorCode($"2 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
+            return true;
+        }
+        // Seat-belt sign 3-position switch: On(0) / Auto(1) / Off(2). Write the switch
+        // POSITION (XMLVAR, held), then drive the sign: On/Off flip the stock
+        // CABIN SEATBELTS ALERT SWITCH via its TOGGLE event only when the desired state
+        // differs (the model's manual sync is one-shot at load, so an external position
+        // write doesn't move the sign by itself); Auto leaves the sign to the FBW model
+        // (its 500 ms Update illuminates it from engines + slats/gear).
         if (varKey == "SEATBELT_SIGN")
         {
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("SEATBELT_SIGN") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
-            if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+            int pos = (int)Math.Round(value);
+            if (pos < 0) pos = 0; else if (pos > 2) pos = 2;
+            simConnect.ExecuteCalculatorCode($"{pos} (>L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position)");
+            if (pos != 1) // On (0) or Off (2) — sync the stock sign; Auto (1) is model-driven
+            {
+                bool desiredOn = pos == 0;
+                bool currentOn = (simConnect.GetCachedVariableValue("SEATBELT_SIGN_LIGHT") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+                if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+            }
             return true;
         }
         // Anti-skid: TOGGLE-only event (K:ANTISKID_BRAKES_TOGGLE flips the switch). The
@@ -297,7 +324,7 @@ public partial class FlyByWireA380Definition
         if (varKey == "PRESS_MAN_ALT_SET" || varKey == "PRESS_MAN_VS_SET")
         {
             string knob = varKey == "PRESS_MAN_ALT_SET" ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB";
-            simConnect.ExecuteCalculatorCode($"{value} (>L:{knob})");
+            simConnect.ExecuteCalculatorCode($"{value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} (>L:{knob})");
             announcer.Announce($"Set to {value:0.0}");
             return true;
         }
@@ -361,19 +388,26 @@ public partial class FlyByWireA380Definition
             simConnect.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
             return true;
         }
-        // Wipers: ON/OFF by TOGGLING the electrical circuit (the FBW knob template's
-        // mechanism) — only toggle when the desired state differs from the live
-        // circuit-switch state, then drive a visible speed when turning on. The old
-        // code set power only and never toggled the circuit on, so it never started.
+        // Wipers: 3-position OFF/SLOW/FAST via the electrical circuit (the FBW knob's
+        // mechanism). OFF toggles the circuit off; SLOW/FAST toggle it on (only if currently
+        // off — toggling an already-on circuit would turn it OFF) and set the circuit POWER
+        // SETTING to 75 / 100 (percent then circuit index — verified order). The live switch
+        // state is read from the hidden WIPER_*_SW backer.
         if (varKey == "WIPER_LEFT" || varKey == "WIPER_RIGHT")
         {
             int circuit = varKey == "WIPER_LEFT" ? 141 : 143;
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? 0.0) > 0.5;
-            if (desiredOn != currentOn)
-                simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
-            if (desiredOn)   // percent then circuit index (verified order)
-                simConnect.ExecuteCalculatorCode($"100 {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
+            string swKey = varKey == "WIPER_LEFT" ? "WIPER_L_SW" : "WIPER_R_SW";
+            int pos = (int)Math.Round(value); // 0 Off / 1 Slow / 2 Fast
+            bool on = (simConnect.GetCachedVariableValue(swKey) ?? 0.0) > 0.5;
+            if (pos <= 0)
+            {
+                if (on) simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+            }
+            else
+            {
+                if (!on) simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+                simConnect.ExecuteCalculatorCode($"{(pos == 1 ? 75 : 100)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
+            }
             return true;
         }
         // Engine anti-ice combo "ENGn_ANTI_ICE" -> stock K:ANTI_ICE_SET_ENGn
@@ -454,17 +488,16 @@ public partial class FlyByWireA380Definition
             if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR", side);
             return true;
         }
-        // Wing anti-ice (CORRECTED 2026-06): the A380's real control is the stock
-        // STRUCTURAL DEICE SWITCH, actuated by TOGGLE_STRUCTURAL_DEICE (toggle only when
-        // the desired state differs from the live SimVar — the absolute STRUCTURAL_DEICE_SET
-        // is a no-op on this build). The old A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED
-        // L:var write was DEAD (read by nothing on the A380X — live-verified). Same
-        // toggle-if-differs pattern as ENG GEN / taxi light.
+        // Wing anti-ice (CORRECTED 2026-07): write the var the real cockpit button writes,
+        // A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION (0/1), via the calculator path — it
+        // holds (live-verified) and matches the overhead PB, so MSFSBA and the cockpit
+        // switch stay in sync. (The old combo drove the stock STRUCTURAL DEICE SWITCH,
+        // which the cockpit button never touches, so the two diverged.) FBW-build gap:
+        // the A380 wing anti-ice PNEUMATIC isn't modelled — no input drives _SYSTEM_ON
+        // at cruise; the switch is faithful + future-proof, the flow can't engage yet.
         if (varKey == "WING_ANTI_ICE_OVHD")
         {
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue("WING_ANTI_ICE_OVHD") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
-            if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_STRUCTURAL_DEICE");
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION)");
             return true;
         }
         // Probe/window heat: A32NX_MAN_PITOT_HEAT is the var the cockpit button toggles
@@ -580,7 +613,7 @@ public partial class FlyByWireA380Definition
     // CAPT_QNH_SET / *_EIS_BARO_IS_STD / XMLVAR_Baro_Selector routes.
     public bool ApplyUIVariable(string varKey, double value, SimConnectManager s, ScreenReaderAnnouncer a)
     {
-        SimVarDefinition def = (_varCache != null && _varCache.TryGetValue(varKey, out var d))
+        SimVarDefinition def = GetVariables().TryGetValue(varKey, out var d)
             ? d : new SimVarDefinition { Name = varKey, DisplayName = varKey };
         return HandleUIVariableSet(varKey, value, def, s, a);
     }

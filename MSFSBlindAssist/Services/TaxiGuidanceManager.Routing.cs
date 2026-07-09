@@ -560,14 +560,14 @@ public partial class TaxiGuidanceManager
                 if (_route.Segments[i].IsHoldShortPoint)
                 {
                     _currentSegmentIndex = i + 1;
-                    _lastSegmentAdvanceTime = DateTime.Now;
+                    _lastSegmentAdvanceTime = DateTime.UtcNow;
                     HandleHoldShort(_route.Segments[i]);
                     return;
                 }
             }
 
             _currentSegmentIndex = bestIdx;
-            _lastSegmentAdvanceTime = DateTime.Now;
+            _lastSegmentAdvanceTime = DateTime.UtcNow;
 
             var newSeg = _route.Segments[_currentSegmentIndex];
             if (!string.IsNullOrEmpty(newSeg.TaxiwayName) &&
@@ -590,7 +590,7 @@ public partial class TaxiGuidanceManager
     {
         if (_graph == null) return;
 
-        if ((DateTime.Now - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
+        if ((DateTime.UtcNow - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
             return;
 
         // Final-segment guard. At the destination hold-short there's nothing
@@ -619,7 +619,7 @@ public partial class TaxiGuidanceManager
                 return;
         }
 
-        _lastRecalculationTime = DateTime.Now;
+        _lastRecalculationTime = DateTime.UtcNow;
 
         // Position-aware sequence trim. Walk the original ATC sequence from
         // the LAST taxiway backwards, asking "is there a node on this taxiway
@@ -887,13 +887,13 @@ public partial class TaxiGuidanceManager
             // and a single lateral-deviation sample at the stop line can
             // trigger a spurious recalc the instant the pilot presses
             // Continue.
-            _lastSegmentAdvanceTime = DateTime.Now;
+            _lastSegmentAdvanceTime = DateTime.UtcNow;
             HandleHoldShort(completedSeg);
             return;
         }
 
         _currentSegmentIndex++;
-        _lastSegmentAdvanceTime = DateTime.Now;
+        _lastSegmentAdvanceTime = DateTime.UtcNow;
         _approachAnnounced = false;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;

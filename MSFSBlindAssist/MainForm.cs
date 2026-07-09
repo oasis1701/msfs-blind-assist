@@ -144,8 +144,6 @@ public partial class MainForm : Form
 
     private HS787FMCForm? hs787FMCForm;
 
-    private HS787SimBriefForm? hs787SimBriefForm;
-
     // Background Coherent reader for the WT IRS "TIME TO ALIGN" state — writes the synthetic
     // MSFSBA_IRS_ALIGN_STATE / _MINUTES L-vars the HS787 def reads. Runs while the HS787 is loaded.
     private SimConnect.CoherentHS787IrsClient? hs787IrsClient;
@@ -316,12 +314,23 @@ public partial class MainForm : Form
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
+    // ActiveSky precip descriptor last seen (#129): null = no AS baseline yet
+    // (or AS not active), "" = no precip, else the parsed phrase ("light rain").
+    private string? _prevAsPrecip;
+    // On-demand ActiveSky client for the ambient-change precip source + the output+I
+    // wind readout (caches its port so repeated queries are cheap).
+    private readonly MSFSBlindAssist.Services.ActiveSkyClient weatherActiveSky = new();
 
     private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
 
     private readonly HashSet<string> _announcedPirepKeys  = new HashSet<string>();
 
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
+
+    // Reentrancy latch for CheckWeatherProximityAsync — the announcement timer tick fires
+    // it fire-and-forget, and a slow WeatherService call could still be in flight when the
+    // next tick lands.
+    private bool _proximityCheckRunning = false;
 
     // Current state
     private string currentSection = "";
@@ -763,7 +772,6 @@ public partial class MainForm : Form
 
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();
-        hs787SimBriefForm?.Dispose();
         hs787IrsClient?.Dispose();
         hs787IrsClient = null;
         hs787CasClient?.Dispose();

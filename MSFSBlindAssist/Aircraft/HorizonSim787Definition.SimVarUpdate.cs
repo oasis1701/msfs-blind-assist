@@ -1298,9 +1298,9 @@ public partial class HorizonSim787Definition
         if (variableKey == "HS787_FuelXfeed")
         {
             int now = value > 0.5 ? 1 : 0;
-            if (_previousFuelXfeedFwd >= 0 && now != _previousFuelXfeedFwd)
+            if (_previousFuelXfeed >= 0 && now != _previousFuelXfeed)
                 announcer.Announce(now == 1 ? "Fuel Crossfeed Open" : "Fuel Crossfeed Closed");
-            _previousFuelXfeedFwd = now;
+            _previousFuelXfeed = now;
             return true;
         }
         if (variableKey == "HS787_BleedEng1")
@@ -1619,13 +1619,6 @@ public partial class HorizonSim787Definition
             case "HS787_EicasOilT_1":
             case "HS787_EicasOilT_2":
             case "HS787_EicasTat":
-            case "HS787_MCP_IAS":
-            case "HS787_MCP_Mach":
-            case "HS787_MCP_IsMach":
-            case "HS787_MCP_SpdManual":
-            case "HS787_MCP_Heading":
-            case "HS787_MCP_Altitude":
-            case "HS787_MCP_VS":
             case "HS787_MCP_FPA":
             case "HS787_FPAMode":
             case "HS787_TRKMode":

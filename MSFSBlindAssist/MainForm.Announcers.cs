@@ -141,7 +141,7 @@ public partial class MainForm
         // updates still run, only the speech is dropped.
         bool hs787 = currentAircraft!.AircraftCode == "HS_787";
         bool hs787Muted = hs787 &&
-            Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+            Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -176,7 +176,7 @@ public partial class MainForm
             // Update window title if flight phase changed (for aircraft that track flight phases)
             if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
             {
-                this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
+                this.Text = $"MSFS Blind Assist - {currentAircraft.CurrentFlightPhase} phase active";
             }
             // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
             // which can interfere with aircraft-specific processing — we tried it and combo
@@ -235,7 +235,7 @@ public partial class MainForm
 
                 // Check if disabled in Fenix Monitor Manager
                 if (currentAircraft.AircraftCode == "FENIX_A320CEO" &&
-                    Settings.SettingsManager.Current.FenixDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.FenixDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -245,28 +245,28 @@ public partial class MainForm
                 // a single prefix check covers any future PMDG additions
                 // sharing the same disabled-variables list.
                 if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
-                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the A380 Monitor Manager.
                 if (currentAircraft.AircraftCode == "FBW_A380" &&
-                    Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the A32NX Monitor Manager.
                 if (currentAircraft.AircraftCode == "A320" &&
-                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the HS787 Monitor Manager.
                 if (currentAircraft.AircraftCode == "HS_787" &&
-                    Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -347,6 +347,19 @@ public partial class MainForm
         // NOTE: Aircraft-specific ProcessSimVarUpdate() is now called in the main flow (line 206)
         // to avoid duplicate calls. Flight phase window title updates happen there.
 
+        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
+        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
+        // HOISTED to the top of this ladder: G_FORCE is registered HighFrequency=true
+        // (BaseAircraftDefinition), i.e. it fires on every SIM_FRAME — every branch below
+        // this one otherwise re-tests its own (much lower frequency) VarName first on every
+        // single frame for no reason. Pure reorder; none of the string-equality checks below
+        // can also match "G_FORCE", so moving this first changes no other branch's behavior.
+        if (e.VarName == "G_FORCE")
+        {
+            landingRateAnnouncer.ProcessG(e.Value);
+            return true;
+        }
+
         // 1,000-foot crossing callouts. INDICATED_ALTITUDE is also a panel-display var, so
         // this is a NON-terminal feed (no early return) — processing continues so the
         // display box still updates. The var is registered IsAnnounced=false (per aircraft),
@@ -377,14 +390,6 @@ public partial class MainForm
             // destination (the airports you actually taxi at, both force-fresh) plus on demand when
             // you type an ICAO into the gate-teleport dialog. The old 50 NM geofence scan was removed
             // — it added background fetching for airports you never taxi at, with no benefit.
-            return true;
-        }
-
-        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
-        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
-        if (e.VarName == "G_FORCE")
-        {
-            landingRateAnnouncer.ProcessG(e.Value);
             return true;
         }
 
@@ -1715,22 +1720,32 @@ public partial class MainForm
 
         try
         {
-            // Get current wind from SimConnect (synchronously for now)
+            // Current wind. #129: under ActiveSky the SimConnect ambient wind lags AS's
+            // interpolation (output+I disagreed with the radar's "wind at altitude"), so
+            // when AS is running read the AS ambient wind (same source as the radar) and
+            // append the surface gust when AS reports one.
             string currentWind = "unavailable";
-            bool currentWindReceived = false;
-
-            simConnectManager.RequestWindInfo(currentWindData =>
+            var asConditions = await TryGetActiveSkyConditionsAsync();
+            if (asConditions != null)
             {
-                currentWind = FormatWindData(currentWindData);
-                currentWindReceived = true;
-            });
-
-            // Wait briefly for current wind data
-            var timeout = DateTime.Now.AddSeconds(2);
-            while (!currentWindReceived && DateTime.Now < timeout)
+                currentWind = FormatActiveSkyWind(asConditions);
+            }
+            else
             {
-                await Task.Delay(50);
-                Application.DoEvents();
+                bool currentWindReceived = false;
+                simConnectManager.RequestWindInfo(currentWindData =>
+                {
+                    currentWind = FormatWindData(currentWindData);
+                    currentWindReceived = true;
+                });
+
+                // Wait briefly for current wind data
+                var timeout = DateTime.Now.AddSeconds(2);
+                while (!currentWindReceived && DateTime.Now < timeout)
+                {
+                    await Task.Delay(50);
+                    Application.DoEvents();
+                }
             }
 
             // Check if destination airport is set
@@ -1771,6 +1786,31 @@ public partial class MainForm
 
         // Format as "direction at speed"
         return $"{direction:000} at {speed}";
+    }
+
+    /// <summary>Best-effort ActiveSky conditions for the wind readout; null if AS is off
+    /// or the fetch fails (caller falls back to SimConnect). Cheap on repeat (cached port).</summary>
+    private async Task<MSFSBlindAssist.Services.ActiveSkyClient.Conditions?> TryGetActiveSkyConditionsAsync()
+    {
+        try
+        {
+            if (!await weatherActiveSky.IsRunningAsync()) return null;
+            return await weatherActiveSky.GetCurrentConditionsAsync();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>ActiveSky wind-at-altitude for output+I — matches the Weather Radar's
+    /// "Wind (at altitude)" line, plus the surface gust when AS reports one (#129).</summary>
+    private static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c)
+    {
+        int direction = (int)Math.Round(c.AmbientWindDirection);
+        int speed = (int)Math.Round(c.AmbientWindSpeed);
+        if (speed == 0) return "calm";
+        string text = $"{direction:000} at {speed}";
+        if (c.SurfaceGustSpeed > 0)
+            text += $", gusting {(int)Math.Round(c.SurfaceGustSpeed)}";
+        return text;
     }
 
     private async void DescribeSceneAsync()
@@ -1876,54 +1916,98 @@ public partial class MainForm
         if (settings.WeatherAutoAnnounceEnabled)
             CheckAmbientWeatherChanges();
 
-        if (settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled)
+        if ((settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled) && !_proximityCheckRunning)
             _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
                     settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
     }
 
-    private void CheckAmbientWeatherChanges()
+    private async void CheckAmbientWeatherChanges()
     {
-        simConnectManager.RequestWeatherInfo(data =>
+        // SimConnect ambient (cloud in/out, visibility, and the precip fallback when AS is off).
+        var tcs = new TaskCompletionSource<MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData>();
+        simConnectManager.RequestWeatherInfo(d => tcs.TrySetResult(d));
+        _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(default));
+        var data = await tcs.Task;
+
+        // #129: under ActiveSky the SimConnect AMBIENT PRECIP STATE bitmask sticks, so
+        // when AS is running source precip from the METAR. Use the SAME precedence as the
+        // AS decoded-weather monitor AND the Weather Radar — closest-station METAR first,
+        // position METAR fallback — so all three features agree. null = AS not active
+        // (fall back to SimConnect); "" = AS says no precip.
+        string? asPrecip = null;
+        try
         {
-            if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data)); return; }
-            AnnounceAmbientChanges(data);
-        });
+            if (await weatherActiveSky.IsRunningAsync())
+            {
+                string? metar = await weatherActiveSky.GetClosestStationMetarAsync();
+                if (string.IsNullOrWhiteSpace(metar))
+                    metar = await weatherActiveSky.GetPositionMetarAsync();
+                if (!string.IsNullOrWhiteSpace(metar))
+                    asPrecip = MSFSBlindAssist.Services.WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metar);
+            }
+        }
+        catch { asPrecip = null; }
+
+        if (IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data, asPrecip)); return; }
+        AnnounceAmbientChanges(data, asPrecip);
     }
 
-    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data)
+    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data,
+        string? asPrecip = null)
     {
-        // Cloud entry/exit
+        // Cloud entry/exit — always from SimConnect (AS doesn't expose in-cloud).
         double inCloud = data.InCloud;
         if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
             announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
         _prevInCloud = inCloud;
 
-        // Precipitation — announce on start, stop, and intensity tier changes
-        double precipState = data.PrecipState;
-        double precipRate = data.PrecipRate;
-        bool wasRaining = _prevPrecipState > 0.5;
-        bool isRaining = precipState > 0.5;
-
-        if (_prevPrecipState >= 0)
+        if (asPrecip != null)
         {
-            if (!wasRaining && isRaining)
+            // ActiveSky path — announce on start / stop / phrase change. Trim + case-
+            // insensitive compare so an unchanged phrase NEVER repeats ("light rain" ->
+            // "light rain" stays silent; only a different phrase re-announces).
+            string cur = asPrecip.Trim();
+            if (_prevAsPrecip != null && !string.Equals(cur, _prevAsPrecip, StringComparison.OrdinalIgnoreCase))
             {
-                // Started
-                announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+                bool wasNone = _prevAsPrecip.Length == 0;
+                bool isNone = cur.Length == 0;
+                if (wasNone && !isNone)
+                    announcer.Announce($"Precipitation started: {cur}");
+                else if (!wasNone && isNone)
+                    announcer.Announce("Precipitation stopped");
+                else
+                    announcer.Announce($"Precipitation now {cur}");
             }
-            else if (wasRaining && !isRaining)
-            {
-                // Stopped
-                announcer.Announce("Precipitation stopped");
-            }
-            else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
-            {
-                // Intensity changed tier (light → moderate, moderate → heavy, etc.)
-                announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
-            }
+            _prevAsPrecip = cur;
+            // Keep the SimConnect precip baseline in step so switching back (AS closed
+            // mid-flight) doesn't fire a spurious change.
+            _prevPrecipState = data.PrecipState;
+            _prevPrecipRate = data.PrecipRate;
         }
-        _prevPrecipState = precipState;
-        _prevPrecipRate = precipRate;
+        else
+        {
+            // SimConnect path (AS not running). Reset the AS baseline so AS re-baselines
+            // silently if it comes back.
+            _prevAsPrecip = null;
+
+            double precipState = data.PrecipState;
+            double precipRate = data.PrecipRate;
+            bool wasRaining = _prevPrecipState > 0.5;
+            bool isRaining = precipState > 0.5;
+
+            if (_prevPrecipState >= 0)
+            {
+                if (!wasRaining && isRaining)
+                    announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+                else if (wasRaining && !isRaining)
+                    announcer.Announce("Precipitation stopped");
+                else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
+                    announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
+            }
+            _prevPrecipState = precipState;
+            _prevPrecipRate = precipRate;
+        }
 
         // Visibility — announce crossing the 1500 m threshold in either direction
         double vis = data.Visibility;
@@ -1957,6 +2041,7 @@ public partial class MainForm
 
     private async Task CheckWeatherProximityAsync(int rangeNm, bool checkSigmets, bool checkPireps)
     {
+        _proximityCheckRunning = true;
         try
         {
             var lastPos = simConnectManager.LastKnownPosition;
@@ -1990,7 +2075,9 @@ public partial class MainForm
                     string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
                     if (!string.IsNullOrEmpty(adv.AltitudeRange)) msg += $", {adv.AltitudeRange}";
                     msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
-                    Invoke(() => announcer.Announce(msg));
+                    // No marshal needed: WeatherAnnouncementTimer_Tick fires on the UI thread and
+                    // WeatherService has no ConfigureAwait(false), so the await above resumes here.
+                    announcer.Announce(msg);
                 }
             }
 
@@ -2012,13 +2099,18 @@ public partial class MainForm
                     int fl = p.AltitudeFt / 100;
                     string msg = $"Pilot report: {p.HazardSummary} at FL{fl:D3}";
                     msg += $", bearing {p.BearingDeg:F0} degrees, {p.DistanceNm:F0} nautical miles";
-                    Invoke(() => announcer.Announce(msg));
+                    // No marshal needed: see comment above (advisories loop).
+                    announcer.Announce(msg);
                 }
             }
         }
         catch (Exception ex)
         {
             Log.Debug("MainForm", $"Weather proximity check error: {ex.Message}");
+        }
+        finally
+        {
+            _proximityCheckRunning = false;
         }
     }
 

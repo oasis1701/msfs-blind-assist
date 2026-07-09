@@ -204,6 +204,7 @@ public partial class MainForm
             _prevInCloud = -1;
             _prevVisibility = -1;
             _prevVisLow = false;
+            _prevAsPrecip = null;
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
@@ -427,7 +428,7 @@ public partial class MainForm
         {
             // Honour the Ctrl+M / Ctrl+E ECAM-monitor mute (same sentinel the
             // SimVar EWD memo path consults), so the user can silence E/WD chatter.
-            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
             // Audio dedup: skip a memo the FwsFailureClient already calls out as an active
@@ -447,7 +448,7 @@ public partial class MainForm
         coherentFwsFailureClient = new CoherentFwsFailureClient();
         coherentFwsFailureClient.FailureAnnounced += line =>
         {
-            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
             announcer.Announce(line);
@@ -538,7 +539,7 @@ public partial class MainForm
         return sb.ToString();
     }
 
-    // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
+    // Dispose the HS787 CDU / EFB windows + the IRS monitor (e.g. on aircraft swap)
     // so their Coherent debugger connections close. There is no HTTP bridge to stop.
     private void DisposeHS787Forms()
     {
@@ -546,12 +547,6 @@ public partial class MainForm
         {
             hs787FMCForm.Dispose();
             hs787FMCForm = null;
-        }
-
-        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm.Dispose();
-            hs787SimBriefForm = null;
         }
 
         hs787IrsClient?.Dispose();
@@ -813,12 +808,6 @@ public partial class MainForm
         {
             hs787FMCForm.Dispose();
             hs787FMCForm = null;
-        }
-
-        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm.Dispose();
-            hs787SimBriefForm = null;
         }
 
         // PMDG data manager lifecycle
