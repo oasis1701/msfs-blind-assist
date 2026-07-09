@@ -1729,6 +1729,13 @@ public partial class MainForm
             // SimConnect path below is authoritative.
             string currentWind = "unavailable";
             var asConditions = await TryGetActiveSkyConditionsAsync();
+            // AS opted-in but unreachable (not running / fetch failed): say so BEFORE the
+            // SimConnect wind, so a user whose ActiveSky quietly isn't running learns it
+            // here instead of trusting a silently-degraded readout. Prefixed into the ONE
+            // utterance below — a second AnnounceImmediate would cut the first one off.
+            string sourceNotice = "";
+            if (asConditions == null && MSFSBlindAssist.Settings.SettingsManager.Current.ActiveSkyEnabled)
+                sourceNotice = "ActiveSky not responding, using simulator wind. ";
             if (asConditions != null)
             {
                 currentWind = FormatActiveSkyWind(asConditions);
@@ -1764,11 +1771,11 @@ public partial class MainForm
                 var destinationWindData = await VATSIMService.GetAirportWindAsync(destinationAirport?.ICAO ?? "");
                 string destinationWind = VATSIMService.FormatWind(destinationWindData);
 
-                announcer.AnnounceImmediate($"{currentWind}, {destinationWind}");
+                announcer.AnnounceImmediate($"{sourceNotice}{currentWind}, {destinationWind}");
             }
             else
             {
-                announcer.AnnounceImmediate($"{currentWind}, no destination");
+                announcer.AnnounceImmediate($"{sourceNotice}{currentWind}, no destination");
             }
         }
         catch (Exception ex)
