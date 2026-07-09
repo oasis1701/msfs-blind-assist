@@ -39,17 +39,30 @@ public class WeatherPanel : UserControl, ISettingsPanel
         Controls.Add(activeSkyGroup);
         Controls.Add(announceGroup);
 
-        // The announcement interval throttles ACTIVESKY decoded-weather announcements
-        // only, so it's hidden (and out of the tab order) while the switch is off — a
-        // blind user tabbing the panel shouldn't meet an AS-specific setting they can't
-        // use. Hiding never resets the stored value (ApplyTo reads the combo regardless).
+        // The announcement interval throttles the ActiveSky decoded-weather monitor,
+        // and nothing else — WeatherAutoAnnounceIntervalMinutes is read in exactly one
+        // place in the codebase, where it becomes ActiveSkyWeatherMonitor.IntervalMinutes.
+        // That monitor runs only when BOTH switches are on (ActiveSkyWeatherMonitor.
+        // ShouldRun), so the combo is hidden — and out of the tab order — otherwise: a
+        // blind user tabbing the panel shouldn't meet a setting that governs nothing.
+        // Hiding never resets the stored value (ApplyTo reads the combo regardless).
         _activeSkyEnabled.CheckedChanged += (_, _) => UpdateActiveSkyDependentVisibility();
+        _weatherAutoAnnounce.CheckedChanged += (_, _) => UpdateActiveSkyDependentVisibility();
         UpdateActiveSkyDependentVisibility();
     }
 
+    /// <summary>Defers to ActiveSkyWeatherMonitor.ShouldRun — the single source of truth
+    /// for whether the monitor (and therefore its interval) is live. The panel has no
+    /// UserSettings at CheckedChanged time, so it builds a throwaway one from the live
+    /// checkbox state; one allocation per toggle is free at human interaction rates, and
+    /// it means the rule can never drift between the settings UI and the monitor.</summary>
     private void UpdateActiveSkyDependentVisibility()
     {
-        bool on = _activeSkyEnabled.Checked;
+        bool on = Services.ActiveSkyWeatherMonitor.ShouldRun(new UserSettings
+        {
+            ActiveSkyEnabled = _activeSkyEnabled.Checked,
+            WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked
+        });
         _weatherIntervalLabel.Visible = on;
         _weatherIntervalCombo.Visible = on;
     }

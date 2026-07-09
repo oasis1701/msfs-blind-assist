@@ -85,10 +85,10 @@ public class WeatherPanelTests
     }
 
     [Fact]
-    public void IntervalSetting_VisibleWhileActiveSkyEnabled()
+    public void IntervalSetting_VisibleWhenBothActiveSkyAndAutoAnnounceEnabled()
     {
         using var panel = new WeatherPanel();
-        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = true });
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = true, WeatherAutoAnnounceEnabled = true });
 
         Assert.True(FindByAccessibleName(panel, "Weather announcement interval").Visible);
         Assert.True(FindByAccessibleName(panel, "Weather announcement interval label").Visible);
@@ -98,7 +98,7 @@ public class WeatherPanelTests
     public void IntervalSetting_FollowsCheckboxToggle_Live()
     {
         using var panel = new WeatherPanel();
-        panel.LoadFrom(new UserSettings());
+        panel.LoadFrom(new UserSettings { WeatherAutoAnnounceEnabled = true });
         var checkbox = (CheckBox)FindByAccessibleName(panel, "Enable ActiveSky integration");
         var combo = FindByAccessibleName(panel, "Weather announcement interval");
 
@@ -119,5 +119,47 @@ public class WeatherPanelTests
         panel.ApplyTo(target);
 
         Assert.Equal(15, target.WeatherAutoAnnounceIntervalMinutes);
+    }
+
+    // ---- After the monitor decoupling, the interval throttles the decoded-weather
+    // monitor, which runs only when BOTH the ActiveSky switch and the auto-announce
+    // checkbox are on. So the combo must be visible under exactly that condition --
+    // it governs nothing otherwise.
+
+    [Fact]
+    public void IntervalSetting_HiddenWhenActiveSkyOnButAutoAnnounceOff()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = true, WeatherAutoAnnounceEnabled = false });
+
+        Assert.False(FindByAccessibleName(panel, "Weather announcement interval").Visible);
+        Assert.False(FindByAccessibleName(panel, "Weather announcement interval label").Visible);
+    }
+
+    [Fact]
+    public void IntervalSetting_HiddenWhenAutoAnnounceOnButActiveSkyOff()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = false, WeatherAutoAnnounceEnabled = true });
+
+        Assert.False(FindByAccessibleName(panel, "Weather announcement interval").Visible);
+    }
+
+    [Fact]
+    public void IntervalSetting_VisibilityFollowsEitherCheckbox_Live()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = true, WeatherAutoAnnounceEnabled = true });
+        var activeSky = (CheckBox)FindByAccessibleName(panel, "Enable ActiveSky integration");
+        var autoAnnounce = (CheckBox)FindByAccessibleName(panel, "Auto-announce weather state changes");
+        var combo = FindByAccessibleName(panel, "Weather announcement interval");
+
+        Assert.True(combo.Visible);
+        autoAnnounce.Checked = false;
+        Assert.False(combo.Visible);
+        autoAnnounce.Checked = true;
+        Assert.True(combo.Visible);
+        activeSky.Checked = false;
+        Assert.False(combo.Visible);
     }
 }
