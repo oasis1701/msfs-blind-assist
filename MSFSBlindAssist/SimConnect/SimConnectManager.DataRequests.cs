@@ -506,17 +506,13 @@ public partial class SimConnectManager
     // numeric id (e.g. id 300 is an A32NX-specific L:var here, but is DEF_HEADING/unused
     // elsewhere) — this is NOT a small fixed universal set like HotkeyReadoutDefinitions, so it
     // is intentionally left dynamic (clear + re-add + re-register per call).
-    // ⚠️ KNOWN LATENT COLLISION (found during this survey, not introduced by it): id 308 is
-    // DEF_VERTICAL_SPEED/REQUEST_VERTICAL_SPEED — now one of the permanently-registered
-    // HotkeyReadoutDefinitions ("VERTICAL SPEED","feet per minute"). FlyByWireA320Definition's
-    // (interface) RequestFCUVerticalSpeed override also calls RequestSingleValue(308,
-    // "VERTICAL SPEED","feet per second",...) — different units, same id. That override is
-    // currently DEAD CODE (nothing calls the IAircraftDefinition.RequestFCUVerticalSpeed
-    // interface method; the wired hotkey path is RequestFCUVerticalSpeedFPA instead), so this
-    // never fires today. If it's ever wired up, it would clobber def 308's content with
-    // "feet per second" and corrupt the next RequestVerticalSpeed() ONCE-only read (which
-    // trusts the def still holds "feet per minute") until RequestSingleValue(308,...) is called
-    // again. Give any future caller here a non-colliding id instead of reusing 308.
+    // ⚠️ id 308 is DEF_VERTICAL_SPEED/REQUEST_VERTICAL_SPEED — one of the permanently-registered
+    // HotkeyReadoutDefinitions ("VERTICAL SPEED","feet per minute"). FlyByWireA320Definition used
+    // to have a dead IAircraftDefinition.RequestFCUVerticalSpeed override that also called
+    // RequestSingleValue(308, "VERTICAL SPEED","feet per second",...) — different units, same id
+    // — which would have clobbered def 308's content and corrupted the next RequestVerticalSpeed()
+    // ONCE-only read (which trusts the def still holds "feet per minute"). That dead override was
+    // removed (2026-07); give any future caller here a non-colliding id instead of reusing 308.
     public void RequestSingleValue(int id, string simVarName, string units, string varName)
     {
         if (IsConnected && simConnect != null)
@@ -751,30 +747,4 @@ public partial class SimConnectManager
         }
     }
 
-    /// <summary>
-    /// Convert MHz frequency to BCD16 Hz format for COM_STBY_RADIO_SET event
-    /// Example: 122.800 MHz → 122800000 Hz → BCD16 encoding
-    /// BCD16 Hz represents each digit as 4 bits: 0x122800000 but in practice
-    /// SimConnect expects the frequency in a specific BCD format
-    /// </summary>
-    public static uint ConvertMHzToBcd16Hz(double frequencyMHz)
-    {
-        // Convert MHz to Hz
-        uint frequencyHz = (uint)(frequencyMHz * 1000000);
-
-        // Convert to BCD16 format
-        // Each decimal digit becomes a 4-bit nibble
-        uint bcd = 0;
-        uint multiplier = 1;
-
-        while (frequencyHz > 0)
-        {
-            uint digit = frequencyHz % 10;
-            bcd += digit * multiplier;
-            multiplier *= 16; // Shift by 4 bits (one hex digit)
-            frequencyHz /= 10;
-        }
-
-        return bcd;
-    }
 }
