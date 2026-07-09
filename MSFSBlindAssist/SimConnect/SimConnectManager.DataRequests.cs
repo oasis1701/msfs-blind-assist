@@ -184,281 +184,192 @@ public partial class SimConnectManager
     // See FlyByWireA320Definition.cs for A320 FCU implementation.
     // Other aircraft will have their own FCU/MCP implementations.
 
+    // SC-12 (2026-07): these methods used to each individually clear + re-add + re-register their
+    // data definition on EVERY call via SafelyClearDataDefinition(delayMs: 50) — a per-press
+    // UI-thread stall (DoEvents+Sleep pump) — even though the simvar/unit content never changes.
+    // The defs are now registered ONCE, permanently, in SimConnectManager.Setup.cs
+    // (HotkeyReadoutDefinitions / RegisterHotkeyReadoutDefinitions). Each request here is now a
+    // thin RequestDataOnSimObject(..., ONCE) against the already-registered def — no clear, no
+    // re-add, no DoEvents. See RegisterHotkeyReadoutDefinitions' doc comment for why this is safer
+    // (not riskier) than the old per-press cycle.
+
     public void RequestAltitudeAGL()
     {
-        Log.Debug("SimConnect", "RequestAltitudeAGL called");
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_ALTITUDE_AGL;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE ALT ABOVE GROUND", "feet",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ALTITUDE_AGL,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting altitude AGL: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ALTITUDE_AGL,
+                DATA_DEFINITIONS.DEF_ALTITUDE_AGL, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting altitude AGL: {ex.Message}");
         }
     }
 
     public void RequestAltitudeMSL()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_ALTITUDE_MSL;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "INDICATED ALTITUDE", "feet",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ALTITUDE_MSL,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting altitude MSL: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ALTITUDE_MSL,
+                DATA_DEFINITIONS.DEF_ALTITUDE_MSL, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting altitude MSL: {ex.Message}");
         }
     }
 
     public void RequestAirspeedIndicated()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_AIRSPEED_IAS;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "AIRSPEED INDICATED", "knots",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRSPEED_IAS,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting indicated airspeed: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRSPEED_IAS,
+                DATA_DEFINITIONS.DEF_AIRSPEED_IAS, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting indicated airspeed: {ex.Message}");
         }
     }
 
     public void RequestAirspeedTrue()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_AIRSPEED_TAS;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "AIRSPEED TRUE", "knots",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRSPEED_TAS,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting true airspeed: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRSPEED_TAS,
+                DATA_DEFINITIONS.DEF_AIRSPEED_TAS, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting true airspeed: {ex.Message}");
         }
     }
 
     public void RequestGroundSpeed()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_GROUND_SPEED;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "GROUND VELOCITY", "knots",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GROUND_SPEED,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting ground speed: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GROUND_SPEED,
+                DATA_DEFINITIONS.DEF_GROUND_SPEED, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting ground speed: {ex.Message}");
         }
     }
 
     public void RequestVerticalSpeed()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_VERTICAL_SPEED;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "VERTICAL SPEED", "feet per minute",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_VERTICAL_SPEED,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting vertical speed: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_VERTICAL_SPEED,
+                DATA_DEFINITIONS.DEF_VERTICAL_SPEED, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting vertical speed: {ex.Message}");
         }
     }
 
     public void RequestMachSpeed()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_MACH;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "AIRSPEED MACH", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_MACH,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting mach speed: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_MACH,
+                DATA_DEFINITIONS.DEF_MACH, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting mach speed: {ex.Message}");
         }
     }
 
     public void RequestBankAngle()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_BANK;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE BANK DEGREES", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_BANK,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting bank angle: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_BANK,
+                DATA_DEFINITIONS.DEF_BANK, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting bank angle: {ex.Message}");
         }
     }
 
     public void RequestPitch()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_PITCH;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE PITCH DEGREES", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_PITCH,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting pitch: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_PITCH,
+                DATA_DEFINITIONS.DEF_PITCH, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting pitch: {ex.Message}");
         }
     }
 
     public void RequestOutsideTemperature()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_OUTSIDE_TEMP;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "AMBIENT TEMPERATURE", "celsius",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_OUTSIDE_TEMP,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting outside temperature: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_OUTSIDE_TEMP,
+                DATA_DEFINITIONS.DEF_OUTSIDE_TEMP, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting outside temperature: {ex.Message}");
         }
     }
 
     public void RequestSquawkCode()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var defId = DATA_DEFINITIONS.DEF_SQUAWK_CODE;
-                SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(defId,
-                    "TRANSPONDER CODE:1", "BCO16",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(defId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_SQUAWK_CODE,
-                    defId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting squawk code: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_SQUAWK_CODE,
+                DATA_DEFINITIONS.DEF_SQUAWK_CODE, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting squawk code: {ex.Message}");
         }
     }
 
-
     public void RequestHeadingMagnetic()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_HEADING_MAG;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE HEADING DEGREES MAGNETIC", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_HEADING_MAG,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting magnetic heading: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_HEADING_MAG,
+                DATA_DEFINITIONS.DEF_HEADING_MAG, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting magnetic heading: {ex.Message}");
         }
     }
 
@@ -482,27 +393,37 @@ public partial class SimConnectManager
 
     public void RequestHeadingTrue()
     {
-        if (IsConnected && simConnect != null)
+        if (!IsConnected || simConnect == null) return;
+        try
         {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_HEADING_TRUE;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE HEADING DEGREES TRUE", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_HEADING_TRUE,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("SimConnect", $"Error requesting true heading: {ex.Message}");
-            }
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_HEADING_TRUE,
+                DATA_DEFINITIONS.DEF_HEADING_TRUE, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting true heading: {ex.Message}");
         }
     }
 
+    // SC-12 (2026-07) survey of callers (grep): BaseAircraftDefinition (LOCAL/ZULU time,
+    // always-fixed content), FlyByWireA320Definition (A320-specific FCU heading/speed/altitude
+    // L:vars, id 300-302), PMDG777/PMDG737/HS787 (gross weight, ids 319-320), FlyByWireA380
+    // (fuel quantity, ids 314/318). The simvar/units genuinely vary PER AIRCRAFT for the same
+    // numeric id (e.g. id 300 is an A32NX-specific L:var here, but is DEF_HEADING/unused
+    // elsewhere) — this is NOT a small fixed universal set like HotkeyReadoutDefinitions, so it
+    // is intentionally left dynamic (clear + re-add + re-register per call).
+    // ⚠️ KNOWN LATENT COLLISION (found during this survey, not introduced by it): id 308 is
+    // DEF_VERTICAL_SPEED/REQUEST_VERTICAL_SPEED — now one of the permanently-registered
+    // HotkeyReadoutDefinitions ("VERTICAL SPEED","feet per minute"). FlyByWireA320Definition's
+    // (interface) RequestFCUVerticalSpeed override also calls RequestSingleValue(308,
+    // "VERTICAL SPEED","feet per second",...) — different units, same id. That override is
+    // currently DEAD CODE (nothing calls the IAircraftDefinition.RequestFCUVerticalSpeed
+    // interface method; the wired hotkey path is RequestFCUVerticalSpeedFPA instead), so this
+    // never fires today. If it's ever wired up, it would clobber def 308's content with
+    // "feet per second" and corrupt the next RequestVerticalSpeed() ONCE-only read (which
+    // trusts the def still holds "feet per minute") until RequestSingleValue(308,...) is called
+    // again. Give any future caller here a non-colliding id instead of reusing 308.
     public void RequestSingleValue(int id, string simVarName, string units, string varName)
     {
         if (IsConnected && simConnect != null)
