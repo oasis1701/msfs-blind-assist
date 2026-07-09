@@ -58,14 +58,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Variables
     // ===================================================================
-    public override Dictionary<string, SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimVarDefinition> BuildVariables()
     {
-        // CACHE: the variable DEFINITIONS are static, but this method rebuilt the whole
-        // ~400-var dictionary (every Sel/Stock/Mon + the SD-register loops) on EVERY call
-        // — and the panel-build loop calls GetVariables() twice per control, so an A380
-        // overhead subpanel rebuilt the dict ~30× per switch. That was the subpanel lag.
-        // Build once, then return the cached instance (also reused by ProcessSimVarUpdate).
-        if (_varCache != null) return _varCache;
         var vars = GetBaseVariables();
 
         // ---- local builders ------------------------------------------
@@ -2673,12 +2667,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        _varCache = vars;   // for ProcessSimVarUpdate lookups (ARINC429 enum decode)
         return vars;
     }
 
-    // Cached variable map + per-var last announced state for the ARINC429 enum guard.
-    private Dictionary<string, SimVarDefinition>? _varCache;
+    // Per-var last announced state for the ARINC429 enum guard.
     private readonly Dictionary<string, int> _arincEnumState = new();
 
     // ===================================================================

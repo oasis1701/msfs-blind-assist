@@ -1347,7 +1347,7 @@ public class TaxiAssistForm : Form
 
         if (available.Count == 0)
         {
-            _announcer.Announce("No additional taxiways available at this airport.");
+            _announcer.AnnounceImmediate("No additional taxiways available at this airport.");
             return;
         }
 
@@ -1860,7 +1860,7 @@ public class TaxiAssistForm : Form
     {
         if (_graph == null)
         {
-            _announcer.Announce("No airport loaded. Enter an ICAO code first.");
+            _announcer.AnnounceImmediate("No airport loaded. Enter an ICAO code first.");
             return;
         }
 
@@ -1891,7 +1891,7 @@ public class TaxiAssistForm : Form
             string? lastTaxiway = progSeq.Count > 0 ? progSeq[^1] : null;
             if (string.IsNullOrEmpty(lastTaxiway))
             {
-                _announcer.Announce("Select at least one taxiway for progressive taxi.");
+                _announcer.AnnounceImmediate("Select at least one taxiway for progressive taxi.");
                 return;
             }
             // Resolve any online-source alias label (e.g. "B (HAWKER)") to the canonical
@@ -1907,7 +1907,7 @@ public class TaxiAssistForm : Form
             var startNode = _graph.FindNearestNode(_aircraftLat, _aircraftLon);
             if (startNode == null)
             {
-                _announcer.Announce("Could not find your position on the taxi network.");
+                _announcer.AnnounceImmediate("Could not find your position on the taxi network.");
                 return;
             }
             int destComponentId = startNode.ComponentId;
@@ -1933,7 +1933,7 @@ public class TaxiAssistForm : Form
                 {
                     if (string.IsNullOrEmpty(runwayTarget))
                     {
-                        _announcer.Announce("Pick the runway to hold short of in the terminator runway combo.");
+                        _announcer.AnnounceImmediate("Pick the runway to hold short of in the terminator runway combo.");
                         return;
                     }
                     // Route to the near-side hold-short node so guidance ENDS at
@@ -1951,7 +1951,7 @@ public class TaxiAssistForm : Form
                 {
                     if (string.IsNullOrEmpty(taxiwayTarget))
                     {
-                        _announcer.Announce("Pick the taxiway to hold short of.");
+                        _announcer.AnnounceImmediate("Pick the taxiway to hold short of.");
                         return;
                     }
                     destNode = _graph.FindTaxiwayIntersectionNode(lastTaxiway, taxiwayTarget, destComponentId);
@@ -1962,7 +1962,7 @@ public class TaxiAssistForm : Form
                 {
                     if (string.IsNullOrEmpty(runwayTarget))
                     {
-                        _announcer.Announce("Pick the runway to cross in the terminator runway combo.");
+                        _announcer.AnnounceImmediate("Pick the runway to cross in the terminator runway combo.");
                         return;
                     }
                     // Optional "cross at" taxiway pins the crossing point when ATC
@@ -1996,7 +1996,7 @@ public class TaxiAssistForm : Form
                     : pinnedCross ? $"taxiway {taxiwayTarget} crossing runway {runwayTarget}"
                     : $"runway {runwayTarget}";
                 string msg = $"Could not find {what} from {lastTaxiway}. Check your entry.";
-                _announcer.Announce(msg);
+                _announcer.AnnounceImmediate(msg);
                 lblStatus.Text = msg;
                 return;
             }
@@ -2027,7 +2027,7 @@ public class TaxiAssistForm : Form
 
             if (progError != null)
             {
-                _announcer.Announce(progError);
+                _announcer.AnnounceImmediate(progError);
                 lblStatus.Text = progError;
                 txtRouteSummary.Text = progError;
                 return;
@@ -2047,13 +2047,13 @@ public class TaxiAssistForm : Form
         string? destName = cmbDestination.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
         {
-            _announcer.Announce("Please select a destination.");
+            _announcer.AnnounceImmediate("Please select a destination.");
             return;
         }
 
         if (destNodeId < 0)
         {
-            _announcer.Announce($"No taxi route to {destName}. This stand can't be reached by the taxi network.");
+            _announcer.AnnounceImmediate($"No taxi route to {destName}. This stand can't be reached by the taxi network.");
             lblStatus.Text = "Selected stand has no taxi route.";
             return;
         }
@@ -2088,7 +2088,7 @@ public class TaxiAssistForm : Form
 
         if (error != null)
         {
-            _announcer.Announce(error);
+            _announcer.AnnounceImmediate(error);
             lblStatus.Text = error;
             txtRouteSummary.Text = error;
             return;

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -27,6 +28,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
 
     private static readonly FieldInfo[] s_dataFields =
         typeof(PMDGNG3DataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
+
+    // Built from s_dataFields (same BindingFlags as the per-call GetField
+    // lookups it replaces), so it resolves exactly the same names.
+    private static readonly Dictionary<string, FieldInfo> s_fieldsByName =
+        s_dataFields.ToDictionary(f => f.Name, f => f);
 
     // ------------------------------------------------------------------
     // Local enum IDs — these are OUR app's internal SimConnect identifiers
@@ -406,10 +412,18 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // never change after sim load).
         bool isFirstSnapshot = !_hasSnapshot;
 
+        // Box each struct ONCE for the whole loop instead of once per field —
+        // FieldInfo.GetValue(struct) boxes its argument on every call, so the
+        // unboxed overload was copying the multi-KB struct per field (hundreds
+        // of copies/sec). Reading fields off a boxed copy returns identical
+        // values to reading off the struct directly (the box IS a bitwise
+        // copy of the same snapshot), so this is behavior-neutral.
+        object oldBox = _lastDataSnapshot;
+        object newBox = newData;
         foreach (var field in s_dataFields)
         {
-            object? oldVal = field.GetValue(_lastDataSnapshot);
-            object? newVal = field.GetValue(newData);
+            object? oldVal = field.GetValue(oldBox);
+            object? newVal = field.GetValue(newBox);
 
             if (field.FieldType.IsArray)
             {
@@ -539,16 +553,15 @@ public class PMDGNG3DataManager : IPMDGDataManager
             return derived ? 1.0 : 0.0;
         }
 
-        // Plain field
-        var field = typeof(PMDGNG3DataStruct)
-            .GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+        object snapshotBox = _lastDataSnapshot;
 
-        if (field != null)
+        // Plain field
+        if (s_fieldsByName.TryGetValue(fieldName, out var field))
         {
             // ASCII string fields can't be coerced to a meaningful double.
             if (IsAsciiStringField(fieldName)) return 0.0;
 
-            object? value = field.GetValue(_lastDataSnapshot);
+            object? value = field.GetValue(snapshotBox);
             // Non-string byte[] arrays should be accessed via "_N" suffix below.
             if (value is Array) return 0.0;
             return ToDouble(value);
@@ -563,10 +576,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
             // strings, not byte arrays from the caller's perspective.
             if (IsAsciiStringField(baseName)) return 0.0;
 
-            var baseField = typeof(PMDGNG3DataStruct)
-                .GetField(baseName, BindingFlags.Public | BindingFlags.Instance);
-
-            if (baseField?.GetValue(_lastDataSnapshot) is Array arr && index < arr.Length)
+            if (s_fieldsByName.TryGetValue(baseName, out var baseField) &&
+                baseField.GetValue(snapshotBox) is Array arr && index < arr.Length)
                 return ToDouble(arr.GetValue(index));
         }
 
@@ -585,8 +596,9 @@ public class PMDGNG3DataManager : IPMDGDataManager
     {
         if (!_hasSnapshot) return null;
         if (!IsAsciiStringField(fieldName)) return null;
-        var field = typeof(PMDGNG3DataStruct).GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-        if (field?.GetValue(_lastDataSnapshot) is not byte[] bytes) return null;
+        if (!s_fieldsByName.TryGetValue(fieldName, out var field)) return null;
+        object snapshotBox = _lastDataSnapshot;
+        if (field.GetValue(snapshotBox) is not byte[] bytes) return null;
         int len = Array.IndexOf<byte>(bytes, 0);
         if (len < 0) len = bytes.Length;
         return Encoding.ASCII.GetString(bytes, 0, len);

@@ -65,7 +65,43 @@ public partial class SimConnectManager
     public event EventHandler<string>? AircraftIcaoTypeDetected;
 
     // Aircraft definition
-    public IAircraftDefinition? CurrentAircraft { get; set; }
+    private IAircraftDefinition? _currentAircraft;
+    public IAircraftDefinition? CurrentAircraft
+    {
+        get => _currentAircraft;
+        set
+        {
+            _currentAircraft = value;
+            RebuildLedVarMap();
+        }
+    }
+
+    // Cache of LedVariable -> owning SimVarDefinition for the current aircraft, rebuilt whenever
+    // CurrentAircraft changes. Replaces a per-event `variables.Values.FirstOrDefault(v =>
+    // v.LedVariable == e.VariableName)` LINQ scan over the full (~400-700 entry) variable set --
+    // one MobiFlight default-channel push can raise up to 64 LVar events, each of which used to pay
+    // for a fresh scan + closure. Built with TryAdd (first-wins in variables.Values enumeration
+    // order) to replicate FirstOrDefault's semantics if two defs ever share a LedVariable; as of
+    // this writing only FlyByWireA320Definition sets LedVariable and every value there is unique,
+    // so this is a defensive equivalence guarantee rather than an observed collision.
+    private Dictionary<string, SimVarDefinition> ledVarToDef = new();
+
+    private void RebuildLedVarMap()
+    {
+        var map = new Dictionary<string, SimVarDefinition>();
+        var variables = _currentAircraft?.GetVariables();
+        if (variables != null)
+        {
+            foreach (var v in variables.Values)
+            {
+                if (!string.IsNullOrEmpty(v.LedVariable))
+                {
+                    map.TryAdd(v.LedVariable, v);
+                }
+            }
+        }
+        ledVarToDef = map;
+    }
 
     // Connection state
     public bool IsConnected { get; private set; }
@@ -185,6 +221,11 @@ public partial class SimConnectManager
 
     // Variable tracking for individual registrations
     private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
+    // Reverse of variableDataDefinitions (data definition/request ID -> variable key), kept in exact
+    // sync at every add/remove/clear site of variableDataDefinitions. Lets the per-frame individual-var
+    // response dispatch (ProcessIndividualVariableResponse, fired at up to SIM_FRAME rate for
+    // HighFrequency vars like G_FORCE) do an O(1) TryGetValue instead of an O(n) FirstOrDefault scan.
+    private ConcurrentDictionary<int, string> requestIdToVarKey = new ConcurrentDictionary<int, string>();
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
     // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
     // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
@@ -199,6 +240,27 @@ public partial class SimConnectManager
     // Multi-batch system: Maps variable key -> (batchNumber, indexWithinBatch)
     // batchNumber: 1-5, indexWithinBatch: 0-99
     private Dictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new Dictionary<string, (int batchNum, int index)>();
+
+    // Prebuilt per-batch arrays mirroring continuousVariableIndexMap, built once in
+    // StartContinuousMonitoring (SimConnectManager.Setup.cs) and reused by every 1 Hz batch
+    // delivery in ProcessContinuousBatchImpl (SimConnectManager.VarCache.cs). Avoids scanning the
+    // whole ~700-var map 5x/second (skipping the 4 batches that aren't the current one) AND
+    // re-resolving each SimVarDefinition via variables.TryGetValue per var — the varDef is
+    // pre-resolved into the tuple instead. Indexed directly by batchNum (1-5, matching
+    // continuousVariableIndexMap's batchNum); index 0 is unused padding so callers can index with
+    // batchVarArrays[batchNum] without a -1 offset. continuousVariableIndexMap itself is kept —
+    // other consumers (e.g. RequestVariable's ContainsKey check in DataRequests.cs) read it
+    // independently of the batch loop. Cleared in lockstep with continuousVariableIndexMap:
+    // rebuilt in StartContinuousMonitoring, reset to empty in Disconnect.
+    private (string key, int index, SimVarDefinition def)[][] batchVarArrays =
+    {
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // index 0 (unused)
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 1
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 2
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 3
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 4
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 5
+    };
 
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
@@ -794,10 +856,8 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the corresponding variable definition
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.Values.FirstOrDefault(v =>
-                v.LedVariable == e.VariableName);
+            // Find the corresponding variable definition via the cached LED-var lookup
+            ledVarToDef.TryGetValue(e.VariableName, out var varDef);
 
             if (varDef != null)
             {
@@ -823,10 +883,8 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the corresponding variable definition
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.Values.FirstOrDefault(v =>
-                v.LedVariable == e.LedVariable);
+            // Find the corresponding variable definition via the cached LED-var lookup
+            ledVarToDef.TryGetValue(e.LedVariable, out var varDef);
 
             // Fallback: route a one-shot MobiFlight read by var KEY when no def
             // declares it as a LedVariable. Used for FCU readouts (e.g. the VS
@@ -834,7 +892,8 @@ public partial class SimConnectManager
             // ReadLedVariable(key) can deliver the correct MobiFlight value under
             // the var's own name without setting LedVariable (which would make
             // MainForm re-request it over the unreliable SimConnect path).
-            if (varDef == null && variables.TryGetValue(e.LedVariable, out var byKey))
+            var variables = CurrentAircraft?.GetVariables();
+            if (varDef == null && variables != null && variables.TryGetValue(e.LedVariable, out var byKey))
             {
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1023,8 +1082,11 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
+        requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
+        for (int i = 0; i < batchVarArrays.Length; i++)
+            batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         eventIds.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         ecamStringData.Clear();
