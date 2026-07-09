@@ -8568,23 +8568,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    /// <summary>
-    /// Requests the current FCU vertical speed value and announces it via screen reader.
-    /// Uses A320-specific variable: VERTICAL SPEED (standard SimVar)
-    /// </summary>
-    public override void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
-    {
-        if (simConnect.IsConnected)
-        {
-            try
-            {
-                // Request vertical speed (standard SimVar, not A320-specific)
-                simConnect.RequestSingleValue(308, "VERTICAL SPEED", "feet per second", "VERTICAL_SPEED");
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("A320", $"Error requesting FCU vertical speed: {ex.Message}");
-            }
-        }
-    }
+    // RequestFCUVerticalSpeed: no A320-specific override. This IAircraftDefinition member
+    // is dead for the A320 (nothing calls it — the wired hotkey path is
+    // RequestFCUVerticalSpeedFPA instead); it previously had a dead override here that
+    // reused data-def id 308 ("feet per second") — colliding with the permanently-registered
+    // DEF_VERTICAL_SPEED ("feet per minute") HotkeyReadoutDefinition. Falls back to
+    // BaseAircraftDefinition's no-op default, which is the same (zero) behavior.
 }
