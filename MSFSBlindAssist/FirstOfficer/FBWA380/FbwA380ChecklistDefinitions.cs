@@ -109,8 +109,11 @@ public static class FbwA380ChecklistDefinitions
             Multi("CP_NAVLOGO", "COCKPIT_PREP", "Nav and logo lights: ON", "LIGHT_NAV", v => v > 0.5,
                 new[] { "LIGHT_LOGO" },
                 async (e, _) => { await e.Set("LIGHT_NAV", 1); await e.Set("LIGHT_LOGO", 1); }),
-            Auto("CP_SEATBELT", "COCKPIT_PREP", "Seatbelt signs: ON", "SEATBELT_SIGN",
-                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
+            // Seat belts is a 3-position SWITCH (SEATBELT_SIGN 0=On/1=Auto/2=Off); detect on
+            // the actual sign illumination (SEATBELT_SIGN_LIGHT) so AUTO with the sign lit
+            // also counts, and write the switch to the ON position.
+            Auto("CP_SEATBELT", "COCKPIT_PREP", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
+                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 0)),
             Auto("CP_NOSMOKE", "COCKPIT_PREP", "No smoking signs: AUTO", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 1)),
             Auto("CP_EMEREXIT", "COCKPIT_PREP", "Emergency exit lighting: ARM", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position",
@@ -281,8 +284,10 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Auto("AS_APUBLEED_OFF", "AFTER_START", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
-            Auto("AS_NOSE_TAXI", "AFTER_START", "Nose lights: TAXI", "LIGHT_TAXI_OVHD",
-                v => v > 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 1)),
+            // Nose light is the faithful 3-position selector (NOSE_LIGHT: 0=T.O./1=Taxi/2=Off)
+            // since the PR #139 API audit — the old on/off LIGHT_TAXI_OVHD key is gone.
+            Auto("AS_NOSE_TAXI", "AFTER_START", "Nose light: TAXI", "NOSE_LIGHT",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
             Reminder("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off"),
             Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
@@ -331,8 +336,16 @@ public static class FbwA380ChecklistDefinitions
             Reminder("LU_PACKS", "LINEUP", "Packs: set for takeoff as required"),
             Auto("LU_STROBE", "LINEUP", "Strobe lights: ON", "LIGHT_STROBE",
                 v => v > 0.5, (e, _) => e.Set("LIGHT_STROBE", 1)),
+            // Landing lights = wing LDG LT (LIGHT_LANDING 0/1); the nose T.O. beam is the
+            // separate NOSE_LIGHT selector (0=T.O.). Detection keys on the wing landing
+            // lights (the additional-fields condition is shared, and NOSE_LIGHT's T.O.
+            // encoding is 0, so it can't share a v>0.5 test); the action drives both.
             Auto("LU_LANDING", "LINEUP", "Landing and nose lights: ON", "LIGHT_LANDING",
-                v => v > 0.5, (e, _) => e.Set("LIGHT_LANDING", 1)),
+                v => v > 0.5, async (e, _) =>
+                {
+                    await e.Set("LIGHT_LANDING", 1);
+                    await e.Set("NOSE_LIGHT", 0);   // T.O.
+                }),
         }
     };
 
@@ -346,8 +359,8 @@ public static class FbwA380ChecklistDefinitions
         {
             Auto("AT_SPOILERS_DISARM", "AFTER_TAKEOFF", "Spoilers: DISARM", "A32NX_SPOILERS_ARMED",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 0)),
-            Auto("AT_NOSE_TAXI", "AFTER_TAKEOFF", "Nose lights: TAXI", "LIGHT_TAXI_OVHD",
-                v => v > 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 1)),
+            Auto("AT_NOSE_TAXI", "AFTER_TAKEOFF", "Nose light: TAXI", "NOSE_LIGHT",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
         }
     };
 
@@ -361,8 +374,8 @@ public static class FbwA380ChecklistDefinitions
         {
             Auto("CL_AUTOBRAKE", "CLIMB", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
-            Auto("CL_SEATBELTS", "CLIMB", "Seatbelt signs: ON", "SEATBELT_SIGN",
-                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
+            Auto("CL_SEATBELTS", "CLIMB", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
+                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 0)),
         }
     };
 
@@ -375,8 +388,8 @@ public static class FbwA380ChecklistDefinitions
         Items = new()
         {
             Reminder("AP_AUTOBRAKE", "APPROACH", "Set the landing autobrake — Instrument section, Autobrake panel"),
-            Auto("AP_SEATBELTS", "APPROACH", "Seatbelt signs: ON", "SEATBELT_SIGN",
-                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 1)),
+            Auto("AP_SEATBELTS", "APPROACH", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
+                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 0)),
             Multi("AP_EFISMODE", "APPROACH", "EFIS mode: ILS", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 0) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_MODE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_MODE", 0); await e.Set("A32NX_EFIS_R_ND_MODE", 0); }),
@@ -444,8 +457,8 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_LANDING", 0)),
             Auto("AL_STROBE_OFF", "AFTER_LANDING", "Strobe lights: OFF", "LIGHT_STROBE",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_STROBE", 0)),
-            Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose lights: TAXI", "LIGHT_TAXI_OVHD",
-                v => v > 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 1)),
+            Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose light: TAXI", "NOSE_LIGHT",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
         }
     };
 
@@ -476,8 +489,8 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_BEACON", 0)),
             Auto("PK_WINGLT_OFF", "PARKING", "Wing lights: OFF", "LIGHT_WING",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_WING", 0)),
-            Auto("PK_NOSE_OFF", "PARKING", "Nose lights: OFF", "LIGHT_TAXI_OVHD",
-                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_TAXI_OVHD", 0)),
+            Auto("PK_NOSE_OFF", "PARKING", "Nose light: OFF", "NOSE_LIGHT",
+                v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 2)),
             // Detect on the stock ENG_ANTI_ICE:n readouts, write the Act keys (see AL_ENGAI_OFF).
             Multi("PK_ENGAI_OFF", "PARKING", "Engine anti-ice: OFF", "ENG_ANTI_ICE:1", v => Math.Abs(v - 0) < 0.5,
                 new[] { "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" },
@@ -509,8 +522,8 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("FUELPUMP_FEEDTK4_MAIN", 0);
                     await e.Set("FUELPUMP_FEEDTK4_STBY", 0);
                 }),
-            Auto("PK_SEATBELTS_OFF", "PARKING", "Seatbelt signs: OFF", "SEATBELT_SIGN",
-                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("SEATBELT_SIGN", 0)),
+            Auto("PK_SEATBELTS_OFF", "PARKING", "Seatbelt signs: OFF", "SEATBELT_SIGN_LIGHT",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("SEATBELT_SIGN", 2)),
             Reminder("PK_XPDR", "PARKING", "Transponder: standby"),
             Reminder("PK_TCAS", "PARKING", "TCAS mode: standby"),
             Auto("PK_COCKPITDOOR", "PARKING", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
@@ -532,7 +545,7 @@ public static class FbwA380ChecklistDefinitions
         {
             Reminder("CPC_PREP", "COCKPIT_PREP_CL", "Cockpit preparation: COMPLETED"),
             Reminder("CPC_FUEL", "COCKPIT_PREP_CL", "Fuel: READBACK"),
-            Auto("CPC_SEATBELT", "COCKPIT_PREP_CL", "Seatbelt signs: ON", "SEATBELT_SIGN",
+            Auto("CPC_SEATBELT", "COCKPIT_PREP_CL", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
                 v => v > 0.5, action: null),
             Auto("CPC_ADIRS", "COCKPIT_PREP_CL", "ADIRS: NAV", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
                 v => Math.Abs(v - 1) < 0.5,
@@ -621,7 +634,7 @@ public static class FbwA380ChecklistDefinitions
         Items = new()
         {
             Reminder("APC_ALTIMETERS", "APPROACH_CL", "Altimeters: SET"),
-            Auto("APC_SEATBELT", "APPROACH_CL", "Seatbelt signs: ON", "SEATBELT_SIGN",
+            Auto("APC_SEATBELT", "APPROACH_CL", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
                 v => v > 0.5, action: null),
             Reminder("APC_MINIMUMS", "APPROACH_CL", "Minimums: READBACK"),
             Auto("APC_AUTOBRAKE", "APPROACH_CL", "Autobrakes: SET", "A32NX_AUTOBRAKES_SELECTED_MODE",

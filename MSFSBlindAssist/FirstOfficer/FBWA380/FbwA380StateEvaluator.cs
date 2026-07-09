@@ -19,8 +19,13 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB",
         "PUSH_OVHD_OXYGEN_CREW",
         "LIGHT_NAV", "LIGHT_LOGO", "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_WING",
-        "LIGHT_LANDING", "LIGHT_TAXI_OVHD",
-        "SEATBELT_SIGN",
+        // Nose light is the 3-position selector state (LIGHTING_LANDING_1: 0=T.O./1=Taxi/2=Off);
+        // the old LIGHT_TAXI_OVHD on/off key was removed with the faithful-switch rework.
+        "LIGHT_LANDING", "NOSE_LIGHT",
+        // SEATBELT_SIGN is the 3-position SWITCH (0=On/1=Auto/2=Off); the actual sign
+        // illumination is the separate SEATBELT_SIGN_LIGHT readout — detection keys on
+        // the light so AUTO with the sign lit also satisfies "signs on".
+        "SEATBELT_SIGN", "SEATBELT_SIGN_LIGHT",
         "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position",
         // Engine anti-ice state = the stock ENG_ANTI_ICE:n readouts. The ENGn_ANTI_ICE
         // write keys are Act() combos with NO backing L:var — polling them reads junk.

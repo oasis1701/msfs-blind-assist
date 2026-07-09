@@ -148,5 +148,7 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     public Task<bool> EngageAp1()              => DispatchAsync("AP1_ENGAGE", 1);
     public Task<bool> SetBaroStd(bool std)     => DispatchAsync(std ? "BARO_STD" : "BARO_QNH", 1);
     public Task<bool> SetLandingLights(int on) => DispatchAsync("LIGHT_LANDING", on);
-    public Task<bool> SetTaxiLight(int on)     => DispatchAsync("LIGHT_TAXI_OVHD", on);
+    /// <summary>Nose light 3-position selector: 0=T.O., 1=Taxi, 2=Off (the old on/off
+    /// LIGHT_TAXI_OVHD key was removed with the faithful-switch rework, PR #139).</summary>
+    public Task<bool> SetNoseLight(int pos)    => DispatchAsync("NOSE_LIGHT", pos);
 }

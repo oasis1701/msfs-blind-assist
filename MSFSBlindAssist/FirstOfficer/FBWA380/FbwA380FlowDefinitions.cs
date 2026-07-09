@@ -20,8 +20,13 @@ using Step = Models.FlowStep<FbwA380StateEvaluator>;
 /// - ENG_VALVE_SWITCH:n 0=Off, 1=On/Start (fuel valve per engine, n=1..4).
 /// - A380X_MSFSBA_SPOILERS_ARM is a WRITE-ONLY act key (0=disarm, 1=arm); the real armed
 ///   STATE is read from A32NX_SPOILERS_ARMED — never Skip on the write key's own value.
-/// - Landing lights 0=Off/Retract, 1=On (LIGHT_LANDING); nose/taxi light LIGHT_TAXI_OVHD 0/1.
-/// - Signs: SEATBELT_SIGN 0/1; smoking XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position 0/1=Auto;
+/// - Landing lights 0=Off, 1=On (LIGHT_LANDING = wing LDG LT, indexed LIGHT LANDING:2).
+///   The NOSE light is a faithful 3-position selector (NOSE_LIGHT: 0=T.O., 1=Taxi, 2=Off) —
+///   the old on/off LIGHT_TAXI_OVHD key no longer exists (PR #139 API audit).
+/// - Signs: SEATBELT_SIGN is the 3-position SWITCH (0=On, 1=Auto, 2=Off); the actual sign
+///   illumination is the read-only SEATBELT_SIGN_LIGHT (stock CABIN SEATBELTS ALERT SWITCH,
+///   0/1) — skip/wait conditions key on the LIGHT so AUTO with the sign lit also counts.
+///   Smoking XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position 0/1=Auto;
 ///   emergency exit XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position 0/1=Arm.
 /// - EFIS ND mode 0=ILS/Rose ILS, 3=ARC; range index 3=40 (A32NX_EFIS_{L,R}_ND_MODE/_RANGE).
 /// - This aircraft has no FO_ENGINE_N2 gating in these flows (unlike the Fenix/PMDG 737) —
@@ -87,7 +92,7 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("PUSH_OVHD_OXYGEN_CREW", 0)),
             Captain("CP_GNDCTL", "Ground control: on"),
             Multi("CP_NAVLOGO", "Nav and logo lights: ON", ("LIGHT_NAV", 1), ("LIGHT_LOGO", 1)),
-            Skip(SW("CP_SEATBELT", "Seatbelt signs: ON", "SEATBELT_SIGN", 1), s => s.IsOn("SEATBELT_SIGN")),
+            Skip(SW("CP_SEATBELT", "Seatbelt signs: ON", "SEATBELT_SIGN", 0), s => s.IsOn("SEATBELT_SIGN_LIGHT")),
             Skip(SW("CP_NOSMOKE", "No smoking signs: AUTO", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 1),
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 1)),
             Skip(SW("CP_EMEREXIT", "Emergency exit lighting: ARM", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 1),
@@ -120,7 +125,7 @@ public static class FbwA380FlowDefinitions
             Multi("CP_FD", "Flight directors: ON", ("FD_1_CTL", 1), ("FD_2_CTL", 1)),
             Captain("CP_CLOCK", "Clock: reset"),
             Captain("CP_ECAMPAGE", "ECAM page: door"),
-            WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN", v => v > 0.5, 60),
+            WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", v => v > 0.5, 60),
             Captain("CP_IFR", "Obtain IFR clearance"),
             Captain("CP_PAYLOAD", "Load payload on the EFB"),
             Captain("CP_MCDU", "Program the MCDU"),
@@ -238,8 +243,8 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Skip(SW("AS_APUBLEED_OFF", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
-            Skip(SW("AS_NOSE_TAXI", "Nose lights: TAXI", "LIGHT_TAXI_OVHD", 1),
-                s => s.IsOn("LIGHT_TAXI_OVHD")),
+            Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "NOSE_LIGHT", 1),
+                s => s.IsPosition("NOSE_LIGHT", 1)),
             Captain("AS_COCKPITLT", "Cockpit lights: off"),
             Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)),
@@ -289,8 +294,11 @@ public static class FbwA380FlowDefinitions
             Captain("LU_TCAS", "TCAS mode: TA/RA"),
             Captain("LU_PACKS", "Packs: set for takeoff as required"),
             Skip(SW("LU_STROBE", "Strobe lights: ON", "LIGHT_STROBE", 1), s => s.IsOn("LIGHT_STROBE")),
-            Skip(SW("LU_LANDING", "Landing and nose lights: ON", "LIGHT_LANDING", 1),
-                s => s.IsOn("LIGHT_LANDING")),
+            // Landing lights = wing LDG LT (LIGHT_LANDING 0/1); the nose T.O. beam is the
+            // separate 3-position NOSE_LIGHT selector (0=T.O.) since the PR #139 split.
+            Skip(Multi("LU_LANDING", "Landing and nose lights: ON",
+                    ("LIGHT_LANDING", 1), ("NOSE_LIGHT", 0)),
+                s => s.IsOn("LIGHT_LANDING") && s.IsPosition("NOSE_LIGHT", 0)),
         }
     };
 
@@ -306,8 +314,8 @@ public static class FbwA380FlowDefinitions
         {
             Skip(SW("AT_SPOILERS_DISARM", "Spoilers: DISARM", "A380X_MSFSBA_SPOILERS_ARM", 0),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 0)),
-            Skip(SW("AT_NOSE_TAXI", "Nose lights: TAXI", "LIGHT_TAXI_OVHD", 1),
-                s => s.IsOn("LIGHT_TAXI_OVHD")),
+            Skip(SW("AT_NOSE_TAXI", "Nose light: TAXI", "NOSE_LIGHT", 1),
+                s => s.IsPosition("NOSE_LIGHT", 1)),
         }
     };
 
@@ -323,7 +331,7 @@ public static class FbwA380FlowDefinitions
         {
             Skip(SW("CL_AUTOBRAKE", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE", 0),
                 s => s.IsPosition("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
-            Skip(SW("CL_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1), s => s.IsOn("SEATBELT_SIGN")),
+            Skip(SW("CL_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 0), s => s.IsOn("SEATBELT_SIGN_LIGHT")),
         }
     };
 
@@ -338,7 +346,7 @@ public static class FbwA380FlowDefinitions
         Steps = new()
         {
             Captain("AP_AUTOBRAKE", "Set the landing autobrake — Instrument section, Autobrake panel"),
-            Skip(SW("AP_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1), s => s.IsOn("SEATBELT_SIGN")),
+            Skip(SW("AP_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 0), s => s.IsOn("SEATBELT_SIGN_LIGHT")),
             Multi("AP_EFISMODE", "EFIS mode: ILS", ("A32NX_EFIS_L_ND_MODE", 0), ("A32NX_EFIS_R_ND_MODE", 0)),
         }
     };
@@ -401,8 +409,8 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("LIGHT_LANDING", 0)),
             Skip(SW("AL_STROBE_OFF", "Strobe lights: OFF", "LIGHT_STROBE", 0),
                 s => s.IsPosition("LIGHT_STROBE", 0)),
-            Skip(SW("AL_NOSE_TAXI", "Nose lights: TAXI", "LIGHT_TAXI_OVHD", 1),
-                s => s.IsOn("LIGHT_TAXI_OVHD")),
+            Skip(SW("AL_NOSE_TAXI", "Nose light: TAXI", "NOSE_LIGHT", 1),
+                s => s.IsPosition("NOSE_LIGHT", 1)),
         }
     };
 
@@ -427,7 +435,7 @@ public static class FbwA380FlowDefinitions
             Captain("PK_COCKPITLT", "Cockpit lights: set"),
             Skip(SW("PK_BEACON_OFF", "Beacon lights: OFF", "LIGHT_BEACON", 0), s => s.IsPosition("LIGHT_BEACON", 0)),
             Skip(SW("PK_WINGLT_OFF", "Wing lights: OFF", "LIGHT_WING", 0), s => s.IsPosition("LIGHT_WING", 0)),
-            Skip(SW("PK_NOSE_OFF", "Nose lights: OFF", "LIGHT_TAXI_OVHD", 0), s => s.IsPosition("LIGHT_TAXI_OVHD", 0)),
+            Skip(SW("PK_NOSE_OFF", "Nose light: OFF", "NOSE_LIGHT", 2), s => s.IsPosition("NOSE_LIGHT", 2)),
             Multi("PK_ENGAI_OFF", "Engine anti-ice: OFF",
                 ("ENG1_ANTI_ICE", 0), ("ENG2_ANTI_ICE", 0), ("ENG3_ANTI_ICE", 0), ("ENG4_ANTI_ICE", 0)),
             Skip(SW("PK_WINGAI_OFF", "Wing anti-ice: OFF", "WING_ANTI_ICE_OVHD", 0),
@@ -439,13 +447,13 @@ public static class FbwA380FlowDefinitions
                 ("FUELPUMP_FEEDTK2_MAIN", 0), ("FUELPUMP_FEEDTK2_STBY", 0),
                 ("FUELPUMP_FEEDTK3_MAIN", 0), ("FUELPUMP_FEEDTK3_STBY", 0),
                 ("FUELPUMP_FEEDTK4_MAIN", 0), ("FUELPUMP_FEEDTK4_STBY", 0)),
-            Skip(SW("PK_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 0),
-                s => s.IsPosition("SEATBELT_SIGN", 0)),
+            Skip(SW("PK_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 2),
+                s => s.IsPosition("SEATBELT_SIGN_LIGHT", 0)),
             Captain("PK_XPDR", "Transponder: standby"),
             Captain("PK_TCAS", "TCAS mode: standby"),
             Skip(SW("PK_COCKPITDOOR", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED", 0),
                 s => s.IsPosition("A32NX_COCKPIT_DOOR_LOCKED", 0)),
-            WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN", v => v < 0.5, 60),
+            WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN_LIGHT", v => v < 0.5, 60),
         }
     };
 

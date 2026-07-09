@@ -44,12 +44,20 @@ own narration.
    disarmed), parking brake ON, engine mode NORM, **engine masters 1-4 OFF** (a `Multi` step —
    confirm all four fuel valves move together), weather radar OFF, **batteries 1 and 2 ON**,
    a 5-second standby wait, **ground power 1-4 ON**, **ADIRS 1-3 to NAV**, crew oxygen ON, nav
-   + logo lights ON, seatbelt signs ON, no-smoking AUTO, emergency exit lighting ARM, wing
-   anti-ice OFF, wing lights OFF, **packs 1/2 ON**, crossbleed AUTO, pack flow NORMAL, **hot
-   air 1/2 ON**, **baro reference to hectopascals (both sides)**, anti-skid ON, **EFIS mode ARC
-   (both sides)**, **EFIS range 40 (both sides)**, **flight directors 1/2 ON**. Confirm the flow
-   waits for seatbelt signs to actually read ON (`WaitForField`, up to 60 s) before continuing
-   to the final captain reminders (IFR clearance, payload, MCDU).
+   + logo lights ON, **seatbelt signs ON — the seat-belt control is now the faithful
+   3-position switch (On/Auto/Off, PR #139): confirm the FO drives the SWITCH to the ON
+   position (not Auto) and that the actual sign (the stock `CABIN SEATBELTS ALERT SWITCH`
+   readout, "Seat Belts Sign") illuminates**, no-smoking AUTO, emergency exit lighting ARM,
+   wing anti-ice OFF (now backed by the real cockpit button var
+   `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION`), wing lights OFF, **packs 1/2 ON**, crossbleed
+   AUTO, pack flow NORMAL, **hot air 1/2 ON**, **baro reference to hectopascals (both
+   sides)**, anti-skid ON, **EFIS mode ARC (both sides)**, **EFIS range 40 (both sides)**,
+   **flight directors 1/2 ON** (now actuated via `K:TOGGLE_FLIGHT_DIRECTOR` per side — the
+   old `A32NX_FCU_EFIS_L/R_FD_ACTIVE` L:var is dead on the A380X; confirm both FDs actually
+   engage on the PFDs). Confirm the flow waits for the seatbelt SIGN to actually read ON
+   (`WaitForField` on the sign light, up to 60 s) before continuing to the final captain
+   reminders (IFR clearance, payload, MCDU). If the switch was already in AUTO with the sign
+   lit (engines running), the seatbelt step skips as "already set" — also correct.
 2. **Before Start**: cockpit door LOCKED, **FCU speed pushed to managed**, **FCU heading pushed
    to managed** (confirm both read "managed" on the FCU Speed/Heading windows or hotkey
    readouts — the same atomic RPN push mechanism validated for the Fenix), **FCU altitude
@@ -62,27 +70,32 @@ own narration.
    actually spool (cross-check via the Engines display or EWD) — this aircraft has no N2-gated
    wait like the Fenix/PMDG 737; the waits are fixed dwell periods, so the FO does not block on
    engine state.
-4. **After Start**: engine mode → NORM, APU OFF, APU bleed OFF, nose/taxi lights → TAXI,
+4. **After Start**: engine mode → NORM, APU OFF, APU bleed OFF, **nose light selector →
+   TAXI** (the nose light is now the faithful 3-position T.O./Taxi/Off combo `NOSE_LIGHT`,
+   PR #139 — confirm the selector reads "Taxi" and the nose taxi beam `LIGHT TAXI:1` comes on),
    spoilers ARMED (write the Act key, confirm real state `A32NX_SPOILERS_ARMED` reads armed),
    **rudder trim RESET** fires once (a real switch action, not just a reminder).
 5. **Taxi**: **autobrake MAX** — confirm this ARMS `A32NX_AUTOBRAKES_RTO_ARMED` (the write is a
    momentary press of `A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED`, which self-resets after ~1.5 s;
    the flow does not wait on it, so just confirm the armed state lands), engine mode NORM,
    weather radar ON, predictive windshear ON.
-6. **Lineup**: strobe lights ON, **landing and nose lights ON**.
-7. **After Takeoff**: spoilers DISARM, nose/taxi lights → TAXI.
-8. **Climb**: autobrake disarm, seatbelt signs ON.
+6. **Lineup**: strobe lights ON, **landing and nose lights ON** — this is now TWO writes:
+   wing landing lights ON (`LIGHT LANDING:2`) **and the nose selector → T.O.** (which lights
+   the nose takeoff + taxi beams). Confirm both actually illuminate.
+7. **After Takeoff**: spoilers DISARM, nose light selector → TAXI.
+8. **Climb**: autobrake disarm, seatbelt signs ON (switch to ON; sign confirmed lit).
 9. **Approach**: seatbelt signs ON, **EFIS mode → ILS (both sides)**.
 10. **Landing**: spoilers ARMED (again, via the Act key — confirm real state armed).
 11. **After Landing**: weather radar OFF, predictive windshear OFF, engine mode NORM, APU ON,
     **engine anti-ice 1-4 OFF** (a 4-way `Multi`), wing anti-ice OFF, spoilers OFF, landing
-    lights OFF, strobe lights OFF, nose/taxi lights → TAXI.
+    lights OFF, strobe lights OFF, nose light selector → TAXI.
 12. **Parking**: parking brake ON, **APU generators 1/2 ON**, **engine masters 1-4 OFF**, then
     confirm the flow genuinely **waits** for `FO_ENGINES_OFF` (both engines' N2 below the
     running threshold, up to 120 s) before continuing — a 5-second standby wait, beacon OFF,
-    wing lights OFF, nose lights OFF, engine anti-ice OFF, wing anti-ice OFF, APU bleed ON,
-    **fuel pumps OFF** (all 8), then the flow **waits** for seatbelt signs to actually go OFF
-    (up to 60 s) before the cockpit door is set UNLOCKED as the final step.
+    wing lights OFF, nose light selector → OFF, engine anti-ice OFF, wing anti-ice OFF,
+    APU bleed ON, **fuel pumps OFF** (all 8), **seatbelt switch → OFF** (position 2 — confirm
+    the switch reads Off, not On/Auto), then the flow **waits** for the seatbelt SIGN to
+    actually go OFF (up to 60 s) before the cockpit door is set UNLOCKED as the final step.
 13. **No double-announce.** Throughout all 12 flows, confirm each step is announced **once**
     by the FO — not twice. The executor wraps every write in a suppressed-announcer guard
     around `ApplyUIVariable`, so the def's own internal `Announce()` calls (e.g. "Rudder trim
@@ -232,11 +245,12 @@ checks below require **"Auto Flaps"** enabled in File → Settings… → First 
 
 ## Part E — Phase monitor (10,000 ft lights + transition altitude/level)
 
-1. **10,000 ft landing-light band.** Climbing through **10,300 ft** → landing lights retract
-   to OFF and the nose/taxi light goes OFF, **"Above ten thousand. Landing lights off."**
-   announced. Descending through **9,700 ft** → landing lights come ON and the nose/taxi light
-   goes ON, **"Below ten thousand. Landing lights on."** announced. Confirm the 300 ft
-   hysteresis band means a crossing right at 10,000 ft doesn't chatter back and forth.
+1. **10,000 ft landing-light band.** Climbing through **10,300 ft** → wing landing lights
+   OFF and the **nose light selector → OFF**, **"Above ten thousand. Landing lights off."**
+   announced. Descending through **9,700 ft** → wing landing lights ON and the **nose light
+   selector → T.O.** (nose takeoff + taxi beams lit), **"Below ten thousand. Landing lights
+   on."** announced. Confirm the 300 ft hysteresis band means a crossing right at 10,000 ft
+   doesn't chatter back and forth.
 2. **Load SimBrief** (Flows tab or the equivalent Checklists-tab button) with a filed OFP that
    has a transition altitude and transition level. Confirm the announcement reports both.
 3. Fly (or simulate via teleport/time-compression) a climb through the transition altitude —

@@ -87,14 +87,14 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
 
         if (!descending && nowAbove && _prevAbove10k == false)
         {
-            _ = _executor.SetLandingLights(0);   // Off
-            _ = _executor.SetTaxiLight(0);       // Off
+            _ = _executor.SetLandingLights(0);   // Wing landing lights off
+            _ = _executor.SetNoseLight(2);       // Nose selector: Off
             _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
         }
         else if (!climbing && nowBelow && _prevAbove10k == true)
         {
-            _ = _executor.SetLandingLights(1);   // On
-            _ = _executor.SetTaxiLight(1);       // On
+            _ = _executor.SetLandingLights(1);   // Wing landing lights on
+            _ = _executor.SetNoseLight(0);       // Nose selector: T.O.
             _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
         }
 
