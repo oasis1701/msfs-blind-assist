@@ -224,7 +224,7 @@ Run: `dotnet build MSFSBlindAssist.sln -c Debug`
 Expected: `Build succeeded`, 0 warnings.
 
 Run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`
-Expected: all pass (1031 existing + 5 new = 1036).
+Expected: all pass (1035 existing + 5 new = 1040). NOTE: the PR body's "1031" predates commit `bce0c6c8`, which added 4 interval-visibility tests; the true baseline on this branch is 1035.
 
 - [ ] **Step 8: Commit**
 
@@ -790,7 +790,7 @@ Run: `dotnet build MSFSBlindAssist.sln -c Debug`
 Expected: `Build succeeded`, 0 warnings.
 
 Run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`
-Expected: all pass (1031 existing + 5 from Task 1 + 3 net-new from Task 2 + 1 net-new from Task 3 = 1040).
+Expected: all pass (1035 baseline + 5 from Task 1 + 3 net-new from Task 2 + 1 net-new from Task 3 = 1044).
 
 - [ ] **Step 7: Commit**
 
@@ -961,7 +961,7 @@ Expected: `Build succeeded. 0 Warning(s) 0 Error(s)`
 - [ ] **Full suite green**
 
 Run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`
-Expected: 1040 passed, 0 failed.
+Expected: 1044 passed, 0 failed.
 
 - [ ] **Update the PR body**
 
