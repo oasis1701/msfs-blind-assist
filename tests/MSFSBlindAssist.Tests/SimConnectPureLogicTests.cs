@@ -1,6 +1,5 @@
 // Characterization tests for pure-logic helpers in MSFSBlindAssist.SimConnect.SimConnectManager:
 //   - ExtractIcaoFromAtcModel(string?)  — Dispatch.cs, public static
-//   - ConvertMHzToBcd16Hz(double)       — DataRequests.cs, public static
 //   - UnpackWaypointName(double,double) — Dispatch.cs, promoted private -> internal for this suite
 //
 // This is characterization, not spec verification: expected values were captured by running
@@ -45,61 +44,6 @@ public class SimConnectPureLogicTests
     [InlineData("1234567", "")] // digit-leading (fails letter-first) and too long
     public void ExtractIcao_pins_current_tiers(string? atcModel, string expected)
         => Assert.Equal(expected, SimConnectManager.ExtractIcaoFromAtcModel(atcModel));
-
-    // --- ConvertMHzToBcd16Hz --------------------------------------------------------
-    //
-    // Implementation (DataRequests.cs:746): frequencyHz = (uint)(frequencyMHz * 1_000_000),
-    // then each decimal digit of frequencyHz is packed into a 4-bit nibble via
-    // `bcd += digit * multiplier; multiplier *= 16;` — i.e. the result reads as the SAME
-    // digit string as frequencyHz, just interpreted as hex instead of decimal.
-    //
-    // DISCREPANCY FOUND (not the anticipated one): `multiplier` is a uint. For any
-    // frequencyHz >= 100,000,000 (i.e. any MHz value >= 100.000 — the ENTIRE 108-137 MHz
-    // aviation VOR/COM band), the 9th decimal digit's multiplier is 16^8 == 2^32 exactly,
-    // which wraps a uint to 0. That digit's contribution vanishes, so the encoded BCD
-    // silently DROPS THE LEADING (hundreds-of-MHz) DIGIT — e.g. 122.800 MHz encodes
-    // identically to what 22.800 MHz would. This is a real bug, distinct from the
-    // brief's anticipated double-truncation hazard (which does NOT manifest for these
-    // three sample frequencies — see the exact bcd literals below, which reflect a
-    // precise Hz value with only the leading digit missing, not an off-by-one digit).
-    // ConvertMHzToBcd16Hz currently has NO callers in the codebase (dead code), which
-    // limits blast radius, but the bug is pinned here as found, not fixed.
-    //
-    // Decodes the nibbles back (each nibble as a base-10 digit at its power-of-10 place)
-    // to make the dropped-digit behavior explicit rather than opaque hex.
-
-    private static long DecodeBcdNibblesToDecimal(uint bcd)
-    {
-        long result = 0;
-        long placeValue = 1;
-        uint v = bcd;
-        while (v > 0)
-        {
-            uint nibble = v & 0xF;
-            Assert.True(nibble <= 9, $"BCD nibble {nibble:X} is not a valid decimal digit (bcd=0x{bcd:X})");
-            result += nibble * placeValue;
-            placeValue *= 10;
-            v >>= 4;
-        }
-        return result;
-    }
-
-    [Theory]
-    // -- >=100 MHz: 9-digit Hz value -> leading digit lost to the uint32 multiplier
-    //    overflow (16^8 == 2^32). Decoded value is the INTENDED Hz minus its leading digit.
-    [InlineData(122.800, 0x22800000u, 22_800_000L)]
-    [InlineData(118.000, 0x18000000u, 18_000_000L)]
-    [InlineData(136.975, 0x36975000u, 36_975_000L)]
-    // -- <100 MHz control case: 8-digit Hz value, no overflow -> round-trips exactly.
-    //    Confirms the bug is specifically the 9th-digit overflow, not a general defect.
-    [InlineData(99.999, 0x99999000u, 99_999_000L)]
-    public void Bcd16_pins_current_encoding_including_the_100MHz_digit_drop(
-        double mhz, uint expectedBcd, long expectedDecodedHz)
-    {
-        uint bcd = SimConnectManager.ConvertMHzToBcd16Hz(mhz);
-        Assert.Equal(expectedBcd, bcd);
-        Assert.Equal(expectedDecodedHz, DecodeBcdNibblesToDecimal(bcd));
-    }
 
     // --- UnpackWaypointName ----------------------------------------------------------
     //

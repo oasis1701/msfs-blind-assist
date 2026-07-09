@@ -182,7 +182,14 @@ public sealed class DockingGuidanceManager : IDisposable
             if (_disposed) return;
             try
             {
-                if (_gate == null || !SettingsManager.Current.DockingGuidanceEnabled)
+                // Snapshot once per frame (SV-5) — avoids re-acquiring SettingsManager's
+                // static lock on every UpdatePosition call. UserSettings is mutated in
+                // place by the settings dialog (see SettingsForm.OnOk / SettingsManager.Save),
+                // so this snapshot sees the same live-applied value a repeated Current read
+                // would; only the rare, explicit SettingsManager.Reset() swaps the instance,
+                // and even then only this one frame would see the pre-reset object.
+                var settings = SettingsManager.Current;
+                if (_gate == null || !settings.DockingGuidanceEnabled)
                 {
                     // Disabling docking (or losing the gate) MID-APPROACH must fully reset, not
                     // just silence: leaving _state latched at Docking/Stopped kept IsActive true

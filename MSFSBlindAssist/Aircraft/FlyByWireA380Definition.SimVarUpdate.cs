@@ -12,7 +12,7 @@ public partial class FlyByWireA380Definition
         if (text == null) return;
         // Mute rides the TCAS_STATE monitor entry — one Ctrl+M checkbox governs
         // both the state announce and the composed guidance.
-        if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains("A32NX_TCAS_STATE"))
+        if (!Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains("A32NX_TCAS_STATE"))
             announcer.AnnounceImmediate(text);
     }
 
@@ -37,12 +37,15 @@ public partial class FlyByWireA380Definition
         return s.Trim();
     }
 
-    private static string DecodeArmedModes(int v, (int bit, string name)[] bits)
-    {
-        var names = new List<string>();
-        foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
-        return string.Join(", ", names);
-    }
+    // DecodeArmedModes moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
+
+    // ROW/ROP + OANS RWY AHEAD bit maps (see the A32NX_ROW_ROP_WORD_1/A32NX_OANS_WORD_1
+    // handler below) — hoisted out of the per-event ProcessSimVarUpdate call so a fresh
+    // array isn't allocated on every landing-rollout frame.
+    private static readonly (int bit, string phrase)[] RowRopWord1Bits =
+        { (12, "Maximum braking"), (13, "Max braking"), (14, "If wet, runway too short"), (15, "Runway too short") };
+    private static readonly (int bit, string phrase)[] OansWord1Bits =
+        { (11, "Runway ahead") };
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
@@ -94,7 +97,7 @@ public partial class FlyByWireA380Definition
             if (nowIcing != _icingActive)
             {
                 _icingActive = nowIcing;
-                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                     announcer.Announce(nowIcing ? "Icing conditions" : "Icing conditions cleared");
             }
             return true;
@@ -116,7 +119,7 @@ public partial class FlyByWireA380Definition
             bool changed = !_comActiveFreq.TryGetValue(ch, out var prev) || Math.Abs(prev - value) > 0.0004;
             _comActiveFreq[ch] = value;
             if (plausible && changed && prev > 0
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                 announcer.Announce($"VHF {ch} active {value:0.000}");
             return true;
         }
@@ -127,7 +130,7 @@ public partial class FlyByWireA380Definition
             bool changed = !_comStandbyFreq.TryGetValue(ch, out var prev) || Math.Abs(prev - value) > 0.0004;
             _comStandbyFreq[ch] = value;
             if (plausible && changed && prev > 0
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                 announcer.Announce($"VHF {ch} standby {value:0.000}");
             return true;
         }
@@ -142,7 +145,7 @@ public partial class FlyByWireA380Definition
                 bool formSet = bcd == _formSetSquawkBcd;   // the RMP window set this code and already spoke it
                 _lastSquawkBcd = bcd;
                 if (formSet) _formSetSquawkBcd = -1;        // consume
-                if (!first && !formSet && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                if (!first && !formSet && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                     announcer.Announce($"Squawk {(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}");
             }
             return true;
@@ -155,7 +158,7 @@ public partial class FlyByWireA380Definition
             bool changed = !_rmpActiveFreq.TryGetValue(ch, out var prev) || Math.Abs(prev - value) > 0.5;
             _rmpActiveFreq[ch] = value;
             if (plausible && changed && prev != 0
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                 announcer.Announce($"VHF {ch} active {mhz:0.000}");
             return true;
         }
@@ -173,7 +176,7 @@ public partial class FlyByWireA380Definition
                 bool? prev = _doorOpen.TryGetValue(varName, out var pv) ? pv : null;
                 _doorOpen[varName] = open;
                 if (prev.HasValue && prev.Value != open
-                    && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                    && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                 {
                     // The fuel-truck service point (interactive point 18) reads more naturally as
                     // connected/disconnected than open/closed; doors + the cargo hatch keep open/closed.
@@ -195,7 +198,7 @@ public partial class FlyByWireA380Definition
             int pct = value <= 1.0 ? (int)Math.Round(value * 100) : (int)Math.Round(value);
             pct = Math.Max(0, Math.Min(100, pct));
             if (pct <= 0) { _presetBucket = -1; return true; }   // idle / reset — silent
-            if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+            if (!Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
             {
                 if (pct >= 100)
                 {
@@ -238,12 +241,10 @@ public partial class FlyByWireA380Definition
             int prev = vert ? _prevVertArmed : _prevLatArmed;
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
             if (prev >= 0 && (iv & ~prev) != 0
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
             {
-                string nm = DecodeArmedModes(iv & ~prev, vert ? _vertArmedBits : _latArmedBits);
-                if (!string.IsNullOrEmpty(nm))
-                    foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
-                        announcer.Announce($"{one} armed");
+                foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? _vertArmedBits : _latArmedBits))
+                    announcer.Announce($"{one} armed");
             }
             return true;
         }
@@ -252,12 +253,12 @@ public partial class FlyByWireA380Definition
         if (varName == "A32NX_FMGC_FLIGHT_PHASE")
         {
             _fmgcPhaseA380 = (int)Math.Round(value);
-            if (_varCache != null && _varCache.TryGetValue(varName, out var fpDef)
+            if (GetVariables().TryGetValue(varName, out var fpDef)
                 && fpDef.ValueDescriptions != null && fpDef.ValueDescriptions.TryGetValue(value, out var phase)
                 && _lastFlightPhaseA380 != phase)
             {
                 _lastFlightPhaseA380 = phase;
-                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                     announcer.Announce($"Entering {phase} phase");
             }
             return true;
@@ -270,8 +271,8 @@ public partial class FlyByWireA380Definition
         // ARINC-large (>= 2^32 -> an SSM is present) to its payload (0/1) and announce
         // the mapped state ON CHANGE only (default prev = 0 so the initial no-fault is
         // silent). Honours the Ctrl+M mute; returns true to suppress the raw announce.
-        if (value >= 4294967296.0 && _varCache != null
-            && _varCache.TryGetValue(varName, out var arDef)
+        if (value >= 4294967296.0
+            && GetVariables().TryGetValue(varName, out var arDef)
             && arDef.IsAnnounced
             && arDef.ValueDescriptions is { Count: > 0 } arDesc)
         {
@@ -279,7 +280,7 @@ public partial class FlyByWireA380Definition
             int prevSt = _arincEnumState.TryGetValue(varName, out var ps) ? ps : 0;
             _arincEnumState[varName] = st;
             if (st != prevSt
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName)
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName)
                 && arDesc.TryGetValue(st, out var sdesc))
                 announcer.Announce($"{arDef.DisplayName}: {sdesc}");
             return true;
@@ -427,10 +428,8 @@ public partial class FlyByWireA380Definition
             // idle, no autobrake), 14/15 = in-flight ROW wet/dry too short.
             // Bit 12 was missing from this decode — an autobrake landing where
             // ROP commanded max braking announced nothing.
-            (int bit, string phrase)[] bits = varName == "A32NX_ROW_ROP_WORD_1"
-                ? new[] { (12, "Maximum braking"), (13, "Max braking"), (14, "If wet, runway too short"), (15, "Runway too short") }
-                : new[] { (11, "Runway ahead") };
-            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            (int bit, string phrase)[] bits = varName == "A32NX_ROW_ROP_WORD_1" ? RowRopWord1Bits : OansWord1Bits;
+            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
             foreach (var (bit, phrase) in bits)
             {
                 bool active = word.BitValueOr(bit, false);
@@ -465,7 +464,7 @@ public partial class FlyByWireA380Definition
             if (!rolling || !word.IsNormalOperation) { spoken.Clear(); return true; }
             double m = word.ValueOr(0);
             if (m <= 0 || m > 9000) return true;               // out of sensible range
-            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
             // Mark EVERY band at/above the current distance as spoken in one pass —
             // so if the rollout starts already below the top band (short exit/runway),
             // the bands we skipped past don't each re-fire on later frames. Announce
@@ -496,7 +495,7 @@ public partial class FlyByWireA380Definition
             int prev = _gpuAvail[gpuN - 1];
             _gpuAvail[gpuN - 1] = now;
             if (prev >= 0 && prev != now
-                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
                 announcer.Announce(now == 1 ? $"External Power {gpuN} available" : $"External Power {gpuN} disconnected");
             return true;
         }
@@ -504,7 +503,7 @@ public partial class FlyByWireA380Definition
         // ECAM upper (E/WD) memo/warning lines: decode the numeric code to text
         // and announce it (with its FWC colour as a priority word). Returning
         // true suppresses the generic raw-number announcement.
-        if (varName.StartsWith("A32NX_EWD_LOWER_"))
+        if (varName.StartsWith("A32NX_EWD_LOWER_", StringComparison.Ordinal))
         {
             long code = (long)value;
             if (!_lastEwdCode.TryGetValue(varName, out var prev) || prev != code)
@@ -517,7 +516,7 @@ public partial class FlyByWireA380Definition
                 // kills the "same caution repeats as it shifts lines" spam.
                 var current = new HashSet<long>();
                 foreach (var kv in _lastEwdCode) if (kv.Value != 0) current.Add(kv.Value);
-                bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains("FBWA380_ECAM_MEMOS");
+                bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains("FBWA380_ECAM_MEMOS");
                 foreach (var c in current)
                 {
                     if (_announcedEwdCodes.Contains(c)) continue;   // already on screen
@@ -791,7 +790,6 @@ public partial class FlyByWireA380Definition
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
-    // Spoken CG suffix for the gross-weight readouts. Empty (suppressed) when the CG
-    // isn't available/sane, so the gross-weight readout never breaks or says "CG 0".
-    private string CgMacPhrase() => (_gwCgMac > 5 && _gwCgMac < 60) ? $", center of gravity {_gwCgMac:0.0} percent MAC" : "";
+    // CgMacPhrase moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair,
+    // now parameterized on the cached %MAC value).
 }

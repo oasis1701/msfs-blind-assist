@@ -131,7 +131,7 @@ When the LAST taxiway in the clearance branches *off* the runway rather than ont
 
 A single `_stateLock` in `TaxiGuidanceManager` serializes all of these. Without it, a UI-thread `StopGuidance` can null out `_route` while the SimConnect thread is mid-traversal of `_route.Segments[_currentSegmentIndex]`, producing `NullReferenceException` / `IndexOutOfRangeException`. The critical sections do no I/O — audio is already async through NAudio's mixer — so lock contention is negligible.
 
-`TaxiSteeringTone` has its own `_lock`. `UpdateHeadingError`, `Pause`, `Resume`, `Start`, `Stop` all acquire it so that `SetPan` / `UpdateVolume` can't race with `Dispose` freeing the underlying NAudio buffer. `ClearWhereAmICache` is unlocked by design: readers of `_whereAmICachedGraph` / `_whereAmICachedIcao` capture the reference into a local before use, so a concurrent clear is safe.
+`TaxiSteeringTone` has its own `_lock`. `UpdateHeadingError`, `Pause`, `Resume`, `Start`, `Stop` all acquire it so that `SetPan` / `UpdateVolume` can't race with `Dispose` freeing the underlying NAudio buffer. `ClearWhereAmICache` takes `_stateLock` like its twin `OnAirportDataUpdated` — both mutate the same `_whereAmICachedGraph` / `_whereAmICachedIcao` pair, and an unlocked write here could race a locked read/build elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa). `TryGetRunwayLineupReference` likewise takes `_stateLock` — it reads `_state`, `_hasLineupTarget`, `_isRunwayLineup`, and the lineup lat/lon/heading fields, the same fields every other locked accessor protects.
 
 ## Steering Tone
 

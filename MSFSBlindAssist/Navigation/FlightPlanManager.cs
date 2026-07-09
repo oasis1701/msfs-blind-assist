@@ -189,7 +189,7 @@ public class FlightPlanManager
     /// when it duplicates the last existing waypoint. A transition and its procedure share the boundary
     /// fix, which otherwise appeared twice with a spurious 0 NM leg between them.
     /// </summary>
-    private static void AppendWaypoints(List<WaypointFix> target, List<WaypointFix> additions)
+    internal static void AppendWaypoints(List<WaypointFix> target, List<WaypointFix> additions)
     {
         int start = 0;
         if (target.Count > 0 && additions.Count > 0 &&

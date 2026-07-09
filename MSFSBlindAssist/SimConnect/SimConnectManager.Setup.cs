@@ -10,6 +10,57 @@ namespace MSFSBlindAssist.SimConnect;
 
 public partial class SimConnectManager
 {
+    /// <summary>
+    /// Fixed-content hotkey readout data definitions (SC-12, 2026-07). Each of these used to be
+    /// cleared and re-registered (SafelyClearDataDefinition → AddToDataDefinition →
+    /// RegisterDataDefineStruct) on EVERY hotkey press even though the underlying simvar/unit
+    /// never changes — SafelyClearDataDefinition's own wait loop pumps
+    /// Application.DoEvents()+Thread.Sleep(10) on the UI thread for `delayMs` (50ms here) per
+    /// press. Registered ONCE here instead; the request methods in
+    /// SimConnectManager.DataRequests.cs now just fire RequestDataOnSimObject(..., ONCE) against
+    /// the already-registered def. See SafelyClearDataDefinition's doc comment: the crash risk it
+    /// guards against is ClearDataDefinition() racing an in-flight request against a def whose
+    /// CONTENT is about to be REPLACED with something different. A def that is added once, with
+    /// fixed content, and never cleared/re-added again has no such race window — this is strictly
+    /// SAFER than the old per-press clear/re-add cycle, not riskier.
+    /// (defId, simVar, unit, datatype) — defId doubles as the DATA_REQUESTS id for every entry
+    /// here (REQUEST_x and DEF_x share the same underlying int, e.g. 303 for both
+    /// REQUEST_ALTITUDE_AGL and DEF_ALTITUDE_AGL — see the DATA_REQUESTS/DATA_DEFINITIONS enums).
+    /// </summary>
+    private static readonly (int Id, string SimVar, string Unit, SIMCONNECT_DATATYPE Type)[] HotkeyReadoutDefinitions =
+    {
+        ((int)DATA_DEFINITIONS.DEF_ALTITUDE_AGL,   "PLANE ALT ABOVE GROUND",         "feet",            SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_ALTITUDE_MSL,   "INDICATED ALTITUDE",             "feet",            SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_AIRSPEED_IAS,   "AIRSPEED INDICATED",             "knots",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_AIRSPEED_TAS,   "AIRSPEED TRUE",                  "knots",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_GROUND_SPEED,   "GROUND VELOCITY",                "knots",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_VERTICAL_SPEED, "VERTICAL SPEED",                 "feet per minute", SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_MACH,           "AIRSPEED MACH",                  "number",          SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_BANK,           "PLANE BANK DEGREES",             "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_PITCH,          "PLANE PITCH DEGREES",            "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_OUTSIDE_TEMP,   "AMBIENT TEMPERATURE",            "celsius",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_SQUAWK_CODE,    "TRANSPONDER CODE:1",             "BCO16",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_HEADING_MAG,    "PLANE HEADING DEGREES MAGNETIC", "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_HEADING_TRUE,   "PLANE HEADING DEGREES TRUE",     "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+    };
+
+    /// <summary>
+    /// Registers every entry in <see cref="HotkeyReadoutDefinitions"/> once per connection.
+    /// Called from SetupDataDefinitions, positioned with the other fixed/critical defs and
+    /// BEFORE the bulk per-aircraft RegisterAllVariables() call — these are universal (not
+    /// aircraft-specific) simvars, same category as AIRCRAFT_INFO/ATC/position above.
+    /// </summary>
+    private void RegisterHotkeyReadoutDefinitions()
+    {
+        var sc = simConnect!;
+        foreach (var def in HotkeyReadoutDefinitions)
+        {
+            sc.AddToDataDefinition((DATA_DEFINITIONS)def.Id, def.SimVar, def.Unit,
+                def.Type, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)def.Id);
+        }
+        Log.Debug("SimConnect", $"Registered {HotkeyReadoutDefinitions.Length} fixed hotkey readout data definitions");
+    }
 
     private void SetupDataDefinitions()
     {
@@ -186,6 +237,11 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
 
+        // Fixed hotkey readout defs (altitude/airspeed/VS/mach/bank/pitch/OAT/squawk/heading —
+        // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
+        // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
+        RegisterHotkeyReadoutDefinitions();
+
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
         // now guaranteed registered before the heavy var set can approach the SimConnect ceiling.
@@ -265,6 +321,7 @@ public partial class SimConnectManager
 
                 // Only add to dictionary if registration was successful
                 variableDataDefinitions.TryAdd(kvp.Key, dataDefId);
+                requestIdToVarKey.TryAdd(dataDefId, kvp.Key);
                 registeredCount++;
 
                 // If the var asked to be excluded from the batched continuous monitoring
@@ -303,7 +360,10 @@ public partial class SimConnectManager
         // immediately diagnosable without re-instrumenting. registeredCount = individual on-demand
         // defs; batchCoveredCount = continuous vars served by batches (no individual def);
         // cappedCount = vars skipped at the future-proof cap (should be 0 in normal operation).
-        int totalDefs = registeredCount + 5 /*continuous batches*/ + 20 /*fixed defs, approx*/;
+        // "fixed defs" bumped 20->33 (2026-07, SC-12): the 13 hotkey readout defs (altitude/
+        // airspeed/VS/mach/bank/pitch/OAT/squawk/heading) are now registered ONCE and permanently,
+        // instead of being ephemeral request-time-only defs that this rough total never counted.
+        int totalDefs = registeredCount + 5 /*continuous batches*/ + 33 /*fixed defs, approx*/;
         string regSummary = $"[Registration] aircraft={CurrentAircraft?.GetType().Name} individualDefs={registeredCount} batchCovered={batchCoveredCount} capped={cappedCount} approxTotalDefs~{totalDefs} (SimConnect ceiling ~1000)";
         Log.Debug("SimConnect", regSummary);
         if (cappedCount > 0)
@@ -329,6 +389,8 @@ public partial class SimConnectManager
         // Clear previous batch setup (important when switching aircraft or adding/removing variables)
         int previousMapSize = continuousVariableIndexMap.Count;
         continuousVariableIndexMap.Clear();
+        for (int i = 0; i < batchVarArrays.Length; i++)
+            batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         Log.Debug("SimConnect", $"Cleared previous map (had {previousMapSize} entries)");
 
         // Get all continuous variables from current aircraft
@@ -422,6 +484,9 @@ public partial class SimConnectManager
 
             // Track entries added to the map for THIS batch so we can roll them back on failure.
             var batchMapKeys = new List<string>(batchVarCount);
+            // Mirrors batchMapKeys, but pre-resolving the varDef too — becomes batchVarArrays[batchNum]
+            // on success (see Step 2's prebuilt-array consumer in SimConnectManager.VarCache.cs).
+            var batchArrayEntries = new List<(string key, int index, SimVarDefinition def)>(batchVarCount);
 
             try
             {
@@ -445,6 +510,7 @@ public partial class SimConnectManager
 
                     continuousVariableIndexMap[kvp.Key] = (batchNum, indexWithinBatch);
                     batchMapKeys.Add(kvp.Key);
+                    batchArrayEntries.Add((kvp.Key, indexWithinBatch, varDef));
                     indexWithinBatch++;
                     totalVariablesAdded++;
 
@@ -496,6 +562,10 @@ public partial class SimConnectManager
                 );
 
                 batchesStarted++;
+                // Publish this batch's prebuilt array only once the batch is fully committed
+                // (mirrors continuousVariableIndexMap, which is only trusted for this batch's
+                // keys past this point too).
+                batchVarArrays[batchNum] = batchArrayEntries.ToArray();
                 Log.Debug("SimConnect", $"Batch {batchNum} monitoring started for {batchVarCount} variables");
             }
             catch (Exception ex)
@@ -507,6 +577,9 @@ public partial class SimConnectManager
                 // un-monitored than to dereference a stale (batchNum, index) pair forever.
                 foreach (var key in batchMapKeys)
                     continuousVariableIndexMap.Remove(key);
+                // batchVarArrays[batchNum] was never assigned from batchArrayEntries on this path
+                // (the assignment above only runs after a successful try), so it's still whatever
+                // the top-of-method reset left it at (empty) — no separate rollback needed here.
 
                 // Continue with the next batch.
             }
@@ -611,6 +684,7 @@ public partial class SimConnectManager
 
         // Clear existing registrations
         variableDataDefinitions.Clear();
+        requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
 
@@ -763,12 +837,12 @@ public partial class SimConnectManager
             if (kvp.Value.Type == SimVarType.Event)
             {
                 uint eventId = nextEventId++;
-                eventIds[kvp.Key] = eventId;
 
                 try
                 {
                     // Map the event
                     sc.MapClientEventToSimEvent((EVENTS)eventId, kvp.Value.Name);
+                    eventIds[kvp.Key] = eventId;
                     registeredCount++;
                 }
                 catch (Exception ex)
