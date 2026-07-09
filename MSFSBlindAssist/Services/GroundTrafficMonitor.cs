@@ -205,6 +205,14 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (!_positionValid || _tracked.Count == 0) return;
             double ownLat = _ownLat, ownLon = _ownLon, ownHdg = _ownHeadingTrue, ownGS = _ownGS;
 
+            // Snapshot once per tick (SV-5) — FormatDistance is called once per
+            // announced aircraft below, so without this a busy zone-alert cycle
+            // would re-acquire SettingsManager's static lock several times.
+            // UserSettings is mutated in place by the settings dialog, so this
+            // snapshot observes the same live-applied value a repeated Current
+            // read would; live-apply keeps working tick-to-tick.
+            bool useMetres = SettingsManager.Current.GroundTrafficUseMetres;
+
             // Pre-compute distance and relative bearing for every tracked aircraft.
             // Sort FARTHEST-first: when multiple zone alerts fire via AnnounceImmediate
             // in the same cycle, the last call (closest aircraft) is the one heard.
@@ -300,7 +308,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.LastAlertTime = DateTime.UtcNow;
 
                 string dir = DescribeDirection(relBearing);
-                string distStr = FormatDistance(distFt);
+                string distStr = FormatDistance(distFt, useMetres);
 
                 string announcement = newZone switch
                 {
@@ -359,12 +367,17 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (list.Count == 0)
             return "No ground traffic nearby.";
 
+        // Cold path (Alt+G hotkey, at most SUMMARY_MAX_AIRCRAFT calls) — one snapshot
+        // for the whole readout is still cheap and correct, matching the pattern used
+        // on the hot 3 s poll path in EvaluateAlerts above.
+        bool useMetres = SettingsManager.Current.GroundTrafficUseMetres;
+
         string countWord = list.Count == 1 ? "1 aircraft" : $"{list.Count} aircraft";
         var sb = new System.Text.StringBuilder($"{countWord} nearby. ");
         foreach (var (distFt, ac, relBearing) in list)
         {
             string dir = DescribeDirection(relBearing);
-            string distStr = FormatDistance(distFt);
+            string distStr = FormatDistance(distFt, useMetres);
             string label = !string.IsNullOrEmpty(ac.Callsign) ? ac.Callsign : "traffic";
             sb.Append($"{label}, {dir}, {distStr}. ");
         }
@@ -430,9 +443,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     // ──────────────────────────────────────────────────────────────────────────
     // Geometry helpers
 
-    private static string FormatDistance(double feet)
+    private static string FormatDistance(double feet, bool useMetres)
     {
-        if (SettingsManager.Current.GroundTrafficUseMetres)
+        if (useMetres)
         {
             double metres = feet * 0.3048;
             double step = metres < 100.0 ? 5.0 : 10.0;

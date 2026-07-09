@@ -324,9 +324,9 @@ public partial class TaxiGuidanceManager
         // DIAGNOSTIC: periodic snapshot (every ~3s) of rollout state.
         // Captures the moment the per-frame loop is or isn't seeing the
         // distance threshold approach.
-        if ((DateTime.Now - _rolloutDiagLastPeriodic).TotalSeconds >= 3.0)
+        if ((DateTime.UtcNow - _rolloutDiagLastPeriodic).TotalSeconds >= 3.0)
         {
-            _rolloutDiagLastPeriodic = DateTime.Now;
+            _rolloutDiagLastPeriodic = DateTime.UtcNow;
             RolloutDiag($"UpdateLandingRollout periodic: " +
                 $"distToExit={distToExitFeet:F0}ft signedAlongPast={signedAlongPastFt:F0}ft " +
                 $"hdgDelta={hdgDeltaAbs:F1}deg gs={groundSpeedKts:F1}kt " +

@@ -228,12 +228,24 @@ public static class SettingsManager
         /// </summary>
         public static void Reset()
         {
+            // Mirror Save's own discipline (see its comment above): only the
+            // in-memory publish of the new settings reference happens under
+            // _lock. Save() itself takes _lock again (reentrant) for its
+            // serialize+publish step and then writes the file OUTSIDE any
+            // lock — but calling it from inside this lock would keep _lock
+            // held for the full File.WriteAllText duration, stalling the
+            // 30 Hz SimConnect position path that also contends on _lock via
+            // SettingsManager.Current. So capture the new instance, release
+            // the lock, then Save it.
+            UserSettings newSettings;
             lock (_lock)
             {
-                _currentSettings = new UserSettings();
-                Save(_currentSettings);
-                Log.Debug("Settings", "Settings reset to defaults");
+                newSettings = new UserSettings();
+                _currentSettings = newSettings;
             }
+
+            Save(newSettings);
+            Log.Debug("Settings", "Settings reset to defaults");
         }
 
         /// <summary>
