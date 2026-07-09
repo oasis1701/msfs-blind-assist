@@ -1,28 +1,29 @@
-// Characterization tests for the runway_end column-aliasing fix inside
-// MSFSBlindAssist.Forms.ElectronicFlightBagForm.GetRunwayDetailedInfo (Forms/ElectronicFlightBagForm.cs).
-//
-// GetRunwayDetailedInfo itself is a large (~300 line) monolithic method: it opens a live
-// SQLite connection via DatabasePathResolver/SettingsManager, runs a runway+runway_end+
-// airport join, then a SECOND nested ILS query, then falls back to LittleNavMapProvider's
-// spatial ILS recovery, interleaving all of that with StringBuilder formatting of ~40
-// columns. Extracting the WHOLE method into a DB-free pure function (or standing up a
-// synthetic-SQLite fixture and driving the private instance method through reflection on a
-// fully-constructed ElectronicFlightBagForm, which itself needs a FlightPlanManager /
-// SimConnectManager / ScreenReaderAnnouncer / WaypointTracker) was judged the HIGHER-risk
-// option for this wave.
-//
-// Instead, the MINIMAL seam: the two blocks that actually consume the aliased runway_end
-// columns (end_heading/end_lonx/end_laty/end_altitude — the exact columns the CLAUDE.md
-// invariant "GetRunwayDetailedInfo must explicitly alias the runway_end columns" is about)
-// were extracted VERBATIM (zero logic change) into
+// Formatting tests for the two small helpers extracted out of
+// MSFSBlindAssist.Forms.ElectronicFlightBagForm.GetRunwayDetailedInfo (Forms/ElectronicFlightBagForm.cs):
 //   internal static string FormatRunwayHeadingsAndCoordinates(double endHeadingTrue, double magVar, object? endLonx, object? endLaty)
 //   internal static string FormatRunwayPatternAltitude(object? patternAltitude, object? endAltitudeMsl)
-// which take the already-resolved column values (not a DB connection) and are called from
-// GetRunwayDetailedInfo exactly where the original AppendLine calls were. This directly pins
-// the regression the invariant describes (a secondary runway end must show its OWN heading/
-// coordinates/altitude, never the primary end's / reciprocal's 180°-off value) without
-// touching the ILS resolution, LittleNavMapProvider fallback, or any other part of the
-// monolithic method.
+// which take already-resolved column values (not a DB connection) and are called from
+// GetRunwayDetailedInfo exactly where the original AppendLine calls were.
+//
+// SCOPE — read before assuming these tests guard the CLAUDE.md aliasing invariant: they do
+// NOT. They pass hard-coded doubles/objects straight to the formatter, so they only pin
+// correct RENDERING (F1 rounding, magnetic-heading subtraction, the "ft"/"°" suffixes, the
+// DBNull-to-blank behavior) given values that are ALREADY correctly resolved. They never open
+// a database and cannot detect a dropped `AS end_heading`/`AS end_altitude`/`AS end_lonx`/
+// `AS end_laty` SQL alias, nor a C# revert from reader["end_heading"] back to the ambiguous
+// bare reader["heading"] — the exact regression the CLAUDE.md invariant ("GetRunwayDetailedInfo
+// must explicitly alias the runway_end columns") is about.
+//
+// That SQL-level regression is covered separately, by a synthetic-SQLite fixture test against
+// the newly extracted internal static GetRunwayDetailedInfoCore(dbPath, simulatorVersion, icao,
+// runwayId) — see tests/MSFSBlindAssist.Tests/RunwayInfoAliasingTests.cs. GetRunwayDetailedInfo
+// (the private instance method) is now a two-line wrapper that resolves dbPath/simulatorVersion
+// via DatabasePathResolver/SettingsManager exactly as before, then delegates to that core —
+// byte-identical output, zero SQL/logic change from before the extraction. Full extraction of
+// GetRunwayDetailedInfoCore (rather than reflection against a fully-constructed
+// ElectronicFlightBagForm needing a FlightPlanManager/SimConnectManager/ScreenReaderAnnouncer/
+// WaypointTracker) turned out not to need any of those dependencies, since the method only used
+// `this` for the two lines now left behind in the public wrapper.
 
 using MSFSBlindAssist.Forms;
 
@@ -35,11 +36,13 @@ public class ElectronicFlightBagFormRunwayInfoTests
     [Fact]
     public void Secondary_end_shows_its_own_heading_not_the_reciprocal_primary_ends_heading()
     {
-        // The exact bug this guards against: at an airport where primary end 06R has true
-        // heading 60.0 and secondary end 24L has true heading 240.0, selecting 24L must
-        // render 240.0 — a bare `r.*, re.*` join (no explicit end_heading alias) silently
-        // resolved the ambiguous `heading` column to the runway-CENTER/primary-end value,
-        // which would show 60.0 here (180 degrees off).
+        // This test only pins RENDERING: given a value that is already the correct
+        // (secondary) end's own heading, the formatter must render exactly that value and
+        // nothing else. It does NOT exercise the SQL that resolves endHeadingTrue in the
+        // first place — a dropped `AS end_heading` alias, or a C# revert to the ambiguous
+        // bare reader["heading"], is invisible here because the caller passes in a plain
+        // double. See RunwayInfoAliasingTests.cs for the fixture test that drives the real
+        // aliased query and catches that regression.
         string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(
             endHeadingTrue: 240.0, magVar: -13.5, endLonx: -122.375, endLaty: 37.618);
 
@@ -100,8 +103,10 @@ public class ElectronicFlightBagFormRunwayInfoTests
     [Fact]
     public void Msl_altitude_uses_the_selected_ends_own_altitude()
     {
-        // Same aliasing-fix rationale as the heading test above: end_altitude must be the
-        // SELECTED end's own field elevation at the threshold, not the primary end's.
+        // Rendering only, same scope note as the heading test above: this just confirms the
+        // formatter renders whatever endAltitudeMsl it's given, distinct from patternAltitude —
+        // it does not exercise the `AS end_altitude` alias that resolves the real value (see
+        // RunwayInfoAliasingTests.cs for that).
         string result = ElectronicFlightBagForm.FormatRunwayPatternAltitude(patternAltitude: 500, endAltitudeMsl: 42);
         Assert.Contains("Altitude (MSL):       42 ft", result);
         Assert.DoesNotContain("Altitude (MSL):       500 ft", result);

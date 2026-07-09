@@ -1953,13 +1953,17 @@ public partial class ElectronicFlightBagForm : Form
     /// Formats the runway-END-scoped HEADINGS + COORDINATES block from already-resolved
     /// column values. Extracted as a minimal, behavior-neutral seam (2026-07,
     /// characterization tests) out of <see cref="GetRunwayDetailedInfo"/> with zero logic
-    /// change, so a test can pin the runway_end column-aliasing fix without a live database
-    /// connection: <paramref name="endHeadingTrue"/>/<paramref name="endLonx"/>/
+    /// change. <paramref name="endHeadingTrue"/>/<paramref name="endLonx"/>/
     /// <paramref name="endLaty"/> must be the SELECTED runway end's own values (aliased in
     /// the SQL as end_heading/end_lonx/end_laty), never the runway-center/primary-end value
-    /// a bare `re.*` join would silently resolve ambiguous columns to (the reciprocal-end,
-    /// 180°-off heading bug this guards against — see the SQL comment above the query in
-    /// <see cref="GetRunwayDetailedInfo"/>).
+    /// a bare `re.*` join would ambiguously resolve to (the reciprocal-end, 180°-off heading
+    /// bug this method's rendering assumes has already been avoided — see the SQL comment
+    /// above the query in <see cref="GetRunwayDetailedInfo"/>). NOTE: this method only pins
+    /// correct FORMATTING of already-resolved values — it takes plain doubles/objects, never
+    /// touches the database, and so CANNOT catch a dropped `AS end_heading`/`AS end_lonx`/
+    /// `AS end_laty` SQL alias or a C# revert to the ambiguous bare column name. That SQL-level
+    /// regression is covered separately by the fixture test against
+    /// <see cref="GetRunwayDetailedInfoCore"/> in tests/MSFSBlindAssist.Tests/RunwayInfoAliasingTests.cs.
     /// </summary>
     internal static string FormatRunwayHeadingsAndCoordinates(double endHeadingTrue, double magVar, object? endLonx, object? endLaty)
     {
@@ -1982,6 +1986,9 @@ public partial class ElectronicFlightBagForm : Form
     /// Formats the PATTERN block. <paramref name="endAltitudeMsl"/> must be the SELECTED
     /// runway end's own altitude (aliased end_altitude), same aliasing-fix rationale as
     /// <see cref="FormatRunwayHeadingsAndCoordinates"/>. Extracted with zero logic change.
+    /// Same scope note as <see cref="FormatRunwayHeadingsAndCoordinates"/>: this only pins
+    /// correct rendering of an already-resolved value, not the SQL alias that resolves it —
+    /// see <see cref="GetRunwayDetailedInfoCore"/> and RunwayInfoAliasingTests.cs for that.
     /// </summary>
     internal static string FormatRunwayPatternAltitude(object? patternAltitude, object? endAltitudeMsl)
     {
@@ -2001,7 +2008,23 @@ public partial class ElectronicFlightBagForm : Form
         string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
         // See note in GetAirportDetailedInfo — central resolver with legacy fallback.
         string dbPath = DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
+        return GetRunwayDetailedInfoCore(dbPath, simulatorVersion, icao, runwayId);
+    }
 
+    /// <summary>
+    /// The DB-path-taking core of <see cref="GetRunwayDetailedInfo"/>, extracted verbatim
+    /// (2026-07, characterization tests) so a synthetic-SQLite fixture test can drive the REAL
+    /// aliased runway/runway_end SQL query below (not just the downstream
+    /// FormatRunwayHeadingsAndCoordinates/FormatRunwayPatternAltitude formatters, which only pin
+    /// correct rendering of already-resolved values and cannot catch a dropped `AS end_heading`
+    /// SQL alias). <paramref name="dbPath"/>/<paramref name="simulatorVersion"/> are exactly what
+    /// GetRunwayDetailedInfo already resolves via DatabasePathResolver/SettingsManager before
+    /// calling this — the public method is now a thin wrapper that resolves the path then
+    /// delegates here, so its output is byte-identical to before this extraction. Zero SQL or
+    /// formatting change from the pre-extraction method body.
+    /// </summary>
+    internal static string GetRunwayDetailedInfoCore(string dbPath, string simulatorVersion, string icao, string runwayId)
+    {
         if (!File.Exists(dbPath))
         {
             return $"Database not found: {dbPath}";
