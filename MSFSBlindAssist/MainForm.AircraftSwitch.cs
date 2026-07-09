@@ -423,7 +423,7 @@ public partial class MainForm
         {
             // Honour the Ctrl+M / Ctrl+E ECAM-monitor mute (same sentinel the
             // SimVar EWD memo path consults), so the user can silence E/WD chatter.
-            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
             // Audio dedup: skip a memo the FwsFailureClient already calls out as an active
@@ -443,7 +443,7 @@ public partial class MainForm
         coherentFwsFailureClient = new CoherentFwsFailureClient();
         coherentFwsFailureClient.FailureAnnounced += line =>
         {
-            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
             announcer.Announce(line);

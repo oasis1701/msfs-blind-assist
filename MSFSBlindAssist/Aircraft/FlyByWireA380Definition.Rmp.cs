@@ -59,7 +59,11 @@ public partial class FlyByWireA380Definition
     {
         if (s == null || !s.IsConnected) return;
         if (rmp < 1 || rmp > 3) rmp = 1;   // 1=Captain, 2=First Officer, 3=Overhead (RMP 3)
-        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED)");
+        // Same anti-dedup idiom as SendRmpKey — the leading "{seq} 0 *" makes this call's string
+        // textually unique so MobiFlight's command channel never coalesces it with the last one
+        // (e.g. a held-then-tapped repeat of the same key). Shares SendRmpKey's counter so a
+        // press/release pair issued back-to-back from separate calls still can't collide.
+        s.ExecuteCalculatorCode($"{++_rmpKeySeq} 0 * (>H:RMP_{rmp}_{key}_PRESSED)");
     }
 
     /// <summary>Release a single RMP keypad key (the up half of <see cref="SendRmpKeyPress"/>).</summary>
@@ -67,6 +71,6 @@ public partial class FlyByWireA380Definition
     {
         if (s == null || !s.IsConnected) return;
         if (rmp < 1 || rmp > 3) rmp = 1;   // 1=Captain, 2=First Officer, 3=Overhead (RMP 3)
-        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_RELEASED)");
+        s.ExecuteCalculatorCode($"{++_rmpKeySeq} 0 * (>H:RMP_{rmp}_{key}_RELEASED)");
     }
 }
