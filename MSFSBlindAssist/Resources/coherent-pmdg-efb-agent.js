@@ -233,9 +233,7 @@
   // keyed by the control id (efb_preferences_length_unit -> Settings.length_unit). Falls back ''.
   A.activeUnit = function (el) {
     try {
-      var S = null;
-      try { if (typeof window !== 'undefined' && window.Settings) S = window.Settings; } catch (e1) {}
-      if (!S) { try { if (typeof Settings !== 'undefined') S = Settings; } catch (e2) {} }
+      var S = A.settingsObj();
       if (el.id && S) {
         var key = el.id.replace(/^efb_preferences_/, '');
         if (key !== el.id) { var v = S[key]; if (v !== undefined && v !== null && String(v) !== '') return String(v); }
@@ -780,9 +778,9 @@
           // "first efb_preferences_ button" — the nav rail's own #efb_preferences_button matches
           // that id too and would jam the synthetics into the middle of the nav rail.
           var insAfter = -1;
-          for (var w = 0; w < merged.length; w++) {
-            var mw = merged[w];
-            if (mw.type !== 'button' && mw._id && mw._id.indexOf('efb_preferences_') === 0) insAfter = w;
+          for (var pw = 0; pw < merged.length; pw++) {
+            var mw = merged[pw];
+            if (mw.type !== 'button' && mw._id && mw._id.indexOf('efb_preferences_') === 0) insAfter = pw;
           }
           for (var si = 0; si < synItems.length; si++) {
             if (insAfter >= 0) merged.splice(insAfter + 1 + si, 0, synItems[si]); else merged.push(synItems[si]);

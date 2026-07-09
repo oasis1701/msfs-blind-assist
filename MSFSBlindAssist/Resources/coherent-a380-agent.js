@@ -278,7 +278,7 @@
   // Short label for an interactive control, ONE thing per line (no positional
   // grid). Inputs show their current value (or "blank" when an editable field is
   // empty); the field's text label, if any, is reported separately above it.
-  A.lineText = function (n, kind) {
+  A.lineText = function (n, kind, getLeafIndex) {
     if (kind === "input") {
       var v = A.readInputValue(n);
       // An input wrapped in a DropdownMenu is really a CHOICE field (you pick a
@@ -300,7 +300,7 @@
       // spacedText so multi-span button labels keep word breaks (D-ATIS function
       // selector "UPDATE OR PRINT", not "UPDATEOR PRINT").
       var dlbl = A.spacedText(n) || clean(n.textContent);
-      var dval = A.comboSelectedValue(dlbl, n);
+      var dval = A.comboSelectedValue(dlbl, n, getLeafIndex);
       return dval ? (dlbl + ", " + dval) : (dlbl || "(choice)");
     }
     if (kind === "tab") {
@@ -468,7 +468,7 @@
     while (cur) { if (cur.getAttribute && cur.getAttribute("data-fbwa380-perf-owned")) return true; cur = cur.parentElement; }
     return false;
   };
-  A.buildPerfLines = function (page, pageRect, items, startIdx) {
+  A.buildPerfLines = function (page, pageRect, items, startIdx, lvcs) {
     var idx = startIdx;
     function own(el) { try { el.setAttribute("data-fbwa380-perf-owned", "1"); } catch (e) {} }
     function hasInteractive(el) { return !!el.querySelector("[data-fbwa380-mcdu-idx]"); }
@@ -505,7 +505,7 @@
     //    a LABEL, no interactive child (those stay with step-1), and isn't in an owned grid.
     //    Label-less composite cells (e.g. CLB SPD LIM's value cells) are left to the generic
     //    pass. Green-dot speed has an <svg> circle for its label → synthesize "green dot".
-    var lvcs = page.querySelectorAll(".mfd-label-value-container");
+    if (!lvcs) lvcs = page.querySelectorAll(".mfd-label-value-container");
     for (var li = 0; li < lvcs.length; li++) {
       var c = lvcs[li]; if (!A.isVisible(c)) continue;
       if (c.getAttribute("data-fbwa380-perf-owned") || A.insidePerf(c.parentElement)) continue;
@@ -534,10 +534,10 @@
   // SIBLING (not a child) — common on POSITION pages — are left for page-specific builders;
   // label-less composites are left to the generic pass. Safe: PERF LVCs are already owned, so
   // this no-ops there; F-PLN is skipped; nothing interactive is touched.
-  A.buildLabeledFields = function (page, pageRect, items, startIdx) {
+  A.buildLabeledFields = function (page, pageRect, items, startIdx, lvcs) {
     var idx = startIdx;
     function isDash(s) { return !s || /^[-:.+\s]+$/.test(s); }
-    var lvcs = page.querySelectorAll(".mfd-label-value-container");
+    if (!lvcs) lvcs = page.querySelectorAll(".mfd-label-value-container");
     for (var i = 0; i < lvcs.length; i++) {
       var c = lvcs[i];
       if (!A.isVisible(c)) continue;
@@ -1046,6 +1046,27 @@
     return false;
   };
 
+  // Build the (text, rect) leaf index `comboSelectedValue` searches: every element
+  // under `scope` with non-empty directText AND a non-zero-size rect, in document
+  // order. Both of comboSelectedValue's scans only ever look at elements meeting
+  // exactly this criterion (empty-text elements can never match a label or be a
+  // candidate value; zero-rect elements are always rejected by the width/height
+  // check) — so gathering this once per scope and reusing it across every combo
+  // call in a pass is data-identical to redoing the two full-tree scans each time.
+  A.buildComboLeafIndex = function (scope) {
+    var all = scope.getElementsByTagName("*");
+    var leaves = [];
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var t = clean(A.directText(el));
+      if (!t) continue;
+      var r = el.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) continue;
+      leaves.push({ el: el, text: t, rect: r });
+    }
+    return leaves;
+  };
+
   // Selected value for a BUTTON-style dropdown (no .mfd-dropdown-inner), e.g. the
   // ARRIVAL/DEPARTURE RWY/APPR/STAR/TRANS selectors. The MFD draws these as a name
   // header with the current selection in the cell directly beneath it (a summary
@@ -1053,30 +1074,33 @@
   // the button label, then read the value cell immediately below it (≤45px, x
   // overlapping). Returns "" when nothing is selected (dashes) so callers append
   // nothing. Verified live on ARRIVAL: RWY→"30R", APPR/VIA/STAR/TRANS→"" (unset).
-  A.comboSelectedValue = function (label, node) {
+  //
+  // `getLeafIndex`, when supplied, is `function(scope) -> leaves[]` and lets a
+  // caller (enumerateLines) share ONE leaf index across every combo call in a
+  // scrape pass instead of re-walking the subtree per dropdown. Callers outside
+  // enumerateLines that don't pass it still work — the index is simply built fresh
+  // on demand, exactly as before.
+  A.comboSelectedValue = function (label, node, getLeafIndex) {
     if (!label) return "";
     var scope = A.mfdRootOf(node);
-    var all = scope.getElementsByTagName("*");
+    var leaves = getLeafIndex ? getLeafIndex(scope) : A.buildComboLeafIndex(scope);
     var hdr = null, i;
-    for (i = 0; i < all.length; i++) {
-      if (all[i] === node || (node.contains && node.contains(all[i]))) continue;
-      if (clean(A.directText(all[i])) === label) {
-        var r = all[i].getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) { hdr = r; break; }
-      }
+    for (i = 0; i < leaves.length; i++) {
+      var el = leaves[i].el;
+      if (el === node || (node.contains && node.contains(el))) continue;
+      if (leaves[i].text === label) { hdr = leaves[i].rect; break; }
     }
     if (!hdr) return "";
     var best = null, bg = 1e9;
-    for (i = 0; i < all.length; i++) {
-      var t = clean(A.directText(all[i]));
-      if (!t || t === label) continue;
+    for (i = 0; i < leaves.length; i++) {
+      var t = leaves[i].text;
+      if (t === label) continue;
       // A dropdown SELECTION is short (a runway, ident, mode). Never treat a long
       // free-text block as a selected value — esp. the D-ATIS report sitting directly
       // below the per-station "UPDATE OR PRINT" button (.mfd-atccom-datis-block-msgarea).
       if (t.length > 40) continue;
-      if (A.ancestorWithClass(all[i], "mfd-atccom-datis-block-msgarea")) continue;
-      var rr = all[i].getBoundingClientRect();
-      if (!(rr.width > 0 && rr.height > 0)) continue;
+      if (A.ancestorWithClass(leaves[i].el, "mfd-atccom-datis-block-msgarea")) continue;
+      var rr = leaves[i].rect;
       var g = rr.top - hdr.bottom;
       if (g < 0 || g > 45) continue;                              // directly below
       if (rr.right < hdr.left + 3 || rr.left > hdr.right - 3) continue;  // same column
@@ -1120,6 +1144,19 @@
     var idx = 1;
     var menuConts = [];   // open menu containers seen this pass (index = group id)
 
+    // One (text, rect) leaf index per distinct scope (LEFT/RIGHT MFD root), shared by
+    // every comboSelectedValue call in this pass — ARRIVAL/DEPARTURE alone have 5-6
+    // dropdowns that would otherwise each re-walk the full subtree twice per poll.
+    var comboLeafCache = [];
+    var getComboLeafIndex = function (scope) {
+      for (var c = 0; c < comboLeafCache.length; c++) {
+        if (comboLeafCache[c].scope === scope) return comboLeafCache[c].leaves;
+      }
+      var leaves = A.buildComboLeafIndex(scope);
+      comboLeafCache.push({ scope: scope, leaves: leaves });
+      return leaves;
+    };
+
     // TMPY / EO / PENALTY title flags (ActivePageTitleBar.tsx:66-78): the title bar
     // renders three visibility-toggled marker spans next to the page title
     // (.mfd-title-bar-text.label.{penalty|eo|tmpy}). activePageLabel intentionally
@@ -1149,7 +1186,7 @@
       if (!A.isVisible(n)) continue;
       if (n.querySelector(A.INTERACTIVE_SELECTOR)) continue;
       var kind = A.classify(n);
-      var label = A.lineText(n, kind);
+      var label = A.lineText(n, kind, getComboLeafIndex);
       // Drop empty non-input controls (noise). Empty inputs stay (read "blank").
       if (kind !== "input" && label.length === 0) continue;
       n.setAttribute("data-fbwa380-mcdu-idx", String(idx));
@@ -1197,13 +1234,18 @@
 
     // 1c) PERF page → structure-aware builder (one clean line per field/row); the generic
     //     static pass + Y-merge then SKIP the regions it consumed (data-fbwa380-perf-owned).
+    // Queried once and shared with buildLabeledFields below — both walk the same
+    // .mfd-label-value-container set in the same pass; buildPerfLines's own()
+    // attribute writes only change which entries the second call skips, never
+    // which elements the selector matches.
+    var lvcs = page.querySelectorAll(".mfd-label-value-container");
     var isPerf = A.isPerfPage(page);
-    if (isPerf) idx = A.buildPerfLines(page, pageRect, items, idx);
+    if (isPerf) idx = A.buildPerfLines(page, pageRect, items, idx, lvcs);
 
     // 1d) General labeled-field cleanup on EVERY page (clean "LABEL: value unit" lines for
     //     any .mfd-label-value-container with an inner label). Runs after the PERF/F-PLN
     //     builders so it only takes the containers they didn't already own.
-    idx = A.buildLabeledFields(page, pageRect, items, idx);
+    idx = A.buildLabeledFields(page, pageRect, items, idx, lvcs);
 
     // 1e) SURV CONTROLS page → prefix each radio / toggle button with its column
     //     header ("TCAS: TA/RA", "WXR: AUTO"); matched headers are owned so the
