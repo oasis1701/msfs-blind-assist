@@ -20,10 +20,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Shift+T via the shared FbwEfbForm over CoherentPmdgEfbClient (no Community-folder bridge).
     public bool HasEFBSupport => true;
 
-    // Cached merged variables dictionary — built once on first access.
-    // All callers are read-only so sharing a single instance is safe.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -32,16 +28,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private HashSet<string> SuppressedButtonKeys =>
         _suppressedButtonKeys ??= BuildSuppressedButtonKeys();
 
-    private HashSet<string> BuildSuppressedButtonKeys()
-    {
-        var set = new HashSet<string>();
-        foreach (var kvp in GetVariables())
-        {
-            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
-                set.Add(kvp.Key);
-        }
-        return set;
-    }
+    // BuildSuppressedButtonKeys moved to BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     // ---------------------------------------------------------------------
     // Suppression state for ProcessSimVarUpdate (Task C11).
@@ -236,11 +223,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Variables — scaffold (populated in Tasks C5–C8)
     // =========================================================================
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null)
-            return _cachedVariables;
-
         var variables = GetBaseVariables();
         // The PMDG NG3 does not drive the stock ELEVATOR TRIM POSITION SimVar
         // (it stays pinned within ±0.04° regardless of actual stabilizer trim),
@@ -251,7 +235,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
-        _cachedVariables = variables;
         return variables;
     }
 
@@ -5714,70 +5697,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             _ = simConnect.SendPMDGMomentaryToggle((uint)evId, 1);
     }
 
-    /// <summary>
-    /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
-    /// and current ground speed in knots. Returns empty string at low ground
-    /// speed (taxi / ground) where the estimate is meaningless.
-    /// </summary>
-    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
-    {
-        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
-        if (distanceNm <= 0) return "";
-
-        double hours = distanceNm / groundSpeedKnots;
-        int totalSeconds = (int)Math.Round(hours * 3600.0);
-        int hh = totalSeconds / 3600;
-        int mm = (totalSeconds % 3600) / 60;
-        int ss = totalSeconds % 60;
-        return $": {hh:D2}:{mm:D2}:{ss:D2}";
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to top of descent on the NG3.
-    /// </summary>
-    private static void AnnounceTODFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Top of descent not available");
-            return;
-        }
-        if (dist < 0.1f)
-        {
-            announcer.AnnounceImmediate("Past top of descent");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
-        });
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to destination on the NG3.
-    /// </summary>
-    private static void AnnounceDestFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Distance to destination not available");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
-        });
-    }
+    // FormatEtaFromDistance, AnnounceTODFromSDK, AnnounceDestFromSDK moved to
+    // BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     private void ShowPMDGHeadingDialog(
         SimConnect.SimConnectManager simConnect,

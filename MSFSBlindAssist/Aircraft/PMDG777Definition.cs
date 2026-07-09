@@ -16,10 +16,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
     public bool HasEFBSupport => true;
 
-    // Cached merged variables dictionary — built once on first access.
-    // All callers are read-only so sharing a single instance is safe.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -28,16 +24,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private HashSet<string> SuppressedButtonKeys =>
         _suppressedButtonKeys ??= BuildSuppressedButtonKeys();
 
-    private HashSet<string> BuildSuppressedButtonKeys()
-    {
-        var set = new HashSet<string>();
-        foreach (var kvp in GetVariables())
-        {
-            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
-                set.Add(kvp.Key);
-        }
-        return set;
-    }
+    // BuildSuppressedButtonKeys moved to BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     // PMDG 777 MCP uses increment/decrement selectors for speed/heading/altitude/VS
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
@@ -126,17 +113,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // Variables — scaffold (populated in Tasks 6-8)
     // =========================================================================
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null)
-            return _cachedVariables;
-
         var variables = GetBaseVariables();
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
         RegisterSystemDisplayVars(variables);
-        _cachedVariables = variables;
         return variables;
     }
 
@@ -6876,77 +6859,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
     }
 
-    /// <summary>
-    /// Format ETA as ", ETA HH:MM:SS" given remaining distance in nautical
-    /// miles and current ground speed in knots. Returns empty string if the
-    /// ground speed is too low to give a meaningful estimate (we don't want
-    /// to read out a 99-hour ETA when taxiing).
-    /// </summary>
-    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
-    {
-        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
-        if (distanceNm <= 0) return "";
-
-        double hours = distanceNm / groundSpeedKnots;
-        int totalSeconds = (int)Math.Round(hours * 3600.0);
-        int hh = totalSeconds / 3600;
-        int mm = (totalSeconds % 3600) / 60;
-        int ss = totalSeconds % 60;
-        return $": {hh:D2}:{mm:D2}:{ss:D2}";
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to top of descent. Used both as the
-    /// non-Enhanced-mode default and as the Enhanced-mode fallback when the
-    /// PROG-page probe couldn't return data (CDU off, page didn't render in
-    /// time, etc.).
-    /// </summary>
-    private static void AnnounceTODFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Top of descent not available");
-            return;
-        }
-        if (dist < 0.1f)
-        {
-            announcer.AnnounceImmediate("Past top of descent");
-            return;
-        }
-        // LastKnownPosition is request-on-demand; grab a fresh position so
-        // the ETA reflects current ground speed.
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
-        });
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to destination. Used both as the
-    /// non-Enhanced-mode default and as the Enhanced-mode fallback.
-    /// </summary>
-    private static void AnnounceDestFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Distance to destination not available");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
-        });
-    }
+    // FormatEtaFromDistance, AnnounceTODFromSDK, AnnounceDestFromSDK moved to
+    // BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     private void ShowPMDGHeadingDialog(
         SimConnect.SimConnectManager simConnect,
