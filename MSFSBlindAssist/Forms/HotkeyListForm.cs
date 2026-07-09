@@ -2,7 +2,7 @@
 namespace MSFSBlindAssist.Forms;
 public partial class HotkeyListForm : Form
 {
-    private const string AllCategoriesLabel = "All Categories";
+    internal const string AllCategoriesLabel = "All Categories";
     private const string ShowAllModesLabel = "All hotkeys";
     private const string ShowOutputModeLabel = "Output hotkeys";
     private const string ShowInputModeLabel = "Input hotkeys";
@@ -244,14 +244,7 @@ public partial class HotkeyListForm : Form
         string search = searchComboBox.Text.Trim();
         HotkeyMode? selectedMode = GetSelectedMode();
 
-        // Empty, exact match, or any case-insensitive prefix of "All Categories"
-        // at least 3 chars long (covers "all", "all c", "All Categ", etc.).
-        // The 3-char floor prevents "a"/"al" from short-circuiting filters
-        // for categories that start with those letters (e.g. Altitude, Airspeed).
-        bool isAllCategoriesSentinel =
-            string.IsNullOrEmpty(search)
-            || (search.Length >= 3
-                && AllCategoriesLabel.StartsWith(search, StringComparison.OrdinalIgnoreCase));
+        bool isAllCategoriesSentinel = IsAllCategoriesSentinel(search);
 
         if (isAllCategoriesSentinel && selectedMode is null)
         {
@@ -291,6 +284,21 @@ public partial class HotkeyListForm : Form
         hotkeyTextBox.SelectionStart = 0;
         hotkeyTextBox.SelectionLength = 0;
         hotkeyTextBox.ScrollToCaret();
+    }
+
+    /// <summary>
+    /// Extracted, behavior-neutral seam (2026-07, characterization tests): empty, exact
+    /// match, or any case-insensitive prefix of "All Categories" at least 3 chars long
+    /// (covers "all", "all c", "All Categ", etc.) is treated as "no filter". The 3-char
+    /// floor prevents "a"/"al" from short-circuiting filters for categories that start
+    /// with those letters (e.g. Altitude, Airspeed). Pure move out of <see cref="ApplyFilters"/>
+    /// with zero logic change so it can be unit-tested without constructing the form.
+    /// </summary>
+    internal static bool IsAllCategoriesSentinel(string search)
+    {
+        return string.IsNullOrEmpty(search)
+            || (search.Length >= 3
+                && AllCategoriesLabel.StartsWith(search, StringComparison.OrdinalIgnoreCase));
     }
 
     private HotkeyMode? GetSelectedMode()
@@ -448,14 +456,14 @@ public partial class HotkeyListForm : Form
         return text.Replace("\r\n", "\n").Replace("\n", "\r\n");
     }
 
-    private enum HotkeyMode
+    internal enum HotkeyMode
     {
         Output,
         Input,
         General
     }
 
-    private sealed class CategorySection
+    internal sealed class CategorySection
     {
         public CategorySection(HotkeyMode mode, string categoryName, string sectionText)
         {
