@@ -399,14 +399,8 @@ public class TaxiRouter
         int fromComponent = fromNode.ComponentId;
         var candidates = new List<(int nodeId, double dist)>();
 
-        foreach (var kvp in _graph.Adjacency)
+        foreach (int nodeId in _graph.GetNodesOnTaxiway(taxiwayName))
         {
-            int nodeId = kvp.Key;
-            bool onTaxiway = kvp.Value.Any(e =>
-                e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase));
-
-            if (!onTaxiway) continue;
-
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != fromComponent) continue;
 
@@ -424,20 +418,6 @@ public class TaxiRouter
     }
 
     /// <summary>
-    /// Finds the node on a named taxiway whose shortest graph path to the
-    /// destination is minimal. Uses Dijkstra cost-from-destination rather
-    /// than Euclidean distance to dodge the dead-end-endpoint trap (KDEN
-    /// M4 northern endpoint sits closer to gate A 60 in a straight line,
-    /// but is a graph dead-end: the path forward from it round-trips back
-    /// down M4 plus the real route around the airport, ~1 km longer than
-    /// picking the southern endpoint).
-    ///
-    /// Falls back to Euclidean distance only when the target is unreachable
-    /// in the graph or no taxiway node sits in the destination's connected
-    /// component — both shouldn't happen during normal operation but keep
-    /// the helper defensive.
-    /// </summary>
-    /// <summary>
     /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
     /// whose geographic distance to (<paramref name="refLat"/>, <paramref name="refLon"/>) is minimal
     /// (<paramref name="farthest"/> = false) or maximal (true), or -1 if none. The two callers honor a
@@ -451,11 +431,8 @@ public class TaxiRouter
     {
         int best = -1;
         double bestM = farthest ? -1 : double.MaxValue;
-        foreach (var kvp in _graph.Adjacency)
+        foreach (int nodeId in _graph.GetNodesOnTaxiway(taxiwayName))
         {
-            int nodeId = kvp.Key;
-            if (!kvp.Value.Any(e => e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase)))
-                continue;
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != requiredComponent) continue;
             double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, refLat, refLon);
@@ -492,14 +469,8 @@ public class TaxiRouter
         var distFromTarget = precomputedDistFromTarget
             ?? ComputeGraphDistancesFrom(targetNodeId);
 
-        foreach (var kvp in _graph.Adjacency)
+        foreach (int nodeId in _graph.GetNodesOnTaxiway(taxiwayName))
         {
-            int nodeId = kvp.Key;
-            bool onTaxiway = kvp.Value.Any(e =>
-                e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase));
-
-            if (!onTaxiway) continue;
-
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != targetComponent) continue;
 
@@ -520,13 +491,8 @@ public class TaxiRouter
         // answer is better than no answer" property on malformed graphs.
         if (bestNode == -1)
         {
-            foreach (var kvp in _graph.Adjacency)
+            foreach (int nodeId in _graph.GetNodesOnTaxiway(taxiwayName))
             {
-                int nodeId = kvp.Key;
-                bool onTaxiway = kvp.Value.Any(e =>
-                    e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase));
-                if (!onTaxiway) continue;
-
                 var node = _graph.Nodes[nodeId];
                 if (node.ComponentId != targetComponent) continue;
 
@@ -635,29 +601,28 @@ public class TaxiRouter
     /// intersection nodes that are closer in straight-line distance to
     /// either endpoint can require a long graph backtrack to escape).
     /// </summary>
-    private int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2)
+    internal int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2)
     {
+        // Hybrid: the O(E)-per-node edge scan is replaced by an O(1) index-set lookup
+        // (proven exactly equal in content — TaxiGraph.RegisterTaxiwayNode is called
+        // for a node iff a real, non-degenerate edge with that TaxiwayName touches it).
+        // The node.TaxiwayNames.Contains fallback is INTENTIONALLY kept: a zero-length
+        // ("degenerate") taxi_path segment resolves both endpoints to the same node and
+        // still adds the taxiway name to that node's TaxiwayNames set (TaxiGraph.Build),
+        // but is skipped before RegisterTaxiwayNode runs — so the index alone would
+        // silently drop those nodes here. Dropping the fallback would change which
+        // intersection candidates are found, which this routing code must not risk.
+        var onTaxiway1 = new HashSet<int>(_graph.GetNodesOnTaxiway(taxiway1));
+        var onTaxiway2 = new HashSet<int>(_graph.GetNodesOnTaxiway(taxiway2));
+
         var intersections = new List<int>();
-        foreach (var kvp in _graph.Adjacency)
+        foreach (var node in _graph.Nodes.Values)
         {
-            int nodeId = kvp.Key;
-            bool hasTaxiway1 = false;
-            bool hasTaxiway2 = false;
-
-            foreach (var edge in kvp.Value)
-            {
-                if (edge.TaxiwayName.Equals(taxiway1, StringComparison.OrdinalIgnoreCase))
-                    hasTaxiway1 = true;
-                if (edge.TaxiwayName.Equals(taxiway2, StringComparison.OrdinalIgnoreCase))
-                    hasTaxiway2 = true;
-            }
-
-            var node = _graph.Nodes[nodeId];
-            if (node.TaxiwayNames.Contains(taxiway1)) hasTaxiway1 = true;
-            if (node.TaxiwayNames.Contains(taxiway2)) hasTaxiway2 = true;
+            bool hasTaxiway1 = onTaxiway1.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway1);
+            bool hasTaxiway2 = onTaxiway2.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway2);
 
             if (hasTaxiway1 && hasTaxiway2)
-                intersections.Add(nodeId);
+                intersections.Add(node.NodeId);
         }
 
         if (intersections.Count == 0)
@@ -714,12 +679,7 @@ public class TaxiRouter
         }
 
         // Pre-build set of nodes that have at least one edge on the required taxiway
-        var nodesOnTaxiway = new HashSet<int>();
-        foreach (var kvp in _graph.Adjacency)
-        {
-            if (kvp.Value.Any(e => e.TaxiwayName.Equals(requiredTaxiway, StringComparison.OrdinalIgnoreCase)))
-                nodesOnTaxiway.Add(kvp.Key);
-        }
+        var nodesOnTaxiway = new HashSet<int>(_graph.GetNodesOnTaxiway(requiredTaxiway));
 
         Log($"Strict '{requiredTaxiway}': {nodesOnTaxiway.Count} nodes on taxiway, start {startId} on={nodesOnTaxiway.Contains(startId)}, goal {goalId} on={nodesOnTaxiway.Contains(goalId)}");
 
@@ -745,7 +705,10 @@ public class TaxiRouter
 
             if (current == goalId)
             {
-                Log($"Strict '{requiredTaxiway}': FOUND path in {iterations} iterations, {closedSet.Count} nodes explored, {bridgeCount} bridges used");
+                // bridgeCount counts every bridge-edge RELAXATION during the search (a candidate
+                // improvement considered, not necessarily kept) — it is not the number of bridges
+                // on the final reconstructed path, so the log wording says "relaxations" honestly.
+                Log($"Strict '{requiredTaxiway}': FOUND path in {iterations} iterations, {closedSet.Count} nodes explored, {bridgeCount} bridge-edge relaxations");
                 return ReconstructPath(cameFrom, current);
             }
 
@@ -884,12 +847,9 @@ public class TaxiRouter
             double nextDist = double.MaxValue;
             var edgeNode = _graph.Nodes[bestReachable];
 
-            foreach (var kvp in _graph.Adjacency)
+            foreach (int nodeId in _graph.GetNodesOnTaxiway(requiredTaxiway))
             {
-                int nodeId = kvp.Key;
                 if (reachable.Contains(nodeId)) continue;
-                if (!kvp.Value.Any(e => e.TaxiwayName.Equals(requiredTaxiway, StringComparison.OrdinalIgnoreCase)))
-                    continue;
 
                 var n = _graph.Nodes[nodeId];
                 double d = TaxiGraph.CalculateDistanceMeters(edgeNode.Latitude, edgeNode.Longitude, n.Latitude, n.Longitude);
@@ -980,7 +940,7 @@ public class TaxiRouter
     /// edges — runs in well under 50 ms on warm CPU. Called once per recalc,
     /// so the cost is dwarfed by the recalc cooldown (15 s).
     /// </summary>
-    private Dictionary<int, double> ComputeGraphDistancesFrom(int sourceId)
+    internal Dictionary<int, double> ComputeGraphDistancesFrom(int sourceId)
     {
         var dist = new Dictionary<int, double>();
         if (!_graph.Nodes.ContainsKey(sourceId)) return dist;
@@ -1168,7 +1128,7 @@ public class TaxiRouter
         return angle;
     }
 
-    private static string GetTurnDirection(double angle)
+    internal static string GetTurnDirection(double angle)
     {
         double absAngle = Math.Abs(angle);
         if (absAngle < 20) return "straight";

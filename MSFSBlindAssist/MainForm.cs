@@ -313,6 +313,11 @@ public partial class MainForm : Form
 
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
+    // Reentrancy latch for CheckWeatherProximityAsync — the announcement timer tick fires
+    // it fire-and-forget, and a slow WeatherService call could still be in flight when the
+    // next tick lands.
+    private bool _proximityCheckRunning = false;
+
     // Current state
     private string currentSection = "";
 
