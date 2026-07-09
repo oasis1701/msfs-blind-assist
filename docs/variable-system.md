@@ -41,11 +41,12 @@ Three distinct patterns for managing variables, each optimized for different use
 - Automatically monitored by `StartContinuousMonitoring()` system
 
 **Batched Monitoring System:**
-- All continuous variables in ONE SimConnect data definition (GenericBatch struct, 1000 field capacity)
-- SimConnect sends updates automatically every second using `SIMCONNECT_PERIOD.SECOND`
-- **500x more efficient** than individual requests (1 batch vs N network packets)
+- Continuous variables are split across **five** SimConnect data definitions — `CONTINUOUS_BATCH_1` through `CONTINUOUS_BATCH_5` — each backed by a `GenericBatch1`–`GenericBatch5` struct of 300 `double` fields, for 1,500 slots total. `StartContinuousMonitoring()` (`SimConnectManager.Setup.cs`) sorts all `Continuous`+`IsAnnounced` variables alphabetically by full name (so the field order matches SimConnect's internal ordering) and fills the batches in that order, 300 vars per batch, registering only as many batches as are needed.
+- Each batch's data definition is padded to exactly 300 datums (with a benign filler simvar) even when it holds fewer real variables — the managed SimConnect library marshals the full struct size regardless of how many bytes the message actually contains, so an unpadded partial batch reads past the end of the buffer (this caused an intermittent native access-violation crash on aircraft with a partial final batch, e.g. the A32NX).
+- SimConnect sends updates automatically every second using `SIMCONNECT_PERIOD.SECOND`, once per batch
+- **Far more efficient** than individual requests (a handful of batch packets vs N individual network packets)
 - No C# Timer overhead - SimConnect handles timing internally
-- Supports up to 1000 continuous variables (currently using 67 for A320)
+- Supports up to 1,500 continuous variables total (300 × 5 batches); the A380 currently uses roughly 700
 
 **Example:**
 ```csharp
@@ -61,10 +62,10 @@ Three distinct patterns for managing variables, each optimized for different use
 ```
 
 **Technical Implementation:**
-- `GenericBatch.cs` - Struct with 1000 double fields (V0-V999)
-- `SimConnectManager.StartContinuousMonitoring()` - Builds batch definition, registers with `SIMCONNECT_PERIOD.SECOND`
-- `SimConnectManager.ProcessContinuousBatch()` - Extracts values using pre-cached FieldInfo array (optimized)
-- Variables auto-mapped to struct field indices (V0, V1, V2...) in order added
+- `GenericBatch.cs` - Defines `GenericBatch1`-`GenericBatch5`, five structs each with 300 double fields, registered as `CONTINUOUS_BATCH_1`..`CONTINUOUS_BATCH_5` / requested as `REQUEST_CONTINUOUS_BATCH_1`..`REQUEST_CONTINUOUS_BATCH_5`
+- `SimConnectManager.StartContinuousMonitoring()` (`SimConnectManager.Setup.cs:315-393`) - Sorts continuous+announced variables, splits them across the five batch definitions, pads each to 300 datums, and registers each with `SIMCONNECT_PERIOD.SECOND`
+- `SimConnectManager.ProcessContinuousBatch()` - Extracts values per batch using a pre-cached field-accessor array (optimized)
+- Each variable is mapped to a `(batchNum, indexWithinBatch)` pair, tracked in `continuousVariableIndexMap`, in the order variables were assigned to batches
 - Uses `SIMCONNECT_UNUSED` for datum ID - SimConnect auto-populates sequentially
 
 **Performance Optimization:**

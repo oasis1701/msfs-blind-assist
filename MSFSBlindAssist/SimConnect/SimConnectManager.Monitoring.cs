@@ -410,22 +410,4 @@ public partial class SimConnectManager
         return destinationRunway != null && destinationAirport != null;
     }
 
-    public AircraftPosition? GetAircraftPosition()
-    {
-        if (!IsConnected) return null;
-
-        try
-        {
-            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION,
-                DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
-                0, 0, 0);
-            return null; // Will be returned via event handler
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("SimConnect", $"Error requesting aircraft position: {ex.Message}");
-            return null;
-        }
-    }
 }

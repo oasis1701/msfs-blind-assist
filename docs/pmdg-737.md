@@ -164,7 +164,7 @@ needed, and NO sim restart is required.
   on the EFB plumbing (Coherent client startup) and the Shift+T dispatch (`MainForm` gates those on
   `HasEFBSupport`).
 - Hotkeys: **Shift+T (input mode) = Captain EFB**, **Ctrl+Shift+T (input mode) = First Officer EFB**.
-  The shared `FbwEfbForm.cs` shows the currently selected tablet side. Form title reads `"PMDG 737
+  The shared `FbwEfbForm.cs` shows the currently selected tablet side. Form title is computed in `MainForm.Dialogs.cs` and reads `"PMDG 737
   EFB"` for `PMDG_737` and `"PMDG 777 EFB"` otherwise.
 - On startup, `Patching/LegacyEfbBridgeCleanup.cs` removes the retired Community packages
   (`zzz-pmdg-efb-accessibility`, `zzz-hs787-accessibility`) automatically. The old HTTP bridge
