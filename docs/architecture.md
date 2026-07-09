@@ -199,7 +199,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[YourAircraft] Error requesting FCU heading: {ex.Message}");
+                Log.Error("Aircraft", $"Error requesting FCU heading: {ex.Message}");
             }
         }
     }
@@ -545,13 +545,6 @@ Dual-mode hotkey system:
 - Custom Windows Forms control optimized for screen reader navigation
 - Implements three-level navigation: Sections → Panels → Controls
 
-### AirportDatabase
-**File:** `Database/AirportDatabase.cs`
-
-- SQLite-based airport and runway data management
-- Stores ICAO codes, airport names, runway data, and parking spots
-- Supports teleport destination lookup and validation
-
 ### DatabaseBuilder
 **File:** `Database/DatabaseBuilder.cs`
 
@@ -578,7 +571,7 @@ Dual-mode hotkey system:
 See [Access GSX](gsx.md) for the full reference.
 
 ### TaxiGuidance subsystem
-**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/TaxiGuidanceOptionsForm.cs`
+**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/Settings/TaxiGuidancePanel.cs`
 
 - Turn-by-turn taxi assistance using the navdatareader `taxi_path` / `start` / `parking` tables
 - `TaxiGraph` merges path endpoints within ~1 m into shared nodes, indexes edges by taxiway name

@@ -124,7 +124,7 @@ public static class SettingsManager
         ///     and post-migration choices (incl. re-selecting "Always") stick.
         /// Fresh installs keep the class defaults (steer-toward, 1°).
         /// </summary>
-        private static void SeedTakeoffAssistToneConvention(UserSettings settings, bool freshInstall)
+        internal static void SeedTakeoffAssistToneConvention(UserSettings settings, bool freshInstall)
         {
             if (settings.TakeoffAssistToneConventionMigrated) return;
             if (!freshInstall)
@@ -149,7 +149,7 @@ public static class SettingsManager
         /// Runs once (guarded by FenixMonitorDefaultsSeeded) so a deliberate re-enable in
         /// the Ctrl+M monitor is never overwritten.
         /// </summary>
-        private static void SeedFenixMonitorDefaults(UserSettings s)
+        internal static void SeedFenixMonitorDefaults(UserSettings s)
         {
             if (s.FenixMonitorDefaultsSeeded) return;
             s.FenixMonitorDefaultsSeeded = true;
