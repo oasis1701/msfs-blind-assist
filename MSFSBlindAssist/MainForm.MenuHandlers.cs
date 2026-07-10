@@ -104,7 +104,14 @@ public partial class MainForm
         RestartNearestCityAnnouncementTimer();
 
         if (activeSkyWeatherMonitor != null)
+        {
             activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;
+            // Both Weather-tab switches take effect without restart. The Enabled setter
+            // maps to Start()/Stop(), and System.Windows.Forms.Timer.Start/Stop are
+            // idempotent, so an unchanged setting is a no-op.
+            activeSkyWeatherMonitor.Enabled =
+                MSFSBlindAssist.Services.ActiveSkyWeatherMonitor.ShouldRun(settings);
+        }
 
         // GSX background-monitoring toggle. Push the new value into the live
         // service. The form's VisibleChanged handler will overwrite this
