@@ -20,6 +20,13 @@ public class HandFlyFormatterTests
     [InlineData(0.0, "level")]
     [InlineData(0.4, "level")]
     [InlineData(-0.4, "level")]
+    // Midpoints: (int)Math.Round defaults to banker's rounding (to even) — the
+    // pinned platform default, same precedent as FuelReadoutFormatTests. The .5
+    // literals are exactly representable doubles, so these rows are stable.
+    [InlineData(12.5, "+12")]
+    [InlineData(13.5, "+14")]
+    [InlineData(-12.5, "-12")]
+    [InlineData(0.5, "level")]
     public void FormatPitchAnnouncement_SpeaksWholeDegrees(double pitch, string expected)
     {
         Assert.Equal(expected, HandFlyManager.FormatPitchAnnouncement(pitch));
@@ -34,6 +41,10 @@ public class HandFlyFormatterTests
     [InlineData(0.0, "wings level")]
     [InlineData(0.3, "wings level")]
     [InlineData(-0.4, "wings level")]
+    // Midpoints: banker's rounding (to even), applied after Math.Abs.
+    [InlineData(2.5, "left 2")]
+    [InlineData(-3.5, "right 4")]
+    [InlineData(0.5, "wings level")]
     public void FormatBankAnnouncement_SpeaksWholeDegreesWithDirection(double bank, string expected)
     {
         Assert.Equal(expected, HandFlyManager.FormatBankAnnouncement(bank));

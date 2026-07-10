@@ -274,12 +274,13 @@ public partial class MainForm : Form
     // during the roll.
     private System.Windows.Forms.Timer? _liftoffHandoffTimer;
     private const double LIFTOFF_HANDOFF_MIN_GS_KTS = 40.0; // reject pushback/slope/replay; every supported airframe rotates well above this
-    // Must stay airborne this long before handing off. MUST exceed the 1 Hz
-    // continuous-batch sampling period of SIM_ON_GROUND: with a window equal to
-    // the period, a settled bounce's canceling ground sample is generated at
-    // essentially the same instant the timer fires and the handoff can win the
-    // message-queue race while the aircraft is back on the runway at speed.
-    // 1.5 s guarantees one full batch sample is processed inside the window.
+    // Must stay airborne this long before handing off. Exceeds the 1 Hz
+    // continuous-batch sampling period of SIM_ON_GROUND so a settled bounce's
+    // canceling ground sample is normally processed inside the window. The
+    // cache alone is NOT trusted at fire time — at 1 Hz a touchdown in the
+    // final second before the tick is invisible — so the tick confirms against
+    // a fresh one-shot position read (SimOnGround + ground speed) before
+    // performing the handoff; see PerformLiftoffHandoffIfValid.
     private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1500;
     // How long the handoff mutes Hand Fly's own spoken pitch/bank/heading/VS
     // callouts so the breadcrumb ("Airborne. Takeoff assist off, hand fly
@@ -288,6 +289,23 @@ public partial class MainForm : Form
     // which would clip the breadcrumb after a syllable. The tone is unaffected;
     // spoken pitch resumes right after the window.
     private const int    LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS = 3500;
+    // Outcome of the most recent RegisterHandFlyHotkeys() call, recorded by
+    // OnHandFlyModeActiveChanged. The liftoff auto-handoff folds the
+    // quick-access-keys warning into its breadcrumb: the breadcrumb's
+    // AnnounceImmediate cancels pending speech on every backend
+    // (nvdaController_cancelSpeech / Tolk interrupt / SAPI SpeakAsyncCancelAll),
+    // which would otherwise silently swallow the handler's standalone warning.
+    private bool _handFlyQuickKeysRegistered = true;
+    // Generation token for the liftoff handoff's fresh-position confirm. The
+    // confirm callback is a one-shot AircraftPositionReceived subscription that
+    // LEAKS if the response never arrives (disconnect mid-request, or the
+    // request call throwing after the subscribe) — a leaked handler fires on
+    // the NEXT position response from ANY requester, potentially a later
+    // flight's rotation, bypassing the debounce entirely. The tick captures the
+    // token before requesting; every event that voids a pending handoff
+    // (touchdown edge, disconnect, aircraft switch, TA deactivation) bumps it,
+    // so a stale callback aborts on entry.
+    private int _liftoffHandoffConfirmToken;
 
     // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
     // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each

@@ -93,6 +93,14 @@ public class HandFlyManager : IDisposable
             lastHeadingAnnouncement = DateTime.MinValue;
             lastVSAnnouncement = DateTime.MinValue;
 
+            // A fresh activation must never inherit a still-open announcement
+            // grace window from a previous handoff (Hand Fly toggled off and
+            // back on within the window) — spoken callouts would stay muted for
+            // the remainder for no reason. The liftoff handoff sets its grace
+            // AFTER calling Toggle(), so this reset never erases a grace the
+            // handoff is about to rely on.
+            announceGraceUntil = DateTime.MinValue;
+
             // Start audio if tones are enabled — unless visual guidance has asked us to stay
             // silent. VG's two tones conflict audibly with HandFly's single tone (same Hz/pan
             // mappings, hard to tell which to follow), so when VG is active it suppresses
@@ -142,6 +150,12 @@ public class HandFlyManager : IDisposable
         announceGraceUntil = DateTime.Now.AddMilliseconds(milliseconds);
     }
 
+    /// <summary>True while the post-handoff announcement grace window is open —
+    /// spoken callouts hold, the audio tone is never affected (see
+    /// <see cref="SuppressAnnouncementsFor"/>). Same private-property idiom as
+    /// VisualGuidanceManager.RoutineAnnouncementsSuppressed.</summary>
+    private bool AnnouncementsMuted => DateTime.Now < announceGraceUntil;
+
     /// <summary>
     /// Process pitch update during hand fly mode
     /// </summary>
@@ -157,7 +171,7 @@ public class HandFlyManager : IDisposable
         // post-handoff grace window so the breadcrumb isn't interrupted)
         bool shouldAnnounce = (feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
                              feedbackMode == HandFlyFeedbackMode.Both) &&
-                             DateTime.Now >= announceGraceUntil;
+                             !AnnouncementsMuted;
 
         if (shouldAnnounce)
         {
@@ -195,7 +209,7 @@ public class HandFlyManager : IDisposable
         // post-handoff grace window so the breadcrumb isn't interrupted)
         bool shouldAnnounce = (feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
                              feedbackMode == HandFlyFeedbackMode.Both) &&
-                             DateTime.Now >= announceGraceUntil;
+                             !AnnouncementsMuted;
 
         if (shouldAnnounce)
         {
@@ -228,7 +242,7 @@ public class HandFlyManager : IDisposable
         // Post-handoff grace: skip BEFORE the first-sample-always-announce logic
         // below (which ignores feedback mode entirely), so nothing is marked
         // announced during the window and the first heading lands right after it.
-        if (DateTime.Now < announceGraceUntil) return;
+        if (AnnouncementsMuted) return;
 
         // Check if we should announce
         bool shouldAnnounce = false;
@@ -277,7 +291,7 @@ public class HandFlyManager : IDisposable
         if (!isActive || !monitorVerticalSpeed) return;
 
         // Post-handoff grace — same reasoning as ProcessHeadingUpdate.
-        if (DateTime.Now < announceGraceUntil) return;
+        if (AnnouncementsMuted) return;
 
         // Check if we should announce
         bool shouldAnnounce = false;
