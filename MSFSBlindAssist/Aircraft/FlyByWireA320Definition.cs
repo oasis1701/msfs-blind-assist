@@ -573,6 +573,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
         },
+        // Fire pushbutton GUARDS (hinged clear covers over the fire handles). Real
+        // cockpit switches — the cockpit fire-button click is gated on the guard being
+        // open (A32NX_Interior_Fire.xml reads A32NX_FIRE_GUARD_#TYPE##ID# before
+        // toggling). Settable + held via the calculator catch-all (live-verified
+        // 2026-07). Completeness-pass parity with the A380 fire guards.
+        ["A32NX_FIRE_GUARD_ENG1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_GUARD_ENG1", DisplayName = "Eng 1 Fire Handle Guard",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_FIRE_GUARD_ENG2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_GUARD_ENG2", DisplayName = "Eng 2 Fire Handle Guard",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_FIRE_GUARD_APU"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_GUARD_APU", DisplayName = "APU Fire Handle Guard",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
         ["A32NX_FIRE_TEST_ENG1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FIRE_TEST_ENG1",
@@ -798,6 +821,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
         },
+        // Cargo-smoke discharge GUARD covers (the hinged covers over the DISCH buttons;
+        // SWITCH_POSITION_VAR of LOCK_OVHD_CARGOSMOKE_1/2). Settable + held via the
+        // calculator catch-all (live-verified 2026-07). Completeness-pass parity with
+        // the A380 cargo-smoke discharge controls; the bottles themselves stay
+        // read-only (the DISCHARGED status vars above) — discharge is inop in FBW.
+        ["A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE", DisplayName = "Cargo Smoke Discharge 1 Guard",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE", DisplayName = "Cargo Smoke Discharge 2 Guard",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
         // Wing anti-ice FAULT (read-only status; confirmed in a320-simvars.md). Continuous +
         // IsAnnounced so it speaks on change from any source and lists in Ctrl+M; shown
         // read-only in the Anti Ice status box.
@@ -936,17 +976,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Anti Ice Panel. The old XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED vars are
         // model-only press-animation flags that do NOT actuate the systems (same finding
         // as the A380 #56 work). The real controls (live-verified on the A32NX):
-        //   - WING anti-ice = A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED (calc-path write;
-        //     reverts on the ground due to the on-ground inhibit, holds in flight —
-        //     A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON is the read-only valve-open status).
+        //   - WING anti-ice (CORRECTED 2026-07, mirrors the A380 fix): the combo writes
+        //     A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
+        //     writes (FBW_Airbus_AntiIce_Wing LEFT_SINGLE_CODE) and the ONLY input the
+        //     Rust pneumatic system reads (WingAntiIcePushButton::read). The old target,
+        //     A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED, is a Rust per-frame OUTPUT
+        //     (WingAntiIceComplex::write) — live-verified: writing 1 reverts to 0 within
+        //     2 s at ANY phase (the old "holds in flight" note was a mis-test), so the
+        //     combo actuated nothing. Writing the button var holds AND SELECTED follows
+        //     (live-verified downstream). _SYSTEM_ON remains the valve-open status.
         //   - ENGINE 1/2 anti-ice = the stock K-event ANTI_ICE_SET_ENGn (state read from
         //     the stock simvar ENG ANTI ICE:n; verified 0->1 actuates). Routed in
         //     HandleUIVariableSet.
-        ["A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED"] = new SimConnect.SimVarDefinition
+        ["A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
+            Name = "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION",
             DisplayName = "Wing Anti-Ice",
-            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["ENG_ANTI_ICE:1"] = new SimConnect.SimVarDefinition
@@ -1196,27 +1243,109 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Test" }
         },
 
+        // ---- No-omissions completeness pass (2026-07, parity with the A380 pass):
+        // remaining pilot-operable overhead switches. All modelled but INOP on the FBW
+        // build (tooltips say "(Inop.)"); the switches hold their position
+        // (live-verified settable + held via the calculator catch-all).
+        // ELT ON is a latching press (the cockpit button one-way writes 1); the combo
+        // exposes both directions since the L:var itself holds either value.
+        ["A32NX_ELT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ELT_ON", DisplayName = "Emergency Locator Transmitter (inop)",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // ELT TEST/RESET — momentary hold button (FBW_Push_Held HOLD_SIMVAR).
+        ["A32NX_ELT_TEST_RESET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ELT_TEST_RESET", DisplayName = "ELT Test / Reset (inop)",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
+        },
+        // Data Loading Selector (dummy switch in FBW — position holds, no system).
+        ["A32NX_DLS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_DLS_ON", DisplayName = "Data Loading Selector (inop)",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // Rain repellent (Capt/F/O) — momentary hold buttons (FBW_Push_Held). Exposed
+        // by VAR name: the cockpit MODEL has the two node→var assignments crossed
+        // ("Model has buttons exchanged" in A320_NEO_INTERIOR.xml) but the vars
+        // themselves are correctly L/R named.
+        ["A32NX_RAIN_REPELLENT_LEFT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RAIN_REPELLENT_LEFT_ON", DisplayName = "Rain Repellent Captain (inop)",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
+        },
+        ["A32NX_RAIN_REPELLENT_RIGHT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RAIN_REPELLENT_RIGHT_ON", DisplayName = "Rain Repellent First Officer (inop)",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsMomentary = true
+        },
+
         // ---- Wipers: FBW_Airbus_Wiper_Knob drives electrical circuit 77 (Captain)
         // / 80 (F/O): off/on = ELECTRICAL_CIRCUIT_TOGGLE, speed = circuit power
-        // setting 75 (slow) / 100 (fast). Same pattern as the A380 wipers (141/143).
-        // The circuit-switch state is a bool, so the read-back shows "Slow" whenever
-        // the wiper is running — even at fast (exact speed read-back would need
-        // CIRCUIT POWER SETTING:n). The three options stay so the SET path can
-        // drive the full off/slow/fast state.
-        // (XMLVAR_A320_WiperSwitch_* does not exist in FBW — dead-var trap.)
-        ["XMLVAR_A320_WiperSwitch_1"] = new SimConnect.SimVarDefinition
+        // setting 75 (slow) / 100 (fast). Same pattern as the A380 wipers (141/143),
+        // ported 2026-07 (live-verified on circuits 77/80: toggle flips CIRCUIT
+        // SWITCH ON, "75|100 <circuit> (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)"
+        // sets the speed). The live position is a TWO-var state (switch + power) —
+        // the power setting persists at 100% while the switch is off, so a
+        // cold-start read of power=100 + switch=off must read OFF, not FAST, and
+        // the switch bool alone can't distinguish SLOW from FAST. The settable
+        // control is therefore a SYNTHETIC 3-position combo (holds the last set),
+        // and the true live position is decoded from the hidden switch+power
+        // backers below (WiperState → the "… Position" readouts).
+        // (XMLVAR_A320_WiperSwitch_* does not exist in FBW — dead-var trap;
+        //  the old combos were keyed on it, backed on the switch bool, and could
+        //  never read back FAST.)
+        ["WIPER_LEFT"] = new SimConnect.SimVarDefinition
         {
-            Name = "CIRCUIT SWITCH ON:77", DisplayName = "Wiper Captain",
-            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            Name = "WIPER_LEFT", DisplayName = "Captain Wiper",
+            Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" }
         },
-        ["XMLVAR_A320_WiperSwitch_2"] = new SimConnect.SimVarDefinition
+        ["WIPER_RIGHT"] = new SimConnect.SimVarDefinition
         {
-            Name = "CIRCUIT SWITCH ON:80", DisplayName = "Wiper First Officer",
-            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            Name = "WIPER_RIGHT", DisplayName = "First Officer Wiper",
+            Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" }
+        },
+        // Hidden live-state backers (circuit switch + power per side): the switch var
+        // doubles as the OFF/SLOW/FAST readout (decoded in TryGetDisplayOverride from
+        // the cached pair via _wiperState*), and the set handler reads the switch to
+        // decide whether to toggle. Never spoken (ProcessSimVarUpdate returns true).
+        ["WIPER_L_SW"] = new SimConnect.SimVarDefinition
+        {
+            Name = "CIRCUIT SWITCH ON:77", DisplayName = "Captain Wiper Position",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
+        },
+        ["WIPER_L_PWR"] = new SimConnect.SimVarDefinition
+        {
+            Name = "CIRCUIT POWER SETTING:77", DisplayName = "WIPER_L_PWR",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
+        },
+        ["WIPER_R_SW"] = new SimConnect.SimVarDefinition
+        {
+            Name = "CIRCUIT SWITCH ON:80", DisplayName = "First Officer Wiper Position",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
+        },
+        ["WIPER_R_PWR"] = new SimConnect.SimVarDefinition
+        {
+            Name = "CIRCUIT POWER SETTING:80", DisplayName = "WIPER_R_PWR",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ExcludeFromMonitorManager = true
         },
 
         // OVERHEAD FORWARD SECTION - Calls Panel
@@ -3364,29 +3493,33 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 [8] = "Fuel", [9] = "Doors", [10] = "Engine", [11] = "Flight Controls"
             }
         },
-        // FM minimums are ARINC429 words (FmArinc429OutputWord — live-verified 2^32
-        // no-data at the gate); without the flag the announce spoke the raw word.
-        ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
+        // Approach minimums (CORRECTED 2026-07, mirrors the A380 fix): read the
+        // PLAIN-feet L:vars the MCDU PERF APPR page writes directly
+        // (A32NX_FMCMainDisplay.ts:5585/5591 — the same vars the ISIS reads), NOT the
+        // ARINC429 FM1 words. Those words are NCD (2^32 → "Not set") until the FMS
+        // decides to transmit minimums (phase > cruise, or cruise within 250 NM —
+        // shouldTransmitMinimums), so a minimum entered at the gate or in early cruise
+        // read "Not set" (live-verified: MCDU MDA 220 → AIRLINER var 220 instantly at
+        // preflight, FM1 word still NCD). Unset sentinels: MDA <= 0, DH < 0 (FBW
+        // resets MDA→0, DH→-1). Decoded/announced in ProcessSimVarUpdate +
+        // TryGetDisplayOverride (plain feet, NOT ARINC429 now).
+        ["AIRLINER_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
+            Name = "AIRLINER_MINIMUM_DESCENT_ALTITUDE",
             DisplayName = "Baro Minimum",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Units = "feet",
-            IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
+            Units = "feet"
         },
-        // Decision Height (CAT II/III minimums) — same ARINC FM word family; was
-        // entirely missing (only MDA was read), so DH entries were silent.
-        ["A32NX_FM1_DECISION_HEIGHT"] = new SimConnect.SimVarDefinition
+        ["AIRLINER_DECISION_HEIGHT"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_FM1_DECISION_HEIGHT",
+            Name = "AIRLINER_DECISION_HEIGHT",
             DisplayName = "Decision Height",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Units = "feet",
-            IsArinc429 = true, Arinc429Unit = "feet", Arinc429NotAvailableText = "Not set"
+            Units = "feet"
         },
         // Predicted takeoff pitch trim (FMS-computed THS target; ARINC degrees).
         // SIGN IS INVERTED vs the A380: the A32NX FMS writes -ths
@@ -5039,6 +5172,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 if (key != SdPageVar   // synthetic SD-page selector — drives the scrape, not a monitored state
                     && key != "A32NX_MSFSBA_SPEEDBRAKE"   // synthetic speed-brake combo — fires SPOILERS_SET, no backing L:var
+                    && key != "WIPER_LEFT" && key != "WIPER_RIGHT"   // synthetic wiper combos — live state is the WIPER_*_SW/PWR backers
                     && !key.EndsWith("_DETENT", StringComparison.Ordinal)  // synthetic thrust-lever detent combos — no real L:var to monitor
                     && variables.TryGetValue(key, out var cdef)
                     && (cdef.Type == SimConnect.SimVarType.LVar || cdef.Type == SimConnect.SimVarType.SimVar)
@@ -5058,6 +5192,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 }
             }
         }
+
+        // Passengers on board: per-station *_DESIRED* seat bitmasks (see PaxStationVars).
+        // Continuous + IsAnnounced so they ride the continuous batch (live-cached, so the
+        // running total is always current when the Status panel is viewed), but handled
+        // in ProcessSimVarUpdate (returns true → never spoken) and ExcludeFromMonitorManager
+        // so they don't clutter the Ctrl+M list. Station A doubles as the display row
+        // ("Passengers on Board" — the total renders via TryGetDisplayOverride).
+        foreach (var pk in PaxStationVars)
+            variables[pk] = new SimConnect.SimVarDefinition
+            {
+                Name = pk,
+                DisplayName = pk == "A32NX_PAX_A_DESIRED" ? "Passengers on Board" : pk,
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+                ExcludeFromMonitorManager = true, Units = "number"
+            };
 
         // Auto-register every System Display page L:var (OnRequest) so the accessible
         // SD status box can read it. RequestVariable SILENTLY no-ops on any var that
@@ -5103,6 +5253,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_ELEC_BAT_1_POTENTIAL",
             "A32NX_ELEC_BAT_2_POTENTIAL"
         },
+        // Live OFF/SLOW/FAST position readback (the synthetic combos only hold the
+        // last SET value; these hidden switch-var backers show the true circuit
+        // state via WiperState). Mirrors the A380 Wipers display box.
+        ["Wipers"] = new List<string> { "WIPER_L_SW", "WIPER_R_SW" },
+        // Planned passengers on board (summed *_DESIRED* bitmasks; see PaxStationVars).
+        ["Status"] = new List<string> { "A32NX_PAX_A_DESIRED" },
         ["ADIRS"] = new List<string>
         {
             "A32NX_ADIRS_ADIRU_1_STATE",
@@ -5260,10 +5416,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_FM1_TRANS_ALT",
             "A32NX_ADIRS_ADR_1_STATIC_AIR_TEMPERATURE",
             "A32NX_ADIRS_ADR_1_TOTAL_AIR_TEMPERATURE",
-            // Approach minimums (ARINC FM words; auto-decoded "N feet"/"Not set")
+            // Approach minimums (plain-feet AIRLINER_ L:vars; decoded "N feet"/"Not set")
             // — on-demand readout to complement the on-change announce.
-            "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
-            "A32NX_FM1_DECISION_HEIGHT",
+            "AIRLINER_MINIMUM_DESCENT_ALTITUDE",
+            "AIRLINER_DECISION_HEIGHT",
             "PFD_AUTOLAND"
         },
         // ND accessible snapshot — the navigation picture: mode/range, the TO
@@ -5325,7 +5481,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed", "Pressurization", "Ventilation", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
-        ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
+        ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display", "Status" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
         // "Ground Services" (Doors + Ground Equipment) was removed — doors are read-only
         // auto-announced status now and ground services are done via the flyPad Ground
@@ -5384,8 +5540,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Fire"] = new List<string>
         {
+            "A32NX_FIRE_GUARD_ENG1",
             "A32NX_FIRE_BUTTON_ENG1",
+            "A32NX_FIRE_GUARD_ENG2",
             "A32NX_FIRE_BUTTON_ENG2",
+            "A32NX_FIRE_GUARD_APU",
             "A32NX_FIRE_BUTTON_APU",
             "A32NX_FIRE_TEST_ENG1",
             "A32NX_FIRE_TEST_ENG2",
@@ -5476,7 +5635,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_DFDR_EVENT_ON",
             "A32NX_CREW_HEAD_SET",
-            "A32NX_AVIONICS_COMPLT_ON"
+            "A32NX_AVIONICS_COMPLT_ON",
+            // Completeness pass (2026-07): modelled-but-inop overhead switches.
+            "A32NX_ELT_ON",
+            "A32NX_ELT_TEST_RESET",
+            "A32NX_DLS_ON"
         },
         ["Flight Control Computers"] = new List<string>
         {
@@ -5488,15 +5651,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Anti Ice"] = new List<string>
         {
-            "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
+            "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION",
             "ENG_ANTI_ICE:1",
             "ENG_ANTI_ICE:2",
             "A32NX_MAN_PITOT_HEAT"
         },
         ["Wipers"] = new List<string>
         {
-            "XMLVAR_A320_WiperSwitch_1",
-            "XMLVAR_A320_WiperSwitch_2"
+            "WIPER_LEFT",
+            "WIPER_RIGHT",
+            // Rain repellent flanks the wiper knobs on the real overhead (inop in FBW).
+            "A32NX_RAIN_REPELLENT_LEFT_ON",
+            "A32NX_RAIN_REPELLENT_RIGHT_ON"
         },
         ["Signs"] = new List<string>
         {
@@ -5553,6 +5719,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Cargo Smoke"] = new List<string>
         {
             "A32NX_FIRE_TEST_CARGO",
+            "A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE",
+            "A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE",
             "A32NX_CARGOSMOKE_FWD_DISCHARGED",
             "A32NX_CARGOSMOKE_AFT_DISCHARGED",
         },
@@ -5561,6 +5729,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_FADEC_1",
             "A32NX_OVHD_FADEC_2",
         },
+        // Display-only Status panel (Passengers on Board lives in
+        // GetPanelDisplayVariables) — an empty controls entry is REQUIRED or
+        // MainForm's panel-build logic early-returns and renders nothing.
+        ["Status"] = new List<string>(),
         ["FCU"] = new List<string>
         {
             "A32NX.FCU_HDG_SET",
@@ -6195,6 +6367,31 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
     private long _sdWriteSeq;   // makes the SD-page calc write unique each time (anti-dedup, see HandleUIVariableSet)
+
+    // ---- Passengers on board (Status panel): the sum of occupied seats across the
+    // per-station *_DESIRED* seat-bitmask L:vars (A32NX_PAX_{A..D}_DESIRED — each holds
+    // an integer whose set-bit count = planned seats in that zone; ≤ 53 bits, so the
+    // value is exact as a double — the same float64 the FBW EFB reads). DESIRED (the
+    // planned load the flyPad headline / GSX / loadsheet agree on), NOT the boarded set
+    // (A32NX_PAX_{st}, no suffix) — the boarded bitmask lags and, under GSX boarding,
+    // settles below target (the A380 lesson, mirrored here). Popcounted per station in
+    // ProcessSimVarUpdate; total rendered by TryGetDisplayOverride on the station-A key.
+    private static readonly string[] PaxStationVars =
+    {
+        "A32NX_PAX_A_DESIRED", "A32NX_PAX_B_DESIRED", "A32NX_PAX_C_DESIRED", "A32NX_PAX_D_DESIRED"
+    };
+    private readonly Dictionary<string, int> _paxFilledByStation = new();
+    private int _paxOnBoard;
+
+    // ---- Wipers: live position per side (0 Off / 1 Slow / 2 Fast), computed from the
+    // hidden circuit switch+power backers in ProcessSimVarUpdate; rendered by
+    // TryGetDisplayOverride. Default 0 = Off (cold-start, before the first circuit read).
+    // Decode (switch wins over the persisted power setting) is the shared WiperPosition.
+    private double? _wiperSwL, _wiperPwrL, _wiperSwR, _wiperPwrR;
+    private int _wiperStateL, _wiperStateR;
+
+    // ---- Approach minimums last-announced values (-1 = unset); see ProcessSimVarUpdate.
+    private int _lastBaroMin = -1, _lastDh = -1;
     private string _sdBoxContent = "";
     private int _sdRefreshSeq;   // "latest request wins" guard for SD-page refresh (mirrors A380)
 
@@ -6895,6 +7092,42 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             displayText = $"{value / 1000.0:F3}";
             return true;
         }
+        // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
+        // state comes from _wiperState*, computed from switch+power in ProcessSimVarUpdate).
+        if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
+        if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
+        // Passengers on board: the station-A row shows the summed planned total
+        // (cached from all *_DESIRED* bitmasks in ProcessSimVarUpdate).
+        if (varKey == "A32NX_PAX_A_DESIRED")
+        {
+            displayText = _paxOnBoard.ToString();
+            return true;
+        }
+        // Approach minimums — plain-feet L:vars; sentinel decode shared with the announce
+        // path via ApproachMinimums (MDA unset <= 0, DH unset < 0; DH 0 = valid CAT III).
+        if (varKey == "AIRLINER_MINIMUM_DESCENT_ALTITUDE")
+        {
+            displayText = ApproachMinimums.DisplayText(isDecisionHeight: false, value);
+            return true;
+        }
+        if (varKey == "AIRLINER_DECISION_HEIGHT")
+        {
+            displayText = ApproachMinimums.DisplayText(isDecisionHeight: true, value);
+            return true;
+        }
+        // ND nav-radio frequencies — label the units so an ADF freq isn't a bare "890"
+        // (890 kHz is correct, just ambiguous) and a whole-MHz VOR keeps its fraction.
+        // VOR in MHz, ADF in kHz; out-of-band (0) = not tuned. Mirrors the A380.
+        if (varKey == "ND_VOR1_FREQ" || varKey == "ND_VOR2_FREQ")
+        {
+            displayText = value >= 108.0 && value <= 118.0 ? $"{value:0.00} MHz" : "--- (not tuned)";
+            return true;
+        }
+        if (varKey == "ND_ADF1_FREQ" || varKey == "ND_ADF2_FREQ")
+        {
+            displayText = value >= 150.0 && value <= 1800.0 ? $"{value:0.0} kHz" : "--- (not tuned)";
+            return true;
+        }
         // Predicted takeoff pitch trim ("Not computed" until the FMS has perf
         // data). SIGN INVERTED vs the A380: the A32NX FMS writes -ths into the
         // word (A32NX_FMCMainDisplay.ts:4133), so NEGATIVE = nose UP — a pilot
@@ -7196,6 +7429,53 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // Wipers — OFF/SLOW/FAST is a two-var state (circuit switch + power). Store each
+        // half as it arrives and recompute the per-side position so the "… Position"
+        // readout is live (rendered from _wiperState* in TryGetDisplayOverride).
+        // Never spoken (return true). Mirrors the A380.
+        switch (varName)
+        {
+            case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
+            case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
+        }
+
+        // Passengers on board: each *_DESIRED* station L:var is an integer seat-bitmask
+        // (set bit = planned seat). Popcount it, cache per station, and keep the running
+        // total (≤ 53 bits/station, so (long)value is exact). Never announced.
+        if (varName.StartsWith("A32NX_PAX_", StringComparison.Ordinal) && varName.EndsWith("_DESIRED", StringComparison.Ordinal))
+        {
+            _paxFilledByStation[varName] = System.Numerics.BitOperations.PopCount((ulong)(long)Math.Round(value));
+            int total = 0;
+            foreach (var v in _paxFilledByStation.Values) total += v;
+            _paxOnBoard = total;
+            return true;
+        }
+
+        // Approach minimums (CORRECTED 2026-07, mirrors the A380 fix): plain-feet L:vars
+        // the MCDU PERF APPR page writes (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA,
+        // AIRLINER_DECISION_HEIGHT = radio DH), NOT the ARINC429 FM1 words — those are
+        // NCD until the FMS transmits minimums (phase > cruise, or cruise within 250 NM:
+        // shouldTransmitMinimums in A32NX_FMCMainDisplay.ts), so a minimum entered at the
+        // gate read "Not set" (live-verified: MCDU MDA 220 → AIRLINER var 220 instantly,
+        // FM1 word still NCD). Announce when set/changed; no announce on clear
+        // (FBW resets MDA→0, DH→-1). Sentinel decode shared with the display path via
+        // ApproachMinimums — DH 0 is a valid CAT III entry and MUST announce (ft >= 0),
+        // matching the "0 feet" the panel shows; MDA can never decode to 0.
+        if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
+        {
+            bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
+            int ft = ApproachMinimums.ToFeet(isDecisionHeight: !baro, value);
+            if (ft != (baro ? _lastBaroMin : _lastDh))
+            {
+                if (baro) _lastBaroMin = ft; else _lastDh = ft;
+                if (ft >= 0)
+                    announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
+            }
+            return true;
+        }
+
         // ---- TCAS resolution-advisory guidance (cache + composed announce) ----
         // The detail vars cache silently; during an RA (A32NX_TCAS_STATE == 2) each
         // update recomposes the spoken "what to fly" guidance and announces only
@@ -7985,12 +8265,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
         // Wipers: circuit 77 (Captain) / 80 (F/O). Off = circuit off; Slow/Fast =
         // circuit on + power setting 75/100 (the FBW_Airbus_Wiper_Knob sequence).
-        if (varKey == "XMLVAR_A320_WiperSwitch_1" || varKey == "XMLVAR_A320_WiperSwitch_2")
+        // The live circuit-switch state is read from the hidden WIPER_*_SW backer
+        // (the combo itself is synthetic), so an unnecessary toggle — which would
+        // flip an already-on circuit OFF — is never fired.
+        if (varKey == "WIPER_LEFT" || varKey == "WIPER_RIGHT")
         {
-            int circuit = varKey.EndsWith("_2") ? 80 : 77;
+            int circuit = varKey == "WIPER_LEFT" ? 77 : 80;
+            string swKey = varKey == "WIPER_LEFT" ? "WIPER_L_SW" : "WIPER_R_SW";
             int pos = (int)Math.Round(value);
             bool wantOn = pos > 0;
-            bool isOn = (simConnect.GetCachedVariableValue(varKey) ?? 0) > 0.5;
+            bool isOn = (simConnect.GetCachedVariableValue(swKey) ?? 0) > 0.5;
             if (wantOn != isOn)
                 simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
             if (wantOn)
@@ -8568,23 +8852,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    /// <summary>
-    /// Requests the current FCU vertical speed value and announces it via screen reader.
-    /// Uses A320-specific variable: VERTICAL SPEED (standard SimVar)
-    /// </summary>
-    public override void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
-    {
-        if (simConnect.IsConnected)
-        {
-            try
-            {
-                // Request vertical speed (standard SimVar, not A320-specific)
-                simConnect.RequestSingleValue(308, "VERTICAL SPEED", "feet per second", "VERTICAL_SPEED");
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("A320", $"Error requesting FCU vertical speed: {ex.Message}");
-            }
-        }
-    }
+    // RequestFCUVerticalSpeed: no A320-specific override. This IAircraftDefinition member
+    // is dead for the A320 (nothing calls it — the wired hotkey path is
+    // RequestFCUVerticalSpeedFPA instead); it previously had a dead override here that
+    // reused data-def id 308 ("feet per second") — colliding with the permanently-registered
+    // DEF_VERTICAL_SPEED ("feet per minute") HotkeyReadoutDefinition. Falls back to
+    // BaseAircraftDefinition's no-op default, which is the same (zero) behavior.
 }

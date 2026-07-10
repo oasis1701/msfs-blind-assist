@@ -18,34 +18,46 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public class AltitudeCalloutAnnouncer
 {
-    private readonly ScreenReaderAnnouncer announcer;
+    private readonly Action<string> announce;
 
     private const int BandFeet = 1000;
-
-    // Once a band has been announced, the altitude must be at least this many feet past the
-    // 1,000-ft boundary into the new band before re-announcing — kills flutter when the
-    // aircraft levels off right on a round thousand.
-    private const double HysteresisFeet = 80.0;
 
     // -1 = no baseline yet (first sample establishes it silently).
     private int lastAnnouncedBand = -1;
 
+    // The 1,000-ft boundary value last spoken (int.MinValue = none yet). Re-crossing THIS
+    // thousand is always silent — level-off flutter and turbulence at a round-thousand
+    // cruise altitude re-cross it constantly, and re-announcing it is noise (user ruling).
+    // It re-arms only when a DIFFERENT thousand announces or on a ground/teleport reset.
+    private int lastAnnouncedThousand = int.MinValue;
+
     public AltitudeCalloutAnnouncer(ScreenReaderAnnouncer screenReaderAnnouncer)
+        : this(screenReaderAnnouncer.Announce)
     {
-        announcer = screenReaderAnnouncer;
+    }
+
+    /// <summary>Announce-sink constructor — the state machine is pure apart from this
+    /// sink and the settings gate, so the characterization tests inject a list-collector
+    /// here instead of constructing a real ScreenReaderAnnouncer (Tolk/NVDA/SAPI).</summary>
+    public AltitudeCalloutAnnouncer(Action<string> announceSink)
+    {
+        announce = announceSink;
     }
 
     /// <summary>Re-baselines so the next sample is silent (after a teleport / long pause).</summary>
-    public void ResetBaseline() => lastAnnouncedBand = -1;
+    public void ResetBaseline() { lastAnnouncedBand = -1; lastAnnouncedThousand = int.MinValue; }
 
     /// <summary>
     /// Feed a fresh indicated-altitude sample (feet) plus the current air/ground state.
-    /// Announces when the 1,000-ft band changes, with hysteresis to ride out jitter at a
-    /// boundary. No-op when the setting is off, the value is invalid, or on the ground.
+    /// Announces when the 1,000-ft band changes, except re-crossings of the last-announced
+    /// thousand (always silent). No-op when the setting is off, the value is invalid, or on
+    /// the ground.
     /// </summary>
     public void ProcessAltitude(double altitudeFeet, bool onGround)
     {
-        if (onGround) { lastAnnouncedBand = -1; return; }   // re-baseline on the ground
+        // Full reset on the ground (band AND announced-thousand latch): the next flight's
+        // climb through the thousand last heard on approach must announce again.
+        if (onGround) { ResetBaseline(); return; }
         if (!SettingsManager.Current.AltitudeCalloutsEnabled) return;
         if (double.IsNaN(altitudeFeet) || altitudeFeet < -2000 || altitudeFeet > 70000) return;
 
@@ -64,14 +76,25 @@ public class AltitudeCalloutAnnouncer
         bool climbing = newBand > lastAnnouncedBand;
         int crossedThousand = (climbing ? newBand : newBand + 1) * BandFeet;
 
-        // Hysteresis: require HysteresisFeet past that boundary before committing, so leveling
-        // off right on a round thousand doesn't flutter the callout.
-        if (System.Math.Abs(altitudeFeet - (double)crossedThousand) < HysteresisFeet) return;
+        // Announce AT the boundary — the band change IS the crossing, so the callout fires when
+        // the aircraft actually reaches the round thousand (not ~80 ft past it, which was the old
+        // hysteresis-delay bug: "36,000" spoke at ~36,100 climbing / below 36,000 descending).
+        // The ONLY suppression is a re-cross of the SAME thousand just announced — always silent,
+        // with NO distance window: level-off flutter and turbulence at a round-thousand cruise
+        // altitude re-cross it constantly (and turbulent excursions can step >80 ft between
+        // samples, so a window can't be trusted to catch them). A crossing to a DIFFERENT
+        // thousand always announces immediately, which re-arms the previous one.
+        if (crossedThousand == lastAnnouncedThousand)
+        {
+            lastAnnouncedBand = newBand;   // track the flip so the re-cross doesn't re-fire each frame
+            return;
+        }
 
         lastAnnouncedBand = newBand;
+        lastAnnouncedThousand = crossedThousand;
         // Plain Announce (queued) so a fading altitude callout doesn't displace the most
         // recent actionable instruction in any feature's Repeat-Last buffer. Bare number
         // ("32000", "5000") per Gus's preference; this is the ONLY altitude callout.
-        announcer.Announce($"{crossedThousand}");
+        announce($"{crossedThousand}");
     }
 }

@@ -197,6 +197,14 @@ public partial class MainForm
             if (!currentAircraft.GetVariables().ContainsKey(varKey))
                 continue;
 
+            // Variant-aware visibility: skip controls the running airframe doesn't
+            // have (e.g. PMDG 777 freighter cargo temp knobs on a passenger variant).
+            // Re-evaluated on every panel build, so late variant detection corrects
+            // itself the next time the panel is opened.
+            if (currentAircraft is BaseAircraftDefinition baseDef &&
+                !baseDef.IsPanelControlVisible(varKey, simConnectManager))
+                continue;
+
             var varDef = currentAircraft.GetVariables()[varKey];
             
             // Add a new row (sliders need a little more height for the TrackBar).
@@ -561,23 +569,42 @@ public partial class MainForm
                             simConnectManager?.SetLVar(capturedVarKey, selectedValue);
                             currentSimVarValues[capturedVarKey] = selectedValue;
 
-                            // Landing lights: ASOBO_LIGHTING_Switch_Light_Landing_Template reads
-                            // LIGHTING_LANDING_x every frame and manages the circuits automatically.
-                            // SetLVar via SimConnect is equivalent to the cockpit click. No MobiFlight needed.
-                            if (capturedVarKey == "LIGHTING_LANDING_1") // Nose Light (T.O./Taxi/Off)
+                            // Landing/nose lights (CORRECTED 2026-07 — the old comment claimed the
+                            // Asobo template polls LIGHTING_LANDING_x and manages the circuits; it
+                            // does NOT on the current FBW build. Live-verified: an L:var write holds
+                            // (nose) or reverts (wing, template-derived) and the lamp never changes.
+                            // The working actuator is the indexed stock event, sent verbatim in the
+                            // FBW template's own RPN form "<value> <index> r (>K:2:...)". NOTE: RPN
+                            // "r" swaps the top two stack entries (SDK-documented), so this is
+                            // stack-EQUIVALENT to "<index> <value>" — an earlier live test blamed
+                            // the index-first form for a no-op, but the forms cannot differ; that
+                            // failure had some other cause. Keep the template-verbatim form.
+                            if (capturedVarKey == "LIGHTING_LANDING_1") // Nose Light (T.O.=0/Taxi=1/Off=2)
                             {
-                                simConnectManager?.SetLVar("LIGHTING_LANDING_1", selectedValue);
+                                // L:var mirror already written by the generic SetLVar above (it holds
+                                // — the nose switch position var is not template-derived). Drive the
+                                // lamps: nose takeoff = LIGHT LANDING:1, nose taxi = LIGHT TAXI:1;
+                                // TAXI stays on in T.O. ("allow TAXI LT with TO LT", per the
+                                // SWITCH_OVHD_EXTLT_NOSE template).
+                                int pos = (int)Math.Round((double)selectedValue);
+                                int takeoff = pos == 0 ? 1 : 0;
+                                int taxi = (pos == 0 || pos == 1) ? 1 : 0;
+                                simConnectManager?.ExecuteCalculatorCode(
+                                    $"{takeoff} 1 r (>K:2:LANDING_LIGHTS_SET) {taxi} 1 r (>K:2:TAXI_LIGHTS_SET)");
                             }
-                            else if (capturedVarKey == "LIGHTING_LANDING_2") // Left Landing Light
+                            else if (capturedVarKey == "LIGHTING_LANDING_2" || capturedVarKey == "LIGHTING_LANDING_3")
                             {
-                                // LANDING_2_RETRACTED: 0 = extended, 1 = retracted
-                                simConnectManager?.SetLVar("LIGHTING_LANDING_2", selectedValue);
-                                simConnectManager?.SetLVar("LANDING_2_RETRACTED", selectedValue == 2 ? 1 : 0);
-                            }
-                            else if (capturedVarKey == "LIGHTING_LANDING_3") // Right Landing Light
-                            {
-                                simConnectManager?.SetLVar("LIGHTING_LANDING_3", selectedValue);
-                                simConnectManager?.SetLVar("LANDING_3_RETRACTED", selectedValue == 2 ? 1 : 0);
+                                // L/R Landing Light, 0=On/1=Off/2=Retract. LIGHTING_LANDING_2/3 is
+                                // DERIVED per-frame by the retractable-switch template from the lamp
+                                // + retract state (an external write reverts — live-verified), so the
+                                // SetLVar above is a no-op for it. Drive the lamp via the indexed
+                                // stock event (LIGHT LANDING:2 = left, :3 = right) + the retract
+                                // animation L:var; the template then converges the position var by
+                                // itself (live-verified: event + retract write → L:var followed).
+                                int idx = capturedVarKey == "LIGHTING_LANDING_2" ? 2 : 3;
+                                int on = selectedValue == 0 ? 1 : 0;
+                                simConnectManager?.SetLVar($"LANDING_{idx}_RETRACTED", selectedValue == 2 ? 1 : 0);
+                                simConnectManager?.ExecuteCalculatorCode($"{on} {idx} r (>K:2:LANDING_LIGHTS_SET)");
                             }
                             else if (capturedVarKey == "LIGHTING_STROBE_0") // Strobe Lights
                             {
@@ -608,16 +635,19 @@ public partial class MainForm
                             else if (capturedVarKey == "LIGHT TAXI:2") // Runway Turn Off Lights (single switch -> both sides)
                             {
                                 // The real A320 has ONE RWY TURN OFF switch (SWITCH_OVHD_EXTLT_RWY)
-                                // driving BOTH lights via the cockpit template RPN:
-                                //   "INDEX VALUE (>K:2:TAXI_LIGHTS_SET)"
-                                // (FBW_Switch_LeftClick_MouseWheel, Airbus.xml lines 250-255;
-                                //  SIMVAR_INDEX_1=2 / SIMVAR_INDEX_2=3, TOGGLE_EVENT=TAXI_LIGHTS_SET)
-                                // This mirrors that exactly so LIGHT TAXI:2/3, FBW presets, and the
-                                // EFB all stay in sync. The old ELECTRICAL_CIRCUIT_TOGGLE path drove
-                                // circuits 21/22 directly, which desynchronised LIGHT TAXI:2/3.
+                                // driving BOTH lights (SIMVAR_INDEX_1=2 / SIMVAR_INDEX_2=3,
+                                // TOGGLE_EVENT=TAXI_LIGHTS_SET) so LIGHT TAXI:2/3, FBW presets, and
+                                // the EFB all stay in sync. The old ELECTRICAL_CIRCUIT_TOGGLE path
+                                // drove circuits 21/22 directly, which desynchronised LIGHT TAXI:2/3.
+                                // RPN form 2026-07: the FBW template-verbatim
+                                // "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" — live-verified to set
+                                // exactly the right index. (RPN "r" swaps the top two stack entries,
+                                // so this is stack-equivalent to "<index> <value>"; an earlier test
+                                // that read the index-first form as a no-op had some other confound
+                                // — FBW's own Airbus.xml switch template uses index-first, no r.)
                                 int on = selectedValue == 1 ? 1 : 0;
-                                simConnectManager?.ExecuteCalculatorCode($"2 {on} (>K:2:TAXI_LIGHTS_SET)");
-                                simConnectManager?.ExecuteCalculatorCode($"3 {on} (>K:2:TAXI_LIGHTS_SET)");
+                                simConnectManager?.ExecuteCalculatorCode($"{on} 2 r (>K:2:TAXI_LIGHTS_SET)");
+                                simConnectManager?.ExecuteCalculatorCode($"{on} 3 r (>K:2:TAXI_LIGHTS_SET)");
                                 // Refresh both LIGHT TAXI state vars so an external (cockpit) change
                                 // can't leave the next read stale.
                                 simConnectManager?.RequestVariable("LIGHT TAXI:2", forceUpdate: true);
