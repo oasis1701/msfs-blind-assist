@@ -118,8 +118,10 @@ public partial class METARReportForm : Form
             {
                 // Re-fetch with the new offset when a lookup is already on screen.
                 // No announcement — the screen reader already speaks the selection.
+                // focusResult: false — a combo-triggered refetch must not steal
+                // screen-reader focus away from the combo the user is arrowing through.
                 if (icaoTextBox.Text.Trim().Length == 4 && icaoTextBox.Enabled)
-                    await FetchMETAR();
+                    await FetchMETAR(focusResult: false);
             };
 
             // VATSIM METAR Label
@@ -252,7 +254,13 @@ public partial class METARReportForm : Form
             }
         }
 
-        private async Task FetchMETAR()
+        /// <param name="focusResult">Whether to move focus into the VATSIM METAR box and
+        /// select its text after a successful fetch. Defaults to true for the ICAO
+        /// Enter-key flow (the user is waiting on the result). Combo-triggered refetches
+        /// must pass false — they must not steal screen-reader focus away from the combo
+        /// the user is still arrowing through, and the combo doesn't parameterize the
+        /// VATSIM box anyway.</param>
+        private async Task FetchMETAR(bool focusResult = true)
         {
             string icao = icaoTextBox.Text.Trim();
 
@@ -305,9 +313,12 @@ public partial class METARReportForm : Form
                     statusLabel.Text = $"METAR for {icao}";
                     metarTextBox.Text = metar.Trim();
 
-                    // Focus the METAR text box so screen reader reads the content
-                    metarTextBox.Focus();
-                    metarTextBox.SelectAll();
+                    if (focusResult)
+                    {
+                        // Focus the METAR text box so screen reader reads the content
+                        metarTextBox.Focus();
+                        metarTextBox.SelectAll();
+                    }
                 }
 
                 // ActiveSky METAR — only when the AS section is visible.

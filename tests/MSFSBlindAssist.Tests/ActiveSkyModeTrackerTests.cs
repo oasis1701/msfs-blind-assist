@@ -66,4 +66,17 @@ public class ActiveSkyModeTrackerTests
         t.Observe(Live);
         Assert.Equal("ActiveSky weather mode changed to Custom static mode.", t.Observe(Custom));
     }
+
+    [Fact]
+    public void Unparseable_mode_text_is_never_a_change_and_never_baselines()
+    {
+        // Non-blank, but ParseModeText strips it down to "" -> ModeName "unknown".
+        // Observe must treat this the same as a failed/empty read: silent, and
+        // must not consume the baseline slot — a following real mode read still
+        // baselines silently.
+        const string unparseable = "(Active) (2026/7/10 2100z)";
+        var t = new ActiveSkyModeTracker();
+        Assert.Null(t.Observe(unparseable));
+        Assert.Null(t.Observe(Live)); // first REAL read still baselines silently
+    }
 }

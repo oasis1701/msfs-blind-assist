@@ -58,6 +58,16 @@ namespace MSFSBlindAssist.Services;
 /// unreachable mid-flight, we reset the baseline so the next poll after
 /// AS returns is also silent (avoids "weather update" right after sim
 /// resume).
+///
+/// <para><b>Mode-change announcement.</b></para>
+///
+/// The same tick also owns the baseline-first ActiveSky mode-change
+/// announcement, decided by <see cref="ActiveSkyModeTracker"/>. Unlike the
+/// weather baseline above, the mode baseline deliberately SURVIVES
+/// unreachable gaps — the tracker is only ever fed successful reads (the
+/// tick returns early before calling it when AS is unreachable), so a
+/// reconnect in a different mode is a genuine change the pilot must hear,
+/// not a silently re-seeded baseline.
 /// </summary>
 public class ActiveSkyWeatherMonitor : IDisposable
 {

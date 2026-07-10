@@ -106,7 +106,7 @@ Every new string builder is an `internal static` pure function here, directly te
 The existing poll tick additionally reads the mode (from `LastModeText` when fresh, else
 `GetModeAsync`). First successful read **baselines silently** (the EWD-monitor pattern —
 nothing is announced at startup or on (re)connect). A subsequent read whose *parsed mode name*
-differs announces once: `"ActiveSky weather mode changed to Custom static."` via the monitor's
+differs announces once: `"ActiveSky weather mode changed to Custom static mode."` via the monitor's
 existing UI-thread-marshalled announcer path.
 
 Gating: runs only when the monitor already runs (`ShouldRun` = `ActiveSkyEnabled` AND
@@ -131,8 +131,8 @@ vertical profile box) are **hidden entirely** (`Visible = false`, including thei
 they leave the tab order and NVDA never encounters them), and every pre-existing section
 behaves exactly as today. Visibility is re-evaluated on every form show/refresh, so toggling
 the setting takes effect without restarting the app. Top-to-bottom reading order when AS is
-on: status → current position → closest station → vertical profile → existing boxes (winds
-aloft, advisories, …).
+on: status → current position → closest station → vertical profile → existing boxes (advisories,
+winds aloft, …).
 
 1. **Mode status line** (top): `"ActiveSky: Live Real time mode, weather time 1935Z"`. When AS
    is enabled but unreachable, this line carries the existing failure wording so the form and
