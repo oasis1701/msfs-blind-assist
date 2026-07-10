@@ -588,16 +588,18 @@ public partial class MainForm : Form
         // Initialize TCAS service (polls for AI/multiplayer traffic via SimConnect)
         tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager);
 
-        // ActiveSky weather-update announcer. Started unconditionally — when
-        // AS isn't running each poll is just a ~1.2 s parallel-probe timeout
-        // and nothing is announced. When AS IS running and pushes new
-        // weather, the user hears "Weather update. Surface wind X at Y …"
-        // within ~1 minute. Silent for non-AS users.
+        // ActiveSky weather-update announcer. Constructed always (so the settings
+        // dialog can start it live via ApplyRuntimeSettings), but STARTED only when
+        // ActiveSkyWeatherMonitor.ShouldRun says so — the user must have opted into
+        // ActiveSky AND asked for weather announcements. When the AS switch is off no
+        // AS code may run at all, and even when it's on but AS isn't running, each
+        // poll would be a ~1.2 s parallel-probe timeout.
         activeSkyWeatherMonitor = new MSFSBlindAssist.Services.ActiveSkyWeatherMonitor(
             new MSFSBlindAssist.Services.ActiveSkyClient(), announcer);
         activeSkyWeatherMonitor.IntervalMinutes =
             MSFSBlindAssist.Settings.SettingsManager.Current.WeatherAutoAnnounceIntervalMinutes;
-        activeSkyWeatherMonitor.Start();
+        activeSkyWeatherMonitor.Enabled = MSFSBlindAssist.Services.ActiveSkyWeatherMonitor
+            .ShouldRun(MSFSBlindAssist.Settings.SettingsManager.Current);
 
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
