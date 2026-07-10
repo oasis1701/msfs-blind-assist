@@ -1098,11 +1098,14 @@ public class TaxiGraph
 
     /// <summary>
     /// Enumerates the taxiways that meet a runway partway along its length — the
-    /// valid intersection-departure points. For each named taxiway we keep the
-    /// single node closest to the runway centerline; if that node sits within the
-    /// runway half-width (i.e. the taxiway actually reaches the pavement) it
-    /// becomes an intersection, with its distance measured from the DEPARTURE
-    /// threshold (so "remaining" is the runway ahead in the takeoff direction).
+    /// valid intersection-departure points, one per MEETING POINT.
+    /// Qualifying nodes on the same taxiway are clustered by along-track
+    /// distance (a gap > 100 m starts a new cluster — paired high-speed-exit
+    /// branches sharing one name sit 105-555 m apart in fs2024 navdata, while
+    /// polyline nodes along a single entrance are far denser). Each cluster is
+    /// ONE meeting point and contributes its node closest to the centerline,
+    /// with distance measured from the DEPARTURE threshold (so "remaining" is
+    /// the runway ahead in the takeoff direction).
     /// Sorted threshold-first. The threshold connector itself and the far-end
     /// nubs are filtered out.
     ///
@@ -1137,47 +1140,60 @@ public class TaxiGraph
         const double MIN_ALONG_M = 15.0;      // exclude the threshold connector itself
         const double MIN_REMAINING_M = 45.0;  // exclude far-end nubs (~150 ft left)
 
+        // Two qualifying nodes on the SAME taxiway further apart than this along
+        // the runway are distinct meeting points (the paired branches of a
+        // high-speed exit sharing one name). Over-splitting is benign — both
+        // points are genuinely on the runway and the labels carry distances;
+        // under-splitting hides a real branch, which is the failure that matters.
+        const double CLUSTER_GAP_M = 100.0;
+
         foreach (var kv in _taxiwayNodeIndex)
         {
             string twName = kv.Key;
             if (string.IsNullOrEmpty(twName)) continue;
 
-            int bestNode = -1;
-            double bestPerp = double.MaxValue, bestAlong = 0, bestLat = 0, bestLon = 0;
+            // All qualifying nodes on this taxiway. Gating HERE — not after
+            // picking a best node — means a taxiway's near-threshold connector
+            // node (along < MIN_ALONG_M) or a far-end nub can't shadow a genuine
+            // mid-field entrance further down the same taxiway.
+            var candidates = new List<(double along, double perp, int nodeId, double lat, double lon)>();
             foreach (int nid in kv.Value)
             {
                 if (!Nodes.TryGetValue(nid, out var n)) continue;
                 var (perp, along, projLat, projLon) =
                     ProjectOntoCenterline(n.Latitude, n.Longitude, thrLat, thrLon, farLat, farLon);
-                // Only nodes that are themselves a valid intersection point compete
-                // for "closest to the centerline": within the pavement band, past
-                // the threshold connector, and with usable runway remaining. Gating
-                // HERE — not after picking a single best node — means a taxiway's
-                // near-threshold connector node (along < MIN_ALONG_M) or a far-end
-                // nub can't shadow a genuine mid-field entrance further down the
-                // same taxiway and drop the whole taxiway from the list.
                 if (along < MIN_ALONG_M || along > totalLen) continue;
                 if (totalLen - along < MIN_REMAINING_M) continue;
                 if (perp > maxPerp) continue;
-                if (perp < bestPerp)
-                {
-                    bestPerp = perp; bestNode = nid; bestAlong = along;
-                    bestLat = projLat; bestLon = projLon;
-                }
+                candidates.Add((along, perp, nid, projLat, projLon));
             }
+            if (candidates.Count == 0) continue;
+            candidates.Sort((a, b) => a.along.CompareTo(b.along));
 
-            if (bestNode < 0) continue;
-            double remaining = totalLen - bestAlong;
-
-            result.Add(new RunwayIntersection
+            // Walk the sorted candidates; a >CLUSTER_GAP_M along-track gap closes
+            // the current cluster. Emit each cluster's min-perpendicular node.
+            int clusterStart = 0;
+            for (int i = 1; i <= candidates.Count; i++)
             {
-                TaxiwayName = twName,
-                NodeId = bestNode,
-                Latitude = bestLat,
-                Longitude = bestLon,
-                AlongMetersFromThreshold = bestAlong,
-                RemainingMeters = remaining,
-            });
+                if (i < candidates.Count &&
+                    candidates[i].along - candidates[i - 1].along <= CLUSTER_GAP_M)
+                    continue;
+
+                var best = candidates[clusterStart];
+                for (int j = clusterStart + 1; j < i; j++)
+                    if (candidates[j].perp < best.perp) best = candidates[j];
+
+                result.Add(new RunwayIntersection
+                {
+                    TaxiwayName = twName,
+                    NodeId = best.nodeId,
+                    Latitude = best.lat,
+                    Longitude = best.lon,
+                    AlongMetersFromThreshold = best.along,
+                    RemainingMeters = totalLen - best.along,
+                });
+                clusterStart = i;
+            }
         }
 
         result.Sort((a, b) => a.AlongMetersFromThreshold.CompareTo(b.AlongMetersFromThreshold));

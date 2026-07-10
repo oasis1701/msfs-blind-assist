@@ -15,7 +15,9 @@
 //     are rejected PER NODE, before the per-taxiway best-node pick, so an
 //     invalid connector node can't shadow a genuine mid-field entrance
 //   - along-track is unclamped, so nodes beyond either threshold are rejected
-//   - one entry per taxiway name: the qualifying node CLOSEST to the centerline
+//   - one entry per MEETING POINT: qualifying nodes on the same taxiway are
+//     clustered by along-track gap (>100 m starts a new cluster); each
+//     cluster contributes its node closest to the centerline
 //   - the reported point is the node projected ONTO the centerline
 //   - results sort threshold-first; direction follows the thr->far arguments
 //
@@ -155,15 +157,17 @@ public class RunwayIntersectionTests
     }
 
     [Fact]
-    public void Closest_node_to_the_centerline_wins_within_a_taxiway()
+    public void Closest_node_to_the_centerline_wins_within_a_meeting_point()
     {
-        // Taxiway R reaches the pavement twice: a node 20 m off the centerline at
-        // 1200 m along, and a node 2 m off at 1300 m along. One entry, and it is
-        // the 2 m node (minimum perpendicular distance), not the first-along one.
+        // Taxiway R has two qualifying nodes 66.7 m apart along the runway —
+        // one dense polyline entrance, i.e. ONE meeting point (cluster): a node
+        // 20 m off the centerline at 1200 m along, and a node 2 m off at
+        // 1266.7 m along. One entry, and it is the 2 m node (minimum
+        // perpendicular distance), not the first-along one.
         var paths = new List<TaxiPath>
         {
             new TaxiPath { StartLat = 0.0006, StartLon = 0.0108, EndLat = 20.0 * DEG_PER_M, EndLon = 0.0108, Name = "R" },
-            new TaxiPath { StartLat = 0.0006, StartLon = 0.0117, EndLat = 2.0 * DEG_PER_M,  EndLon = 0.0117, Name = "R" },
+            new TaxiPath { StartLat = 0.0006, StartLon = 0.0114, EndLat = 2.0 * DEG_PER_M,  EndLon = 0.0114, Name = "R" },
         };
         var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
 
@@ -171,7 +175,30 @@ public class RunwayIntersectionTests
 
         var r = Assert.Single(result);
         Assert.Equal("R", r.TaxiwayName);
-        Assert.Equal(0.0117 * M_PER_DEG, r.AlongMetersFromThreshold, 1);
+        Assert.Equal(0.0114 * M_PER_DEG, r.AlongMetersFromThreshold, 1);
+    }
+
+    [Fact]
+    public void A_taxiway_meeting_the_runway_twice_yields_one_entry_per_meeting_point()
+    {
+        // Taxiway V reaches the pavement at 1000 m and again at 1300 m — the
+        // paired high-speed-exit shape sharing one name (real navdata: KORD Y4
+        // meets 04R/22L at 1361 m AND 1684 m). The 300 m along-track gap
+        // (> CLUSTER_GAP_M 100) makes these two distinct meeting points, each
+        // offered as its own entry, threshold-first.
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 0.0006, StartLon = 0.009,  EndLat = 0, EndLon = 0.009,  Name = "V" },
+            new TaxiPath { StartLat = 0.0006, StartLon = 0.0117, EndLat = 0, EndLon = 0.0117, Name = "V" },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        var result = Departing09(g);
+
+        Assert.Equal(2, result.Count);
+        Assert.All(result, ix => Assert.Equal("V", ix.TaxiwayName));
+        Assert.Equal(0.009 * M_PER_DEG,  result[0].AlongMetersFromThreshold, 1);
+        Assert.Equal(0.0117 * M_PER_DEG, result[1].AlongMetersFromThreshold, 1);
     }
 
     [Fact]
