@@ -99,8 +99,12 @@ $RECYCLE.BIN/
 .idea/
 *.sln.iml
 
-# local Claude settings
-.claude/
+# Local Claude settings stay ignored, but project skills (slash commands like
+# /release-build) are tracked and shared. `.claude/*` instead of `.claude/` is
+# required: git never descends into a fully-ignored directory, so a negation
+# under `.claude/` would be dead.
+.claude/*
+!.claude/skills/
 
 # User-specific development notes
 *.private.md
