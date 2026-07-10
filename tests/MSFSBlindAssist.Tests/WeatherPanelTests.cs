@@ -162,4 +162,25 @@ public class WeatherPanelTests
         activeSky.Checked = false;
         Assert.False(combo.Visible);
     }
+
+    [Fact]
+    public async Task Status_line_shows_disabled_when_activesky_is_off()
+    {
+        var saved = SettingsManager.Current.ActiveSkyEnabled;
+        try
+        {
+            SettingsManager.Current.ActiveSkyEnabled = false;   // central gate → instant, no probe
+            using var panel = new WeatherPanel();
+            panel.LoadFrom(new UserSettings { ActiveSkyEnabled = false });
+            await panel.RefreshActiveSkyStatusAsync();
+
+            var label = FindByAccessibleName(panel, "ActiveSky status");
+            Assert.NotNull(label);
+            Assert.Equal("ActiveSky status: disabled in settings", label!.Text);
+        }
+        finally
+        {
+            SettingsManager.Current.ActiveSkyEnabled = saved;
+        }
+    }
 }
