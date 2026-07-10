@@ -197,6 +197,14 @@ public partial class MainForm
             if (!currentAircraft.GetVariables().ContainsKey(varKey))
                 continue;
 
+            // Variant-aware visibility: skip controls the running airframe doesn't
+            // have (e.g. PMDG 777 freighter cargo temp knobs on a passenger variant).
+            // Re-evaluated on every panel build, so late variant detection corrects
+            // itself the next time the panel is opened.
+            if (currentAircraft is BaseAircraftDefinition baseDef &&
+                !baseDef.IsPanelControlVisible(varKey, simConnectManager))
+                continue;
+
             var varDef = currentAircraft.GetVariables()[varKey];
             
             // Add a new row (sliders need a little more height for the TrackBar).

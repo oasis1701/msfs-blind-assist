@@ -5789,6 +5789,48 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["EVAC_Command"]         = ("EVT_PED_EVAC_SWITCH_GUARD",    "EVT_PED_EVAC_SWITCH"),
         };
 
+    // ----------------------------------------------------------------------
+    // 777 variant identity — from the CDA's own AircraftModel field (SDK:
+    // 1 -200, 2 -200ER, 3 -300, 4 -200LR, 5 777F, 6 -300ER). NEVER from the
+    // ICAO type: the 777F and the pax 777-200LR both declare
+    // icao_type_designator B77L, and livery TITLEs are freeform. Returns 0
+    // when the CDA has no snapshot yet (variant unknown).
+    // ----------------------------------------------------------------------
+    private const int Model777Freighter = 5;
+
+    private static int GetAircraftModel(SimConnect.SimConnectManager? simConnect)
+    {
+        var dm = simConnect?.PMDGDataManager;
+        return (dm != null && dm.IsReady) ? (int)dm.GetFieldValue("AircraftModel") : 0;
+    }
+
+    private static bool IsCargoTempKnobKey(string varKey) =>
+        varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
+               or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft";
+
+    /// <summary>
+    /// Hide variant-specific temperature knobs from panels the running airframe
+    /// doesn't have: the four cargo temp knobs exist only on the 777F, and the
+    /// CABIN temp knob only on the passenger variants (the freighter has no
+    /// passenger cabin). Unknown model (CDA not ready yet) shows everything —
+    /// the HandleUIVariableSet guards still refuse a dead write in that window.
+    /// </summary>
+    public override bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
+    {
+        bool isCargoKnob = IsCargoTempKnobKey(varKey);
+        if (!isCargoKnob && varKey != "AIR_TempKnobCabin")
+        {
+            return true;
+        }
+        int model = GetAircraftModel(simConnect);
+        if (model is < 1 or > 6)
+        {
+            return true; // variant unknown — show; set-time guards protect
+        }
+        bool isFreighter = model == Model777Freighter;
+        return isCargoKnob ? isFreighter : !isFreighter;
+    }
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
@@ -5869,30 +5911,27 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         //     why instead of writing a dead value, and re-request the var so
         //     the combo snaps back to the real (unchanged) value instead of
         //     displaying the refused selection.
-        //     Variant identity comes from the CDA's own AircraftModel field
-        //     (SDK: 1 -200, 2 -200ER, 3 -300, 4 -200LR, 5 777F, 6 -300ER) —
-        //     NOT the ICAO type: the 777F and the pax 777-200LR both declare
-        //     icao_type_designator B77L (verified in both installed packages),
-        //     so CurrentAircraftIcaoType cannot tell them apart, and livery
-        //     TITLEs are freeform. Unknown model (no CDA snapshot yet, or a
-        //     future SDK value we don't know) falls through to the normal
-        //     write — same net effect as before the guard existed.
+        //     Variant identity comes from GetAircraftModel (the CDA's own
+        //     AircraftModel field — see the helper above HandleUIVariableSet
+        //     for why ICAO can never be used). Unknown model (no CDA snapshot
+        //     yet, or a future SDK value we don't know) falls through to the
+        //     normal write — same net effect as before the guard existed.
+        //     These controls are also HIDDEN from the panel on the wrong
+        //     variant (IsPanelControlVisible); this guard remains the backstop
+        //     for a panel built before variant detection completed.
         // ------------------------------------------------------------------
-        bool isCargoTempKnob = varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
-                                      or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft";
+        bool isCargoTempKnob = IsCargoTempKnobKey(varKey);
         if (isCargoTempKnob || varKey == "AIR_TempKnobCabin")
         {
-            const int Model777F = 5;
-            var modelDm = simConnect.PMDGDataManager;
-            int model = (modelDm != null && modelDm.IsReady) ? (int)modelDm.GetFieldValue("AircraftModel") : 0;
-            bool isKnownPax = model is >= 1 and <= 6 and not Model777F;
+            int model = GetAircraftModel(simConnect);
+            bool isKnownPax = model is >= 1 and <= 6 and not Model777Freighter;
             if (isCargoTempKnob && isKnownPax)
             {
                 announcer.AnnounceImmediate("Cargo temperature knobs are only functional on the 777 freighter.");
                 simConnect.RequestVariable(varKey, forceUpdate: true);
                 return true;
             }
-            if (varKey == "AIR_TempKnobCabin" && model == Model777F)
+            if (varKey == "AIR_TempKnobCabin" && model == Model777Freighter)
             {
                 announcer.AnnounceImmediate("The cabin temperature selector is not functional on the 777 freighter.");
                 simConnect.RequestVariable(varKey, forceUpdate: true);
