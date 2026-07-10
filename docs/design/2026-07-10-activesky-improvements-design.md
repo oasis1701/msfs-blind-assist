@@ -81,9 +81,14 @@ Every new string builder is an `internal static` pure function here, directly te
   unknown strings pass through verbatim as the mode name (never crash, never hide).
 - `BuildProfileNarrative(VerticalProfile p, double currentAltitudeFt)` → briefing text:
   - Cloud layers first, each as `"Broken, 4,500 to 9,200 feet, moderate icing, light rain"` —
-    icing/precip/turbulence phrases included only when present; per-layer turbulence bucketed
-    through the existing `CategorizeTurbulence` thresholds (≤ light-threshold hidden, per the
-    documented raw-turbulence invariant).
+    icing/precip/turbulence phrases included only when present. NOTE (live-verified 2026-07-10):
+    the XML's per-layer `Turbulence`/`CloudTurbulence`/`Icing` values are small FSX-convention
+    severity enums (0 none, 1 light, 2 moderate, 3 heavy, 4 severe), NOT the 0-100 JSON
+    `AmbientTurbulence` scale — they get a direct severity-word map, not `CategorizeTurbulence`;
+    0 is hidden (consistent with the raw-turbulence invariant's spirit). `Coverage` is oktas
+    (1-2 few, 3-4 scattered, 5-7 broken, 8 overcast); `PrecipType` 0 none / 1 rain / 2 snow.
+    Unknown enum values render as no phrase (omit) rather than a raw number. Wind layers arrive
+    as `AltFeet` (already feet); only cloud base/top are metres needing conversion.
   - Then `"Winds and temperatures aloft:"` at surface / 5,000 / 10,000 / 18,000 / 24,000 /
     34,000 ft **plus** the layer nearest the aircraft's current altitude, deduplicated, each as
     `"34,000 feet: 270 at 45, minus 42"`.
