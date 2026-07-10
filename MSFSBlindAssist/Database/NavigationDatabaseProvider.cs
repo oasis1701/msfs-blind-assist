@@ -1016,7 +1016,9 @@ public class NavigationDatabaseProvider
             case 'I': // to intercept
                 return $"{Cap(heading)} {crs} to intercept{turn}".Trim();
             case 'M': // to manual termination (vectors)
-                return $"{Cap(heading)} {crs}, vectors{turn}".Trim();
+                return string.IsNullOrEmpty(crs)
+                    ? $"{Cap(heading)}, vectors{turn}".Trim()
+                    : $"{Cap(heading)} {crs}, vectors{turn}".Trim();
             case 'D': // to DME distance
                 return $"{Cap(heading)} {crs} to DME{turn}".Trim();
             case 'R': // to radial

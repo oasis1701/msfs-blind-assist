@@ -636,6 +636,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Aircraft with special UI value setting logic should override
 
     /// <summary>
+    /// Whether this panel variable's control should be shown when a panel is built.
+    /// Default: always visible. Aircraft whose panel content depends on the loaded
+    /// VARIANT (e.g. the PMDG 777 freighter cargo temp knobs vs the passenger cabin
+    /// temp knob) override this to hide controls that don't exist on the running
+    /// airframe. Called on every panel (re)build, so the answer may change as
+    /// variant detection completes — return true when the variant is still unknown
+    /// (a control that appears is better than one that never does; the
+    /// HandleUIVariableSet guards still protect a hidden-should-have-been control
+    /// that got built before detection).
+    /// </summary>
+    public virtual bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
+    {
+        return true;
+    }
+
+    /// <summary>
     /// Default implementation returns false (use generic handling).
     /// Aircraft with special variable setting logic (validation, conversion, multi-step) should override.
     /// </summary>

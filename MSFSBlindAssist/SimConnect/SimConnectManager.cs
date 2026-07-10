@@ -56,7 +56,6 @@ public partial class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
-    public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     /// <summary>
     /// Fires when the loaded aircraft's ICAO type designator becomes known (on connect / aircraft change).
@@ -200,9 +199,6 @@ public partial class SimConnectManager
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
     private int ecamStringsReceived = 0;
     private int ecamTotalStringsExpected = 14;
-    private double ecamMasterWarning = 0;
-    private double ecamMasterCaution = 0;
-    private double ecamStallWarning = 0;
     private Dictionary<string, string> ecamAnnouncementData = new Dictionary<string, string>();  // ECAM messages with color for announcements
     private HashSet<string> previousECAMMessages = new HashSet<string>();  // Track previous message set for change detection
 
@@ -1165,27 +1161,6 @@ public class SimVarUpdateEventArgs : EventArgs
     /// requests) always leave this false.
     /// </summary>
     public bool IsInitialSnapshot { get; set; }
-}
-
-public class ECAMDataEventArgs : EventArgs
-{
-    public string LeftLine1 { get; set; } = string.Empty;
-    public string LeftLine2 { get; set; } = string.Empty;
-    public string LeftLine3 { get; set; } = string.Empty;
-    public string LeftLine4 { get; set; } = string.Empty;
-    public string LeftLine5 { get; set; } = string.Empty;
-    public string LeftLine6 { get; set; } = string.Empty;
-    public string LeftLine7 { get; set; } = string.Empty;
-    public string RightLine1 { get; set; } = string.Empty;
-    public string RightLine2 { get; set; } = string.Empty;
-    public string RightLine3 { get; set; } = string.Empty;
-    public string RightLine4 { get; set; } = string.Empty;
-    public string RightLine5 { get; set; } = string.Empty;
-    public string RightLine6 { get; set; } = string.Empty;
-    public string RightLine7 { get; set; } = string.Empty;
-    public bool MasterWarning { get; set; }
-    public bool MasterCaution { get; set; }
-    public bool StallWarning { get; set; }
 }
 
 public class TakeoffRunwayReferenceEventArgs : EventArgs

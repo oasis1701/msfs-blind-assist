@@ -41,8 +41,9 @@ public class NavigationDatabaseProviderPureLogicTests
 
         Assert.False(string.IsNullOrWhiteSpace(label));
         Assert.Contains("vectors", label, StringComparison.OrdinalIgnoreCase);
-        // Captured actual output: heading prefix ("Heading") + empty course collapses via Trim().
-        Assert.Equal("Heading , vectors", label);
+        // Courseless vectors leg: no course token, so no stray space before the comma
+        // (2026-07 fix — was "Heading , vectors").
+        Assert.Equal("Heading, vectors", label);
     }
 
     [Theory]

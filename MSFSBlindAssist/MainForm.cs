@@ -311,6 +311,12 @@ public partial class MainForm : Form
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
+    // ActiveSky precip descriptor last seen (#129): null = no AS baseline yet
+    // (or AS not active), "" = no precip, else the parsed phrase ("light rain").
+    private string? _prevAsPrecip;
+    // On-demand ActiveSky client for the ambient-change precip source + the output+I
+    // wind readout (caches its port so repeated queries are cheap).
+    private readonly MSFSBlindAssist.Services.ActiveSkyClient weatherActiveSky = new();
 
     private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
 
@@ -603,16 +609,18 @@ public partial class MainForm : Form
         // Initialize TCAS service (polls for AI/multiplayer traffic via SimConnect)
         tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager);
 
-        // ActiveSky weather-update announcer. Started unconditionally — when
-        // AS isn't running each poll is just a ~1.2 s parallel-probe timeout
-        // and nothing is announced. When AS IS running and pushes new
-        // weather, the user hears "Weather update. Surface wind X at Y …"
-        // within ~1 minute. Silent for non-AS users.
+        // ActiveSky weather-update announcer. Constructed always (so the settings
+        // dialog can start it live via ApplyRuntimeSettings), but STARTED only when
+        // ActiveSkyWeatherMonitor.ShouldRun says so — the user must have opted into
+        // ActiveSky AND asked for weather announcements. When the AS switch is off no
+        // AS code may run at all, and even when it's on but AS isn't running, each
+        // poll would be a ~1.2 s parallel-probe timeout.
         activeSkyWeatherMonitor = new MSFSBlindAssist.Services.ActiveSkyWeatherMonitor(
             new MSFSBlindAssist.Services.ActiveSkyClient(), announcer);
         activeSkyWeatherMonitor.IntervalMinutes =
             MSFSBlindAssist.Settings.SettingsManager.Current.WeatherAutoAnnounceIntervalMinutes;
-        activeSkyWeatherMonitor.Start();
+        activeSkyWeatherMonitor.Enabled = MSFSBlindAssist.Services.ActiveSkyWeatherMonitor
+            .ShouldRun(MSFSBlindAssist.Settings.SettingsManager.Current);
 
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
@@ -663,9 +671,14 @@ public partial class MainForm : Form
     // ANY OTHER source (flyPad, ground crew, failure, systems-host) still announces,
     // because only the matching value within the short window is consumed.
     private readonly Dictionary<string, (double value, long tick)> _uiSetEcho = new();
-
-    private const int UiSetEchoSuppressMs = 1500;
-
+    // Window sized for the SLOWEST echo path: the PMDG 777 CDA is POLLED at 1000 ms
+    // (PMDG777DataManager._pollTimer), and a GUARDED switch (alt vent etc.) adds a
+    // 150+150 ms guard-open/set/close sequence before the value even changes — so the
+    // echo can land ~1.2-1.5 s after the combo commit and escaped the old 1500 ms
+    // window (reported live on the 777 alt vent, 2026-07). Both gates below stay
+    // consumed-once (+ the generic one value-matched), so a wider window does not eat
+    // genuine later changes.
+    private const int UiSetEchoSuppressMs = 3000;
     private void MarkUiSet(string? varName, double value)
     {
         if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);

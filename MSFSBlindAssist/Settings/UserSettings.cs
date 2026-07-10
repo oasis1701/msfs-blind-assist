@@ -362,6 +362,14 @@ public class UserSettings
         public double DockingBeepVolume { get; set; } = 0.05;
 
         // Weather Settings
+        /// <summary>
+        /// Master switch for the HiFi ActiveSky integration (Weather settings tab).
+        /// Default OFF: most users run the sim's own weather engine, and the AS
+        /// liveness probe has a ~1.2 s floor when AS is absent — so NO ActiveSky
+        /// code path may run unless the user opts in. Gated centrally in
+        /// ActiveSkyClient.IsRunningAsync (returns false instantly when off).
+        /// </summary>
+        public bool ActiveSkyEnabled { get; set; } = false;
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
 
         /// <summary>
@@ -503,6 +511,7 @@ public class UserSettings
             AltitudeCalloutsEnabled = AltitudeCalloutsEnabled,
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
+            ActiveSkyEnabled = ActiveSkyEnabled,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             WeatherAutoAnnounceIntervalMinutes = WeatherAutoAnnounceIntervalMinutes,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,

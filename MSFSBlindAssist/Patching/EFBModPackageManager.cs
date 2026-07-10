@@ -5,22 +5,13 @@ namespace MSFSBlindAssist.Patching
 {
     public enum ModPackageResult
     {
-        Success,
-        AlreadyInstalled,
-        AlreadyUpToDate,
-        Updated,
         CommunityFolderNotFound,
-        BridgeJsSourceNotFound,
-        PmdgPackageNotFound,
         InstallFailed,
-        Removed,
-        HS787PackageNotFound
+        Removed
     }
 
     public static class EFBModPackageManager
     {
-        private const string VersionFileName = "bridge-version.txt";
-
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
         private const string HtmlBasePath = "html_ui/Pages/VCockpit/Instruments/PMDGTablet";
         private const string HtmlFileName = "PMDGTabletCA.html";
@@ -234,21 +225,6 @@ namespace MSFSBlindAssist.Patching
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Returns the installed bridge version, or 0 if no version file exists
-        /// (pre-versioning installation).
-        /// </summary>
-        public static int GetInstalledVersion(string communityFolderPath)
-        {
-            string versionPath = Path.Combine(communityFolderPath, PackageFolderName, VersionFileName);
-            if (File.Exists(versionPath) && int.TryParse(File.ReadAllText(versionPath).Trim(), out int version))
-                return version;
-            // Package exists but no version file = version 1 (pre-versioning)
-            if (IsInstalled(communityFolderPath))
-                return 1;
-            return 0;
         }
 
         /// <summary>

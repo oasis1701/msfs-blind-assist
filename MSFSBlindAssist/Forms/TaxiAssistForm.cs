@@ -64,6 +64,14 @@ public class TaxiAssistForm : Form
     private Label lblGateSearch = null!;
     private TextBox txtGateSearch = null!;
     private ComboBox cmbDestination = null!;
+    // Intersection departure (runway destinations only): tick chkIntersection to
+    // line up partway down the runway at a taxiway intersection instead of the
+    // full-length threshold. cmbIntersection lists the valid intersections for the
+    // selected runway; _intersectionMap resolves the chosen label back to the graph
+    // node + centerline point + remaining runway.
+    private CheckBox chkIntersection = null!;
+    private ComboBox cmbIntersection = null!;
+    private readonly Dictionary<string, TaxiGraph.RunwayIntersection> _intersectionMap = new();
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
     private CheckBox chkFirstHoldShort = null!;
@@ -158,6 +166,12 @@ public class TaxiAssistForm : Form
     private TaxiGraph? _graph;
     private string _currentIcao = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
+    // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
+    // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
+    // connection per call, so caching the (session-stable) runway set for the
+    // loaded airport avoids a UI-thread DB round-trip on each interaction.
+    private List<Runway>? _cachedRunways;
+    private string _cachedRunwaysIcao = "";
 
     // Destination nodes for routing
     private Dictionary<string, int> _destinationNodeMap = new();
@@ -407,6 +421,50 @@ public class TaxiAssistForm : Form
             AccessibleName = "Destination",
             AccessibleDescription = "Select the destination runway or gate"
         };
+        // Re-list intersections when the runway changes (only matters while the
+        // intersection checkbox is on and a runway destination is selected). Guard
+        // on a real selection (>= 0): repopulating the destination combo fires this
+        // with a transient SelectedIndex of -1, and re-listing then would find no
+        // runway and spuriously announce "no intersections" + untick the box.
+        cmbDestination.SelectedIndexChanged += (s, e) =>
+        {
+            if (cmbDestType.SelectedIndex == 0 && chkIntersection.Checked
+                && cmbDestination.SelectedIndex >= 0)
+                ShowIntersectionListOrFallback(focusCombo: false);
+        };
+        y += 30;
+
+        // Intersection departure. Runway destinations only — hidden for gate /
+        // progressive / deice. When ticked, cmbIntersection lists the taxiways
+        // that meet the selected runway (each with runway remaining ahead), and
+        // Calculate lines the aircraft up at that intersection instead of the
+        // full-length threshold. A permanent slot (like the gate-search row
+        // above) so the layout doesn't jump; the controls just hide/show.
+        chkIntersection = new CheckBox
+        {
+            Text = "&Intersection departure",
+            Location = new System.Drawing.Point(controlX, y),
+            AutoSize = true,
+            // Visible for the default (Runway) destination type. OnDestTypeChanged
+            // is wired AFTER cmbDestType.SelectedIndex = 0, so it never fires during
+            // construction — the checkbox must therefore be born in the state that
+            // matches the default selection, or the whole feature is invisible on
+            // first open until the user toggles the destination type away and back.
+            Visible = cmbDestType.SelectedIndex == 0,
+            AccessibleName = "Intersection departure",
+            AccessibleDescription = "Line up at a runway intersection instead of full length"
+        };
+        chkIntersection.CheckedChanged += OnIntersectionToggled;
+        y += 26;
+        cmbIntersection = new ComboBox
+        {
+            Location = new System.Drawing.Point(controlX, y),
+            Width = controlWidth,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Visible = false,
+            AccessibleName = "Intersection",
+            AccessibleDescription = "Select the taxiway intersection to depart from, with runway remaining ahead"
+        };
         y += 30;
 
         // First taxiway
@@ -650,6 +708,8 @@ public class TaxiAssistForm : Form
         this.Controls.Add(lblGateSearch);
         this.Controls.Add(txtGateSearch);
         this.Controls.Add(cmbDestination);
+        this.Controls.Add(chkIntersection);
+        this.Controls.Add(cmbIntersection);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
         this.Controls.Add(chkFirstHoldShort);
@@ -703,6 +763,8 @@ public class TaxiAssistForm : Form
         cmbDestType.TabIndex = tabIdx++;
         txtGateSearch.TabIndex = tabIdx++;
         cmbDestination.TabIndex = tabIdx++;
+        chkIntersection.TabIndex = tabIdx++;
+        cmbIntersection.TabIndex = tabIdx++;
         chkFitFilter.TabIndex = tabIdx++;
         cmbFirstTaxiway.TabIndex = tabIdx++;
         chkFirstHoldShort.TabIndex = tabIdx++;
@@ -1213,11 +1275,21 @@ public class TaxiAssistForm : Form
     {
         bool isGate = cmbDestType.SelectedIndex == 1;
         bool isProgressive = cmbDestType.SelectedIndex == 2;
+        bool isRunway = cmbDestType.SelectedIndex == 0;
         chkFitFilter.Visible = isGate && _aircraftWingspan > 0;
         lblGateSearch.Visible = isGate;
         txtGateSearch.Visible = isGate;
         if (!isGate)
             txtGateSearch.Text = string.Empty;
+
+        // Intersection departure applies only to runway destinations. Leaving
+        // runway mode unticks it and hides the list so a stale intersection can't
+        // leak into a gate/progressive/deice route.
+        chkIntersection.Visible = isRunway;
+        if (!isRunway && chkIntersection.Checked)
+            chkIntersection.Checked = false; // fires OnIntersectionToggled → hides + clears
+        else if (!isRunway)
+            cmbIntersection.Visible = false;
 
         // Progressive Taxi has no final destination — hide the gate/runway
         // destination picker and route to a terminator on the last taxiway row
@@ -1238,6 +1310,114 @@ public class TaxiAssistForm : Form
         // knows before pressing Calculate that the airport has nothing to route to.
         if (cmbDestType.SelectedIndex == 3 && cmbDestination.Items.Count == 0)
             _announcer.AnnounceImmediate("No deicing areas at this airport.");
+    }
+
+    private void OnIntersectionToggled(object? sender, EventArgs e)
+    {
+        if (chkIntersection.Checked)
+        {
+            ShowIntersectionListOrFallback(focusCombo: true);
+        }
+        else
+        {
+            cmbIntersection.Visible = false;
+            cmbIntersection.Items.Clear();
+            _intersectionMap.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Populates the intersection combo for the current runway and either reveals
+    /// it with the first entry selected, or — if the runway has no usable
+    /// intersections — announces the full-length fallback and unticks the box.
+    /// Shared by the checkbox-toggle and runway-change paths so BOTH always leave a
+    /// valid entry selected; without this the runway-change path repopulated the
+    /// combo but never set SelectedIndex, leaving it blank so Calculate silently
+    /// reverted to a full-length departure while the box stayed checked.
+    /// </summary>
+    private void ShowIntersectionListOrFallback(bool focusCombo)
+    {
+        PopulateIntersections();
+        if (cmbIntersection.Items.Count > 0)
+        {
+            cmbIntersection.Visible = true;
+            cmbIntersection.SelectedIndex = 0;
+            if (focusCombo)
+                cmbIntersection.Focus();
+        }
+        else
+        {
+            // Nothing to offer (sparse navdata, or the taxi graph has no
+            // taxiway node on this runway). Fall back to a full-length
+            // departure rather than leaving a checked-but-empty control.
+            _announcer.AnnounceImmediate("No runway intersections available. Full length departure.");
+            chkIntersection.Checked = false; // re-enters OnIntersectionToggled → hides the list
+        }
+    }
+
+    /// <summary>
+    /// Fills the intersection combo with the taxiways that meet the currently
+    /// selected runway, each labelled with distance from the threshold and the
+    /// runway remaining ahead in the takeoff direction.
+    /// </summary>
+    private void PopulateIntersections()
+    {
+        cmbIntersection.Items.Clear();
+        _intersectionMap.Clear();
+
+        if (_graph == null || cmbDestType.SelectedIndex != 0) return;
+        string? destName = cmbDestination.SelectedItem?.ToString();
+        if (string.IsNullOrEmpty(destName)) return;
+
+        // "Runway 22R" → "22R".
+        string runwayId = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? destName.Substring(7).Trim()
+            : destName.Trim();
+
+        // Physical runway geometry (runway_end thresholds), NOT the start-table
+        // centerline — the start table sits inside the pavement at displaced
+        // thresholds, which would understate the runway length / remaining. The
+        // Runway model gives the departure threshold (StartLat/Lon), the far end
+        // (EndLat/Lon), and the width, so distance-from-threshold and remaining
+        // reflect the true runway.
+        if (_cachedRunways == null || _cachedRunwaysIcao != _currentIcao)
+        {
+            _cachedRunways = _dataProvider.GetRunways(_currentIcao);
+            _cachedRunwaysIcao = _currentIcao;
+        }
+        var rwy = _cachedRunways
+            .FirstOrDefault(r => string.Equals(r.RunwayID, runwayId, StringComparison.OrdinalIgnoreCase));
+        if (rwy == null) return;
+
+        // Half-width from the runway width (feet → metres); default 150 ft wide.
+        double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+
+        // The start-table lineup point (same one full-length departures line up
+        // at) lets the enumeration drop the normal full-length entrance — only
+        // genuine shortcuts past it are offered (displaced-threshold fix).
+        double? lineupLat = null, lineupLon = null;
+        if (_destinationThresholdMap.TryGetValue(destName, out var lineup))
+        {
+            lineupLat = lineup.lat;
+            lineupLon = lineup.lon;
+        }
+
+        foreach (var ix in _graph.GetRunwayIntersections(
+                     rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
+                     lineupLat, lineupLon))
+        {
+            string label =
+                $"{ix.TaxiwayName}, {DistanceFormatter.FromMetres(ix.RemainingMeters)} remaining, " +
+                $"{DistanceFormatter.FromMetres(ix.AlongMetersFromThreshold)} from threshold";
+            // Same-named taxiways now legitimately produce MULTIPLE entries (one
+            // per meeting point), distinguished by the distances in the label.
+            // This guard only fires if display rounding collapses two close
+            // meeting points to identical text — then the first (closer to the
+            // threshold) wins and the duplicate is dropped rather than shadowed.
+            if (_intersectionMap.ContainsKey(label)) continue;
+            _intersectionMap[label] = ix;
+            cmbIntersection.Items.Add(label);
+        }
     }
 
     private void OnFirstTaxiwayChanged(object? sender, EventArgs e)
@@ -2074,6 +2254,28 @@ public class TaxiAssistForm : Form
             thresholdLon = threshold.lon;
         }
         bool isRunwayDest = cmbDestType.SelectedIndex == 0;
+
+        // Intersection departure: retarget the route to the chosen taxiway
+        // intersection. The destination node becomes the taxiway's on-runway
+        // node and the lineup target becomes that point on the centerline, so
+        // guidance holds short there and lines up partway down the runway
+        // instead of at the full-length threshold. destHeading/destHeadingTrue
+        // stay the runway's takeoff heading — the centerline is the same line,
+        // just entered further along (so Takeoff Assist, seeded from this lineup
+        // target, tracks it unchanged). Everything else — TruncateToHoldShort,
+        // the hold-short/continue/lineup flow, auto-activate — is relative to the
+        // lineup target, so pointing it at the intersection reuses it all.
+        TaxiGraph.RunwayIntersection? intersection = null;
+        if (isRunwayDest && chkIntersection.Checked
+            && cmbIntersection.SelectedItem is string interLabel
+            && _intersectionMap.TryGetValue(interLabel, out var ix))
+        {
+            intersection = ix;
+            destNodeId = ix.NodeId;
+            thresholdLat = ix.Latitude;
+            thresholdLon = ix.Longitude;
+        }
+
         string? error = _guidanceManager.LoadRoute(
             _dataProvider, _currentIcao,
             _aircraftLat, _aircraftLon, _aircraftHeading,
@@ -2120,15 +2322,29 @@ public class TaxiAssistForm : Form
 
         _guidanceManager.StartGuidance(settings);
 
-        // Speak the unreachable-runway warning LAST — after StartGuidance, whose
-        // first-taxiway callout would otherwise stomp it. The warning was showing
-        // in the box but never heard at Calculate (in-sim 2026-06-13) because it
-        // was spoken before StartGuidance. As the final standstill announcement
-        // it's heard in full; the box (route summary) still shows it too.
+        // Post-StartGuidance standstill speech — ONE utterance. It must come
+        // after StartGuidance (whose first-taxiway callout would otherwise stomp
+        // it: the reach warning was showing in the box but never heard at
+        // Calculate, in-sim 2026-06-13, when spoken before StartGuidance), and
+        // it must be a SINGLE AnnounceImmediate: consecutive calls stomp each
+        // other, so the intersection confirmation and the reach warning are
+        // joined, warning last so the safety-relevant text ends the utterance.
         // (No-op for Progressive Taxi: LastRouteReachWarning is only set for
         // runway destinations, and progressive legs never set a lineup target.)
+        var standstillParts = new List<string>();
+        if (intersection != null)
+        {
+            string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+                ? "runway " + destName.Substring(7).Trim()
+                : destName;
+            standstillParts.Add(
+                $"Intersection {intersection.TaxiwayName} departure, {rwyLabel}. " +
+                $"About {DistanceFormatter.FromMetres(intersection.RemainingMeters)} of runway ahead.");
+        }
         if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
-            _announcer.AnnounceImmediate(_guidanceManager.LastRouteReachWarning);
+            standstillParts.Add(_guidanceManager.LastRouteReachWarning);
+        if (standstillParts.Count > 0)
+            _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 
         // GSX gate auto-select: fire-and-forget when heading to a gate and
         // the feature is enabled. Conditions:
