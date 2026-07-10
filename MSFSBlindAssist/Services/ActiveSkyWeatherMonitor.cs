@@ -297,14 +297,22 @@ public class ActiveSkyWeatherMonitor : IDisposable
             ? closestStationMetar!
             : positionMetar;
 
-        var decoded = DecodeMetar(metarToUse);
+        return "Active sky weather updated. " + BuildDecodedWeatherText(metarToUse, conditions);
+    }
+
+    /// <summary>The "Decoded weather at {station}. Wind… Altimeter…" text, shared
+    /// verbatim between the auto-announce and the Weather Radar form's on-demand
+    /// closest-station box (spec 2026-07-10 §4.1: identical wording, one code path).
+    /// Internal for the form + tests.</summary>
+    internal static string BuildDecodedWeatherText(string metar, ActiveSkyClient.Conditions conditions)
+    {
+        var decoded = DecodeMetar(metar);
         string locationLabel = decoded.IsPositionMetar
             ? "your position"
             : decoded.Station;
 
         var parts = new List<string>
         {
-            "Active sky weather updated.",
             $"Decoded weather at {locationLabel}."
         };
 
@@ -341,7 +349,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
         // Precipitation — METAR weather group decoded by the shared helper.
         // None when the METAR has no weather token.
-        string precip = WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metarToUse);
+        string precip = WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metar);
         if (!string.IsNullOrEmpty(precip))
             parts.Add($"Precipitation: {Capitalise(precip)}.");
         else

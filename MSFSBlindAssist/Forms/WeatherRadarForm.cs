@@ -24,6 +24,8 @@ public class WeatherRadarForm : Form
     private Label _asModeLabel = null!;
     private Label _currentWeatherLabel = null!;
     private TextBox _currentWeatherBox = null!;
+    private Label _stationLabel = null!;
+    private TextBox _stationBox = null!;
     private Label _advisoriesLabel = null!;
     private TextBox _advisoriesBox = null!;
     private Label _windsAloftLabel = null!;
@@ -51,7 +53,7 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 734);
+        Size = new Size(600, 880);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -93,6 +95,30 @@ public class WeatherRadarForm : Form
             AccessibleDescription = "Ambient weather conditions at aircraft position from simulator"
         };
         y += 100 + 12;
+
+        // ── Closest station (ActiveSky only; hidden when AS is off) ───────
+        _stationLabel = new Label
+        {
+            Text = "Closest Station Weather (ActiveSky):",
+            Location = new Point(12, y),
+            Size = new Size(570, 20),
+            AccessibleName = "Closest Station Weather label",
+            Visible = false
+        };
+        y += 24;
+
+        _stationBox = new TextBox
+        {
+            Location = new Point(12, y),
+            Size = new Size(566, 110),
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Consolas", 9),
+            Text = "",
+            AccessibleName = "Closest Station Weather",
+            AccessibleDescription = "Decoded weather and raw METAR at the nearest reporting station, from ActiveSky",
+            Visible = false
+        };
+        y += 110 + 12;
 
         // ── Advisories (SIGMETs, AIRMETs, PIREPs) ────────────────────────
         _advisoriesLabel = new Label
@@ -188,6 +214,7 @@ public class WeatherRadarForm : Form
         {
             _asModeLabel,
             _currentWeatherLabel, _currentWeatherBox,
+            _stationLabel, _stationBox,
             _advisoriesLabel, _advisoriesBox,
             _windsAloftLabel, _windsAloftBox,
             _decodeCheckBox, _statusLabel, _refreshButton, _closeButton
@@ -199,11 +226,12 @@ public class WeatherRadarForm : Form
     private void SetupAccessibility()
     {
         _currentWeatherBox.TabIndex = 0;
-        _advisoriesBox.TabIndex = 1;
-        _windsAloftBox.TabIndex = 2;
-        _decodeCheckBox.TabIndex = 3;
-        _refreshButton.TabIndex = 4;
-        _closeButton.TabIndex = 5;
+        _stationBox.TabIndex = 1;
+        _advisoriesBox.TabIndex = 2;
+        _windsAloftBox.TabIndex = 3;
+        _decodeCheckBox.TabIndex = 4;
+        _refreshButton.TabIndex = 5;
+        _closeButton.TabIndex = 6;
 
         Load += async (s, e) =>
         {
@@ -241,6 +269,8 @@ public class WeatherRadarForm : Form
                 _asModeLabel.Text = _activeSkyAvailable == true
                     ? MSFSBlindAssist.Services.ActiveSkyFormatting.FormatModeLine(_activeSky.LastModeText)
                     : $"ActiveSky: {_activeSky.LastStatus}";
+            _stationLabel.Visible = asEnabled;
+            _stationBox.Visible = asEnabled;
 
             // Get aircraft position (needed for advisories and winds aloft)
             (double lat, double lon, int altFt) = await GetPositionAsync();
@@ -254,7 +284,9 @@ public class WeatherRadarForm : Form
 
             // await, not .Result — the tasks are already completed (WhenAll above), so
             // this doesn't block, but await avoids wrapping a fault in AggregateException.
-            _currentWeatherBox.Text = await ambientTask;
+            (string ambientText, string stationText) = await ambientTask;
+            _currentWeatherBox.Text = ambientText;
+            _stationBox.Text = stationText;
             _advisoriesBox.Text     = await advisoriesTask;
             _windsAloftBox.Text     = await windsTask;
 
@@ -312,7 +344,7 @@ public class WeatherRadarForm : Form
     /// where its rendered clouds are regardless of who set them, so reading
     /// AMBIENT IN CLOUD remains valid.
     /// </summary>
-    private async Task<string> FetchAmbientAsync()
+    private async Task<(string ambient, string station)> FetchAmbientAsync()
     {
         // Always grab SimConnect ambient too — needed for in-cloud and as a
         // fallback. simConnected tracks whether we actually got data so we can
@@ -354,15 +386,23 @@ public class WeatherRadarForm : Form
             string? stationMetar = await stationMetarTask;
 
             if (asConditions != null)
-                return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar, stationMetar);
+            {
+                string ambient = FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar, stationMetar);
+                string station = string.IsNullOrWhiteSpace(stationMetar)
+                    ? "unavailable"
+                    : MSFSBlindAssist.Services.ActiveSkyWeatherMonitor.BuildDecodedWeatherText(stationMetar, asConditions)
+                      + Environment.NewLine + Environment.NewLine
+                      + "Raw METAR:" + Environment.NewLine + stationMetar.Trim();
+                return (ambient, station);
+            }
             // AS pinged OK earlier but the conditions call failed — fall
             // through to SimConnect rather than returning an error.
         }
 
         if (!simConnected)
-            return "Not connected to simulator.";
+            return ("Not connected to simulator.", "unavailable");
 
-        return WeatherService.FormatAmbientWeather(simData);
+        return (WeatherService.FormatAmbientWeather(simData), "unavailable");
     }
 
     /// <summary>
