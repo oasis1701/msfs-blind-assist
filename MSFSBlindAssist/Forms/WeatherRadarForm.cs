@@ -701,6 +701,19 @@ public class WeatherRadarForm : Form
         if (lat == 0 && lon == 0)
             return "Aircraft position unavailable — connect to simulator first.";
 
+        // Per-engine wind truth (docs/weather.md §3): with AS enabled and
+        // reachable, the box shows what the sim is actually flying through —
+        // AS historic/custom weather can contradict live internet data. The
+        // Open-Meteo path below is the unchanged non-AS fallback.
+        if (_activeSkyAvailable == true)
+        {
+            var asLevels = await _activeSky.GetAtmosphereAsync(
+                lat, lon, MSFSBlindAssist.Services.ActiveSkyFormatting.WindsAloftAltitudes(altFt));
+            if (asLevels is { Count: > 0 })
+                return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildWindsAloftText(altFt, asLevels);
+            // AS answered the probe but not this call — fall through to Open-Meteo.
+        }
+
         var winds = await WeatherService.GetWindsAloftAsync(lat, lon, altFt, forceRefresh);
 
         if (winds.Count == 0)
@@ -716,6 +729,7 @@ public class WeatherRadarForm : Form
             sb.AppendLine($"{w.AltitudeFt:N0} ft:  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}");
         }
 
+        sb.AppendLine("Source: Open-Meteo");
         return sb.ToString().TrimEnd();
     }
 

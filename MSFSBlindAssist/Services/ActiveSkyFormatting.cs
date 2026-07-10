@@ -77,4 +77,33 @@ public static class ActiveSkyFormatting
         var p = ForecastPresets[Math.Clamp(presetIndex, 0, ForecastPresets.Length - 1)];
         return p.OffsetSeconds == 0 ? "ActiveSky METAR:" : $"ActiveSky METAR ({p.Label}):";
     }
+
+    /// <summary>The Winds Aloft box's altitude set: ±5000 ft of the aircraft in
+    /// 1000-ft steps, clamped at 0 — kept identical to the Open-Meteo path's
+    /// window (WeatherService.ParseWindsAloft) so switching source never
+    /// changes which levels the pilot hears.</summary>
+    internal static int[] WindsAloftAltitudes(int aircraftAltFt)
+    {
+        int lowAlt = (int)Math.Max(0, Math.Round((aircraftAltFt - 5000) / 1000.0) * 1000);
+        int highAlt = (int)Math.Round((aircraftAltFt + 5000) / 1000.0) * 1000;
+        var list = new List<int>();
+        for (int a = lowAlt; a <= highAlt; a += 1000) list.Add(a);
+        return list.ToArray();
+    }
+
+    /// <summary>AS-sourced Winds Aloft text — same layout as the Open-Meteo path
+    /// plus per-level temperature and the source tag line.</summary>
+    internal static string BuildWindsAloftText(int aircraftAltFt, IReadOnlyList<ActiveSkyClient.AtmosphereLevel> levels)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Aircraft: {aircraftAltFt:N0} ft  |  forecast winds:");
+        sb.AppendLine(new string('─', 36));
+        foreach (var w in levels)
+        {
+            string marker = Math.Abs(w.AltitudeFt - aircraftAltFt) < 500 ? " (nearest)" : "";
+            sb.AppendLine($"{w.AltitudeFt:N0} ft:  {w.WindDirection:F0}° / {w.WindSpeed:F0} kts, {w.TemperatureC:F0}°C{marker}");
+        }
+        sb.AppendLine("Source: ActiveSky");
+        return sb.ToString().TrimEnd();
+    }
 }

@@ -114,6 +114,15 @@ public class ActiveSkyClient
         public List<string> Tafs { get; set; } = new();
     }
 
+    /// <summary>One level from /GetAtmosphere — sim-truth wind + temperature.</summary>
+    public sealed class AtmosphereLevel
+    {
+        public int AltitudeFt;
+        public double WindDirection;
+        public double WindSpeed;
+        public double TemperatureC;
+    }
+
     private string BaseUrl(int port) => $"http://localhost:{port}/ActiveSky/API";
 
     /// <summary>
@@ -371,6 +380,33 @@ public class ActiveSkyClient
     }
 
     /// <summary>
+    /// /GetAtmosphere?lat=&lon=&altitudes=a|b|c — sim-truth winds/temps at the
+    /// requested altitudes (feet, pipe-separated; invariant decimal separators
+    /// per the AS API doc). Null on error or when AS is off/unreachable.
+    /// </summary>
+    public async Task<List<AtmosphereLevel>?> GetAtmosphereAsync(double lat, double lon, IEnumerable<int> altitudesFt)
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            string url = $"{BaseUrl(port)}/GetAtmosphere"
+                + $"?lat={lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&lon={lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&altitudes={string.Join("|", altitudesFt)}&timeoffset=0";
+            using var resp = await _http.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            return ParseAtmosphereJson(await resp.Content.ReadAsStringAsync(cts.Token));
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetAtmosphere failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
     /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
     /// invariant culture for floats). We tolerate missing fields and parse
@@ -432,6 +468,36 @@ public class ActiveSkyClient
             }
 
             return c;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
+    /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
+    /// Null on malformed input; permissive per-field like ParseConditionsJson.</summary>
+    internal static List<AtmosphereLevel>? ParseAtmosphereJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("WeatherData", out var arr)
+                || arr.ValueKind != JsonValueKind.Array)
+                return null;
+            var list = new List<AtmosphereLevel>();
+            foreach (var el in arr.EnumerateArray())
+            {
+                list.Add(new AtmosphereLevel
+                {
+                    AltitudeFt = (int)Math.Round(ReadDouble(el, "Altitude")),
+                    WindDirection = ReadDouble(el, "WindDirection"),
+                    WindSpeed = ReadDouble(el, "WindSpeed"),
+                    TemperatureC = ReadDouble(el, "Temperature"),
+                });
+            }
+            return list;
         }
         catch
         {
