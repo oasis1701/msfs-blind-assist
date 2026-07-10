@@ -11,6 +11,11 @@ decoded-weather monitor's lifecycle, and two standing implementation gotchas.
 **Key files:**
 - `Services/ActiveSkyClient.cs` — HTTP client for the AS local API; owns the central opt-in gate
 - `Services/ActiveSkyWeatherMonitor.cs` — background poller that speaks "Weather update…"
+- `Services/ActiveSkyFormatting.cs` — pure text builders for the ActiveSky read-only surfaces
+  (mode line, temp/dew line, forecast presets, Winds Aloft altitude window, vertical-profile
+  narrative) — no I/O, fully characterization-tested
+- `Services/ActiveSkyModeTracker.cs` — pure baseline-first decision logic for the mode-change
+  announcement
 - `MainForm.Announcers.cs` — output+I wind (`RequestWindInfo`), the ambient auto-announce
   (`CheckAmbientWeatherChanges` / `AnnounceAmbientChanges`)
 - `Forms/WeatherRadarForm.cs` — the on-demand weather radar/briefing window
@@ -85,6 +90,21 @@ users who have (that's exactly the "ActiveSky not responding" notice's job — R
 recorded in `docs/design/2026-07-09-activesky-switch-review-fixes-design.md` §D5: the notice
 fires on every press when AS is enabled but unreachable, deliberately, because a blind pilot
 must never miss a degraded wind readout).
+
+The same per-engine rule extends to the Weather Radar form's Winds Aloft box
+(`Forms/WeatherRadarForm.cs` `FetchWindsAloftAsync`). With the switch **on** and AS reachable
+(`_activeSkyAvailable == true`), the box calls `ActiveSkyClient.GetAtmosphereAsync` for
+sim-truth wind and temperature at each level; if that call comes back empty (AS answered the
+earlier liveness probe but this particular endpoint call didn't), the method falls through to
+the unchanged Open-Meteo path (`WeatherService.GetWindsAloftAsync`) rather than failing the box
+outright. With the switch **off**, Open-Meteo is used directly, exactly as before. Both paths
+end with a visible source tag line — `"Source: ActiveSky"` (`ActiveSkyFormatting.
+BuildWindsAloftText`) or `"Source: Open-Meteo"` — so the reader always knows which engine
+answered. The altitude window itself — ±5,000 ft of the aircraft in 1,000-ft steps, clamped at
+0 — must stay identical between the two sources: `ActiveSkyFormatting.WindsAloftAltitudes`
+(`Services/ActiveSkyFormatting.cs`) mirrors the window `WeatherService.ParseWindsAloft` builds
+for the Open-Meteo path, so switching source never changes which levels the pilot hears — only
+who answered for them.
 
 ## 4. Precipitation source precedence
 
@@ -236,3 +256,114 @@ in `CheckAmbientWeatherChanges`) disagree about the same METAR.
   `"severe"` (76–90), `"extreme"` (91+) — following FAA AIM 7-1-23 phraseology. AS sits at
   ~25 in genuinely calm conditions as numerical/atmospheric baseline noise; showing "25/100"
   reads as alarming when nothing is actually happening.
+
+## 9. ActiveSky read-only surfaces (2026-07)
+
+Design doc: `docs/design/2026-07-10-activesky-improvements-design.md`. Five read-only additions
+on top of the surfaces above — a mode readout, a vertical weather profile, an on-demand
+closest-station readout, a forecast METAR combo, and a settings-panel status line — all gated
+behind the same `ActiveSkyEnabled` opt-in and, on the Weather Radar form, hidden entirely
+(`Visible = false`, out of the NVDA tab order) rather than shown with disabled/placeholder text
+when the switch is off.
+
+**(a) Mode status line + mode-change announce.** `ActiveSkyClient.ProbePortAsync` (`Services/
+ActiveSkyClient.cs`) — the same GET that already runs for every liveness probe — captures the
+`/GetMode` response body into `LastModeText` for free (zero extra requests). `ActiveSkyFormatting
+.ParseModeText` (`Services/ActiveSkyFormatting.cs`) strips the trailing `"(Active)"`/
+`"(Inactive)"` marker and the `"(...z)"` weather-clock group out of that raw text; `FormatModeLine`
+renders it as `"ActiveSky: Live Real time mode, weather time 1935Z"`. `WeatherRadarForm.
+RefreshAsync` (`Forms/WeatherRadarForm.cs`) shows this in `_asModeLabel` at the top of the form,
+substituting `"ActiveSky: {LastStatus}"` when AS is enabled but unreachable, and hides the label
+entirely when the switch is off.
+
+The *spoken* side is separate: `ActiveSkyModeTracker.Observe` (`Services/
+ActiveSkyModeTracker.cs`) is pure decision logic wired into `ActiveSkyWeatherMonitor.OnTickAsync`
+(`Services/ActiveSkyWeatherMonitor.cs`) and follows four rules. **Baseline-first** — the first
+successful `Observe` call only records `_baselineMode` and returns null; nothing is ever spoken
+about the mode the app happened to find AS in. **Silent on connect** — because of the
+baseline-first rule, launching the app (or AS) never produces a mode announcement, only a later
+genuine change does. **The baseline survives unreachable gaps** — when `IsRunningAsync()` fails
+mid-tick, `OnTickAsync` resets its OWN change-detection state (`_lastTimeStamp`,
+`_hasBaseline`, `_lastAnnouncedAt`) but deliberately does **not** touch `_modeTracker`, so if AS
+comes back in a *different* mode than the one last observed, that difference still announces —
+a pilot needs to hear that AS restarted into, say, Custom static mode, even though the monitor's
+own weather-refresh baseline was wiped by the gap. **Gated by `ShouldRun`** — the mode-change
+announce only fires while the monitor is polling at all, i.e. `ActiveSkyEnabled &&
+WeatherAutoAnnounceEnabled` (§5); with auto-announce off, the mode is still readable on demand
+via the Weather Radar form's status line, just never spoken unprompted.
+
+**(b) Closest-station box shares one code path with the auto-announce.** `WeatherRadarForm.
+FetchAmbientAsync` (`Forms/WeatherRadarForm.cs`) populates `_stationBox` by calling
+`ActiveSkyWeatherMonitor.BuildDecodedWeatherText` (`Services/ActiveSkyWeatherMonitor.cs`) —
+the exact same internal static that `BuildAnnouncement` calls to build the *"Active sky weather
+updated…"* auto-announce — with the raw METAR appended underneath. There is deliberately no
+second decoder: on-demand and unprompted readouts of the same station must say the same thing
+in the same words, and any wording change to `BuildDecodedWeatherText` reaches both surfaces at
+once rather than needing to be kept in sync by hand (unlike the precipitation-token decoder in
+§7, which genuinely does have to be duplicated for layering reasons — this one doesn't, because
+both callers already live in `Services`).
+
+**Current-position temperature/dew point line (a related sixth read-only addition, sharing the
+decoder used in (b)).** `ActiveSkyFormatting.BuildTempDewLine` (`Services/
+ActiveSkyFormatting.cs`) decodes the already-fetched position METAR into `"Temperature/dew
+point: 36 / 12°C"`, appended to `WeatherRadarForm.FormatAmbientFromActiveSky`'s current-position
+block (`Forms/WeatherRadarForm.cs`) — the dew point has no other source anywhere in the app (no
+SimConnect dew-point SimVar, no dew field in the AS JSON conditions block). `ActiveSkyWeatherMonitor
+.DecodeMetar` (`Services/ActiveSkyWeatherMonitor.cs`) yields temperature and dew point strictly
+together — both-or-neither, since a METAR reports them as one `TT/DD` group token — so
+`BuildTempDewLine` renders the line only when **both** `TemperatureC` and `DewPointC` are
+present, and returns null (no line at all) otherwise. The original design doc's
+"dew point missing from the METAR → the line shows temperature only" fallback was proven
+unreachable during implementation — the decoder never produces temperature without dew point —
+and was deliberately not built (see the implementation note appended to `docs/design/
+2026-07-10-activesky-improvements-design.md` §4.1 item 2).
+
+**(c) Vertical profile: enum conventions and curation.** `ActiveSkyClient.GetWeatherInfoXmlAsync`
+/ `ParseWeatherInfoXml` (`Services/ActiveSkyClient.cs`) parse `/GetWeatherInfoXml` into a
+`VerticalProfile` of `ProfileWindLayer`/`ProfileCloudLayer` records. Three enum conventions to
+remember when touching this code: **severity is 0-4** (FSX-style: 1 light, 2 moderate, 3 heavy,
+4 severe; 0/unknown = no phrase) for `TurbulenceEnum` and `IcingEnum` on both layer types — this
+is a *different* scale from the JSON `Conditions.AmbientTurbulence` 0-100 value used elsewhere
+in the file, so `ActiveSkyFormatting.SeverityWord` must never be fed a 0-100 number or vice
+versa; **cloud coverage is oktas** (1-2 few, 3-4 scattered, 5-7 broken, 8 overcast; anything
+else is not a reportable layer), decoded by `CoverageWord`; **metres→feet conversion applies
+only to cloud base/top** (`ParseWeatherInfoXml` converts `CloudBaseMeters`/`CloudTopMeters` ×
+3.28084 at parse time) — wind-layer altitudes arrive from the XML's `AltFeet` attribute already
+in feet and must not be converted again. `PrecipWord` maps `PrecipType` 0/1/2 to none/rain/snow.
+
+`ActiveSkyFormatting.BuildProfileNarrative` assembles the spoken text: every cloud layer with
+base/top/coverage, plus icing/precip/turbulence phrases only when present, ordered by base
+altitude ascending; then winds/temps at the layer nearest each of six standard levels (surface,
+5,000, 10,000, 18,000, 24,000, 34,000 ft) **plus** the layer nearest the aircraft's current
+altitude, deduplicated and re-sorted ascending by `SelectCuratedLevels` — a full 13-layer dump
+would bury the levels that actually matter to the pilot in ones that don't. `WeatherRadarForm.
+FetchProfileAsync` (`Forms/WeatherRadarForm.cs`) is AS-only by construction: it returns
+`"unavailable"` immediately when `_activeSkyAvailable != true`, with no SimConnect fallback —
+there is no vertical-profile data source outside ActiveSky.
+
+**(d) Forecast combo.** `ActiveSkyFormatting.ForecastPresets` (`Services/
+ActiveSkyFormatting.cs`) is the fixed offset table — Now / +1 hour / +2 hours / +4 hours / +6
+hours, i.e. 0/3600/7200/14400/21600 seconds — consumed both to populate `METARReportForm`'s
+`forecastCombo` (`Forms/METARReportForm.cs`) and, in `FetchMETAR`, as the `timeoffset` argument
+to `ActiveSkyClient.GetMetarAsync`. `BuildAsMetarCaption` renders the AS METAR box's label so it
+always states which offset is showing — `"ActiveSky METAR:"` at the `Now` preset,
+`"ActiveSky METAR (+4 hours):"` otherwise — so a screen-reader user tabbing between the label
+and the box never has to guess which forecast they're reading. The **VATSIM box is always
+current**: `FetchMETAR`'s `vatsimTask` calls `VATSIMService.GetMETARAsync(icao)` with no offset
+parameter at all, regardless of the combo's selection — VATSIM has no forecast concept, and the
+combo only ever parameterizes the AS fetch. Both the forecast combo and the AS METAR section
+share one visibility flag (`asMetarTextBox.Visible`, set once on `Load` from
+`_activeSky.IsRunningAsync()`), so when AS is off or unreachable at open time the form reverts
+to its original compact VATSIM-only layout.
+
+**(e) Settings-panel status line.** `WeatherPanel.RefreshActiveSkyStatusAsync` (`Forms/
+Settings/WeatherPanel.cs`) probes AS via a dedicated `ActiveSkyClient` instance (separate from
+the one any open form/monitor uses, so opening Settings never disturbs another surface's cached
+port) and writes `ActiveSkyClient.LastStatus` into `_asStatusLabel` — e.g. `"ActiveSky status:
+detected on port 19285"` or `"ActiveSky status: not detected (port 19285: no listener)"`. It
+runs once when the panel loads (`LoadFrom`) and reflects the **saved** setting (the central
+`IsRunningAsync` gate reads `SettingsManager.Current`, not the panel's unapplied checkbox
+state) — so ticking the checkbox and reading the status line in the same visit shows the
+*previous* session's result until Apply/OK commits the change and the panel is reopened. This
+finally fulfills `ActiveSkyClient.LastStatus`'s doc comment, which had promised "surfaced to the
+UI" since the property was first added.

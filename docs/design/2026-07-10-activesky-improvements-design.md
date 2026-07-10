@@ -140,7 +140,9 @@ aloft, advisories, …).
    AS-only sections).
 2. **Current-position block** gains `"Temperature/dew point: 28 / 14"`, decoded from the
    position METAR the form already fetches (zero new requests). Dew point missing from the
-   METAR → the line shows temperature only.
+   METAR → the line shows temperature only. (Implementation note 2026-07-11: DecodeMetar
+   yields temperature and dew point strictly together, so the temperature-only fallback was
+   unreachable and was not built.)
 3. **Closest station box** (new): station ICAO + full decoded readout (identical wording to the
    auto-announce, same code path), with the raw METAR line underneath.
 4. **Vertical profile box** (new, current position only): the `BuildProfileNarrative` output.
