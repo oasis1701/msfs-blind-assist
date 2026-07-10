@@ -8,11 +8,26 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>
 /// LoadFrom/ApplyTo round-trip for the Weather settings tab. The panel is a plain
 /// UserControl whose controls are readable/writable without a message pump, so it
-/// can be exercised directly. No SettingsManager access — a local UserSettings is
-/// passed in — so no collection needed.
+/// can be exercised directly. LoadFrom fire-and-forgets RefreshActiveSkyStatusAsync,
+/// which reads the process-global SettingsManager.Current.ActiveSkyEnabled (the
+/// central AS gate) — so this class joins the shared SettingsManagerGlobalState
+/// collection (no parallelism) and forces the gate off for the duration of every
+/// test, keeping the LoadFrom-triggered status probe inert (instant, no HTTP) even
+/// when the real saved settings.json has ActiveSkyEnabled = true.
 /// </summary>
-public class WeatherPanelTests
+[Collection("SettingsManagerGlobalState")]
+public class WeatherPanelTests : IDisposable
 {
+    private readonly bool savedActiveSkyEnabled;
+
+    public WeatherPanelTests()
+    {
+        savedActiveSkyEnabled = SettingsManager.Current.ActiveSkyEnabled;
+        SettingsManager.Current.ActiveSkyEnabled = false;
+    }
+
+    public void Dispose() => SettingsManager.Current.ActiveSkyEnabled = savedActiveSkyEnabled;
+
     [Fact]
     public void RoundTrip_PreservesAllWeatherSettings()
     {
@@ -166,21 +181,16 @@ public class WeatherPanelTests
     [Fact]
     public async Task Status_line_shows_disabled_when_activesky_is_off()
     {
-        var saved = SettingsManager.Current.ActiveSkyEnabled;
-        try
-        {
-            SettingsManager.Current.ActiveSkyEnabled = false;   // central gate → instant, no probe
-            using var panel = new WeatherPanel();
-            panel.LoadFrom(new UserSettings { ActiveSkyEnabled = false });
-            await panel.RefreshActiveSkyStatusAsync();
+        // The gate is already forced off by the class constructor, so LoadFrom's own
+        // fire-and-forget RefreshActiveSkyStatusAsync is inert. This awaited second run
+        // is deterministic and idempotent because the disabled path is synchronous
+        // (no HTTP), so it settles the label to the same value without racing anything.
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = false });
+        await panel.RefreshActiveSkyStatusAsync();
 
-            var label = FindByAccessibleName(panel, "ActiveSky status");
-            Assert.NotNull(label);
-            Assert.Equal("ActiveSky status: disabled in settings", label!.Text);
-        }
-        finally
-        {
-            SettingsManager.Current.ActiveSkyEnabled = saved;
-        }
+        var label = FindByAccessibleName(panel, "ActiveSky status");
+        Assert.NotNull(label);
+        Assert.Equal("ActiveSky status: disabled in settings", label!.Text);
     }
 }
