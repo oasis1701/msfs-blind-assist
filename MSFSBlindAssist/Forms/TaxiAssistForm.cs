@@ -2322,28 +2322,29 @@ public class TaxiAssistForm : Form
 
         _guidanceManager.StartGuidance(settings);
 
-        // Speak the unreachable-runway warning LAST — after StartGuidance, whose
-        // first-taxiway callout would otherwise stomp it. The warning was showing
-        // in the box but never heard at Calculate (in-sim 2026-06-13) because it
-        // was spoken before StartGuidance. As the final standstill announcement
-        // it's heard in full; the box (route summary) still shows it too.
+        // Post-StartGuidance standstill speech — ONE utterance. It must come
+        // after StartGuidance (whose first-taxiway callout would otherwise stomp
+        // it: the reach warning was showing in the box but never heard at
+        // Calculate, in-sim 2026-06-13, when spoken before StartGuidance), and
+        // it must be a SINGLE AnnounceImmediate: consecutive calls stomp each
+        // other, so the intersection confirmation and the reach warning are
+        // joined, warning last so the safety-relevant text ends the utterance.
         // (No-op for Progressive Taxi: LastRouteReachWarning is only set for
         // runway destinations, and progressive legs never set a lineup target.)
-        if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
-            _announcer.AnnounceImmediate(_guidanceManager.LastRouteReachWarning);
-
-        // Intersection departure: confirm the entry point + runway remaining
-        // ahead. Spoken last so StartGuidance's first-taxiway callout doesn't
-        // stomp it (same reasoning as the reach warning above).
+        var standstillParts = new List<string>();
         if (intersection != null)
         {
             string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
                 ? "runway " + destName.Substring(7).Trim()
                 : destName;
-            _announcer.AnnounceImmediate(
+            standstillParts.Add(
                 $"Intersection {intersection.TaxiwayName} departure, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(intersection.RemainingMeters)} of runway ahead.");
         }
+        if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
+            standstillParts.Add(_guidanceManager.LastRouteReachWarning);
+        if (standstillParts.Count > 0)
+            _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 
         // GSX gate auto-select: fire-and-forget when heading to a gate and
         // the feature is enabled. Conditions:
