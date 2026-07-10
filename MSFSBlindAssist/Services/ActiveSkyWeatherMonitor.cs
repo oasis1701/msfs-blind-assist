@@ -66,6 +66,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
     private readonly ActiveSkyClient _activeSky;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly ActiveSkyModeTracker _modeTracker = new();
 
     /// <summary>Last seen JSON TimeStamp. 0 = no baseline yet.</summary>
     private long _lastTimeStamp;
@@ -150,6 +151,17 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 // timestamp from a previous AS session.
                 _lastAnnouncedAt = DateTime.MinValue;
                 return;
+            }
+
+            // Mode-change announce (baseline-first, silent on first sight). The
+            // probe inside IsRunningAsync just refreshed LastModeText, so this
+            // costs no extra request. Announced even when the weather fetch
+            // below fails — mode is independent of weather data.
+            string? modeChange = _modeTracker.Observe(_activeSky.LastModeText);
+            if (modeChange != null && !_disposed)
+            {
+                Log.Debug("Services", $"mode change: \"{modeChange}\"");
+                _announcer.Announce(modeChange);
             }
 
             // Pull the structured conditions (TimeStamp + ambient/surface fields)
