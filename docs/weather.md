@@ -74,31 +74,48 @@ The two sources can legitimately diverge: AS applies its own wind smoothing/inte
 its ambient wind is not guaranteed to match SimConnect's `AMBIENT WIND DIRECTION`/`VELOCITY`
 at the same instant. Neither is "the" truth for both populations — never hard-pick one source
 for users who haven't opted into ActiveSky, and never silently fall back to SimConnect for
-users who have (that's exactly the "ActiveSky not responding" notice's job — see §1's
-Robin's-ruling note in `RequestWindInfo`: the notice fires on every press when AS is enabled
-but unreachable, deliberately, because a blind pilot must never miss a degraded wind readout).
+users who have (that's exactly the "ActiveSky not responding" notice's job — Robin's ruling,
+recorded in `docs/design/2026-07-09-activesky-switch-review-fixes-design.md` §D5: the notice
+fires on every press when AS is enabled but unreachable, deliberately, because a blind pilot
+must never miss a degraded wind readout).
 
 ## 4. Precipitation source precedence
 
 Three separate readouts decode precipitation from a METAR: the Weather Radar
 (`WeatherRadarForm.ParsePrecipFromMetar`), the ActiveSky decoded-weather monitor
 (`ActiveSkyWeatherMonitor` via the `WeatherRadarFormPrecipShim` copy — see §7), and the
-ambient auto-announce (`MainForm.Announcers.cs` `CheckAmbientWeatherChanges`). All three use
-the **same** source precedence so they never contradict each other:
+ambient auto-announce (`MainForm.Announcers.cs` `CheckAmbientWeatherChanges`). All three agree
+on the same underlying order — closest-station METAR, then position METAR, then the
+SimConnect bitmask as last resort — so they never contradict each other. The Weather Radar
+carries one extra belt-and-braces tier the other two readouts don't have:
 
 1. Closest-station METAR (`ActiveSkyClient.GetClosestStationMetarAsync`) — the real nearest
    reporting station.
-2. Position METAR (`GetPositionMetarAsync`, AS's `@POS` interpolated point weather) —
-   fallback when the closest-station call fails.
-3. SimConnect `AMBIENT_PRECIP_STATE`/`AMBIENT_PRECIP_RATE` bitmask — last resort, only used
+2. **Weather Radar only:** the conditions-JSON `ClosestMetar` field
+   (`WeatherRadarForm.FormatAmbientFromActiveSky`, `Forms/WeatherRadarForm.cs:414-418`) — a
+   second, belt-and-braces attempt at the same closest-station report when the dedicated
+   endpoint call in tier 1 came back empty, before the radar gives up on "closest station"
+   entirely. The decoded-weather monitor (`ActiveSkyWeatherMonitor.cs:221`) and the ambient
+   auto-announce (`MainForm.Announcers.cs:1957-1959`) have no equivalent step — each goes
+   straight from a failed closest-station call to position METAR.
+3. Position METAR (`GetPositionMetarAsync`, AS's `@POS` interpolated point weather) —
+   fallback when both closest-station attempts fail (Weather Radar) or when the single
+   closest-station attempt fails (the other two readouts).
+4. SimConnect `AMBIENT_PRECIP_STATE`/`AMBIENT_PRECIP_RATE` bitmask — last resort, only used
    when ActiveSky isn't running at all (see §2's table; under ActiveSky the bitmask is known
    to stick, e.g. reported stuck on "extreme snow").
+
+CLAUDE.md's weather invariant states this as three tiers (closest-station METAR → position
+METAR → SimConnect bitmask). That's the simplified form, not a different rule: it's exact for
+the decoded-weather monitor and the ambient auto-announce, and for the Weather Radar it
+collapses tiers 1 and 2 into one "closest-station METAR" step, since both are just retries of
+the same source before falling back to position METAR.
 
 A METAR that parses with **no** weather-phenomenon token means "no precipitation" and must
 render as `"None"` — it must never fall through to the next source in the list. Only a
 wholly-missing METAR (the fetch itself failed or returned empty/whitespace) triggers
 fallback to the next source. `WeatherRadarForm.FormatAmbientFromActiveSky` implements this
-exactly: each of the three METAR-based branches does
+exactly: each of its three METAR-based branches does
 `string.IsNullOrEmpty(parsed) ? "None" : parsed` — never `continue`/fall-through on an empty
 parse.
 
@@ -117,10 +134,18 @@ public static bool ShouldRun(Settings.UserSettings settings)
 Both flags are required because the monitor is simultaneously an ActiveSky feature (it reads
 only the AS HTTP API — there is **no** SimConnect fallback for decoded station weather; if AS
 isn't running, the tick just resets its baseline and returns) and an announcement feature (it
-speaks unprompted). `ShouldRun` is called from exactly two sites — `MainForm.InitializeManagers`
-at launch (`activeSkyWeatherMonitor.Enabled = ActiveSkyWeatherMonitor.ShouldRun(...)`) and
-`MainForm.MenuHandlers.ApplyRuntimeSettings` on live settings save — deliberately never
-inlined elsewhere, so the two call sites can't drift apart.
+speaks unprompted). `ShouldRun` has three call sites, not one. Two gate the monitor's own
+`Enabled` state: `MainForm.InitializeManagers` at launch
+(`activeSkyWeatherMonitor.Enabled = ActiveSkyWeatherMonitor.ShouldRun(...)`, `MainForm.cs:602`)
+and `MainForm.MenuHandlers.ApplyRuntimeSettings` on live settings save
+(`MainForm.MenuHandlers.cs:113`). The third, `WeatherPanel.UpdateActiveSkyDependentVisibility`
+(`Forms/Settings/WeatherPanel.cs:61`), gates something different — not the monitor's `Enabled`
+flag, but whether the announcement-interval combo is visible and in the NVDA tab order. It
+builds a throwaway `UserSettings` from the two live checkbox states (the panel has no
+committed `UserSettings` at `CheckedChanged` time) and calls `ShouldRun` on it, because a
+setting that governs nothing shouldn't be reachable by a blind user tabbing the panel. All
+three call `ShouldRun` rather than restating `enabled && autoAnnounce` inline, so the
+both-flags rule has exactly one definition and none of the three sites can drift from it.
 
 `CheckAmbientWeatherChanges` (§2's cloud/precip/visibility auto-announce) is a **different**
 feature on a **different** timer (`weatherAnnouncementTimer`, ticked from
@@ -163,12 +188,17 @@ canonical WMO/ICAO weather-token decoder — it walks METAR tokens for intensity
 (`RA`/`SN`/`GR`/`GS`/`PL`/`IC`/`UP`/`DZ`/`SG`), and renders e.g. `"light rain"` or
 `"thunderstorm with heavy rain"`.
 
-`ActiveSkyWeatherMonitor` cannot call it directly (the form doesn't expose it publicly), so
-`Services/ActiveSkyWeatherMonitor.cs` hosts a byte-for-byte duplicate as
-`WeatherRadarFormPrecipShim.ParsePrecipFromMetar` — same token classification, same output
-strings. **Do not move the decoder out of `WeatherRadarForm` without updating the shim**, and
-do not change one copy's phenomenon/descriptor table without mirroring the change in the
-other — a drift here would make the radar, the decoded-weather monitor, and the ambient
+`ActiveSkyWeatherMonitor` (namespace `MSFSBlindAssist.Services`) doesn't call it directly.
+The obstacle isn't access level — `ParsePrecipFromMetar` is `internal static`
+(`Forms/WeatherRadarForm.cs:444`), which is visible from anywhere in the same assembly,
+`Services` included. The obstacle is layering: `Forms/WeatherRadarForm.cs` already
+`using`s `MSFSBlindAssist.Services`, so a `Services` class calling back into a `Forms` class
+would create a `Services → Forms` dependency the codebase doesn't want alongside the existing
+`Forms → Services` one. So `Services/ActiveSkyWeatherMonitor.cs` hosts a byte-for-byte
+duplicate as `WeatherRadarFormPrecipShim.ParsePrecipFromMetar` — same token classification,
+same output strings. **Do not move the decoder out of `WeatherRadarForm` without updating the
+shim**, and do not change one copy's phenomenon/descriptor table without mirroring the change
+in the other — a drift here would make the radar, the decoded-weather monitor, and the ambient
 auto-announce (which also calls the shim, via `MSFSBlindAssist.Services.WeatherRadarFormPrecipShim`
 in `CheckAmbientWeatherChanges`) disagree about the same METAR.
 
