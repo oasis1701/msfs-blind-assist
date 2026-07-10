@@ -219,6 +219,56 @@ public class RunwayIntersectionTests
         Assert.Equal("IN", only.TaxiwayName);
     }
 
+    // --- Full-length entrance filter (displaced thresholds) -----------------------
+
+    // Shared fixture for the lineup-point filter: FL serves the full-length
+    // lineup point at 300 m down the physical pavement (displaced-threshold
+    // shape, e.g. KJFK 22R's ~1 km displacement), NEAR sits 33 m past it
+    // (inside the 50 m margin), MID is a genuine mid-field shortcut.
+    private static TaxiGraph BuildDisplacedGraph()
+    {
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 0.0006, StartLon = 0.0027, EndLat = 0, EndLon = 0.0027, Name = "FL" },
+            new TaxiPath { StartLat = 0.0006, StartLon = 0.003,  EndLat = 0, EndLon = 0.003,  Name = "NEAR" },
+            new TaxiPath { StartLat = 0.0006, StartLon = 0.009,  EndLat = 0, EndLon = 0.009,  Name = "MID" },
+        };
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+    }
+
+    [Fact]
+    public void Lineup_point_filters_the_full_length_entrance_and_its_margin()
+    {
+        // Lineup point at 300 m along: FL (300 m) and NEAR (333 m ≤ 300+50)
+        // are the normal full-length entrance, not shortcuts; MID survives.
+        var result = BuildDisplacedGraph().GetRunwayIntersections(
+            0, 0, 0, FarLon, HalfWidthM, lineupLat: 0.0, lineupLon: 0.0027);
+
+        var only = Assert.Single(result);
+        Assert.Equal("MID", only.TaxiwayName);
+    }
+
+    [Fact]
+    public void Omitted_lineup_point_keeps_all_entries()
+    {
+        var result = Departing09(BuildDisplacedGraph());
+
+        Assert.Equal(new[] { "FL", "NEAR", "MID" },
+            result.Select(ix => ix.TaxiwayName).ToArray());
+    }
+
+    [Fact]
+    public void Lineup_point_beyond_mid_runway_is_treated_as_corrupt_and_ignored()
+    {
+        // A start row projecting past the runway midpoint (2000 m of 3000 m)
+        // can't be a real full-length lineup point — the filter must switch
+        // off rather than empty the list.
+        var result = BuildDisplacedGraph().GetRunwayIntersections(
+            0, 0, 0, FarLon, HalfWidthM, lineupLat: 0.0, lineupLon: 0.018);
+
+        Assert.Equal(3, result.Count);
+    }
+
     // --- Degenerate input ---------------------------------------------------------
 
     [Fact]

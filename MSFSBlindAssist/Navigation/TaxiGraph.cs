@@ -1125,8 +1125,15 @@ public class TaxiGraph
     /// <param name="farLat">Opposite-end (rollout-end) latitude.</param>
     /// <param name="farLon">Opposite-end longitude.</param>
     /// <param name="halfWidthMeters">Runway half-width; a node must be within this of the centerline to count.</param>
+    /// <param name="lineupLat">Optional: latitude of the full-length lineup point
+    /// (start-table row). When given, meeting points at or before it (+50 m) are
+    /// dropped — they are the NORMAL departure entrance, not an intersection
+    /// shortcut. Matters at displaced-threshold runways (KJFK 22R: ~1 km displaced),
+    /// where that entrance otherwise lists as a bogus "intersection".</param>
+    /// <param name="lineupLon">Optional: longitude of the full-length lineup point.</param>
     public List<RunwayIntersection> GetRunwayIntersections(
-        double thrLat, double thrLon, double farLat, double farLon, double halfWidthMeters)
+        double thrLat, double thrLon, double farLat, double farLon, double halfWidthMeters,
+        double? lineupLat = null, double? lineupLon = null)
     {
         var result = new List<RunwayIntersection>();
 
@@ -1139,6 +1146,22 @@ public class TaxiGraph
         double maxPerp = halfWidthMeters + 5.0;
         const double MIN_ALONG_M = 15.0;      // exclude the threshold connector itself
         const double MIN_REMAINING_M = 45.0;  // exclude far-end nubs (~150 ft left)
+
+        // Meeting points at or before the full-length lineup point are the normal
+        // departure entrance, not a shortcut; 50 m of margin absorbs connector
+        // geometry around the lineup spot.
+        const double FULL_LENGTH_MARGIN_M = 50.0;
+
+        double minAlong = MIN_ALONG_M;
+        if (lineupLat.HasValue && lineupLon.HasValue)
+        {
+            var (_, lineupAlong, _, _) = ProjectOntoCenterline(
+                lineupLat.Value, lineupLon.Value, thrLat, thrLon, farLat, farLon);
+            // Sanity clamp: a lineup point past mid-runway is a corrupt start
+            // row — ignore the filter rather than emptying the list.
+            if (lineupAlong > 0 && lineupAlong <= totalLen / 2.0)
+                minAlong = Math.Max(minAlong, lineupAlong + FULL_LENGTH_MARGIN_M);
+        }
 
         // Two qualifying nodes on the SAME taxiway further apart than this along
         // the runway are distinct meeting points (the paired branches of a
@@ -1162,7 +1185,7 @@ public class TaxiGraph
                 if (!Nodes.TryGetValue(nid, out var n)) continue;
                 var (perp, along, projLat, projLon) =
                     ProjectOntoCenterline(n.Latitude, n.Longitude, thrLat, thrLon, farLat, farLon);
-                if (along < MIN_ALONG_M || along > totalLen) continue;
+                if (along < minAlong || along > totalLen) continue;
                 if (totalLen - along < MIN_REMAINING_M) continue;
                 if (perp > maxPerp) continue;
                 candidates.Add((along, perp, nid, projLat, projLon));
