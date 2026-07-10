@@ -21,6 +21,7 @@ public class WeatherRadarForm : Form
     private bool? _activeSkyAvailable;
     private readonly IntPtr _previousWindow;
 
+    private Label _asModeLabel = null!;
     private Label _currentWeatherLabel = null!;
     private TextBox _currentWeatherBox = null!;
     private Label _advisoriesLabel = null!;
@@ -50,7 +51,7 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 710);
+        Size = new Size(600, 734);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -58,18 +59,32 @@ public class WeatherRadarForm : Form
         ShowInTaskbar = true;
         KeyPreview = true;
 
+        int y = 12;
+
+        // ── ActiveSky mode status (hidden when the AS switch is off) ──────
+        _asModeLabel = new Label
+        {
+            Text = "",
+            Location = new Point(12, y),
+            Size = new Size(570, 20),
+            AccessibleName = "ActiveSky status",
+            Visible = false
+        };
+        y += 24;
+
         // ── Current position weather ──────────────────────────────────────
         _currentWeatherLabel = new Label
         {
             Text = "Weather at Current Position:",
-            Location = new Point(12, 12),
+            Location = new Point(12, y),
             Size = new Size(570, 20),
             AccessibleName = "Weather at Current Position label"
         };
+        y += 24;
 
         _currentWeatherBox = new TextBox
         {
-            Location = new Point(12, 36),
+            Location = new Point(12, y),
             Size = new Size(566, 100),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
@@ -77,19 +92,21 @@ public class WeatherRadarForm : Form
             AccessibleName = "Weather at Current Position",
             AccessibleDescription = "Ambient weather conditions at aircraft position from simulator"
         };
+        y += 100 + 12;
 
         // ── Advisories (SIGMETs, AIRMETs, PIREPs) ────────────────────────
         _advisoriesLabel = new Label
         {
             Text = "Nearby Advisories (SIGMETs / AIRMETs / PIREPs):",
-            Location = new Point(12, 148),
+            Location = new Point(12, y),
             Size = new Size(570, 20),
             AccessibleName = "Nearby Advisories label"
         };
+        y += 24;
 
         _advisoriesBox = new TextBox
         {
-            Location = new Point(12, 172),
+            Location = new Point(12, y),
             Size = new Size(566, 210),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
@@ -97,19 +114,21 @@ public class WeatherRadarForm : Form
             AccessibleName = "Nearby Advisories",
             AccessibleDescription = "Active SIGMETs, AIRMETs, and pilot reports near the aircraft"
         };
+        y += 210 + 12;
 
         // ── Winds Aloft ───────────────────────────────────────────────────
         _windsAloftLabel = new Label
         {
             Text = "Winds Aloft (±5000 ft):",
-            Location = new Point(12, 394),
+            Location = new Point(12, y),
             Size = new Size(570, 20),
             AccessibleName = "Winds Aloft label"
         };
+        y += 24;
 
         _windsAloftBox = new TextBox
         {
-            Location = new Point(12, 418),
+            Location = new Point(12, y),
             Size = new Size(566, 170),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
@@ -117,41 +136,13 @@ public class WeatherRadarForm : Form
             AccessibleName = "Winds Aloft",
             AccessibleDescription = "Forecast wind direction and speed at each 1000 ft from 5000 ft below to 5000 ft above aircraft altitude"
         };
+        y += 170 + 10;
 
         // ── Status + buttons ──────────────────────────────────────────────
-        _statusLabel = new Label
-        {
-            Location = new Point(12, 632),
-            Size = new Size(370, 20),
-            Text = "",
-            AccessibleName = "Status"
-        };
-
-        _refreshButton = new Button
-        {
-            Text = "&Refresh (F5)",
-            Location = new Point(390, 626),
-            Size = new Size(100, 28),
-            AccessibleName = "Refresh",
-            AccessibleDescription = "Fetch current weather, advisories, and winds aloft"
-        };
-        _refreshButton.Click += (s, e) => _ = RefreshAsync(forceRefresh: true);
-
-        _closeButton = new Button
-        {
-            Text = "&Close",
-            Location = new Point(500, 626),
-            Size = new Size(78, 28),
-            DialogResult = DialogResult.OK,
-            AccessibleName = "Close",
-            AccessibleDescription = "Close weather radar window"
-        };
-        _closeButton.Click += CloseButton_Click;
-
         _decodeCheckBox = new CheckBox
         {
             Text = "&Decode advisories into plain English",
-            Location = new Point(12, 598),
+            Location = new Point(12, y),
             Size = new Size(370, 24),
             Checked = SettingsManager.Current.DecodeWeatherAdvisories,
             AccessibleName = "Decode advisories into plain English",
@@ -162,9 +153,40 @@ public class WeatherRadarForm : Form
             SettingsManager.Current.DecodeWeatherAdvisories = _decodeCheckBox.Checked;
             SettingsManager.Save();
         };
+        y += 28;
+
+        _refreshButton = new Button
+        {
+            Text = "&Refresh (F5)",
+            Location = new Point(390, y),
+            Size = new Size(100, 28),
+            AccessibleName = "Refresh",
+            AccessibleDescription = "Fetch current weather, advisories, and winds aloft"
+        };
+        _refreshButton.Click += (s, e) => _ = RefreshAsync(forceRefresh: true);
+
+        _closeButton = new Button
+        {
+            Text = "&Close",
+            Location = new Point(500, y),
+            Size = new Size(78, 28),
+            DialogResult = DialogResult.OK,
+            AccessibleName = "Close",
+            AccessibleDescription = "Close weather radar window"
+        };
+        _closeButton.Click += CloseButton_Click;
+
+        _statusLabel = new Label
+        {
+            Location = new Point(12, y + 6),
+            Size = new Size(370, 20),
+            Text = "",
+            AccessibleName = "Status"
+        };
 
         Controls.AddRange(new Control[]
         {
+            _asModeLabel,
             _currentWeatherLabel, _currentWeatherBox,
             _advisoriesLabel, _advisoriesBox,
             _windsAloftLabel, _windsAloftBox,
@@ -209,6 +231,16 @@ public class WeatherRadarForm : Form
             // have started/stopped AS between refreshes. Cached for the rest
             // of THIS refresh so we don't ping /GetMode for every sub-query.
             _activeSkyAvailable = await _activeSky.IsRunningAsync();
+
+            // Mode status line — hidden entirely when the AS switch is off (spec:
+            // AS-only UI disappears, not "disabled" text). Re-evaluated per refresh
+            // so toggling the setting takes effect without an app restart.
+            bool asEnabled = SettingsManager.Current.ActiveSkyEnabled;
+            _asModeLabel.Visible = asEnabled;
+            if (asEnabled)
+                _asModeLabel.Text = _activeSkyAvailable == true
+                    ? MSFSBlindAssist.Services.ActiveSkyFormatting.FormatModeLine(_activeSky.LastModeText)
+                    : $"ActiveSky: {_activeSky.LastStatus}";
 
             // Get aircraft position (needed for advisories and winds aloft)
             (double lat, double lon, int altFt) = await GetPositionAsync();

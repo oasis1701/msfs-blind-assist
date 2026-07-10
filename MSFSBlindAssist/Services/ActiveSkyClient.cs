@@ -51,6 +51,12 @@ public class ActiveSkyClient
     /// <summary>Last detection result reason — surfaced to the UI so the user can diagnose.</summary>
     public string LastStatus { get; private set; } = "not yet checked";
 
+    /// <summary>Body of the last successful /GetMode probe (e.g. "Live Real time mode
+    /// (Active) (2026/7/10 1935z)"). Refreshed by every successful liveness probe —
+    /// callers that just ran IsRunningAsync() can read it without another request.
+    /// Null until AS has been reached once this session.</summary>
+    public string? LastModeText { get; private set; }
+
     private static readonly HttpClient _http;
 
     static ActiveSkyClient()
@@ -185,7 +191,12 @@ public class ActiveSkyClient
         {
             using var resp = await _http.GetAsync($"{BaseUrl(port)}/GetMode", cts.Token);
             if (resp.IsSuccessStatusCode)
+            {
+                // Free mode capture — the probe already fetched the body's request.
+                try { LastModeText = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim(); }
+                catch { /* liveness result stands even if the body read fails */ }
                 return (port, true, "");
+            }
             return (port, false, $"port {port}: HTTP {(int)resp.StatusCode}");
         }
         catch (OperationCanceledException)
