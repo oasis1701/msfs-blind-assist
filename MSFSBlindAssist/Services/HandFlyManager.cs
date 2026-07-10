@@ -47,7 +47,10 @@ public class HandFlyManager : IDisposable
 
     // Configuration constants
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
-    private const double PITCH_THRESHOLD = 0.1; // Announce if pitch changes by >0.1 degree
+    // 1° pitch threshold matches TakeoffAssistManager so the liftoff handoff is
+    // seamless in the pilot's ears (the old 0.1° re-announced on sensor noise —
+    // far too chatty, and pointless once the spoken value is whole degrees).
+    private const double PITCH_THRESHOLD = 1.0; // Announce if pitch changes by >1 degree
     private const double BANK_THRESHOLD = 1.0; // Announce if bank changes by >1 degree
     private const double HEADING_THRESHOLD = 1.0; // Announce if heading changes by >1 degree
 
@@ -307,31 +310,45 @@ public class HandFlyManager : IDisposable
     }
 
     /// <summary>
-    /// Formats pitch announcement with decimal precision - always shows value
+    /// Formats pitch announcement in whole degrees — mirrors
+    /// TakeoffAssistManager.FormatPitchAnnouncement exactly, so the spoken pitch
+    /// style doesn't change across the liftoff handoff. Decimals were dropped
+    /// deliberately: a 0.5° distinction is meaningless to fly by ear and made
+    /// the callout stream unbearably wordy.
     /// </summary>
-    private string FormatPitchAnnouncement(double pitch)
+    internal static string FormatPitchAnnouncement(double pitch)
     {
-        if (pitch >= 0)
+        int pitchDegrees = (int)Math.Round(pitch);
+
+        if (pitchDegrees > 0)
         {
-            return $"+{pitch:F1}";
+            return $"+{pitchDegrees}";
+        }
+        else if (pitchDegrees < 0)
+        {
+            return $"{pitchDegrees}";
         }
         else
         {
-            return $"{pitch:F1}";
+            return "level";
         }
     }
 
     /// <summary>
-    /// Formats bank angle announcement - always shows direction and value
+    /// Formats bank angle announcement in whole degrees — same no-decimals
+    /// rationale as pitch. "Wings level" replaces the confusing "left 0".
     /// </summary>
-    private string FormatBankAnnouncement(double bank)
+    internal static string FormatBankAnnouncement(double bank)
     {
-        // Determine direction and magnitude (show decimal precision)
         // Note: SimConnect convention is positive = left, negative = right
-        double bankDegrees = Math.Abs(bank);
-        string direction = bank >= 0 ? "left" : "right";
+        int bankDegrees = (int)Math.Round(Math.Abs(bank));
+        if (bankDegrees == 0)
+        {
+            return "wings level";
+        }
 
-        return $"{direction} {bankDegrees:F1}";
+        string direction = bank >= 0 ? "left" : "right";
+        return $"{direction} {bankDegrees}";
     }
 
     /// <summary>
