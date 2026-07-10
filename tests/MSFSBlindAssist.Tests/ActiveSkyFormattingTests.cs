@@ -87,4 +87,23 @@ public class ActiveSkyFormattingTests
     [InlineData("@POS 101905Z 22009KT 10SM A3001")]   // no temp group at all
     public void TempDew_line_is_omitted_when_unavailable(string? metar)
         => Assert.Null(ActiveSkyFormatting.BuildTempDewLine(metar));
+
+    // --- Forecast presets ----------------------------------------------------------------
+
+    [Fact]
+    public void Forecast_presets_cover_now_through_six_hours()
+    {
+        Assert.Equal(new[] { 0, 3600, 7200, 14400, 21600 },
+            ActiveSkyFormatting.ForecastPresets.Select(p => p.OffsetSeconds).ToArray());
+        Assert.Equal("Now", ActiveSkyFormatting.ForecastPresets[0].Label);
+        Assert.Equal("+6 hours", ActiveSkyFormatting.ForecastPresets[^1].Label);
+    }
+
+    [Theory]
+    [InlineData(0, "ActiveSky METAR:")]
+    [InlineData(2, "ActiveSky METAR (+2 hours):")]
+    [InlineData(99, "ActiveSky METAR (+6 hours):")]   // clamped
+    [InlineData(-1, "ActiveSky METAR:")]              // clamped
+    public void As_metar_caption_states_the_offset(int index, string expected)
+        => Assert.Equal(expected, ActiveSkyFormatting.BuildAsMetarCaption(index));
 }

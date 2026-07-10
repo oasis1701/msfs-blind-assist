@@ -58,4 +58,23 @@ public static class ActiveSkyFormatting
             return $"Temperature/dew point: {d.TemperatureC} / {d.DewPointC}°C";
         return null;
     }
+
+    /// <summary>Forecast offsets for the METAR form's combo. AS synthesizes a
+    /// forecast METAR from current METAR + TAF at the given offset (live-verified:
+    /// distinct output at +4h/+12h/+24h).</summary>
+    internal static readonly (string Label, int OffsetSeconds)[] ForecastPresets =
+    {
+        ("Now", 0),
+        ("+1 hour", 3600),
+        ("+2 hours", 7200),
+        ("+4 hours", 14400),
+        ("+6 hours", 21600),
+    };
+
+    /// <summary>Caption for the AS METAR box stating which offset it shows.</summary>
+    internal static string BuildAsMetarCaption(int presetIndex)
+    {
+        var p = ForecastPresets[Math.Clamp(presetIndex, 0, ForecastPresets.Length - 1)];
+        return p.OffsetSeconds == 0 ? "ActiveSky METAR:" : $"ActiveSky METAR ({p.Label}):";
+    }
 }

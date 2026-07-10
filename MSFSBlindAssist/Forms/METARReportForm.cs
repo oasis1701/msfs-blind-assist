@@ -21,6 +21,8 @@ public partial class METARReportForm : Form
         private Label metarLabel = null!;
         private Label asMetarLabel = null!;
         private Label statusLabel = null!;
+        private Label forecastLabel = null!;
+        private ComboBox forecastCombo = null!;
 
         private readonly IntPtr previousWindow;
         // Per-form AS client. Each form does its own parallel-probe detection
@@ -84,10 +86,40 @@ public partial class METARReportForm : Form
             // Status Label
             statusLabel = new Label
             {
-                Location = new Point(130, 45),
-                Size = new Size(300, 25),
+                Location = new Point(260, 45),
+                Size = new Size(200, 25),
                 Text = "",
                 AccessibleName = "Status"
+            };
+
+            // Forecast offset — AS-only feature, revealed with the AS METAR section.
+            forecastLabel = new Label
+            {
+                Text = "Forecast:",
+                Location = new Point(140, 20),
+                Size = new Size(80, 20),
+                AccessibleName = "Forecast label",
+                Visible = false
+            };
+
+            forecastCombo = new ComboBox
+            {
+                Location = new Point(140, 45),
+                Size = new Size(110, 24),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                AccessibleName = "Forecast",
+                AccessibleDescription = "Show the ActiveSky METAR as of now or a forecast offset up to six hours ahead",
+                Visible = false
+            };
+            foreach (var (label, _) in ActiveSkyFormatting.ForecastPresets)
+                forecastCombo.Items.Add(label);
+            forecastCombo.SelectedIndex = 0;
+            forecastCombo.SelectedIndexChanged += async (_, _) =>
+            {
+                // Re-fetch with the new offset when a lookup is already on screen.
+                // No announcement — the screen reader already speaks the selection.
+                if (icaoTextBox.Text.Trim().Length == 4 && icaoTextBox.Enabled)
+                    await FetchMETAR();
             };
 
             // VATSIM METAR Label
@@ -161,7 +193,7 @@ public partial class METARReportForm : Form
             // Add controls to form
             Controls.AddRange(new Control[]
             {
-                icaoLabel, icaoTextBox, statusLabel,
+                icaoLabel, icaoTextBox, statusLabel, forecastLabel, forecastCombo,
                 metarLabel, metarTextBox,
                 asMetarLabel, asMetarTextBox,
                 closeButton
@@ -176,9 +208,10 @@ public partial class METARReportForm : Form
             // VATSIM METAR and Close — when AS is hidden, the OS skips it
             // automatically because TabStop honours Visible.
             icaoTextBox.TabIndex = 0;
-            metarTextBox.TabIndex = 1;
-            asMetarTextBox.TabIndex = 2;
-            closeButton.TabIndex = 3;
+            forecastCombo.TabIndex = 1;
+            metarTextBox.TabIndex = 2;
+            asMetarTextBox.TabIndex = 3;
+            closeButton.TabIndex = 4;
 
             // Focus + bring to front, then async-detect ActiveSky. If AS is
             // running, reveal the AS section and grow the form. If not, the
@@ -195,6 +228,8 @@ public partial class METARReportForm : Form
                 bool asAvailable = await _activeSky.IsRunningAsync();
                 if (asAvailable && IsHandleCreated && !IsDisposed)
                 {
+                    forecastLabel.Visible = true;
+                    forecastCombo.Visible = true;
                     asMetarLabel.Visible = true;
                     asMetarTextBox.Visible = true;
                     closeButton.Location = new Point(385, 490);
@@ -249,9 +284,11 @@ public partial class METARReportForm : Form
                 // Fetch VATSIM and AS METARs in parallel when AS is active.
                 // When AS isn't detected, we don't even kick off the AS task
                 // — keeps things silent on systems without ActiveSky.
+                int presetIndex = forecastCombo.Visible ? Math.Max(0, forecastCombo.SelectedIndex) : 0;
                 Task<string> vatsimTask = VATSIMService.GetMETARAsync(icao);
                 Task<string?> asTask = asMetarTextBox.Visible
-                    ? _activeSky.GetMetarAsync(icao)
+                    ? _activeSky.GetMetarAsync(icao, ActiveSkyFormatting.ForecastPresets[
+                        Math.Clamp(presetIndex, 0, ActiveSkyFormatting.ForecastPresets.Length - 1)].OffsetSeconds)
                     : Task.FromResult<string?>(null);
 
                 string metar = await vatsimTask;
@@ -279,6 +316,8 @@ public partial class METARReportForm : Form
                     string? asMetar = await asTask;
 
                     if (IsDisposed) return;
+
+                    asMetarLabel.Text = ActiveSkyFormatting.BuildAsMetarCaption(presetIndex);
 
                     if (string.IsNullOrWhiteSpace(asMetar))
                     {
