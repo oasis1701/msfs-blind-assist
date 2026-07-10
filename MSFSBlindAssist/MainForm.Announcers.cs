@@ -1738,7 +1738,7 @@ public partial class MainForm
                 sourceNotice = "ActiveSky not responding, using simulator wind. ";
             if (asConditions != null)
             {
-                currentWind = FormatActiveSkyWind(asConditions);
+                currentWind = FormatActiveSkyWind(asConditions, _lastOnGround);
             }
             else
             {
@@ -1810,15 +1810,20 @@ public partial class MainForm
         catch { return null; }
     }
 
-    /// <summary>ActiveSky wind-at-altitude for output+I — matches the Weather Radar's
-    /// "Wind (at altitude)" line, plus the surface gust when AS reports one (#129).</summary>
-    private static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c)
+    /// <summary>ActiveSky wind for output+I — matches the Weather Radar's
+    /// "Wind (at altitude)" line. The surface gust (#129) is appended only when the
+    /// aircraft is ON the ground: AS's Ambient* and Surface* field groups are
+    /// independent quantities (at-altitude vs ground level below the aircraft), so
+    /// airborne the surface gust doesn't belong to the wind being read out — at
+    /// FL360 it produced "061 at 11 gusting 21" mixing cruise wind with the ground
+    /// gust six miles below. Internal for tests (WindReadoutGustTests).</summary>
+    internal static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c, bool onGround)
     {
         int direction = (int)Math.Round(c.AmbientWindDirection);
         int speed = (int)Math.Round(c.AmbientWindSpeed);
         if (speed == 0) return "calm";
         string text = $"{direction:000} at {speed}";
-        if (c.SurfaceGustSpeed > 0)
+        if (onGround && c.SurfaceGustSpeed > 0)
             text += $", gusting {(int)Math.Round(c.SurfaceGustSpeed)}";
         return text;
     }

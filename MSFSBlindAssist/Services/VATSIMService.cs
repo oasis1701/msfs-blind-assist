@@ -83,7 +83,8 @@ public static class VATSIMService
             }
         }
 
-        private static WindData? ParseMETARWind(string metar)
+        // Internal for tests (WindReadoutGustTests).
+        internal static WindData? ParseMETARWind(string metar)
         {
             if (string.IsNullOrEmpty(metar))
                 return null;
@@ -97,7 +98,7 @@ public static class VATSIMService
                 // 00000KT = Calm
 
                 // Wind pattern: direction (3 digits or VRB) + speed (2-3 digits) + optional gust + KT
-                var windPattern = @"(?:^|\s)((\d{3})|VRB)(\d{2,3})(?:G\d{2,3})?KT";
+                var windPattern = @"(?:^|\s)((\d{3})|VRB)(\d{2,3})(?:G(\d{2,3}))?KT";
                 var match = Regex.Match(metar, windPattern, RegexOptions.IgnoreCase);
 
                 if (!match.Success)
@@ -105,6 +106,7 @@ public static class VATSIMService
 
                 string directionStr = match.Groups[2].Value; // Will be empty if VRB
                 string speedStr = match.Groups[3].Value;
+                string gustStr = match.Groups[4].Value;      // Will be empty if no gust group
 
                 // Parse speed
                 if (!int.TryParse(speedStr, out int speed))
@@ -123,10 +125,16 @@ public static class VATSIMService
                     direction = 0;
                 }
 
+                // Parse gust (0 = none)
+                int gust = 0;
+                if (!string.IsNullOrEmpty(gustStr))
+                    int.TryParse(gustStr, out gust);
+
                 return new WindData
                 {
                     Direction = direction,
-                    Speed = speed
+                    Speed = speed,
+                    Gust = gust
                 };
             }
             catch (Exception ex)
@@ -146,15 +154,20 @@ public static class VATSIMService
             if (wind.Speed == 0)
                 return "calm";
 
-            if (wind.Direction == 0 && wind.Speed > 0)
-                return $"variable at {wind.Speed}";
+            string text = wind.Direction == 0
+                ? $"variable at {wind.Speed}"
+                : $"{wind.Direction:000} at {wind.Speed}";
 
-            return $"{wind.Direction:000} at {wind.Speed}";
+            if (wind.Gust > 0)
+                text += $", gusting {wind.Gust}";
+
+            return text;
         }
 
         public struct WindData
         {
             public int Direction { get; set; }
             public int Speed { get; set; }
+            public int Gust { get; set; }    // knots, 0 = no gust group in the METAR
         }
 }

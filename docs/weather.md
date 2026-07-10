@@ -65,10 +65,17 @@ table).
 
 ## 3. Wind truth is per-engine
 
-With the switch **on**, output+I reads ActiveSky's ambient wind and surface gust
-(`FormatActiveSkyWind` in `MainForm.Announcers.cs`, reading `Conditions.AmbientWindDirection` /
-`AmbientWindSpeed` / `SurfaceGustSpeed`). With the switch **off**, SimConnect is authoritative
-and correct — full stop.
+With the switch **on**, output+I reads ActiveSky's ambient wind (`FormatActiveSkyWind` in
+`MainForm.Announcers.cs`, reading `Conditions.AmbientWindDirection` / `AmbientWindSpeed`).
+The `SurfaceGustSpeed` suffix ("… gusting N") is appended **only when the aircraft is on the
+ground** (`_lastOnGround`): AS's `Ambient*` and `Surface*` field groups are independent
+quantities — at-altitude vs ground level below the aircraft — so airborne the surface gust
+does not belong to the ambient wind being read out (at FL360 it produced "061 at 11 gusting
+21", the cruise wind glued to the ground gust six miles below — the 2026-07 fix). The
+destination half of the same announcement speaks the gust from the destination METAR's wind
+group (`VATSIMService.ParseMETARWind` captures `G##`), which is where an approach-relevant
+gust actually comes from. With the switch **off**, SimConnect is authoritative and correct —
+full stop.
 
 The two sources can legitimately diverge: AS applies its own wind smoothing/interpolation, so
 its ambient wind is not guaranteed to match SimConnect's `AMBIENT WIND DIRECTION`/`VELOCITY`
