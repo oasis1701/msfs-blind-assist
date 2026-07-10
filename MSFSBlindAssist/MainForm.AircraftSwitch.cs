@@ -217,6 +217,11 @@ public partial class MainForm
             // Stop weather auto-announcement timer
             weatherAnnouncementTimer?.Stop();
 
+            // A disconnect voids any pending liftoff → Hand Fly handoff. The
+            // fire-time gates would abort anyway (IsConnected / cleared GS
+            // cache), but don't leave a dead timer pending across a reconnect.
+            _liftoffHandoffTimer?.Stop();
+
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;

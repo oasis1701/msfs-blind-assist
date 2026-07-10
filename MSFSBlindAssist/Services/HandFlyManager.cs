@@ -36,6 +36,15 @@ public class HandFlyManager : IDisposable
     private bool monitorVerticalSpeed;
     private int announcementIntervalMs;
 
+    // Deadline until which the spoken pitch/bank/heading/VS callouts are muted
+    // (the audio tone is never affected). Set via SuppressAnnouncementsFor by the
+    // liftoff auto-handoff: the first post-activation samples all pass their
+    // announce gates (thresholds reset to 0 / first-sample-always-announce), and
+    // AnnounceImmediate interrupts — without a grace window the handoff's single
+    // spoken breadcrumb is clipped after a syllable by the first attitude callout.
+    // Same idea as VisualGuidanceManager's manual-query grace window.
+    private DateTime announceGraceUntil = DateTime.MinValue;
+
     // Configuration constants
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
     private const double PITCH_THRESHOLD = 0.1; // Announce if pitch changes by >0.1 degree
@@ -120,6 +129,17 @@ public class HandFlyManager : IDisposable
     }
 
     /// <summary>
+    /// Mutes the spoken callouts (pitch/bank/heading/VS) for the given window;
+    /// the audio tone keeps updating throughout. Used by the liftoff auto-handoff
+    /// so its breadcrumb announcement can finish before the callout stream starts
+    /// (or, when Hand Fly was pre-armed, before the running stream resumes).
+    /// </summary>
+    public void SuppressAnnouncementsFor(int milliseconds)
+    {
+        announceGraceUntil = DateTime.Now.AddMilliseconds(milliseconds);
+    }
+
+    /// <summary>
     /// Process pitch update during hand fly mode
     /// </summary>
     /// <param name="currentPitch">Current pitch in degrees</param>
@@ -130,9 +150,11 @@ public class HandFlyManager : IDisposable
         // Update audio tone frequency in real-time
         audioGenerator?.UpdatePitch(currentPitch);
 
-        // Handle announcements based on feedback mode
-        bool shouldAnnounce = feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
-                             feedbackMode == HandFlyFeedbackMode.Both;
+        // Handle announcements based on feedback mode (muted during the
+        // post-handoff grace window so the breadcrumb isn't interrupted)
+        bool shouldAnnounce = (feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
+                             feedbackMode == HandFlyFeedbackMode.Both) &&
+                             DateTime.Now >= announceGraceUntil;
 
         if (shouldAnnounce)
         {
@@ -166,9 +188,11 @@ public class HandFlyManager : IDisposable
         // Negate to convert SimConnect convention (positive=left, negative=right) to standard convention (positive=right, negative=left)
         audioGenerator?.UpdateBank(-currentBank);
 
-        // Handle announcements based on feedback mode
-        bool shouldAnnounce = feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
-                             feedbackMode == HandFlyFeedbackMode.Both;
+        // Handle announcements based on feedback mode (muted during the
+        // post-handoff grace window so the breadcrumb isn't interrupted)
+        bool shouldAnnounce = (feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
+                             feedbackMode == HandFlyFeedbackMode.Both) &&
+                             DateTime.Now >= announceGraceUntil;
 
         if (shouldAnnounce)
         {
@@ -197,6 +221,11 @@ public class HandFlyManager : IDisposable
     public void ProcessHeadingUpdate(double currentHeading)
     {
         if (!isActive || !monitorHeading) return;
+
+        // Post-handoff grace: skip BEFORE the first-sample-always-announce logic
+        // below (which ignores feedback mode entirely), so nothing is marked
+        // announced during the window and the first heading lands right after it.
+        if (DateTime.Now < announceGraceUntil) return;
 
         // Check if we should announce
         bool shouldAnnounce = false;
@@ -243,6 +272,9 @@ public class HandFlyManager : IDisposable
     public void ProcessVerticalSpeedUpdate(double currentVS)
     {
         if (!isActive || !monitorVerticalSpeed) return;
+
+        // Post-handoff grace — same reasoning as ProcessHeadingUpdate.
+        if (DateTime.Now < announceGraceUntil) return;
 
         // Check if we should announce
         bool shouldAnnounce = false;

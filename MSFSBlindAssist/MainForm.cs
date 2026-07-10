@@ -271,10 +271,23 @@ public partial class MainForm : Form
     // airborne edge but only PERFORMED after these confirm a real rotation, so a
     // spurious airborne sample (high-speed roll bump / oleo flicker, or low-speed
     // false-airborne from pushback/slope/replay) can't drop centerline guidance
-    // during the roll. See docs/superpowers/specs/2026-06-30-liftoff-handfly-handoff-guard-design.md.
+    // during the roll.
     private System.Windows.Forms.Timer? _liftoffHandoffTimer;
     private const double LIFTOFF_HANDOFF_MIN_GS_KTS = 40.0; // reject pushback/slope/replay; every supported airframe rotates well above this
-    private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1000; // must stay airborne this long before handing off
+    // Must stay airborne this long before handing off. MUST exceed the 1 Hz
+    // continuous-batch sampling period of SIM_ON_GROUND: with a window equal to
+    // the period, a settled bounce's canceling ground sample is generated at
+    // essentially the same instant the timer fires and the handoff can win the
+    // message-queue race while the aircraft is back on the runway at speed.
+    // 1.5 s guarantees one full batch sample is processed inside the window.
+    private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1500;
+    // How long the handoff mutes Hand Fly's own spoken pitch/bank/heading/VS
+    // callouts so the breadcrumb ("Airborne. Takeoff assist off, hand fly
+    // active.") can finish — the first post-activation callouts pass their
+    // announce gates within one sim frame and AnnounceImmediate interrupts,
+    // which would clip the breadcrumb after a syllable. The tone is unaffected;
+    // spoken pitch resumes right after the window.
+    private const int    LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS = 3500;
 
     // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
     // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each

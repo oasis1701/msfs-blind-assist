@@ -501,7 +501,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             Location = new Point(20, 890),
             Size = new Size(450, 25),
             AccessibleName = "Auto-activate Hand Fly on takeoff",
-            AccessibleDescription = "When enabled, the moment the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. Only fires when Takeoff Assist is active at liftoff; liftoffs without Takeoff Assist are unaffected."
+            AccessibleDescription = "When enabled, shortly after the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. If you already activated Hand Fly yourself, only Takeoff Assist is turned off. Liftoffs without Takeoff Assist are unaffected."
         };
 
         // Add controls to panel
@@ -523,8 +523,9 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             handFlyAutoActivateOnTakeoffCheckBox
         });
 
-        // Update control states based on feedback mode (defaults to TonesOnly disabled state
-        // until LoadFrom sets the real radio selection).
+        // Update control states based on feedback mode (no radio is checked yet at
+        // construction, so audio controls start disabled until LoadFrom sets the
+        // real selection).
         UpdateControlStates();
     }
 

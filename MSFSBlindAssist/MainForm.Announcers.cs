@@ -615,17 +615,20 @@ public partial class MainForm
             // activate HandFly) so guidance continues seamlessly from centerline-
             // tracking to attitude hand-flying. We do NOT act on the raw edge — a
             // spurious airborne sample would otherwise drop centerline guidance
-            // during the roll. Gate on the setting + TA active + HandFly off + a
-            // minimum ground speed (rejects low-speed false-airborne; GROUND_VELOCITY
-            // is a cached continuous base var, read like G_FORCE above — fail OPEN if
-            // it's null, the debounce backstops it), then ARM the debounce timer.
-            // PerformLiftoffHandoffIfValid runs ~1 s later and re-checks the gates.
+            // during the roll. Gate on the setting + TA active + a minimum ground
+            // speed (rejects low-speed false-airborne; GROUND_VELOCITY is a cached
+            // continuous base var, read like G_FORCE above — fail OPEN if it's
+            // null, the debounce backstops it), then ARM the debounce timer.
+            // PerformLiftoffHandoffIfValid runs ~1.5 s later and re-checks the gates.
+            // HandFly-already-active is deliberately NOT a gate: a pilot who
+            // pre-armed Hand Fly during the roll still needs Takeoff Assist (and
+            // its centerline tone) shut off at liftoff — the handoff then only
+            // skips the redundant HandFly activation.
             // Naturally one-shot: the handoff turns TA off, so it can't re-fire until
             // TA is re-armed on the ground.
             if (justLiftedOff
                 && SettingsManager.Current.HandFlyAutoActivateOnTakeoff
                 && takeoffAssistManager.IsActive
-                && !handFlyManager.IsActive
                 && (simConnectManager.GetCachedVariableValue("GROUND_VELOCITY") ?? double.MaxValue) >= LIFTOFF_HANDOFF_MIN_GS_KTS)
             {
                 _liftoffHandoffTimer?.Stop();   // reset the debounce interval
@@ -853,8 +856,8 @@ public partial class MainForm
     /// <c>_liftoffHandoffTimer</c> after the liftoff edge has been sustained for
     /// <c>LIFTOFF_HANDOFF_CONFIRM_MS</c>. Runs on the UI thread (WinForms Timer
     /// tick) — the same context the SIM_ON_GROUND handler and these Toggle calls
-    /// rely on. Re-checks every gate at fire time so a setting / TA / HandFly
-    /// change during the confirm window is honored.
+    /// rely on. Re-checks every gate at fire time so a setting / TA change
+    /// during the confirm window is honored.
     /// </summary>
     private void PerformLiftoffHandoffIfValid()
     {
@@ -862,11 +865,19 @@ public partial class MainForm
 
         // Re-check at fire time. !_lastOnGround confirms we are still airborne
         // (a flicker that settled back to ground sets _lastOnGround = true and
-        // also stops the timer on the touchdown edge).
+        // also stops the timer on the touchdown edge). IsConnected matches the
+        // manual ToggleHandFlyMode gate — a disconnect inside the confirm window
+        // must not activate Hand Fly against a dead sim (its monitoring would
+        // silently never register). Unlike the arm site, the GS re-check fails
+        // CLOSED here (null → abort): GROUND_VELOCITY is an always-on continuous
+        // var, so a missing cache at this point means disconnect/teardown, not
+        // early startup. HandFly being active does NOT abort — TA must still be
+        // shut off; see the arm-site comment.
         if (_lastOnGround
+            || !simConnectManager.IsConnected
             || !SettingsManager.Current.HandFlyAutoActivateOnTakeoff
             || !takeoffAssistManager.IsActive
-            || handFlyManager.IsActive)
+            || (simConnectManager.GetCachedVariableValue("GROUND_VELOCITY") ?? -1.0) < LIFTOFF_HANDOFF_MIN_GS_KTS)
         {
             return;
         }
@@ -875,14 +886,31 @@ public partial class MainForm
         // path of TakeoffAssistManager.Toggle reads none of lat/lon/heading/magVar),
         // so 0s are correct here.
         takeoffAssistManager.Toggle(0, 0, 0, 0);   // "Takeoff assist off" (clipped below)
-        handFlyManager.Toggle();                    // "Hand fly mode active" (clipped below)
 
-        // Both Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
-        // ONE clean breadcrumb LAST to supersede both. The pilot pressed no key, so
+        // Activate HandFly only if the pilot didn't already pre-arm it on the
+        // ground — Toggle() here would otherwise turn it OFF.
+        bool activatedHandFly = !handFlyManager.IsActive;
+        if (activatedHandFly)
+        {
+            handFlyManager.Toggle();                // "Hand fly mode active" (clipped below)
+        }
+
+        // The Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
+        // ONE clean breadcrumb LAST to supersede them. The pilot pressed no key, so
         // this single cue is the spoken source of truth for the handoff. The Toggles'
         // non-speech side effects (tone stop/start, monitoring start/stop, hotkey
         // registration, ActiveChanged events) all still run.
-        announcer.AnnounceImmediate("Airborne. Takeoff assist off, hand fly active.");
+        //
+        // The grace call is what makes the breadcrumb audible at all: HandFly's
+        // first post-activation pitch/bank/heading callouts pass their announce
+        // gates within one sim frame (thresholds reset / first-sample-always-
+        // announce) and would interrupt the breadcrumb after a syllable. Mute
+        // the callout stream (never the tone) until the breadcrumb has finished;
+        // this covers the pre-armed case too, where the stream is already running.
+        handFlyManager.SuppressAnnouncementsFor(LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS);
+        announcer.AnnounceImmediate(activatedHandFly
+            ? "Airborne. Takeoff assist off, hand fly active."
+            : "Airborne. Takeoff assist off.");
     }
 
     /// <summary>

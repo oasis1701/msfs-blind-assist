@@ -152,6 +152,20 @@ public partial class MainForm
             settings.HandFlyMonitorHeading,
             settings.HandFlyMonitorVerticalSpeed);
 
+        // Re-register the SimConnect streams to match the new heading/VS choices.
+        // StartHandFlyMonitoring only registers the heading/VS requests whose flag
+        // is on AT CALL TIME, so enabling one while Hand Fly is active was a
+        // silent no-op (the manager-side gate passed but no data ever flowed)
+        // until Hand Fly was toggled off and on again. Matters out of the box now
+        // that HandFlyMonitorVerticalSpeed defaults to off. Both calls no-op
+        // safely when disconnected.
+        if (handFlyManager?.IsActive == true)
+        {
+            simConnectManager.StopHandFlyMonitoring();
+            simConnectManager.StartHandFlyMonitoring(
+                settings.HandFlyMonitorHeading, settings.HandFlyMonitorVerticalSpeed);
+        }
+
         // Taxi Guidance / Docking — moved verbatim from the retired TaxiGuidanceOptionsMenuItem_Click.
         // Every other taxi/docking setting (tone type/volume, invert/hard-pan, announce-crossings,
         // ground-speed intervals, distance units, GSX auto-select, docking enabled/beep) is read
