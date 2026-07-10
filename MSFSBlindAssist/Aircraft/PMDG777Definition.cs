@@ -1183,7 +1183,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 // No Manual option: the SDK marks MAN as flt-deck-only.
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [19] = "Cool", [37] = "Neutral", [56] = "Warm", [75] = "Full Warm" }
+                // DIFFERENT scale from the flight deck knob: the cabin knob is
+                // 0-60 mapping 1:1 onto the SDK value (its cockpit XML clamps
+                // at 60; live-verified 2026-07: write 15 -> SDK 15, 60 -> 60,
+                // and an out-of-range 75 passes through UNCLAMPED to SDK 75 —
+                // so never use the flt-deck 0-75 steps here).
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Full Cold", [15] = "Cool", [30] = "Neutral", [45] = "Warm", [60] = "Full Warm" }
             },
             // Air conditioning annunciators
             ["AIR_annunPackOFF_1"] = new SimConnect.SimVarDefinition
