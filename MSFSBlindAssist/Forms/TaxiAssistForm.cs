@@ -1392,13 +1392,28 @@ public class TaxiAssistForm : Form
         // Half-width from the runway width (feet → metres); default 150 ft wide.
         double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
 
+        // The start-table lineup point (same one full-length departures line up
+        // at) lets the enumeration drop the normal full-length entrance — only
+        // genuine shortcuts past it are offered (displaced-threshold fix).
+        double? lineupLat = null, lineupLon = null;
+        if (_destinationThresholdMap.TryGetValue(destName, out var lineup))
+        {
+            lineupLat = lineup.lat;
+            lineupLon = lineup.lon;
+        }
+
         foreach (var ix in _graph.GetRunwayIntersections(
-                     rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM))
+                     rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
+                     lineupLat, lineupLon))
         {
             string label =
                 $"{ix.TaxiwayName}, {DistanceFormatter.FromMetres(ix.RemainingMeters)} remaining, " +
                 $"{DistanceFormatter.FromMetres(ix.AlongMetersFromThreshold)} from threshold";
-            // Guard against a duplicate label (two same-named runs) shadowing an entry.
+            // Same-named taxiways now legitimately produce MULTIPLE entries (one
+            // per meeting point), distinguished by the distances in the label.
+            // This guard only fires if display rounding collapses two close
+            // meeting points to identical text — then the first (closer to the
+            // threshold) wins and the duplicate is dropped rather than shadowed.
             if (_intersectionMap.ContainsKey(label)) continue;
             _intersectionMap[label] = ix;
             cmbIntersection.Items.Add(label);
