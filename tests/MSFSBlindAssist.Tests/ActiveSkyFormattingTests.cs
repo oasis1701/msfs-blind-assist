@@ -73,11 +73,10 @@ public class ActiveSkyFormattingTests
                 "PANC 071751Z 30012KT 1SM SHSN OVC008 M05/M08 A2990"));
 
     [Fact]
-    public void TempDew_line_with_missing_dew_point_shows_temperature_only()
-        // CHARACTERIZATION: DecodeMetar rejects "28/" entirely (requires non-empty
-        // part after slash in IsTempDewToken). A real METAR with missing dew would
-        // use "28//" (two slashes) or a different format. This test confirms the
-        // actual behavior: "28/" is not a valid temp/dew token.
+    public void TempDew_line_with_incomplete_temp_dew_group_returns_null()
+        // CHARACTERIZATION: DecodeMetar requires digits on both sides of the slash
+        // in a temperature/dew-point group (IsTempDewToken enforces this). Any
+        // incomplete temp/dew group like "28/" or "28//" yields no line from BuildTempDewLine.
         => Assert.Null(
             ActiveSkyFormatting.BuildTempDewLine(
                 "@POS 101905Z 22009KT 10SM 28/ A3001 RMK ADVANCED INTERPOLATION"));

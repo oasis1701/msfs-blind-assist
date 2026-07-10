@@ -46,6 +46,9 @@ public static class ActiveSkyFormatting
     /// "Temperature/dew point: 36 / 12°C" from the AS position METAR — the dew
     /// point exists nowhere else (no SimConnect dew SimVar; the AS JSON ambient
     /// block has no dew field). Null when the METAR has no temperature group.
+    /// DecodeMetar yields temperature and dew point strictly together (both or
+    /// neither), so there is deliberately no temperature-only rendering path; if
+    /// the decoder ever gains a temp-without-dew path, this method needs revisiting.
     /// </summary>
     internal static string? BuildTempDewLine(string? positionMetar)
     {
@@ -53,8 +56,6 @@ public static class ActiveSkyFormatting
         var d = ActiveSkyWeatherMonitor.DecodeMetar(positionMetar);
         if (d.TemperatureC.HasValue && d.DewPointC.HasValue)
             return $"Temperature/dew point: {d.TemperatureC} / {d.DewPointC}°C";
-        if (d.TemperatureC.HasValue)
-            return $"Temperature/dew point: {d.TemperatureC}°C";
         return null;
     }
 }
