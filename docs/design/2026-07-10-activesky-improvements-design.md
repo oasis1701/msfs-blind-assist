@@ -122,15 +122,17 @@ a genuine change the pilot must hear).
 All new content joins `RefreshAsync`, fetched **concurrently** with the existing fetches; each
 section degrades independently to `"unavailable"` — one failed endpoint never blanks another
 section. With the AS switch **off**, the new AS-only sections (mode line, closest-station box,
-vertical profile box) show `"ActiveSky disabled in settings"` rather than `"unavailable"`, and
-every pre-existing section behaves exactly as today. Top-to-bottom reading order: status →
-current position → closest station → vertical profile → existing boxes (winds aloft,
-advisories, …).
+vertical profile box) are **hidden entirely** (`Visible = false`, including their labels, so
+they leave the tab order and NVDA never encounters them), and every pre-existing section
+behaves exactly as today. Visibility is re-evaluated on every form show/refresh, so toggling
+the setting takes effect without restarting the app. Top-to-bottom reading order when AS is
+on: status → current position → closest station → vertical profile → existing boxes (winds
+aloft, advisories, …).
 
 1. **Mode status line** (top): `"ActiveSky: Live Real time mode, weather time 1935Z"`. When AS
    is enabled but unreachable, this line carries the existing failure wording so the form and
-   the output+I notice tell one story. When the AS switch is off, the line reads
-   `"ActiveSky: disabled in settings"`.
+   the output+I notice tell one story. When the AS switch is off, the line is hidden (like all
+   AS-only sections).
 2. **Current-position block** gains `"Temperature/dew point: 28 / 14"`, decoded from the
    position METAR the form already fetches (zero new requests). Dew point missing from the
    METAR → the line shows temperature only.
@@ -148,7 +150,10 @@ A `"Forecast"` combo after the ICAO field: `Now, +1 hour, +2 hours, +4 hours, +6
 box; the VATSIM box always shows current weather. The AS box caption states the offset in
 effect (e.g. `"ActiveSky METAR (+2 hours):"`). The combo resets to `Now` on form open. Combo
 selection follows the global no-announce rule for combo changes (`MarkUiSet` not needed —
-this combo drives no SimVar; it only parameterizes the next fetch).
+this combo drives no SimVar; it only parameterizes the next fetch). The combo shares the
+existing AS section's visibility: when the AS switch is off (or AS is unavailable at form
+load, per the form's existing `asAvailable` behavior), the combo is hidden along with the AS
+METAR box it parameterizes.
 
 ### 4.3 Weather settings panel
 
@@ -184,9 +189,11 @@ TDD throughout (failing test first), matching `WindReadoutGustTests`:
   silence, unreachable-gap handling, reconnect-in-different-mode announce.
 
 Sim-facing paths (form rendering, live fetches, monitor announce timing, winds-aloft source
-switch) get an **in-sim test plan in the PR**: sections populate with AS running; degrade with
-AS closed; flipping AS Live→Custom announces exactly once; toggling the AS setting switches
-the Winds Aloft source; forecast combo returns distinct METARs for distinct offsets.
+switch) get an **in-sim test plan in the PR**: sections populate with AS running; degrade to
+"unavailable" with AS enabled but closed; all AS-only sections disappear (and leave the tab
+order) when the setting is toggled off, and reappear when toggled back on, without an app
+restart; flipping AS Live→Custom announces exactly once; toggling the AS setting switches the
+Winds Aloft source; forecast combo returns distinct METARs for distinct offsets.
 
 ## 7. Documentation updates
 
