@@ -41,4 +41,20 @@ public static class ActiveSkyFormatting
         string clock = time.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1].ToUpperInvariant();
         return $"ActiveSky: {mode}, weather time {clock}";
     }
+
+    /// <summary>
+    /// "Temperature/dew point: 36 / 12°C" from the AS position METAR — the dew
+    /// point exists nowhere else (no SimConnect dew SimVar; the AS JSON ambient
+    /// block has no dew field). Null when the METAR has no temperature group.
+    /// </summary>
+    internal static string? BuildTempDewLine(string? positionMetar)
+    {
+        if (string.IsNullOrWhiteSpace(positionMetar)) return null;
+        var d = ActiveSkyWeatherMonitor.DecodeMetar(positionMetar);
+        if (d.TemperatureC.HasValue && d.DewPointC.HasValue)
+            return $"Temperature/dew point: {d.TemperatureC} / {d.DewPointC}°C";
+        if (d.TemperatureC.HasValue)
+            return $"Temperature/dew point: {d.TemperatureC}°C";
+        return null;
+    }
 }

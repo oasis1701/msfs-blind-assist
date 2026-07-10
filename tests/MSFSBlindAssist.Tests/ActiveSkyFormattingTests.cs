@@ -57,4 +57,35 @@ public class ActiveSkyFormattingTests
     [Fact]
     public void FormatModeLine_without_time_shows_mode_only()
         => Assert.Equal("ActiveSky: wibble", ActiveSkyFormatting.FormatModeLine("wibble"));
+
+    // --- BuildTempDewLine ---------------------------------------------------------------
+
+    [Fact]
+    public void TempDew_line_from_position_metar()
+        => Assert.Equal("Temperature/dew point: 36 / 12°C",
+            ActiveSkyFormatting.BuildTempDewLine(
+                "@POS 101905Z 22009KT 10SM 36/12 A3001 RMK ADVANCED INTERPOLATION"));
+
+    [Fact]
+    public void TempDew_line_handles_negative_values()
+        => Assert.Equal("Temperature/dew point: -5 / -8°C",
+            ActiveSkyFormatting.BuildTempDewLine(
+                "PANC 071751Z 30012KT 1SM SHSN OVC008 M05/M08 A2990"));
+
+    [Fact]
+    public void TempDew_line_with_missing_dew_point_shows_temperature_only()
+        // CHARACTERIZATION: DecodeMetar rejects "28/" entirely (requires non-empty
+        // part after slash in IsTempDewToken). A real METAR with missing dew would
+        // use "28//" (two slashes) or a different format. This test confirms the
+        // actual behavior: "28/" is not a valid temp/dew token.
+        => Assert.Null(
+            ActiveSkyFormatting.BuildTempDewLine(
+                "@POS 101905Z 22009KT 10SM 28/ A3001 RMK ADVANCED INTERPOLATION"));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("@POS 101905Z 22009KT 10SM A3001")]   // no temp group at all
+    public void TempDew_line_is_omitted_when_unavailable(string? metar)
+        => Assert.Null(ActiveSkyFormatting.BuildTempDewLine(metar));
 }

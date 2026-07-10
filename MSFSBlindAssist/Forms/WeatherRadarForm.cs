@@ -406,6 +406,9 @@ public class WeatherRadarForm : Form
         sb.AppendLine($"Visibility: {visStr}");
         sb.AppendLine($"Temperature (at altitude): {c.AmbientTemperature:F0}°C");
         sb.AppendLine($"Surface temperature: {c.SurfaceTemperature:F0}°C");
+        string? tempDew = MSFSBlindAssist.Services.ActiveSkyFormatting.BuildTempDewLine(positionMetar);
+        if (tempDew != null)
+            sb.AppendLine(tempDew);
         if (c.CloudCeilingFtAgl > 0)
             sb.AppendLine($"Cloud ceiling: {c.CloudCeilingFtAgl:N0} ft AGL");
         else
