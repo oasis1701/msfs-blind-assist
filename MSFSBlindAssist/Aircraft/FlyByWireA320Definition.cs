@@ -6386,18 +6386,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // ---- Wipers: live position per side (0 Off / 1 Slow / 2 Fast), computed from the
     // hidden circuit switch+power backers in ProcessSimVarUpdate; rendered by
     // TryGetDisplayOverride. Default 0 = Off (cold-start, before the first circuit read).
+    // Decode (switch wins over the persisted power setting) is the shared WiperPosition.
     private double? _wiperSwL, _wiperPwrL, _wiperSwR, _wiperPwrR;
     private int _wiperStateL, _wiperStateR;
-    // OFF when the circuit switch is off (regardless of the persisted power setting);
-    // else SLOW (~75%) vs FAST (~100%). Tolerates power read as ratio (0.75/1.0) or
-    // percent (75/100) so a unit surprise can't collapse the two speeds.
-    private static int WiperState(double? sw, double? pwr)
-    {
-        if (!(sw > 0.5)) return 0;
-        double p = pwr ?? 100.0; if (p <= 1.5) p *= 100.0;
-        return p < 87.5 ? 1 : 2;
-    }
-    private static string WiperText(int state) => state <= 0 ? "Off" : state == 1 ? "Slow" : "Fast";
 
     // ---- Approach minimums last-announced values (-1 = unset); see ProcessSimVarUpdate.
     private int _lastBaroMin = -1, _lastDh = -1;
@@ -7103,8 +7094,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
         // state comes from _wiperState*, computed from switch+power in ProcessSimVarUpdate).
-        if (varKey == "WIPER_L_SW") { displayText = WiperText(_wiperStateL); return true; }
-        if (varKey == "WIPER_R_SW") { displayText = WiperText(_wiperStateR); return true; }
+        if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
+        if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
         // Passengers on board: the station-A row shows the summed planned total
         // (cached from all *_DESIRED* bitmasks in ProcessSimVarUpdate).
         if (varKey == "A32NX_PAX_A_DESIRED")
@@ -7112,16 +7103,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             displayText = _paxOnBoard.ToString();
             return true;
         }
-        // Approach minimums — plain-feet L:vars; "Not set" below the unset sentinel
-        // (MDA <= 0, DH < 0; a DH of 0 is a valid CAT III entry). Mirrors the A380.
+        // Approach minimums — plain-feet L:vars; sentinel decode shared with the announce
+        // path via ApproachMinimums (MDA unset <= 0, DH unset < 0; DH 0 = valid CAT III).
         if (varKey == "AIRLINER_MINIMUM_DESCENT_ALTITUDE")
         {
-            displayText = value > 0 ? $"{(int)Math.Round(value)} feet" : "Not set";
+            displayText = ApproachMinimums.DisplayText(isDecisionHeight: false, value);
             return true;
         }
         if (varKey == "AIRLINER_DECISION_HEIGHT")
         {
-            displayText = value >= 0 ? $"{(int)Math.Round(value)} feet" : "Not set";
+            displayText = ApproachMinimums.DisplayText(isDecisionHeight: true, value);
             return true;
         }
         // ND nav-radio frequencies — label the units so an ADF freq isn't a bare "890"
@@ -7444,10 +7435,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Never spoken (return true). Mirrors the A380.
         switch (varName)
         {
-            case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperState(_wiperSwL, _wiperPwrL); return true;
-            case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperState(_wiperSwL, _wiperPwrL); return true;
-            case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperState(_wiperSwR, _wiperPwrR); return true;
-            case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperState(_wiperSwR, _wiperPwrR); return true;
+            case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
+            case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
         }
 
         // Passengers on board: each *_DESIRED* station L:var is an integer seat-bitmask
@@ -7469,15 +7460,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // shouldTransmitMinimums in A32NX_FMCMainDisplay.ts), so a minimum entered at the
         // gate read "Not set" (live-verified: MCDU MDA 220 → AIRLINER var 220 instantly,
         // FM1 word still NCD). Announce when set/changed; no announce on clear
-        // (FBW resets MDA→0, DH→-1).
+        // (FBW resets MDA→0, DH→-1). Sentinel decode shared with the display path via
+        // ApproachMinimums — DH 0 is a valid CAT III entry and MUST announce (ft >= 0),
+        // matching the "0 feet" the panel shows; MDA can never decode to 0.
         if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
         {
             bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
-            int ft = value > 0 ? (int)Math.Round(value) : -1;
+            int ft = ApproachMinimums.ToFeet(isDecisionHeight: !baro, value);
             if (ft != (baro ? _lastBaroMin : _lastDh))
             {
                 if (baro) _lastBaroMin = ft; else _lastDh = ft;
-                if (ft > 0)
+                if (ft >= 0)
                     announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
             }
             return true;

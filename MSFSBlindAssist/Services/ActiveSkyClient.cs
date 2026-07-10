@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -40,8 +42,11 @@ public class ActiveSkyClient
     //      AND no readable settings file)
     private const int DEFAULT_PORT = 19285;
 
-    /// <summary>The port we successfully reached AS on, or null if we haven't.</summary>
-    public int? LastSuccessfulPort { get; private set; }
+    /// <summary>The port we successfully reached AS on, or null if we haven't.
+    /// Setter is `internal` solely so the test assembly can seed a cached port and pin
+    /// the disabled-branch reset in <see cref="IsRunningAsync"/> (the enable → discover →
+    /// disable cached-port leak). App code must never assign it.</summary>
+    public int? LastSuccessfulPort { get; internal set; }
 
     /// <summary>Last detection result reason — surfaced to the UI so the user can diagnose.</summary>
     public string LastStatus { get; private set; } = "not yet checked";
@@ -114,12 +119,27 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<bool> IsRunningAsync()
     {
+        // MASTER SWITCH (Weather settings tab): when the user has not opted into
+        // ActiveSky, NO probe may run — the parallel probe has a ~1.2 s floor when
+        // AS is absent, which every non-AS user would otherwise pay on each call
+        // (output+I hotkey, radar open, monitor poll). This central gate covers
+        // every call site, present and future.
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled)
+        {
+            LastSuccessfulPort = null;
+            LastStatus = "disabled in settings";
+            return false;
+        }
+
+        var sw = Stopwatch.StartNew();
+
         // Fast path: cached port. Single probe, short timeout.
         if (LastSuccessfulPort is int cached)
         {
             if (await ProbePortAsync(cached) is { } cachedStatus && cachedStatus.success)
             {
                 LastStatus = $"detected on port {cached}";
+                Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
                 return true;
             }
             // Cached port failed (AS stopped or moved). Fall through to a
@@ -143,6 +163,7 @@ public class ActiveSkyClient
             {
                 LastSuccessfulPort = r.port;
                 LastStatus = $"detected on port {r.port}";
+                Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
                 return true;
             }
             results.Add(r);
@@ -153,6 +174,7 @@ public class ActiveSkyClient
         string firstErr = results.FirstOrDefault().err ?? "no candidate ports tried";
         LastSuccessfulPort = null;
         LastStatus = $"not detected ({firstErr})";
+        Log.Debug("ActiveSky", $"probe failed: {LastStatus} in {sw.ElapsedMilliseconds} ms");
         return false;
     }
 
@@ -207,6 +229,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<Conditions?> GetCurrentConditionsAsync()
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         // 5 s is generous for a localhost call but bounded — without a
         // CancellationToken HttpClient.GetAsync inherits no timeout
@@ -224,6 +247,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetCurrentConditions failed (timeout or connection error)");
             return null;
         }
     }
@@ -235,6 +259,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<Conditions?> GetWeatherAreaAsync(IEnumerable<string> stations)
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -248,6 +273,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetWeatherArea failed (timeout or connection error)");
             return null;
         }
     }
@@ -265,6 +291,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<string?> GetPositionMetarAsync()
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -276,6 +303,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetPositionMetar failed (timeout or connection error)");
             return null;
         }
     }
@@ -291,6 +319,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<string?> GetClosestStationMetarAsync()
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -302,6 +331,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", "GetClosestStationMetar failed (timeout or connection error)");
             return null;
         }
     }
@@ -312,6 +342,7 @@ public class ActiveSkyClient
     /// </summary>
     public async Task<string?> GetMetarAsync(string icao, int timeOffsetSec = 0)
     {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
         if (LastSuccessfulPort is not int port) return null;
         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
@@ -323,6 +354,7 @@ public class ActiveSkyClient
         }
         catch
         {
+            Log.Debug("ActiveSky", $"GetMetar({icao}) failed (timeout or connection error)");
             return null;
         }
     }

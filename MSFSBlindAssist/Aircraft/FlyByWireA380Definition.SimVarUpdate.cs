@@ -75,10 +75,10 @@ public partial class FlyByWireA380Definition
         // (rendered from _wiperState* in TryGetDisplayOverride). Never spoken (return true).
         switch (varName)
         {
-            case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperState(_wiperSwL, _wiperPwrL); return true;
-            case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperState(_wiperSwL, _wiperPwrL); return true;
-            case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperState(_wiperSwR, _wiperPwrR); return true;
-            case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperState(_wiperSwR, _wiperPwrR); return true;
+            case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
+            case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
+            case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
         }
 
         // Icing conditions — A32NX_ICING_STATE_ICING_STICK_INDICATOR is the cockpit
@@ -655,15 +655,17 @@ public partial class FlyByWireA380Definition
         // Minimums (CORRECTED 2026-07): plain-feet L:vars the MFD PERF page writes
         // (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA, AIRLINER_DECISION_HEIGHT = radio
         // DH), NOT the ARINC429 FM1 words (which are NCD until approach range). Announce
-        // when a minimum is set/changed; no announce on clear (MDA <= 0 / DH < 0).
+        // when a minimum is set/changed; no announce on clear. Sentinel decode shared with
+        // the display path via ApproachMinimums (MDA unset <= 0; DH unset < 0 — DH 0 is a
+        // valid CAT III entry and MUST announce, matching the "0 feet" the panel shows).
         if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
         {
             bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
-            int ft = value > 0 ? (int)Math.Round(value) : -1; // both: <=0 baro / <0 dh → unset
+            int ft = ApproachMinimums.ToFeet(isDecisionHeight: !baro, value);
             if (ft != (baro ? _lastBaroMin : _lastDh))
             {
                 if (baro) _lastBaroMin = ft; else _lastDh = ft;
-                if (ft > 0) announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
+                if (ft >= 0) announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
             }
             return true;
         }

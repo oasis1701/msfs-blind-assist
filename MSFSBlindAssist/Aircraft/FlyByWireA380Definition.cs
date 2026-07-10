@@ -2939,16 +2939,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // Last-seen circuit switch (0/1) + power (%) per side; power defaults 100 so a switch
     // read arriving before the power read still classifies On correctly (Fast until proven Slow).
     private double _wiperSwL, _wiperPwrL = 100.0, _wiperSwR, _wiperPwrR = 100.0;
-    // OFF when the circuit switch is off (regardless of the persisted power setting);
-    // else SLOW (~75%) vs FAST (~100%). Tolerates power read as ratio (0.75/1.0) or
-    // percent (75/100) so a unit surprise can't collapse the two speeds.
-    private static int WiperState(double? sw, double? pwr)
-    {
-        if (!(sw > 0.5)) return 0;
-        double p = pwr ?? 100.0; if (p <= 1.5) p *= 100.0;
-        return p < 87.5 ? 1 : 2;
-    }
-    private static string WiperText(int state) => state <= 0 ? "Off" : state == 1 ? "Slow" : "Fast";
+    // Decode (switch wins over the persisted power setting) is the shared WiperPosition.
     // ---- Doors (read-only status + auto-announce; NO settable combos — the user opens/closes
     // via the flyPad). ALL 18 modelled doors, authoritative ip→door mapping from the FBW SD
     // DoorPage.tsx: 16 passenger doors = stock SimVar INTERACTIVE POINT OPEN:0..15 (0..1 anim

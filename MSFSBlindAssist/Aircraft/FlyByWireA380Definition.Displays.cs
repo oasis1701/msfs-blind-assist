@@ -48,8 +48,8 @@ public partial class FlyByWireA380Definition
         }
         // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
         // state comes from _wiperState*, computed from switch+power in ProcessSimVarUpdate).
-        if (varKey == "WIPER_L_SW") { displayText = WiperText(_wiperStateL); return true; }
-        if (varKey == "WIPER_R_SW") { displayText = WiperText(_wiperStateR); return true; }
+        if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
+        if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
         // state + live level ("Icing, 30 percent" / "None") instead of a raw "0.3".
         if (varKey == "A32NX_ICING_STATE_ICING_STICK_INDICATOR")
@@ -337,12 +337,12 @@ public partial class FlyByWireA380Definition
             }
             case "AIRLINER_MINIMUM_DESCENT_ALTITUDE": // baro MDA — plain feet; unset when <= 0
             {
-                displayText = value > 0 ? $"{(int)Math.Round(value)} feet" : "Not set";
+                displayText = ApproachMinimums.DisplayText(isDecisionHeight: false, value);
                 return true;
             }
-            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset sentinel is -1
+            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset < 0 (0 = valid CAT III)
             {
-                displayText = value >= 0 ? $"{(int)Math.Round(value)} feet" : "Not set";
+                displayText = ApproachMinimums.DisplayText(isDecisionHeight: true, value);
                 return true;
             }
             case "A32NX_SEC_1_RUDDER_ACTUAL_POSITION":

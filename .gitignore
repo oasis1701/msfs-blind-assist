@@ -99,8 +99,14 @@ $RECYCLE.BIN/
 .idea/
 *.sln.iml
 
-# local Claude settings
-.claude/
+# Local Claude settings stay ignored, but project skills (slash commands like
+# /release-build) are tracked and shared. The local entries are ignored
+# EXPLICITLY rather than via `.claude/*` + `!.claude/skills/`: git resolves
+# that negation correctly, but naive gitignore matchers in other tooling
+# (directory-skip optimizations) never descend into a wildcard-matched dir,
+# which made .claude/skills invisible to them despite the re-inclusion.
+.claude/settings.local.json
+.claude/worktrees/
 
 # User-specific development notes
 *.private.md
