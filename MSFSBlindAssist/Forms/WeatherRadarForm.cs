@@ -26,6 +26,8 @@ public class WeatherRadarForm : Form
     private TextBox _currentWeatherBox = null!;
     private Label _stationLabel = null!;
     private TextBox _stationBox = null!;
+    private Label _profileLabel = null!;
+    private TextBox _profileBox = null!;
     private Label _advisoriesLabel = null!;
     private TextBox _advisoriesBox = null!;
     private Label _windsAloftLabel = null!;
@@ -53,7 +55,7 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 880);
+        Size = new Size(600, 976);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -120,6 +122,30 @@ public class WeatherRadarForm : Form
         };
         y += 110 + 12;
 
+        // ── Vertical profile (ActiveSky only; hidden when AS is off) ──────
+        _profileLabel = new Label
+        {
+            Text = "Vertical Profile (ActiveSky):",
+            Location = new Point(12, y),
+            Size = new Size(570, 20),
+            AccessibleName = "Vertical Profile label",
+            Visible = false
+        };
+        y += 24;
+
+        _profileBox = new TextBox
+        {
+            Location = new Point(12, y),
+            Size = new Size(566, 140),
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Consolas", 9),
+            Text = "",
+            AccessibleName = "Vertical Profile",
+            AccessibleDescription = "Cloud layers with tops and icing, and winds and temperatures aloft, at the current position from ActiveSky",
+            Visible = false
+        };
+        y += 140 + 12;
+
         // ── Advisories (SIGMETs, AIRMETs, PIREPs) ────────────────────────
         _advisoriesLabel = new Label
         {
@@ -133,14 +159,14 @@ public class WeatherRadarForm : Form
         _advisoriesBox = new TextBox
         {
             Location = new Point(12, y),
-            Size = new Size(566, 210),
+            Size = new Size(566, 160),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
             Text = "Press F5 or Refresh to fetch advisories.",
             AccessibleName = "Nearby Advisories",
             AccessibleDescription = "Active SIGMETs, AIRMETs, and pilot reports near the aircraft"
         };
-        y += 210 + 12;
+        y += 160 + 12;
 
         // ── Winds Aloft ───────────────────────────────────────────────────
         _windsAloftLabel = new Label
@@ -155,14 +181,14 @@ public class WeatherRadarForm : Form
         _windsAloftBox = new TextBox
         {
             Location = new Point(12, y),
-            Size = new Size(566, 170),
+            Size = new Size(566, 140),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
             Text = "Press F5 or Refresh to fetch winds aloft.",
             AccessibleName = "Winds Aloft",
             AccessibleDescription = "Forecast wind direction and speed at each 1000 ft from 5000 ft below to 5000 ft above aircraft altitude"
         };
-        y += 170 + 10;
+        y += 140 + 10;
 
         // ── Status + buttons ──────────────────────────────────────────────
         _decodeCheckBox = new CheckBox
@@ -215,6 +241,7 @@ public class WeatherRadarForm : Form
             _asModeLabel,
             _currentWeatherLabel, _currentWeatherBox,
             _stationLabel, _stationBox,
+            _profileLabel, _profileBox,
             _advisoriesLabel, _advisoriesBox,
             _windsAloftLabel, _windsAloftBox,
             _decodeCheckBox, _statusLabel, _refreshButton, _closeButton
@@ -227,11 +254,12 @@ public class WeatherRadarForm : Form
     {
         _currentWeatherBox.TabIndex = 0;
         _stationBox.TabIndex = 1;
-        _advisoriesBox.TabIndex = 2;
-        _windsAloftBox.TabIndex = 3;
-        _decodeCheckBox.TabIndex = 4;
-        _refreshButton.TabIndex = 5;
-        _closeButton.TabIndex = 6;
+        _profileBox.TabIndex = 2;
+        _advisoriesBox.TabIndex = 3;
+        _windsAloftBox.TabIndex = 4;
+        _decodeCheckBox.TabIndex = 5;
+        _refreshButton.TabIndex = 6;
+        _closeButton.TabIndex = 7;
 
         Load += async (s, e) =>
         {
@@ -271,16 +299,19 @@ public class WeatherRadarForm : Form
                     : $"ActiveSky: {_activeSky.LastStatus}";
             _stationLabel.Visible = asEnabled;
             _stationBox.Visible = asEnabled;
+            _profileLabel.Visible = asEnabled;
+            _profileBox.Visible = asEnabled;
 
             // Get aircraft position (needed for advisories and winds aloft)
             (double lat, double lon, int altFt) = await GetPositionAsync();
 
-            // Fetch all three in parallel
+            // Fetch all four in parallel
             var ambientTask    = FetchAmbientAsync();
             var advisoriesTask = FetchAdvisoriesAsync(lat, lon, forceRefresh);
             var windsTask      = FetchWindsAloftAsync(lat, lon, altFt, forceRefresh);
+            var profileTask    = FetchProfileAsync(lat, lon, altFt);
 
-            await Task.WhenAll(ambientTask, advisoriesTask, windsTask);
+            await Task.WhenAll(ambientTask, advisoriesTask, windsTask, profileTask);
 
             // await, not .Result — the tasks are already completed (WhenAll above), so
             // this doesn't block, but await avoids wrapping a fault in AggregateException.
@@ -289,6 +320,7 @@ public class WeatherRadarForm : Form
             _stationBox.Text = stationText;
             _advisoriesBox.Text     = await advisoriesTask;
             _windsAloftBox.Text     = await windsTask;
+            _profileBox.Text        = await profileTask;
 
             // Silent fallback by design — user shouldn't have to know whether
             // ActiveSky is the source or the SimConnect AMBIENT_* fallback is.
@@ -731,6 +763,17 @@ public class WeatherRadarForm : Form
 
         sb.AppendLine("Source: Open-Meteo");
         return sb.ToString().TrimEnd();
+    }
+
+    // ── Vertical profile ─────────────────────────────────────────────────────
+
+    private async Task<string> FetchProfileAsync(double lat, double lon, int altFt)
+    {
+        if (_activeSkyAvailable != true) return "unavailable";
+        if (lat == 0 && lon == 0) return "Aircraft position unavailable — connect to simulator first.";
+        var profile = await _activeSky.GetWeatherInfoXmlAsync(lat, lon);
+        if (profile == null) return "unavailable";
+        return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProfileNarrative(profile, altFt);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

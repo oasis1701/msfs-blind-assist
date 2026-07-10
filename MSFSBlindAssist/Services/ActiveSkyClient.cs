@@ -123,6 +123,39 @@ public class ActiveSkyClient
         public double TemperatureC;
     }
 
+    /// <summary>Parsed /GetWeatherInfoXml — the vertical weather profile.</summary>
+    public sealed class VerticalProfile
+    {
+        public List<ProfileWindLayer> WindLayers { get; } = new();
+        public List<ProfileCloudLayer> CloudLayers { get; } = new();
+    }
+
+    /// <summary>One wind layer. AltFeet arrives in FEET (surface layer = 0).
+    /// TurbulenceEnum is the FSX-style severity 0-4, NOT the 0-100 JSON scale.</summary>
+    public sealed class ProfileWindLayer
+    {
+        public bool IsSurface;
+        public int AltitudeFt;
+        public double DirectionDeg;
+        public double SpeedKts;
+        public double TemperatureC;
+        public int TurbulenceEnum;
+        public double GustKts;          // surface layer only; 0 elsewhere
+    }
+
+    /// <summary>One cloud layer. Base/top arrive in METRES and are converted to
+    /// feet at parse time. Coverage is oktas; Icing/Turbulence are severity 0-4;
+    /// PrecipType 0 none / 1 rain / 2 snow.</summary>
+    public sealed class ProfileCloudLayer
+    {
+        public int BaseFt;
+        public int TopFt;
+        public int CoverageOktas;
+        public int IcingEnum;
+        public int PrecipType;
+        public int TurbulenceEnum;
+    }
+
     private string BaseUrl(int port) => $"http://localhost:{port}/ActiveSky/API";
 
     /// <summary>
@@ -406,6 +439,30 @@ public class ActiveSkyClient
         }
     }
 
+    /// <summary>/GetWeatherInfoXml?lat=&lon= — the comprehensive vertical profile
+    /// at a position (13 wind/temp/turbulence layers to FL560, cloud layers with
+    /// tops and icing). Null on error or when AS is off/unreachable.</summary>
+    public async Task<VerticalProfile?> GetWeatherInfoXmlAsync(double lat, double lon)
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            string url = $"{BaseUrl(port)}/GetWeatherInfoXml"
+                + $"?lat={lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&lon={lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}&timeoffset=0";
+            using var resp = await _http.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            return ParseWeatherInfoXml(await resp.Content.ReadAsStringAsync(cts.Token));
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetWeatherInfoXml failed (timeout or connection error)");
+            return null;
+        }
+    }
+
     /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
     /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
@@ -503,6 +560,71 @@ public class ActiveSkyClient
         {
             return null;
         }
+    }
+
+    /// <summary>Parses the /GetWeatherInfoXml body. The response declares
+    /// encoding="utf-16", which matches .NET strings — XDocument.Parse handles it.
+    /// Permissive: missing attributes default to 0, unknown elements are ignored,
+    /// malformed XML → null.</summary>
+    internal static VerticalProfile? ParseWeatherInfoXml(string xml)
+    {
+        try
+        {
+            var root = System.Xml.Linq.XDocument.Parse(xml).Root;
+            if (root == null) return null;
+            var p = new VerticalProfile();
+
+            var windLayers = root.Element("WindLayers");
+            if (windLayers != null)
+            {
+                foreach (var el in windLayers.Elements())
+                {
+                    bool isSurface = el.Name.LocalName == "SurfaceLayer";
+                    if (!isSurface && el.Name.LocalName != "Layer") continue;
+                    p.WindLayers.Add(new ProfileWindLayer
+                    {
+                        IsSurface = isSurface,
+                        AltitudeFt = isSurface ? 0 : (int)Math.Round(Attr(el, "AltFeet")),
+                        DirectionDeg = Attr(el, "WindDirection"),
+                        SpeedKts = Attr(el, "WindSpeed"),
+                        TemperatureC = Attr(el, "Temp"),
+                        TurbulenceEnum = (int)Math.Round(Attr(el, "Turbulence")),
+                        GustKts = Attr(el, "Gust"),
+                    });
+                }
+            }
+
+            var clouds = root.Element("Clouds");
+            if (clouds != null)
+            {
+                foreach (var el in clouds.Elements("Cloud"))
+                {
+                    p.CloudLayers.Add(new ProfileCloudLayer
+                    {
+                        BaseFt = (int)Math.Round(Attr(el, "CloudBaseMeters") * 3.28084),
+                        TopFt = (int)Math.Round(Attr(el, "CloudTopMeters") * 3.28084),
+                        CoverageOktas = (int)Math.Round(Attr(el, "Coverage")),
+                        IcingEnum = (int)Math.Round(Attr(el, "Icing")),
+                        PrecipType = (int)Math.Round(Attr(el, "PrecipType")),
+                        TurbulenceEnum = (int)Math.Round(Attr(el, "CloudTurbulence")),
+                    });
+                }
+            }
+
+            return p;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double Attr(System.Xml.Linq.XElement el, string name)
+    {
+        var a = el.Attribute(name);
+        if (a == null) return 0;
+        return double.TryParse(a.Value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
     }
 
     private static double ReadDouble(JsonElement obj, string field)
