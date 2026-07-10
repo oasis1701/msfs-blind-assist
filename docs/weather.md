@@ -84,32 +84,46 @@ must never miss a degraded wind readout).
 Three separate readouts decode precipitation from a METAR: the Weather Radar
 (`WeatherRadarForm.ParsePrecipFromMetar`), the ActiveSky decoded-weather monitor
 (`ActiveSkyWeatherMonitor` via the `WeatherRadarFormPrecipShim` copy — see §7), and the
-ambient auto-announce (`MainForm.Announcers.cs` `CheckAmbientWeatherChanges`). All three agree
-on the same underlying order — closest-station METAR, then position METAR, then the
-SimConnect bitmask as last resort — so they never contradict each other. The Weather Radar
-carries one extra belt-and-braces tier the other two readouts don't have:
+ambient auto-announce (`MainForm.Announcers.cs` `CheckAmbientWeatherChanges`). They do **not**
+all share one tier count — each has a different number of fallback steps — but they all obey
+the same underlying rule: **prefer the closest-station METAR before the position METAR**, so
+that when both a closest-station report and a position report exist, all three readouts pick
+the same one and never contradict each other.
+
+**Weather Radar** (`WeatherRadarForm.FormatAmbientFromActiveSky`, `Forms/WeatherRadarForm.cs`)
+has four tiers:
 
 1. Closest-station METAR (`ActiveSkyClient.GetClosestStationMetarAsync`) — the real nearest
    reporting station.
-2. **Weather Radar only:** the conditions-JSON `ClosestMetar` field
-   (`WeatherRadarForm.FormatAmbientFromActiveSky`, `Forms/WeatherRadarForm.cs:414-418`) — a
-   second, belt-and-braces attempt at the same closest-station report when the dedicated
-   endpoint call in tier 1 came back empty, before the radar gives up on "closest station"
-   entirely. The decoded-weather monitor (`ActiveSkyWeatherMonitor.cs:221`) and the ambient
-   auto-announce (`MainForm.Announcers.cs:1957-1959`) have no equivalent step — each goes
-   straight from a failed closest-station call to position METAR.
+2. The conditions-JSON `ClosestMetar` field — a second, belt-and-braces attempt at the same
+   closest-station report when the dedicated endpoint call in tier 1 came back empty, before
+   the radar gives up on "closest station" entirely.
 3. Position METAR (`GetPositionMetarAsync`, AS's `@POS` interpolated point weather) —
-   fallback when both closest-station attempts fail (Weather Radar) or when the single
-   closest-station attempt fails (the other two readouts).
-4. SimConnect `AMBIENT_PRECIP_STATE`/`AMBIENT_PRECIP_RATE` bitmask — last resort, only used
+   fallback when both closest-station attempts fail.
+4. SimConnect `AMBIENT_PRECIP_STATE`/`AMBIENT_PRECIP_RATE` bitmask — last resort, only reached
    when ActiveSky isn't running at all (see §2's table; under ActiveSky the bitmask is known
    to stick, e.g. reported stuck on "extreme snow").
 
+**Alt+W ambient auto-announce** (`MainForm.Announcers.cs`, `CheckAmbientWeatherChanges` /
+`AnnounceAmbientChanges`) has three tiers: closest-station METAR, then (if that's empty)
+position METAR, then — only if AS isn't running or both METAR fetches came back empty, leaving
+`asPrecip == null` — the same SimConnect bitmask branch.
+
+**The decoded-weather monitor** (`ActiveSkyWeatherMonitor.BuildAnnouncement`) has only **two**
+tiers and no SimConnect branch at all: closest-station METAR, else position METAR. There is no
+third tier here and there cannot be one — `OnTickAsync` early-returns before `BuildAnnouncement`
+is ever called, both when ActiveSky isn't running (§5) and when the position METAR fetch itself
+came back empty, so the monitor never reaches a state where it would need to fall back past
+"position METAR." When ActiveSky isn't running, the monitor doesn't announce a SimConnect-
+sourced precip line — it stays silent and resets its baseline (§5). This matches §5 below: there
+is no SimConnect fallback for decoded station weather.
+
 CLAUDE.md's weather invariant states this as three tiers (closest-station METAR → position
-METAR → SimConnect bitmask). That's the simplified form, not a different rule: it's exact for
-the decoded-weather monitor and the ambient auto-announce, and for the Weather Radar it
-collapses tiers 1 and 2 into one "closest-station METAR" step, since both are just retries of
-the same source before falling back to position METAR.
+METAR → SimConnect bitmask). That's a simplification aimed at the general "prefer closest
+station" rule, not a literal count for every readout: it's exact for the ambient auto-announce;
+for the Weather Radar it collapses tiers 1 and 2 into one "closest-station METAR" step; and for
+the decoded-weather monitor the third (SimConnect) tier doesn't exist — the monitor's fallback
+chain stops at position METAR.
 
 A METAR that parses with **no** weather-phenomenon token means "no precipitation" and must
 render as `"None"` — it must never fall through to the next source in the list. Only a
