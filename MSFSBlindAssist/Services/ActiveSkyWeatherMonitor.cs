@@ -34,10 +34,10 @@ namespace MSFSBlindAssist.Services;
 ///
 /// 60 s. AS refreshes at 5–15 min intervals, so 60 s gives sub-minute
 /// detection latency without hammering the local HTTP API. The monitor is
-/// only started when the user has opted into ActiveSky (<c>ActiveSkyEnabled</c>)
-/// — MainForm gates launch start, and ApplyRuntimeSettings starts/stops it
-/// live as the setting is toggled — so a non-AS user never pays even the
-/// ~1.2 s parallel-port probe.
+/// only started when <see cref="ShouldRun"/> says so (<c>ActiveSkyEnabled</c>
+/// AND <c>WeatherAutoAnnounceEnabled</c>) — MainForm gates launch start, and
+/// ApplyRuntimeSettings starts/stops it live as either setting is toggled —
+/// so a non-AS user never pays even the ~1.2 s parallel-port probe.
 ///
 /// <para><b>Announcement format.</b></para>
 ///
