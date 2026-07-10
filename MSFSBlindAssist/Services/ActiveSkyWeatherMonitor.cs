@@ -33,9 +33,11 @@ namespace MSFSBlindAssist.Services;
 /// <para><b>Polling interval.</b></para>
 ///
 /// 60 s. AS refreshes at 5–15 min intervals, so 60 s gives sub-minute
-/// detection latency without hammering the local HTTP API. The cost when
-/// AS is down is one ~1.2 s parallel-port probe per minute (cheap), so the
-/// monitor runs unconditionally.
+/// detection latency without hammering the local HTTP API. The monitor is
+/// only started when <see cref="ShouldRun"/> says so (<c>ActiveSkyEnabled</c>
+/// AND <c>WeatherAutoAnnounceEnabled</c>) — MainForm gates launch start, and
+/// ApplyRuntimeSettings starts/stops it live as either setting is toggled —
+/// so a non-AS user never pays even the ~1.2 s parallel-port probe.
 ///
 /// <para><b>Announcement format.</b></para>
 ///
@@ -105,6 +107,19 @@ public class ActiveSkyWeatherMonitor : IDisposable
     public void Start() => _timer.Start();
 
     public void Stop() => _timer.Stop();
+
+    /// <summary>
+    /// The single source of truth for whether this monitor may run. It is BOTH an
+    /// ActiveSky feature (it reads only the AS HTTP API — there is no SimConnect
+    /// fallback for decoded station weather) and an announcement feature (it speaks),
+    /// so it requires both opt-ins. Gating on <c>ActiveSkyEnabled</c> alone forced AS
+    /// users who only wanted accurate output+I wind and radar data to also be spoken at.
+    ///
+    /// Called from MainForm.InitializeManagers (launch) and ApplyRuntimeSettings (live
+    /// toggle) — never inline the condition at either site, or the two will drift.
+    /// </summary>
+    public static bool ShouldRun(Settings.UserSettings settings)
+        => settings.ActiveSkyEnabled && settings.WeatherAutoAnnounceEnabled;
 
     /// <summary>
     /// User-facing toggle: enable/disable the announcement feature without

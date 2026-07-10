@@ -1720,12 +1720,22 @@ public partial class MainForm
 
         try
         {
-            // Current wind. #129: under ActiveSky the SimConnect ambient wind lags AS's
-            // interpolation (output+I disagreed with the radar's "wind at altitude"), so
-            // when AS is running read the AS ambient wind (same source as the radar) and
-            // append the surface gust when AS reports one.
+            // Current wind. #129: when the user has OPTED INTO ActiveSky (Weather
+            // settings tab) read the AS ambient wind + gust — under AS the SimConnect
+            // ambient wind can diverge (AS wind smoothing), and the radar's "wind at
+            // altitude" reads AS, so the two must match. When the switch is off,
+            // TryGetActiveSkyConditionsAsync returns null INSTANTLY (the central gate
+            // in ActiveSkyClient.IsRunningAsync — no probe, no ~1.2 s floor) and the
+            // SimConnect path below is authoritative.
             string currentWind = "unavailable";
             var asConditions = await TryGetActiveSkyConditionsAsync();
+            // AS opted-in but unreachable (not running / fetch failed): say so BEFORE the
+            // SimConnect wind, so a user whose ActiveSky quietly isn't running learns it
+            // here instead of trusting a silently-degraded readout. Prefixed into the ONE
+            // utterance below — a second AnnounceImmediate would cut the first one off.
+            string sourceNotice = "";
+            if (asConditions == null && MSFSBlindAssist.Settings.SettingsManager.Current.ActiveSkyEnabled)
+                sourceNotice = "ActiveSky not responding, using simulator wind. ";
             if (asConditions != null)
             {
                 currentWind = FormatActiveSkyWind(asConditions);
@@ -1761,11 +1771,11 @@ public partial class MainForm
                 var destinationWindData = await VATSIMService.GetAirportWindAsync(destinationAirport?.ICAO ?? "");
                 string destinationWind = VATSIMService.FormatWind(destinationWindData);
 
-                announcer.AnnounceImmediate($"{currentWind}, {destinationWind}");
+                announcer.AnnounceImmediate($"{sourceNotice}{currentWind}, {destinationWind}");
             }
             else
             {
-                announcer.AnnounceImmediate($"{currentWind}, no destination");
+                announcer.AnnounceImmediate($"{sourceNotice}{currentWind}, no destination");
             }
         }
         catch (Exception ex)
