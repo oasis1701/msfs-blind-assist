@@ -2015,10 +2015,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // (each live-verified with SDK read-back). On the -300ER the knob
             // L:vars move the visual only — PMDG's systems never sample them
             // (SDK field stays put) — so HandleUIVariableSet has a variant
-            // guard (B77W) that says so instead of writing a dead value.
-            // Conversely the CABIN temp knob is dead on the 77F (no passenger
-            // cabin; L:var holds, SDK never follows) and gets the inverse
-            // guard (B77L).
+            // guard (keyed on the CDA AircraftModel field, NOT ICAO — the 777F
+            // and pax 777-200LR share ICAO B77L) that says so instead of
+            // writing a dead value. Conversely the CABIN temp knob is dead on
+            // the 77F (no passenger cabin; L:var holds, SDK never follows) and
+            // gets the inverse guard.
             // =================================================================
             ["AIR_CargoTempAftSel"] = new SimConnect.SimVarDefinition
             {
@@ -5855,27 +5856,43 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // ------------------------------------------------------------------
         // 0b. Temperature-knob variant guards. The cargo temp KNOBS are only
-        //     sampled by PMDG's systems on the 777F (B77L), and the CABIN temp
-        //     knob only on the passenger -300ER (B77W) — on the wrong variant
-        //     the L:var write moves the visual knob but the system never
-        //     follows (live-verified both ways, 2026-07). Announce why instead
-        //     of writing a dead value. An empty/unknown ICAO (detection still
-        //     pending) falls through to the normal write — same net effect as
-        //     today, just without the explanation. NOTE: B77L is also the
-        //     -200LR pax designator; if PMDG ships one, revisit the cabin-knob
-        //     gate (the freighter and 200LR can't be told apart by ICAO).
+        //     sampled by PMDG's systems on the 777F, and the CABIN temp knob
+        //     is dead on the 777F — on the wrong variant the L:var write moves
+        //     the visual knob but the system never follows (live-verified both
+        //     ways on 77W + 77F, 2026-07; every variant's cockpit behavior XML
+        //     carries all six knobs, so the write always "sticks"). Announce
+        //     why instead of writing a dead value, and re-request the var so
+        //     the combo snaps back to the real (unchanged) value instead of
+        //     displaying the refused selection.
+        //     Variant identity comes from the CDA's own AircraftModel field
+        //     (SDK: 1 -200, 2 -200ER, 3 -300, 4 -200LR, 5 777F, 6 -300ER) —
+        //     NOT the ICAO type: the 777F and the pax 777-200LR both declare
+        //     icao_type_designator B77L (verified in both installed packages),
+        //     so CurrentAircraftIcaoType cannot tell them apart, and livery
+        //     TITLEs are freeform. Unknown model (no CDA snapshot yet, or a
+        //     future SDK value we don't know) falls through to the normal
+        //     write — same net effect as before the guard existed.
         // ------------------------------------------------------------------
-        if ((varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
-                    or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft")
-            && simConnect.CurrentAircraftIcaoType == "B77W")
+        bool isCargoTempKnob = varKey is "AIR_CargoTempKnobMainDeckFwd" or "AIR_CargoTempKnobMainDeckAft"
+                                      or "AIR_CargoTempKnobLowerFwd" or "AIR_CargoTempKnobLowerAft";
+        if (isCargoTempKnob || varKey == "AIR_TempKnobCabin")
         {
-            announcer.AnnounceImmediate("Cargo temperature knobs are only functional on the 777 freighter.");
-            return true;
-        }
-        if (varKey == "AIR_TempKnobCabin" && simConnect.CurrentAircraftIcaoType == "B77L")
-        {
-            announcer.AnnounceImmediate("The cabin temperature selector is not functional on the 777 freighter.");
-            return true;
+            const int Model777F = 5;
+            var modelDm = simConnect.PMDGDataManager;
+            int model = (modelDm != null && modelDm.IsReady) ? (int)modelDm.GetFieldValue("AircraftModel") : 0;
+            bool isKnownPax = model is >= 1 and <= 6 and not Model777F;
+            if (isCargoTempKnob && isKnownPax)
+            {
+                announcer.AnnounceImmediate("Cargo temperature knobs are only functional on the 777 freighter.");
+                simConnect.RequestVariable(varKey, forceUpdate: true);
+                return true;
+            }
+            if (varKey == "AIR_TempKnobCabin" && model == Model777F)
+            {
+                announcer.AnnounceImmediate("The cabin temperature selector is not functional on the 777 freighter.");
+                simConnect.RequestVariable(varKey, forceUpdate: true);
+                return true;
+            }
         }
 
         // ------------------------------------------------------------------
