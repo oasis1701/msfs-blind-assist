@@ -2159,7 +2159,7 @@
         var preRaw = (tn.textContent || "").replace(/\r\n/g, "\n")
           .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
         if (preRaw) {
-          if (preRaw.length > 100000) preRaw = preRaw.slice(0, 100000) + "\n… (text truncated)";
+          if (preRaw.length > 1000000) preRaw = preRaw.slice(0, 1000000) + "\n… (text truncated)";
           var preR = tn.getBoundingClientRect();
           items.push({
             top: preR.top - rootRect.top, left: preR.left - rootRect.left,
