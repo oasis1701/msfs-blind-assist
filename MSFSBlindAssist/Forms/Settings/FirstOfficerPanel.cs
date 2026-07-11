@@ -17,6 +17,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private CheckBox autoApCheck = null!;
     private Label apAltitudeLabel = null!;
     private TextBox apAltitudeText = null!;
+    private CheckBox autoLights10kCheck = null!;
 
     public string TabTitle => "First Officer";
 
@@ -91,10 +92,19 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Height above ground at which the First Officer engages the autopilot on climbout. 100 to 3000 feet."
         };
 
+        autoLights10kCheck = new CheckBox
+        {
+            Text = "Automatically switch landing lights at 10,000 feet",
+            Location = new Point(20, 230),
+            AutoSize = true,
+            AccessibleName = "Automatic landing lights at ten thousand feet",
+            AccessibleDescription = "Turn the landing lights (and nose light where fitted) off climbing through 10,000 feet and on descending through it"
+        };
+
         Controls.AddRange(new Control[]
         {
             titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
-            apAltitudeLabel, apAltitudeText
+            apAltitudeLabel, apAltitudeText, autoLights10kCheck
         });
     }
 
@@ -107,6 +117,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoApCheck.TabIndex = 4;
         apAltitudeLabel.TabIndex = 5;
         apAltitudeText.TabIndex = 6;
+        autoLights10kCheck.TabIndex = 7;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -116,6 +127,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoFlapsCheck.Checked = settings.FOAutoFlapsEnabled;
         autoApCheck.Checked = settings.FOAutoApEnabled;
         apAltitudeText.Text = settings.FOAutoApEngageAltitudeAgl.ToString();
+        autoLights10kCheck.Checked = settings.FOAutoLights10kEnabled;
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -138,6 +150,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoFlapsEnabled = autoFlapsCheck.Checked;
         settings.FOAutoApEnabled = autoApCheck.Checked;
         settings.FOAutoApEngageAltitudeAgl = int.Parse(apAltitudeText.Text);
+        settings.FOAutoLights10kEnabled = autoLights10kCheck.Checked;
     }
 
     /// <summary>No transient resources (no test tone) — nothing to stop when this tab is left.</summary>

@@ -131,6 +131,9 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     // Private crossing checks
     // -----------------------------------------------------------------------
 
+    /// <inheritdoc/>
+    public bool AutoLights10kEnabled { get; set; } = true;
+
     private void Check10kCrossing(double alt, bool climbing, bool descending)
     {
         bool nowAbove = alt > LandingLightThresholdFt + HysteresisFt;   // > 10300
@@ -138,20 +141,24 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
 
         // Same direction-tolerant gates as the transition crossing (a VS lull on the
         // crossing tick must not burn the latch without firing).
-        if (!descending && nowAbove && _prevAbove10k == false)
+        if (AutoLights10kEnabled)
         {
-            // Climbed through 10,000 ft — lights OFF
-            _executor.SetLandingLights(0);
-            _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
-        }
-        else if (!climbing && nowBelow && _prevAbove10k == true)
-        {
-            // Descended through 10,000 ft — lights ON
-            _executor.SetLandingLights(1);
-            _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+            if (!descending && nowAbove && _prevAbove10k == false)
+            {
+                // Climbed through 10,000 ft — lights OFF
+                _executor.SetLandingLights(0);
+                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+            }
+            else if (!climbing && nowBelow && _prevAbove10k == true)
+            {
+                // Descended through 10,000 ft — lights ON
+                _executor.SetLandingLights(1);
+                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+            }
         }
 
-        // Update stable state (only outside the hysteresis band)
+        // Update stable state (only outside the hysteresis band). Runs even while the
+        // lights setting is off so re-enabling mid-flight can't fire a stale crossing.
         if (nowAbove)       _prevAbove10k = true;
         else if (nowBelow)  _prevAbove10k = false;
     }

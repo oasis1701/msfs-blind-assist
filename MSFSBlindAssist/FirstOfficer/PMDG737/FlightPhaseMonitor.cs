@@ -139,6 +139,9 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     // 10,000 ft landing-light logic
     // -----------------------------------------------------------------------
 
+    /// <inheritdoc/>
+    public bool AutoLights10kEnabled { get; set; } = true;
+
     private void Check10kCrossing(double alt, bool climbing, bool descending)
     {
         bool nowAbove = alt > LandingLightThresholdFt + HysteresisFt;  // above 10,300
@@ -146,20 +149,24 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
 
         // Same direction-tolerant gates as the transition crossing (a VS lull on the
         // crossing tick must not burn the latch without firing).
-        if (!descending && nowAbove && _prevAbove10k == false)
+        if (AutoLights10kEnabled)
         {
-            _executor.SetLandingLights(0);  // all four OFF (retractables RETRACT, fixed off)
-            _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
-        }
-        else if (!climbing && nowBelow && _prevAbove10k == true)
-        {
-            // 2 = ON for the retractables (1 was EXTEND — deployed but DARK, the old
-            // below-10k bug) and lights the fixed inboards via SetLandingLights.
-            _executor.SetLandingLights(2);
-            _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+            if (!descending && nowAbove && _prevAbove10k == false)
+            {
+                _executor.SetLandingLights(0);  // all four OFF (retractables RETRACT, fixed off)
+                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+            }
+            else if (!climbing && nowBelow && _prevAbove10k == true)
+            {
+                // 2 = ON for the retractables (1 was EXTEND — deployed but DARK, the old
+                // below-10k bug) and lights the fixed inboards via SetLandingLights.
+                _executor.SetLandingLights(2);
+                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+            }
         }
 
-        // Update latch only when outside the hysteresis band
+        // Update latch only when outside the hysteresis band. Runs even while the
+        // lights setting is off so re-enabling mid-flight can't fire a stale crossing.
         if (nowAbove)       _prevAbove10k = true;
         else if (nowBelow)  _prevAbove10k = false;
         // Inside the band: latch holds its previous value

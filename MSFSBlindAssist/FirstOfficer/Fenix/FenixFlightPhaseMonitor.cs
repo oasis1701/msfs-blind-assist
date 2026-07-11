@@ -81,24 +81,32 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         }
     }
 
+    /// <inheritdoc/>
+    public bool AutoLights10kEnabled { get; set; } = true;
+
     private void Check10kCrossing(double alt, bool climbing, bool descending)
     {
         bool nowAbove = alt > LandingLightThresholdFt + HysteresisFt;
         bool nowBelow = alt < LandingLightThresholdFt - HysteresisFt;
 
-        if (!descending && nowAbove && _prevAbove10k == false)
+        if (AutoLights10kEnabled)
         {
-            _ = _executor.SetLandingLights(0);   // Retract
-            _ = _executor.SetNoseLight(0);       // Off
-            _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
-        }
-        else if (!climbing && nowBelow && _prevAbove10k == true)
-        {
-            _ = _executor.SetLandingLights(2);   // On
-            _ = _executor.SetNoseLight(2);       // T.O.
-            _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+            if (!descending && nowAbove && _prevAbove10k == false)
+            {
+                _ = _executor.SetLandingLights(0);   // Retract
+                _ = _executor.SetNoseLight(0);       // Off
+                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+            }
+            else if (!climbing && nowBelow && _prevAbove10k == true)
+            {
+                _ = _executor.SetLandingLights(2);   // On
+                _ = _executor.SetNoseLight(2);       // T.O.
+                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+            }
         }
 
+        // Latch keeps tracking while the lights setting is off so re-enabling
+        // mid-flight can't fire a stale crossing.
         if (nowAbove)      _prevAbove10k = true;
         else if (nowBelow) _prevAbove10k = false;
     }

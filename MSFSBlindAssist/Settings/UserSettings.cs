@@ -230,6 +230,11 @@ public class UserSettings
         // one global value shared by all four aircraft (default 350).
         public int FOAutoApEngageAltitudeAgl { get; set; } = 350;
 
+        // Phase-monitor light automation: switch the landing (and nose, where fitted)
+        // lights at the 10,000 ft crossing. Default ON — matches the behavior before
+        // this toggle existed; a missing key in old settings files deserializes to it.
+        public bool FOAutoLights10kEnabled { get; set; } = true;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -518,6 +523,7 @@ public class UserSettings
             FOAutoFlapsEnabled = FOAutoFlapsEnabled,
             FOAutoApEnabled    = FOAutoApEnabled,
             FOAutoApEngageAltitudeAgl = FOAutoApEngageAltitudeAgl,
+            FOAutoLights10kEnabled = FOAutoLights10kEnabled,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
             PmdgMonitorDefaultsSeeded = PmdgMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
