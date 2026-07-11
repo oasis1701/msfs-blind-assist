@@ -710,10 +710,13 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         _checklistMgr.ResetGroup(groupId);
 
-        // Clear all child checkboxes
+        // Clear all child checkboxes. Skip the placeholder and already-unchecked nodes:
+        // TreeNode.Checked's setter writes the state image unconditionally, which would
+        // resurrect a hidden checkbox (the "Loading..." placeholder has none).
         _suppressTreeEvents = true;
         foreach (TreeNode child in groupNode.Nodes)
-            child.Checked = false;
+            if (child.Tag is not "placeholder" && child.Checked)
+                child.Checked = false;
         _suppressTreeEvents = false;
 
         var group = _checklistGroups.FirstOrDefault(g => g.Id == groupId);
@@ -723,10 +726,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void ResetAll()
     {
         _checklistMgr.ResetAll();
+        // Same placeholder/hidden-checkbox care as ResetSection.
         _suppressTreeEvents = true;
         foreach (TreeNode parent in _checklistTree.Nodes)
             foreach (TreeNode child in parent.Nodes)
-                child.Checked = false;
+                if (child.Tag is not "placeholder" && child.Checked)
+                    child.Checked = false;
         _suppressTreeEvents = false;
         _announcer.AnnounceImmediate("All checklists reset");
     }
