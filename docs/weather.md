@@ -367,3 +367,120 @@ state) — so ticking the checkbox and reading the status line in the same visit
 *previous* session's result until Apply/OK commits the change and the panel is reopened. This
 finally fulfills `ActiveSkyClient.LastStatus`'s doc comment, which had promised "surfaced to the
 UI" since the property was first added.
+
+## 10. Hazard announcements: turbulence and icing (2026-07)
+
+Design doc: `docs/design/2026-07-11-hazard-announcements-design.md`. Two new unprompted
+announcers ride the existing 60-second `ActiveSkyWeatherMonitor` tick and the existing
+30-second ambient tick respectively — no new poll loops, no new HTTP traffic. Both follow the
+`ActiveSkyModeTracker` pattern (§9a): an `internal sealed` pure tracker class with a
+`string? Observe(...)` method, fully characterization-tested
+(`tests/MSFSBlindAssist.Tests/TurbulenceCategoryTrackerTests.cs`,
+`IceAccretionTrackerTests.cs`).
+
+**(a) Turbulence — `Services/TurbulenceCategoryTracker.cs`.** Data source is
+`Conditions.AmbientTurbulence` (AS's 1–100 value), read once per `ActiveSkyWeatherMonitor
+.OnTickAsync` (`Services/ActiveSkyWeatherMonitor.cs`) right after the conditions fetch
+succeeds — before the weather-refresh/throttle logic, so a category change is never absorbed
+by the "unchanged weather" or interval-throttle branches. Category boundaries are copied
+**verbatim** from the Weather Radar's `CategorizeTurbulence` (§8): ≤25 smooth, ≤50 light, ≤75
+moderate, ≤90 severe, >90 extreme — the same FAA AIM 7-1-23 wording, so the spoken category
+always matches what the radar form's Turbulence line would show for the same value.
+
+Rising transitions happen **at the boundary** (>25 enters light, >50 enters moderate, …).
+Easing requires the value to clear the boundary it's re-crossing by a **5-point** hysteresis
+margin, so a value oscillating on a boundary never flaps: light→smooth needs ≤20, moderate→
+light needs ≤45, severe→moderate needs ≤70, extreme→severe needs ≤85. All four are concrete
+literals in `CategoryWithHysteresis`/`LowerBoundaries`, not a computed percentage — don't
+"simplify" them into a single formula.
+
+Four utterance forms, all **words only** — the raw 1–100 number is never spoken, and smooth
+(≤25) is never named as a category, matching §8's "hidden entirely" rule for the raw value:
+
+| Transition | Utterance |
+|---|---|
+| smooth → any category | `"Entering {category} turbulence"` |
+| worsening between categories | `"Turbulence now {category}"` |
+| easing between categories (not to smooth) | `"Turbulence easing to {category}"` |
+| any category → smooth | `"Smooth air"` |
+
+Baseline-first: the first successful `Observe` call only records the starting category and
+returns null — nothing is spoken about the turbulence the app happened to find on connect. The
+baseline **survives AS-unreachable gaps**: `OnTickAsync`'s early-return path (AS not detected)
+resets the monitor's own refresh-detection state but never calls `Reset()` on the turbulence
+tracker, so a genuine category change that happened while AS was unreachable still announces
+once AS comes back. `Reset()` is called only on aircraft switch
+(`MainForm.AircraftSwitch.cs SwitchAircraft`, via `activeSkyWeatherMonitor
+?.ResetTurbulenceTracker()`) — a stale category from the previous airframe must not read as a
+"change" on the new one. Gated on `AnnounceTurbulenceEnabled`, checked per tick (no
+`ApplyRuntimeSettings` wiring needed) and — because the data source is AS-only — implicitly on
+`ActiveSkyWeatherMonitor.ShouldRun` (§5): with AS off or auto-announce off, the tick that would
+call `Observe` never runs at all.
+
+**(b) Icing — `Services/IceAccretionTracker.cs`.** Data source is the stock `STRUCTURAL ICE
+PCT` SimVar, engine-independent airframe ice accretion as a 0..1 ratio (not a percent — the
+SimConnect unit string is `"percent over 100"`). It's registered as datum 7 on the existing
+ambient weather struct (`SimConnectManager.Setup.cs`):
+
+```csharp
+sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "STRUCTURAL ICE PCT", "percent over 100",
+    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+```
+
+landing in `AmbientWeatherData.StructuralIcePct` (`SimConnect/SimConnectManager.cs`) and
+arriving on the same 30-second `RequestWeatherInfo` ambient tick §2's table describes — the
+same 3-second timeout/null-skip protection against a stalled sim applies, so no separate
+polling was added. `AnnounceAmbientChanges` (`MainForm.Announcers.cs`) clamps a `NaN` or
+negative sample to 0 before calling `Observe`, so a bad read can't corrupt the tracker's
+hysteresis state.
+
+Thresholds are **copied verbatim from the FBW A380's sim-verified constants**
+(`FlyByWireA380Definition.cs`, `ICING_DETECT_RATIO`/`ICING_CLEAR_RATIO`) — 0.05 rising, 0.02
+falling, same as the A380's own ice-stick debounce logic
+(`FlyByWireA380Definition.SimVarUpdate.cs`). Rising edge (ratio ≥ 0.05 while not already
+icing) speaks `"Icing conditions, ice accumulating"`; falling edge (ratio ≤ 0.02 while icing)
+speaks `"Icing conditions cleared"`; the 0.02–0.05 band is a dead zone, deliberately not a
+single crossing value, so a ratio hovering near the threshold doesn't flap. First sample is
+baseline-silenced — an app connecting with ice already on the airframe adopts that state
+without announcing it as a "change." `Reset()` fires on both SimConnect connect
+(`MainForm.AircraftSwitch.cs OnConnectionStatusChanged`) and aircraft switch (`SwitchAircraft`)
+— a reconnect or airframe swap invalidates any accumulated ice state, so the next sample
+re-baselines silently rather than announcing a spurious edge.
+
+**(c) The `HasOwnIcingAnnouncer` yield.** The FBW A380 already had a tuned, sim-verified
+ice-stick announcer (`FlyByWireA380Definition.SimVarUpdate.cs`, reading
+`A32NX_ICING_STATE_ICING_STICK_INDICATOR` with the same 0.05/0.02 hysteresis, speaking
+`"Icing conditions"` / `"Icing conditions cleared"` — note the wording differs slightly from
+the generic tracker's onset phrase). `IAircraftDefinition.HasOwnIcingAnnouncer` (default
+`false` on `BaseAircraftDefinition`, overridden `true` on `FlyByWireA380Definition`) lets the
+generic announcer detect this and skip itself **entirely** for that aircraft —
+`AnnounceAmbientChanges` gates the whole `STRUCTURAL ICE PCT` branch on
+`currentAircraft?.HasOwnIcingAnnouncer != true`, not merely muted — so one icing episode on the
+A380 is never spoken by two voices, the same one-condition-one-call-out rule as the documented
+PB-light/ECAM-memo invariant (see CLAUDE.md's A380X section). The A380's own announcer is
+deliberately **not** gated on the new `AnnounceIcingEnabled` setting — it predates the setting
+and is aircraft-curated; turning the new toggle off silences the generic tracker for every
+other aircraft but leaves the A380's own voice untouched. (Making the A380 announcer also
+respect the toggle is a recorded one-line follow-up, not done here.)
+
+**(d) Settings.** Two new `UserSettings` bools (`Settings/UserSettings.cs`), both default
+`true`: `AnnounceTurbulenceEnabled` and `AnnounceIcingEnabled`. Both live in the Weather
+settings tab's Announcements group (`Forms/Settings/WeatherPanel.cs`), directly under the
+master "Auto-announce weather state changes" checkbox, and both round-trip via
+`LoadFrom`/`ApplyTo` unconditionally — hiding a checkbox never resets its stored value, the
+same rule the announcement-interval combo already follows (§5).
+
+Visibility is computed in `UpdateActiveSkyDependentVisibility`:
+
+```csharp
+bool master = _weatherAutoAnnounce.Checked;
+_announceTurbulence.Visible = master && _activeSkyEnabled.Checked;
+_announceIcing.Visible = master;
+```
+
+"Announce turbulence changes" needs **both** the master auto-announce switch and ActiveSky
+enabled — the data source is AS-only, so the checkbox is meaningless (and hidden, out of the
+NVDA tab order) without AS. "Announce icing" needs only the master switch — `STRUCTURAL ICE
+PCT` is a stock SimVar with no ActiveSky dependency, so it stays reachable with AS off. Neither
+checkbox appears at all with the master auto-announce switch off, matching every other
+sub-toggle on this tab.
