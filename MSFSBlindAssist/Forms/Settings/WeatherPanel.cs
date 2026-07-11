@@ -13,6 +13,8 @@ public class WeatherPanel : UserControl, ISettingsPanel
     private Label _asStatusLabel = null!;
 
     private CheckBox _weatherAutoAnnounce = null!;
+    private CheckBox _announceTurbulence = null!;
+    private CheckBox _announceIcing = null!;
     private ComboBox _weatherIntervalCombo = null!;
     private Label _weatherIntervalLabel = null!;
     private CheckBox _sigmetAlerts = null!;
@@ -68,6 +70,13 @@ public class WeatherPanel : UserControl, ISettingsPanel
         });
         _weatherIntervalLabel.Visible = on;
         _weatherIntervalCombo.Visible = on;
+
+        // Hazard announcers: both ride the master auto-announce; turbulence is
+        // AS-sourced so it additionally needs the AS switch. Hiding never resets
+        // the stored value (ApplyTo reads the checkboxes regardless).
+        bool master = _weatherAutoAnnounce.Checked;
+        _announceTurbulence.Visible = master && _activeSkyEnabled.Checked;
+        _announceIcing.Visible = master;
     }
 
     private GroupBox BuildActiveSkyGroup()
@@ -116,7 +125,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         {
             Text = "Announcements",
             Location = new System.Drawing.Point(12, 0),
-            Size = new System.Drawing.Size(460, 230),
+            Size = new System.Drawing.Size(460, 302),
             AccessibleName = "Weather announcements",
             AccessibleDescription = "Weather and advisory auto-announcement settings",
         };
@@ -130,10 +139,31 @@ public class WeatherPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Automatically announce when entering or leaving clouds and when precipitation starts or stops"
         };
 
+        _announceTurbulence = new CheckBox
+        {
+            Text = "Announce &turbulence changes",
+            Location = new System.Drawing.Point(12, 60),
+            Size = new System.Drawing.Size(420, 24),
+            AccessibleName = "Announce turbulence changes",
+            AccessibleDescription = "Announce entering, worsening, easing and smooth-air turbulence "
+                + "transitions from ActiveSky. Applies only while auto-announce weather is enabled; "
+                + "requires ActiveSky."
+        };
+
+        _announceIcing = new CheckBox
+        {
+            Text = "Announce &icing",
+            Location = new System.Drawing.Point(12, 96),
+            Size = new System.Drawing.Size(420, 24),
+            AccessibleName = "Announce icing",
+            AccessibleDescription = "Announce when ice starts accumulating on the airframe and when "
+                + "it clears. Applies only while auto-announce weather is enabled."
+        };
+
         _sigmetAlerts = new CheckBox
         {
             Text = "Auto-announce approaching &SIGMETs and AIRMETs",
-            Location = new System.Drawing.Point(12, 60),
+            Location = new System.Drawing.Point(12, 132),
             Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Auto-announce approaching SIGMETs and AIRMETs",
             AccessibleDescription = "Announce when the aircraft enters the proximity range of an active SIGMET or AIRMET"
@@ -142,7 +172,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         _pirepAlerts = new CheckBox
         {
             Text = "Auto-announce approaching pilot reports (&PIREPs)",
-            Location = new System.Drawing.Point(12, 96),
+            Location = new System.Drawing.Point(12, 168),
             Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Auto-announce approaching PIREPs",
             AccessibleDescription = "Announce when the aircraft enters the proximity range of a significant pilot report of turbulence or icing"
@@ -151,14 +181,14 @@ public class WeatherPanel : UserControl, ISettingsPanel
         var rangeLabel = new Label
         {
             Text = "&Proximity range (nautical miles):",
-            Location = new System.Drawing.Point(12, 138),
+            Location = new System.Drawing.Point(12, 210),
             Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Proximity range label"
         };
 
         _proximityRange = new NumericUpDown
         {
-            Location = new System.Drawing.Point(270, 134),
+            Location = new System.Drawing.Point(270, 206),
             Size = new System.Drawing.Size(80, 24),
             Minimum = 10,
             Maximum = 500,
@@ -169,14 +199,14 @@ public class WeatherPanel : UserControl, ISettingsPanel
         _weatherIntervalLabel = new Label
         {
             Text = "Weather announcement &interval:",
-            Location = new System.Drawing.Point(12, 178),
+            Location = new System.Drawing.Point(12, 250),
             Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Weather announcement interval label"
         };
 
         _weatherIntervalCombo = new ComboBox
         {
-            Location = new System.Drawing.Point(12, 202),
+            Location = new System.Drawing.Point(12, 274),
             Size = new System.Drawing.Size(338, 24),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Weather announcement interval",
@@ -189,7 +219,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
         group.Controls.AddRange(new Control[]
         {
-            _weatherAutoAnnounce, _sigmetAlerts, _pirepAlerts,
+            _weatherAutoAnnounce, _announceTurbulence, _announceIcing, _sigmetAlerts, _pirepAlerts,
             rangeLabel, _proximityRange,
             _weatherIntervalLabel, _weatherIntervalCombo
         });
@@ -209,6 +239,8 @@ public class WeatherPanel : UserControl, ISettingsPanel
         _activeSkyEnabled.Checked = settings.ActiveSkyEnabled;
 
         _weatherAutoAnnounce.Checked = settings.WeatherAutoAnnounceEnabled;
+        _announceTurbulence.Checked = settings.AnnounceTurbulenceEnabled;
+        _announceIcing.Checked = settings.AnnounceIcingEnabled;
         _sigmetAlerts.Checked = settings.SigmetProximityAlertsEnabled;
         _pirepAlerts.Checked = settings.PirepProximityAlertsEnabled;
         _proximityRange.Value = Math.Clamp(settings.SigmetProximityRangeNm, 10, 500);
@@ -229,6 +261,8 @@ public class WeatherPanel : UserControl, ISettingsPanel
         settings.ActiveSkyEnabled = _activeSkyEnabled.Checked;
 
         settings.WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked;
+        settings.AnnounceTurbulenceEnabled = _announceTurbulence.Checked;
+        settings.AnnounceIcingEnabled = _announceIcing.Checked;
         settings.WeatherAutoAnnounceIntervalMinutes = IntervalChoicesMinutes[
             Math.Clamp(_weatherIntervalCombo.SelectedIndex, 0, IntervalChoicesMinutes.Length - 1)];
         settings.SigmetProximityAlertsEnabled = _sigmetAlerts.Checked;

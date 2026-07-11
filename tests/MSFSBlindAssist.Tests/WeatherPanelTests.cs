@@ -193,4 +193,74 @@ public class WeatherPanelTests : IDisposable
         Assert.NotNull(label);
         Assert.Equal("ActiveSky status: disabled in settings", label!.Text);
     }
+
+    [Fact]
+    public void RoundTrip_PreservesHazardAnnouncementSettings()
+    {
+        var source = new UserSettings
+        {
+            AnnounceTurbulenceEnabled = false,
+            AnnounceIcingEnabled = false,
+        };
+
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(source);
+        var target = new UserSettings();
+        panel.ApplyTo(target);
+
+        Assert.False(target.AnnounceTurbulenceEnabled);
+        Assert.False(target.AnnounceIcingEnabled);
+    }
+
+    [Fact]
+    public void HazardDefaults_AreOn()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings());
+        var target = new UserSettings { AnnounceTurbulenceEnabled = false, AnnounceIcingEnabled = false };
+        panel.ApplyTo(target);
+
+        Assert.True(target.AnnounceTurbulenceEnabled);
+        Assert.True(target.AnnounceIcingEnabled);
+    }
+
+    [Fact]
+    public void Turbulence_checkbox_needs_master_and_activesky_icing_needs_master_only()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings());            // both master switches off
+
+        var turb = FindByAccessibleName(panel, "Announce turbulence changes");
+        var icing = FindByAccessibleName(panel, "Announce icing");
+        var master = (CheckBox)FindByAccessibleName(panel, "Auto-announce weather state changes");
+        var asSwitch = (CheckBox)FindByAccessibleName(panel, "Enable ActiveSky integration");
+
+        Assert.False(turb.Visible);
+        Assert.False(icing.Visible);
+
+        master.Checked = true;                          // master only
+        Assert.False(turb.Visible);                     // turbulence still needs AS
+        Assert.True(icing.Visible);
+
+        asSwitch.Checked = true;                        // master + AS
+        Assert.True(turb.Visible);
+        Assert.True(icing.Visible);
+
+        master.Checked = false;                         // master off hides both
+        Assert.False(turb.Visible);
+        Assert.False(icing.Visible);
+    }
+
+    [Fact]
+    public void Hiding_hazard_checkboxes_never_resets_their_values()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings());             // defaults: both true, both hidden
+
+        var target = new UserSettings { AnnounceTurbulenceEnabled = false, AnnounceIcingEnabled = false };
+        panel.ApplyTo(target);                          // hidden ≠ unchecked
+
+        Assert.True(target.AnnounceTurbulenceEnabled);
+        Assert.True(target.AnnounceIcingEnabled);
+    }
 }
