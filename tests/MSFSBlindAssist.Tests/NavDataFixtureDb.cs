@@ -74,9 +74,9 @@ public sealed class NavDataFixtureDb : IDisposable
 CREATE TABLE airport (airport_id INTEGER PRIMARY KEY, ident TEXT, icao TEXT, lonx REAL, laty REAL, mag_var REAL);
 CREATE TABLE runway (runway_id INTEGER PRIMARY KEY, airport_id INTEGER, primary_end_id INTEGER, secondary_end_id INTEGER);
 CREATE TABLE runway_end (runway_end_id INTEGER PRIMARY KEY, name TEXT, lonx REAL, laty REAL);
-CREATE TABLE waypoint (ident TEXT, name TEXT, region TEXT, type TEXT, arinc_type TEXT, lonx REAL, laty REAL);
-CREATE TABLE vor (ident TEXT, region TEXT, lonx REAL, laty REAL);
-CREATE TABLE ndb (ident TEXT, region TEXT, lonx REAL, laty REAL);
+CREATE TABLE waypoint (ident TEXT, name TEXT, region TEXT, type TEXT, arinc_type TEXT, lonx REAL, laty REAL, mag_var REAL);
+CREATE TABLE vor (ident TEXT, region TEXT, lonx REAL, laty REAL, mag_var REAL);
+CREATE TABLE ndb (ident TEXT, region TEXT, lonx REAL, laty REAL, mag_var REAL);
 CREATE TABLE approach (approach_id INTEGER PRIMARY KEY, airport_ident TEXT, type TEXT, runway_name TEXT, suffix TEXT, fix_ident TEXT, arinc_name TEXT);
 CREATE TABLE approach_leg (
     approach_leg_id INTEGER PRIMARY KEY, approach_id INTEGER, fix_ident TEXT, fix_region TEXT,
@@ -84,7 +84,7 @@ CREATE TABLE approach_leg (
     speed_limit INTEGER, speed_limit_type TEXT, course REAL, distance REAL, is_flyover INTEGER,
     turn_direction TEXT, rnp REAL, vertical_angle REAL, time REAL, theta REAL, rho REAL,
     is_true_course INTEGER, arinc_descr_code TEXT, approach_fix_type TEXT, is_missed INTEGER,
-    fix_type TEXT, fix_airport_ident TEXT, recommended_fix_ident TEXT
+    fix_type TEXT, fix_airport_ident TEXT, recommended_fix_ident TEXT, recommended_fix_region TEXT
 );
 CREATE TABLE transition (transition_id INTEGER PRIMARY KEY, approach_id INTEGER, fix_ident TEXT, type TEXT);
 CREATE TABLE transition_leg (
@@ -93,7 +93,7 @@ CREATE TABLE transition_leg (
     speed_limit INTEGER, speed_limit_type TEXT, course REAL, distance REAL, is_flyover INTEGER,
     turn_direction TEXT, rnp REAL, vertical_angle REAL, time REAL, theta REAL, rho REAL,
     is_true_course INTEGER, arinc_descr_code TEXT, approach_fix_type TEXT,
-    fix_type TEXT, fix_airport_ident TEXT, recommended_fix_ident TEXT
+    fix_type TEXT, fix_airport_ident TEXT, recommended_fix_ident TEXT, recommended_fix_region TEXT
 );";
         using var cmd = _writeConnection!.CreateCommand();
         cmd.CommandText = sql;
@@ -132,16 +132,16 @@ CREATE TABLE transition_leg (
             ("runway_end_id", runwayEndId), ("name", name), ("lonx", lonx), ("laty", laty));
 
     public void InsertWaypoint(string ident, string? name = null, string? region = null,
-        string type = "RNAV", string? arincType = null, double lonx = 0, double laty = 0)
+        string type = "RNAV", string? arincType = null, double lonx = 0, double laty = 0, double? magVar = null)
         => Insert("waypoint",
             ("ident", ident), ("name", name), ("region", region), ("type", type),
-            ("arinc_type", arincType), ("lonx", lonx), ("laty", laty));
+            ("arinc_type", arincType), ("lonx", lonx), ("laty", laty), ("mag_var", magVar));
 
-    public void InsertVor(string ident, string? region = null, double lonx = 0, double laty = 0)
-        => Insert("vor", ("ident", ident), ("region", region), ("lonx", lonx), ("laty", laty));
+    public void InsertVor(string ident, string? region = null, double lonx = 0, double laty = 0, double? magVar = null)
+        => Insert("vor", ("ident", ident), ("region", region), ("lonx", lonx), ("laty", laty), ("mag_var", magVar));
 
-    public void InsertNdb(string ident, string? region = null, double lonx = 0, double laty = 0)
-        => Insert("ndb", ("ident", ident), ("region", region), ("lonx", lonx), ("laty", laty));
+    public void InsertNdb(string ident, string? region = null, double lonx = 0, double laty = 0, double? magVar = null)
+        => Insert("ndb", ("ident", ident), ("region", region), ("lonx", lonx), ("laty", laty), ("mag_var", magVar));
 
     public void InsertApproach(int approachId, string airportIdent, string type,
         string? runwayName = null, string? suffix = null, string? fixIdent = null, string? arincName = null)
@@ -156,7 +156,8 @@ CREATE TABLE transition_leg (
         bool isFlyover = false, string? turnDirection = null, double? rnp = null, double? verticalAngle = null,
         double? time = null, double? theta = null, double? rho = null, bool isTrueCourse = false,
         string? arincDescrCode = null, string? approachFixType = null, bool isMissed = false,
-        string? fixType = null, string? fixAirportIdent = null, string? recommendedFixIdent = null)
+        string? fixType = null, string? fixAirportIdent = null, string? recommendedFixIdent = null,
+        string? recommendedFixRegion = null)
         => Insert("approach_leg",
             ("approach_leg_id", legId), ("approach_id", approachId),
             ("fix_ident", fixIdent), ("fix_region", fixRegion), ("fix_lonx", fixLonx), ("fix_laty", fixLaty),
@@ -165,7 +166,8 @@ CREATE TABLE transition_leg (
             ("is_flyover", isFlyover ? 1 : 0), ("turn_direction", turnDirection), ("rnp", rnp), ("vertical_angle", verticalAngle),
             ("time", time), ("theta", theta), ("rho", rho), ("is_true_course", isTrueCourse ? 1 : 0),
             ("arinc_descr_code", arincDescrCode), ("approach_fix_type", approachFixType), ("is_missed", isMissed ? 1 : 0),
-            ("fix_type", fixType), ("fix_airport_ident", fixAirportIdent), ("recommended_fix_ident", recommendedFixIdent));
+            ("fix_type", fixType), ("fix_airport_ident", fixAirportIdent), ("recommended_fix_ident", recommendedFixIdent),
+            ("recommended_fix_region", recommendedFixRegion));
 
     public void InsertTransition(int transitionId, int approachId, string? fixIdent = null, string? type = null)
         => Insert("transition",
@@ -178,7 +180,8 @@ CREATE TABLE transition_leg (
         bool isFlyover = false, string? turnDirection = null, double? rnp = null, double? verticalAngle = null,
         double? time = null, double? theta = null, double? rho = null, bool isTrueCourse = false,
         string? arincDescrCode = null, string? approachFixType = null,
-        string? fixType = null, string? fixAirportIdent = null, string? recommendedFixIdent = null)
+        string? fixType = null, string? fixAirportIdent = null, string? recommendedFixIdent = null,
+        string? recommendedFixRegion = null)
         => Insert("transition_leg",
             ("transition_leg_id", legId), ("transition_id", transitionId),
             ("fix_ident", fixIdent), ("fix_region", fixRegion), ("fix_lonx", fixLonx), ("fix_laty", fixLaty),
@@ -187,5 +190,6 @@ CREATE TABLE transition_leg (
             ("is_flyover", isFlyover ? 1 : 0), ("turn_direction", turnDirection), ("rnp", rnp), ("vertical_angle", verticalAngle),
             ("time", time), ("theta", theta), ("rho", rho), ("is_true_course", isTrueCourse ? 1 : 0),
             ("arinc_descr_code", arincDescrCode), ("approach_fix_type", approachFixType),
-            ("fix_type", fixType), ("fix_airport_ident", fixAirportIdent), ("recommended_fix_ident", recommendedFixIdent));
+            ("fix_type", fixType), ("fix_airport_ident", fixAirportIdent), ("recommended_fix_ident", recommendedFixIdent),
+            ("recommended_fix_region", recommendedFixRegion));
 }

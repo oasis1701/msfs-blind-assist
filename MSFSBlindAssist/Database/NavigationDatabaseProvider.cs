@@ -662,7 +662,7 @@ public class NavigationDatabaseProvider
                              altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                              course, distance, is_flyover, turn_direction, rnp, vertical_angle,
                              time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                             is_missed, fix_type, fix_airport_ident, recommended_fix_ident
+                             is_missed, fix_type, fix_airport_ident, recommended_fix_ident, recommended_fix_region
                       FROM approach_leg
                       WHERE approach_id = @approachId
                       ORDER BY approach_leg_id";
