@@ -1239,10 +1239,17 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // unindexed reads could never see an RA. Continuous (batch path — the proven
         // transport for colon-indexed L:vars, same as A32NX_AUTOTHRUST_TLA:n); cached
         // silently in ProcessSimVarUpdate and spoken as composed RA guidance.
-        MonNum("A32NX_TCAS_VSPEED_GREEN:1", "TCAS target vertical speed minimum", "feet per minute");
-        MonNum("A32NX_TCAS_VSPEED_GREEN:2", "TCAS target vertical speed maximum", "feet per minute");
-        MonNum("A32NX_TCAS_VSPEED_RED:1", "TCAS avoid vertical speed minimum", "feet per minute");
-        MonNum("A32NX_TCAS_VSPEED_RED:2", "TCAS avoid vertical speed maximum", "feet per minute");
+        // ⚠️ Units MUST be "number" (raw), NEVER "feet per minute": FBW already stores
+        // these bands in fpm (RA_VARIANTS green/red use MAX_VS/MIN_VS = ±6000 fpm), but
+        // these L:vars are written unitless ('Number'), so the SimConnect data-def read
+        // path treats a velocity unit's native as m/s and multiplies by 196.85 —
+        // e.g. a 1500-fpm climb target read as "feet per minute" spoke "295276" (the
+        // reported garbage RA numbers). Read raw; the "feet per minute" LABEL is
+        // hardcoded in TcasRaGuidance.Compose + the :1 display overrides.
+        MonNum("A32NX_TCAS_VSPEED_GREEN:1", "TCAS target vertical speed minimum");
+        MonNum("A32NX_TCAS_VSPEED_GREEN:2", "TCAS target vertical speed maximum");
+        MonNum("A32NX_TCAS_VSPEED_RED:1", "TCAS avoid vertical speed minimum");
+        MonNum("A32NX_TCAS_VSPEED_RED:2", "TCAS avoid vertical speed maximum");
         // RA detail (plain unindexed L:vars): corrective flag, up/down advisory status
         // (0 none, 1 climb/descend, 2 don't, 3/4/5 don't >500/1000/2000 fpm) and the
         // rate to maintain — together these compose the spoken "what to fly" guidance
@@ -1250,7 +1257,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         MonNum("A32NX_TCAS_RA_CORRECTIVE", "TCAS RA corrective");
         MonNum("A32NX_TCAS_RA_UP_ADVISORY_STATUS", "TCAS RA up advisory");
         MonNum("A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", "TCAS RA down advisory");
-        MonNum("A32NX_TCAS_RA_RATE_TO_MAINTAIN", "TCAS RA rate to maintain", "feet per minute");
+        // Rate-to-maintain is likewise stored in fpm (RA_VARIANTS rateToMaintain = 0/±1500/±2500);
+        // "number" (raw) for the same ×196.85 reason as the VSPEED bands above.
+        MonNum("A32NX_TCAS_RA_RATE_TO_MAINTAIN", "TCAS RA rate to maintain");
         // Managed / preselected target speeds + selected V/S + expedite + flight directors.
         // Decoded in TryGetDisplayOverride (none / knots / mach / fpm). Preselect = -1 when unset.
         Read("A32NX_SPEEDS_MANAGED_PFD", "Managed speed", "knots");
