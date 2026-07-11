@@ -382,6 +382,15 @@ class Program
         "COMM_annunCALL",
         // Airstair door state (interior-controls probe)
         "DOOR_annunAIRSTAIR",
+        // Fire panel OVHT/FIRE detection test (FO fire-test probe)
+        "FIRE_DetTestSw",             // byte: 0=FAULT/INOP?  1=neutral  2=OVHT/FIRE?
+        "WARN_annunFIRE_WARN",        // 2-element bool[]: master FIRE WARN lights
+        "WARN_annunOVHT_DET",
+        "FIRE_HandleIlluminated",     // 3-element bool[]: Eng1, APU, Eng2 handle lights
+        "FIRE_annunFAULT",
+        "FIRE_annunAPU_DET_INOP",
+        "FIRE_annunENG_OVERHEAT",     // 2-element bool[]
+        "WARN_annunMASTER_CAUTION",   // 2-element bool[]
     };
 
     static (string, double)[] ExtractFields(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct data)
