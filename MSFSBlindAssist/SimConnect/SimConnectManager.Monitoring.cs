@@ -332,6 +332,34 @@ public partial class SimConnectManager
         }
     }
 
+    // Reference-counted access to the shared VISUAL_GUIDANCE_DATA (req 505) stream. Both Visual
+    // Guidance and the Waypoint Flight Director ride it; they are mutually exclusive today, but
+    // ref-counting guarantees one feature never stops the stream out from under the other (mirrors
+    // the AcquireQuickAccessHotkeys pattern). Prefer Acquire/Release over the raw Start/Stop below.
+    private int _visualGuidanceRefCount = 0;
+    private readonly object _visualGuidanceMonitorLock = new object();
+
+    public void AcquireVisualGuidanceMonitoring()
+    {
+        lock (_visualGuidanceMonitorLock)
+        {
+            if (_visualGuidanceRefCount == 0)
+                StartVisualGuidanceMonitoring();
+            _visualGuidanceRefCount++;
+        }
+    }
+
+    public void ReleaseVisualGuidanceMonitoring()
+    {
+        lock (_visualGuidanceMonitorLock)
+        {
+            if (_visualGuidanceRefCount == 0) return;   // defensive: never go negative
+            _visualGuidanceRefCount--;
+            if (_visualGuidanceRefCount == 0)
+                StopVisualGuidanceMonitoring();
+        }
+    }
+
     // Visual guidance monitoring
     public void StartVisualGuidanceMonitoring()
     {

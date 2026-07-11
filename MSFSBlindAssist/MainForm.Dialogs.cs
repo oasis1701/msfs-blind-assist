@@ -590,7 +590,10 @@ public partial class MainForm
         if (electronicFlightBagForm == null || electronicFlightBagForm.IsDisposed)
         {
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker, settings.SimbriefUsername ?? "");
+            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, settings.SimbriefUsername ?? "");
+            // "Track Slot N" on a route waypoint opens the Track Fix dialog pre-populated (so the
+            // mapped altitude/constraint/course is visible + editable) instead of tracking silently.
+            electronicFlightBagForm.TrackToSlotRequested += OnEfbTrackToSlotRequested;
         }
 
         // Show the form (reuses same instance to preserve flight plan data)
@@ -754,15 +757,31 @@ public partial class MainForm
         hotkeyManager.ExitInputHotkeyMode();
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // Create form if it doesn't exist or has been disposed
+        EnsureTrackFixForm();
+        trackFixForm!.ShowForm();
+    }
+
+    /// <summary>Lazily creates the Track Fix dialog (shared by the Shift+F path and the EFB
+    /// "Track Slot N" pre-fill path).</summary>
+    private void EnsureTrackFixForm()
+    {
         if (trackFixForm == null || trackFixForm.IsDisposed)
         {
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
             string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
             trackFixForm = new TrackFixForm(waypointTracker, simConnectManager, announcer, navigationDatabasePath);
         }
+    }
 
-        // Show the form
-        trackFixForm.ShowForm();
+    /// <summary>EFB "Track Slot N" → open the Track Fix dialog pre-populated with the fix, slot, and its
+    /// mapped altitude constraint + course, so the pilot reviews/edits before committing (the constraint
+    /// is then visible and editable, unlike a silent direct-track).</summary>
+    private void OnEfbTrackToSlotRequested(Database.Models.WaypointFix fix, int slotNumber)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        EnsureTrackFixForm();
+        trackFixForm!.ShowFormPrefilled(fix, slotNumber);
     }
 }

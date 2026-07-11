@@ -543,6 +543,10 @@ public partial class SimConnectManager
         // TypicalApproachAoaDeg estimate. With autothrust holding Vref this is a near-constant;
         // gusts and configuration changes shift it transiently.
         public double AlphaRadians;
+        // Autopilot master engaged (0/1). Consumed only by the Waypoint Flight Director for its
+        // optional AP auto-mute (silence the FD tones while the AP is flying). VG ignores it.
+        // MUST stay the LAST field so existing field offsets are unchanged.
+        public double AutopilotMaster;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

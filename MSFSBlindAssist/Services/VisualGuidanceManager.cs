@@ -31,6 +31,14 @@ public class VisualGuidanceManager : IDisposable
     private AudioToneGenerator? desiredAttitudeTone;  // PID-commanded attitude
     private AudioToneGenerator? currentAttitudeTone;  // Aircraft's actual attitude (follower; matched by ear)
     private HandFlyWaveType guidanceWaveType = HandFlyWaveType.Triangle;
+    // Optional "centered tone change" (off by default). While laterally centered (|commanded bank|
+    // within the deadband) the desired tone switches to centeredToneWaveType, and back to
+    // guidanceWaveType off-centre — an extra timbre cue for centered vs not. Only the desired tone
+    // changes, so it stays distinct from the current tone (no phase-cancel at the matched state).
+    private bool centeredToneEnabled;
+    private HandFlyWaveType centeredToneWaveType = HandFlyWaveType.Square;
+    private HandFlyWaveType appliedDesiredWave = HandFlyWaveType.Triangle;
+    private const double CenteredToneDeadbandDeg = 1.5;
     private double guidanceVolume = 0.05; // Default 5%
     private HandFlyWaveType currentToneWaveType = HandFlyWaveType.Sine;
     private double currentToneVolume = 0.05;
@@ -267,7 +275,9 @@ public class VisualGuidanceManager : IDisposable
                           HandFlyWaveType guidanceToneWaveform, double toneVolume,
                           HandFlyWaveType currentToneWaveform, double currentToneVol,
                           bool hardPan,
-                          VisualGuidanceProfile profile)
+                          VisualGuidanceProfile profile,
+                          bool centeredToneOn = false,
+                          HandFlyWaveType centeredWave = HandFlyWaveType.Square)
     {
         // Defensive: if Initialize is called twice without an intervening Stop
         // (Toggle's flow guarantees Stop runs first today, but a future caller
@@ -285,6 +295,9 @@ public class VisualGuidanceManager : IDisposable
         currentToneWaveType = currentToneWaveform;
         currentToneVolume = currentToneVol;
         hardPanTone = hardPan;
+        centeredToneEnabled = centeredToneOn;
+        centeredToneWaveType = centeredWave;
+        appliedDesiredWave = guidanceToneWaveform;
         magneticVariation = destinationAirport.MagVar;
         // Prefer the runway end's own elevation (runway_end.altitude) over the airport's
         // published field elevation — matters at airports with sloped runways or different
@@ -623,6 +636,19 @@ public class VisualGuidanceManager : IDisposable
             {
                 desiredAttitudeTone.UpdatePitch(desiredPitch);
                 ApplyBank(desiredAttitudeTone, desiredBank);
+
+                // Optional centered tone change: swap the desired tone's waveform while laterally
+                // centered (commanded bank within the deadband) and back off-centre. No-op when off.
+                if (centeredToneEnabled)
+                {
+                    HandFlyWaveType want = Math.Abs(desiredBank) <= CenteredToneDeadbandDeg
+                        ? centeredToneWaveType : guidanceWaveType;
+                    if (want != appliedDesiredWave)
+                    {
+                        desiredAttitudeTone.UpdateWaveType(want);
+                        appliedDesiredWave = want;
+                    }
+                }
             }
 
             // Update current (actual) attitude tone — same Hz / pan mappings, so frequency match

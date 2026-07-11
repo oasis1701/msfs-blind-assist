@@ -58,6 +58,17 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private CheckBox legacyTakeoffCheckBox = null!;
     private CheckBox enableCalloutsCheckBox = null!;
     private CheckBox autoActivateOnLineupCheckBox = null!;
+    // Waypoint Flight Director (en-route hand-fly) tone options + slip cue volume.
+    private Label fdSectionLabel = null!;
+    private Label fdToneLabel = null!; private ComboBox fdToneCombo = null!;
+    private Label fdVolumeLabel = null!; private TrackBar fdVolumeTrackBar = null!; private Label fdVolumeValueLabel = null!;
+    private Label fdCurrentToneLabel = null!; private ComboBox fdCurrentToneCombo = null!;
+    private Label fdCurrentVolumeLabel = null!; private TrackBar fdCurrentVolumeTrackBar = null!; private Label fdCurrentVolumeValueLabel = null!;
+    private CheckBox fdHardPanCheckBox = null!;
+    private CheckBox fdApMuteCheckBox = null!;
+    private CheckBox fdCenteredCheckBox = null!;
+    private Label fdCenteredWaveLabel = null!; private ComboBox fdCenteredWaveCombo = null!;
+    private Label slipVolumeLabel = null!; private TrackBar slipVolumeTrackBar = null!; private Label slipVolumeValueLabel = null!;
     private CheckBox handFlyAutoActivateOnTakeoffCheckBox = null!;
 
     private AudioToneGenerator? testToneGenerator;
@@ -493,13 +504,40 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, Takeoff Assist activates automatically when taxi guidance reaches a stable runway lineup, so you don't have to press control T. One-shot per route: if you disable Takeoff Assist after it auto-activates, it won't re-engage until the next taxi route."
         };
 
-        // Auto-Activate Hand Fly on Takeoff Checkbox — completes the
-        // taxi → Takeoff Assist → Hand Fly hands-free chain.
+        // ── Waypoint Flight Director (en-route hand-fly) tone options ──────────
+        fdSectionLabel = new Label { Text = "Waypoint Flight Director (en-route to tracked fixes):", Location = new Point(20, 900), Size = new Size(500, 20), AccessibleName = "Waypoint Flight Director section" };
+        fdToneLabel = new Label { Text = "FD target tone type:", Location = new Point(20, 928), Size = new Size(250, 20), AccessibleName = "FD target tone type Label" };
+        fdToneCombo = new ComboBox { Location = new Point(280, 926), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD target tone type" };
+        fdToneCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
+        fdVolumeLabel = new Label { Text = "FD target volume:", Location = new Point(20, 958), Size = new Size(150, 20), AccessibleName = "FD target volume Label" };
+        fdVolumeTrackBar = new TrackBar { Location = new Point(180, 953), Size = new Size(250, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "FD target volume", AccessibleDescription = "Volume of the Flight Director target tone, 0 to 100 percent" };
+        fdVolumeValueLabel = new Label { Text = "5%", Location = new Point(435, 958), Size = new Size(45, 20), AccessibleName = "FD target volume value" };
+        fdVolumeTrackBar.ValueChanged += (_, _) => fdVolumeValueLabel.Text = fdVolumeTrackBar.Value + "%";
+        fdCurrentToneLabel = new Label { Text = "FD current-attitude tone type:", Location = new Point(20, 1000), Size = new Size(250, 20), AccessibleName = "FD current tone type Label" };
+        fdCurrentToneCombo = new ComboBox { Location = new Point(280, 998), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD current-attitude tone type" };
+        fdCurrentToneCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
+        fdCurrentVolumeLabel = new Label { Text = "FD current volume:", Location = new Point(20, 1030), Size = new Size(150, 20), AccessibleName = "FD current volume Label" };
+        fdCurrentVolumeTrackBar = new TrackBar { Location = new Point(180, 1025), Size = new Size(250, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "FD current volume", AccessibleDescription = "Volume of the Flight Director current-attitude tone, 0 to 100 percent" };
+        fdCurrentVolumeValueLabel = new Label { Text = "5%", Location = new Point(435, 1030), Size = new Size(45, 20), AccessibleName = "FD current volume value" };
+        fdCurrentVolumeTrackBar.ValueChanged += (_, _) => fdCurrentVolumeValueLabel.Text = fdCurrentVolumeTrackBar.Value + "%";
+        fdHardPanCheckBox = new CheckBox { Text = "Hard-pan the FD tone (snap fully left/right instead of proportional)", Location = new Point(20, 1072), Size = new Size(460, 25), AccessibleName = "Hard-pan the Flight Director tone" };
+        fdApMuteCheckBox = new CheckBox { Text = "Auto-mute FD tones while the autopilot is engaged", Location = new Point(20, 1100), Size = new Size(460, 25), AccessibleName = "Auto-mute Flight Director tones while autopilot engaged" };
+        fdCenteredCheckBox = new CheckBox { Text = "Play a centered tone change when on target", Location = new Point(20, 1128), Size = new Size(460, 25), AccessibleName = "Play a centered tone change on target" };
+        fdCenteredWaveLabel = new Label { Text = "Centered tone type:", Location = new Point(20, 1156), Size = new Size(250, 20), AccessibleName = "FD centered tone type Label" };
+        fdCenteredWaveCombo = new ComboBox { Location = new Point(280, 1154), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD centered tone type" };
+        fdCenteredWaveCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
+        slipVolumeLabel = new Label { Text = "Slip cue volume (Ctrl+K):", Location = new Point(20, 1188), Size = new Size(160, 20), AccessibleName = "Slip cue volume Label" };
+        slipVolumeTrackBar = new TrackBar { Location = new Point(190, 1183), Size = new Size(240, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "Slip cue volume", AccessibleDescription = "Volume of the rudder-coordination slip cue, 0 to 100 percent" };
+        slipVolumeValueLabel = new Label { Text = "20%", Location = new Point(435, 1188), Size = new Size(45, 20), AccessibleName = "Slip cue volume value" };
+        slipVolumeTrackBar.ValueChanged += (_, _) => slipVolumeValueLabel.Text = slipVolumeTrackBar.Value + "%";
+        // Auto-Activate Hand Fly on Takeoff Checkbox — completes the taxi → Takeoff Assist →
+        // Hand Fly hands-free chain. Placed BELOW the Waypoint FD section (y 900–1188) to
+        // avoid overlapping it (the panel AutoScrolls).
         handFlyAutoActivateOnTakeoffCheckBox = new CheckBox
         {
             Text = "Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)",
-            Location = new Point(20, 890),
-            Size = new Size(450, 25),
+            Location = new Point(20, 1235),
+            Size = new Size(460, 25),
             AccessibleName = "Auto-activate Hand Fly on takeoff",
             AccessibleDescription = "When enabled, shortly after the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. If you already activated Hand Fly yourself, only Takeoff Assist is turned off. Liftoffs without Takeoff Assist are unaffected."
         };
@@ -520,6 +558,10 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             muteCenterlineCheckBox, steerTowardToneCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
             legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
+            fdSectionLabel, fdToneLabel, fdToneCombo, fdVolumeLabel, fdVolumeTrackBar, fdVolumeValueLabel,
+            fdCurrentToneLabel, fdCurrentToneCombo, fdCurrentVolumeLabel, fdCurrentVolumeTrackBar, fdCurrentVolumeValueLabel,
+            fdHardPanCheckBox, fdApMuteCheckBox, fdCenteredCheckBox, fdCenteredWaveLabel, fdCenteredWaveCombo,
+            slipVolumeLabel, slipVolumeTrackBar, slipVolumeValueLabel,
             handFlyAutoActivateOnTakeoffCheckBox
         });
 
@@ -761,6 +803,19 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         autoActivateOnLineupCheckBox.Checked = settings.TakeoffAssistAutoActivateOnLineup;
         handFlyAutoActivateOnTakeoffCheckBox.Checked = settings.HandFlyAutoActivateOnTakeoff;
 
+        fdToneCombo.SelectedIndex = (int)settings.WaypointFdToneWaveform;
+        fdVolumeTrackBar.Value = (int)(settings.WaypointFdToneVolume * 100);
+        fdVolumeValueLabel.Text = $"{fdVolumeTrackBar.Value}%";
+        fdCurrentToneCombo.SelectedIndex = (int)settings.WaypointFdCurrentToneWaveform;
+        fdCurrentVolumeTrackBar.Value = (int)(settings.WaypointFdCurrentToneVolume * 100);
+        fdCurrentVolumeValueLabel.Text = $"{fdCurrentVolumeTrackBar.Value}%";
+        fdHardPanCheckBox.Checked = settings.WaypointFdHardPanTone;
+        fdApMuteCheckBox.Checked = settings.WaypointFdApAutoMute;
+        fdCenteredCheckBox.Checked = settings.WaypointFdCenteredToneEnabled;
+        fdCenteredWaveCombo.SelectedIndex = (int)settings.WaypointFdCenteredToneWaveform;
+        slipVolumeTrackBar.Value = (int)(settings.SlipCueVolume * 100);
+        slipVolumeValueLabel.Text = $"{slipVolumeTrackBar.Value}%";
+
         UpdateControlStates();
     }
 
@@ -796,6 +851,15 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         settings.TakeoffAssistLegacyMode = legacyTakeoffCheckBox.Checked;
         settings.TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
         settings.TakeoffAssistAutoActivateOnLineup = autoActivateOnLineupCheckBox.Checked;
+        settings.WaypointFdToneWaveform = (HandFlyWaveType)fdToneCombo.SelectedIndex;
+        settings.WaypointFdToneVolume = fdVolumeTrackBar.Value / 100.0;
+        settings.WaypointFdCurrentToneWaveform = (HandFlyWaveType)fdCurrentToneCombo.SelectedIndex;
+        settings.WaypointFdCurrentToneVolume = fdCurrentVolumeTrackBar.Value / 100.0;
+        settings.WaypointFdHardPanTone = fdHardPanCheckBox.Checked;
+        settings.WaypointFdApAutoMute = fdApMuteCheckBox.Checked;
+        settings.WaypointFdCenteredToneEnabled = fdCenteredCheckBox.Checked;
+        settings.WaypointFdCenteredToneWaveform = (HandFlyWaveType)fdCenteredWaveCombo.SelectedIndex;
+        settings.SlipCueVolume = slipVolumeTrackBar.Value / 100.0;
         settings.HandFlyAutoActivateOnTakeoff = handFlyAutoActivateOnTakeoffCheckBox.Checked;
     }
 

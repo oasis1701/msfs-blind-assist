@@ -55,6 +55,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
+    // Waypoint Flight Director: A320neo uses the baseline profile (narrowbody, agile roll).
+    // Explicit override for discoverability; values equal BaseAircraftDefinition's defaults.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+
     // Helper for fault annunciators: auto-announce-only (Continuous + IsAnnounced),
     // Normal/Fault, not placed in any panel list (faults aren't navigable controls —
     // mirrors the A380 ReadEnum-fault pattern; surfaced via change-announce + Ctrl+M).

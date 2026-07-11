@@ -77,6 +77,34 @@ public class UserSettings
         // generally do not need this. Default OFF.
         public bool VisualGuidanceHardPanTone { get; set; } = false;
 
+        // Visual Guidance — optional "centered tone change". Off by default (behaviour unchanged).
+        // When on, the desired tone switches to CenteredToneWaveform while you're laterally centered
+        // (on the localizer / commanded bank ~0) and back to its normal waveform when off — an extra
+        // timbre cue for centered vs not, on top of the stereo pan.
+        public bool VisualGuidanceCenteredToneEnabled { get; set; } = false;
+        public HandFlyWaveType VisualGuidanceCenteredToneWaveform { get; set; } = HandFlyWaveType.Square;
+
+        // Waypoint Flight Director Settings (en-route hand-fly to the 5 tracked Shift+F slots).
+        // Same dual-tone idiom as Visual Guidance: desired (commanded) vs current (actual) attitude;
+        // pilot zero-beats them. Defaults mirror Visual Guidance so the two features sound alike.
+        public HandFlyWaveType WaypointFdToneWaveform { get; set; } = HandFlyWaveType.Triangle;
+        public double WaypointFdToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+        public HandFlyWaveType WaypointFdCurrentToneWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double WaypointFdCurrentToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+        public bool WaypointFdHardPanTone { get; set; } = false;
+        // When ON, the FD tones go silent while the autopilot master is engaged and resume when it
+        // disengages — so the pilot hand-flies with the FD, engages the AP for cruise, and the tone
+        // steps aside on its own. Default ON.
+        public bool WaypointFdApAutoMute { get; set; } = true;
+
+        // Waypoint Flight Director — optional "centered tone change" (same as Visual Guidance's).
+        // Off by default. When on, the desired tone switches to CenteredToneWaveform while on track.
+        public bool WaypointFdCenteredToneEnabled { get; set; } = false;
+        public HandFlyWaveType WaypointFdCenteredToneWaveform { get; set; } = HandFlyWaveType.Square;
+
+        // Rudder-coordination slip cue (Ctrl+K) — hard-panned white-noise tick volume (0..1).
+        public double SlipCueVolume { get; set; } = 0.2;
+
         // Takeoff Assist Tone Settings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
@@ -446,6 +474,17 @@ public class UserSettings
             VisualGuidanceCurrentToneWaveform = VisualGuidanceCurrentToneWaveform,
             VisualGuidanceCurrentToneVolume = VisualGuidanceCurrentToneVolume,
             VisualGuidanceHardPanTone = VisualGuidanceHardPanTone,
+            VisualGuidanceCenteredToneEnabled = VisualGuidanceCenteredToneEnabled,
+            VisualGuidanceCenteredToneWaveform = VisualGuidanceCenteredToneWaveform,
+            WaypointFdToneWaveform = WaypointFdToneWaveform,
+            WaypointFdToneVolume = WaypointFdToneVolume,
+            WaypointFdCurrentToneWaveform = WaypointFdCurrentToneWaveform,
+            WaypointFdCurrentToneVolume = WaypointFdCurrentToneVolume,
+            WaypointFdHardPanTone = WaypointFdHardPanTone,
+            WaypointFdApAutoMute = WaypointFdApAutoMute,
+            WaypointFdCenteredToneEnabled = WaypointFdCenteredToneEnabled,
+            WaypointFdCenteredToneWaveform = WaypointFdCenteredToneWaveform,
+            SlipCueVolume = SlipCueVolume,
             TakeoffAssistToneWaveform = TakeoffAssistToneWaveform,
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,

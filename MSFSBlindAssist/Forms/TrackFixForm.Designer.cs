@@ -22,6 +22,14 @@ namespace MSFSBlindAssist.Forms
             waypointTextBox = new TextBox();
             slotLabel = new Label();
             slotComboBox = new ComboBox();
+            crossingAltLabel = new Label();
+            crossingAltTextBox = new TextBox();
+            constraintLabel = new Label();
+            constraintComboBox = new ComboBox();
+            upperAltLabel = new Label();
+            upperAltTextBox = new TextBox();
+            courseLabel = new Label();
+            courseTextBox = new TextBox();
             trackButton = new Button();
 
             // Duplicate resolution controls
@@ -74,12 +82,92 @@ namespace MSFSBlindAssist.Forms
             slotComboBox.SelectedIndex = 0;
 
             //
+            // crossingAltLabel
+            //
+            crossingAltLabel.AutoSize = true;
+            crossingAltLabel.Location = new Point(20, 140);
+            crossingAltLabel.Name = "crossingAltLabel";
+            crossingAltLabel.Size = new Size(250, 15);
+            crossingAltLabel.TabIndex = 4;
+            crossingAltLabel.Text = "Crossing Altitude (feet MSL, optional):";
+
+            //
+            // crossingAltTextBox
+            //
+            crossingAltTextBox.Location = new Point(20, 165);
+            crossingAltTextBox.Name = "crossingAltTextBox";
+            crossingAltTextBox.Size = new Size(340, 23);
+            crossingAltTextBox.TabIndex = 5;
+            crossingAltTextBox.AccessibleName = "Crossing Altitude in feet, optional, for the Flight Director vertical guidance";
+
+            //
+            // constraintLabel
+            //
+            constraintLabel.AutoSize = true;
+            constraintLabel.Location = new Point(20, 200);
+            constraintLabel.Name = "constraintLabel";
+            constraintLabel.Size = new Size(150, 15);
+            constraintLabel.TabIndex = 6;
+            constraintLabel.Text = "Altitude Constraint:";
+
+            //
+            // constraintComboBox
+            //
+            constraintComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            constraintComboBox.FormattingEnabled = true;
+            constraintComboBox.Items.AddRange(new object[] { "None", "At", "At or above", "At or below", "Between" });
+            constraintComboBox.Location = new Point(20, 225);
+            constraintComboBox.Name = "constraintComboBox";
+            constraintComboBox.Size = new Size(340, 23);
+            constraintComboBox.TabIndex = 7;
+            constraintComboBox.AccessibleName = "Altitude Constraint type";
+            constraintComboBox.SelectedIndex = 0;
+
+            //
+            // upperAltLabel
+            //
+            upperAltLabel.AutoSize = true;
+            upperAltLabel.Location = new Point(20, 260);
+            upperAltLabel.Name = "upperAltLabel";
+            upperAltLabel.Size = new Size(280, 15);
+            upperAltLabel.TabIndex = 8;
+            upperAltLabel.Text = "Upper Altitude (feet MSL, for Between):";
+
+            //
+            // upperAltTextBox
+            //
+            upperAltTextBox.Location = new Point(20, 285);
+            upperAltTextBox.Name = "upperAltTextBox";
+            upperAltTextBox.Size = new Size(340, 23);
+            upperAltTextBox.TabIndex = 9;
+            upperAltTextBox.AccessibleName = "Upper Altitude in feet, used only for the Between constraint";
+
+            //
+            // courseLabel
+            //
+            courseLabel.AutoSize = true;
+            courseLabel.Location = new Point(20, 320);
+            courseLabel.Name = "courseLabel";
+            courseLabel.Size = new Size(280, 15);
+            courseLabel.TabIndex = 10;
+            courseLabel.Text = "Course to track through fix (magnetic, optional):";
+
+            //
+            // courseTextBox
+            //
+            courseTextBox.Location = new Point(20, 345);
+            courseTextBox.Name = "courseTextBox";
+            courseTextBox.Size = new Size(340, 23);
+            courseTextBox.TabIndex = 11;
+            courseTextBox.AccessibleName = "Course to track through the fix in magnetic degrees, optional. Leave blank to fly direct to the fix; set it to capture and hold this course or radial through the fix.";
+
+            //
             // trackButton
             //
-            trackButton.Location = new Point(20, 145);
+            trackButton.Location = new Point(20, 385);
             trackButton.Name = "trackButton";
             trackButton.Size = new Size(340, 30);
-            trackButton.TabIndex = 4;
+            trackButton.TabIndex = 12;
             trackButton.Text = "Track";
             trackButton.UseVisualStyleBackColor = true;
             trackButton.Click += TrackButton_Click;
@@ -129,11 +217,19 @@ namespace MSFSBlindAssist.Forms
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(384, 211);
+            ClientSize = new Size(384, 435);
             Controls.Add(selectButton);
             Controls.Add(duplicateListView);
             Controls.Add(duplicateLabel);
             Controls.Add(trackButton);
+            Controls.Add(courseTextBox);
+            Controls.Add(courseLabel);
+            Controls.Add(upperAltTextBox);
+            Controls.Add(upperAltLabel);
+            Controls.Add(constraintComboBox);
+            Controls.Add(constraintLabel);
+            Controls.Add(crossingAltTextBox);
+            Controls.Add(crossingAltLabel);
             Controls.Add(slotComboBox);
             Controls.Add(slotLabel);
             Controls.Add(waypointTextBox);
@@ -155,6 +251,14 @@ namespace MSFSBlindAssist.Forms
         private TextBox waypointTextBox;
         private Label slotLabel;
         private ComboBox slotComboBox;
+        private Label crossingAltLabel;
+        private TextBox crossingAltTextBox;
+        private Label constraintLabel;
+        private ComboBox constraintComboBox;
+        private Label upperAltLabel;
+        private TextBox upperAltTextBox;
+        private Label courseLabel;
+        private TextBox courseTextBox;
         private Button trackButton;
         private Label duplicateLabel;
         private ListView duplicateListView;

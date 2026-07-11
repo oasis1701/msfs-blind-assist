@@ -49,6 +49,10 @@ public partial class MainForm
         {
             visualGuidanceManager.NotifyManualQuery();
         }
+        if (waypointFdManager.IsActive && IsManualReadoutAction(e.Action))
+        {
+            waypointFdManager.NotifyManualQuery();
+        }
 
         // Try aircraft-specific handler first
         bool handledByAircraft = currentAircraft.HandleHotkeyAction(e.Action, simConnectManager, announcer, this, hotkeyManager);
@@ -297,6 +301,12 @@ public partial class MainForm
                 break;
             case HotkeyAction.ToggleVisualGuidance:
                 ToggleVisualGuidance();
+                break;
+            case HotkeyAction.ToggleWaypointFlightDirector:
+                ToggleWaypointFlightDirector();
+                break;
+            case HotkeyAction.ToggleSlipCue:
+                ToggleSlipCue();
                 break;
             case HotkeyAction.ReadTargetFPM:
                 if (visualGuidanceManager.IsActive)
@@ -613,6 +623,12 @@ public partial class MainForm
                 return;
             }
 
+            // Mutual exclusion: Visual Guidance and the Waypoint Flight Director share the
+            // dual-tone engine and the 505 stream; only one runs at a time. Stop the FD if active
+            // (its Stop releases its stream claim + resumes HandFly; we re-suppress below).
+            if (waypointFdManager.IsActive)
+                waypointFdManager.Stop(announce: false);
+
             // Task 1 — Destination prefetch (silent, fire-and-forget)
             if (_augmentPrefetched.Add(airport.ICAO))
                 _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
@@ -630,7 +646,9 @@ public partial class MainForm
                 settings.VisualGuidanceCurrentToneWaveform,
                 settings.VisualGuidanceCurrentToneVolume,
                 settings.VisualGuidanceHardPanTone,
-                currentAircraft.GetVisualGuidanceProfile());
+                currentAircraft.GetVisualGuidanceProfile(),
+                settings.VisualGuidanceCenteredToneEnabled,
+                settings.VisualGuidanceCenteredToneWaveform);
 
             // PMDG 777: if the FMC has a pilot-entered landing Vref, push it as a live
             // override of the profile-default reference Vref. The PMDG SDK doesn't expose
@@ -650,14 +668,16 @@ public partial class MainForm
                 }
             }
 
-            // Start monitoring position variables at 1 Hz
-            simConnectManager!.StartVisualGuidanceMonitoring();
+            // Start monitoring position variables (ref-counted: shared with the Waypoint FD).
+            simConnectManager!.AcquireVisualGuidanceMonitoring();
+            _vgHoldsStream = true;
 
             // Silence HandFly's tone if it's also active — VG's two tones use the same
             // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
             // together were impossible to follow. Announcements (if HandFly's feedback mode
             // includes them) still fire. Idempotent — no-op if HandFly was already silent.
             handFlyManager.SuppressAudio();
+            _vgSuppressedHandFly = true;
 
             // Register the quick-access hotkey set (H, V, Q, S, D, B, P, A, F). The set is
             // shared with HandFly — VG is a hand-flying scenario with extra audio guidance, so
@@ -673,8 +693,12 @@ public partial class MainForm
         }
         else
         {
-            // Stop monitoring
-            simConnectManager.StopVisualGuidanceMonitoring();
+            // Stop monitoring (ref-counted) — only if VG actually acquired (not on a validation abort).
+            if (_vgHoldsStream)
+            {
+                simConnectManager.ReleaseVisualGuidanceMonitoring();
+                _vgHoldsStream = false;
+            }
 
             // Release VG's claim on the quick-access hotkey set. If HandFly is still active,
             // its claim keeps the keys registered; if not, this drops the ref count to zero
@@ -682,8 +706,98 @@ public partial class MainForm
             hotkeyManager.UnregisterVisualGuidanceHotkeys();
 
             // Resume HandFly's tone if HandFly is still active and its feedback mode wants
-            // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
-            handFlyManager.ResumeAudio();
+            // tones — but only if VG actually suppressed it (not on a validation abort, and not
+            // while the FD holds the suppression). Idempotent. Prevents un-muting HandFly under a
+            // running FD when a VG activation aborts (no runway) after the FD was already active.
+            if (_vgSuppressedHandFly)
+            {
+                handFlyManager.ResumeAudio();
+                _vgSuppressedHandFly = false;
+            }
+        }
+    }
+
+    private void ToggleWaypointFlightDirector()
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        waypointFdManager.Toggle();
+    }
+
+    private void ToggleSlipCue()
+    {
+        _slipCueOn = !_slipCueOn;
+        if (_slipCueOn)
+        {
+            slipCueGenerator.Start(MSFSBlindAssist.Settings.SettingsManager.Current.SlipCueVolume);
+            announcer.AnnounceImmediate("Rudder coordination ticks on");
+        }
+        else
+        {
+            slipCueGenerator.Stop();
+            announcer.AnnounceImmediate("Rudder coordination ticks off");
+        }
+    }
+
+    private void OnWaypointFdActiveChanged(object? sender, bool isActive)
+    {
+        if (isActive)
+        {
+            // The FD walks the tracked Shift+F slots in order (starting at the first FILLED slot,
+            // skipping gaps). If NO slot holds a waypoint there is nothing to track — don't activate a
+            // dead tone. Stop(announce:false) because the public "Flight director off" callout would be
+            // misleading after this guard (the pilot never had a running session).
+            if (!waypointTracker.HasAnyWaypoint())
+            {
+                announcer.Announce("No waypoints to track");
+                waypointFdManager.Stop(announce: false);
+                return;
+            }
+
+            // Mutual exclusion: stop Visual Guidance if it's running (shared dual-tone + 505 stream).
+            if (visualGuidanceManager.IsActive)
+                visualGuidanceManager.Stop(announce: false);
+
+            // Silence HandFly's single tone while the FD runs — the FD's two tones use the same
+            // Hz/pan mapping; three tones together are impossible to follow. Idempotent.
+            handFlyManager.SuppressAudio();
+            _fdSuppressedHandFly = true;
+
+            // Initialize with the aircraft's FD tuning profile + the user's tone preferences.
+            var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+            waypointFdManager.Initialize(
+                waypointTracker,
+                currentAircraft.GetWaypointFlightDirectorProfile(),
+                settings.WaypointFdToneWaveform, settings.WaypointFdToneVolume,
+                settings.WaypointFdCurrentToneWaveform, settings.WaypointFdCurrentToneVolume,
+                settings.WaypointFdHardPanTone, settings.WaypointFdApAutoMute,
+                settings.WaypointFdCenteredToneEnabled, settings.WaypointFdCenteredToneWaveform);
+
+            // Acquire the shared VISUAL_GUIDANCE_DATA (req 505) stream (ref-counted).
+            simConnectManager!.AcquireVisualGuidanceMonitoring();
+            _fdHoldsStream = true;
+        }
+        else
+        {
+            // Release only if the FD actually acquired (not on the empty-slot validation abort),
+            // so we never stop the stream out from under an active Visual Guidance session.
+            if (_fdHoldsStream)
+            {
+                simConnectManager.ReleaseVisualGuidanceMonitoring();
+                _fdHoldsStream = false;
+            }
+
+            // Resume HandFly's tone if HandFly is still active — but only if the FD actually
+            // suppressed it (not on the empty-slot validation abort). Idempotent.
+            if (_fdSuppressedHandFly)
+            {
+                handFlyManager.ResumeAudio();
+                _fdSuppressedHandFly = false;
+            }
         }
     }
 

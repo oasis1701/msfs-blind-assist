@@ -393,6 +393,29 @@ public partial class MainForm
             return true;
         }
 
+        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
+        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
+        if (e.VarName == "G_FORCE")
+        {
+            landingRateAnnouncer.ProcessG(e.Value);
+            return true;
+        }
+
+        // Inclinometer ball → the "step on the ball" rudder-coordination slip cue (Ctrl+K). Always
+        // streamed; only acted on when the cue is toggled on. Never a generic call-out. The var is
+        // requested in the "Position" unit, a fixed -127..+127 range, so normalise to [-1,1] by /127
+        // unconditionally (no magnitude sniffing — that mis-scaled real deflections near the ±1-2 band).
+        // Positive = ball right = press right rudder (sign to be confirmed in-sim; one-line flip).
+        if (e.VarName == "TURN_COORDINATOR_BALL")
+        {
+            if (_slipCueOn)
+            {
+                double ball = e.Value / 127.0;
+                slipCueGenerator.Update(ball, deadband: 0.08, fullScale: 0.5, active: true);
+            }
+            return true;
+        }
+
         // Touchdown vertical speed is monitored only so the ReadLastLandingRate hotkey can
         // read it from the cache (it's latched by the sim at touchdown). It must never be
         // spoken as a generic "value changed" call-out — swallow it here.
@@ -592,6 +615,12 @@ public partial class MainForm
             {
                 visualGuidanceManager.Toggle();
             }
+            // Same rationale for the Waypoint Flight Director: at touchdown the rollout/taxi tones
+            // take over, so the en-route FD has no useful job and would compete audibly.
+            if (justTouchedDown && waypointFdManager.IsActive)
+            {
+                waypointFdManager.Toggle();
+            }
 
             // Open the peak-g capture window at the touchdown edge, seeded with the g at contact,
             // so the ReadLastLandingPeakG hotkey reports the impact spike. The landing RATE itself
@@ -784,6 +813,64 @@ public partial class MainForm
             double aoaDegrees = e.Value * (180.0 / Math.PI);
             visualGuidanceManager.UpdateAoA(aoaDegrees);
             return true;
+        }
+
+        // Waypoint Flight Director — rides the SAME VISUAL_GUIDANCE_DATA (req 505) stream as VG.
+        // FD and VG are mutually exclusive, so this only runs when VG is inactive (the VG blocks above
+        // already returned true when VG owns the stream). One guarded dispatch fans the stream fields
+        // out to the FD; pitch/bank/AoA use the identical radian→degree + sign conventions as VG above.
+        if (waypointFdManager.IsActive)
+        {
+            switch (e.VarName)
+            {
+                case "VISUAL_GUIDANCE_POSITION":
+                    if (e.PositionData != null)
+                    {
+                        var pos = e.PositionData.Value;
+                        waypointFdManager.UpdateLatitude(pos.Latitude);
+                        waypointFdManager.UpdateLongitude(pos.Longitude);
+                        waypointFdManager.UpdateAltitudeMSL(pos.Altitude);
+                        waypointFdManager.UpdateHeading(pos.HeadingMagnetic);
+                        waypointFdManager.UpdateGroundSpeed(pos.GroundSpeedKnots);
+                        waypointFdManager.UpdateVerticalSpeed(pos.VerticalSpeedFPM);
+                        waypointFdManager.UpdateMagVar(pos.MagneticVariation);
+                        return true;
+                    }
+                    break;
+
+                case "VISUAL_GUIDANCE_AGL":
+                    // AGL arrives last → all caches fresh → drive the FD for this frame.
+                    waypointFdManager.ProcessUpdate();
+                    return true;
+
+                case "VISUAL_GUIDANCE_GROUND_TRACK":
+                    waypointFdManager.UpdateGroundTrack(e.Value);
+                    return true;
+
+                case "VISUAL_GUIDANCE_PITCH":
+                    waypointFdManager.UpdatePitch(-(e.Value * (180.0 / Math.PI))); // standard: + = nose up
+                    return true;
+
+                case "VISUAL_GUIDANCE_BANK":
+                    waypointFdManager.UpdateBank(e.Value * (180.0 / Math.PI)); // raw SimConnect (left-positive); manager negates
+                    return true;
+
+                case "VISUAL_GUIDANCE_AOA":
+                    waypointFdManager.UpdateAoA(e.Value * (180.0 / Math.PI));
+                    return true;
+
+                case "VISUAL_GUIDANCE_AP_MASTER":
+                    // e.Value is the stock AUTOPILOT MASTER simvar (Boeing / WT 787 / most addons). The
+                    // FlyByWire Airbuses (A320, A380, A330 fork) DON'T drive the stock simvar — they use
+                    // A32NX_AUTOPILOT_1/2_ACTIVE — so the stock value stays 0 with AP1/AP2 engaged and the
+                    // FD's auto-mute never fired on those aircraft. OR in the FBW AP-active vars from the
+                    // cache (the FBW defs monitor them continuously). PMDG / Fenix / HS787 set the stock var.
+                    bool apEngaged = e.Value > 0.5
+                        || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_1_ACTIVE") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_2_ACTIVE") ?? 0.0) > 0.5;
+                    waypointFdManager.UpdateApMaster(apEngaged ? 1.0 : 0.0);
+                    return true;
+            }
         }
 
         // Handle aircraft variable hotkey announcements

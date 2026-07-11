@@ -83,6 +83,8 @@ All exposed in the Hand Fly Options dialog (`Forms/Settings/HandFlyPanel.cs`):
 | `VisualGuidanceCurrentToneWaveform` | Sine | Current-tone waveform. Pick a different shape from the desired tone so the two stay distinguishable at zero-beat. |
 | `VisualGuidanceCurrentToneVolume` | 5 % | Current-tone volume. Lower it to make the desired tone dominant; don't gate the current tone off. |
 | `VisualGuidanceHardPanTone` | off | When ON, both tones snap to full left / full right once bank exceeds ~1°, instead of proportional pan. Use on stereo speakers where partial pan is hard to distinguish from centred. Headphones generally don't need this. |
+| `VisualGuidanceCenteredToneEnabled` | off | Optional "centered tone change". When ON, the desired tone switches to `VisualGuidanceCenteredToneWaveform` while laterally centered (commanded bank within ~1.5°) and back to its normal waveform off centerline — an extra timbre cue for centered vs not, on top of the pan. Only the desired tone changes (stays distinct from the current tone). When off, the waveform never changes. |
+| `VisualGuidanceCenteredToneWaveform` | Square | The waveform the desired tone uses while centered, when the option above is on. |
 
 Both tones always play when visual guidance is active; there is no single-tone mode.
 
@@ -104,7 +106,9 @@ For aircraft with attitude envelopes very different from a transport jet (aeroba
 | `TonePitchRangeDeg` | **6** | Pitch (degrees) at which frequency saturates. Tighter than `AudioToneGenerator`'s native 10° default → **50 Hz/° matching slope** (+67% precision). Covers the -3° glideslope + 6° flare command (saturating at the edge). |
 | `ToneBankRangeDeg` | **5** | Bank (degrees) at which pan saturates. Tighter than the 10° native default → 0.20 pan/° (+100% precision). Saturates during ≥5° commanded bank (intercept) — spoken bank-guidance covers that regime. |
 
-A320, Fenix A320, and PMDG 777 all keep these visual-guidance defaults. Override per airframe via `VisualGuidanceProfile`; behaviour is unchanged for aircraft that don't override. HandFly mode's own `AudioToneGenerator` instance never calls `Configure` and so keeps the native 10°/10° defaults — VG's tighter precision is scoped to its two tones only.
+A320 and Fenix A320 keep these visual-guidance defaults; PMDG 777, **FlyByWire A380X and HorizonSim 787-9** widen `TonePitchRangeDeg` to 10° (widebody profile). Override per airframe via `VisualGuidanceProfile`; behaviour is unchanged for aircraft that don't override. HandFly mode's own `AudioToneGenerator` instance never calls `Configure` and so keeps the native 10°/10° defaults — VG's tighter precision is scoped to its two tones only.
+
+**A380X & HS787 widebody profiles (2026-06):** both previously inherited the A320 *baseline* VG profile, which flares ~one bias late and reads high on the glidepath for a heavy widebody. They now carry 777-class profiles (AoA ~4–4.5°, Vref 140/150, pitch-rate cap 2.0, glidepath bias 80, flare bias 40, flare trigger 40, tone pitch range 10), modelled on the *measured* PMDG 777 plus published type approach performance. The installed `flight_model.cfg` files were checked but carry only vestigial stub reference speeds (the A380's are byte-identical to the A320's; PMDG ships none), so these values are type-performance **estimates pending in-sim coupled-ILS-autoland calibration**, not file-derived.
 
 ## Aircraft Profile (per-airframe tunables)
 

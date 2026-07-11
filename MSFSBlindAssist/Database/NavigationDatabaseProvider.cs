@@ -36,7 +36,7 @@ public class NavigationDatabaseProvider
     /// </summary>
     private WaypointFix? GetWaypoint(SqliteConnection connection, string ident, string? region = null)
     {
-        string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty
+        string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty, mag_var
                       FROM waypoint
                       WHERE UPPER(ident) = UPPER(@ident)";
 
@@ -63,7 +63,9 @@ public class NavigationDatabaseProvider
                         Type = SafeGetString(reader, "type") ?? "Waypoint",
                         ArincType = SafeGetString(reader, "arinc_type") ?? "",
                         Longitude = SafeGetDouble(reader, "lonx"),
-                        Latitude = SafeGetDouble(reader, "laty")
+                        Latitude = SafeGetDouble(reader, "laty"),
+                        // Local variation of this fix — the reference for a hand-entered magnetic course.
+                        ReferenceMagVar = SafeGetNullableDouble(reader, "mag_var")
                     };
                 }
             }
@@ -83,7 +85,7 @@ public class NavigationDatabaseProvider
         {
             connection.Open();
 
-            string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty
+            string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty, mag_var
                           FROM waypoint
                           WHERE UPPER(ident) = UPPER(@ident)
                           ORDER BY region";
@@ -104,7 +106,8 @@ public class NavigationDatabaseProvider
                             Type = SafeGetString(reader, "type") ?? "Waypoint",
                             ArincType = SafeGetString(reader, "arinc_type") ?? "",
                             Longitude = SafeGetDouble(reader, "lonx"),
-                            Latitude = SafeGetDouble(reader, "laty")
+                            Latitude = SafeGetDouble(reader, "laty"),
+                            ReferenceMagVar = SafeGetNullableDouble(reader, "mag_var")
                         });
                     }
                 }
@@ -659,7 +662,7 @@ public class NavigationDatabaseProvider
                              altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                              course, distance, is_flyover, turn_direction, rnp, vertical_angle,
                              time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                             is_missed, fix_type, fix_airport_ident, recommended_fix_ident
+                             is_missed, fix_type, fix_airport_ident, recommended_fix_ident, recommended_fix_region
                       FROM approach_leg
                       WHERE approach_id = @approachId
                       ORDER BY approach_leg_id";
@@ -702,7 +705,8 @@ public class NavigationDatabaseProvider
                                  altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                                  course, distance, is_flyover, turn_direction, rnp, vertical_angle,
                                  time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
-                                 fix_type, fix_airport_ident, recommended_fix_ident
+                                 fix_type, fix_airport_ident, recommended_fix_ident,
+                                 recommended_fix_region
                           FROM transition_leg
                           WHERE transition_id = @transitionId
                           ORDER BY transition_leg_id";
@@ -787,11 +791,32 @@ public class NavigationDatabaseProvider
             RecommendedFixIdent = SafeGetString(reader, "recommended_fix_ident") ?? ""
         };
 
+        // Reference magnetic variation for a MAGNETIC course leg (see WaypointFix.ReferenceMagVar).
+        // Prefer the referenced navaid's station declination — the reference a radial / course-to leg's
+        // magnetic course is actually defined against (VORs are re-aligned rarely, so this can differ
+        // from the local WMM value by several degrees). Else use the terminating fix's own local variation
+        // (still a far better reference than the aircraft's live magvar, which may be hundreds of miles off).
+        if (waypoint.Course.HasValue && !waypoint.IsTrueCourse)
+        {
+            string recIdent = SafeGetString(reader, "recommended_fix_ident") ?? "";
+            string recRegion = SafeGetString(reader, "recommended_fix_region") ?? "";
+            double? refVar = null;
+            // Referenced navaid's station declination — but only when region-qualified, so an ambiguous
+            // bare ident can't match the wrong navaid on the far side of the world (that would be worse
+            // than the fix-local fallback below).
+            if (!string.IsNullOrEmpty(recIdent) && !string.IsNullOrEmpty(recRegion))
+                refVar = GetMagVar("vor", recIdent, recRegion) ?? GetMagVar("ndb", recIdent, recRegion);
+            if (refVar == null && !fixless)
+                refVar = GetFixMagVar(fixIdent!, fixRegion, fixType, fixAirport);
+            waypoint.ReferenceMagVar = refVar;
+        }
+
         // Parse altitude restrictions
         if (alt1.HasValue || alt2.HasValue)
         {
             waypoint.MinAltitude = (int?)alt1;
             waypoint.MaxAltitude = (int?)alt2;
+            waypoint.AltDescriptor = altDesc ?? "";   // raw ARINC descriptor — the unambiguous type source
 
             if (!string.IsNullOrEmpty(altDesc))
             {
@@ -901,6 +926,55 @@ public class NavigationDatabaseProvider
             return !(latitude == 0.0 && longitude == 0.0);
         }
         return false;
+    }
+
+    /// <summary>
+    /// Reads the EAST-positive magnetic variation (station declination / local variation, degrees) of a
+    /// fix from an ident-keyed table (vor / ndb / waypoint), or null if not found. Used to reference a
+    /// magnetic course to the RIGHT variation. `table` is a hardcoded literal; ident/region parameterized.
+    /// </summary>
+    private double? GetMagVar(string table, string ident, string? region)
+    {
+        if (string.IsNullOrEmpty(ident)) return null;
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        string sql = $"SELECT mag_var FROM {table} WHERE UPPER(ident) = UPPER(@ident)";
+        if (!string.IsNullOrEmpty(region)) sql += " AND UPPER(region) = UPPER(@region)";
+        sql += " LIMIT 1";
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@ident", ident);
+        if (!string.IsNullOrEmpty(region)) cmd.Parameters.AddWithValue("@region", region);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read() && !reader.IsDBNull(0) ? reader.GetDouble(0) : (double?)null;
+    }
+
+    /// <summary>Airport magnetic variation by ICAO/ident (the airport table is keyed on icao/ident, not ident).</summary>
+    private double? GetAirportMagVar(string airportIdent)
+    {
+        if (string.IsNullOrEmpty(airportIdent)) return null;
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var cmd = new SqliteCommand(
+            "SELECT mag_var FROM airport WHERE UPPER(icao) = UPPER(@id) OR UPPER(ident) = UPPER(@id) LIMIT 1", connection);
+        cmd.Parameters.AddWithValue("@id", airportIdent);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read() && !reader.IsDBNull(0) ? reader.GetDouble(0) : (double?)null;
+    }
+
+    /// <summary>The terminating fix's own local magnetic variation, resolved by fix type across the
+    /// navaid / waypoint / airport tables (mirrors <see cref="ResolveFixCoordinates"/>'s table choice).</summary>
+    private double? GetFixMagVar(string ident, string? region, string? fixType, string? fixAirport)
+    {
+        switch ((fixType ?? "").ToUpperInvariant())
+        {
+            case "V": return GetMagVar("vor", ident, region) ?? GetMagVar("waypoint", ident, region);
+            case "N": return GetMagVar("ndb", ident, region) ?? GetMagVar("waypoint", ident, region);
+            case "R": return GetAirportMagVar(fixAirport ?? "");   // runway fix → its airport's variation
+            case "A": return GetAirportMagVar(ident);
+            default:  return GetMagVar("waypoint", ident, region)
+                          ?? GetMagVar("vor", ident, region)
+                          ?? GetMagVar("ndb", ident, region);
+        }
     }
 
     private bool TryGetAirportCoords(SqliteConnection connection, string ident, out double latitude, out double longitude)

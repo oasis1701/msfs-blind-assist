@@ -142,11 +142,25 @@ public partial class MainForm : Form
     private HandFlyManager handFlyManager = null!;
 
     private VisualGuidanceManager visualGuidanceManager = null!;
-
+    private WaypointFlightDirectorManager waypointFdManager = null!;
+    // Per-feature claims on the ref-counted VISUAL_GUIDANCE_DATA (505) stream. Each feature must
+    // Release only if it actually Acquired — otherwise an aborted activation (VG with no runway, FD
+    // with empty slots) would run its Stop→deactivate path and release a claim it never took,
+    // stopping the OTHER feature's stream. Set true right after Acquire, false right after Release.
+    private bool _vgHoldsStream;
+    private bool _fdHoldsStream;
+    // Per-feature claims on HandFly's audio suppression (HandFlyManager.SuppressAudio is a single flag,
+    // not owner-aware). Each feature releases (ResumeAudio) only if it actually suppressed — otherwise an
+    // aborted VG activation (no runway) would run VG's teardown ResumeAudio and un-mute HandFly's tone
+    // underneath a running FD, producing three overlapping tones. VG and FD are mutually exclusive, so at
+    // most one of these is ever set. Set true right after SuppressAudio, false right after ResumeAudio.
+    private bool _vgSuppressedHandFly;
+    private bool _fdSuppressedHandFly;
     private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
 
     private MSFSBlindAssist.Services.LandingRateAnnouncer landingRateAnnouncer = null!;
-
+    private MSFSBlindAssist.Services.SlipCueGenerator slipCueGenerator = null!;
+    private bool _slipCueOn;   // runtime toggle (Ctrl+K); default off, not persisted
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
 
     private ElectronicFlightBagForm? electronicFlightBagForm;
@@ -523,6 +537,12 @@ public partial class MainForm : Form
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
 
+        waypointFdManager = new WaypointFlightDirectorManager(announcer);
+        waypointFdManager.WaypointFlightDirectorActiveChanged += OnWaypointFdActiveChanged;
+
+        waypointFdManager = new WaypointFlightDirectorManager(announcer);
+        waypointFdManager.WaypointFlightDirectorActiveChanged += OnWaypointFdActiveChanged;
+
         // Global ground-speed announcer — fed by the always-on GROUND_VELOCITY continuous
         // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
         // not just while taxi guidance is active.
@@ -530,6 +550,7 @@ public partial class MainForm : Form
         // Captures the last landing's touchdown rate + peak g (the ReadLastLandingRate /
         // ReadLastLandingPeakG output hotkeys). Fed by the always-on G FORCE var.
         landingRateAnnouncer = new MSFSBlindAssist.Services.LandingRateAnnouncer();
+        slipCueGenerator = new MSFSBlindAssist.Services.SlipCueGenerator();
         // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
         altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
 
@@ -816,6 +837,8 @@ public partial class MainForm : Form
         hs787CasClient = null;
 
         // Clean up managers and resources
+        slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close
+        slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
