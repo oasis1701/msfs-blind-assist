@@ -248,7 +248,6 @@ public static class FenixChecklistDefinitions
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_XPDR_MODE", 2)),
             Auto("BT_XPDRAUTO", "BEFORE_TAKEOFF", "Transponder: AUTO",
                 "S_XPDR_OPERATION", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 1)),
-            Reminder("BT_FCCHECK", "BEFORE_TAKEOFF", "Perform the flight control check"),
             // Level-triggered test: TakeoffConfigTest holds 1.5 s, announces the result
             // ("Takeoff config normal." / "check configuration."), then RELEASES — a plain
             // pulse left the button stuck at 1 and re-fired the config check after landing.
@@ -299,7 +298,6 @@ public static class FenixChecklistDefinitions
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
             Reminder("DC_ARRPERF", "DESCENT", "Calculate arrival performance on the EFB"),
             Reminder("DC_MCDU", "DESCENT", "Complete the MCDU approach page and minimums before top of descent"),
-            Reminder("DC_LDGELEV", "DESCENT", "Check landing elevation auto on the ECAM"),
         }
     };
 
@@ -321,12 +319,7 @@ public static class FenixChecklistDefinitions
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
-            // ECAM STATUS page for the landing review (A320 has no landing config-test button;
-            // STS is the landing analog of the takeoff TO CONFIG press).
-            ActionManual("AP_ECAM_STS", "APPROACH", "ECAM status page (STS) for landing",
-                (e, _) => e.Pulse("S_ECAM_STATUS")),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
-            Reminder("AP_BARO", "APPROACH", "Confirm QNH set at transition level"),
             Reminder("AP_ENGMODE", "APPROACH", "Set engine mode selector as required"),
         }
     };
@@ -487,15 +480,11 @@ public static class FenixChecklistDefinitions
         Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
         Items = new()
         {
-            Reminder("BTC_FCTL", "BEFORE_TAKEOFF_CL", "Flight controls: CHECKED"),
-            Reminder("BTC_INST", "BEFORE_TAKEOFF_CL", "Flight instruments: CHECKED"),
-            Reminder("BTC_BRIEF", "BEFORE_TAKEOFF_CL", "Briefing: CONFIRMED"),
             Auto("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flap setting: CONFIG set",
                 "S_FC_FLAPS", v => v is >= 0.5 and <= 3.5, action: null),
             Reminder("BTC_VSPEEDS", "BEFORE_TAKEOFF_CL", "V1, VR, V2, FLEX temp: SET"),
             Reminder("BTC_ATC", "BEFORE_TAKEOFF_CL", "ATC: SET"),
             Info("BTC_LINE", "BEFORE_TAKEOFF_CL", "— Below the line —"),
-            Reminder("BTC_CABIN", "BEFORE_TAKEOFF_CL", "Cabin crew: ADVISED"),
             Auto("BTC_TCAS", "BEFORE_TAKEOFF_CL", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null),
             Auto("BTC_ENGMODE", "BEFORE_TAKEOFF_CL", "Engine mode selector: NORM or IGN",
@@ -530,8 +519,6 @@ public static class FenixChecklistDefinitions
         Id = "APPROACH_CL", Name = "Approach Checklist",
         Items = new()
         {
-            Reminder("APC_BRIEF", "APPROACH_CL", "Briefing: CONFIRMED"),
-            Reminder("APC_ECAM", "APPROACH_CL", "ECAM status: CHECKED"),
             Auto("APC_SEATBELTS", "APPROACH_CL", "Seat belts: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
             Auto("APC_BARO", "APPROACH_CL", "Baro ref: QNH set",
@@ -665,5 +652,8 @@ public static class FenixChecklistDefinitions
     {
         Id = id, GroupId = groupId, Label = text,
         Type = ChecklistItemType.Informational,
+        // Separators are structure, not work items: not tickable (and the FO window
+        // hides their checkbox), so they can never inflate CompletedCount.
+        ManualCompletionAllowed = false,
     };
 }

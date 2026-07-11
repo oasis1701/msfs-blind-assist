@@ -234,7 +234,6 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => e.SetPositionLights(2)),
             Auto("BTKO_AT", "BEFORE_TAKEOFF", "Autothrottle: ARM", "MCP_ATArmSw", v => v > 0.5, (e, s) => e.SetATArm(1, s)),
             Auto("BTKO_XPDR", "BEFORE_TAKEOFF", "Transponder: TA/RA", "XPDR_ModeSel", v => v > 3.5, (e, _) => e.SetTransponderMode(4)),
-            Reminder("BTKO_BRIEF", "BEFORE_TAKEOFF", "Confirm takeoff runway, trim set, cabin crew notified"),
         }
     };
 
@@ -267,7 +266,6 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => e.SetSeatBelts(2)),
             Reminder("DSA_AB", "DESCENT", "Set the landing autobrake — Forward Panel, Autobrake"),
             Reminder("DSA_ILS", "DESCENT", "Set the ILS frequencies and course"),
-            Reminder("DSA_DATA", "DESCENT", "Confirm landing data, VREF and minimums"),
         }
     };
 
@@ -449,7 +447,7 @@ public static class PMDG737ChecklistDefinitions
         Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
         Items = new()
         {
-            Reminder("BTOC_FLAPS", "BEFORE_TAKEOFF_CL", "Flaps: set, green light"),
+            Reminder("BTOC_FLAPS", "BEFORE_TAKEOFF_CL", "Flaps: set for takeoff"),
             Reminder("BTOC_TRIM", "BEFORE_TAKEOFF_CL", "Stabilizer trim: units checked"),
         }
     };
@@ -500,8 +498,8 @@ public static class PMDG737ChecklistDefinitions
         {
             Auto("LDC_START", "LANDING_CL", "Engine start switches: CONT", "ENG_StartSelector_0", v => v > 1.5 && v < 2.5, new[] { "ENG_StartSelector_1" }, action: null),
             Reminder("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED"),
-            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: down, three green", "MAIN_GearLever", v => v > 1.5, action: null),
-            Reminder("LDC_FLAPS", "LANDING_CL", "Flaps: set, green light"),
+            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", "MAIN_GearLever", v => v > 1.5, action: null),
+            Reminder("LDC_FLAPS", "LANDING_CL", "Flaps: set for landing"),
         }
     };
 

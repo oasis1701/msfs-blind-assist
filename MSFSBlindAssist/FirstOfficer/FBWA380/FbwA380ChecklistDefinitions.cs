@@ -620,7 +620,6 @@ public static class FbwA380ChecklistDefinitions
         Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
         Items = new()
         {
-            Reminder("BTC_RUNWAY", "BEFORE_TAKEOFF_CL", "Takeoff runway: CHECKED"),
             Reminder("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flaps: SET"),
             Reminder("BTC_TOSPEEDS", "BEFORE_TAKEOFF_CL", "Takeoff speeds: READBACK"),
             Reminder("BTC_ALTITUDE", "BEFORE_TAKEOFF_CL", "Altitude: READBACK"),
@@ -654,7 +653,6 @@ public static class FbwA380ChecklistDefinitions
             // Real state var — NOT the write-only A380X_MSFSBA_SPOILERS_ARM Act key.
             Auto("LDC_SPOILERS", "LANDING_CL", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => v > 0.5, action: null),
-            Reminder("LDC_ECAMMEMO", "LANDING_CL", "ECAM memo: no blue, landing config normal"),
         }
     };
 

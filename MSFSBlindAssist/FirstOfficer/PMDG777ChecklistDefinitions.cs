@@ -478,7 +478,6 @@ public static class PMDG777ChecklistDefinitions
             Auto("BTKO_VNAV", "BEFORE_TAKEOFF", "VNAV: ARM",
                 "MCP_annunVNAV", v => v > 0.5,
                 action: (e, s) => { if (!s.IsOn("MCP_annunVNAV")) e.PushVNAV(); }),
-            Reminder("BTKO_FLAPS_CONFIRM", "BEFORE_TAKEOFF", "Confirm flap setting for takeoff"),
         }
     };
 
@@ -494,7 +493,6 @@ public static class PMDG777ChecklistDefinitions
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
                 "FCTL_Flaps_Lever", v => v >= 1 && v <= 3),
             Manual("BTKOF_V_SPEEDS", "BEFORE_TKOF_CL", "V speeds: Checked"),
-            Reminder("BTKOF_RUNWAY", "BEFORE_TKOF_CL", "Takeoff runway: Confirmed"),
             Manual("BTKOF_ALT", "BEFORE_TKOF_CL", "Altitude: Set initial climb"),
         }
     };
@@ -559,7 +557,6 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetEFISRangeFO(1)),
             ActionManual("DSCA_RECALL", "DESCENT", "Recall: Check no unexpected messages",
                 (e, _) => e.PushCancelRecall()),
-            Reminder("DSCA_APPROACH_BRIEF", "DESCENT", "Approach briefing: Complete"),
         }
     };
 
@@ -589,7 +586,6 @@ public static class PMDG777ChecklistDefinitions
             Manual("DSC_RECALL", "DESCENT_CL", "Recall: Checked"),
             Manual("DSC_AUTOBRAKE", "DESCENT_CL", "Autobrake: As required"),
             Manual("DSC_LANDING_DATA", "DESCENT_CL", "Landing Data: Set VREF and minimums"),
-            Reminder("DSC_BRIEFING", "DESCENT_CL", "Approach Briefing: Complete"),
         }
     };
 

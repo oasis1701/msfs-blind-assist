@@ -285,7 +285,6 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_XPDR_MODE", 2)), "BT_TCAS"),
             Done(Skip(SW("BT_XPDRAUTO", "Transponder: AUTO", "S_XPDR_OPERATION", 1),
                 s => s.IsPosition("S_XPDR_OPERATION", 1)), "BT_XPDRAUTO"),
-            Captain("BT_FCCHECK", "Perform the flight control check"),
             Done(SW("BT_CONFIG", "Takeoff config test", "S_ECAM_TO", 1), "BT_CONFIG"),
             Done(Skip(SW("BT_TURNOFF", "Runway turn-off lights: ON", "S_OH_EXT_LT_RWY_TURNOFF", 1),
                 s => s.IsOn("S_OH_EXT_LT_RWY_TURNOFF")), "BT_TURNOFF"),
@@ -335,7 +334,6 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("S_OH_SIGNS")), "DC_SEATBELTS"),
             Captain("DC_ARRPERF", "Calculate arrival performance on the EFB"),
             Captain("DC_MCDU", "Complete the MCDU approach page and minimums before top of descent"),
-            Captain("DC_LDGELEV", "Check landing elevation auto on the ECAM"),
         }
     };
 
@@ -345,7 +343,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildApproach() => new()
     {
         Id = "APPROACH", Name = "Approach",
-        Description = "LS on both sides, notify the cabin for landing, ECAM status review, approach reminders.",
+        Description = "LS on both sides, notify the cabin for landing, approach reminders.",
         RelatedChecklistGroupIds = new[] { "APPROACH" },
         Steps = new()
         {
@@ -357,11 +355,7 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"),
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
-            // ECAM STATUS page for the landing review (A320 has no landing config-test button;
-            // STS is the landing analog of the takeoff TO CONFIG press).
-            Done(SW("AP_ECAM_STS", "ECAM status page (STS) for landing", "S_ECAM_STATUS", 1), "AP_ECAM_STS"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
-            Captain("AP_BARO", "Confirm QNH set at transition level"),
             Captain("AP_ENGMODE", "Set engine mode selector as required"),
         }
     };
