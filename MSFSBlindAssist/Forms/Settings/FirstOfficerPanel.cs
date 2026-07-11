@@ -3,8 +3,9 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Forms.Settings;
 
 /// <summary>First Officer section of the unified Settings dialog. Extracted from the retired
-/// standalone First Officer Settings dialog — same four automation checkboxes and the same
-/// UserSettings bindings, but the old Save/Cancel buttons are gone (the dialog owns OK/Cancel)
+/// standalone First Officer Settings dialog — the automation checkboxes (gear up/down, flaps,
+/// AP, 10k lights) and the same UserSettings bindings, but the old Save/Cancel buttons are
+/// gone (the dialog owns OK/Cancel)
 /// and there is no live tone/resource to tear down, so <see cref="OnLeaving"/> is a no-op.
 /// These are global preferences that only take effect when a supported First Officer window
 /// (PMDG 777/737, Fenix A320, FBW A380) is open; the tab is shown for every aircraft.</summary>
