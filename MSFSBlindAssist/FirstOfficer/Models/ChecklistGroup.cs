@@ -19,6 +19,22 @@ public class ChecklistGroup<TExec, TState>
     public List<ChecklistItem<TExec, TState>> Items { get; set; } = new();
 
     // -----------------------------------------------------------------------
+    // Completion latch (see ChecklistManager.EvaluateAutoDetection)
+    // -----------------------------------------------------------------------
+
+    /// <summary>True once a user manual tick or a flow MarkComplete touched this group.
+    /// Guards the completion latch: coincidental auto-ticks alone can never freeze a
+    /// group as complete (that would be the group-shaped version of the removed
+    /// item-level StayComplete false-latch bug).</summary>
+    public bool HasParticipation { get; set; }
+
+    /// <summary>Set when the group reaches 100% with participation. While latched,
+    /// RevertToState un-ticking is suppressed for this group — a completed checklist is
+    /// a historical record of its phase, not a live mirror. Cleared by ResetGroup /
+    /// ResetAll and by any manual untick in the group.</summary>
+    public bool CompletionLatched { get; set; }
+
+    // -----------------------------------------------------------------------
     // Computed progress
     // -----------------------------------------------------------------------
 

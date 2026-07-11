@@ -40,8 +40,9 @@ public class ChecklistManager<TExec, TState>
     /// </summary>
     public bool? ToggleItem(string groupId, string itemId)
     {
-        var item = FindItem(groupId, itemId);
-        if (item == null || !item.ManualCompletionAllowed) return null;
+        var group = FindGroup(groupId);
+        var item  = group?.Items.FirstOrDefault(i => i.Id == itemId);
+        if (group == null || item == null || !item.ManualCompletionAllowed) return null;
 
         item.IsChecked = !item.IsChecked;
 
@@ -52,11 +53,18 @@ public class ChecklistManager<TExec, TState>
             // window before RevertToState can un-tick it (frame-spaced writes + the CDA
             // snapshot cadence mean the state can lag the tick by several seconds).
             item.LastManualCheckUtc = DateTime.UtcNow;
+            group.HasParticipation = true;
             if (item.CheckAction != null && _executor.IsAvailable)
                 _ = RunCheckActionWithGraceAsync(item);
+            TryLatch(group);
+        }
+        else
+        {
+            // A manual untick re-opens the group: the live mirror (and reverts) resume.
+            group.CompletionLatched = false;
         }
 
-        RaiseChanged(FindGroup(groupId)!, item);
+        RaiseChanged(group, item);
         return item.IsChecked;
     }
 
@@ -67,9 +75,13 @@ public class ChecklistManager<TExec, TState>
         {
             var item = group.Items.FirstOrDefault(i => i.Id == itemId);
             if (item == null) continue;
-            if (item.IsChecked) return;
-            item.IsChecked = true;
-            RaiseChanged(group, item);
+            group.HasParticipation = true; // a flow worked this group
+            if (!item.IsChecked)
+            {
+                item.IsChecked = true;
+                RaiseChanged(group, item);
+            }
+            TryLatch(group);
             return;
         }
     }
@@ -82,6 +94,8 @@ public class ChecklistManager<TExec, TState>
     {
         var group = FindGroup(groupId);
         if (group == null) return;
+        group.CompletionLatched = false;
+        group.HasParticipation  = false;
         foreach (var item in group.Items)
         {
             if (item.IsChecked)
@@ -133,6 +147,7 @@ public class ChecklistManager<TExec, TState>
                 }
                 else if (!stateMatches.Value && item.IsChecked
                     && item.RevertBehavior == RevertBehavior.RevertToState
+                    && !group.CompletionLatched
                     && !item.ActionSettling
                     && !WithinManualTickGrace(item))
                 {
@@ -142,8 +157,22 @@ public class ChecklistManager<TExec, TState>
                 }
             }
 
+            TryLatch(group);
+
             if (groupChanged)
                 GroupProgressChanged?.Invoke(group);
+        }
+    }
+
+    // Arm the completion latch: only a group the user or a flow actually worked
+    // (HasParticipation) freezes at 100%. Coincidentally-true auto conditions alone
+    // never latch — those groups stay live mirrors and keep reverting.
+    private void TryLatch(ChecklistGroup<TExec, TState> group)
+    {
+        if (!group.CompletionLatched && group.HasParticipation
+            && group.Status == ChecklistGroupStatus.Complete)
+        {
+            group.CompletionLatched = true;
         }
     }
 
