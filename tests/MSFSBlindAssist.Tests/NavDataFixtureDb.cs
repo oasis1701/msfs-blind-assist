@@ -1,8 +1,11 @@
 // Synthetic-SQLite fixture for end-to-end tests against NavigationDatabaseProvider /
-// FlightPlanManager. Creates a real temp .sqlite file with ONLY the columns those two
-// classes actually SELECT (verified against MSFSBlindAssist/Database/NavigationDatabaseProvider.cs
-// and MSFSBlindAssist/Navigation/FlightPlanManager.cs as of 2026-07 — the design doc's
-// schema was cross-checked column-by-column against every SELECT and needed no additions).
+// FlightPlanManager. Creates a real temp .sqlite file with the columns those two classes
+// actually SELECT (verified against MSFSBlindAssist/Database/NavigationDatabaseProvider.cs
+// and MSFSBlindAssist/Navigation/FlightPlanManager.cs). Keep this schema in sync with those
+// SELECTs: when a query starts reading a new column, add it here too, or the read throws
+// "no such column" / GetOrdinal out-of-range (2026-07: mag_var on waypoint/vor/ndb and
+// recommended_fix_region on approach_leg/transition_leg were added for the Waypoint Flight
+// Director's reference-magnetic-variation lookups).
 //
 // Usage pattern in a test:
 //   using var fixture = new NavDataFixtureDb();
