@@ -151,6 +151,14 @@ public partial class MainForm
             }
         }
 
+        // Capture whether the heading/VS monitoring choices actually changed
+        // BEFORE UpdateSettings overwrites the manager's flags — the restart
+        // below is gated on a real change so a no-op Settings-OK doesn't cancel
+        // and re-register live SIM_FRAME streams for nothing.
+        bool handFlyMonitorFlagsChanged = handFlyManager != null &&
+            (handFlyManager.MonitorHeading != settings.HandFlyMonitorHeading ||
+             handFlyManager.MonitorVerticalSpeed != settings.HandFlyMonitorVerticalSpeed);
+
         // Update HandFlyManager if it's active
         handFlyManager?.UpdateSettings(
             settings.HandFlyFeedbackMode,
@@ -158,6 +166,26 @@ public partial class MainForm
             settings.HandFlyToneVolume,
             settings.HandFlyMonitorHeading,
             settings.HandFlyMonitorVerticalSpeed);
+
+        // Re-register the SimConnect streams to match the new heading/VS choices.
+        // StartHandFlyMonitoring only registers the heading/VS requests whose flag
+        // is on AT CALL TIME, so enabling one while Hand Fly is active was a
+        // silent no-op (the manager-side gate passed but no data ever flowed)
+        // until Hand Fly was toggled off and on again. Matters out of the box now
+        // that HandFlyMonitorVerticalSpeed defaults to off. Both calls no-op
+        // safely when disconnected.
+        if (handFlyMonitorFlagsChanged && handFlyManager!.IsActive)
+        {
+            simConnectManager.StopHandFlyMonitoring();
+            // drainCancelledStreams: the streams cancelled a line above may
+            // still have data in flight; the drain (cancel + message pump)
+            // guards the ClearDataDefinition-while-request-active crash. Safe
+            // here — this runs from the settings OK handler, NOT inside
+            // SimConnect dispatch, so the pump can actually process WM_USER.
+            simConnectManager.StartHandFlyMonitoring(
+                settings.HandFlyMonitorHeading, settings.HandFlyMonitorVerticalSpeed,
+                drainCancelledStreams: true);
+        }
 
         // Taxi Guidance / Docking — moved verbatim from the retired TaxiGuidanceOptionsMenuItem_Click.
         // Every other taxi/docking setting (tone type/volume, invert/hard-pan, announce-crossings,

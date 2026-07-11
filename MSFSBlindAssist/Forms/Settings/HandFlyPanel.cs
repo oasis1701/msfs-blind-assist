@@ -69,6 +69,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private CheckBox fdCenteredCheckBox = null!;
     private Label fdCenteredWaveLabel = null!; private ComboBox fdCenteredWaveCombo = null!;
     private Label slipVolumeLabel = null!; private TrackBar slipVolumeTrackBar = null!; private Label slipVolumeValueLabel = null!;
+    private CheckBox handFlyAutoActivateOnTakeoffCheckBox = null!;
 
     private AudioToneGenerator? testToneGenerator;
 
@@ -529,6 +530,17 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         slipVolumeTrackBar = new TrackBar { Location = new Point(190, 1183), Size = new Size(240, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "Slip cue volume", AccessibleDescription = "Volume of the rudder-coordination slip cue, 0 to 100 percent" };
         slipVolumeValueLabel = new Label { Text = "20%", Location = new Point(435, 1188), Size = new Size(45, 20), AccessibleName = "Slip cue volume value" };
         slipVolumeTrackBar.ValueChanged += (_, _) => slipVolumeValueLabel.Text = slipVolumeTrackBar.Value + "%";
+        // Auto-Activate Hand Fly on Takeoff Checkbox — completes the taxi → Takeoff Assist →
+        // Hand Fly hands-free chain. Placed BELOW the Waypoint FD section (y 900–1188) to
+        // avoid overlapping it (the panel AutoScrolls).
+        handFlyAutoActivateOnTakeoffCheckBox = new CheckBox
+        {
+            Text = "Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)",
+            Location = new Point(20, 1235),
+            Size = new Size(460, 25),
+            AccessibleName = "Auto-activate Hand Fly on takeoff",
+            AccessibleDescription = "When enabled, shortly after the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. If you already activated Hand Fly yourself, only Takeoff Assist is turned off. Liftoffs without Takeoff Assist are unaffected."
+        };
 
         // Add controls to panel
         Controls.AddRange(new Control[]
@@ -549,11 +561,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             fdSectionLabel, fdToneLabel, fdToneCombo, fdVolumeLabel, fdVolumeTrackBar, fdVolumeValueLabel,
             fdCurrentToneLabel, fdCurrentToneCombo, fdCurrentVolumeLabel, fdCurrentVolumeTrackBar, fdCurrentVolumeValueLabel,
             fdHardPanCheckBox, fdApMuteCheckBox, fdCenteredCheckBox, fdCenteredWaveLabel, fdCenteredWaveCombo,
-            slipVolumeLabel, slipVolumeTrackBar, slipVolumeValueLabel
+            slipVolumeLabel, slipVolumeTrackBar, slipVolumeValueLabel,
+            handFlyAutoActivateOnTakeoffCheckBox
         });
 
-        // Update control states based on feedback mode (defaults to TonesOnly disabled state
-        // until LoadFrom sets the real radio selection).
+        // Update control states based on feedback mode (no radio is checked yet at
+        // construction, so audio controls start disabled until LoadFrom sets the
+        // real selection).
         UpdateControlStates();
     }
 
@@ -593,6 +607,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         legacyTakeoffCheckBox.TabIndex = 30;
         enableCalloutsCheckBox.TabIndex = 31;
         autoActivateOnLineupCheckBox.TabIndex = 32;
+        handFlyAutoActivateOnTakeoffCheckBox.TabIndex = 33;
     }
 
     private void UpdateControlStates()
@@ -786,6 +801,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         legacyTakeoffCheckBox.Checked = settings.TakeoffAssistLegacyMode;
         enableCalloutsCheckBox.Checked = settings.TakeoffAssistEnableCallouts;
         autoActivateOnLineupCheckBox.Checked = settings.TakeoffAssistAutoActivateOnLineup;
+        handFlyAutoActivateOnTakeoffCheckBox.Checked = settings.HandFlyAutoActivateOnTakeoff;
 
         fdToneCombo.SelectedIndex = (int)settings.WaypointFdToneWaveform;
         fdVolumeTrackBar.Value = (int)(settings.WaypointFdToneVolume * 100);
@@ -844,6 +860,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         settings.WaypointFdCenteredToneEnabled = fdCenteredCheckBox.Checked;
         settings.WaypointFdCenteredToneWaveform = (HandFlyWaveType)fdCenteredWaveCombo.SelectedIndex;
         settings.SlipCueVolume = slipVolumeTrackBar.Value / 100.0;
+        settings.HandFlyAutoActivateOnTakeoff = handFlyAutoActivateOnTakeoffCheckBox.Checked;
     }
 
     /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on

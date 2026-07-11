@@ -468,6 +468,17 @@ public partial class MainForm
         }
         else
         {
+            // Takeoff Assist off for ANY reason (manual toggle, settings-driven
+            // recreation) voids a pending liftoff → Hand Fly handoff — the
+            // handoff exists to hand over FROM an active Takeoff Assist. Without
+            // this, a reject-and-retry inside the confirm window (deactivate,
+            // re-arm for the second attempt) could see the zombie timer kill the
+            // just-re-armed assist. The fire-time gates re-check anyway; this
+            // stops the timer (and invalidates an in-flight confirm) at the
+            // semantically-correct edge.
+            _liftoffHandoffTimer?.Stop();
+            _liftoffHandoffConfirmToken++;
+
             // Stop monitoring
             simConnectManager.StopTakeoffAssistMonitoring();
 
@@ -544,6 +555,11 @@ public partial class MainForm
 
             // Register global H, V, Q hotkeys for quick access during hand fly mode
             bool hotkeysRegistered = hotkeyManager.RegisterHandFlyHotkeys();
+            // Recorded for the liftoff auto-handoff: its breadcrumb's
+            // AnnounceImmediate cancels pending speech, which would silently
+            // swallow the standalone warning below — the handoff folds the
+            // warning into the breadcrumb instead.
+            _handFlyQuickKeysRegistered = hotkeysRegistered;
             if (!hotkeysRegistered)
             {
                 // Registration failed - likely another application is using H, V, or Q keys
