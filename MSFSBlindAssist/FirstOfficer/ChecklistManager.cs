@@ -56,7 +56,9 @@ public class ChecklistManager<TExec, TState>
             group.HasParticipation = true;
             if (item.CheckAction != null && _executor.IsAvailable)
                 _ = RunCheckActionWithGraceAsync(item);
-            TryLatch(group);
+            // No TryLatch here: the fresh grace stamp always defers arming (see
+            // TryLatch) — the next EvaluateAutoDetection pass arms it once the tick's
+            // readback has had its chance to surface a failed action.
         }
         else
         {
@@ -166,14 +168,22 @@ public class ChecklistManager<TExec, TState>
 
     // Arm the completion latch: only a group the user or a flow actually worked
     // (HasParticipation) freezes at 100%. Coincidentally-true auto conditions alone
-    // never latch — those groups stay live mirrors and keep reverting.
+    // never latch — those groups stay live mirrors and keep reverting. Arming is
+    // DEFERRED while any item is still inside its action-settling / manual-tick grace
+    // window: a genuinely failed group-final tick (switch never moves) must first get
+    // its chance to revert — surface — before the group freezes as a historical
+    // record, keeping the RunCheckActionWithGraceAsync failure guarantee true.
     private void TryLatch(ChecklistGroup<TExec, TState> group)
     {
-        if (!group.CompletionLatched && group.HasParticipation
-            && group.Status == ChecklistGroupStatus.Complete)
-        {
-            group.CompletionLatched = true;
-        }
+        if (group.CompletionLatched || !group.HasParticipation
+            || group.Status != ChecklistGroupStatus.Complete)
+            return;
+
+        foreach (var item in group.Items)
+            if (item.ActionSettling || WithinManualTickGrace(item))
+                return;
+
+        group.CompletionLatched = true;
     }
 
     // Grace window during which RevertToState does not un-tick the item, measured from

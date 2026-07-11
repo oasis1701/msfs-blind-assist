@@ -74,6 +74,10 @@ public class ChecklistGroup<TExec, TState>
 
     public void ResetAll()
     {
+        // Keep the latch flags consistent on this (currently event-less) reset path
+        // too — ChecklistManager.ResetGroup is the primary reset and clears the same.
+        CompletionLatched = false;
+        HasParticipation  = false;
         foreach (var item in Items)
             item.IsChecked = false;
     }

@@ -92,6 +92,12 @@ public class FoChecklistLatchTests
         state.Values["F1"] = 1;
         mgr.EvaluateAutoDetection();          // auto item ticks
         mgr.ToggleItem("G", "R1");            // manual tick → participation
+        // Arming is deferred while the fresh tick is inside its grace window (a
+        // failed group-final action must get its chance to surface first).
+        Assert.False(group.CompletionLatched);
+
+        group.Items[1].LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        mgr.EvaluateAutoDetection();
         Assert.True(group.CompletionLatched);
 
         state.Values["F1"] = 0;               // a later phase moves the switch
@@ -125,6 +131,8 @@ public class FoChecklistLatchTests
         state.Values["F1"] = 1;
         mgr.EvaluateAutoDetection();
         mgr.ToggleItem("G", "R1");
+        group.Items[1].LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        mgr.EvaluateAutoDetection();          // grace expired → latch arms
         Assert.True(group.CompletionLatched);
 
         mgr.ToggleItem("G", "R1");            // manual UNTICK → unlatch
@@ -144,6 +152,8 @@ public class FoChecklistLatchTests
         state.Values["F1"] = 1;
         mgr.EvaluateAutoDetection();
         mgr.ToggleItem("G", "R1");
+        group.Items[1].LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        mgr.EvaluateAutoDetection();          // grace expired → latch arms
         Assert.True(group.CompletionLatched);
 
         mgr.ResetGroup("G");
@@ -152,6 +162,29 @@ public class FoChecklistLatchTests
 
         // Coincidental re-completion after reset must NOT latch.
         mgr.EvaluateAutoDetection();          // F1 still 1 → auto-ticks
+        Assert.False(group.CompletionLatched);
+    }
+
+    [Fact]
+    public void GroupFinalManualTick_WithMismatchedState_SurfacesInsteadOfLatching()
+    {
+        // The group-final tick's switch never reaches position (e.g. its action
+        // failed): once the grace expires the tick must revert — surface — and the
+        // group must NOT latch. The latch may only freeze a completion that held.
+        var (mgr, state, group) = Build(
+            AutoItem("A1", "G", "F1"), ReminderItem("R1", "G"));
+
+        state.Values["F1"] = 0;               // switch stays OFF
+        mgr.ToggleItem("G", "R1");
+        mgr.ToggleItem("G", "A1");            // group-final manual tick, state never follows
+        Assert.False(group.CompletionLatched); // deferred by the fresh grace windows
+
+        var past = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        group.Items[0].LastManualCheckUtc = past;
+        group.Items[1].LastManualCheckUtc = past;
+        mgr.EvaluateAutoDetection();
+
+        Assert.False(group.Items[0].IsChecked);   // the failed tick surfaced
         Assert.False(group.CompletionLatched);
     }
 

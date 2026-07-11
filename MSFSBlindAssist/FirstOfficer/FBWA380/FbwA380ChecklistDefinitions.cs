@@ -734,5 +734,9 @@ public static class FbwA380ChecklistDefinitions
     {
         Id = id, GroupId = groupId, Label = text,
         Type = ChecklistItemType.Informational,
+        // Separators are structure, not work items: not tickable (and the FO window
+        // hides their checkbox), so they can never inflate CompletedCount. Matches
+        // the Fenix Info builder — keep both in sync.
+        ManualCompletionAllowed = false,
     };
 }
