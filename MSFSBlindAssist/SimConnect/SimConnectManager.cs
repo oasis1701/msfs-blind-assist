@@ -580,6 +580,7 @@ public partial class SimConnectManager
         public double Temperature;     // AMBIENT TEMPERATURE, Celsius
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
+        public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

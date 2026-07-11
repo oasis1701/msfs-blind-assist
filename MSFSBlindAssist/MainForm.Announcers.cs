@@ -1982,6 +1982,20 @@ public partial class MainForm
             announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
         _prevInCloud = inCloud;
 
+        // Ice accretion (generic, sim-truth). Aircraft with their own tuned icing
+        // announcer (HasOwnIcingAnnouncer, e.g. the FBW A380's ice stick) are skipped
+        // entirely so one icing episode never speaks twice. NaN/negative clamp keeps
+        // a bad sample from corrupting the tracker's hysteresis state.
+        if (MSFSBlindAssist.Settings.SettingsManager.Current.AnnounceIcingEnabled
+            && currentAircraft?.HasOwnIcingAnnouncer != true)
+        {
+            double ice = double.IsNaN(data.StructuralIcePct) || data.StructuralIcePct < 0
+                ? 0 : data.StructuralIcePct;
+            string? icing = _iceAccretionTracker.Observe(ice);
+            if (icing != null)
+                announcer.Announce(icing);
+        }
+
         if (asPrecip != null)
         {
             // ActiveSky path — announce on start / stop / phrase change. Trim + case-

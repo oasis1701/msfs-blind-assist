@@ -294,6 +294,8 @@ public partial class MainForm : Form
 
     private double _prevInCloud = -1;
 
+    private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check

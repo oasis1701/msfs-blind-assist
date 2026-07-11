@@ -201,6 +201,7 @@ public partial class MainForm
             _prevVisibility = -1;
             _prevVisLow = false;
             _prevAsPrecip = null;
+            _iceAccretionTracker.Reset();
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
@@ -604,6 +605,7 @@ public partial class MainForm
         // Hazard announcers re-baseline on switch — stale category/ice baselines
         // from the previous airframe must not announce as "changes".
         activeSkyWeatherMonitor?.ResetTurbulenceTracker();
+        _iceAccretionTracker.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
