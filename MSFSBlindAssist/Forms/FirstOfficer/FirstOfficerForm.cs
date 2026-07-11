@@ -75,7 +75,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // ------------------------------------------------------------------
     private NativeAccessibleTreeView _checklistTree = null!;
     private Label _checklistStatusLabel = null!;
-    private Button _toggleItemBtn = null!;
     private Button _resetSectionBtn = null!;
     private Button _resetAllBtn = null!;
     private Button _runRelatedFlowBtn = null!;
@@ -379,7 +378,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             AutoSize = true,
         };
 
-        _toggleItemBtn = MakeButton("Toggle Item (Space)", "Toggle selected checklist item", ToggleSelectedItem);
         _resetSectionBtn = MakeButton("Reset Section", "Reset all items in the selected section", ResetSection);
         _resetAllBtn     = MakeButton("Reset All", "Reset all checklist items", ResetAll);
         _runRelatedFlowBtn = MakeButton("Run Related Flow", "Run the flow associated with the selected section", RunRelatedFlow);
@@ -387,7 +385,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         // Run Related Flow before the reset buttons (user request 2026-07-08) —
         // starting a flow is the frequent action; resets are the exceptional one.
-        btnPanel.Controls.AddRange(new Control[] { _toggleItemBtn, _runRelatedFlowBtn, _resetSectionBtn, _resetAllBtn, _loadSimBriefChecklistBtn });
+        // The Toggle Item button was removed 2026-07-11 (redundant: Space / the
+        // checkbox itself toggles the selected item).
+        btnPanel.Controls.AddRange(new Control[] { _runRelatedFlowBtn, _resetSectionBtn, _resetAllBtn, _loadSimBriefChecklistBtn });
         layout.Controls.Add(btnPanel, 0, 2);
 
         _checklistTab.Controls.Add(layout);
@@ -507,6 +507,16 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         }
 
         _checklistTree.EndUpdate();
+
+        // Group headers and the lazy-expand placeholder are not tickable — hide their
+        // checkboxes (CheckBoxes=true is tree-wide; state image 0 removes it per node).
+        foreach (TreeNode parent in _checklistTree.Nodes)
+        {
+            _checklistTree.HideCheckBox(parent);
+            foreach (TreeNode child in parent.Nodes)
+                _checklistTree.HideCheckBox(child);   // the "Loading..." placeholder
+        }
+
         _suppressTreeEvents = false;
     }
 
@@ -529,6 +539,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                     Checked = item.IsChecked,
                 };
                 parent.Nodes.Add(node);
+                // Non-tickable items (e.g. "— Below the line —" separators) get no checkbox.
+                if (!item.ManualCompletionAllowed)
+                    _checklistTree.HideCheckBox(node);
             }
             _suppressTreeEvents = false;
         }
@@ -537,11 +550,22 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void ChecklistTree_AfterCheck(object? sender, TreeViewEventArgs e)
     {
         if (_suppressTreeEvents) return;
-        if (e.Node?.Tag is not string itemId) return;
-        if (e.Node.Parent?.Tag is not string groupId) return;
+        if (e.Node == null) return;
+
+        // Group headers, the placeholder, and non-tickable items have hidden checkboxes;
+        // if a native toggle sneaks through anyway, re-hide (self-heal) and ignore.
+        if (e.Node.Tag is not string itemId || e.Node.Parent?.Tag is not string groupId)
+        {
+            _checklistTree.HideCheckBox(e.Node);
+            return;
+        }
 
         var item = _checklistMgr.FindItem(groupId, itemId);
-        if (item == null) return;
+        if (item == null || !item.ManualCompletionAllowed)
+        {
+            _checklistTree.HideCheckBox(e.Node);
+            return;
+        }
 
         if (e.Node.Checked == item.IsChecked) return; // Prevent loop
 
@@ -562,18 +586,22 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
     private void ChecklistTree_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Space && _checklistTree.SelectedNode != null)
+        if (e.KeyCode != Keys.Space || _checklistTree.SelectedNode == null) return;
+
+        var node = _checklistTree.SelectedNode;
+        if (node.Tag is string tagStr && tagStr != "placeholder" &&
+            node.Parent?.Tag is string groupId)
         {
-            var node = _checklistTree.SelectedNode;
-            if (node.Tag is string tagStr && tagStr != "placeholder" &&
-                node.Parent?.Tag is string groupId)
-            {
-                // Toggle
-                node.Checked = !node.Checked;
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            }
+            var item = _checklistMgr.FindItem(groupId, tagStr);
+            if (item != null && item.ManualCompletionAllowed)
+                node.Checked = !node.Checked; // AfterCheck fires and handles the rest
         }
+
+        // Always consume Space: on group headers, the placeholder, and non-tickable
+        // separators the native TVS_CHECKBOXES control would otherwise cycle the state
+        // image itself and resurrect a hidden checkbox.
+        e.Handled = true;
+        e.SuppressKeyPress = true;
     }
 
     private void ChecklistTree_AfterSelect(object? sender, TreeViewEventArgs e)
@@ -670,14 +698,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // ------------------------------------------------------------------
     // Checklist button handlers
     // ------------------------------------------------------------------
-
-    private void ToggleSelectedItem()
-    {
-        var node = _checklistTree.SelectedNode;
-        if (node?.Parent == null) return;
-        if (node.Tag is not string itemId || node.Parent.Tag is not string groupId) return;
-        node.Checked = !node.Checked; // AfterCheck fires and handles the rest
-    }
 
     private void ResetSection()
     {
