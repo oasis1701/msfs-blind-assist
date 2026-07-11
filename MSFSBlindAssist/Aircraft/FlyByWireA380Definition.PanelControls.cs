@@ -674,6 +674,7 @@ public partial class FlyByWireA380Definition
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
             "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT",
+            "PFD_VSTALL1G", "PFD_SPEEDTREND", "PFD_GAMMA_A", "PFD_GAMMA_T",
             // Target/preselect speeds + selected V/S + expedite + flight directors + autobrake.
             "A32NX_SPEEDS_MANAGED_PFD", "A32NX_SpeedPreselVal", "A32NX_MachPreselVal",
             "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_FMA_EXPEDITE_MODE", "FD_1", "FD_2",

@@ -1162,6 +1162,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincKt("PFD_VALPHAMAX", "A32NX_PRIM_1_V_ALPHA_LIM", "Alpha Max speed");
         ArincKt("PFD_VSW", "A32NX_PRIM_1_V_STALL_WARN", "Stall Warning speed");
         ArincKt("PFD_VFENEXT", "A32NX_PRIM_1_V_FE_NEXT", "VFE next");
+        // NEW PRIM-FE readouts (FBW #10797 PrimFePublisher; live-verified 2026-07 on the A380):
+        // 1g stall speed Vs1g (Normal Op even on the ground — read 64 kt at a light boarding
+        // weight, scales with sqrt(weight)) and the speed-trend value that drives the PFD trend
+        // arrow, in knots (0 when static, positive = accelerating). ARINC429 knots, same decode.
+        ArincKt("PFD_VSTALL1G", "A32NX_PRIM_1_V_STALL_1G", "1g Stall speed");
+        ArincKt("PFD_SPEEDTREND", "A32NX_PRIM_1_SPEED_TREND", "Speed trend");
         // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
         // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
         void ArincUnit(string key, string name, string display, string unit) => vars[key] = new SimVarDefinition
@@ -1174,6 +1180,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("PFD_RA", "A32NX_RA_1_RADIO_ALTITUDE", "Radio altitude", "feet");
         ArincUnit("PFD_VS", "A32NX_ADIRS_IR_1_VERTICAL_SPEED", "Vertical speed", "feet per minute");
         ArincUnit("PFD_TRANS_ALT", "A32NX_FM1_TRANS_ALT", "Transition altitude", "feet");
+        // Flight path angle from the PRIM FE bus (FBW #10797; live-verified Normal Op on the
+        // ground, both ~0°). GAMMA_A = aerodynamic FPA (the actual air-mass flight-path angle,
+        // the FPV/bird); GAMMA_T = energy (track) angle including thrust/drag energy state.
+        // ARINC429 degrees, same SSM-gated decode.
+        ArincUnit("PFD_GAMMA_A", "A32NX_PRIM_1_GAMMA_A", "Flight path angle", "degrees");
+        ArincUnit("PFD_GAMMA_T", "A32NX_PRIM_1_GAMMA_T", "Energy flight path angle", "degrees");
         // Transition LEVEL (descent) — ARINC429 word, engineering value already in FL hundreds
         // (e.g. 60 = FL060). Decoded to "flight level N" / "not set" in TryGetDisplayOverride
         // (NOT IsArinc429 so the generic feet decoder doesn't grab it). Complements TRANS ALT.
