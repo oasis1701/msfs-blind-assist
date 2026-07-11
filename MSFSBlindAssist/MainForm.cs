@@ -267,6 +267,46 @@ public partial class MainForm : Form
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
 
+    // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
+    // airborne edge but only PERFORMED after these confirm a real rotation, so a
+    // spurious airborne sample (high-speed roll bump / oleo flicker, or low-speed
+    // false-airborne from pushback/slope/replay) can't drop centerline guidance
+    // during the roll.
+    private System.Windows.Forms.Timer? _liftoffHandoffTimer;
+    private const double LIFTOFF_HANDOFF_MIN_GS_KTS = 40.0; // reject pushback/slope/replay; every supported airframe rotates well above this
+    // Must stay airborne this long before handing off. Exceeds the 1 Hz
+    // continuous-batch sampling period of SIM_ON_GROUND so a settled bounce's
+    // canceling ground sample is normally processed inside the window. The
+    // cache alone is NOT trusted at fire time — at 1 Hz a touchdown in the
+    // final second before the tick is invisible — so the tick confirms against
+    // a fresh one-shot position read (SimOnGround + ground speed) before
+    // performing the handoff; see PerformLiftoffHandoffIfValid.
+    private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1500;
+    // How long the handoff mutes Hand Fly's own spoken pitch/bank/heading/VS
+    // callouts so the breadcrumb ("Airborne. Takeoff assist off, hand fly
+    // active.") can finish — the first post-activation callouts pass their
+    // announce gates within one sim frame and AnnounceImmediate interrupts,
+    // which would clip the breadcrumb after a syllable. The tone is unaffected;
+    // spoken pitch resumes right after the window.
+    private const int    LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS = 3500;
+    // Outcome of the most recent RegisterHandFlyHotkeys() call, recorded by
+    // OnHandFlyModeActiveChanged. The liftoff auto-handoff folds the
+    // quick-access-keys warning into its breadcrumb: the breadcrumb's
+    // AnnounceImmediate cancels pending speech on every backend
+    // (nvdaController_cancelSpeech / Tolk interrupt / SAPI SpeakAsyncCancelAll),
+    // which would otherwise silently swallow the handler's standalone warning.
+    private bool _handFlyQuickKeysRegistered = true;
+    // Generation token for the liftoff handoff's fresh-position confirm. The
+    // confirm callback is a one-shot AircraftPositionReceived subscription that
+    // LEAKS if the response never arrives (disconnect mid-request, or the
+    // request call throwing after the subscribe) — a leaked handler fires on
+    // the NEXT position response from ANY requester, potentially a later
+    // flight's rotation, bypassing the debounce entirely. The tick captures the
+    // token before requesting; every event that voids a pending handoff
+    // (touchdown edge, disconnect, aircraft switch, TA deactivation) bumps it,
+    // so a stale callback aborts on entry.
+    private int _liftoffHandoffConfirmToken;
+
     // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
     // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
     // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle.
@@ -442,6 +482,11 @@ public partial class MainForm : Form
         _bridgeProbeTimer = new System.Windows.Forms.Timer { Interval = 1500 };
         _bridgeProbeTimer.Tick += BridgeProbeTimer_Tick;
         _bridgeProbeTimer.Start();
+
+        // One-shot debounce for the liftoff → Hand Fly handoff (started on the
+        // liftoff edge, stopped on touchdown; ticks once after the confirm window).
+        _liftoffHandoffTimer = new System.Windows.Forms.Timer { Interval = LIFTOFF_HANDOFF_CONFIRM_MS };
+        _liftoffHandoffTimer.Tick += (s, e) => PerformLiftoffHandoffIfValid();
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and
@@ -726,6 +771,9 @@ public partial class MainForm : Form
 
         _sdAutoRefreshTimer?.Stop();
         _sdAutoRefreshTimer?.Dispose();
+
+        _liftoffHandoffTimer?.Stop();
+        _liftoffHandoffTimer?.Dispose();
 
         _displayRepaintDebounce?.Stop();
         _displayRepaintDebounce?.Dispose();

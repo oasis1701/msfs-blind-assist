@@ -48,11 +48,17 @@ public class UserSettings
         public bool AnnounceTimeWithSeconds { get; set; } = false;
 
         // Hand Fly Settings
-        public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.TonesOnly;
+        // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant
+        // whenever Hand Fly engages — the auto-handoff at rotation AND a manual
+        // activation on a go-around — so it must not silently vanish behind a
+        // tones-only default. Pilots who prefer pure tones switch the mode back.
+        public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.Both;
         public double HandFlyToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
         public HandFlyWaveType HandFlyWaveType { get; set; } = HandFlyWaveType.Sine;
         public bool HandFlyMonitorHeading { get; set; } = true;
-        public bool HandFlyMonitorVerticalSpeed { get; set; } = true;
+        // Default OFF: with pitch/bank now spoken by default (feedback mode Both),
+        // per-second VS numbers on top are too verbose. Heading stays default-on.
+        public bool HandFlyMonitorVerticalSpeed { get; set; } = false;
         public int HandFlyAnnouncementIntervalMs { get; set; } = 1000; // Configurable interval for heading/VS announcements
 
         // Visual Guidance Settings
@@ -125,6 +131,21 @@ public class UserSettings
         /// next taxi route is loaded.
         /// </summary>
         public bool TakeoffAssistAutoActivateOnLineup { get; set; } = true;
+
+        /// <summary>
+        /// When true (default), lifting off with Takeoff Assist active hands
+        /// guidance to Hand Fly mode: Takeoff Assist is deactivated and Hand Fly
+        /// turns on (if the pilot pre-armed Hand Fly on the ground, only Takeoff
+        /// Assist is turned off). The handoff is debounced — it fires only after
+        /// the aircraft stays airborne for a confirm window at takeoff speed, so
+        /// a roll bump or oleo flicker can't drop centerline guidance mid-roll.
+        /// Completes the taxi-lineup → Takeoff Assist → Hand Fly hands-free
+        /// chain. A pilot who doesn't want the auto-handoff disables this in
+        /// the Hand Fly settings tab. Naturally one-shot per takeoff: once
+        /// airborne, Takeoff Assist is off, so the handoff can't re-fire until
+        /// it is re-armed on the ground.
+        /// </summary>
+        public bool HandFlyAutoActivateOnTakeoff { get; set; } = true;
 
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
@@ -445,6 +466,7 @@ public class UserSettings
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,
             TakeoffAssistEnableCallouts = TakeoffAssistEnableCallouts,
             TakeoffAssistAutoActivateOnLineup = TakeoffAssistAutoActivateOnLineup,
+            HandFlyAutoActivateOnTakeoff = HandFlyAutoActivateOnTakeoff,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,
