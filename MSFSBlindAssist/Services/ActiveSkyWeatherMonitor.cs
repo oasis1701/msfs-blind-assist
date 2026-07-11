@@ -77,6 +77,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly ActiveSkyModeTracker _modeTracker = new();
+    private readonly TurbulenceCategoryTracker _turbulenceTracker = new();
 
     /// <summary>Last seen JSON TimeStamp. 0 = no baseline yet.</summary>
     private long _lastTimeStamp;
@@ -189,6 +190,20 @@ public class ActiveSkyWeatherMonitor : IDisposable
             {
                 Log.Debug("Services", "tick: AS detected but data fetch failed");
                 return;
+            }
+
+            // Turbulence category announce (baseline-first; TurbulenceCategoryTracker).
+            // Per-call settings read keeps the Weather-tab toggle live with no rewiring.
+            // Placed before the weather-refresh logic so a category change announces
+            // even on ticks the refresh detector considers "unchanged weather".
+            if (Settings.SettingsManager.Current.AnnounceTurbulenceEnabled)
+            {
+                string? turb = _turbulenceTracker.Observe(conditions.AmbientTurbulence);
+                if (turb != null && !_disposed)
+                {
+                    Log.Debug("Services", $"turbulence: \"{turb}\"");
+                    _announcer.Announce(turb);
+                }
             }
 
             // Decide whether this poll represents a real AS refresh.
@@ -851,6 +866,11 @@ public class ActiveSkyWeatherMonitor : IDisposable
         }
         return string.Join(" ", keep);
     }
+
+    /// <summary>Re-baselines the turbulence announcer (aircraft switch — position
+    /// and airframe discontinuities make the old category baseline meaningless).
+    /// The next successful poll re-baselines silently.</summary>
+    public void ResetTurbulenceTracker() => _turbulenceTracker.Reset();
 
     public void Dispose()
     {

@@ -359,6 +359,20 @@ public class UserSettings
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
 
+        /// <summary>
+        /// Speak turbulence category transitions (ActiveSky-sourced; rides the
+        /// decoded-weather monitor, so it needs ActiveSkyEnabled AND
+        /// WeatherAutoAnnounceEnabled to be live). Default on.
+        /// </summary>
+        public bool AnnounceTurbulenceEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Speak airframe ice-accretion start/clear (sim-truth STRUCTURAL ICE PCT,
+        /// any weather engine; rides the ambient auto-announce tick, so it needs
+        /// WeatherAutoAnnounceEnabled to be live). Default on.
+        /// </summary>
+        public bool AnnounceIcingEnabled { get; set; } = true;
+
         // HS787 bridge — community folder override for non-standard installs
         public string? Hs787CommunityFolderOverride { get; set; } = null;
         // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
@@ -479,6 +493,8 @@ public class UserSettings
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
             SigmetProximityRangeNm = SigmetProximityRangeNm,
             DecodeWeatherAdvisories = DecodeWeatherAdvisories,
+            AnnounceTurbulenceEnabled = AnnounceTurbulenceEnabled,
+            AnnounceIcingEnabled = AnnounceIcingEnabled,
             TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
             TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,

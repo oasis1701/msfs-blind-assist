@@ -601,6 +601,10 @@ public partial class MainForm
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
 
+        // Hazard announcers re-baseline on switch — stale category/ice baselines
+        // from the previous airframe must not announce as "changes".
+        activeSkyWeatherMonitor?.ResetTurbulenceTracker();
+
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
         {
