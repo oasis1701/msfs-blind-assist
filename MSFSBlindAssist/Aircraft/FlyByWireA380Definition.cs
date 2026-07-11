@@ -1135,9 +1135,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // WEIGHT/CONFIG-BASED speeds (VLS, VMAX, green-dot, F, S) — source from the FBW
         // managed-speed L-vars `A32NX_SPEEDS_*`, which compute continuously and have real
         // values on the GROUND as well as in flight (live-verified VLS 147, VMAX 222, GD 211,
-        // F 159, S 191 cold on the ground). The FAC ARINC words `A32NX_FAC_1_V_*` were NCD on
-        // the ground → "not available"; the SPEEDS_* set fixes that and matches the PFD tape in
-        // flight. Plain numeric L-vars (knots); formatted in TryGetDisplayOverride.
+        // F 159, S 191 cold on the ground). The PRIM ARINC words `A32NX_PRIM_1_V_*` (ex-FAC,
+        // see the PROTECTION-speeds block below) are NCD on the ground → "not available"; the
+        // SPEEDS_* set fixes that and matches the PFD tape in flight. Plain numeric L-vars
+        // (knots); formatted in TryGetDisplayOverride.
         void SpdLvar(string key, string name, string display) => vars[key] = new SimVarDefinition
         {
             Name = name, DisplayName = display, Type = SimVarType.LVar,
@@ -1149,13 +1150,18 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         SpdLvar("PFD_V3", "A32NX_SPEEDS_F", "F speed (slat retract)");
         SpdLvar("PFD_V4", "A32NX_SPEEDS_S", "S speed (flap retract)");
         // PROTECTION speeds (alpha-prot, alpha-max, stall-warn, VFE-next) — genuinely
-        // in-flight-only: the FAC computes them only with live AoA/airspeed, so they read
+        // in-flight-only: the PRIM computes them only with live AoA/airspeed, so they read
         // "not available" on the ground (NCD) and that is correct + unavoidable (no managed-
-        // speed equivalent exists). FAC1 ARINC429 words, knots.
-        ArincKt("PFD_VALPHAPROT", "A32NX_FAC_1_V_ALPHA_PROT", "Alpha Prot speed");
-        ArincKt("PFD_VALPHAMAX", "A32NX_FAC_1_V_ALPHA_LIM", "Alpha Max speed");
-        ArincKt("PFD_VSW", "A32NX_FAC_1_V_STALL_WARN", "Stall Warning speed");
-        ArincKt("PFD_VFENEXT", "A32NX_FAC_1_V_FE_NEXT", "VFE next");
+        // speed equivalent exists). PRIM1 ARINC429 words, knots. RENAMED 2026-07 from the
+        // FAC to the PRIM — FBW #10797 deleted the A380 FAC computer and moved the Flight-
+        // Envelope function into the PRIMs (PrimFePublisher), so A32NX_FAC_1_V_* → A32NX_PRIM_1_V_*
+        // (indexed 1/2/3; PRIM 1 = captain). Same ARINC429-knots encoding, decoded in the PFD
+        // via Arinc429LocalVarConsumerSubject exactly as the FAC words were. On an older A380X
+        // build without #10797 these read NCD → "not available" (graceful).
+        ArincKt("PFD_VALPHAPROT", "A32NX_PRIM_1_V_ALPHA_PROT", "Alpha Prot speed");
+        ArincKt("PFD_VALPHAMAX", "A32NX_PRIM_1_V_ALPHA_LIM", "Alpha Max speed");
+        ArincKt("PFD_VSW", "A32NX_PRIM_1_V_STALL_WARN", "Stall Warning speed");
+        ArincKt("PFD_VFENEXT", "A32NX_PRIM_1_V_FE_NEXT", "VFE next");
         // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
         // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
         void ArincUnit(string key, string name, string display, string unit) => vars[key] = new SimVarDefinition
