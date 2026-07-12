@@ -845,8 +845,12 @@ public class WeatherRadarForm : Form
         if (_activeSkyAvailable != true) return "unavailable";
         string? raw = await _activeSky.GetRouteAdvisoriesTextAsync();
         if (raw == null) return "unavailable";
+        // Decode gating rides the same checkbox as the Nearby Advisories box; the
+        // CheckedChanged handler saves the setting and the next refresh (≤30 s auto
+        // or F5) picks it up — same latency contract as the sibling box.
         return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoriesText(
-            MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw));
+            MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw),
+            SettingsManager.Current.DecodeWeatherAdvisories);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

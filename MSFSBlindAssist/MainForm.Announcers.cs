@@ -2325,11 +2325,19 @@ public partial class MainForm
             if (!IsHandleCreated || IsDisposed) return;
             foreach (string key in newKeys)
             {
-                Log.Debug("MainForm", $"route advisory: \"{key}\"");
+                // ALWAYS decoded, independent of the radar form's decode checkbox — a
+                // spoken announcement must never contain raw SIGMET abbreviations
+                // ("EMBD TS"). Falls back to the raw key when nothing decodes.
+                var adv = advisories.FirstOrDefault(a =>
+                    string.Equals(a.Key, key, StringComparison.OrdinalIgnoreCase));
+                string phrase = adv != null
+                    ? MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(adv)
+                    : key;
+                Log.Debug("MainForm", $"route advisory: \"{key}\" -> \"{phrase}\"");
                 // Neutral phrasing (no "New"): the same announce serves both first
                 // appearance and the 15-minute reminder re-announce, matching the
                 // sibling proximity alerts' "category: content" wording.
-                announcer.Announce($"Route advisory: {key}.");
+                announcer.Announce($"Route advisory: {phrase}.");
             }
         }
         catch (Exception ex)

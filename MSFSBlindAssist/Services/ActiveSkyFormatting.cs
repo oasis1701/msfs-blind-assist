@@ -288,18 +288,46 @@ public static class ActiveSkyFormatting
     }
 
     /// <summary>Radar-box text: blocks separated by one blank row; empty list reads
-    /// "No advisories on route."</summary>
-    internal static string BuildRouteAdvisoriesText(IReadOnlyList<RouteAdvisory> advisories)
+    /// "No advisories on route." With decode=true (the "Decode advisories into plain
+    /// English" checkbox) each advisory renders as its rebuilt plain-English summary —
+    /// the WI lat/lon polygon is dropped (noise when read aloud) — falling back to the
+    /// verbatim block when nothing was recognized, so decoding never hides data.</summary>
+    internal static string BuildRouteAdvisoriesText(IReadOnlyList<RouteAdvisory> advisories, bool decode)
     {
         if (advisories.Count == 0) return "No advisories on route.";
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < advisories.Count; i++)
         {
+            var a = advisories[i];
             if (i > 0) sb.AppendLine();
-            foreach (var line in advisories[i].Lines)
-                sb.AppendLine(line);
+            if (decode && HasDecodedContent(a))
+            {
+                sb.AppendLine($"{a.Identity ?? a.Key}: {JoinDecodedFields(a)}.");
+                if (a.ValidUntil != null) sb.AppendLine($"Valid until {a.ValidUntil}.");
+            }
+            else
+            {
+                foreach (var line in a.Lines) sb.AppendLine(line);
+            }
         }
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>ValidUntil/Identity alone don't count — a summary needs at least one
+    /// content field or it would render as a degenerate "KEY: ." line.</summary>
+    private static bool HasDecodedContent(RouteAdvisory a)
+        => a.Hazard != null || a.ObsFcst != null || a.VerticalExtent != null
+           || a.Movement != null || a.Trend != null;
+
+    private static string JoinDecodedFields(RouteAdvisory a)
+    {
+        var fields = new List<string>();
+        if (a.Hazard != null) fields.Add(a.Hazard);
+        if (a.ObsFcst != null) fields.Add(a.ObsFcst);
+        if (a.VerticalExtent != null) fields.Add(a.VerticalExtent);
+        if (a.Movement != null) fields.Add(a.Movement);
+        if (a.Trend != null) fields.Add(a.Trend);
+        return string.Join(", ", fields);
     }
 
     private static readonly Regex IdentityPattern = new(

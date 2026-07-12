@@ -211,13 +211,13 @@ public class RouteAdvisoriesTests
     public void Empty_list_reads_no_advisories()
         => Assert.Equal("No advisories on route.",
             ActiveSkyFormatting.BuildRouteAdvisoriesText(
-                ActiveSkyFormatting.ParseRouteAdvisories(NoHit)));
+                ActiveSkyFormatting.ParseRouteAdvisories(NoHit), decode: false));
 
     [Fact]
     public void Blocks_render_with_blank_separator_rows()
     {
         string text = ActiveSkyFormatting.BuildRouteAdvisoriesText(
-            ActiveSkyFormatting.ParseRouteAdvisories(TwoBlocks));
+            ActiveSkyFormatting.ParseRouteAdvisories(TwoBlocks), decode: false);
         string[] rows = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
         Assert.Equal(new[]
         {
@@ -227,6 +227,51 @@ public class RouteAdvisoriesTests
             "SIGMET B4",
             "SEV TURB FL250-FL380",
         }, rows);
+    }
+
+    // --- Decoded vs raw rendering (decode checkbox, design §3.3) ----------------------
+
+    [Fact]
+    public void Decoded_rendering_shows_summary_and_validity()
+    {
+        string text = ActiveSkyFormatting.BuildRouteAdvisoriesText(
+            ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture()), decode: true);
+        string[] rows = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+        Assert.Equal(new[]
+        {
+            "MHTG SIGMET J5: embedded thunderstorms, observed at 1830Z, tops FL520, moving west at 5 knots, no change expected.",
+            "Valid until 2200Z.",
+            "",
+            "YMMM SIGMET T07: severe turbulence, forecast, surface to 8,000 feet, stationary, no change expected.",
+            "Valid until 2300Z.",
+        }, rows);
+    }
+
+    [Fact]
+    public void Raw_rendering_keeps_original_lines_with_blank_separators()
+    {
+        string text = ActiveSkyFormatting.BuildRouteAdvisoriesText(
+            ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture()), decode: false);
+        string[] rows = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+        Assert.Equal(new[]
+        {
+            "MHTG SIGMET J5 EMBD TS",
+            "Valid until: 2200z",
+            LiveMhtgBody,
+            "",
+            "YMMM SIGMET T07 TURB",
+            "Valid until: 2300z",
+            LiveYmmmBody,
+        }, rows);
+    }
+
+    [Fact]
+    public void Undecodable_block_renders_verbatim_even_when_decoding()
+    {
+        string text = ActiveSkyFormatting.BuildRouteAdvisoriesText(
+            ActiveSkyFormatting.ParseRouteAdvisories("No flight plan is currently loaded"),
+            decode: true);
+        Assert.Equal("No flight plan is currently loaded", text);
     }
 
     // --- RouteAdvisoryTracker ---------------------------------------------------------------
