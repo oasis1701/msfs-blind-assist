@@ -39,6 +39,13 @@ public class WeatherRadarForm : Form
 
     private bool _isFetching = false;
 
+    // 30 s live refresh (spec 2026-07-12 §3). Safe only because the readouts are
+    // DisplayListBox rows reconciled in place — an unchanged tick is a no-op and a
+    // changed one never moves the reading cursor. forceRefresh:false lets the
+    // internet-backed fetches (advisories, Open-Meteo winds) serve from their TTL
+    // caches; the cheap local AS/SimConnect fetches re-run each tick.
+    private System.Windows.Forms.Timer? _autoRefreshTimer;
+
     public WeatherRadarForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
         _previousWindow = GetForegroundWindow();
@@ -265,6 +272,9 @@ public class WeatherRadarForm : Form
             BringToFront(); Activate();
             _currentWeatherBox.Focus();
             await RefreshAsync(forceRefresh: true);
+            _autoRefreshTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+            _autoRefreshTimer.Tick += (_, _) => _ = RefreshAsync(forceRefresh: false);
+            _autoRefreshTimer.Start();
         };
 
         KeyDown += (s, e) =>
@@ -278,7 +288,10 @@ public class WeatherRadarForm : Form
         if (_isFetching) return;
         _isFetching = true;
         SetStatus("Fetching weather data...");
-        _refreshButton.Enabled = false;
+        // The Refresh button is deliberately NEVER disabled: WinForms moves focus
+        // off a focused control when it's disabled, and the 30 s auto-refresh would
+        // steal focus from a user resting on the button every tick. The _isFetching
+        // guard above already makes mid-fetch clicks harmless no-ops.
 
         try
         {
@@ -335,7 +348,6 @@ public class WeatherRadarForm : Form
         finally
         {
             _isFetching = false;
-            _refreshButton.Enabled = true;
         }
     }
 
@@ -796,7 +808,21 @@ public class WeatherRadarForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _autoRefreshTimer?.Stop();
+        _autoRefreshTimer?.Dispose();
+        _autoRefreshTimer = null;
         base.OnFormClosed(e);
         if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _autoRefreshTimer?.Stop();
+            _autoRefreshTimer?.Dispose();
+            _autoRefreshTimer = null;
+        }
+        base.Dispose(disposing);
     }
 }
