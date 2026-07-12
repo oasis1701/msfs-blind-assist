@@ -262,7 +262,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     /// any nonzero value fires the press; the nose light is independent, see SetNoseLight).</summary>
     public Task<bool> SetLandingLights(int on) =>
         DispatchAsync(on != 0 ? "LANDING_LIGHTS_ON_THIRD_PARTY" : "LANDING_LIGHTS_OFF_THIRD_PARTY", 1);
-    /// <summary>Nose light (LIGHTING_LANDING_1): 0=On, 1=Off, 2=Retract.</summary>
+    /// <summary>Nose light (LIGHTING_LANDING_1): 0=T.O., 1=Taxi, 2=Off.</summary>
     public Task<bool> SetNoseLight(int pos)    => DispatchAsync("LIGHTING_LANDING_1", pos);
     public Task<bool> CabinCall()              => DispatchAsync("CABIN_CALL_ALL", 1);
 }

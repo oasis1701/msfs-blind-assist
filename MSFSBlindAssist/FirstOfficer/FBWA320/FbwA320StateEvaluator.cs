@@ -56,6 +56,7 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         // Auto-flap schedule inputs (speed tape + flaps handle). A32NX_SPEEDS_LANDING_CONF3
         // was removed (Task 12 audit) — confirmed absent from FlyByWireA320Definition.
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
+        "WIPER_LEFT", "WIPER_RIGHT",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;

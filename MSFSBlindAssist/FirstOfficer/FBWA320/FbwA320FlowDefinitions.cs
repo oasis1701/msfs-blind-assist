@@ -173,9 +173,9 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("A32NX_SWITCH_TCAS_TRAFFIC_POSITION", 1)), "PF_TCASTRAFFIC"),
             // Flight directors — push event, verify on via the FD light L:var.
             Skip(SW("PF_FD1", "Flight director 1: ON", "A32NX.FCU_EFIS_L_FD_PUSH", 1),
-                s => s.IsOn("A32NX_FCU_EFIS_L_FD_LIGHT_ON")),
+                s => s.IsOn("A32NX_FMGC_1_FD_ENGAGED")),
             Skip(SW("PF_FD2", "Flight director 2: ON", "A32NX.FCU_EFIS_R_FD_PUSH", 1),
-                s => s.IsOn("A32NX_FCU_EFIS_R_FD_LIGHT_ON")),
+                s => s.IsOn("A32NX_FMGC_2_FD_ENGAGED")),
             // Captain items
             Captain("PF_BARO", "Set QNH on both altimeters and the standby altimeter"),
             Captain("PF_FCUALT", "Set the initial cleared altitude on the FCU"),
