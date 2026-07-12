@@ -161,11 +161,18 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
 
     private async Task<bool> FireEcamPageAsync(string pseudoKey)
     {
+        if (_sc is not { IsConnected: true } || _def == null) return false;
         if (!EcamPageToEcp.TryGetValue(pseudoKey, out var ecpKey)) return false;
-        // ECP momentary button: press (1) then release (0) as separate writes.
-        ApplySilent(ecpKey, 1);
-        await Task.Delay(200);
-        ApplySilent(ecpKey, 0);
+        // ECP buttons are H-var press/release events (not L:vars, ApplySilent's SetLVar
+        // fallback would silently no-op) — fire them directly, same as MainForm's panel
+        // path (SimConnectManager.SendButtonPressRelease), but awaited since a WinForms
+        // Timer won't tick reliably on this background dispatch task.
+        if (!_def.GetVariables().TryGetValue(ecpKey, out var d)
+            || string.IsNullOrEmpty(d.PressEvent) || string.IsNullOrEmpty(d.ReleaseEvent))
+            return false;
+        _sc.SendHVar(d.PressEvent);
+        await Task.Delay(d.PressReleaseDelay > 0 ? d.PressReleaseDelay : 200);
+        _sc.SendHVar(d.ReleaseEvent);
         return true;
     }
 
@@ -239,7 +246,15 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     }
 
     // ---- Convenience methods for the auto-manager / phase monitor ----
-    public Task<bool> SetGear(bool down)       => DispatchAsync("GEAR_HANDLE_POSITION", down ? 1 : 0);
+    // GEAR_HANDLE_POSITION is a read-only stock SimVar (no HandleUIVariableSet write branch) —
+    // set the gear via the stock GEAR_SET K-event instead (0=up, 1=down), the same pattern
+    // HorizonSim787Definition.UiAndHotkeys.cs uses. Bypasses the dispatch gate/ApplySilent
+    // (whose SetLVar fallback would write a nonexistent L:var and silently no-op).
+    public Task<bool> SetGear(bool down)
+    {
+        _sc?.SendEvent("GEAR_SET", (uint)(down ? 1 : 0));
+        return Task.FromResult(true);
+    }
     public Task<bool> EngageAp1()              => DispatchAsync("AP1_ENGAGE", 1);
     public Task<bool> SetBaroStd(bool std)     => DispatchAsync(std ? "BARO_STD" : "BARO_QNH", 1);
     /// <summary>All-landing-lights buttons: On extends+illuminates both LAND lights, Off
