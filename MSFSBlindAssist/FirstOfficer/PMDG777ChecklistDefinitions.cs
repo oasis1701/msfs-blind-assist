@@ -151,6 +151,10 @@ public static class PMDG777ChecklistDefinitions
                 "ELEC_BackupGen_Sw_ON_0", v => v > 0.5,
                 new[] { "ELEC_BackupGen_Sw_ON_1" },
                 (e, _) => e.SetBackupGenerators(1)),
+            // Manual-tick held test — no persistent state for "test performed"
+            // (Fenix PF_FIRE_* pattern); ticking runs the same held test as the flow.
+            ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire and overheat test",
+                (e, _) => e.FireOvhtTestAsync()),
             Auto("PF_WINDOW_HEAT", "PREFLIGHT", "Window Heat switches: ON",
                 "ICE_WindowHeat_Sw_ON_0", v => v > 0.5,
                 new[] { "ICE_WindowHeat_Sw_ON_1", "ICE_WindowHeat_Sw_ON_2", "ICE_WindowHeat_Sw_ON_3" },

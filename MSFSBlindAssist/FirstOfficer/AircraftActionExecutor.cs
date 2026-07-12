@@ -23,6 +23,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     // flap-lever click events (see CLAUDE.md).
     private const int MouseFlagLeftSingle = 0x20000000;
 
+    // Held FIRE/OVHT TEST button: transmit press/release with the hold between. The 777
+    // CDA doctrine has NO release semantics (param 0 also registers as a press — see
+    // docs/pmdg-777.md), so the held test uses the '#id' transmit path like the VC click.
+    private const uint MouseFlagLeftSingleU  = 0x20000000u;
+    private const uint MouseFlagLeftReleaseU = 0x00020000u;
+    public const int FireOvhtTestHoldMs = 3000;   // Fenix-parity hold
+
     public void SetSimConnect(SimConnectManager? sc) => _simConnect = sc;
 
     public bool IsAvailable => _simConnect is { IsConnected: true };
@@ -57,6 +64,9 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
     {
         if (!IsAvailable) return Task.FromResult(false);
+        // Pseudo-key: held self-completing FIRE/OVHT test (Fenix FIRE_TEST_* precedent).
+        if (step.ActionType == Models.FlowStepActionType.SetSwitch && step.EventName == "FIRE_OVHT_TEST")
+            return FireOvhtTestAsync();
         return step.ActionType switch
         {
             Models.FlowStepActionType.SetSwitch =>
@@ -166,6 +176,31 @@ public class AircraftActionExecutor : IFoActionExecutor
         PushGroundPowerPrimary();
         await Task.Delay(CdaWriteSpacingMs);
         PushGroundPowerSecondary();
+    }
+
+    /// <summary>FIRE/OVHT TEST button, HELD: transmit LEFTSINGLE, hold, LEFTRELEASE —
+    /// fire bell + fire warning lights while held, self-releasing. NOT the panel's
+    /// momentary CDA param-1 press (that is a bare blip; the test wants a real hold,
+    /// and CDA has no release). In-sim verification: 737 test plan Part U (the 777
+    /// shares that plan); fallback if transmit proves inert on this button is the
+    /// CDA param-1 press.</summary>
+    public async Task<bool> FireOvhtTestAsync()
+    {
+        var sc = _simConnect;
+        if (sc == null || !PMDG777Definition.EventIds.TryGetValue("EVT_OH_FIRE_OVHT_TEST", out int evId))
+            return false;
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            await PaceAsync();
+            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(FireOvhtTestHoldMs);
+            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _dispatchGate.Release(); }
     }
 
     /// <summary>APU start sequence: selector ON, wait, then START (springs back to ON).</summary>

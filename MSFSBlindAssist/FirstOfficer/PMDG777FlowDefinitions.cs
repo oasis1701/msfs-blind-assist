@@ -120,6 +120,9 @@ public static class PMDG777FlowDefinitions
                 s => s.IsGen1On() && s.IsGen2On()),
             Multi("CP_BACKUP_GENS","Backup generators: ON",
                 ("EVT_OH_ELEC_BACKUP_GEN1_SWITCH", 1), ("EVT_OH_ELEC_BACKUP_GEN2_SWITCH", 1)),
+            // Held FIRE/OVHT test (executor pseudo-key; fire bell audible while held).
+            SW("CP_FIRE_TEST", "Fire and overheat test — listen for the fire bell",
+                "FIRE_OVHT_TEST", 1, checklistItemId: "PF_FIRE_TEST"),
             SW("CP_WINDOW_HEAT_1","Window heat 1: ON",         "EVT_OH_ICE_WINDOW_HEAT_1",           1),
             SW("CP_WINDOW_HEAT_2","Window heat 2: ON",         "EVT_OH_ICE_WINDOW_HEAT_2",           1),
             SW("CP_WINDOW_HEAT_3","Window heat 3: ON",         "EVT_OH_ICE_WINDOW_HEAT_3",           1),
