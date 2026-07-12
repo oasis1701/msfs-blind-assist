@@ -204,7 +204,7 @@ public class RouteAdvisoriesTests
     // --- BuildRouteAdvisoryAnnouncement -----------------------------------------------
 
     [Fact]
-    public void Announcement_speaks_identity_hazard_and_extent()
+    public void Announcement_speaks_identity_fir_hazard_and_extent()
     {
         var advisories = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture());
         Assert.Equal("MHTG SIGMET J5, Central American FIR, embedded thunderstorms, tops FL520",
