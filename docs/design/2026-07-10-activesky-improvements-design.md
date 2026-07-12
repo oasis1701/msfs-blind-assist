@@ -38,6 +38,9 @@ In scope (all gated behind the existing `UserSettings.ActiveSkyEnabled` opt-in v
 6. **Position dew point** — one decoded line from the already-fetched position METAR.
 7. **LastStatus diagnostics** — `ActiveSkyClient.LastStatus` shown in the Weather settings
    panel, closing its doc-comment's unfulfilled "surfaced to the UI" promise.
+   *REMOVED on Robin's 2026-07-13 PR review: a connection-status readout doesn't belong in the
+   settings panel at all. `LastStatus` stays surfaced via the Weather Radar form's mode box
+   (item 1's unreachable fallback), which fulfills the doc-comment promise instead.*
 
 Decisions fixed during brainstorming:
 
@@ -167,6 +170,10 @@ METAR box it parameterizes.
 Read-only `"ActiveSky status:"` line under the enable checkbox, showing
 `ActiveSkyClient.LastStatus` verbatim (`"connected on port 19285"`, `"port 19285: timeout"`,
 `"disabled in settings"`, …), refreshed when the panel is shown.
+
+*REMOVED on Robin's 2026-07-13 PR review — see the §2 item 7 note: a connection-status
+readout doesn't belong in the settings panel; `LastStatus` stays surfaced via the Weather
+Radar mode box (§4.1).*
 
 ## 5. Error handling and performance
 

@@ -269,9 +269,9 @@ in `CheckAmbientWeatherChanges`) disagree about the same METAR.
 
 ## 9. ActiveSky read-only surfaces (2026-07)
 
-Design doc: `docs/design/2026-07-10-activesky-improvements-design.md`. Five read-only additions
+Design doc: `docs/design/2026-07-10-activesky-improvements-design.md`. Four read-only additions
 on top of the surfaces above — a mode readout, a vertical weather profile, an on-demand
-closest-station readout, a forecast METAR combo, and a settings-panel status line — all gated
+closest-station readout, and a forecast METAR combo — all gated
 behind the same `ActiveSkyEnabled` opt-in and, on the Weather Radar form, hidden entirely
 (`Visible = false`, out of the NVDA tab order) rather than shown with disabled/placeholder text
 when the switch is off.
@@ -315,7 +315,7 @@ once rather than needing to be kept in sync by hand (unlike the precipitation-to
 §7, which genuinely does have to be duplicated for layering reasons — this one doesn't, because
 both callers already live in `Services`).
 
-**Current-position temperature/dew point line (a related sixth read-only addition, sharing the
+**Current-position temperature/dew point line (a related read-only addition, sharing the
 decoder used in (b)).** `ActiveSkyFormatting.BuildTempDewLine` (`Services/
 ActiveSkyFormatting.cs`) decodes the already-fetched position METAR into `"Temperature/dew
 point: 36 / 12°C"`, appended to `WeatherRadarForm.FormatAmbientFromActiveSky`'s current-position
@@ -370,17 +370,13 @@ share one visibility flag (`asMetarTextBox.Visible`, set once on `Load` from
 `_activeSky.IsRunningAsync()`), so when AS is off or unreachable at open time the form reverts
 to its original compact VATSIM-only layout.
 
-**(e) Settings-panel status line.** `WeatherPanel.RefreshActiveSkyStatusAsync` (`Forms/
-Settings/WeatherPanel.cs`) probes AS via a dedicated `ActiveSkyClient` instance (separate from
-the one any open form/monitor uses, so opening Settings never disturbs another surface's cached
-port) and writes `ActiveSkyClient.LastStatus` into `_asStatusLabel` — e.g. `"ActiveSky status:
-detected on port 19285"` or `"ActiveSky status: not detected (port 19285: no listener)"`. It
-runs once when the panel loads (`LoadFrom`) and reflects the **saved** setting (the central
-`IsRunningAsync` gate reads `SettingsManager.Current`, not the panel's unapplied checkbox
-state) — so ticking the checkbox and reading the status line in the same visit shows the
-*previous* session's result until Apply/OK commits the change and the panel is reopened. This
-finally fulfills `ActiveSkyClient.LastStatus`'s doc comment, which had promised "surfaced to the
-UI" since the property was first added.
+A fifth surface — an `ActiveSkyClient.LastStatus` line in the Weather settings panel — shipped
+on this branch and was then REMOVED on Robin's 2026-07-13 review: a connection-status readout
+doesn't belong in the settings panel at all. `LastStatus` remains surfaced where it is useful:
+the Weather Radar form's mode box shows `"ActiveSky: {LastStatus}"` whenever AS is enabled but
+unreachable (§9a). Don't re-add a status line to `WeatherPanel` — the panel is deliberately
+pure over its `LoadFrom`/`ApplyTo` arguments (no `SettingsManager.Current` reads, no probes),
+which also keeps `WeatherPanelTests` hermetic with no shared-state collection.
 
 ## 10. Hazard announcements: turbulence and icing (2026-07)
 

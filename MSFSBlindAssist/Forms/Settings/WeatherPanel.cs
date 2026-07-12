@@ -10,7 +10,6 @@ namespace MSFSBlindAssist.Forms.Settings;
 public class WeatherPanel : UserControl, ISettingsPanel
 {
     private CheckBox _activeSkyEnabled = null!;
-    private Label _asStatusLabel = null!;
 
     private CheckBox _weatherAutoAnnounce = null!;
     private CheckBox _announceTurbulence = null!;
@@ -21,8 +20,6 @@ public class WeatherPanel : UserControl, ISettingsPanel
     private CheckBox _pirepAlerts = null!;
     private CheckBox _routeAdvisoryAlerts = null!;
     private NumericUpDown _proximityRange = null!;
-
-    private readonly Services.ActiveSkyClient _statusClient = new();
 
     /// <summary>Combo entries: minutes (0 = AS download interval, no extra throttle).</summary>
     private static readonly int[] IntervalChoicesMinutes = { 0, 5, 10, 15, 20, 30, 45, 60 };
@@ -90,7 +87,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         {
             Text = "ActiveSky (HiFi)",
             Location = new System.Drawing.Point(12, 12),
-            Size = new System.Drawing.Size(460, 120),
+            Size = new System.Drawing.Size(460, 96),
             AccessibleName = "ActiveSky",
             AccessibleDescription = "HiFi ActiveSky weather engine integration",
         };
@@ -110,17 +107,6 @@ public class WeatherPanel : UserControl, ISettingsPanel
         };
 
         group.Controls.Add(_activeSkyEnabled);
-
-        _asStatusLabel = new Label
-        {
-            Text = "ActiveSky status: not yet checked",
-            Location = new System.Drawing.Point(12, 76),
-            Size = new System.Drawing.Size(430, 20),
-            AccessibleName = "ActiveSky status",
-            AccessibleDescription = "Result of the last ActiveSky connection check"
-        };
-        group.Controls.Add(_asStatusLabel);
-
         return group;
     }
 
@@ -261,8 +247,6 @@ public class WeatherPanel : UserControl, ISettingsPanel
         _routeAdvisoryAlerts.Checked = settings.AnnounceRouteAdvisoriesEnabled;
         _proximityRange.Value = Math.Clamp(settings.SigmetProximityRangeNm, 10, 500);
         _weatherIntervalCombo.SelectedIndex = Math.Max(0, Array.IndexOf(IntervalChoicesMinutes, settings.WeatherAutoAnnounceIntervalMinutes));
-
-        _ = RefreshActiveSkyStatusAsync();
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -285,17 +269,6 @@ public class WeatherPanel : UserControl, ISettingsPanel
         settings.PirepProximityAlertsEnabled = _pirepAlerts.Checked;
         settings.AnnounceRouteAdvisoriesEnabled = _routeAdvisoryAlerts.Checked;
         settings.SigmetProximityRangeNm = (int)_proximityRange.Value;
-    }
-
-    /// <summary>Probes AS and shows ActiveSkyClient.LastStatus. Reflects the SAVED
-    /// setting (the central gate reads SettingsManager.Current), not the unapplied
-    /// checkbox state. Internal so the test can await it deterministically.</summary>
-    internal async Task RefreshActiveSkyStatusAsync()
-    {
-        _asStatusLabel.Text = "ActiveSky status: checking…";
-        await _statusClient.IsRunningAsync();
-        if (!IsDisposed)
-            _asStatusLabel.Text = $"ActiveSky status: {_statusClient.LastStatus}";
     }
 
     public void OnLeaving()
