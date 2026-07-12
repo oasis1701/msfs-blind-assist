@@ -1,8 +1,10 @@
-// Route-advisory parsing + announce-decision rules (spec 2026-07-12): the parser is
-// DELIBERATELY defensive — the route variant's hit format is only partially known, so
-// unknown text renders verbatim as its own block rather than being dropped. The
-// tracker is baseline-first; ClearAnnouncedKeys() keeps the baseline (15-minute
-// reminder semantics, matching _announcedSigmetKeys); Reset() re-baselines fully.
+// Route-advisory parsing + announce-decision rules (spec 2026-07-12): the hit format is
+// live-verified (2026-07-12 capture, pinned below as fixtures — 3-line advisories,
+// single-CRLF separators, per-route-segment duplicates), but the parser REMAINS
+// deliberately defensive for unrecognized shapes — unknown text renders verbatim as its
+// own block rather than being dropped. The tracker is baseline-first; ClearAnnouncedKeys()
+// keeps the baseline (15-minute reminder semantics, matching _announcedSigmetKeys);
+// Reset() re-baselines fully.
 
 using MSFSBlindAssist.Services;
 
@@ -70,11 +72,12 @@ public class RouteAdvisoriesTests
     [Fact]
     public void Whitespace_only_separator_line_does_not_split_the_block()
     {
-        // A blank-line block separator requires "\r\n\r\n"/"\n\n" — a line containing only
-        // spaces is neither. Known merged-block limitation: the split doesn't happen, so
-        // "SIGMET B4"/"SEV TURB" and "AIRMET T1"/"MOD TURB" stay one block. The spaces-only
-        // line itself is TrimEnd'ed to empty by the per-line filter and dropped, so it
-        // never surfaces as a blank Lines entry either.
+        // The split rule is line-based: a truly-empty line closes the current block, but a
+        // spaces-only line does not — it is TrimEnd'ed to empty by the per-line filter and
+        // silently dropped (never surfaces as a blank Lines entry, and never splits).
+        // "AIRMET T1" also isn't a recognized header line (bare "SIGMET"/"AIRMET" tokens are
+        // 6/6 chars, too long for the \S{3,4} header prefix), so nothing here triggers a
+        // split — "SIGMET B4"/"SEV TURB" and "AIRMET T1"/"MOD TURB" stay one block.
         var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
             "SIGMET B4\r\nSEV TURB\r\n   \r\nAIRMET T1\r\nMOD TURB");
         var a = Assert.Single(advisories);
@@ -120,6 +123,17 @@ public class RouteAdvisoriesTests
         Assert.Equal("YMMM AIRMET T07 TURB", advisories[1].Key);
         Assert.Equal(new[] { "YMMM AIRMET T07 TURB", "Valid until: 2300z", "BODY B=" },
             advisories[1].Lines);
+    }
+
+    [Fact]
+    public void Consecutive_convective_sigmet_headers_split_without_blank_lines()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "CONVECTIVE SIGMET 18E\r\nValid until: 2000z\r\nAREA TS MOV FROM 26015KT. TOPS TO FL420.\r\n"
+            + "CONVECTIVE SIGMET 21C\r\nValid until: 2000z\r\nAREA TS TOPS TO FL400.");
+        Assert.Equal(2, advisories.Count);
+        Assert.Equal("CONVECTIVE SIGMET 18E", advisories[0].Key);
+        Assert.Equal("CONVECTIVE SIGMET 21C", advisories[1].Key);
     }
 
     [Fact]
@@ -272,6 +286,32 @@ public class RouteAdvisoriesTests
             ActiveSkyFormatting.ParseRouteAdvisories("No flight plan is currently loaded"),
             decode: true);
         Assert.Equal("No flight plan is currently loaded", text);
+    }
+
+    [Fact]
+    public void Tropical_cyclone_hazard_decodes()
+    {
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(
+            "NFFF SIGMET 3 TC\r\nValid until: 1800z\r\nNFFF NADI FIR TC MAWAR OBS AT 1200Z TOP FL540 MOV NW 10KT INTSF="));
+        Assert.Equal("tropical cyclone", a.Hazard);
+        Assert.Equal("intensifying", a.Trend);
+    }
+
+    [Fact]
+    public void Out_of_vocabulary_hazard_renders_verbatim_even_when_decoding()
+    {
+        // GR (hail alone) is not in the vocabulary: extent/movement/trend decode but
+        // Hazard stays null, and the summary path must NOT hide the phenomenon —
+        // the block renders verbatim despite decode:true.
+        const string raw = "LFFF SIGMET 9 GR\r\nValid until: 1900z\r\nLFFF PARIS FIR GR OBS AT 1400Z TOP FL300 MOV E 10KT NC=";
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(raw);
+        var a = Assert.Single(advisories);
+        Assert.Null(a.Hazard);
+        Assert.Equal("tops FL300", a.VerticalExtent);   // fields decoded…
+        string text = ActiveSkyFormatting.BuildRouteAdvisoriesText(advisories, decode: true);
+        Assert.Equal(new[] { "LFFF SIGMET 9 GR", "Valid until: 1900z",
+            "LFFF PARIS FIR GR OBS AT 1400Z TOP FL300 MOV E 10KT NC=" },
+            text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));  // …but render is verbatim
     }
 
     // --- RouteAdvisoryTracker ---------------------------------------------------------------

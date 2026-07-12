@@ -687,11 +687,15 @@ unconditionally either way.
 **(f) Honest verification caveat.** The no-hit path, the box's three-way rendering, the 30 s
 refresh, and the settings toggle are all verifiable on demand and were exercised during
 development. The HIT path — a real SIGMET/AIRMET response, its parsing, and its decoding — is
-now live-verified: the 2026-07-12 live capture (OMDB→LTFM en route, live MHTG SIGMET J5 and
-YMMM T07 advisories, the former repeated seven times across route-segment intersections) is
-pinned as the test fixture in `RouteAdvisoriesTests.cs`, and the full suite is green against it
-— dedup, decoded-field extraction, box rendering with decoding on and off, and the announcement
-builder all exercise the real captured text, not a hand-written approximation.
+now live-verified: the 2026-07-12 live capture (live MHTG SIGMET J5 and YMMM T07 advisories,
+the former repeated seven times across route-segment intersections) is pinned as the test
+fixture in `RouteAdvisoriesTests.cs`, and the full suite is green against it — dedup,
+decoded-field extraction, box rendering with decoding on and off, and the announcement builder
+all exercise the real captured text, not a hand-written approximation. The capture came from a
+KMIA→YSSY (Miami→Sydney) plan Robin dispatched deliberately to cross many FIRs, which is why the
+response carries both a Central-American-FIR SIGMET (MHTG) and a Melbourne-FIR SIGMET (YMMM) —
+the route-filtered framing is confirmed, since both FIRs genuinely lie along that great-circle
+route.
 
 What remains unverified is narrower: a genuinely NEW advisory appearing mid-flight — an advisory
 absent from the tracker's baseline that then shows up on a later 30 s tick and fires

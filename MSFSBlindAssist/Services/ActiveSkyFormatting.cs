@@ -231,9 +231,12 @@ public static class ActiveSkyFormatting
     }
 
     /// <summary>A line that begins an advisory block in the /GetActiveSigmetsAt
-    /// response, e.g. "MHTG SIGMET J5 EMBD TS" (live capture 2026-07-12).</summary>
+    /// response, e.g. "MHTG SIGMET J5 EMBD TS" (live capture 2026-07-12). Also matches
+    /// the US "CONVECTIVE SIGMET 18E" header shape (observed on the positional
+    /// endpoint) so consecutive US advisories split instead of merging into one
+    /// announce key.</summary>
     private static readonly Regex AdvisoryHeaderLine = new(
-        @"^\S{3,4}\s+(SIGMET|AIRMET)\s+\S+",
+        @"^(\S{3,4}\s+(SIGMET|AIRMET)|CONVECTIVE\s+SIGMET)\s+\S+",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -313,11 +316,13 @@ public static class ActiveSkyFormatting
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>ValidUntil/Identity alone don't count — a summary needs at least one
-    /// content field or it would render as a degenerate "KEY: ." line.</summary>
-    private static bool HasDecodedContent(RouteAdvisory a)
-        => a.Hazard != null || a.ObsFcst != null || a.VerticalExtent != null
-           || a.Movement != null || a.Trend != null;
+    /// <summary>The decoded-summary path requires a decoded HAZARD — the phenomenon is
+    /// the one field the summary must never drop. An advisory whose hazard is out of
+    /// vocabulary renders verbatim even when decoding is on (other decoded fields alone
+    /// would produce a summary that hides what the SIGMET is FOR — e.g. a tropical
+    /// cyclone body decoding only tops/movement/trend). Identity/ValidUntil alone never
+    /// count either — they'd render a degenerate "KEY: ." line.</summary>
+    private static bool HasDecodedContent(RouteAdvisory a) => a.Hazard != null;
 
     private static string JoinDecodedFields(RouteAdvisory a)
     {
@@ -359,6 +364,7 @@ public static class ActiveSkyFormatting
         (@"\bHVY SS\b", "heavy sandstorm"),
         (@"\bSEV DS\b", "severe dust storm"),
         (@"\bSEV SS\b", "severe sandstorm"),
+        (@"\bTC\b", "tropical cyclone"),
         (@"\bVA CLD\b", "volcanic ash cloud"),
         (@"\bVA ERUPTION\b", "volcanic ash eruption"),
         (@"\bRDOACT CLD\b", "radioactive cloud"),
@@ -417,6 +423,12 @@ public static class ActiveSkyFormatting
         else if (Regex.IsMatch(body, @"\bWKN\b", RegexOptions.IgnoreCase)) a.Trend = "weakening";
     }
 
+    /// <summary>Hazard/vertical-extent patterns and the <c>\bNC\b</c> trend check are
+    /// deliberately case-SENSITIVE (no <c>RegexOptions.IgnoreCase</c>) — SIGMET
+    /// vocabulary is uppercase, and case-sensitivity keeps bare fallbacks like
+    /// <c>\bTS\b</c>/<c>\bNC\b</c> from false-matching lowercase free text. The
+    /// identity/valid-until/OBS/FCST/MOV/STNR/INTSF/WKN regexes are IgnoreCase because
+    /// their shapes are unambiguous.</summary>
     private static string? MatchHazard(string text)
     {
         if (string.IsNullOrEmpty(text)) return null;
