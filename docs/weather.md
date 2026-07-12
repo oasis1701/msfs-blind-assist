@@ -272,9 +272,11 @@ ActiveSkyClient.cs`) — the same GET that already runs for every liveness probe
 .ParseModeText` (`Services/ActiveSkyFormatting.cs`) strips the trailing `"(Active)"`/
 `"(Inactive)"` marker and the `"(...z)"` weather-clock group out of that raw text; `FormatModeLine`
 renders it as `"ActiveSky: Live Real time mode, weather time 1935Z"`. `WeatherRadarForm.
-RefreshAsync` (`Forms/WeatherRadarForm.cs`) shows this in `_asModeLabel` at the top of the form,
-substituting `"ActiveSky: {LastStatus}"` when AS is enabled but unreachable, and hides the label
-entirely when the switch is off.
+RefreshAsync` (`Forms/WeatherRadarForm.cs`) shows this in `_asModeBox` at the top of the form — a
+**read-only TextBox, deliberately not a Label**: labels have no tab stop, so a screen-reader user
+could never reach the mode line by keyboard (Robin's 2026-07-11 review finding). It substitutes
+`"ActiveSky: {LastStatus}"` when AS is enabled but unreachable, and hides the box entirely when
+the switch is off.
 
 The *spoken* side is separate: `ActiveSkyModeTracker.Observe` (`Services/
 ActiveSkyModeTracker.cs`) is pure decision logic wired into `ActiveSkyWeatherMonitor.OnTickAsync`

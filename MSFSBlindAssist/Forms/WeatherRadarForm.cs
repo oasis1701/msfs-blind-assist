@@ -21,7 +21,7 @@ public class WeatherRadarForm : Form
     private bool? _activeSkyAvailable;
     private readonly IntPtr _previousWindow;
 
-    private Label _asModeLabel = null!;
+    private TextBox _asModeBox = null!;
     private Label _currentWeatherLabel = null!;
     private TextBox _currentWeatherBox = null!;
     private Label _stationLabel = null!;
@@ -55,7 +55,7 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 976);
+        Size = new Size(600, 988);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -66,15 +66,20 @@ public class WeatherRadarForm : Form
         int y = 12;
 
         // ── ActiveSky mode status (hidden when the AS switch is off) ──────
-        _asModeLabel = new Label
+        // A read-only TextBox, not a Label: labels have no tab stop, so a screen
+        // reader user could never reach the mode line by keyboard.
+        _asModeBox = new TextBox
         {
             Text = "",
             Location = new Point(12, y),
-            Size = new Size(570, 20),
+            Size = new Size(566, 24),
+            ReadOnly = true,
+            Font = new Font("Consolas", 9),
             AccessibleName = "ActiveSky status",
+            AccessibleDescription = "ActiveSky weather engine mode and weather time",
             Visible = false
         };
-        y += 24;
+        y += 24 + 12;
 
         // ── Current position weather ──────────────────────────────────────
         _currentWeatherLabel = new Label
@@ -238,7 +243,7 @@ public class WeatherRadarForm : Form
 
         Controls.AddRange(new Control[]
         {
-            _asModeLabel,
+            _asModeBox,
             _currentWeatherLabel, _currentWeatherBox,
             _stationLabel, _stationBox,
             _profileLabel, _profileBox,
@@ -252,14 +257,15 @@ public class WeatherRadarForm : Form
 
     private void SetupAccessibility()
     {
-        _currentWeatherBox.TabIndex = 0;
-        _stationBox.TabIndex = 1;
-        _profileBox.TabIndex = 2;
-        _advisoriesBox.TabIndex = 3;
-        _windsAloftBox.TabIndex = 4;
-        _decodeCheckBox.TabIndex = 5;
-        _refreshButton.TabIndex = 6;
-        _closeButton.TabIndex = 7;
+        _asModeBox.TabIndex = 0;
+        _currentWeatherBox.TabIndex = 1;
+        _stationBox.TabIndex = 2;
+        _profileBox.TabIndex = 3;
+        _advisoriesBox.TabIndex = 4;
+        _windsAloftBox.TabIndex = 5;
+        _decodeCheckBox.TabIndex = 6;
+        _refreshButton.TabIndex = 7;
+        _closeButton.TabIndex = 8;
 
         Load += async (s, e) =>
         {
@@ -292,9 +298,9 @@ public class WeatherRadarForm : Form
             // AS-only UI disappears, not "disabled" text). Re-evaluated per refresh
             // so toggling the setting takes effect without an app restart.
             bool asEnabled = SettingsManager.Current.ActiveSkyEnabled;
-            _asModeLabel.Visible = asEnabled;
+            _asModeBox.Visible = asEnabled;
             if (asEnabled)
-                _asModeLabel.Text = _activeSkyAvailable == true
+                _asModeBox.Text = _activeSkyAvailable == true
                     ? MSFSBlindAssist.Services.ActiveSkyFormatting.FormatModeLine(_activeSky.LastModeText)
                     : $"ActiveSky: {_activeSky.LastStatus}";
             _stationLabel.Visible = asEnabled;
