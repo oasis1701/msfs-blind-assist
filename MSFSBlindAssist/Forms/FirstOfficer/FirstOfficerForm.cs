@@ -190,6 +190,11 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         BringToFront();
         Activate();
         _tabs.Focus();
+        // Re-hide group-header checkboxes now the handle is created and the framework's
+        // late checked-state-image restore has run — guards the initial collapsed state
+        // against the posted OnHandleCreated re-hide losing a race with that restore.
+        foreach (TreeNode root in _checklistTree.Nodes)
+            _checklistTree.HideCheckBox(root);
     }
 
     /// <summary>Apply updated automation settings (call after the Settings dialog's First Officer panel saves).</summary>
@@ -357,6 +362,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _checklistTree.AfterSelect   += ChecklistTree_AfterSelect;
         _checklistTree.BeforeExpand  += ChecklistTree_BeforeExpand;
         _checklistTree.AfterExpand   += ChecklistTree_AfterExpand;
+        _checklistTree.AfterCollapse += ChecklistTree_AfterCollapse;
 
         layout.Controls.Add(_checklistTree, 0, 0);
 
@@ -545,6 +551,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 if (!item.ManualCompletionAllowed)
                     _checklistTree.HideCheckBox(node);
             }
+            // Adding children reasserts the PARENT's state-image checkbox (cChildren 0→N),
+            // resurrecting the group header's hidden checkbox — re-hide it after populating.
+            // This is why headers regained a checkbox once a group had been expanded.
+            _checklistTree.HideCheckBox(parent);
             _suppressTreeEvents = false;
         }
     }
@@ -625,8 +635,19 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             foreach (TreeNode root in _checklistTree.Nodes)
                 if (!ReferenceEquals(root, expanded) && root.IsExpanded)
                     root.Collapse();
+            // Expanding/collapsing a root reasserts its state-image checkbox — re-hide
+            // every group header so none regains a checkbox after navigation.
+            foreach (TreeNode root in _checklistTree.Nodes)
+                _checklistTree.HideCheckBox(root);
         }
         finally { _suppressTreeEvents = false; }
+    }
+
+    // A user collapsing a group also reasserts its header's state-image checkbox — re-hide.
+    private void ChecklistTree_AfterCollapse(object? sender, TreeViewEventArgs e)
+    {
+        if (e.Node is { Parent: null } root)
+            _checklistTree.HideCheckBox(root);
     }
 
     // ------------------------------------------------------------------

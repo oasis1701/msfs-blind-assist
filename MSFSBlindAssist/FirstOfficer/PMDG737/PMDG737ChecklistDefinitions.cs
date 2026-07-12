@@ -246,6 +246,9 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => e.SetPositionLights(2)),
             Auto("BTKO_AT", "BEFORE_TAKEOFF", "Autothrottle: ARM", "MCP_ATArmSw", v => v > 0.5, (e, s) => e.SetATArm(1, s)),
             Auto("BTKO_XPDR", "BEFORE_TAKEOFF", "Transponder: TA/RA", "XPDR_ModeSel", v => v > 3.5, (e, _) => e.SetTransponderMode(4)),
+            // Advise the cabin crew — momentary ATTEND chime (no persistent state).
+            ActionManual("BTKO_CABIN", "BEFORE_TAKEOFF", "Advise the cabin crew for takeoff (call all)",
+                (e, _) => e.CabinCall()),
         }
     };
 
@@ -288,6 +291,9 @@ public static class PMDG737ChecklistDefinitions
         {
             Auto("APA_EFIS_MODE", "APPROACH", "EFIS mode: APP", "EFIS_ModeSel_0", v => v < 0.5, (e, _) => e.SetEFISModeCapt(0)),
             Auto("APA_EFIS_RANGE", "APPROACH", "EFIS range: 20", "EFIS_RangeSel_0", v => v > 1.5 && v < 2.5, (e, _) => e.SetEFISRangeCapt(2)),
+            // Notify the cabin crew for landing — momentary ATTEND chime.
+            ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
+                (e, _) => e.CabinCall()),
             Reminder("APA_ALT", "APPROACH", "Set the altimeters"),
         }
     };

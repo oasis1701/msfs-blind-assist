@@ -35,7 +35,6 @@ public static class FbwA380ChecklistDefinitions
         BuildLineupCL(),
         BuildBeforeTakeoffCL(),
         BuildAfterTakeoff(),
-        BuildClimb(),
         BuildApproach(),
         BuildApproachCL(),
         BuildLanding(),
@@ -87,7 +86,12 @@ public static class FbwA380ChecklistDefinitions
                                   await e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1);
                                   await e.Set("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 1);
                                   await e.Set("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 1); }),
-            Reminder("CP_COCKPITLT", "COCKPIT_PREP", "Cockpit lights: set"),
+            // Annunciator + integral lights BRIGHT (1) — SOP "as required", Bright chosen
+            // for a deterministic ground-prep setting (0=Test/1=Bright/2=Dim).
+            Multi("CP_COCKPITLT", "COCKPIT_PREP", "Cockpit lights: set", "A380X_OVHD_ANN_LT_POSITION",
+                v => Math.Abs(v - 1) < 0.5, new[] { "A32NX_OVHD_INTLT_ANN" },
+                async (e, _) => { await e.Set("A380X_OVHD_ANN_LT_POSITION", 1);
+                                  await e.Set("A32NX_OVHD_INTLT_ANN", 1); }),
             Multi("CP_GPU", "COCKPIT_PREP", "Ground power: ON",
                 "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", v => v > 0.5,
                 new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
@@ -167,7 +171,10 @@ public static class FbwA380ChecklistDefinitions
                 new[] { "FD_2_CTL" },
                 async (e, _) => { await e.Set("FD_1_CTL", 1); await e.Set("FD_2_CTL", 1); }),
             Reminder("CP_CLOCK", "COCKPIT_PREP", "Clock: reset"),
-            Reminder("CP_ECAMPAGE", "COCKPIT_PREP", "ECAM page: door"),
+            // ECAM SD page — real ECP write (door=5). Auto/RevertToState live mirror; the
+            // page index sticks on this build (re-checked live 2026-06-13).
+            Auto("CP_ECAMPAGE", "COCKPIT_PREP", "ECAM page: door", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
+                v => Math.Abs(v - 5) < 0.5, (e, _) => e.Set("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 5)),
             Reminder("CP_IFR", "COCKPIT_PREP", "Obtain IFR clearance"),
             Reminder("CP_PAYLOAD", "COCKPIT_PREP", "Load payload on the EFB"),
             Reminder("CP_MCDU", "COCKPIT_PREP", "Program the MCDU"),
@@ -191,7 +198,8 @@ public static class FbwA380ChecklistDefinitions
             Reminder("BS_ALT", "BEFORE_START", "Set cleared altitude on the FCU"),
             ActionManual("BS_FCUALT", "BEFORE_START", "FCU altitude: pushed",
                 (e, _) => e.Set("FCU_PUSH_ALT", 1)),
-            Reminder("BS_ECAMPAGE", "BEFORE_START", "ECAM page: APU"),
+            Auto("BS_ECAMPAGE", "BEFORE_START", "ECAM page: APU", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 1)),
             // Master alone does not start the FBW APU — the tick also presses the START
             // PB (unless AVAIL is already lit). Auto-detect stays master-based; the
             // checklist is pilot-paced, so there is no inline AVAIL wait (the After Start
@@ -259,7 +267,8 @@ public static class FbwA380ChecklistDefinitions
         Id = "ENGINE_START", Name = "Engine Start",
         Items = new()
         {
-            Reminder("ES_ECAMPAGE", "ENGINE_START", "ECAM page: engine"),
+            Auto("ES_ECAMPAGE", "ENGINE_START", "ECAM page: engine", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 0)),
             Auto("ES_APUBLEED", "ENGINE_START", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
             Auto("ES_ENGMODE", "ENGINE_START", "Engine mode: IGN", "ENGINE_MODE_SELECTOR",
@@ -287,7 +296,8 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
             Reminder("AS_WINGAI", "AFTER_START", "Wing anti-ice: set as required"),
             Reminder("AS_ENGAI", "AFTER_START", "Engine anti-ice: set as required"),
-            Reminder("AS_ECAMPAGE", "AFTER_START", "ECAM page: APU"),
+            Auto("AS_ECAMPAGE", "AFTER_START", "ECAM page: APU", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 1)),
             Auto("AS_APU_OFF", "AFTER_START", "APU: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Auto("AS_APUBLEED_OFF", "AFTER_START", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
@@ -296,7 +306,11 @@ public static class FbwA380ChecklistDefinitions
             // since the PR #139 API audit — the old on/off LIGHT_TAXI_OVHD key is gone.
             Auto("AS_NOSE_TAXI", "AFTER_START", "Nose light: TAXI", "NOSE_LIGHT",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
-            Reminder("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off"),
+            // DIM (2) for taxi/flight — ANN LT has no true OFF.
+            Multi("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off", "A380X_OVHD_ANN_LT_POSITION",
+                v => Math.Abs(v - 2) < 0.5, new[] { "A32NX_OVHD_INTLT_ANN" },
+                async (e, _) => { await e.Set("A380X_OVHD_ANN_LT_POSITION", 2);
+                                  await e.Set("A32NX_OVHD_INTLT_ANN", 2); }),
             Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
             ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET",
@@ -328,7 +342,8 @@ public static class FbwA380ChecklistDefinitions
             Auto("TX_PWS", "TAXI", "Predictive windshear: ON", "A32NX_SWITCH_RADAR_PWS_Position",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_Position", 1)),
             Reminder("TX_FLAPS", "TAXI", "Flaps: set for takeoff"),
-            Reminder("TX_ECAMPAGE", "TAXI", "ECAM page: flight controls"),
+            Auto("TX_ECAMPAGE", "TAXI", "ECAM page: flight controls", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
+                v => Math.Abs(v - 11) < 0.5, (e, _) => e.Set("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 11)),
         }
     };
 
@@ -354,6 +369,10 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("LIGHT_LANDING", 1);
                     await e.Set("NOSE_LIGHT", 0);   // T.O.
                 }),
+            // Advise the cabin crew for takeoff — momentary CALLS ALL chime (no persistent
+            // state, so ActionManual: ticking pulses the button; no auto-detect / revert).
+            ActionManual("LU_CABIN", "LINEUP", "Advise the cabin crew for takeoff (call all)",
+                (e, _) => e.Set("A380X_MSFSBA_SIGNAL_CABIN_READY", 1)),
         }
     };
 
@@ -367,28 +386,16 @@ public static class FbwA380ChecklistDefinitions
         {
             Auto("AT_SPOILERS_DISARM", "AFTER_TAKEOFF", "Spoilers: DISARM", "A32NX_SPOILERS_ARMED",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 0)),
+            // Autobrake disarm — consolidated here from the former Climb phase (2026-07-12).
+            Auto("AT_AUTOBRAKE", "AFTER_TAKEOFF", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
             Auto("AT_NOSE_TAXI", "AFTER_TAKEOFF", "Nose light: TAXI", "NOSE_LIGHT",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
         }
     };
 
     // -----------------------------------------------------------------------
-    // 8. Climb
-    // -----------------------------------------------------------------------
-    private static Group BuildClimb() => new()
-    {
-        Id = "CLIMB", Name = "Climb",
-        Items = new()
-        {
-            Auto("CL_AUTOBRAKE", "CLIMB", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE",
-                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
-            Auto("CL_SEATBELTS", "CLIMB", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
-                v => v > 0.5, (e, _) => e.Set("SEATBELT_SIGN", 0)),
-        }
-    };
-
-    // -----------------------------------------------------------------------
-    // 9. Approach
+    // 8. Approach
     // -----------------------------------------------------------------------
     private static Group BuildApproach() => new()
     {
@@ -401,6 +408,9 @@ public static class FbwA380ChecklistDefinitions
             Multi("AP_EFISMODE", "APPROACH", "EFIS mode: ILS", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 0) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_MODE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_MODE", 0); await e.Set("A32NX_EFIS_R_ND_MODE", 0); }),
+            // Notify the cabin crew for landing — momentary CALLS ALL chime (Fenix parity).
+            ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
+                (e, _) => e.Set("A380X_MSFSBA_SIGNAL_CABIN_READY", 1)),
         }
     };
 
@@ -492,7 +502,10 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("ENG_VALVE_SWITCH:3", 0);
                     await e.Set("ENG_VALVE_SWITCH:4", 0);
                 }),
-            Reminder("PK_COCKPITLT", "PARKING", "Cockpit lights: set"),
+            Multi("PK_COCKPITLT", "PARKING", "Cockpit lights: set", "A380X_OVHD_ANN_LT_POSITION",
+                v => Math.Abs(v - 1) < 0.5, new[] { "A32NX_OVHD_INTLT_ANN" },
+                async (e, _) => { await e.Set("A380X_OVHD_ANN_LT_POSITION", 1);
+                                  await e.Set("A32NX_OVHD_INTLT_ANN", 1); }),
             Auto("PK_BEACON_OFF", "PARKING", "Beacon lights: OFF", "LIGHT_BEACON",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_BEACON", 0)),
             Auto("PK_WINGLT_OFF", "PARKING", "Wing lights: OFF", "LIGHT_WING",

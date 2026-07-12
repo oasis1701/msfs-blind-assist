@@ -293,7 +293,10 @@ public static class PMDG737FlowDefinitions
             SW("BTO_STROBE", "Position lights: STROBE & STEADY", "EVT_OH_LIGHTS_POS_STROBE", 2),
             MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", s => s.IsATArmOn()),
             SW("BTO_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4),
-            Captain("BTO_BRIEF", "Confirm takeoff runway, trim set, and cabin crew notified."),
+            // Advise the cabin crew for takeoff — the overhead ATTEND pushbutton (cabin chime).
+            SW("BTKO_CABIN", "Advise the cabin crew for takeoff", "EVT_OH_ATTND_CALL_SWITCH", 1,
+                checklistItemId: "BTKO_CABIN", isMomentary: true),
+            Captain("BTO_BRIEF", "Confirm takeoff runway and trim set."),
         }
     };
 
@@ -344,6 +347,9 @@ public static class PMDG737FlowDefinitions
         {
             SW("AP_EFIS_MODE", "EFIS mode: APP", "EVT_EFIS_CPT_MODE", 0),
             SW("AP_EFIS_RANGE", "EFIS range: 20", "EVT_EFIS_CPT_RANGE", 2),
+            // Notify the cabin crew for landing — the overhead ATTEND pushbutton (cabin chime).
+            SW("AP_CABIN", "Notify the cabin crew for landing", "EVT_OH_ATTND_CALL_SWITCH", 1,
+                checklistItemId: "AP_CABIN", isMomentary: true),
             Captain("AP_ALT", "Set the altimeters."),
         }
     };

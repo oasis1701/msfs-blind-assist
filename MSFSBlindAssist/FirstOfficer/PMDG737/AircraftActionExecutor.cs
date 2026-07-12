@@ -705,4 +705,9 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetLowerDUFO(int p)      => Fire("EVT_DSP_FO_LOWER_DU_SELECTOR", p);
     public bool SetTransponderMode(int m)=> Fire("EVT_TCAS_MODE", m);                       // 0=STBY..4=TA/RA
     public bool SetWipers(int p)         => FireBoth("EVT_OH_WIPER_LEFT_CONTROL", "EVT_OH_WIPER_RIGHT_CONTROL", p);
+
+    // Cabin crew call — the overhead ATTEND pushbutton (cabin chime). CDA param-1 press,
+    // live-verified (PMDG737Definition "Calls" panel: EVT_OH_ATTND_CALL_SWITCH). Momentary,
+    // no persistent state — used to advise the cabin before takeoff / before landing.
+    public bool CabinCall()              => Fire("EVT_OH_ATTND_CALL_SWITCH", 1);
 }

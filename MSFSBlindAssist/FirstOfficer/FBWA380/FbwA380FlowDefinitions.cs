@@ -43,7 +43,6 @@ public static class FbwA380FlowDefinitions
         BuildTaxi(),
         BuildLineup(),
         BuildAfterTakeoff(),
-        BuildClimb(),
         BuildApproach(),
         BuildLanding(),
         BuildAfterLanding(),
@@ -82,7 +81,11 @@ public static class FbwA380FlowDefinitions
                 ("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 1), ("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1),
                 ("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 1), ("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 1)),
             Wait("CP_STBY1", "Standby", 5),
-            Captain("CP_COCKPITLT", "Cockpit lights: set"),
+            // Cockpit lights: annunciator + integral lights BRIGHT (position 1). SOP is
+            // "as required"; Bright is the deterministic ground-prep setting on this build
+            // (dome/flood/pedestal knobs are not L:var-settable). ANN LT: 0=Test/1=Bright/2=Dim.
+            Multi("CP_COCKPITLT", "Cockpit lights: set",
+                ("A380X_OVHD_ANN_LT_POSITION", 1), ("A32NX_OVHD_INTLT_ANN", 1)),
             Multi("CP_GPU", "Ground power: ON",
                 ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 1), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 1),
                 ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 1), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 1)),
@@ -130,7 +133,10 @@ public static class FbwA380FlowDefinitions
             Multi("CP_EFISRANGE", "EFIS range: 40", ("A32NX_EFIS_L_ND_RANGE", 3), ("A32NX_EFIS_R_ND_RANGE", 3)),
             Multi("CP_FD", "Flight directors: ON", ("FD_1_CTL", 1), ("FD_2_CTL", 1)),
             Captain("CP_CLOCK", "Clock: reset"),
-            Captain("CP_ECAMPAGE", "ECAM page: door"),
+            // ECAM SD page selection — real ECP write (A32NX_ECAM_SD_CURRENT_PAGE_INDEX:
+            // door=5, APU=1, engine=0, F/Ctl=11). Selecting a manual page overrides the
+            // Airbus auto-page until the next auto event; acceptable during ground prep.
+            SW("CP_ECAMPAGE", "ECAM page: door", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 5),
             WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", v => v > 0.5, 60),
             Captain("CP_IFR", "Obtain IFR clearance"),
             Captain("CP_PAYLOAD", "Load payload on the EFB"),
@@ -154,7 +160,7 @@ public static class FbwA380FlowDefinitions
             SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING", 1),
             Captain("BS_ALT", "Set cleared altitude on the FCU"),
             SW("BS_FCUALT", "FCU altitude: pushed", "FCU_PUSH_ALT", 1),
-            Captain("BS_ECAMPAGE", "ECAM page: APU"),
+            SW("BS_ECAMPAGE", "ECAM page: APU", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 1),
             // APU block: master on, dwell, START pushbutton, wait for AVAIL. The master
             // switch alone does NOT start the FBW APU — the START PB press is required —
             // and external power must stay on the buses until the APU is actually
@@ -208,7 +214,7 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new string[] { },
         Steps = new()
         {
-            Captain("ES_ECAMPAGE", "ECAM page: engine"),
+            SW("ES_ECAMPAGE", "ECAM page: engine", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 0),
             Skip(SW("ES_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")),
             Skip(SW("ES_ENGMODE", "Engine mode: IGN", "ENGINE_MODE_SELECTOR", 2),
@@ -240,7 +246,7 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 1)),
             Captain("AS_WINGAI", "Wing anti-ice: set as required"),
             Captain("AS_ENGAI", "Engine anti-ice: set as required"),
-            Captain("AS_ECAMPAGE", "ECAM page: APU"),
+            SW("AS_ECAMPAGE", "ECAM page: APU", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 1),
             // Release a still-latched START PB first — master-off must never coexist with
             // START=1 (a latched 1 would surprise-start the APU on the next master-ON).
             Skip(SW("AS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
@@ -251,7 +257,10 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
             Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "NOSE_LIGHT", 1),
                 s => s.IsPosition("NOSE_LIGHT", 1)),
-            Captain("AS_COCKPITLT", "Cockpit lights: off"),
+            // Cockpit lights DIM (position 2) for taxi/flight — the reduced setting
+            // (ANN LT has no true OFF; 2=Dim is the in-flight position).
+            Multi("AS_COCKPITLT", "Cockpit lights: off",
+                ("A380X_OVHD_ANN_LT_POSITION", 2), ("A32NX_OVHD_INTLT_ANN", 2)),
             Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)),
             SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1),
@@ -283,7 +292,7 @@ public static class FbwA380FlowDefinitions
             Skip(SW("TX_PWS", "Predictive windshear: ON", "A32NX_SWITCH_RADAR_PWS_Position", 1),
                 s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_Position", 1)),
             Captain("TX_FLAPS", "Flaps: set for takeoff"),
-            Captain("TX_ECAMPAGE", "ECAM page: flight controls"),
+            SW("TX_ECAMPAGE", "ECAM page: flight controls", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 11),
         }
     };
 
@@ -305,6 +314,10 @@ public static class FbwA380FlowDefinitions
             Skip(Multi("LU_LANDING", "Landing and nose lights: ON",
                     ("LIGHT_LANDING", 1), ("NOSE_LIGHT", 0)),
                 s => s.IsOn("LIGHT_LANDING") && s.IsPosition("NOSE_LIGHT", 0)),
+            // Advise the cabin crew for takeoff: pulse CALLS ALL (the verified
+            // A380X_MSFSBA_SIGNAL_CABIN_READY branch presses + releases it → cabin chime).
+            Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)",
+                    "A380X_MSFSBA_SIGNAL_CABIN_READY", 1), "LU_CABIN"),
         }
     };
 
@@ -314,35 +327,22 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
-        Description = "Spoilers disarm, nose light to taxi.",
+        Description = "Spoilers disarm, autobrake disarm, nose light to taxi.",
         RelatedChecklistGroupIds = new string[] { },
         Steps = new()
         {
             Skip(SW("AT_SPOILERS_DISARM", "Spoilers: DISARM", "A380X_MSFSBA_SPOILERS_ARM", 0),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 0)),
+            // Autobrake disarm — consolidated here from the former Climb phase (2026-07-12).
+            Skip(SW("AT_AUTOBRAKE", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE", 0),
+                s => s.IsPosition("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
             Skip(SW("AT_NOSE_TAXI", "Nose light: TAXI", "NOSE_LIGHT", 1),
                 s => s.IsPosition("NOSE_LIGHT", 1)),
         }
     };
 
     // -----------------------------------------------------------------------
-    // 8. Climb
-    // -----------------------------------------------------------------------
-    private static Flow BuildClimb() => new()
-    {
-        Id = "CLIMB", Name = "Climb",
-        Description = "Autobrake disarm, seatbelt signs on.",
-        RelatedChecklistGroupIds = new string[] { },
-        Steps = new()
-        {
-            Skip(SW("CL_AUTOBRAKE", "Autobrake: disarm", "A32NX_AUTOBRAKES_SELECTED_MODE", 0),
-                s => s.IsPosition("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
-            Skip(SW("CL_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 0), s => s.IsOn("SEATBELT_SIGN_LIGHT")),
-        }
-    };
-
-    // -----------------------------------------------------------------------
-    // 9. Approach
+    // 8. Approach
     // -----------------------------------------------------------------------
     private static Flow BuildApproach() => new()
     {
@@ -438,7 +438,8 @@ public static class FbwA380FlowDefinitions
                 ("ENG_VALVE_SWITCH:3", 0), ("ENG_VALVE_SWITCH:4", 0)),
             WaitForField("PK_WAIT_ENG", "Waiting for engines off", "FO_ENGINES_OFF", v => v > 0.5, 120),
             Wait("PK_STBY1", "Standby", 5),
-            Captain("PK_COCKPITLT", "Cockpit lights: set"),
+            Multi("PK_COCKPITLT", "Cockpit lights: set",
+                ("A380X_OVHD_ANN_LT_POSITION", 1), ("A32NX_OVHD_INTLT_ANN", 1)),
             Skip(SW("PK_BEACON_OFF", "Beacon lights: OFF", "LIGHT_BEACON", 0), s => s.IsPosition("LIGHT_BEACON", 0)),
             Skip(SW("PK_WINGLT_OFF", "Wing lights: OFF", "LIGHT_WING", 0), s => s.IsPosition("LIGHT_WING", 0)),
             Skip(SW("PK_NOSE_OFF", "Nose light: OFF", "NOSE_LIGHT", 2), s => s.IsPosition("NOSE_LIGHT", 2)),
