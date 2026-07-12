@@ -16,6 +16,8 @@ decoded-weather monitor's lifecycle, and two standing implementation gotchas.
   narrative) — no I/O, fully characterization-tested
 - `Services/ActiveSkyModeTracker.cs` — pure baseline-first decision logic for the mode-change
   announcement
+- `Services/RouteAdvisoryTracker.cs` — pure baseline-first decision logic for the en-route
+  advisory announce (§12)
 - `MainForm.Announcers.cs` — output+I wind (`RequestWindInfo`), the ambient auto-announce
   (`CheckAmbientWeatherChanges` / `AnnounceAmbientChanges`)
 - `Forms/WeatherRadarForm.cs` — the on-demand weather radar/briefing window
@@ -541,3 +543,118 @@ disabled control automatically — with a 30 s timer now running unconditionally
 focus from a user resting on the Refresh button every single tick. The `Enabled` toggle (both
 the disable and the `finally` re-enable) was removed entirely; the pre-existing `_isFetching`
 guard already makes a mid-fetch click or tick a harmless no-op.
+
+## 12. En-route advisories (ActiveSky route SIGMETs/AIRMETs) (2026-07)
+
+Design doc: `docs/design/2026-07-12-route-advisories-design.md`. A read-only Weather Radar
+addition plus a background announcer, both riding `ActiveSkyClient.GetRouteAdvisoriesTextAsync()`
+— a parameterless `GET /GetActiveSigmetsAt` that answers for whatever flight plan is currently
+**loaded in ActiveSky itself**, not for the aircraft's proximity like the existing SIGMET/AIRMET
+box (§4's Nearby Advisories, which stays position+range and untouched by this feature).
+
+**(a) Route source and the API-only constraint.** The 2026-07-10 audit had assumed this needed
+MSFSBA to export a `.pln` and push it via `LoadFlightPlan`. Live verification on 2026-07-12
+(OMDB→LTFM en route at FL358) proved that unnecessary for SimBrief-linked setups: ActiveSky's
+own SimBrief downloader already satisfies AS's "loaded flight plan" requirement, so the bare
+parameterless call answered authoritatively for the current route (`"No airmet/sigmet affecting
+currently loaded flight plan route"`). MSFSBA pushes no plan and reads no file — the route is
+whatever AS itself has loaded, kept current by AS's own SimBrief link (or by the user loading a
+plan in AS directly). This is Robin's explicit constraint, not just a simplification: no `.pln`
+export, and no reading `activeflightplanwx.txt` or any other file under `%APPDATA%\HiFi\` (a
+custom AS install path would silently break a file-based read, and §8 already forbids scanning
+that tree for other reasons) — everything comes from the HTTP API, same as every other AS
+surface in this doc. `LoadFlightPlan` push remains a possible future fallback for non-SimBrief
+users; it is out of scope here (design doc §10).
+
+**(b) The parser is deliberately defensive.** `ActiveSkyFormatting.ParseRouteAdvisories`
+(`Services/ActiveSkyFormatting.cs`) is pure and CI-tested. A response beginning with
+`"No airmet/sigmet"` (case-insensitive) — the only hit shape actually observed during the
+2026-07-12 audit — parses to an empty list. Otherwise the text is split into blocks on blank
+lines, and each block's non-empty lines become one `RouteAdvisory { Key, Lines }`, with the
+**first trimmed line as the block's dedup `Key`**. The route variant's genuine hit format is
+only partially known — the audit only ever observed the no-hit sentence for a clear route, and
+the *positional* `GetActiveSigmetsAt?lat=&lon=` variant's hit format
+(`"CONVECTIVE SIGMET 18E / Valid until: 2000z / AREA TS MOV FROM 26015KT. TOPS TO FL420..."`)
+is the only sample on hand, not necessarily identical to the route variant's real first hit.
+So the parser never drops or throws on anything it doesn't recognize: an unanticipated response
+(a different sentence, a differently-punctuated hit block) still renders verbatim as its own
+block, with its own first line standing in as the key — one readable, self-explanatory row
+rather than silence or a crash. `ActiveSkyFormatting.BuildRouteAdvisoriesText` is the matching
+renderer for the radar box (see (c)); the tracker in (d) works from the same `Key` list.
+
+**(c) Weather Radar box.** A new `"Route Advisories (ActiveSky):"` label + `_routeAdvisoriesBox`
+(`DisplayListBox`) sits between Vertical Profile and Nearby Advisories in `WeatherRadarForm`
+(`Forms/WeatherRadarForm.cs`), fetched by `FetchRouteAdvisoriesAsync` inside `RefreshAsync`'s
+existing five-way parallel batch — so it rides the form's 30 s auto-refresh (§11) with no new
+poll loop. Three outcomes, matching every other AS-only surface in this doc:
+
+- Advisories present → each block's lines as rows, one blank row between blocks.
+- No hit → `BuildRouteAdvisoriesText` renders the single sentence `"No advisories on route."`
+  (never the raw AS wording, and never silence — a clear route is itself a fact worth reading).
+- AS enabled but the fetch failed (`GetRouteAdvisoriesTextAsync` returned `null`) →
+  `FetchRouteAdvisoriesAsync` returns `"unavailable"`.
+- AS switch off → the label and box are hidden entirely (`_routeAdvisoriesLabel.Visible =
+  _routeAdvisoriesBox.Visible = asEnabled`, evaluated every refresh), out of the NVDA tab order,
+  matching the mode line/station/profile boxes rather than showing disabled placeholder text.
+
+The existing "Decode advisories into plain English" toggle does not apply to this box — AS's
+route-advisory text is already terse plain language, and the decoder in §7 is tuned to
+aviationweather.gov's token format, not AS's (recorded out of scope, design doc §10).
+
+**(d) Announce lifecycle.** `MainForm.WeatherAnnouncementTimer_Tick` calls
+`CheckRouteAdvisoriesAsync` (`MainForm.Announcers.cs`) on the same 30 s tick as the SIGMET/PIREP
+proximity check, guarded by its own reentrancy flag (`_routeAdvisoryCheckRunning`, the
+`_proximityCheckRunning` pattern) and gated on `AnnounceRouteAdvisoriesEnabled`. The central AS
+gate inside `IsRunningAsync()` (§1) makes the check free for non-AS users despite riding the
+tick unconditionally. A failed fetch (`raw == null`) touches nothing — the tracker's state is
+left exactly as it was.
+
+Key-set decisions are pure, in `Services/RouteAdvisoryTracker.cs`
+(`RouteAdvisoryTracker.Observe`), following the same `ActiveSkyModeTracker` shape as every other
+tracker in this doc:
+
+- **Baseline-first.** The first successful `Observe` call records every key it sees and returns
+  nothing — a route that already has advisories on it when the app connects (or when AS itself
+  is found already running) is preflight discovery for the radar box, not a startup announcement
+  burst.
+- **New keys only, after baseline.** Subsequent calls return only keys never seen before; each
+  one produces exactly one queued `announcer.Announce($"New advisory on route: {key}.")` (never
+  `AnnounceImmediate` — this is a background change, not a user action).
+- **15-minute reminder clear**, matching `_announcedSigmetKeys`/`_sigmetKeysClearedAt`
+  byte-for-byte in shape: `CheckRouteAdvisoriesAsync` tracks its own
+  `_routeAdvisoryKeysClearedAt` and calls `_routeAdvisoryTracker.ClearAnnouncedKeys()` once more
+  than 15 minutes have passed, so a still-active advisory legitimately re-announces as a
+  reminder rather than going silent for the rest of the flight. `ClearAnnouncedKeys()` drops only
+  the seen-key set — the baseline latch (`_baselineDone`) is untouched, so the next tick after a
+  clear does NOT re-baseline silently; it treats every currently-present key as "new" again,
+  which is the intended reminder behavior.
+- **Persists across AS-unreachable gaps.** A tick where `IsRunningAsync()` returns false, or
+  where the fetch fails, returns early without touching the tracker at all — no re-announce
+  storm on reconnect, and no baseline reset.
+- **Resets on both SimConnect connect and aircraft switch** — `RouteAdvisoryTracker.Reset()` is
+  called from `MainForm.AircraftSwitch.cs`'s `OnConnectionStatusChanged` "Connected" branch
+  (alongside `_announcedSigmetKeys.Clear()`) and from `SwitchAircraft` (alongside the other
+  hazard trackers' resets — turbulence, icing). Both call sites also reset
+  `_routeAdvisoryKeysClearedAt = DateTime.UtcNow`, so the 15-minute clock restarts too.
+
+**(e) Settings.** `UserSettings.AnnounceRouteAdvisoriesEnabled` (bool, default `true`, both the
+property and `Clone()`) backs a new checkbox in the Weather panel's Announcements group,
+`"Auto-announce new route advisories (ActiveSky)"`, placed with the SIGMET/PIREP proximity rows
+(`Forms/Settings/WeatherPanel.cs`). Like those two siblings it is a proximity-alert-style
+sub-toggle **independent of the "Auto-announce weather state changes" master** — unlike them
+(and unlike the turbulence/icing toggles in §10d, which need the master), its visibility is
+gated on ActiveSky alone: `_routeAdvisoryAlerts.Visible = _activeSkyEnabled.Checked` in
+`UpdateActiveSkyDependentVisibility`, because the data source is AS-only and the checkbox is
+meaningless without it. Hiding never resets the stored value; `LoadFrom`/`ApplyTo` round-trip it
+unconditionally either way.
+
+**(f) Honest verification caveat.** The no-hit path, the box's three-way rendering, the 30 s
+refresh, and the settings toggle are all verifiable on demand and were exercised during
+development. The HIT path — a real SIGMET or AIRMET actually intersecting a loaded route
+mid-flight — was not observed even once during the 2026-07-12 live verification session (the
+test route was clear the whole time), so it has not yet been sim-verified end to end. It gets its
+first true verification only when real weather crosses a planned route during an actual flight.
+Until then, "New advisory on route: …" firing correctly, exactly once per advisory, with no
+startup burst, rests on the parser's defensiveness (b) and the tracker's characterization tests
+(`tests/MSFSBlindAssist.Tests/RouteAdvisoriesTests.cs`) rather than an observed live hit — a
+distinction worth remembering before calling this half of the feature "tested."
