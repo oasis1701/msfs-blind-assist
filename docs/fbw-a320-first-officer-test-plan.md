@@ -96,9 +96,9 @@ just the FO's own narration.
 2. **Preflight**: CVR test (Captain reminder — no verified write), IRS 1-3 to NAV, crew oxygen
    ON, **fire tests (APU/ENG1/ENG2, held ~3 s)** — confirm each sounds the fire bell/master
    warning and self-cancels, packs ON, crossbleed AUTO, pack flow NORMAL, hot air ON, pressurization
-   mode AUTO, strobes/wing lights/no-smoking/emergency-exit lighting, altitude reporting (Captain
-   reminder), TCAS traffic ALL, flight directors 1/2 ON, **ECAM page → DOOR**. Captain reminders:
-   QNH, FCU altitude, squawk, EFB, MCDU.
+   mode AUTO, strobes/wing lights/no-smoking/emergency-exit lighting, altitude reporting ON
+   (`A32NX_SWITCH_ATC_ALT`, now automated), TCAS traffic ALL, flight directors 1/2 ON,
+   **ECAM page → DOOR**. Captain reminders: QNH, FCU altitude, squawk, EFB, MCDU.
 3. **Before Start**: APU master ON → dwell → START → wait for AVAIL (Stop on timeout), APU bleed
    ON, fuel pumps ON (all tanks), ground power OFF, seatbelt signs ON (confirm the sign
    illuminates, not just the switch), beacon ON, FCU speed pushed managed, FCU heading pushed
@@ -141,8 +141,8 @@ just the FO's own narration.
     def's own internal `Announce()` calls are dropped and only the FO's step narration speaks.
     See the note at the end of this document about the ONE expected exception (continuously
     monitored vars).
-15. **Captain reminders announce and wait.** Every `Captain(...)` step (CVR test, altitude
-    reporting, takeoff-config test, ECAM page selection where no ECP key exists, minimums,
+15. **Captain reminders announce and wait.** Every `Captain(...)` step (CVR test, recorder ground
+    control, takeoff-config test, ECAM page selection where no ECP key exists, minimums,
     landing autobrake, flaps, IFR clearance, MCDU programming, etc.) is spoken as a reminder and
     the flow **pauses for acknowledgement** — confirm it does not silently auto-complete.
 16. **Already-in-target-state steps announce as skipped.** Re-run a flow (or a step) whose switch
@@ -288,10 +288,17 @@ legitimate state feedback, not a double-announce bug.
 
 ## Known limitations (by design)
 
-- **CVR test, recorder ground control, altitude reporting, takeoff-config test, and the gear-lever
-  check are Captain reminders** — no verified A320 write key exists for these, so they remain
-  `Captain(...)` reminders rather than automated actions. This is intentional, not a gap to fill
-  during this pass.
+- **CVR test, recorder ground control, and the takeoff-config test are Captain reminders** — no
+  verified A320 write key exists for these, so they remain `Captain(...)` reminders rather than
+  automated actions. This is intentional, not a gap to fill during this pass. (Altitude reporting
+  and the gear-lever check are now automated/auto-detected — see the Task 12 audit: PF_ALTRPTG
+  writes/detects `A32NX_SWITCH_ATC_ALT`, and EPU_CHK_GEAR detect-only reads
+  `GEAR_HANDLE_POSITION`; the gear lever itself still can't be written, so the flow step stays a
+  Captain reminder even though the checklist item now auto-detects.)
+- **Candidates to automate pending live A32NX verification**: takeoff-config test
+  (`A32NX_BTN_TOCONFIG`), recorder ground control (`A32NX_RCDR_GROUND_CONTROL_ON`), CVR test
+  (`A32NX_RCDR_TEST`), and CONF3-landing detection — all seen only in A380 probe dumps; confirm
+  each exists and behaves the same way on the A32NX build before wiring.
 - **No FMC/MCDU programming, ever** (project-wide deliberate decision) — SimBrief load-only.
 - **Landing autobrake selection is a Captain item on every aircraft**, including this one.
 - **No takeoff-flap automation** — the takeoff flap setting stays a Captain item; auto-flaps only

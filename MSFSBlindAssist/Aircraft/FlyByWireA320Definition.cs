@@ -4500,6 +4500,14 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        ["A32NX_SPEEDS_VFEN"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_VFEN",
+            Type = SimConnect.SimVarType.LVar,
+            DisplayName = "VFE next",
+            Units = "knots",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
         ["A32NX_SPEEDS_VLS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_VLS",

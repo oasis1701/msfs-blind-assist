@@ -71,9 +71,11 @@ public static class FbwA320ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 1)),
             Auto("EPU_NAVLOGO", "ELEC_POWER_UP", "Nav and logo lights: ON", "A32NX_LIGHTS_NAV_LOGO",
                 v => v > 0.5, (e, _) => e.Set("A32NX_LIGHTS_NAV_LOGO", 1)),
-            // Gear lever has no settable A32NX key (Task 6 decision) — Captain reminder,
-            // mirrored here to keep flow/checklist 1:1 even for non-drivable items.
-            Reminder("EPU_CHK_GEAR", "ELEC_POWER_UP", "Gear lever: DOWN"),
+            // Gear lever has no settable A32NX key, but GEAR_HANDLE_POSITION (stock,
+            // 0=Up/1=Down) is readable — detect-only Auto (no CheckAction; the flow
+            // step stays a Captain reminder since the lever can't be written).
+            Auto("EPU_CHK_GEAR", "ELEC_POWER_UP", "Gear lever: DOWN", "GEAR_HANDLE_POSITION",
+                v => v > 0.5, null),
             // ★ Cockpit lighting (spec §4.1): Bright for ground prep. ANN matches the
             // flow's actual write; dome + standby compass are additional independently
             // settable Auto items; the scene ActionManual fires the full batched write.
@@ -142,8 +144,8 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 1)),
             Auto("PF_EMEREXIT", "PREFLIGHT", "Emergency exit lights: ARM", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 1)),
-            // No confirmed A32NX altitude-reporting key (Task 6 decision) — Captain reminder.
-            Reminder("PF_ALTRPTG", "PREFLIGHT", "Altitude reporting: on"),
+            Auto("PF_ALTRPTG", "PREFLIGHT", "Altitude reporting: ON", "A32NX_SWITCH_ATC_ALT",
+                v => v > 0.5, (e, _) => e.Set("A32NX_SWITCH_ATC_ALT", 1)),
             Auto("PF_TCASTRAFFIC", "PREFLIGHT", "TCAS traffic: ALL", "A32NX_SWITCH_TCAS_TRAFFIC_POSITION",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_TRAFFIC_POSITION", 1)),
             Reminder("PF_BARO", "PREFLIGHT", "Set QNH on both altimeters and the standby altimeter"),
@@ -493,7 +495,7 @@ public static class FbwA320ChecklistDefinitions
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)),
             // ★ Cockpit lighting off (full off-scene).
-            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: off", "A32NX_OVHD_INTLT_ANN",
+            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: ANN bright", "A32NX_OVHD_INTLT_ANN",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
             Auto("SC_DOME", "SECURE", "Cockpit lights: dome off", "A32NX_OVHD_INTLT_DOME",
                 v => v <= 5, (e, _) => e.Set("A32NX_OVHD_INTLT_DOME", 0)),

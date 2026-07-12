@@ -125,7 +125,7 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
 
     private void CheckGear(double agl, bool climbing, bool descending)
     {
-        double v = _state.GetValue("A32NX_GEAR_HANDLE_POSITION");
+        double v = _state.GetValue("GEAR_HANDLE_POSITION");
         bool gearDown = double.IsNaN(v) || v > 0.5;
 
         if (AutoGearUpEnabled && !_gearRaisedThisLeg && gearDown && climbing && agl > 50)
@@ -241,7 +241,7 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
             if (double.IsNaN(vfeNext) || ias >= vfeNext - VfeNextMarginKts)
                 return;   // unknown or too fast for the next config — hold
 
-            double gearRaw = _state.GetValue("A32NX_GEAR_HANDLE_POSITION");
+            double gearRaw = _state.GetValue("GEAR_HANDLE_POSITION");
             bool gearDown = !double.IsNaN(gearRaw) && gearRaw > 0.5;   // unknown = NOT down (gate holds)
 
             double gd = _state.GetValue("A32NX_SPEEDS_GD");

@@ -165,9 +165,10 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 1)), "PF_NOSMOKE"),
             Done(Skip(SW("PF_EMEREXIT", "Emergency exit lights: ARM", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 1),
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 1)), "PF_EMEREXIT"),
-            // No confirmed A32NX altitude-reporting key (matches the A380 flow, which
-            // also treats this as a Captain item).
-            Captain("PF_ALTRPTG", "Altitude reporting: on"),
+            // A32NX_SWITCH_ATC_ALT confirmed registered in FlyByWireA320Definition
+            // (Task 12 audit) — automated, mirroring the Fenix S_XPDR_ALTREPORTING step.
+            Done(Skip(SW("PF_ALTRPTG", "Altitude reporting: ON", "A32NX_SWITCH_ATC_ALT", 1),
+                s => s.IsOn("A32NX_SWITCH_ATC_ALT")), "PF_ALTRPTG"),
             Done(Skip(SW("PF_TCASTRAFFIC", "TCAS traffic: ALL", "A32NX_SWITCH_TCAS_TRAFFIC_POSITION", 1),
                 s => s.IsPosition("A32NX_SWITCH_TCAS_TRAFFIC_POSITION", 1)), "PF_TCASTRAFFIC"),
             // Flight directors — push event, verify on via the FD light L:var.

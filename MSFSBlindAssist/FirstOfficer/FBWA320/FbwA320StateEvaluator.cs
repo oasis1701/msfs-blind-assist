@@ -24,7 +24,6 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         // strobe is LIGHTING_STROBE_0; beacon is the stock "LIGHT BEACON" simvar.
         "A32NX_LIGHTS_NAV_LOGO", "LIGHTING_STROBE_0", "LIGHT BEACON", "WING_LIGHTS_SET",
         "LANDING_LIGHTS_ON_THIRD_PARTY",
-        "SEATBELT_SIGN", "SEATBELT_SIGN_LIGHT",
         "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION",
         // Wing anti-ice reads back the same L:var the PB writes (never _SYSTEM_*, which is a
         // Rust per-frame OUTPUT). Engine anti-ice state = the stock ENG_ANTI_ICE:n readouts.
@@ -48,16 +47,15 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "A32NX_OVHD_APU_START_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_AVAILABLE",
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_ARMED_MODE",
-        "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_R_ND_MODE",
-        "A32NX_EFIS_L_ND_RANGE", "A32NX_EFIS_R_ND_RANGE",
+        "A32NX_EFIS_L_ND_MODE",
+        "A32NX_EFIS_L_ND_RANGE",
         "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE",
+        "A32NX_SWITCH_ATC_ALT",
         "A32NX_FMGC_1_FD_ENGAGED", "A32NX_FMGC_2_FD_ENGAGED",
         "A32NX_OVHD_INTLT_ANN", "A32NX_OVHD_INTLT_DOME", "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
-        // Auto-flap schedule inputs (speed tape + landing config + flaps handle).
-        // A32NX_SPEEDS_LANDING_CONF3 is not registered in FlyByWireA320Definition (⚠️ best
-        // candidate — same FBW speed-tape L:var name as the A380; confirm in a later audit).
+        // Auto-flap schedule inputs (speed tape + flaps handle). A32NX_SPEEDS_LANDING_CONF3
+        // was removed (Task 12 audit) — confirmed absent from FlyByWireA320Definition.
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
-        "A32NX_SPEEDS_LANDING_CONF3",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
