@@ -272,9 +272,16 @@ public class WeatherRadarForm : Form
             BringToFront(); Activate();
             _currentWeatherBox.Focus();
             await RefreshAsync(forceRefresh: true);
-            _autoRefreshTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
-            _autoRefreshTimer.Tick += (_, _) => _ = RefreshAsync(forceRefresh: false);
-            _autoRefreshTimer.Start();
+            // IsDisposed guards: the form can be closed during the initial await —
+            // the continuation still runs, and an unguarded Start() would create a
+            // zombie 30 s timer no cleanup path ever stops (same race and fix as
+            // FlyByWireDcduForm's poll timer).
+            if (!IsDisposed)
+            {
+                _autoRefreshTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+                _autoRefreshTimer.Tick += (_, _) => { if (!IsDisposed) _ = RefreshAsync(forceRefresh: false); };
+                _autoRefreshTimer.Start();
+            }
         };
 
         KeyDown += (s, e) =>
