@@ -627,8 +627,11 @@ tracker in this doc:
   is found already running) is preflight discovery for the radar box, not a startup announcement
   burst.
 - **New keys only, after baseline.** Subsequent calls return only keys never seen before; each
-  one produces exactly one queued `announcer.Announce($"New advisory on route: {key}.")` (never
-  `AnnounceImmediate` — this is a background change, not a user action).
+  one produces exactly one queued `announcer.Announce($"Route advisory: {key}.")` (never
+  `AnnounceImmediate` — this is a background change, not a user action). The phrasing is
+  deliberately neutral — no "New" — because the identical announce also fires as the 15-minute
+  reminder below, where a newness claim would mislead (the sibling SIGMET/PIREP proximity
+  alerts use the same neutral "category: content" pattern).
 - **15-minute reminder clear**, matching `_announcedSigmetKeys`/`_sigmetKeysClearedAt`
   byte-for-byte in shape: `CheckRouteAdvisoriesAsync` tracks its own
   `_routeAdvisoryKeysClearedAt` and calls `_routeAdvisoryTracker.ClearAnnouncedKeys()` once more
@@ -665,7 +668,7 @@ development. The HIT path — a real SIGMET or AIRMET actually intersecting a lo
 mid-flight — was not observed even once during the 2026-07-12 live verification session (the
 test route was clear the whole time), so it has not yet been sim-verified end to end. It gets its
 first true verification only when real weather crosses a planned route during an actual flight.
-Until then, "New advisory on route: …" firing correctly, exactly once per advisory, with no
+Until then, "Route advisory: …" firing correctly, exactly once per advisory, with no
 startup burst, rests on the parser's defensiveness (b) and the tracker's characterization tests
 (`tests/MSFSBlindAssist.Tests/RouteAdvisoriesTests.cs`) rather than an observed live hit — a
 distinction worth remembering before calling this half of the feature "tested."

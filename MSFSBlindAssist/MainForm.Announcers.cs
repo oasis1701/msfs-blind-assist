@@ -2326,7 +2326,10 @@ public partial class MainForm
             foreach (string key in newKeys)
             {
                 Log.Debug("MainForm", $"route advisory: \"{key}\"");
-                announcer.Announce($"New advisory on route: {key}.");
+                // Neutral phrasing (no "New"): the same announce serves both first
+                // appearance and the 15-minute reminder re-announce, matching the
+                // sibling proximity alerts' "category: content" wording.
+                announcer.Announce($"Route advisory: {key}.");
             }
         }
         catch (Exception ex)

@@ -342,6 +342,11 @@ public class WeatherRadarForm : Form
             // of THIS refresh so we don't ping /GetMode for every sub-query.
             _activeSkyAvailable = await _activeSky.IsRunningAsync();
 
+            // Closed during the probe (the 30 s auto-refresh makes this common):
+            // skip the control writes below and don't launch fetches for a dead
+            // window. Same post-await guard as METARReportForm's FetchMETAR.
+            if (IsDisposed) return;
+
             // Mode status line — hidden entirely when the AS switch is off (spec:
             // AS-only UI disappears, not "disabled" text). Re-evaluated per refresh
             // so toggling the setting takes effect without an app restart.
