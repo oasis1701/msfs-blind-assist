@@ -19,6 +19,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
     private Label _weatherIntervalLabel = null!;
     private CheckBox _sigmetAlerts = null!;
     private CheckBox _pirepAlerts = null!;
+    private CheckBox _routeAdvisoryAlerts = null!;
     private NumericUpDown _proximityRange = null!;
 
     private readonly Services.ActiveSkyClient _statusClient = new();
@@ -77,6 +78,10 @@ public class WeatherPanel : UserControl, ISettingsPanel
         bool master = _weatherAutoAnnounce.Checked;
         _announceTurbulence.Visible = master && _activeSkyEnabled.Checked;
         _announceIcing.Visible = master;
+
+        // Route advisories are a proximity-alert sibling (SIGMET/PIREP), independent
+        // of the auto-announce master — only ActiveSky itself gates visibility.
+        _routeAdvisoryAlerts.Visible = _activeSkyEnabled.Checked;
     }
 
     private GroupBox BuildActiveSkyGroup()
@@ -125,7 +130,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         {
             Text = "Announcements",
             Location = new System.Drawing.Point(12, 0),
-            Size = new System.Drawing.Size(460, 302),
+            Size = new System.Drawing.Size(460, 338),
             AccessibleName = "Weather announcements",
             AccessibleDescription = "Weather and advisory auto-announcement settings",
         };
@@ -178,17 +183,26 @@ public class WeatherPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Announce when the aircraft enters the proximity range of a significant pilot report of turbulence or icing"
         };
 
+        _routeAdvisoryAlerts = new CheckBox
+        {
+            Text = "Auto-announce new r&oute advisories (ActiveSky)",
+            Location = new System.Drawing.Point(12, 204),
+            Size = new System.Drawing.Size(420, 24),
+            AccessibleName = "Auto-announce new route advisories",
+            AccessibleDescription = "Announce when a new SIGMET or AIRMET appears on the flight-plan route loaded in ActiveSky. Requires ActiveSky."
+        };
+
         var rangeLabel = new Label
         {
             Text = "&Proximity range (nautical miles):",
-            Location = new System.Drawing.Point(12, 210),
+            Location = new System.Drawing.Point(12, 246),
             Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Proximity range label"
         };
 
         _proximityRange = new NumericUpDown
         {
-            Location = new System.Drawing.Point(270, 206),
+            Location = new System.Drawing.Point(270, 242),
             Size = new System.Drawing.Size(80, 24),
             Minimum = 10,
             Maximum = 500,
@@ -199,14 +213,14 @@ public class WeatherPanel : UserControl, ISettingsPanel
         _weatherIntervalLabel = new Label
         {
             Text = "Weather announcement &interval:",
-            Location = new System.Drawing.Point(12, 250),
+            Location = new System.Drawing.Point(12, 286),
             Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Weather announcement interval label"
         };
 
         _weatherIntervalCombo = new ComboBox
         {
-            Location = new System.Drawing.Point(12, 274),
+            Location = new System.Drawing.Point(12, 310),
             Size = new System.Drawing.Size(338, 24),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Weather announcement interval",
@@ -220,6 +234,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         group.Controls.AddRange(new Control[]
         {
             _weatherAutoAnnounce, _announceTurbulence, _announceIcing, _sigmetAlerts, _pirepAlerts,
+            _routeAdvisoryAlerts,
             rangeLabel, _proximityRange,
             _weatherIntervalLabel, _weatherIntervalCombo
         });
@@ -243,6 +258,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         _announceIcing.Checked = settings.AnnounceIcingEnabled;
         _sigmetAlerts.Checked = settings.SigmetProximityAlertsEnabled;
         _pirepAlerts.Checked = settings.PirepProximityAlertsEnabled;
+        _routeAdvisoryAlerts.Checked = settings.AnnounceRouteAdvisoriesEnabled;
         _proximityRange.Value = Math.Clamp(settings.SigmetProximityRangeNm, 10, 500);
         _weatherIntervalCombo.SelectedIndex = Math.Max(0, Array.IndexOf(IntervalChoicesMinutes, settings.WeatherAutoAnnounceIntervalMinutes));
 
@@ -267,6 +283,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
             Math.Clamp(_weatherIntervalCombo.SelectedIndex, 0, IntervalChoicesMinutes.Length - 1)];
         settings.SigmetProximityAlertsEnabled = _sigmetAlerts.Checked;
         settings.PirepProximityAlertsEnabled = _pirepAlerts.Checked;
+        settings.AnnounceRouteAdvisoriesEnabled = _routeAdvisoryAlerts.Checked;
         settings.SigmetProximityRangeNm = (int)_proximityRange.Value;
     }
 

@@ -352,6 +352,12 @@ public partial class MainForm : Form
 
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
+    private readonly MSFSBlindAssist.Services.RouteAdvisoryTracker _routeAdvisoryTracker = new();
+
+    private DateTime _routeAdvisoryKeysClearedAt = DateTime.MinValue;
+
+    private bool _routeAdvisoryCheckRunning;
+
     // Reentrancy latch for CheckWeatherProximityAsync — the announcement timer tick fires
     // it fire-and-forget, and a slow WeatherService call could still be in flight when the
     // next tick lands.

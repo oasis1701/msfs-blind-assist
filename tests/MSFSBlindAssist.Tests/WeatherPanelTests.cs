@@ -263,4 +263,37 @@ public class WeatherPanelTests : IDisposable
         Assert.True(target.AnnounceTurbulenceEnabled);
         Assert.True(target.AnnounceIcingEnabled);
     }
+
+    [Fact]
+    public void RouteAdvisories_setting_roundtrips_and_defaults_on()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { AnnounceRouteAdvisoriesEnabled = false });
+        var target = new UserSettings();
+        panel.ApplyTo(target);
+        Assert.False(target.AnnounceRouteAdvisoriesEnabled);
+
+        panel.LoadFrom(new UserSettings());
+        panel.ApplyTo(target);
+        Assert.True(target.AnnounceRouteAdvisoriesEnabled);      // default on
+    }
+
+    [Fact]
+    public void RouteAdvisories_checkbox_needs_activesky_only()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings());                       // AS off, master off
+
+        var route = FindByAccessibleName(panel, "Auto-announce new route advisories");
+        var asSwitch = (CheckBox)FindByAccessibleName(panel, "Enable ActiveSky integration");
+        var master = (CheckBox)FindByAccessibleName(panel, "Auto-announce weather state changes");
+
+        Assert.False(route.Visible);
+        asSwitch.Checked = true;                                  // AS alone suffices
+        Assert.True(route.Visible);
+        master.Checked = true;                                    // master irrelevant
+        Assert.True(route.Visible);
+        asSwitch.Checked = false;
+        Assert.False(route.Visible);
+    }
 }

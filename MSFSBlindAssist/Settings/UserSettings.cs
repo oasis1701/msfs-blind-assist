@@ -394,6 +394,15 @@ public class UserSettings
         /// </summary>
         public bool AnnounceIcingEnabled { get; set; } = true;
 
+        /// <summary>
+        /// Announce a NEW SIGMET/AIRMET appearing on the flight-plan route loaded in
+        /// ActiveSky (parameterless GetActiveSigmetsAt; AS's SimBrief link keeps the
+        /// route current). Independent of WeatherAutoAnnounceEnabled — a sibling of
+        /// the SIGMET/PIREP proximity alerts — but requires ActiveSkyEnabled.
+        /// Default on.
+        /// </summary>
+        public bool AnnounceRouteAdvisoriesEnabled { get; set; } = true;
+
         // HS787 bridge — community folder override for non-standard installs
         public string? Hs787CommunityFolderOverride { get; set; } = null;
         // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
@@ -517,6 +526,7 @@ public class UserSettings
             DecodeWeatherAdvisories = DecodeWeatherAdvisories,
             AnnounceTurbulenceEnabled = AnnounceTurbulenceEnabled,
             AnnounceIcingEnabled = AnnounceIcingEnabled,
+            AnnounceRouteAdvisoriesEnabled = AnnounceRouteAdvisoriesEnabled,
             TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
             TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,

@@ -205,6 +205,8 @@ public partial class MainForm
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
+            _routeAdvisoryTracker.Reset();
+            _routeAdvisoryKeysClearedAt = DateTime.UtcNow;
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -624,6 +626,7 @@ public partial class MainForm
         // from the previous airframe must not announce as "changes".
         activeSkyWeatherMonitor?.ResetTurbulenceTracker();
         _iceAccretionTracker.Reset();
+        _routeAdvisoryTracker.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)

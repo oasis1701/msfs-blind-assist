@@ -2082,6 +2082,9 @@ public partial class MainForm
         if ((settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled) && !_proximityCheckRunning)
             _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
                     settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
+
+        if (settings.AnnounceRouteAdvisoriesEnabled && !_routeAdvisoryCheckRunning)
+            _ = CheckRouteAdvisoriesAsync();
     }
 
     private async void CheckAmbientWeatherChanges()
@@ -2293,6 +2296,46 @@ public partial class MainForm
         finally
         {
             _proximityCheckRunning = false;
+        }
+    }
+
+    private async Task CheckRouteAdvisoriesAsync()
+    {
+        _routeAdvisoryCheckRunning = true;
+        try
+        {
+            // Central AS gate: instant false when the switch is off — this check
+            // costs nothing for non-AS users despite riding every 30 s tick.
+            if (!await weatherActiveSky.IsRunningAsync()) return;
+
+            string? raw = await weatherActiveSky.GetRouteAdvisoriesTextAsync();
+            if (raw == null) return;                             // failed fetch: tracker untouched
+
+            // Same 15-minute reminder cadence as _announcedSigmetKeys: a still-active
+            // route advisory re-announces after the clear.
+            if ((DateTime.UtcNow - _routeAdvisoryKeysClearedAt).TotalMinutes > 15)
+            {
+                _routeAdvisoryTracker.ClearAnnouncedKeys();
+                _routeAdvisoryKeysClearedAt = DateTime.UtcNow;
+            }
+
+            var advisories = MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw);
+            var newKeys = _routeAdvisoryTracker.Observe(advisories.Select(a => a.Key).ToList());
+
+            if (!IsHandleCreated || IsDisposed) return;
+            foreach (string key in newKeys)
+            {
+                Log.Debug("MainForm", $"route advisory: \"{key}\"");
+                announcer.Announce($"New advisory on route: {key}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("MainForm", $"Route advisory check error: {ex.Message}");
+        }
+        finally
+        {
+            _routeAdvisoryCheckRunning = false;
         }
     }
 
