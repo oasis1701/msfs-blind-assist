@@ -337,8 +337,11 @@ public static class ActiveSkyFormatting
         return string.Join(", ", fields);
     }
 
+    /// <summary>Both header shapes AdvisoryHeaderLine splits on: ICAO
+    /// "&lt;FIR&gt; SIGMET|AIRMET &lt;id&gt;" and US "CONVECTIVE SIGMET &lt;id&gt;".</summary>
     private static readonly Regex IdentityPattern = new(
-        @"^(\S{3,4})\s+(SIGMET|AIRMET)\s+(\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"^(\S{3,4}\s+(?:SIGMET|AIRMET)|CONVECTIVE\s+SIGMET)\s+(\S+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Ordered most-specific-first; first match wins. ICAO SIGMET hazard
     /// vocabulary (qualifier × phenomenon) per the design §3.2 table.</summary>
@@ -391,7 +394,8 @@ public static class ActiveSkyFormatting
     {
         var idm = IdentityPattern.Match(a.Key);
         if (idm.Success)
-            a.Identity = $"{idm.Groups[1].Value.ToUpperInvariant()} {idm.Groups[2].Value.ToUpperInvariant()} {idm.Groups[3].Value.ToUpperInvariant()}";
+            a.Identity = Regex.Replace(idm.Groups[1].Value, @"\s+", " ").ToUpperInvariant()
+                + " " + idm.Groups[2].Value.ToUpperInvariant();
 
         foreach (var line in a.Lines)
         {

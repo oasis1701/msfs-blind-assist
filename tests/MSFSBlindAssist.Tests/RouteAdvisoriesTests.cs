@@ -187,6 +187,28 @@ public class RouteAdvisoriesTests
     }
 
     [Fact]
+    public void Convective_sigmet_identity_decodes()
+    {
+        // US convective SIGMET headers ("CONVECTIVE SIGMET 18E") don't fit the ICAO
+        // "<FIR> SIGMET <id>" shape — the identity regex must accept both, matching
+        // the header shapes AdvisoryHeaderLine already splits on.
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(OneBlock));
+        Assert.Equal("CONVECTIVE SIGMET 18E", a.Identity);
+        Assert.Equal("thunderstorms", a.Hazard);
+        Assert.Equal("2000Z", a.ValidUntil);
+    }
+
+    [Fact]
+    public void Convective_sigmet_announcement_speaks_decoded_hazard()
+    {
+        // With identity decoded, the announcement is the decoded phrase — not the
+        // raw-key fallback the null identity used to force.
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(OneBlock));
+        Assert.Equal("CONVECTIVE SIGMET 18E, thunderstorms",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a));
+    }
+
+    [Fact]
     public void Undecodable_block_has_null_fields()
     {
         var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(
