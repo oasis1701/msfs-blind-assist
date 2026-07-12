@@ -76,8 +76,11 @@ public static class FbwA380FlowDefinitions
                 ("ENG_VALVE_SWITCH:3", 0), ("ENG_VALVE_SWITCH:4", 0)),
             Skip(SW("CP_WXR", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 0),
                 s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 0)),
+            // All FOUR A380 batteries to AUTO (BAT 1/2/ESS/APU) — the panel exposes all
+            // four; setting only 1+2 left the ESS + APU batteries off.
             Multi("CP_BAT", "Batteries: ON",
-                ("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 1), ("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1)),
+                ("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 1), ("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1),
+                ("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 1), ("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 1)),
             Wait("CP_STBY1", "Standby", 5),
             Captain("CP_COCKPITLT", "Cockpit lights: set"),
             Multi("CP_GPU", "Ground power: ON",

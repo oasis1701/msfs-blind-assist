@@ -77,10 +77,16 @@ public static class FbwA380ChecklistDefinitions
                 }),
             Auto("CP_WXR", "COCKPIT_PREP", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 0)),
-            Auto("CP_BAT", "COCKPIT_PREP", "Batteries: ON", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
-                v => v > 0.5, new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO" },
+            // All FOUR A380 batteries (BAT 1/2/ESS/APU) — the panel exposes all four; the
+            // earlier 1+2-only item left ESS + APU off yet still reported "Batteries: ON".
+            Multi("CP_BAT", "COCKPIT_PREP", "Batteries: ON", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
+                v => v > 0.5,
+                new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO",
+                        "A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO" },
                 async (e, _) => { await e.Set("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 1);
-                                  await e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1); }),
+                                  await e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 1);
+                                  await e.Set("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 1);
+                                  await e.Set("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 1); }),
             Reminder("CP_COCKPITLT", "COCKPIT_PREP", "Cockpit lights: set"),
             Multi("CP_GPU", "COCKPIT_PREP", "Ground power: ON",
                 "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", v => v > 0.5,
