@@ -68,11 +68,17 @@ pair instead of back-to-back).
 - Single test button: `EVT_OH_FIRE_OVHT_TEST` with bool state field `FIRE_FireOvhtTest_Sw`.
 - **Flow (Cockpit Preparation):** one new step near the top — after the electrical block
   (`CP_BACKUP_GENS`), before window heat: `CP_FIRE_TEST` — "Fire and overheat test — listen
-  for the fire bell": CDA write 1, hold **3.0 s** (Fenix parity), write 0.
-- **Checklist (PREFLIGHT group):** one `ActionManual` item, same position, same method.
-- **Not live-verifiable this session** (sim has the 737 loaded): the held write-1/write-0
-  shape follows the bool switch field + the proven 737 fire-switch result; flagged in the
-  777 test plan for in-sim verification (the repo's standard model).
+  for the fire bell": transmit `LEFTSINGLE` press, hold **3.0 s** (Fenix parity), transmit
+  `LEFTRELEASE` (`SendPMDGEventViaTransmitWithTarget`). NOT a CDA 1→0 pair — the 777 CDA
+  doctrine has no release semantics (param 0 also registers as a press, per
+  docs/pmdg-777.md; the panel's own control is a bare momentary CDA param-1 press, which
+  cannot hold the test). (Corrected 2026-07-11 during plan recon — the spec originally
+  proposed the CDA 1→0 shape.)
+- **Checklist (PREFLIGHT group):** one `ActionManualAsync` item, same position, same method.
+- **Not live-verifiable this session** (sim has the 737 loaded): the transmit press/release
+  shape is the one live-proven on the 737's identical-style held warning buttons; flagged in
+  the 777 test plan for in-sim verification (the repo's standard model), with a CDA param-1
+  press documented as the fallback if the transmit proves inert on this button.
 
 ### FBW A380
 
