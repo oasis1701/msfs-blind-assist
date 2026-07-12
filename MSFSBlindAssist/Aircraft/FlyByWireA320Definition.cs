@@ -5,7 +5,7 @@ using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
-public class FlyByWireA320Definition : BaseAircraftDefinition,
+public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     ISupportsECAM,
     ISupportsNavigationDisplay,
     ISupportsPFDDisplay
