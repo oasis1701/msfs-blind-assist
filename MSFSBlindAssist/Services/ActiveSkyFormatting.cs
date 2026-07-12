@@ -219,12 +219,23 @@ public static class ActiveSkyFormatting
         public List<string> Lines = new();
     }
 
+    /// <summary>A line that begins an advisory block in the /GetActiveSigmetsAt
+    /// response, e.g. "MHTG SIGMET J5 EMBD TS" (live capture 2026-07-12).</summary>
+    private static readonly Regex AdvisoryHeaderLine = new(
+        @"^\S{3,4}\s+(SIGMET|AIRMET)\s+\S+",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
-    /// Parses the route-advisories response. DELIBERATELY defensive (spec 2026-07-12
-    /// §2.2): the route variant's hit format is only partially known, so blocks split
-    /// on blank lines and ANY unrecognized text renders verbatim as its own block —
-    /// never dropped, never thrown. The known no-hit sentence (any response starting
-    /// "No airmet/sigmet", case-insensitive) parses to an empty list.
+    /// Parses the route-advisories response. The REAL hit format (live capture
+    /// 2026-07-12) is consecutive 3-line advisories — header / "Valid until:" / body —
+    /// separated by single CRLF with NO blank lines, and ActiveSky repeats the same
+    /// advisory once per route-segment intersection, so blocks are split on header
+    /// lines and DEDUPLICATED by key (first line, case-insensitive, first-seen order).
+    /// Defensive fallbacks stay: a truly-blank line still splits (the previously
+    /// assumed format), text before the first header — or a response with no header
+    /// lines at all — stays one verbatim block, and nothing is ever dropped or thrown.
+    /// The known no-hit sentence (any response starting "No airmet/sigmet",
+    /// case-insensitive) parses to an empty list.
     /// </summary>
     internal static List<RouteAdvisory> ParseRouteAdvisories(string raw)
     {
@@ -234,16 +245,33 @@ public static class ActiveSkyFormatting
         if (trimmed.StartsWith("No airmet/sigmet", StringComparison.OrdinalIgnoreCase))
             return result;
 
-        var blocks = trimmed.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var block in blocks)
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        List<string>? current = null;
+
+        void CloseCurrent()
         {
-            var lines = block.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
-                             .Select(l => l.TrimEnd())
-                             .Where(l => l.Length > 0)
-                             .ToList();
-            if (lines.Count == 0) continue;
-            result.Add(new RouteAdvisory { Key = lines[0].Trim(), Lines = lines });
+            if (current == null || current.Count == 0) { current = null; return; }
+            var adv = new RouteAdvisory { Key = current[0].Trim(), Lines = current };
+            if (seen.Add(adv.Key)) result.Add(adv);
+            current = null;
         }
+
+        foreach (var rawLine in trimmed.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+        {
+            string line = rawLine.TrimEnd();
+            if (line.Length == 0)
+            {
+                // Truly-empty line = block separator (the previously assumed format).
+                // A spaces-only line is dropped WITHOUT splitting (pinned by
+                // Whitespace_only_separator_line_does_not_split_the_block).
+                if (rawLine.Length == 0) CloseCurrent();
+                continue;
+            }
+            if (AdvisoryHeaderLine.IsMatch(line)) CloseCurrent();
+            current ??= new List<string>();
+            current.Add(line);
+        }
+        CloseCurrent();
         return result;
     }
 

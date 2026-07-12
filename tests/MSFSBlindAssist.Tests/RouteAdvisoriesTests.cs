@@ -82,6 +82,66 @@ public class RouteAdvisoriesTests
         Assert.Equal(new[] { "SIGMET B4", "SEV TURB", "AIRMET T1", "MOD TURB" }, a.Lines);
     }
 
+    // --- Live capture (2026-07-12, /GetActiveSigmetsAt, port 19285) -------------------
+    // Real hit-path format: each advisory is exactly 3 lines (header / Valid until /
+    // body) separated by single CRLF — NO blank lines — and ActiveSky repeats the same
+    // advisory once per route-segment intersection (MHTG J5 appeared 7×). Spacing
+    // irregularities in the MHTG body are verbatim from the capture.
+    private const string LiveMhtgBody =
+        "MHCC CENTRAL AMERICAN FIR EMBD TS OBS AT 1830Z WI N1121 W10027 - N1258 W09506 - N1403 W09304- N1127 W09031  - N0950 W09306 - N0923 W09619 - N0904 W09940 TOP FL520 MOV W 05KT NC=";
+    private const string LiveYmmmBody =
+        "YMMM MELBOURNE FIR SEV TURB FCST WI S3640 E14800 - S3340 E15000 - S3410 E15100 - S3740 E14940 - S3820 E14550 - S3730 E14520 SFC/8000FT STNR NC=";
+    private const string LiveMhtgBlock =
+        "MHTG SIGMET J5 EMBD TS\r\nValid until: 2200z\r\n" + LiveMhtgBody + "\r\n";
+    private const string LiveYmmmBlock =
+        "YMMM SIGMET T07 TURB\r\nValid until: 2300z\r\n" + LiveYmmmBody + "\r\n";
+
+    private static string LiveCapture()
+        => string.Concat(Enumerable.Repeat(LiveMhtgBlock, 7)) + LiveYmmmBlock;
+
+    [Fact]
+    public void Live_capture_single_crlf_blocks_split_and_dedup_to_two()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture());
+        Assert.Equal(2, advisories.Count);
+        Assert.Equal("MHTG SIGMET J5 EMBD TS", advisories[0].Key);
+        Assert.Equal("YMMM SIGMET T07 TURB", advisories[1].Key);
+        Assert.Equal(new[] { "MHTG SIGMET J5 EMBD TS", "Valid until: 2200z", LiveMhtgBody },
+            advisories[0].Lines);
+    }
+
+    [Fact]
+    public void Header_line_starts_a_new_block_without_blank_separators()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "MHTG SIGMET J5 EMBD TS\r\nValid until: 2200z\r\nBODY A=\r\n"
+            + "YMMM AIRMET T07 TURB\r\nValid until: 2300z\r\nBODY B=");
+        Assert.Equal(2, advisories.Count);
+        Assert.Equal("YMMM AIRMET T07 TURB", advisories[1].Key);
+        Assert.Equal(new[] { "YMMM AIRMET T07 TURB", "Valid until: 2300z", "BODY B=" },
+            advisories[1].Lines);
+    }
+
+    [Fact]
+    public void Duplicate_blocks_dedup_case_insensitively_keeping_first()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "MHTG SIGMET J5 EMBD TS\r\nBody 1\r\nmhtg sigmet j5 embd ts\r\nBody 2");
+        var a = Assert.Single(advisories);
+        Assert.Equal("MHTG SIGMET J5 EMBD TS", a.Key);
+        Assert.Equal(new[] { "MHTG SIGMET J5 EMBD TS", "Body 1" }, a.Lines);
+    }
+
+    [Fact]
+    public void Leading_free_text_before_first_header_is_its_own_block()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "Some preamble text\r\nMHTG SIGMET J5 EMBD TS\r\nValid until: 2200z\r\nBODY=");
+        Assert.Equal(2, advisories.Count);
+        Assert.Equal("Some preamble text", advisories[0].Key);
+        Assert.Equal("MHTG SIGMET J5 EMBD TS", advisories[1].Key);
+    }
+
     // --- BuildRouteAdvisoriesText ---------------------------------------------------------
 
     [Fact]
