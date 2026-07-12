@@ -516,14 +516,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         _checklistTree.EndUpdate();
 
-        // Group headers and the lazy-expand placeholder are not tickable — hide their
-        // checkboxes (CheckBoxes=true is tree-wide; state image 0 removes it per node).
+        // Group headers are not tickable — hide their checkboxes (CheckBoxes=true is
+        // tree-wide; state image 0 removes it per node, kept 0 by the WndProc interceptor).
+        // The "Loading..." placeholder is deliberately NOT hidden: it is collapsed and never
+        // rendered/announced, and it gets REMOVED on first expand — registering its native
+        // handle would risk suppressing a real leaf's checkbox once comctl32 reuses that
+        // freed handle. Only persistent non-tickable nodes (headers + Informational
+        // separators, hidden in BeforeExpand) are registered with the interceptor.
         foreach (TreeNode parent in _checklistTree.Nodes)
-        {
             _checklistTree.HideCheckBox(parent);
-            foreach (TreeNode child in parent.Nodes)
-                _checklistTree.HideCheckBox(child);   // the "Loading..." placeholder
-        }
 
         _suppressTreeEvents = false;
     }
