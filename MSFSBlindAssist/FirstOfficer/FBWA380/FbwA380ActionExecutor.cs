@@ -54,6 +54,9 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
         {
             case FlowStepActionType.SetSwitch:
                 if (step.EventName == null) return false;
+                // Held self-completing fire test (Fenix FIRE_TEST_* precedent) — must not
+                // reach the generic dispatch (its SetLVar fallback would write a bogus L:var).
+                if (step.EventName == "FIRE_TEST") return await FireTestAsync();
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
             case FlowStepActionType.SetSwitchMultiple:
@@ -142,6 +145,31 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     // ---- Public write used by checklist CheckActions + convenience methods ----
     /// <summary>Write one control by its A380 varKey (checklist CheckAction path).</summary>
     public Task<bool> Set(string varKey, int value) => DispatchAsync(varKey, value);
+
+    /// <summary>Fenix-parity hold for the overhead fire TEST pushbutton.</summary>
+    public const int FireTestHoldMs = 3000;
+
+    /// <summary>Held fire test: write A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED 1 → hold → 0
+    /// through the def's dedicated branch (UiVariableSet.cs), which on the 0-write also
+    /// pulses the MASTERAWARN acknowledge so the continuous repetitive chime cancels.
+    /// Master warning + CRC while held are the blind-pilot verification. Holds the gate
+    /// for the whole test so WaitForDispatchDrainAsync covers the checklist grace.</summary>
+    public async Task<bool> FireTestAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 1);
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(FireTestHoldMs);
+            ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0);
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
 
     // ---- Convenience methods for the auto-manager / phase monitor ----
     public Task<bool> SetGear(bool down)       => DispatchAsync("A32NX_GEAR_HANDLE_POSITION", down ? 1 : 0);

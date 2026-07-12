@@ -105,6 +105,10 @@ public static class FbwA380ChecklistDefinitions
                 }),
             Auto("CP_OXY", "COCKPIT_PREP", "Crew oxygen: ON", "PUSH_OVHD_OXYGEN_CREW",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 0)),
+            // Manual-tick held test (no persistent "test performed" state; ticking runs
+            // the same held test the flow runs — Fenix PF_FIRE_* pattern).
+            ActionManual("CP_FIRETEST", "COCKPIT_PREP", "Fire test",
+                (e, _) => e.FireTestAsync()),
             Reminder("CP_GNDCTL", "COCKPIT_PREP", "Ground control: on"),
             Multi("CP_NAVLOGO", "COCKPIT_PREP", "Nav and logo lights: ON", "LIGHT_NAV", v => v > 0.5,
                 new[] { "LIGHT_LOGO" },
@@ -136,7 +140,6 @@ public static class FbwA380ChecklistDefinitions
                 async (e, _) => { await e.Set("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1);
                                   await e.Set("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1); }),
             Reminder("CP_AIRTEMP", "COCKPIT_PREP", "Cabin temperature: set as required"),
-            Reminder("CP_FIRETEST", "COCKPIT_PREP", "Fire test: perform"),
             Multi("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", "XMLVAR_Baro_Selector_HPA_1", v => v > 0.5,
                 new[] { "XMLVAR_Baro_Selector_HPA_2" },
                 async (e, _) => { await e.Set("XMLVAR_Baro_Selector_HPA_1", 1);

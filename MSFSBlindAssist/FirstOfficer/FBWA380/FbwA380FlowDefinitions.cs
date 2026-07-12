@@ -90,6 +90,11 @@ public static class FbwA380FlowDefinitions
                 ("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 1)),
             Skip(SW("CP_OXY", "Crew oxygen: ON", "PUSH_OVHD_OXYGEN_CREW", 0),
                 s => s.IsPosition("PUSH_OVHD_OXYGEN_CREW", 0)),
+            // Held fire test (executor pseudo-key): master warning + continuous
+            // repetitive chime while held; the def's release write auto-acknowledges
+            // the master warning. Fenix order: oxygen → fire test.
+            Done(SW("CP_FIRETEST", "Fire test — listen for the fire warning", "FIRE_TEST", 1),
+                "CP_FIRETEST"),
             Captain("CP_GNDCTL", "Ground control: on"),
             Multi("CP_NAVLOGO", "Nav and logo lights: ON", ("LIGHT_NAV", 1), ("LIGHT_LOGO", 1)),
             Skip(SW("CP_SEATBELT", "Seatbelt signs: ON", "SEATBELT_SIGN", 0), s => s.IsOn("SEATBELT_SIGN_LIGHT")),
@@ -110,7 +115,6 @@ public static class FbwA380FlowDefinitions
             Multi("CP_HOTAIR", "Hot air: ON",
                 ("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1), ("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1)),
             Captain("CP_AIRTEMP", "Cabin temperature: set as required"),
-            Captain("CP_FIRETEST", "Fire test: perform"),
             Multi("CP_BARO", "Baro reference: hectopascals",
                 ("XMLVAR_Baro_Selector_HPA_1", 1), ("XMLVAR_Baro_Selector_HPA_2", 1)),
             Captain("CP_ALTIMETERS", "Altimeters: set QNH"),
