@@ -344,8 +344,8 @@ FetchProfileAsync` (`Forms/WeatherRadarForm.cs`) is AS-only by construction: it 
 there is no vertical-profile data source outside ActiveSky.
 
 **(d) Forecast combo.** `ActiveSkyFormatting.ForecastPresets` (`Services/
-ActiveSkyFormatting.cs`) is the fixed offset table — Now, then hourly through +4 hours, then +6
-hours, i.e. 0/3600/7200/10800/14400/21600 seconds — consumed both to populate `METARReportForm`'s
+ActiveSkyFormatting.cs`) is the fixed offset table — a full hourly ladder, Now through
++6 hours, i.e. 0/3600/7200/10800/14400/18000/21600 seconds — consumed both to populate `METARReportForm`'s
 `forecastCombo` (`Forms/METARReportForm.cs`) and, in `FetchMETAR`, as the `timeoffset` argument
 to `ActiveSkyClient.GetMetarAsync`. The combo sits BELOW the AS METAR box, last in the tab order
 before Close (Robin's 2026-07-12 review), so Tab/Shift+Tab hops directly between the AS text

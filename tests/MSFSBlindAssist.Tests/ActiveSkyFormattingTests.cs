@@ -93,11 +93,13 @@ public class ActiveSkyFormattingTests
     [Fact]
     public void Forecast_presets_cover_now_through_six_hours()
     {
-        // Hourly through +4 (Robin's 2026-07-12 review: +3 was missing), then +6.
-        Assert.Equal(new[] { 0, 3600, 7200, 10800, 14400, 21600 },
+        // A full hourly ladder, Now through +6 — no gaps (Robin's 2026-07-12
+        // review, twice: +3 was missing, then +5).
+        Assert.Equal(new[] { 0, 3600, 7200, 10800, 14400, 18000, 21600 },
             ActiveSkyFormatting.ForecastPresets.Select(p => p.OffsetSeconds).ToArray());
         Assert.Equal("Now", ActiveSkyFormatting.ForecastPresets[0].Label);
         Assert.Equal("+3 hours", ActiveSkyFormatting.ForecastPresets[3].Label);
+        Assert.Equal("+5 hours", ActiveSkyFormatting.ForecastPresets[5].Label);
         Assert.Equal("+6 hours", ActiveSkyFormatting.ForecastPresets[^1].Label);
     }
 
