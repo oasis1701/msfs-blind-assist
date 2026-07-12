@@ -577,18 +577,26 @@ users; it is out of scope here (design doc §10).
 **(b) The parser is deliberately defensive.** `ActiveSkyFormatting.ParseRouteAdvisories`
 (`Services/ActiveSkyFormatting.cs`) is pure and CI-tested. A response beginning with
 `"No airmet/sigmet"` (case-insensitive) — the only no-hit shape actually observed during the
-2026-07-12 audit — parses to an empty list. Otherwise the text is split into blocks on blank
-lines, and each block's non-empty lines become one `RouteAdvisory { Key, Lines }`, with the
-**first trimmed line as the block's dedup `Key`**. The route variant's genuine hit format is
-only partially known — the audit only ever observed the no-hit sentence for a clear route, and
-the *positional* `GetActiveSigmetsAt?lat=&lon=` variant's hit format
-(`"CONVECTIVE SIGMET 18E / Valid until: 2000z / AREA TS MOV FROM 26015KT. TOPS TO FL420..."`)
-is the only HIT sample on hand, not necessarily identical to the route variant's real first hit.
-So the parser never drops or throws on anything it doesn't recognize: an unanticipated response
-(a different sentence, a differently-punctuated hit block) still renders verbatim as its own
-block, with its own first line standing in as the key — one readable, self-explanatory row
-rather than silence or a crash. `ActiveSkyFormatting.BuildRouteAdvisoriesText` is the matching
-renderer for the radar box (see (c)); the tracker in (d) works from the same `Key` list.
+2026-07-12 audit — parses to an empty list.
+
+The hit format is now KNOWN (live capture 2026-07-12): each advisory is exactly three
+lines — header (`MHTG SIGMET J5 EMBD TS`), `Valid until: 2200z`, and the raw SIGMET
+body — separated by single CRLF with NO blank lines, and ActiveSky repeats the same
+advisory once per route-segment intersection (the capture carried the identical MHTG
+J5 block seven times). `ParseRouteAdvisories` therefore splits on header lines
+(`^\S{3,4}\s+(SIGMET|AIRMET)\s+\S+`, case-insensitive) and DEDUPLICATES by key
+(first line, case-insensitive, first-seen order) into one `RouteAdvisory { Key, Lines }` per
+distinct advisory. The defensive fallbacks remain: truly-blank lines still split,
+unrecognized text still renders verbatim as its own block (with its own first line standing
+in as the key), and the "No airmet/sigmet" sentence still parses to an empty list — so the
+parser never drops or throws on anything it doesn't recognize, one readable, self-explanatory
+row rather than silence or a crash.
+
+Each parsed `RouteAdvisory` also carries decoded fields (`Identity`, `Hazard`, `ObsFcst`,
+`VerticalExtent`, `Movement`, `Trend`, `ValidUntil`), extracted from `Lines` by pure regexes;
+the `WI` lat/lon polygon is deliberately never extracted (see (c)). `ActiveSkyFormatting.BuildRouteAdvisoriesText`
+is the matching renderer for the radar box (see (c)); the tracker in (d) works from the same
+`Key` list.
 
 **(c) Weather Radar box.** A new `"Route Advisories (ActiveSky):"` label + `_routeAdvisoriesBox`
 (`DisplayListBox`) sits between Vertical Profile and Nearby Advisories in `WeatherRadarForm`
@@ -597,7 +605,10 @@ parallel batch — four-way before this feature, five-way with this addition —
 form's 30 s auto-refresh (§11) with no new poll loop. Three fetch outcomes (plus the visibility
 rule), matching every other AS-only surface in this doc:
 
-- Advisories present → each block's lines as rows, one blank row between blocks.
+- Advisories present, decode checkbox off → each deduplicated block's lines as rows, one blank
+  row between blocks (raw AS text, unmodified).
+- Advisories present, decode checkbox on → each advisory renders instead as its rebuilt
+  plain-English summary (see **Decode gating** below).
 - No hit → `BuildRouteAdvisoriesText` renders the single sentence `"No advisories on route."`
   (never the raw AS wording, and never silence — a clear route is itself a fact worth reading).
 - AS enabled but the fetch failed (`GetRouteAdvisoriesTextAsync` returned `null`) →
@@ -606,9 +617,15 @@ rule), matching every other AS-only surface in this doc:
   _routeAdvisoriesBox.Visible = asEnabled`, evaluated every refresh), out of the NVDA tab order,
   matching the mode line/station/profile boxes rather than showing disabled placeholder text.
 
-The existing "Decode advisories into plain English" toggle does not apply to this box — AS's
-route-advisory text is already terse plain language, and the decoder in §7 is tuned to
-aviationweather.gov's token format, not AS's (recorded out of scope, design doc §10).
+**Decode gating.** The box follows the same "Decode advisories into plain English"
+checkbox (`UserSettings.DecodeWeatherAdvisories`) as the Nearby Advisories box:
+unchecked shows the raw blocks (split + deduplicated); checked shows a rebuilt
+plain-English summary per advisory ("MHTG SIGMET J5: embedded thunderstorms, observed
+at 1830Z, tops FL520, moving west at 5 knots, no change expected." / "Valid until
+2200Z.") built from the decoded fields — hazard, observed/forecast time, vertical
+extent, movement, trend. The `WI` lat/lon polygon is deliberately dropped from the
+decoded view (noise when read aloud; flip the checkbox off to see it). A block where
+nothing decodes renders verbatim even with decoding on — decoding never hides data.
 
 **(d) Announce lifecycle.** `MainForm.WeatherAnnouncementTimer_Tick` calls
 `CheckRouteAdvisoriesAsync` (`MainForm.Announcers.cs`) on the same 30 s tick as the SIGMET/PIREP
@@ -627,11 +644,16 @@ tracker in this doc:
   is found already running) is preflight discovery for the radar box, not a startup announcement
   burst.
 - **New keys only, after baseline.** Subsequent calls return only keys never seen before; each
-  one produces exactly one queued `announcer.Announce($"Route advisory: {key}.")` (never
-  `AnnounceImmediate` — this is a background change, not a user action). The phrasing is
-  deliberately neutral — no "New" — because the identical announce also fires as the 15-minute
-  reminder below, where a newness claim would mislead (the sibling SIGMET/PIREP proximity
-  alerts use the same neutral "category: content" pattern).
+  one produces exactly one queued announce. The spoken announcement is ALWAYS decoded,
+  independent of the box's checkbox — a screen reader must never speak raw SIGMET
+  abbreviations: `announcer.Announce($"Route advisory: {BuildRouteAdvisoryAnnouncement(adv)}.")`,
+  e.g. `"Route advisory: MHTG SIGMET J5, embedded thunderstorms, tops FL520."`
+  (`BuildRouteAdvisoryAnnouncement`: identity + hazard + vertical extent; movement/trend/validity
+  stay box-only). It falls back to the raw key when nothing decodes (never `AnnounceImmediate` —
+  this is a background change, not a user action). The phrasing is deliberately neutral — no
+  "New" — because the identical announce also fires as the 15-minute reminder below, where a
+  newness claim would mislead (the sibling SIGMET/PIREP proximity alerts use the same neutral
+  "category: content" pattern).
 - **15-minute reminder clear**, matching `_announcedSigmetKeys`/`_sigmetKeysClearedAt`
   byte-for-byte in shape: `CheckRouteAdvisoriesAsync` tracks its own
   `_routeAdvisoryKeysClearedAt` and calls `_routeAdvisoryTracker.ClearAnnouncedKeys()` once more
@@ -664,11 +686,20 @@ unconditionally either way.
 
 **(f) Honest verification caveat.** The no-hit path, the box's three-way rendering, the 30 s
 refresh, and the settings toggle are all verifiable on demand and were exercised during
-development. The HIT path — a real SIGMET or AIRMET actually intersecting a loaded route
-mid-flight — was not observed even once during the 2026-07-12 live verification session (the
-test route was clear the whole time), so it has not yet been sim-verified end to end. It gets its
-first true verification only when real weather crosses a planned route during an actual flight.
-Until then, "Route advisory: …" firing correctly, exactly once per advisory, with no
-startup burst, rests on the parser's defensiveness (b) and the tracker's characterization tests
-(`tests/MSFSBlindAssist.Tests/RouteAdvisoriesTests.cs`) rather than an observed live hit — a
-distinction worth remembering before calling this half of the feature "tested."
+development. The HIT path — a real SIGMET/AIRMET response, its parsing, and its decoding — is
+now live-verified: the 2026-07-12 live capture (OMDB→LTFM en route, live MHTG SIGMET J5 and
+YMMM T07 advisories, the former repeated seven times across route-segment intersections) is
+pinned as the test fixture in `RouteAdvisoriesTests.cs`, and the full suite is green against it
+— dedup, decoded-field extraction, box rendering with decoding on and off, and the announcement
+builder all exercise the real captured text, not a hand-written approximation.
+
+What remains unverified is narrower: a genuinely NEW advisory appearing mid-flight — an advisory
+absent from the tracker's baseline that then shows up on a later 30 s tick and fires
+`"Route advisory: …"` in real time — has not yet been observed, because both advisories in the
+2026-07-12 session were already present at baseline (preflight discovery, not a live "new key"
+event). It gets its first true end-to-end verification only when a flight's route genuinely
+picks up new weather mid-route. Until then, the announce firing correctly, exactly once per
+advisory, with no startup burst, rests on the tracker's characterization tests
+(`tests/MSFSBlindAssist.Tests/RouteAdvisoriesTests.cs`) and the now-live-verified parser/decoder
+rather than an observed live "new advisory" event — a narrower but real distinction worth
+remembering before calling this feature fully tested end to end.
