@@ -168,3 +168,9 @@ plus docs. In-sim items appended to the PR checklist.
 - Positional `GetActiveSigmetsAt?lat=&lon=` as an aviationweather.gov replacement for the
   Nearby Advisories box (the audit's consistency argument for AS historic/custom modes —
   separate feature, separate conversation).
+- Revisit the block/key strategy (per-line advisory detection vs. the current first-line-as-key
+  approach) once the first real route hit is observed in the wild and the genuine hit format is
+  actually known. Also: the "AS running, no flight plan loaded" response wording needs to be
+  captured in-sim and, if it doesn't already start with `"No airmet/sigmet"`, added to the
+  parser's no-hit prefixes — otherwise it would parse as an unrecognized hit block and both
+  announce once and 15-minute-reminder-re-announce as a phantom advisory.

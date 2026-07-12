@@ -202,6 +202,14 @@ gate change but never ticked "Auto-announce weather state changes" will go silen
 upgrading. That's the intended decoupling (the AS switch alone must never start the spoken
 weather updates), not a regression.
 
+That invariant is scoped to the `ActiveSkyWeatherMonitor`'s decoded-weather updates
+(`ShouldRun`, above) — it does not extend to every AS-gated announcer. The route-advisory
+announce (§12d) is DELIBERATELY independent of the "Auto-announce weather state changes" master
+(spec 2026-07-12 §5) and is gated on its own default-on sub-toggle
+(`AnnounceRouteAdvisoriesEnabled`) plus the AS switch alone, the same shape as the SIGMET/PIREP
+proximity toggles it sits beside. Do not "fix" it onto the master gate — that would be reverting
+a deliberate design choice, not correcting a bug.
+
 ## 6. The no-repeat rule for the precip auto-announce
 
 `AnnounceAmbientChanges`'s ActiveSky branch must not repeat an unchanged phrase. It compares
@@ -568,14 +576,14 @@ users; it is out of scope here (design doc §10).
 
 **(b) The parser is deliberately defensive.** `ActiveSkyFormatting.ParseRouteAdvisories`
 (`Services/ActiveSkyFormatting.cs`) is pure and CI-tested. A response beginning with
-`"No airmet/sigmet"` (case-insensitive) — the only hit shape actually observed during the
+`"No airmet/sigmet"` (case-insensitive) — the only no-hit shape actually observed during the
 2026-07-12 audit — parses to an empty list. Otherwise the text is split into blocks on blank
 lines, and each block's non-empty lines become one `RouteAdvisory { Key, Lines }`, with the
 **first trimmed line as the block's dedup `Key`**. The route variant's genuine hit format is
 only partially known — the audit only ever observed the no-hit sentence for a clear route, and
 the *positional* `GetActiveSigmetsAt?lat=&lon=` variant's hit format
 (`"CONVECTIVE SIGMET 18E / Valid until: 2000z / AREA TS MOV FROM 26015KT. TOPS TO FL420..."`)
-is the only sample on hand, not necessarily identical to the route variant's real first hit.
+is the only HIT sample on hand, not necessarily identical to the route variant's real first hit.
 So the parser never drops or throws on anything it doesn't recognize: an unanticipated response
 (a different sentence, a differently-punctuated hit block) still renders verbatim as its own
 block, with its own first line standing in as the key — one readable, self-explanatory row
@@ -585,8 +593,9 @@ renderer for the radar box (see (c)); the tracker in (d) works from the same `Ke
 **(c) Weather Radar box.** A new `"Route Advisories (ActiveSky):"` label + `_routeAdvisoriesBox`
 (`DisplayListBox`) sits between Vertical Profile and Nearby Advisories in `WeatherRadarForm`
 (`Forms/WeatherRadarForm.cs`), fetched by `FetchRouteAdvisoriesAsync` inside `RefreshAsync`'s
-existing five-way parallel batch — so it rides the form's 30 s auto-refresh (§11) with no new
-poll loop. Three outcomes, matching every other AS-only surface in this doc:
+parallel batch — four-way before this feature, five-way with this addition — so it rides the
+form's 30 s auto-refresh (§11) with no new poll loop. Three fetch outcomes (plus the visibility
+rule), matching every other AS-only surface in this doc:
 
 - Advisories present → each block's lines as rows, one blank row between blocks.
 - No hit → `BuildRouteAdvisoriesText` renders the single sentence `"No advisories on route."`
@@ -634,8 +643,10 @@ tracker in this doc:
 - **Resets on both SimConnect connect and aircraft switch** — `RouteAdvisoryTracker.Reset()` is
   called from `MainForm.AircraftSwitch.cs`'s `OnConnectionStatusChanged` "Connected" branch
   (alongside `_announcedSigmetKeys.Clear()`) and from `SwitchAircraft` (alongside the other
-  hazard trackers' resets — turbulence, icing). Both call sites also reset
-  `_routeAdvisoryKeysClearedAt = DateTime.UtcNow`, so the 15-minute clock restarts too.
+  hazard trackers' resets — turbulence, icing). Only the `OnConnectionStatusChanged` Connected
+  branch also resets `_routeAdvisoryKeysClearedAt = DateTime.UtcNow`; `SwitchAircraft` calls only
+  `_routeAdvisoryTracker.Reset()`. This is functionally harmless — the 15-minute clear is a no-op
+  immediately after a `Reset()` regardless, since there are no announced keys left to clear.
 
 **(e) Settings.** `UserSettings.AnnounceRouteAdvisoriesEnabled` (bool, default `true`, both the
 property and `Clone()`) backs a new checkbox in the Weather panel's Announcements group,

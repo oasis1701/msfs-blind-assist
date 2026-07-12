@@ -67,6 +67,21 @@ public class RouteAdvisoriesTests
         Assert.Equal("AIRMET T1", advisories[1].Key);
     }
 
+    [Fact]
+    public void Whitespace_only_separator_line_does_not_split_the_block()
+    {
+        // A blank-line block separator requires "\r\n\r\n"/"\n\n" — a line containing only
+        // spaces is neither. Known merged-block limitation: the split doesn't happen, so
+        // "SIGMET B4"/"SEV TURB" and "AIRMET T1"/"MOD TURB" stay one block. The spaces-only
+        // line itself is TrimEnd'ed to empty by the per-line filter and dropped, so it
+        // never surfaces as a blank Lines entry either.
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "SIGMET B4\r\nSEV TURB\r\n   \r\nAIRMET T1\r\nMOD TURB");
+        var a = Assert.Single(advisories);
+        Assert.Equal("SIGMET B4", a.Key);
+        Assert.Equal(new[] { "SIGMET B4", "SEV TURB", "AIRMET T1", "MOD TURB" }, a.Lines);
+    }
+
     // --- BuildRouteAdvisoriesText ---------------------------------------------------------
 
     [Fact]
@@ -108,6 +123,14 @@ public class RouteAdvisoriesTests
         t.Observe(new string[0]);                                 // baseline: clear route
         Assert.Equal(new[] { "SIGMET B4" }, t.Observe(new[] { "SIGMET B4" }));
         Assert.Empty(t.Observe(new[] { "SIGMET B4" }));
+    }
+
+    [Fact]
+    public void Duplicate_key_within_one_observe_call_announces_once()
+    {
+        var t = new RouteAdvisoryTracker();
+        t.Observe(new string[0]);                                 // baseline: clear route
+        Assert.Equal(new[] { "SIGMET B4" }, t.Observe(new[] { "SIGMET B4", "SIGMET B4" }));
     }
 
     [Fact]
