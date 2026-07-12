@@ -20,6 +20,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem pmdg737FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixFirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fbwA380FirstOfficerMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem fbwA320FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
@@ -56,6 +57,7 @@ namespace MSFSBlindAssist
             this.pmdg737FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixFirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fbwA380FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fbwA320FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -88,6 +90,7 @@ namespace MSFSBlindAssist
             this.pmdg737FirstOfficerMenuItem,
             this.fenixFirstOfficerMenuItem,
             this.fbwA380FirstOfficerMenuItem,
+            this.fbwA320FirstOfficerMenuItem,
             this.pmdg777FirstOfficerMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
@@ -193,6 +196,15 @@ namespace MSFSBlindAssist
             this.fbwA380FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
             this.fbwA380FirstOfficerMenuItem.Text = "FlyByWire A380 &First Officer";
             this.fbwA380FirstOfficerMenuItem.Click += new System.EventHandler(this.FbwA380FirstOfficerMenuItem_Click);
+            //
+            // fbwA320FirstOfficerMenuItem
+            //
+            this.fbwA320FirstOfficerMenuItem.AccessibleName = "FlyByWire A32NX First Officer";
+            this.fbwA320FirstOfficerMenuItem.AccessibleDescription = "Open the FlyByWire A32NX First Officer checklists and flows window";
+            this.fbwA320FirstOfficerMenuItem.Name = "fbwA320FirstOfficerMenuItem";
+            this.fbwA320FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.fbwA320FirstOfficerMenuItem.Text = "FlyByWire A32NX &First Officer";
+            this.fbwA320FirstOfficerMenuItem.Click += new System.EventHandler(this.FbwA320FirstOfficerMenuItem_Click);
             //
             // pmdg777FirstOfficerMenuItem
             //

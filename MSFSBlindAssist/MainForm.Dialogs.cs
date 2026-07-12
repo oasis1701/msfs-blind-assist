@@ -552,6 +552,24 @@ public partial class MainForm
         fbwA380FirstOfficerForm.ShowForm();
     }
 
+    private void FbwA320FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+        => ShowFbwA320FirstOfficerDialog();
+
+    private void ShowFbwA320FirstOfficerDialog()
+    {
+        if (currentAircraft is not FlyByWireA320Definition a320Def) return;
+        if (fbwA320FirstOfficerForm == null || fbwA320FirstOfficerForm.IsDisposed)
+        {
+            fbwA320FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA320.FbwA320ActionExecutor, FirstOfficer.FBWA320.FbwA320StateEvaluator>(
+                new FirstOfficer.FBWA320.FbwA320FoProfile(a320Def, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        fbwA320FirstOfficerForm.ShowForm();
+    }
+
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
     // crew side, reusing the generic FbwEfbForm. Mirrors ShowFbwEfbDialog's lazy
     // client/form creation + non-modal ShowForm pattern.
