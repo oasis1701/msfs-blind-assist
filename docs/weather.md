@@ -645,12 +645,14 @@ tracker in this doc:
   is found already running) is preflight discovery for the radar box, not a startup announcement
   burst.
 - **New keys only, after baseline.** Subsequent calls return only keys never seen before; each
-  one produces exactly one queued announce. The spoken announcement is ALWAYS decoded,
-  independent of the box's checkbox — a screen reader must never speak raw SIGMET
+  one produces exactly one queued announce. The spoken announcement is ALWAYS decoded when
+  possible, independent of the box's checkbox — plain English is preferred over raw SIGMET
   abbreviations: `announcer.Announce($"Route advisory: {BuildRouteAdvisoryAnnouncement(adv)}.")`,
   e.g. `"Route advisory: MHTG SIGMET J5, Central American FIR, embedded thunderstorms, tops FL520."`
   (`BuildRouteAdvisoryAnnouncement`: identity + FIR name + hazard + vertical extent;
-  movement/trend/validity stay box-only). It falls back to the raw key when nothing decodes (never `AnnounceImmediate` —
+  movement/trend/validity stay box-only). When identity/hazard don't decode it deliberately
+  falls back to the raw key, abbreviations and all — an out-of-vocabulary advisory must still
+  be heard, never dropped (never `AnnounceImmediate` —
   this is a background change, not a user action). The phrasing is deliberately neutral — no
   "New" — because the identical announce also fires as the 15-minute reminder below, where a
   newness claim would mislead (the sibling SIGMET/PIREP proximity alerts use the same neutral

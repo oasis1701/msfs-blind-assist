@@ -2325,9 +2325,11 @@ public partial class MainForm
             if (!IsHandleCreated || IsDisposed) return;
             foreach (string key in newKeys)
             {
-                // ALWAYS decoded, independent of the radar form's decode checkbox — a
-                // spoken announcement must never contain raw SIGMET abbreviations
-                // ("EMBD TS"). Falls back to the raw key when nothing decodes.
+                // ALWAYS decoded when possible, independent of the radar form's decode
+                // checkbox — the spoken phrase prefers plain English over raw SIGMET
+                // abbreviations ("EMBD TS"). When identity/hazard don't decode, it
+                // deliberately falls back to the raw key, abbreviations and all: an
+                // out-of-vocabulary advisory must still be heard, never dropped.
                 var adv = advisories.FirstOrDefault(a =>
                     string.Equals(a.Key, key, StringComparison.OrdinalIgnoreCase));
                 string phrase = adv != null

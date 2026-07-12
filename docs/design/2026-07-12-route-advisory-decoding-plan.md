@@ -715,3 +715,15 @@ Robin currently has AS loaded with en-route SIGMETs — ideal conditions:
 2. Check "Decode advisories into plain English", wait ≤30 s (or F5): box re-renders as the two decoded summaries with "Valid until" lines; no coordinates.
 3. Uncheck: raw form returns on the next refresh.
 4. Announce path (route advisories toggle on): since both advisories are already baselined, no announcement fires from the format change alone — expected. A genuinely new advisory appearing mid-flight should announce as "Route advisory: <identity>, <hazard>, <extent>."
+
+## Post-execution notes (2026-07-13)
+
+- Robin's PR review softened the "a spoken announcement must never contain raw SIGMET
+  abbreviations" wording quoted in Task 3's code comment and Task 4's weather.md excerpt:
+  the raw-key fallback means an out-of-vocabulary advisory IS spoken with its abbreviations
+  (deliberately — it must be heard, never dropped). The code comment and weather.md now say
+  "always decoded when possible / prefers plain English"; the snippets above are the
+  as-planned historical text.
+- Same review extended `IdentityPattern` to the US "CONVECTIVE SIGMET <id>" header shape
+  (previously only ICAO "<FIR> SIGMET|AIRMET <id>" decoded an Identity, so US convective
+  advisories always took the raw-key announcement fallback).

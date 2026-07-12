@@ -55,6 +55,10 @@ The full raw capture (with the duplicates) is preserved as the test fixture.
 - **The auto-announcement is ALWAYS decoded, independent of the checkbox.** The checkbox
   is a Weather-Radar display preference; a spoken announcement must never contain raw
   abbreviations a screen reader mangles ("EMBD TS").
+  *Softened on Robin's 2026-07-13 PR review: "never" was always aspirational, not literal —
+  when identity/hazard don't decode, the announcement deliberately falls back to the raw key,
+  abbreviations and all, because an out-of-vocabulary advisory must still be heard, never
+  dropped. Code comments and docs/weather.md now state the fallback honestly.*
 - Rejected alternatives: dictionary word-by-word in-place expansion (can't drop the
   coordinate wall or restructure into a sentence); cross-matching aviationweather.gov's
   structured feed by SIGMET ID (network-dependent and US-centric — the live capture has
