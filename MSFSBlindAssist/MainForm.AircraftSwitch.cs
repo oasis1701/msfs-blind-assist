@@ -218,6 +218,16 @@ public partial class MainForm
             // Stop weather auto-announcement timer
             weatherAnnouncementTimer?.Stop();
 
+            // A disconnect voids any pending liftoff → Hand Fly handoff. The
+            // fire-time gates would abort anyway (IsConnected check), but don't
+            // leave a dead timer pending across a reconnect — and bump the
+            // confirm token: a fresh-position confirm whose response was lost
+            // to this disconnect leaks its one-shot handler, which would
+            // otherwise fire on the NEXT flight's first position response and
+            // bypass the debounce.
+            _liftoffHandoffTimer?.Stop();
+            _liftoffHandoffConfirmToken++;
+
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;
@@ -570,6 +580,14 @@ public partial class MainForm
         // The HS787 def owns its synoptic-display window (a live MFD_2 Coherent socket) + the
         // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
         (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
+
+        // An armed liftoff → Hand Fly handoff must not survive the switch — its
+        // confirm could otherwise fire against the new aircraft in the middle of
+        // the re-registration churn below (same hygiene as the disconnect path
+        // in OnConnectionStatusChanged). The token bump also invalidates an
+        // already-in-flight confirm callback.
+        _liftoffHandoffTimer?.Stop();
+        _liftoffHandoffConfirmToken++;
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
