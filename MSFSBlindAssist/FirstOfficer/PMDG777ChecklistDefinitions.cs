@@ -153,8 +153,8 @@ public static class PMDG777ChecklistDefinitions
                 (e, _) => e.SetBackupGenerators(1)),
             // Manual-tick held test — no persistent state for "test performed"
             // (Fenix PF_FIRE_* pattern); ticking runs the same held test as the flow.
-            Momentary(ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire and overheat test",
-                (e, _) => e.FireOvhtTestAsync())),
+            ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire and overheat test",
+                (e, _) => e.FireOvhtTestAsync()),
             Auto("PF_WINDOW_HEAT", "PREFLIGHT", "Window Heat switches: ON",
                 "ICE_WindowHeat_Sw_ON_0", v => v > 0.5,
                 new[] { "ICE_WindowHeat_Sw_ON_1", "ICE_WindowHeat_Sw_ON_2", "ICE_WindowHeat_Sw_ON_3" },
@@ -854,10 +854,6 @@ public static class PMDG777ChecklistDefinitions
         ManualCompletionAllowed = true,
         CheckAction = AsCheckAction(action),
     };
-
-    // Marks a momentary "button" test item so a manual tick auto-clears after the action
-    // completes (re-runnable with a single check; flow completion via MarkComplete unaffected).
-    private static Item Momentary(Item item) { item.MomentaryAction = true; return item; }
 
     /// <summary>Manual item whose linked action is async (time-spaced CDA writes).</summary>
     private static Item ActionManualAsync(string id, string groupId, string label,
