@@ -620,10 +620,13 @@ rule), matching every other AS-only surface in this doc:
 **Decode gating.** The box follows the same "Decode advisories into plain English"
 checkbox (`UserSettings.DecodeWeatherAdvisories`) as the Nearby Advisories box:
 unchecked shows the raw blocks (split + deduplicated); checked shows a rebuilt
-plain-English summary per advisory ("MHTG SIGMET J5: embedded thunderstorms, observed
-at 1830Z, tops FL520, moving west at 5 knots, no change expected." / "Valid until
-2200Z.") built from the decoded fields — hazard, observed/forecast time, vertical
-extent, movement, trend. The `WI` lat/lon polygon is deliberately dropped from the
+plain-English summary per advisory ("MHTG SIGMET J5: Central American FIR, embedded
+thunderstorms, observed at 1830Z, tops FL520, moving west at 5 knots, no change
+expected." / "Valid until 2200Z.") built from the decoded fields — FIR name (the body's
+leading "<code> <NAME> FIR" declaration, title-cased: the geographic name is what a
+blind pilot can use, the MHCC/NZZO code is not — Robin's 2026-07-13 feedback), hazard,
+observed/forecast time, vertical extent, movement, trend. The `WI` lat/lon polygon is
+deliberately dropped from the
 decoded view (noise when read aloud; flip the checkbox off to see it). The summary path
 requires a decoded HAZARD (`HasDecodedContent`): a block whose phenomenon is out of
 vocabulary renders verbatim even with decoding on, no matter how many other fields decoded
@@ -649,9 +652,9 @@ tracker in this doc:
   one produces exactly one queued announce. The spoken announcement is ALWAYS decoded,
   independent of the box's checkbox — a screen reader must never speak raw SIGMET
   abbreviations: `announcer.Announce($"Route advisory: {BuildRouteAdvisoryAnnouncement(adv)}.")`,
-  e.g. `"Route advisory: MHTG SIGMET J5, embedded thunderstorms, tops FL520."`
-  (`BuildRouteAdvisoryAnnouncement`: identity + hazard + vertical extent; movement/trend/validity
-  stay box-only). It falls back to the raw key when nothing decodes (never `AnnounceImmediate` —
+  e.g. `"Route advisory: MHTG SIGMET J5, Central American FIR, embedded thunderstorms, tops FL520."`
+  (`BuildRouteAdvisoryAnnouncement`: identity + FIR name + hazard + vertical extent;
+  movement/trend/validity stay box-only). It falls back to the raw key when nothing decodes (never `AnnounceImmediate` —
   this is a background change, not a user action). The phrasing is deliberately neutral — no
   "New" — because the identical announce also fires as the 15-minute reminder below, where a
   newness claim would mislead (the sibling SIGMET/PIREP proximity alerts use the same neutral

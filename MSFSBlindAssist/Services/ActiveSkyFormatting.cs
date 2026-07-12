@@ -222,6 +222,7 @@ public static class ActiveSkyFormatting
 
         // Decoded fields (design 2026-07-12-route-advisory-decoding §3.2).
         public string? Identity;        // "MHTG SIGMET J5"
+        public string? FirName;         // "Central American FIR" (body's leading FIR declaration)
         public string? Hazard;          // "embedded thunderstorms"
         public string? ObsFcst;         // "observed at 1830Z" / "forecast"
         public string? VerticalExtent;  // "tops FL520" / "surface to 8,000 feet"
@@ -327,6 +328,7 @@ public static class ActiveSkyFormatting
     private static string JoinDecodedFields(RouteAdvisory a)
     {
         var fields = new List<string>();
+        if (a.FirName != null) fields.Add(a.FirName);
         if (a.Hazard != null) fields.Add(a.Hazard);
         if (a.ObsFcst != null) fields.Add(a.ObsFcst);
         if (a.VerticalExtent != null) fields.Add(a.VerticalExtent);
@@ -401,6 +403,14 @@ public static class ActiveSkyFormatting
         string body = string.Join(" ", a.Lines.Skip(1)
             .Where(l => !l.StartsWith("Valid until:", StringComparison.OrdinalIgnoreCase)));
 
+        // FIR name — the body's leading "<FIR code> <NAME> FIR" declaration
+        // ("MHCC CENTRAL AMERICAN FIR …"). The 4-letter code is dropped in favor of
+        // the title-cased human name: "Central American FIR" is geographic context a
+        // blind pilot can actually use; "MHCC" is not (Robin's 2026-07-13 feedback).
+        var fir = Regex.Match(body, @"^\S{3,4}\s+([A-Z][A-Z ]{0,40}?)\s+FIR\b");
+        if (fir.Success)
+            a.FirName = $"{TitleCaseWords(fir.Groups[1].Value)} FIR";
+
         a.Hazard = MatchHazard(body) ?? (idm.Success ? MatchHazard(a.Key) : null);
 
         var obs = Regex.Match(body, @"\bOBS(?:\s+AT\s+(\d{4})Z)?\b", RegexOptions.IgnoreCase);
@@ -423,12 +433,12 @@ public static class ActiveSkyFormatting
         else if (Regex.IsMatch(body, @"\bWKN\b", RegexOptions.IgnoreCase)) a.Trend = "weakening";
     }
 
-    /// <summary>Hazard/vertical-extent patterns and the <c>\bNC\b</c> trend check are
-    /// deliberately case-SENSITIVE (no <c>RegexOptions.IgnoreCase</c>) — SIGMET
-    /// vocabulary is uppercase, and case-sensitivity keeps bare fallbacks like
-    /// <c>\bTS\b</c>/<c>\bNC\b</c> from false-matching lowercase free text. The
-    /// identity/valid-until/OBS/FCST/MOV/STNR/INTSF/WKN regexes are IgnoreCase because
-    /// their shapes are unambiguous.</summary>
+    /// <summary>Hazard/vertical-extent patterns, the FIR-name declaration, and the
+    /// <c>\bNC\b</c> trend check are deliberately case-SENSITIVE (no
+    /// <c>RegexOptions.IgnoreCase</c>) — SIGMET vocabulary is uppercase, and
+    /// case-sensitivity keeps bare fallbacks like <c>\bTS\b</c>/<c>\bNC\b</c> from
+    /// false-matching lowercase free text. The identity/valid-until/OBS/FCST/MOV/STNR/
+    /// INTSF/WKN regexes are IgnoreCase because their shapes are unambiguous.</summary>
     private static string? MatchHazard(string text)
     {
         if (string.IsNullOrEmpty(text)) return null;
@@ -461,15 +471,24 @@ public static class ActiveSkyFormatting
         => int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture)
             .ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " feet";
 
-    /// <summary>The always-decoded announce phrase (design §3.4): identity + hazard
-    /// (+ vertical extent). Falls back to the raw Key when the essentials didn't
-    /// decode — a spoken announcement never goes blank. Movement/trend/validity are
-    /// deliberately box-only: announcements are interruptions, the box is the briefing.</summary>
+    /// <summary>Uppercase SIGMET words → spoken-friendly title case
+    /// ("CENTRAL AMERICAN" → "Central American").</summary>
+    private static string TitleCaseWords(string upperWords)
+        => string.Join(" ", upperWords.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Length == 1 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
+
+    /// <summary>The always-decoded announce phrase (design §3.4): identity + FIR name
+    /// (+ hazard, + vertical extent). Falls back to the raw Key when the essentials
+    /// didn't decode — a spoken announcement never goes blank. Movement/trend/validity
+    /// are deliberately box-only: announcements are interruptions, the box is the
+    /// briefing.</summary>
     internal static string BuildRouteAdvisoryAnnouncement(RouteAdvisory a)
     {
         if (a.Identity == null || a.Hazard == null) return a.Key;
-        return a.VerticalExtent == null
-            ? $"{a.Identity}, {a.Hazard}"
-            : $"{a.Identity}, {a.Hazard}, {a.VerticalExtent}";
+        var parts = new List<string> { a.Identity };
+        if (a.FirName != null) parts.Add(a.FirName);
+        parts.Add(a.Hazard);
+        if (a.VerticalExtent != null) parts.Add(a.VerticalExtent);
+        return string.Join(", ", parts);
     }
 }

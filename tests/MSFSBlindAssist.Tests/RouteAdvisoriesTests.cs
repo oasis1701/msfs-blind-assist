@@ -163,6 +163,7 @@ public class RouteAdvisoriesTests
     {
         var a = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture())[0];
         Assert.Equal("MHTG SIGMET J5", a.Identity);
+        Assert.Equal("Central American FIR", a.FirName);
         Assert.Equal("embedded thunderstorms", a.Hazard);
         Assert.Equal("observed at 1830Z", a.ObsFcst);
         Assert.Equal("tops FL520", a.VerticalExtent);
@@ -176,6 +177,7 @@ public class RouteAdvisoriesTests
     {
         var a = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture())[1];
         Assert.Equal("YMMM SIGMET T07", a.Identity);
+        Assert.Equal("Melbourne FIR", a.FirName);
         Assert.Equal("severe turbulence", a.Hazard);
         Assert.Equal("forecast", a.ObsFcst);
         Assert.Equal("surface to 8,000 feet", a.VerticalExtent);
@@ -190,6 +192,7 @@ public class RouteAdvisoriesTests
         var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(
             "No flight plan is currently loaded"));
         Assert.Null(a.Identity);
+        Assert.Null(a.FirName);
         Assert.Null(a.Hazard);
         Assert.Null(a.ObsFcst);
         Assert.Null(a.VerticalExtent);
@@ -204,9 +207,9 @@ public class RouteAdvisoriesTests
     public void Announcement_speaks_identity_hazard_and_extent()
     {
         var advisories = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture());
-        Assert.Equal("MHTG SIGMET J5, embedded thunderstorms, tops FL520",
+        Assert.Equal("MHTG SIGMET J5, Central American FIR, embedded thunderstorms, tops FL520",
             ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(advisories[0]));
-        Assert.Equal("YMMM SIGMET T07, severe turbulence, surface to 8,000 feet",
+        Assert.Equal("YMMM SIGMET T07, Melbourne FIR, severe turbulence, surface to 8,000 feet",
             ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(advisories[1]));
     }
 
@@ -253,10 +256,10 @@ public class RouteAdvisoriesTests
         string[] rows = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
         Assert.Equal(new[]
         {
-            "MHTG SIGMET J5: embedded thunderstorms, observed at 1830Z, tops FL520, moving west at 5 knots, no change expected.",
+            "MHTG SIGMET J5: Central American FIR, embedded thunderstorms, observed at 1830Z, tops FL520, moving west at 5 knots, no change expected.",
             "Valid until 2200Z.",
             "",
-            "YMMM SIGMET T07: severe turbulence, forecast, surface to 8,000 feet, stationary, no change expected.",
+            "YMMM SIGMET T07: Melbourne FIR, severe turbulence, forecast, surface to 8,000 feet, stationary, no change expected.",
             "Valid until 2300Z.",
         }, rows);
     }
@@ -295,6 +298,25 @@ public class RouteAdvisoriesTests
             "NFFF SIGMET 3 TC\r\nValid until: 1800z\r\nNFFF NADI FIR TC MAWAR OBS AT 1200Z TOP FL540 MOV NW 10KT INTSF="));
         Assert.Equal("tropical cyclone", a.Hazard);
         Assert.Equal("intensifying", a.Trend);
+        Assert.Equal("Nadi FIR", a.FirName);
+    }
+
+    [Fact]
+    public void Multi_word_fir_name_is_title_cased()
+    {
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(
+            "NZZO SIGMET 2 SEV TURB\r\nValid until: 0600z\r\n"
+            + "NZZO AUCKLAND OCEANIC FIR SEV TURB FCST WI S3000 W16000 - S3200 W15800 FL280/380 MOV E 20KT WKN="));
+        Assert.Equal("Auckland Oceanic FIR", a.FirName);
+        Assert.Equal("NZZO SIGMET 2, Auckland Oceanic FIR, severe turbulence, FL280 to FL380",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a));
+    }
+
+    [Fact]
+    public void Body_without_fir_declaration_has_null_firname()
+    {
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(OneBlock));
+        Assert.Null(a.FirName);
     }
 
     [Fact]
