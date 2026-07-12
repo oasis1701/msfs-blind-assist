@@ -526,7 +526,7 @@ public static class FbwA320FlowDefinitions
             Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
                 s => s.IsPosition("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)), "SC_BAT2"),
             // ★ Cockpit lighting off (spec §4.1) — the full off-scene is a Task 7 checklist item.
-            Done(SW("SC_COCKPITLT", "Cockpit lights: off", "A32NX_OVHD_INTLT_ANN", 1), "SC_COCKPITLT"),
+            Done(SW("SC_COCKPITLT", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN", 1), "SC_COCKPITLT"),
         }
     };
 
