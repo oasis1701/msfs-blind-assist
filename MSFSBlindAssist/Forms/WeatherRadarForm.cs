@@ -23,15 +23,15 @@ public class WeatherRadarForm : Form
 
     private TextBox _asModeBox = null!;
     private Label _currentWeatherLabel = null!;
-    private TextBox _currentWeatherBox = null!;
+    private DisplayListBox _currentWeatherBox = null!;
     private Label _stationLabel = null!;
-    private TextBox _stationBox = null!;
+    private DisplayListBox _stationBox = null!;
     private Label _profileLabel = null!;
-    private TextBox _profileBox = null!;
+    private DisplayListBox _profileBox = null!;
     private Label _advisoriesLabel = null!;
-    private TextBox _advisoriesBox = null!;
+    private DisplayListBox _advisoriesBox = null!;
     private Label _windsAloftLabel = null!;
-    private TextBox _windsAloftBox = null!;
+    private DisplayListBox _windsAloftBox = null!;
     private Label _statusLabel = null!;
     private Button _refreshButton = null!;
     private Button _closeButton = null!;
@@ -91,16 +91,15 @@ public class WeatherRadarForm : Form
         };
         y += 24;
 
-        _currentWeatherBox = new TextBox
+        _currentWeatherBox = new DisplayListBox
         {
             Location = new Point(12, y),
             Size = new Size(566, 100),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or Refresh to fetch weather data.",
             AccessibleName = "Weather at Current Position",
             AccessibleDescription = "Ambient weather conditions at aircraft position from simulator"
         };
+        _currentWeatherBox.SetText("Press F5 or Refresh to fetch weather data.");
         y += 100 + 12;
 
         // ── Closest station (ActiveSky only; hidden when AS is off) ───────
@@ -114,13 +113,11 @@ public class WeatherRadarForm : Form
         };
         y += 24;
 
-        _stationBox = new TextBox
+        _stationBox = new DisplayListBox
         {
             Location = new Point(12, y),
             Size = new Size(566, 110),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "",
             AccessibleName = "Closest Station Weather",
             AccessibleDescription = "Decoded weather and raw METAR at the nearest reporting station, from ActiveSky",
             Visible = false
@@ -138,13 +135,11 @@ public class WeatherRadarForm : Form
         };
         y += 24;
 
-        _profileBox = new TextBox
+        _profileBox = new DisplayListBox
         {
             Location = new Point(12, y),
             Size = new Size(566, 140),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "",
             AccessibleName = "Vertical Profile",
             AccessibleDescription = "Cloud layers with tops and icing, and winds and temperatures aloft, at the current position from ActiveSky",
             Visible = false
@@ -161,16 +156,15 @@ public class WeatherRadarForm : Form
         };
         y += 24;
 
-        _advisoriesBox = new TextBox
+        _advisoriesBox = new DisplayListBox
         {
             Location = new Point(12, y),
             Size = new Size(566, 160),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or Refresh to fetch advisories.",
             AccessibleName = "Nearby Advisories",
             AccessibleDescription = "Active SIGMETs, AIRMETs, and pilot reports near the aircraft"
         };
+        _advisoriesBox.SetText("Press F5 or Refresh to fetch advisories.");
         y += 160 + 12;
 
         // ── Winds Aloft ───────────────────────────────────────────────────
@@ -183,16 +177,15 @@ public class WeatherRadarForm : Form
         };
         y += 24;
 
-        _windsAloftBox = new TextBox
+        _windsAloftBox = new DisplayListBox
         {
             Location = new Point(12, y),
             Size = new Size(566, 140),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or Refresh to fetch winds aloft.",
             AccessibleName = "Winds Aloft",
             AccessibleDescription = "Forecast wind direction and speed at each 1000 ft from 5000 ft below to 5000 ft above aircraft altitude"
         };
+        _windsAloftBox.SetText("Press F5 or Refresh to fetch winds aloft.");
         y += 140 + 10;
 
         // ── Status + buttons ──────────────────────────────────────────────
@@ -322,11 +315,11 @@ public class WeatherRadarForm : Form
             // await, not .Result — the tasks are already completed (WhenAll above), so
             // this doesn't block, but await avoids wrapping a fault in AggregateException.
             (string ambientText, string stationText) = await ambientTask;
-            _currentWeatherBox.Text = ambientText;
-            _stationBox.Text = stationText;
-            _advisoriesBox.Text     = await advisoriesTask;
-            _windsAloftBox.Text     = await windsTask;
-            _profileBox.Text        = await profileTask;
+            _currentWeatherBox.SetText(ambientText);
+            _stationBox.SetText(stationText);
+            _advisoriesBox.SetText(await advisoriesTask);
+            _windsAloftBox.SetText(await windsTask);
+            _profileBox.SetText(await profileTask);
 
             // Silent fallback by design — user shouldn't have to know whether
             // ActiveSky is the source or the SimConnect AMBIENT_* fallback is.
