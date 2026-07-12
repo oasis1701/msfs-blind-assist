@@ -89,6 +89,19 @@ public static class PMDG737ChecklistDefinitions
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
         {
+            // Fire + warning tests — no persistent sim state exists for a completed test,
+            // so these are manual-tick actions: the box records "test performed" and the
+            // tick fires the same held test the flow runs (Fenix PF_FIRE_* pattern).
+            ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire warning test",
+                (e, _) => e.FireDetectionTestAsync()),
+            ActionManualAsync("PF_STALL_TEST1", "PREFLIGHT", "Stall warning test 1",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_STALL_1_PUSH", AircraftActionExecutor.StallTestHoldMs)),
+            ActionManualAsync("PF_STALL_TEST2", "PREFLIGHT", "Stall warning test 2",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_STALL_2_PUSH", AircraftActionExecutor.StallTestHoldMs)),
+            ActionManualAsync("PF_OVSPD_TEST1", "PREFLIGHT", "Overspeed warning test 1",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH", AircraftActionExecutor.OverspeedTestHoldMs)),
+            ActionManualAsync("PF_OVSPD_TEST2", "PREFLIGHT", "Overspeed warning test 2",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH", AircraftActionExecutor.OverspeedTestHoldMs)),
             Auto("PF_YD", "PREFLIGHT", "Yaw damper: ON", "FCTL_YawDamper_Sw", v => v > 0.5, (e, _) => e.SetYawDamper(1)),
             Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1", "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
@@ -127,7 +140,6 @@ public static class PMDG737ChecklistDefinitions
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "EFIS_ModeSel_0", v => v > 1.5 && v < 2.5, (e, _) => e.SetEFISModeCapt(2)),
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "EFIS_RangeSel_0", v => v > 2.5 && v < 3.5, (e, _) => e.SetEFISRangeCapt(3)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
-            Reminder("PF_TESTS", "PREFLIGHT", "Perform the overhead and fire tests as required"),
         }
     };
 
@@ -598,6 +610,18 @@ public static class PMDG737ChecklistDefinitions
         Type = ChecklistItemType.Actionable,
         ManualCompletionAllowed = true,
         CheckAction = AsCheckAction(action),
+    };
+
+    // Actionable manual-tick item whose CheckAction is ASYNC (a held test / spaced CDA
+    // writes) — the revert-grace machinery awaits the Task, so the tick's protection
+    // holds until the whole press-hold-release completes (777 helper precedent).
+    private static Item ActionManualAsync(string id, string groupId, string label,
+        Func<AircraftActionExecutor, AircraftStateEvaluator, Task> action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.Actionable,
+        ManualCompletionAllowed = true,
+        CheckAction = action,
     };
 
     private static Item Reminder(string id, string groupId, string text) => new()

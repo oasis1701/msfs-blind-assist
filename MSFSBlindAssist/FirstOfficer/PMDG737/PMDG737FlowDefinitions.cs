@@ -87,6 +87,19 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             WalkAround("PF_WALK", "Exterior walk-around", 120),
+            // Fire + warning tests (held self-completing tests via executor pseudo-keys;
+            // the fire bell / stick shaker / overspeed clacker are the blind-pilot
+            // verification — Fenix parity, live-probed 2026-07-11).
+            SW("PF_FIRE_TEST", "Fire warning test — listen for the fire bell",
+                "FIRE_TEST", 1, checklistItemId: "PF_FIRE_TEST"),
+            SW("PF_STALL_TEST1", "Stall warning test 1 — listen for the stick shaker",
+                "STALL_TEST_1", 1, checklistItemId: "PF_STALL_TEST1"),
+            SW("PF_STALL_TEST2", "Stall warning test 2 — listen for the stick shaker",
+                "STALL_TEST_2", 1, checklistItemId: "PF_STALL_TEST2"),
+            SW("PF_OVSPD_TEST1", "Overspeed warning test 1 — listen for the clacker",
+                "OVSPD_TEST_1", 1, checklistItemId: "PF_OVSPD_TEST1"),
+            SW("PF_OVSPD_TEST2", "Overspeed warning test 2 — listen for the clacker",
+                "OVSPD_TEST_2", 1, checklistItemId: "PF_OVSPD_TEST2"),
             SW("PF_YD", "Yaw damper: ON", "EVT_OH_YAW_DAMPER", 1),
             Multi("PF_FUEL_OFF", "Fuel pumps: OFF",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
@@ -126,7 +139,6 @@ public static class PMDG737FlowDefinitions
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "EVT_EFIS_CPT_MODE", 2),
             SW("PF_EFIS_RANGE", "EFIS range: 40", "EVT_EFIS_CPT_RANGE", 3),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
-            Captain("PF_TESTS", "Perform the overhead and fire tests as required."),
         }
     };
 
