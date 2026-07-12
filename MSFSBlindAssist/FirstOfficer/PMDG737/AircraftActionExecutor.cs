@@ -65,6 +65,21 @@ public class AircraftActionExecutor : IFoActionExecutor
     // not a detented selector, and accepts this rate reliably).
     private const int BaroClickGapMs = 40;
 
+    /// <summary>Held-test durations (user-tuned 2026-07-11): the OVHT/FIRE detection test
+    /// switch is HELD at position 2 (fire bell + staggered annunciators, live-probed:
+    /// FIRE WARN immediately, handle lights by ~1.7 s), the stall/Mach-IAS warning test
+    /// buttons are held via transmit press/release (stick shaker / clacker sound while
+    /// held; PMDG drives no readable state for them — audio IS the verification).</summary>
+    public const int FireTestHoldMs = 2000;
+    public const int StallTestHoldMs = 3500;
+    public const int OverspeedTestHoldMs = 1500;
+
+    // Transmit mouse flags for held warning-test buttons (press … release). The CDA
+    // write path is NOT used for these — only the '#id' transmit moves them (live-probed
+    // 2026-07-11, same finding family as the walked rotaries).
+    private const uint MouseFlagLeftSingleU  = 0x20000000u;
+    private const uint MouseFlagLeftReleaseU = 0x00020000u;
+
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
     // interleave their writes into the same sim frame — which would re-introduce the exact
@@ -207,6 +222,19 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
     {
         if (!IsAvailable) return Task.FromResult(false);
+        // Pseudo-keys for held self-completing tests (Fenix FIRE_TEST_* precedent):
+        // not real PMDG events — intercepted here so flow steps stay data-driven.
+        if (step.ActionType == Models.FlowStepActionType.SetSwitch)
+        {
+            switch (step.EventName)
+            {
+                case "FIRE_TEST":    return FireDetectionTestAsync();
+                case "STALL_TEST_1": return WarningTestAsync("EVT_OH_WARNING_TEST_STALL_1_PUSH", StallTestHoldMs);
+                case "STALL_TEST_2": return WarningTestAsync("EVT_OH_WARNING_TEST_STALL_2_PUSH", StallTestHoldMs);
+                case "OVSPD_TEST_1": return WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH", OverspeedTestHoldMs);
+                case "OVSPD_TEST_2": return WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH", OverspeedTestHoldMs);
+            }
+        }
         return step.ActionType switch
         {
             Models.FlowStepActionType.SetSwitch         => DispatchAsync(step.EventName!, step.TargetValue),
@@ -403,6 +431,51 @@ public class AircraftActionExecutor : IFoActionExecutor
             _lastWriteUtc = DateTime.UtcNow;
             _dispatchGate.Release();
         }
+    }
+
+    /// <summary>OVHT/FIRE detection test: HOLD the spring-loaded switch at OVHT/FIRE
+    /// (position 2 — fire bell + FIRE WARN masters + handle lights), then release back
+    /// to neutral (1). CDA position writes move AND hold this switch (live-probed
+    /// 2026-07-11); the write-back is required — nothing auto-releases it.</summary>
+    public async Task<bool> FireDetectionTestAsync()
+    {
+        var sc = _sc;
+        if (sc == null || !PMDG737Definition.EventIds.TryGetValue("EVT_FIRE_DETECTION_TEST_SWITCH", out int evId))
+            return false;
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            await PaceAsync();
+            sc.SendPMDGEvent("EVT_FIRE_DETECTION_TEST_SWITCH", (uint)evId, 2);
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(FireTestHoldMs);
+            sc.SendPMDGEvent("EVT_FIRE_DETECTION_TEST_SWITCH", (uint)evId, 1);
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>Held aft-overhead warning-test button (stall shaker / overspeed clacker):
+    /// transmit LEFTSINGLE press, hold, LEFTRELEASE. These buttons have no CDA state
+    /// field and no CDA-write actuation — transmit-only, sound-only feedback.</summary>
+    public async Task<bool> WarningTestAsync(string eventName, int holdMs)
+    {
+        var sc = _sc;
+        if (sc == null || !PMDG737Definition.EventIds.TryGetValue(eventName, out int evId))
+            return false;
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            await PaceAsync();
+            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(holdMs);
+            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _dispatchGate.Release(); }
     }
 
     /// <summary>APU start sequence: selector ON, dwell, then momentary START (springs back to ON).
