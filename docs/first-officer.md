@@ -1,6 +1,6 @@
 # First Officer Automation
 
-Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320 and FlyByWire A380. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380 and FlyByWire A32NX. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
 
 ## Overview
 
@@ -9,6 +9,32 @@ Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3,
 **Fenix A320 First Officer (branch `feature/fenix-first-officer`):** a third profile, `FirstOfficer/Fenix/`, rides a new aircraft-agnostic **`FirstOfficer/Generic/`** L:var layer built for this and future FBW reuse — `LVarActionExecutor` (a per-key dispatch table of `LVarDispatchKind`s: held write, momentary pulse, K-event, H-event, all serialized through one gate) and `LVarStateEvaluator` (cache-read that returns NaN until a field is seen, plus `OnRequestPollFields` polled onto the cache by the FO window's 1 s timer, since most Fenix `S_`/`A_` controls are OnRequest-only). Fenix-specific gotchas baked into `FenixActionExecutor`/`FenixFlowDefinitions`/`FenixChecklistDefinitions`: momentary buttons are `SetLVar 0 → ~200 ms → SetLVar 1` pulses (the panel's proven `ExecuteButtonTransition` convention); fire tests are HELD switches (1 → 3 s → 0), not pulses, with the fire bell as the blind-pilot verification cue; FCU managed pushes go through the atomic single-string calculator RPN `{seq} 0 * (L:S_FCU_SPEED) 1 - (>L:S_FCU_SPEED)` — never a second app-side counter, because the panel's own push/pull handler (`FenixA320Definition.HandleUIVariableSet`) writes the same L:var independently and two absolute counters would desync; ground spoilers ARM is `A_FC_SPEEDBRAKE == 0`; landing lights OFF is value **1** (0 is Retract, 2 is On); there is deliberately **no auto-flaps** (the Fenix exposes no V1/VR/V2/VAPP L:var outside the MCDU display, so `FenixFOAutoManager.AutoFlapsEnabled` is stored from settings but never acted on); and EFIS baro STD is a direct per-side state write (`S_FCU_EFIS1_BARO_STD`/`S_FCU_EFIS2_BARO_STD` = 1/0), simpler than the 737's blind toggle push since the Fenix var is directly readable. In-sim test plan: [docs/fenix-first-officer-test-plan.md](docs/fenix-first-officer-test-plan.md).
 
 **FlyByWire A380 First Officer (branch `feature/first-officer`):** a fourth profile, `FirstOfficer/FBWA380/`, mirrors the Fenix profile over the same generic L:var layer but delegates every control write to `FlyByWireA380Definition.ApplyUIVariable` (the panels' verified write path) under a suppressed-announcer wrap, so the FO's own step narration stays the single voice; RTO-arm detects on the latched `A32NX_AUTOBRAKES_RTO_ARMED` (the `_IS_PRESSED` var is a self-resetting momentary); spoiler-arm writes the Act key `A380X_MSFSBA_SPOILERS_ARM` but all state reads use `A32NX_SPOILERS_ARMED`; TAKEOFF flap setting and landing-autobrake selection are Captain items by design, but the opt-in **auto-flaps schedule** (FOAutoFlapsEnabled) DOES act on the A380: extension/retraction timed by the published speed-tape L:vars (GD/S/F + `A32NX_SPEEDS_VFEN` overspeed guard), capped at flaps 3 when `A32NX_SPEEDS_LANDING_CONF3` (MFD PERF APPR CONF 3) is set, gear-down gate on the final landing step, Airbus-SOP go-around one-step retraction (the step fires ONLY on the primary GA signature vs > 500 fpm AND +200 ft above the approach's minimum AGL — never bare VS, which a gust fakes; the 737-style climbing>3000 AGL fallback is a latch-clear ONLY and never moves the lever; a dwell-blocked GA step is retried next tick, never lost), monotonic per phase so a pilot override is never re-fought. **Extension ARMS only on a descending sample below 5000 ft AGL** (one-way until GA/touchdown) — without that gate a departure level-off with takeoff flaps out reads as "extension" (IAS < F is true by construction until retraction completes) and would extend flaps on climb-out while blocking its own retraction; arming also stops the FO retracting a pilot-flown configuration on a level deceleration segment. Retraction runs only while DISARMED. In-sim test plan: [docs/fbw-a380-first-officer-test-plan.md](docs/fbw-a380-first-officer-test-plan.md).
+
+**FlyByWire A32NX First Officer (branch `feature/first-officer`):** a fifth profile,
+`FirstOfficer/FBWA320/`, is a **hybrid** of the two profiles above — procedures and phase/checklist
+structure are reconciled from the **Fenix A320** profile (same Airbus SOPs, 2-engine layout, same
+phase count), while the write mechanism and auto-flaps schedule are reused from the **FBW A380**
+profile: the executor delegates every control write to `FlyByWireA320Definition.ApplyUIVariable`
+(a new thin public wrapper around the def's existing `HandleUIVariableSet`, added because the A320
+def previously exposed no public apply-path), under the same suppressed-announcer wrap. A32NX-
+specific divergences from the A380 template: **baro STD/QNH polarity is PULL=STD/PUSH=QNH — the
+OPPOSITE of the A380's PUSH=STD/PULL=QNH** (`A32NX.FCU_EFIS_L/R_BARO_PULL`/`_PUSH`, state off
+`A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE`, since the `_IS_STD` L:vars are dead); **ECAM SD pages
+are selected via momentary ECP button press/release pulses** (`ECAM_ENG/APU/BLEED/COND/ELEC/HYD/
+FUEL/PRESS/DOOR/STS`), not the A380's sticky page-index write — there is no F/CTL or WHEEL ECP key,
+so the takeoff-config-test ECAM check stays a Captain reminder; landing gear is the stock
+`GEAR_SET` event; seatbelt signs are genuinely 2-position ON/OFF (no AUTO, unlike the A380); and
+cabin notify is a release-pulse of `PUSH_OVHD_CALLS_ALL` (a stuck 1 is an endless mechanical horn).
+The A32NX also gets a **richer cockpit-lighting scene** than the A380's single ANN knob — ANN
+(Test/Bright/Dim), dome, standby-compass light, and six analog flood/integral knobs
+(`BRIGHT_{PEDESTAL,MAINPANEL,GLARESHIELD_CAPT,GLARESHIELD_FO,GLARESHIELD_INTEG,OVERHEAD_INTEG}_SET`),
+applied as a coordinated per-phase scene via `SetCockpitLighting`; the three discrete controls
+auto-detect as normal checklist items, while the six analog knobs surface as one `ActionManual`
+grouped item (no clean revert-detectable target for a potentiometer). The opt-in **auto-flaps
+schedule is reused near-verbatim from the A380** (same `A32NX_SPEEDS_*` L:vars, since both
+aircraft share the FBW speed-tape implementation) — the settings checkbox now reads "Auto-manage
+flaps (FBW A380 and A32NX)." In-sim test plan:
+[docs/fbw-a320-first-officer-test-plan.md](docs/fbw-a320-first-officer-test-plan.md).
 
 **Architecture — everything aircraft-specific is injected via `IFoProfile<TExec,TState>`.** The form is identical across aircraft; the profile (`FirstOfficer/Pmdg777FoProfile.cs`, `FirstOfficer/PMDG737/Pmdg737FoProfile.cs`) supplies the executor, state evaluator, checklist + flow data, auto/phase managers, window title, and the data-manager binding. Generic engine pieces: `ChecklistManager` (toggle / auto-detect / revert), `FlowManager` (step runner + events), `FlightPhaseMonitor`, `FOAutoManager`; per-aircraft: `AircraftActionExecutor` (PMDG switch dispatch), `AircraftStateEvaluator` (reads PMDG data fields), `PMDG7x7ChecklistDefinitions`, `PMDG7x7FlowDefinitions`. Interfaces live in `FirstOfficer/IFo*.cs`; models in `FirstOfficer/Models/` (`ChecklistItem`, `ChecklistGroup`, `FlowDefinition`, `FlowStep`).
 

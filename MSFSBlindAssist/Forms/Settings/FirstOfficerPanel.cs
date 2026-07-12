@@ -61,11 +61,11 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
 
         autoFlapsCheck = new CheckBox
         {
-            Text = "Auto-manage flaps (FBW A380 only)",
+            Text = "Auto-manage flaps (FBW A380 and A32NX)",
             Location = new Point(20, 125),
             AutoSize = true,
             AccessibleName = "Auto-manage flaps",
-            AccessibleDescription = "Automatically extend and retract flaps on the FlyByWire A380 using the published speed-tape values. Has no effect on other aircraft."
+            AccessibleDescription = "Automatically extend and retract flaps on the FlyByWire A380 and A32NX using the published speed-tape values. Has no effect on other aircraft."
         };
 
         autoApCheck = new CheckBox
