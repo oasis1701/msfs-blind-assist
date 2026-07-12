@@ -126,7 +126,8 @@ public static class FbwA320FlowDefinitions
         {
             // No confirmed A32NX recorder-ground-control / CVR-test key in GetVariables()
             // (unlike the Fenix S_OH_RCRD_GND_CTL / CVR_TEST) — Captain reminder.
-            Captain("PF_RECORDER", "Recorder ground control and CVR test: as required"),
+            Captain("PF_GNDCTL", "Recorder ground control: as required"),
+            Captain("PF_CVR", "CVR test: as required"),
             // ADIRS
             Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
                     ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 1), ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 1),
