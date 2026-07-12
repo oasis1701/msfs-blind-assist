@@ -212,11 +212,22 @@ public static class ActiveSkyFormatting
     }
 
     /// <summary>One advisory block from /GetActiveSigmetsAt. Key = first trimmed line
-    /// (dedup identity for the announce tracker).</summary>
+    /// (dedup identity for the announce tracker — NEVER derived from decoded fields).
+    /// The decoded fields are null when the corresponding tokens weren't recognized;
+    /// a block where nothing decodes renders verbatim everywhere.</summary>
     internal sealed class RouteAdvisory
     {
         public string Key = "";
         public List<string> Lines = new();
+
+        // Decoded fields (design 2026-07-12-route-advisory-decoding §3.2).
+        public string? Identity;        // "MHTG SIGMET J5"
+        public string? Hazard;          // "embedded thunderstorms"
+        public string? ObsFcst;         // "observed at 1830Z" / "forecast"
+        public string? VerticalExtent;  // "tops FL520" / "surface to 8,000 feet"
+        public string? Movement;        // "moving west at 5 knots" / "stationary"
+        public string? Trend;           // "no change expected" / "intensifying" / "weakening"
+        public string? ValidUntil;      // "2200Z"
     }
 
     /// <summary>A line that begins an advisory block in the /GetActiveSigmetsAt
@@ -252,6 +263,7 @@ public static class ActiveSkyFormatting
         {
             if (current == null || current.Count == 0) { current = null; return; }
             var adv = new RouteAdvisory { Key = current[0].Trim(), Lines = current };
+            DecodeFields(adv);
             if (seen.Add(adv.Key)) result.Add(adv);
             current = null;
         }
@@ -288,5 +300,136 @@ public static class ActiveSkyFormatting
                 sb.AppendLine(line);
         }
         return sb.ToString().TrimEnd();
+    }
+
+    private static readonly Regex IdentityPattern = new(
+        @"^(\S{3,4})\s+(SIGMET|AIRMET)\s+(\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Ordered most-specific-first; first match wins. ICAO SIGMET hazard
+    /// vocabulary (qualifier × phenomenon) per the design §3.2 table.</summary>
+    private static readonly (string Pattern, string Phrase)[] HazardPatterns =
+    {
+        (@"\bEMBD TSGR\b", "embedded thunderstorms with hail"),
+        (@"\bEMBD TS\b", "embedded thunderstorms"),
+        (@"\bOCNL TSGR\b", "occasional thunderstorms with hail"),
+        (@"\bOCNL TS\b", "occasional thunderstorms"),
+        (@"\bFRQ TSGR\b", "frequent thunderstorms with hail"),
+        (@"\bFRQ TS\b", "frequent thunderstorms"),
+        (@"\bSQL TSGR\b", "squall-line thunderstorms with hail"),
+        (@"\bSQL TS\b", "squall-line thunderstorms"),
+        (@"\bISOL TS\b", "isolated thunderstorms"),
+        (@"\bOBSC TS\b", "obscured thunderstorms"),
+        (@"\bTSGR\b", "thunderstorms with hail"),
+        (@"\bSEV TURB\b", "severe turbulence"),
+        (@"\bMOD TURB\b", "moderate turbulence"),
+        (@"\bSEV ICE \(FZRA\)", "severe icing from freezing rain"),
+        (@"\bSEV ICE\b", "severe icing"),
+        (@"\bMOD ICE\b", "moderate icing"),
+        (@"\bSEV MTW\b", "severe mountain waves"),
+        (@"\bMOD MTW\b", "moderate mountain waves"),
+        (@"\bHVY DS\b", "heavy dust storm"),
+        (@"\bHVY SS\b", "heavy sandstorm"),
+        (@"\bSEV DS\b", "severe dust storm"),
+        (@"\bSEV SS\b", "severe sandstorm"),
+        (@"\bVA CLD\b", "volcanic ash cloud"),
+        (@"\bVA ERUPTION\b", "volcanic ash eruption"),
+        (@"\bRDOACT CLD\b", "radioactive cloud"),
+        (@"\bTURB\b", "turbulence"),
+        (@"\bTS\b", "thunderstorms"),
+    };
+
+    private static readonly Dictionary<string, string> CompassWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["N"] = "north", ["NNE"] = "north-northeast", ["NE"] = "northeast", ["ENE"] = "east-northeast",
+        ["E"] = "east", ["ESE"] = "east-southeast", ["SE"] = "southeast", ["SSE"] = "south-southeast",
+        ["S"] = "south", ["SSW"] = "south-southwest", ["SW"] = "southwest", ["WSW"] = "west-southwest",
+        ["W"] = "west", ["WNW"] = "west-northwest", ["NW"] = "northwest", ["NNW"] = "north-northwest",
+    };
+
+    /// <summary>Extracts the §3.2 fields from a parsed block. Pure; every field is
+    /// independently optional and unknown tokens are simply ignored (the WI lat/lon
+    /// polygon is never extracted — dropping it from decoded output is implicit in
+    /// rebuilding from fields). Hazard searches the BODY first, then the header's
+    /// trailing tokens.</summary>
+    private static void DecodeFields(RouteAdvisory a)
+    {
+        var idm = IdentityPattern.Match(a.Key);
+        if (idm.Success)
+            a.Identity = $"{idm.Groups[1].Value.ToUpperInvariant()} {idm.Groups[2].Value.ToUpperInvariant()} {idm.Groups[3].Value.ToUpperInvariant()}";
+
+        foreach (var line in a.Lines)
+        {
+            var vm = Regex.Match(line, @"^Valid until:\s*(\S+)", RegexOptions.IgnoreCase);
+            if (vm.Success) { a.ValidUntil = vm.Groups[1].Value.ToUpperInvariant(); break; }
+        }
+
+        // Body = everything except the header line and the "Valid until:" line.
+        string body = string.Join(" ", a.Lines.Skip(1)
+            .Where(l => !l.StartsWith("Valid until:", StringComparison.OrdinalIgnoreCase)));
+
+        a.Hazard = MatchHazard(body) ?? (idm.Success ? MatchHazard(a.Key) : null);
+
+        var obs = Regex.Match(body, @"\bOBS(?:\s+AT\s+(\d{4})Z)?\b", RegexOptions.IgnoreCase);
+        var fcst = Regex.Match(body, @"\bFCST(?:\s+AT\s+(\d{4})Z)?\b", RegexOptions.IgnoreCase);
+        if (obs.Success)
+            a.ObsFcst = obs.Groups[1].Success ? $"observed at {obs.Groups[1].Value}Z" : "observed";
+        else if (fcst.Success)
+            a.ObsFcst = fcst.Groups[1].Success ? $"forecast at {fcst.Groups[1].Value}Z" : "forecast";
+
+        a.VerticalExtent = MatchVerticalExtent(body);
+
+        var mov = Regex.Match(body, @"\bMOV\s+([NSEW]{1,3})\s*(\d{1,3})\s*KT\b", RegexOptions.IgnoreCase);
+        if (mov.Success && CompassWords.TryGetValue(mov.Groups[1].Value, out string? dir))
+            a.Movement = $"moving {dir} at {int.Parse(mov.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)} knots";
+        else if (Regex.IsMatch(body, @"\bSTNR\b", RegexOptions.IgnoreCase))
+            a.Movement = "stationary";
+
+        if (Regex.IsMatch(body, @"\bNC\b")) a.Trend = "no change expected";
+        else if (Regex.IsMatch(body, @"\bINTSF\b", RegexOptions.IgnoreCase)) a.Trend = "intensifying";
+        else if (Regex.IsMatch(body, @"\bWKN\b", RegexOptions.IgnoreCase)) a.Trend = "weakening";
+    }
+
+    private static string? MatchHazard(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        foreach (var (pattern, phrase) in HazardPatterns)
+            if (Regex.IsMatch(text, pattern)) return phrase;
+        return null;
+    }
+
+    private static string? MatchVerticalExtent(string body)
+    {
+        Match m;
+        if ((m = Regex.Match(body, @"\bTOPS?\s+ABV\s+FL(\d{3})\b")).Success)
+            return $"tops above FL{m.Groups[1].Value}";
+        if ((m = Regex.Match(body, @"\bTOPS?\s+BLW\s+FL(\d{3})\b")).Success)
+            return $"tops below FL{m.Groups[1].Value}";
+        if ((m = Regex.Match(body, @"\bTOPS?\s+FL(\d{3})\b")).Success)
+            return $"tops FL{m.Groups[1].Value}";
+        if ((m = Regex.Match(body, @"\bSFC/FL(\d{3})\b")).Success)
+            return $"surface to FL{m.Groups[1].Value}";
+        if ((m = Regex.Match(body, @"\bSFC/(\d{3,5})FT\b")).Success)
+            return $"surface to {FeetWord(m.Groups[1].Value)}";
+        if ((m = Regex.Match(body, @"\bFL(\d{3})/(\d{3})\b")).Success)
+            return $"FL{m.Groups[1].Value} to FL{m.Groups[2].Value}";
+        if ((m = Regex.Match(body, @"\b(\d{4,5})/(\d{4,5})FT\b")).Success)
+            return $"{FeetWord(m.Groups[1].Value)} to {FeetWord(m.Groups[2].Value)}";
+        return null;
+    }
+
+    private static string FeetWord(string digits)
+        => int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture)
+            .ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " feet";
+
+    /// <summary>The always-decoded announce phrase (design §3.4): identity + hazard
+    /// (+ vertical extent). Falls back to the raw Key when the essentials didn't
+    /// decode — a spoken announcement never goes blank. Movement/trend/validity are
+    /// deliberately box-only: announcements are interruptions, the box is the briefing.</summary>
+    internal static string BuildRouteAdvisoryAnnouncement(RouteAdvisory a)
+    {
+        if (a.Identity == null || a.Hazard == null) return a.Key;
+        return a.VerticalExtent == null
+            ? $"{a.Identity}, {a.Hazard}"
+            : $"{a.Identity}, {a.Hazard}, {a.VerticalExtent}";
     }
 }

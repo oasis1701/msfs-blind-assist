@@ -142,6 +142,69 @@ public class RouteAdvisoriesTests
         Assert.Equal("MHTG SIGMET J5 EMBD TS", advisories[1].Key);
     }
 
+    // --- Field decoding (spec 2026-07-12-route-advisory-decoding §3.2) ----------------
+
+    [Fact]
+    public void Live_mhtg_advisory_decodes_all_fields()
+    {
+        var a = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture())[0];
+        Assert.Equal("MHTG SIGMET J5", a.Identity);
+        Assert.Equal("embedded thunderstorms", a.Hazard);
+        Assert.Equal("observed at 1830Z", a.ObsFcst);
+        Assert.Equal("tops FL520", a.VerticalExtent);
+        Assert.Equal("moving west at 5 knots", a.Movement);
+        Assert.Equal("no change expected", a.Trend);
+        Assert.Equal("2200Z", a.ValidUntil);
+    }
+
+    [Fact]
+    public void Live_ymmm_advisory_decodes_all_fields()
+    {
+        var a = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture())[1];
+        Assert.Equal("YMMM SIGMET T07", a.Identity);
+        Assert.Equal("severe turbulence", a.Hazard);
+        Assert.Equal("forecast", a.ObsFcst);
+        Assert.Equal("surface to 8,000 feet", a.VerticalExtent);
+        Assert.Equal("stationary", a.Movement);
+        Assert.Equal("no change expected", a.Trend);
+        Assert.Equal("2300Z", a.ValidUntil);
+    }
+
+    [Fact]
+    public void Undecodable_block_has_null_fields()
+    {
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(
+            "No flight plan is currently loaded"));
+        Assert.Null(a.Identity);
+        Assert.Null(a.Hazard);
+        Assert.Null(a.ObsFcst);
+        Assert.Null(a.VerticalExtent);
+        Assert.Null(a.Movement);
+        Assert.Null(a.Trend);
+        Assert.Null(a.ValidUntil);
+    }
+
+    // --- BuildRouteAdvisoryAnnouncement -----------------------------------------------
+
+    [Fact]
+    public void Announcement_speaks_identity_hazard_and_extent()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(LiveCapture());
+        Assert.Equal("MHTG SIGMET J5, embedded thunderstorms, tops FL520",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(advisories[0]));
+        Assert.Equal("YMMM SIGMET T07, severe turbulence, surface to 8,000 feet",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(advisories[1]));
+    }
+
+    [Fact]
+    public void Announcement_falls_back_to_raw_key_when_nothing_decodes()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "No flight plan is currently loaded");
+        Assert.Equal("No flight plan is currently loaded",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(advisories[0]));
+    }
+
     // --- BuildRouteAdvisoriesText ---------------------------------------------------------
 
     [Fact]
