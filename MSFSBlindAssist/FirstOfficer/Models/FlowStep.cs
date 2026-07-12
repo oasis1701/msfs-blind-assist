@@ -21,9 +21,6 @@ public enum FlowStepActionType
 
     /// <summary>Announce a reminder to the captain — no automation, user must acknowledge via UI.</summary>
     CaptainReminder,
-
-    /// <summary>Walk-around pause — announces and waits.</summary>
-    WalkAround,
 }
 
 /// <summary>What the flow engine does if a step fails or times out.</summary>
@@ -128,7 +125,7 @@ public class FlowStep<TState> : IFlowStepDispatch
     public int TimeoutSeconds { get; set; } = 120;
 
     // -----------------------------------------------------------------------
-    // WaitSeconds / WalkAround
+    // WaitSeconds
     // -----------------------------------------------------------------------
 
     public int WaitSeconds { get; set; }

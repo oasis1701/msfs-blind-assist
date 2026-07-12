@@ -86,7 +86,7 @@ public abstract class LVarActionExecutor : IFoActionExecutor
                 finally { _gate.Release(); }
 
             default:
-                // WaitSeconds / WaitForCondition / CaptainReminder / WalkAround are
+                // WaitSeconds / WaitForCondition / CaptainReminder are
                 // handled by FlowManager, never dispatched here.
                 return false;
         }

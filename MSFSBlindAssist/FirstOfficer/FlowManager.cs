@@ -237,14 +237,6 @@ public class FlowManager<TExec, TState>
                     return true;
                 }
 
-                case FlowStepActionType.WalkAround:
-                {
-                    int total = step.WaitSeconds;
-                    _announcer.Announce($"Walk-around pause: {total / 60} minutes");
-                    await Task.Delay(TimeSpan.FromSeconds(total), ct);
-                    return true;
-                }
-
                 case FlowStepActionType.WaitForCondition:
                 {
                     if (step.ConditionFieldName == null || step.Condition == null)

@@ -123,7 +123,6 @@ public static class FbwA380FlowDefinitions
             Captain("CP_TCASTRAFFIC", "TCAS traffic: all"),
             Captain("CP_TCASMODE", "TCAS mode: standby"),
             Captain("CP_XPDR", "Transponder: standby"),
-            Captain("CP_WALKAROUND", "Exterior walk-around"),
             Multi("CP_EFISMODE", "EFIS mode: ARC", ("A32NX_EFIS_L_ND_MODE", 3), ("A32NX_EFIS_R_ND_MODE", 3)),
             Multi("CP_EFISRANGE", "EFIS range: 40", ("A32NX_EFIS_L_ND_RANGE", 3), ("A32NX_EFIS_R_ND_RANGE", 3)),
             Multi("CP_FD", "Flight directors: ON", ("FD_1_CTL", 1), ("FD_2_CTL", 1)),

@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// Each flow executes a sequence of PMDG switch actions with waits and condition checks.
 ///
 /// Captain-only and briefing items are CaptainReminder steps — announced but not automated.
-/// Walk-around and timed waits are WaitSeconds/WalkAround steps.
+/// Timed waits are WaitSeconds steps.
 ///
 /// PMDG event values:
 /// - Transponder mode: 0=STBY, 1=ALT-OFF, 2=ON, 3=TA, 4=TA/RA

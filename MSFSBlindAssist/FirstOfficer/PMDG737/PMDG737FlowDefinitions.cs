@@ -86,7 +86,6 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
         Steps = new()
         {
-            WalkAround("PF_WALK", "Exterior walk-around", 120),
             // Fire + warning tests (held self-completing tests via executor pseudo-keys;
             // the fire bell / stick shaker / overspeed clacker are the blind-pilot
             // verification — Fenix parity, live-probed 2026-07-11).
@@ -529,14 +528,6 @@ public static class PMDG737FlowDefinitions
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = seconds,
-        PostActionDelayMs = 0,
-    };
-
-    private static Step WalkAround(string id, string label, int seconds) => new()
-    {
-        Id = id, Label = label,
-        ActionType = FlowStepActionType.WalkAround,
         WaitSeconds = seconds,
         PostActionDelayMs = 0,
     };

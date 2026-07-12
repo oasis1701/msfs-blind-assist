@@ -151,7 +151,6 @@ public static class FbwA380ChecklistDefinitions
             Reminder("CP_TCASTRAFFIC", "COCKPIT_PREP", "TCAS traffic: all"),
             Reminder("CP_TCASMODE", "COCKPIT_PREP", "TCAS mode: standby"),
             Reminder("CP_XPDR", "COCKPIT_PREP", "Transponder: standby"),
-            Reminder("CP_WALKAROUND", "COCKPIT_PREP", "Exterior walk-around"),
             Multi("CP_EFISMODE", "COCKPIT_PREP", "EFIS mode: ARC", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 3) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_MODE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_MODE", 3); await e.Set("A32NX_EFIS_R_ND_MODE", 3); }),
