@@ -464,6 +464,32 @@ public class ActiveSkyClient
     }
 
     /// <summary>
+    /// /GetActiveSigmetsAt with NO parameters — SIGMETs/AIRMETs affecting the flight
+    /// plan currently loaded in ActiveSky (AS's own SimBrief link keeps that current;
+    /// MSFSBA never pushes a plan). Returns the raw response text — either advisory
+    /// blocks or the "No airmet/sigmet affecting currently loaded flight plan route"
+    /// sentence — or null on error / AS off / unreachable.
+    /// </summary>
+    public async Task<string?> GetRouteAdvisoriesTextAsync()
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            using var resp = await _http.GetAsync($"{BaseUrl(port)}/GetActiveSigmetsAt", cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            string body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim();
+            return string.IsNullOrWhiteSpace(body) ? null : body;
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetRouteAdvisories failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
     /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
     /// invariant culture for floats). We tolerate missing fields and parse

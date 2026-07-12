@@ -210,4 +210,55 @@ public static class ActiveSkyFormatting
         if (!result.Contains(nearCurrent)) result.Add(nearCurrent);
         return result.OrderBy(l => l.AltitudeFt).ToList();
     }
+
+    /// <summary>One advisory block from /GetActiveSigmetsAt. Key = first trimmed line
+    /// (dedup identity for the announce tracker).</summary>
+    internal sealed class RouteAdvisory
+    {
+        public string Key = "";
+        public List<string> Lines = new();
+    }
+
+    /// <summary>
+    /// Parses the route-advisories response. DELIBERATELY defensive (spec 2026-07-12
+    /// §2.2): the route variant's hit format is only partially known, so blocks split
+    /// on blank lines and ANY unrecognized text renders verbatim as its own block —
+    /// never dropped, never thrown. The known no-hit sentence (any response starting
+    /// "No airmet/sigmet", case-insensitive) parses to an empty list.
+    /// </summary>
+    internal static List<RouteAdvisory> ParseRouteAdvisories(string raw)
+    {
+        var result = new List<RouteAdvisory>();
+        if (string.IsNullOrWhiteSpace(raw)) return result;
+        string trimmed = raw.Trim();
+        if (trimmed.StartsWith("No airmet/sigmet", StringComparison.OrdinalIgnoreCase))
+            return result;
+
+        var blocks = trimmed.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var block in blocks)
+        {
+            var lines = block.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                             .Select(l => l.TrimEnd())
+                             .Where(l => l.Length > 0)
+                             .ToList();
+            if (lines.Count == 0) continue;
+            result.Add(new RouteAdvisory { Key = lines[0].Trim(), Lines = lines });
+        }
+        return result;
+    }
+
+    /// <summary>Radar-box text: blocks separated by one blank row; empty list reads
+    /// "No advisories on route."</summary>
+    internal static string BuildRouteAdvisoriesText(IReadOnlyList<RouteAdvisory> advisories)
+    {
+        if (advisories.Count == 0) return "No advisories on route.";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < advisories.Count; i++)
+        {
+            if (i > 0) sb.AppendLine();
+            foreach (var line in advisories[i].Lines)
+                sb.AppendLine(line);
+        }
+        return sb.ToString().TrimEnd();
+    }
 }
