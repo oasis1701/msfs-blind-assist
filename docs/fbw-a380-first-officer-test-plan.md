@@ -354,3 +354,21 @@ the master was set and external power was dropped immediately (APU never started
    runs.
 6. Timeout/abort: pull the APU FIRE pb (or run with empty feed tanks) and run Before
    Start. Expect the flow to stop after 3 min with external power untouched.
+
+## Preflight fire test (2026-07-12)
+
+`CP_FIRETEST` is now a real held test (was a captain reminder), moved up to right after
+crew oxygen (Fenix order): the FO writes `A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED` 1 → 3 s →
+0 through the def's fire-test branch; the release write also pulses the MASTERAWARN
+acknowledge so the CRC cancels.
+
+1. Run Cockpit Preparation with the aircraft powered: after "Crew oxygen: ON" the FO
+   announces "Fire test — listen for the fire warning"; master warning + continuous
+   repetitive chime sound ~3 s, then STOP (the auto-acknowledge must cancel the CRC —
+   a chime that keeps sounding is a fail).
+2. The COCKPIT_PREP checklist "Fire test" box ticks from the flow; ticking it by hand
+   re-runs the test and the box stays ticked.
+3. The Continuous+IsAnnounced monitor may speak "Fire Test: On/Off" around the test —
+   note whether this is acceptably chatty; if not, a follow-up adds echo suppression.
+4. If 3 s proves too short for the full A380 test sequence, tune
+   `FbwA380ActionExecutor.FireTestHoldMs`.

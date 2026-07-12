@@ -775,3 +775,35 @@ the panel's Position Lights combo.
    physically move the switch (previously a silent no-op) and the checklist's
    BTKO_STROBE auto-ticks.
 2. After Landing flow: "Position lights: STEADY" moves it back.
+
+## Part U — preflight fire / warning tests (2026-07-12)
+
+Five real held tests replace the old "Perform the overhead and fire tests" reminder at
+the TOP of the 737 Preflight flow (right after the walk-around), each mirrored as a
+manual-tick checklist item. The 777's single FIRE/OVHT test is included here (shared
+plan). Mechanisms: 737 fire = CDA position write 2→hold 2 s→1 (live-probed, holds);
+737 stall/overspeed + 777 fire = transmit LEFTSINGLE → hold → LEFTRELEASE.
+
+### U.1 737 Preflight flow runs the five tests
+1. Cold-and-dark or powered gate state, run the Preflight flow.
+2. Right after the walk-around step: "Fire warning test" — fire bell rings ~2 s, both
+   master FIRE WARN lights + all three handle lights illuminate, then everything clears
+   (switch back to neutral — confirm no stuck bell/lights).
+3. Then stall tests 1 and 2: stick shaker rattle ~3.5 s each.
+4. Then overspeed tests 1 and 2: clacker ~1.5 s each.
+5. Flow ticks the five PREFLIGHT checklist boxes (CompletesChecklistItemId).
+6. Confirm the flow NO LONGER speaks the old "Perform the overhead and fire tests"
+   captain reminder.
+
+### U.2 737 checklist ticks fire the same tests
+1. Reset the Preflight checklist section; tick each of the five items by hand.
+2. Each tick runs its held test (audible) and the box STAYS ticked (Actionable items
+   never auto-revert; re-tick after an untick re-runs the test — idempotent).
+
+### U.3 777 fire and overheat test (777 loaded)
+1. Run Cockpit Preparation; after the backup generators step: "Fire and overheat test"
+   — fire bell + fire warning lights while held ~3 s, self-releasing, then clears.
+2. If the transmit press proves inert on this button (no bell): fall back to the CDA
+   param-1 press in `FireOvhtTestAsync` and re-verify (the executor doc comment marks
+   this fallback).
+3. Checklist "Fire and overheat test" tick runs the same test; box stays ticked.

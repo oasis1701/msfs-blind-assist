@@ -151,6 +151,15 @@ PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warn
 
 `FIRE_HandlePos[3]` array indexing: `[0]=Engine 1, [1]=APU, [2]=Engine 2`. Inferred from sequential SDK event-ID ordering (`EVT_FIRE_HANDLE_ENGINE_1_TOP=697`, `_APU_TOP=698`, `_ENGINE_2_TOP=699`; `EVT_FIRE_UNLOCK_SWITCH_ENGINE_1=976`, `_APU=977`, `_ENGINE_2=978`). Same convention applies to `FIRE_HandleIlluminated[3]`. Verify in sim under an active fire scenario; if a tester reports the wrong handle moves on a fire press, swap the `DisplayName` strings on `FIRE_HandlePos_1` / `_2` (and on `FIRE_HandleIlluminated_1` / `_2`).
 
+The OVHT/FIRE detection TEST switch, by contrast, needs no fire: `FIRE_DetTestSw` is
+0=FAULT/INOP / 1=neutral / 2=OVHT/FIRE, and a Control-CDA position write MOVES AND
+HOLDS the spring-loaded switch (live-probed 2026-07-11 — write 2: fire bell + both
+FIRE WARN masters + all three handle lights, staggered over ~1.7 s; the write back to
+1 is mandatory, nothing auto-releases). The aft-overhead stall / Mach-IAS warning-test
+buttons are the opposite: NO CDA state field and NO CDA actuation — transmit-only
+(`#id` LEFTSINGLE press … LEFTRELEASE), sound-only feedback (PMDG does not drive the
+stock `STALL WARNING`/`OVERSPEED WARNING` simvars).
+
 ## EFB support
 
 The PMDG 737-600 / -700 / -800 / -900 EFB has full parity with the PMDG 777. The 737 ships the
