@@ -93,15 +93,18 @@ public class ActiveSkyFormattingTests
     [Fact]
     public void Forecast_presets_cover_now_through_six_hours()
     {
-        Assert.Equal(new[] { 0, 3600, 7200, 14400, 21600 },
+        // Hourly through +4 (Robin's 2026-07-12 review: +3 was missing), then +6.
+        Assert.Equal(new[] { 0, 3600, 7200, 10800, 14400, 21600 },
             ActiveSkyFormatting.ForecastPresets.Select(p => p.OffsetSeconds).ToArray());
         Assert.Equal("Now", ActiveSkyFormatting.ForecastPresets[0].Label);
+        Assert.Equal("+3 hours", ActiveSkyFormatting.ForecastPresets[3].Label);
         Assert.Equal("+6 hours", ActiveSkyFormatting.ForecastPresets[^1].Label);
     }
 
     [Theory]
     [InlineData(0, "ActiveSky METAR:")]
     [InlineData(2, "ActiveSky METAR (+2 hours):")]
+    [InlineData(3, "ActiveSky METAR (+3 hours):")]
     [InlineData(99, "ActiveSky METAR (+6 hours):")]   // clamped
     [InlineData(-1, "ActiveSky METAR:")]              // clamped
     public void As_metar_caption_states_the_offset(int index, string expected)

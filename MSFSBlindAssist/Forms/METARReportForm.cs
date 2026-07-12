@@ -86,17 +86,20 @@ public partial class METARReportForm : Form
             // Status Label
             statusLabel = new Label
             {
-                Location = new Point(260, 45),
-                Size = new Size(200, 25),
+                Location = new Point(130, 45),
+                Size = new Size(300, 25),
                 Text = "",
                 AccessibleName = "Status"
             };
 
             // Forecast offset — AS-only feature, revealed with the AS METAR section.
+            // Placed directly BELOW the AS METAR box (Robin's 2026-07-12 review):
+            // tab order runs …AS METAR box → forecast combo → Close, so the user can
+            // Tab/Shift+Tab between the AS text and the offset without detours.
             forecastLabel = new Label
             {
                 Text = "Forecast:",
-                Location = new Point(140, 20),
+                Location = new Point(20, 482),
                 Size = new Size(80, 20),
                 AccessibleName = "Forecast label",
                 Visible = false
@@ -104,7 +107,7 @@ public partial class METARReportForm : Form
 
             forecastCombo = new ComboBox
             {
-                Location = new Point(140, 45),
+                Location = new Point(105, 478),
                 Size = new Size(110, 24),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 AccessibleName = "Forecast",
@@ -179,8 +182,8 @@ public partial class METARReportForm : Form
             };
 
             // Close Button — positioned for compact form (AS hidden). When
-            // AS detection succeeds in Load, we shift it down to y=490 so it
-            // sits below the AS section.
+            // AS detection succeeds in Load, we shift it down to y=515 so it
+            // sits below the AS section and the forecast combo.
             closeButton = new Button
             {
                 Text = "&Close",
@@ -206,13 +209,14 @@ public partial class METARReportForm : Form
 
         private void SetupAccessibility()
         {
-            // Set tab order for logical navigation. AS textbox sits between
-            // VATSIM METAR and Close — when AS is hidden, the OS skips it
+            // Set tab order for logical navigation. The forecast combo sits
+            // between the AS METAR box and Close so Tab/Shift+Tab hops directly
+            // between the AS text and the offset. Hidden controls are skipped
             // automatically because TabStop honours Visible.
             icaoTextBox.TabIndex = 0;
-            forecastCombo.TabIndex = 1;
-            metarTextBox.TabIndex = 2;
-            asMetarTextBox.TabIndex = 3;
+            metarTextBox.TabIndex = 1;
+            asMetarTextBox.TabIndex = 2;
+            forecastCombo.TabIndex = 3;
             closeButton.TabIndex = 4;
 
             // Focus + bring to front, then async-detect ActiveSky. If AS is
@@ -234,8 +238,8 @@ public partial class METARReportForm : Form
                     forecastCombo.Visible = true;
                     asMetarLabel.Visible = true;
                     asMetarTextBox.Visible = true;
-                    closeButton.Location = new Point(385, 490);
-                    Size = new Size(500, 580);
+                    closeButton.Location = new Point(385, 515);
+                    Size = new Size(500, 605);
                     // Re-center after grow — StartPosition.CenterScreen ran
                     // against the original 400px form, so without this the
                     // bottom of the grown form can fall below the screen on

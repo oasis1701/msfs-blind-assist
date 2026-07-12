@@ -67,6 +67,7 @@ public static class ActiveSkyFormatting
         ("Now", 0),
         ("+1 hour", 3600),
         ("+2 hours", 7200),
+        ("+3 hours", 10800),
         ("+4 hours", 14400),
         ("+6 hours", 21600),
     };
