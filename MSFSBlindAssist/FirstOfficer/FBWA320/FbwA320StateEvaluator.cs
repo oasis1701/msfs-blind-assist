@@ -31,7 +31,13 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2",
         "A32NX_OVHD_COND_PACK_1_PB_IS_ON", "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
         "A32NX_KNOB_OVHD_AIRCOND_XBLEED_Position", "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position",
-        "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON",
+        "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON", "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO",
+        // Task 7 additions: checklist Auto items read these state-readback fields, which
+        // differ from (or are additional to) the write keys the flow uses.
+        "LIGHT WING", "CABIN SEATBELTS ALERT SWITCH",
+        "A32NX_SWITCH_TCAS_TRAFFIC_POSITION", "A32NX_SWITCH_TCAS_POSITION", "A32NX_TRANSPONDER_MODE",
+        "LIGHT TAXI:2", "LIGHTING_LANDING_1", "LIGHTING_LANDING_2",
+        "A32NX_EFIS_L_LS_BUTTON_IS_ON", "A32NX_EFIS_R_LS_BUTTON_IS_ON",
         "A32NX_PARK_BRAKE_LEVER_POS", "A32NX_SPOILERS_ARMED",
         "GEAR_HANDLE_POSITION", "A32NX_FLAPS_HANDLE_INDEX", "ENGINE_MODE_SELECTOR",
         // Engine masters: dict keys (cache is keyed by GetVariables() key, not the underlying
