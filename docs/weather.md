@@ -624,8 +624,10 @@ plain-English summary per advisory ("MHTG SIGMET J5: embedded thunderstorms, obs
 at 1830Z, tops FL520, moving west at 5 knots, no change expected." / "Valid until
 2200Z.") built from the decoded fields — hazard, observed/forecast time, vertical
 extent, movement, trend. The `WI` lat/lon polygon is deliberately dropped from the
-decoded view (noise when read aloud; flip the checkbox off to see it). A block where
-nothing decodes renders verbatim even with decoding on — decoding never hides data.
+decoded view (noise when read aloud; flip the checkbox off to see it). The summary path
+requires a decoded HAZARD (`HasDecodedContent`): a block whose phenomenon is out of
+vocabulary renders verbatim even with decoding on, no matter how many other fields decoded
+— a summary must never drop what the SIGMET is FOR. Decoding never hides data.
 
 **(d) Announce lifecycle.** `MainForm.WeatherAnnouncementTimer_Tick` calls
 `CheckRouteAdvisoriesAsync` (`MainForm.Announcers.cs`) on the same 30 s tick as the SIGMET/PIREP
