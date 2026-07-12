@@ -525,8 +525,9 @@ await returns (the form can be closed while that first fetch is in flight), and 
 handler re-checks `IsDisposed` before firing another refresh. Skipping either guard reproduces
 the DCDU's zombie-timer bug — restarting/ticking a disposed WinForms timer silently keeps its
 native timer alive with no cleanup path ever stopping it. `OnFormClosed` and `Dispose(bool)`
-both stop and null the timer, belt-and-braces (the radar closes fully rather than hiding, unlike
-the DCDU, but the guard shape is identical).
+both stop and null the timer, belt-and-braces (the radar closes fully rather than hiding — the
+hide-on-close pattern belongs to the A380 RMP, not here — and the guard shape is identical to
+the DCDU's).
 
 The single-line `_asModeBox` (ActiveSky mode status) is deliberately **not** part of this
 conversion — it stays the read-only TextBox from the 2026-07-11 keyboard-reachability fix (§9a):
