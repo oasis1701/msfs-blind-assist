@@ -229,6 +229,18 @@ public class ChecklistManager<TExec, TState>
             catch { /* an action failure must never wedge the settling count */ }
             await Task.WhenAny(_executor.WaitForDispatchDrainAsync(), Task.Delay(ActionDrainCap));
             item.StampActionGraceUtc();
+
+            // Momentary "button" test (fire/overheat, warning tests): once the action's
+            // sound/hold has completed, AUTO-CLEAR the manual tick so a single check
+            // re-triggers it every time — no silent uncheck-then-recheck cycle. Only the
+            // MANUAL tick path runs this method; the flow's MarkComplete does NOT, so a
+            // flow that works the same item still marks it complete and it stays checked.
+            if (item.MomentaryAction && item.IsChecked)
+            {
+                var group = FindGroup(item.GroupId);
+                item.IsChecked = false;
+                if (group != null) RaiseChanged(group, item);
+            }
         }
         finally
         {

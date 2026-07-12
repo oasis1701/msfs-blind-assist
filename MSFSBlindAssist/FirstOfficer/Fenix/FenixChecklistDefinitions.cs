@@ -92,9 +92,9 @@ public static class FenixChecklistDefinitions
                 }),
             Auto("PF_OXY", "PREFLIGHT", "Crew oxygen supply: ON",
                 "S_OH_OXYGEN_CREW_OXYGEN", v => v > 0.5, (e, _) => e.Set("S_OH_OXYGEN_CREW_OXYGEN", 1)),
-            ActionManual("PF_FIRE_APU", "PREFLIGHT", "APU fire test", (e, _) => e.FireTest("S_OH_FIRE_APU_TEST")),
-            ActionManual("PF_FIRE_ENG1", "PREFLIGHT", "Engine 1 fire test", (e, _) => e.FireTest("S_OH_FIRE_ENG1_TEST")),
-            ActionManual("PF_FIRE_ENG2", "PREFLIGHT", "Engine 2 fire test", (e, _) => e.FireTest("S_OH_FIRE_ENG2_TEST")),
+            Momentary(ActionManual("PF_FIRE_APU", "PREFLIGHT", "APU fire test", (e, _) => e.FireTest("S_OH_FIRE_APU_TEST"))),
+            Momentary(ActionManual("PF_FIRE_ENG1", "PREFLIGHT", "Engine 1 fire test", (e, _) => e.FireTest("S_OH_FIRE_ENG1_TEST"))),
+            Momentary(ActionManual("PF_FIRE_ENG2", "PREFLIGHT", "Engine 2 fire test", (e, _) => e.FireTest("S_OH_FIRE_ENG2_TEST"))),
             Auto("PF_PACKS", "PREFLIGHT", "Packs 1 and 2: ON",
                 "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
                 async (e, _) =>
@@ -639,6 +639,10 @@ public static class FenixChecklistDefinitions
         ManualCompletionAllowed = true,
         CheckAction = action,
     };
+
+    // Marks a momentary "button" test item so a manual tick auto-clears after the action
+    // completes (re-runnable with a single check; flow completion via MarkComplete unaffected).
+    private static Item Momentary(Item item) { item.MomentaryAction = true; return item; }
 
     private static Item Reminder(string id, string groupId, string text) => new()
     {

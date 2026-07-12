@@ -92,16 +92,16 @@ public static class PMDG737ChecklistDefinitions
             // Fire + warning tests — no persistent sim state exists for a completed test,
             // so these are manual-tick actions: the box records "test performed" and the
             // tick fires the same held test the flow runs (Fenix PF_FIRE_* pattern).
-            ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire warning test",
-                (e, _) => e.FireDetectionTestAsync()),
-            ActionManualAsync("PF_STALL_TEST1", "PREFLIGHT", "Stall warning test 1",
-                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_STALL_1_PUSH", AircraftActionExecutor.StallTestHoldMs)),
-            ActionManualAsync("PF_STALL_TEST2", "PREFLIGHT", "Stall warning test 2",
-                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_STALL_2_PUSH", AircraftActionExecutor.StallTestHoldMs)),
-            ActionManualAsync("PF_OVSPD_TEST1", "PREFLIGHT", "Overspeed warning test 1",
-                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH", AircraftActionExecutor.OverspeedTestHoldMs)),
-            ActionManualAsync("PF_OVSPD_TEST2", "PREFLIGHT", "Overspeed warning test 2",
-                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH", AircraftActionExecutor.OverspeedTestHoldMs)),
+            Momentary(ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire warning test",
+                (e, _) => e.FireDetectionTestAsync())),
+            Momentary(ActionManualAsync("PF_STALL_TEST1", "PREFLIGHT", "Stall warning test 1",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_STALL_1_PUSH", AircraftActionExecutor.StallTestHoldMs))),
+            Momentary(ActionManualAsync("PF_STALL_TEST2", "PREFLIGHT", "Stall warning test 2",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_STALL_2_PUSH", AircraftActionExecutor.StallTestHoldMs))),
+            Momentary(ActionManualAsync("PF_OVSPD_TEST1", "PREFLIGHT", "Overspeed warning test 1",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH", AircraftActionExecutor.OverspeedTestHoldMs))),
+            Momentary(ActionManualAsync("PF_OVSPD_TEST2", "PREFLIGHT", "Overspeed warning test 2",
+                (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH", AircraftActionExecutor.OverspeedTestHoldMs))),
             Auto("PF_YD", "PREFLIGHT", "Yaw damper: ON", "FCTL_YawDamper_Sw", v => v > 0.5, (e, _) => e.SetYawDamper(1)),
             Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1", "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
@@ -609,6 +609,10 @@ public static class PMDG737ChecklistDefinitions
         Type = ChecklistItemType.Actionable,
         ManualCompletionAllowed = true,
     };
+
+    // Marks a momentary "button" test item so a manual tick auto-clears after the action
+    // completes (re-runnable with a single check; flow completion via MarkComplete unaffected).
+    private static Item Momentary(Item item) { item.MomentaryAction = true; return item; }
 
     private static Item ActionManual(string id, string groupId, string label, Act action) => new()
     {

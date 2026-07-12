@@ -117,8 +117,8 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 0)),
             // Manual-tick held test (no persistent "test performed" state; ticking runs
             // the same held test the flow runs — Fenix PF_FIRE_* pattern).
-            ActionManual("CP_FIRETEST", "COCKPIT_PREP", "Fire test",
-                (e, _) => e.FireTestAsync()),
+            Momentary(ActionManual("CP_FIRETEST", "COCKPIT_PREP", "Fire test",
+                (e, _) => e.FireTestAsync())),
             Reminder("CP_GNDCTL", "COCKPIT_PREP", "Ground control: on"),
             Multi("CP_NAVLOGO", "COCKPIT_PREP", "Nav and logo lights: ON", "LIGHT_NAV", v => v > 0.5,
                 new[] { "LIGHT_LOGO" },
@@ -742,6 +742,10 @@ public static class FbwA380ChecklistDefinitions
         ManualCompletionAllowed = true,
         CheckAction = action,
     };
+
+    // Marks a momentary "button" test item so a manual tick auto-clears after the action
+    // completes (re-runnable with a single check; flow completion via MarkComplete unaffected).
+    private static Item Momentary(Item item) { item.MomentaryAction = true; return item; }
 
     private static Item Reminder(string id, string groupId, string text) => new()
     {

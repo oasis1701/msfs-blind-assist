@@ -176,6 +176,16 @@ public class ChecklistItem<TExec, TState>
     /// </summary>
     public Func<TExec, TState, Task>? CheckAction { get; set; }
 
+    /// <summary>
+    /// Momentary "button" action (a self-completing TEST or one-shot press with no
+    /// persistent sim state — fire/overheat test, warning tests). When true, a MANUAL
+    /// tick's <see cref="CheckAction"/> runs and the item then AUTO-CLEARS back to
+    /// unchecked once the action completes, so a single check re-triggers it every time
+    /// (no uncheck-then-recheck cycle). Flow-driven completion (MarkComplete) is
+    /// unaffected — it doesn't run the CheckAction, so the flow's tick still persists.
+    /// </summary>
+    public bool MomentaryAction { get; set; }
+
     // -----------------------------------------------------------------------
     // Linking to flows
     // -----------------------------------------------------------------------
