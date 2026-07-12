@@ -488,3 +488,54 @@ NVDA tab order) without AS. "Announce icing" needs only the master switch — `S
 PCT` is a stock SimVar with no ActiveSky dependency, so it stays reachable with AS off. Neither
 checkbox appears at all with the master auto-announce switch off, matching every other
 sub-toggle on this tab.
+
+## 11. Weather Radar: ListBox conversion + live refresh (2026-07)
+
+Design doc: `docs/design/2026-07-12-weather-radar-listbox-design.md`. This completes, for the
+Weather Radar window (Shift+R, `Forms/WeatherRadarForm.cs`), the 2026-07-02 "Live-Display
+Consistency Pass" that had already converted every other live text display in the app (E/WD,
+OANS, RMP, HS787 display + EICAS, GSX menu, ECL, all MCDU/CDU/DCDU forms, MainForm's status
+display — see `docs/a32nx.md`'s "single reconcile home" list). The radar's five multi-line
+readouts — `_currentWeatherBox`, `_stationBox`, `_profileBox`, `_advisoriesBox`,
+`_windsAloftBox` — are `DisplayListBox` rows reconciled through `DisplayList.UpdateInPlace`
+(rewrites only the rows whose text changed, grows/shrinks the tail in place, never
+`Items.Clear()`, restores the reading cursor by ROW CONTENT nearest the old index, no-ops on
+unchanged content). Every write site is `_box.SetText(value)`, splitting on `\r\n`/`\n` with
+`StringSplitOptions.None` so blank separator rows and `─`-rule rows survive as their own items —
+one fact/advisory/wind level per row, exactly as `UpdateInPlace`'s duplicate-row matching
+already assumes elsewhere. The text-building code itself (`FormatAmbientFromActiveSky`,
+`BuildProfileNarrative`, `BuildWindsAloftText`, the advisories builder) is byte-identical; only
+the sink changed.
+
+The window now auto-refreshes every **30 seconds** via a `System.Windows.Forms.Timer`
+(`_autoRefreshTimer`), calling `RefreshAsync(forceRefresh: false)` — the same call the pass's
+other pop-outs use. `forceRefresh: false` lets the internet-backed fetches (SIGMET/PIREP
+advisories, Open-Meteo winds aloft) keep serving from their existing TTL caches; the cheap
+AS/SimConnect fetches (ambient, station, profile, AS winds, mode line, position) re-run every
+tick, so the boxes track the flight without the pilot ever touching F5. This is safe specifically
+*because* the readouts are `DisplayListBox` rows: an unchanged tick reconciles to a no-op, and a
+changed one updates in place without moving the reading cursor — the TextBox form of this window
+could never have auto-refreshed without resetting the NVDA position on every tick. F5 and the
+Refresh button still pass `forceRefresh: true` for an immediate, uncached pull.
+
+`_autoRefreshTimer` carries the same `IsDisposed` guards as `FlyByWireDcduForm`'s poll timer
+(the precedent recorded in `docs/a32nx.md` §"2026-06-12 bug-pass hardening"): the timer is
+created and started only `if (!IsDisposed)` after the initial `RefreshAsync(forceRefresh: true)`
+await returns (the form can be closed while that first fetch is in flight), and its `Tick`
+handler re-checks `IsDisposed` before firing another refresh. Skipping either guard reproduces
+the DCDU's zombie-timer bug — restarting/ticking a disposed WinForms timer silently keeps its
+native timer alive with no cleanup path ever stopping it. `OnFormClosed` and `Dispose(bool)`
+both stop and null the timer, belt-and-braces (the radar closes fully rather than hiding, unlike
+the DCDU, but the guard shape is identical).
+
+The single-line `_asModeBox` (ActiveSky mode status) is deliberately **not** part of this
+conversion — it stays the read-only TextBox from the 2026-07-11 keyboard-reachability fix (§9a):
+a one-line list adds nothing, and that box already has its own carve-out from the original
+consistency pass.
+
+**The Refresh button is deliberately never disabled**, even mid-fetch: `RefreshAsync` used to
+set `_refreshButton.Enabled = false` for the duration of a fetch, but WinForms moves focus off a
+disabled control automatically — with a 30 s timer now running unconditionally, that would steal
+focus from a user resting on the Refresh button every single tick. The `Enabled` toggle (both
+the disable and the `finally` re-enable) was removed entirely; the pre-existing `_isFetching`
+guard already makes a mid-fetch click or tick a harmless no-op.
