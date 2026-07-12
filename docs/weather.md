@@ -522,9 +522,10 @@ Refresh button still pass `forceRefresh: true` for an immediate, uncached pull.
 (the precedent recorded in `docs/a32nx.md` §"2026-06-12 bug-pass hardening"): the timer is
 created and started only `if (!IsDisposed)` after the initial `RefreshAsync(forceRefresh: true)`
 await returns (the form can be closed while that first fetch is in flight), and its `Tick`
-handler re-checks `IsDisposed` before firing another refresh. Skipping either guard reproduces
-the DCDU's zombie-timer bug — restarting/ticking a disposed WinForms timer silently keeps its
-native timer alive with no cleanup path ever stopping it. `OnFormClosed` and `Dispose(bool)`
+handler re-checks `IsDisposed` before firing another refresh. Skipping the creation/`Start()`
+guard reproduces the DCDU's zombie-timer bug — starting a disposed WinForms timer silently
+re-creates its native timer with no cleanup path ever stopping it; the Tick-body guard is
+belt-and-braces against one late queued tick. `OnFormClosed` and `Dispose(bool)`
 both stop and null the timer, belt-and-braces (the radar closes fully rather than hiding — the
 hide-on-close pattern belongs to the A380 RMP, not here — and the guard shape is identical to
 the DCDU's).
