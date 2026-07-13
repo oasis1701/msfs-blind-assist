@@ -8423,25 +8423,106 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
-        // "All Landing Lights" buttons (RenderAsButton, Exterior Lighting panel). Drive the
-        // FBW switch L:vars directly — the SAME calls as the per-light Left/Right Landing Light
-        // combos (MainForm lighting block) — so the LDG LT memo stays in sync. The old wiring
-        // fired the stock LANDING_LIGHTS_ON/OFF events, which bypass the FBW switch and desync
-        // the memo (FBW issues #1507/#1528). On = 0 (extend + illuminate); Off = 2 (RETRACT —
-        // stows the lights and clears LDG LT). Nose light (LIGHTING_LANDING_1) stays independent.
+        // ── FBW A32NX exterior lights — SINGLE SOURCE OF TRUTH for every light WRITE ──────
+        // Shared by the panel combos (MainForm.PanelBuilder.cs calls HandleUIVariableSet FIRST,
+        // so these branches now serve the panel too) AND the First Officer executor
+        // (FbwA320ActionExecutor.ApplyUIVariable → here). Each mechanism is the FBW-template-
+        // verbatim actuator, LIVE-VERIFIED 2026-07-12 on the A32NX. The state vars themselves
+        // are NOT writable: a plain SetLVar / native write to LIGHT BEACON / LIGHT WING /
+        // LIGHT TAXI:2 / LIGHTING_LANDING_x / LIGHTING_STROBE_0 is a no-op or reverts within a
+        // frame. The FO used to fall straight through to exactly that write, so EVERY FO
+        // exterior light (beacon/wing/nose/turn-off/strobe/all-landing) silently did nothing.
+        // These branches must stay above the generic catch-all. (RPN "r" swaps the top two
+        // stack entries → "<value> <index> r" is stack-equivalent to "<index> <value>".)
+
+        // Beacon + Wing: the cockpit switch (A320_NEO_INTERIOR.xml:1867-1878 / wing) fires the
+        // stock BEACON_LIGHTS_SET / WING_LIGHTS_SET event and reads state from A:LIGHT BEACON /
+        // A:LIGHT WING. Handle BOTH the panel state key ("LIGHT BEACON"/"LIGHT WING") and the
+        // FO event key ("BEACON_LIGHTS_SET"/"WING_LIGHTS_SET"). Verified: "{v} (>K:BEACON_LIGHTS_SET)"
+        // flips A:LIGHT BEACON 0<->1; a SetLVar/native write does nothing.
+        if (varKey == "LIGHT BEACON" || varKey == "BEACON_LIGHTS_SET")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:BEACON_LIGHTS_SET)");
+            return true;
+        }
+        if (varKey == "LIGHT WING" || varKey == "WING_LIGHTS_SET")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:WING_LIGHTS_SET)");
+            return true;
+        }
+        // Nose light (LIGHTING_LANDING_1): 0=T.O., 1=Taxi, 2=Off. The position L:var HOLDS the
+        // written value (mirror it so the combo/FO read-back tracks) but drives NO lamp — the
+        // lamp is the indexed stock event: nose T.O. = LIGHT LANDING:1, nose taxi = LIGHT TAXI:1
+        // (TAXI stays on in T.O., per SWITCH_OVHD_EXTLT_NOSE). Verified: L:var write alone left
+        // LIGHT TAXI:1 = 0; the indexed events lit it.
+        if (varKey == "LIGHTING_LANDING_1")
+        {
+            int pos = (int)Math.Round(value);
+            int takeoff = pos == 0 ? 1 : 0;
+            int taxi = (pos == 0 || pos == 1) ? 1 : 0;
+            simConnect.SetLVar("LIGHTING_LANDING_1", pos);
+            simConnect.ExecuteCalculatorCode(
+                $"{takeoff} 1 r (>K:2:LANDING_LIGHTS_SET) {taxi} 1 r (>K:2:TAXI_LIGHTS_SET)");
+            return true;
+        }
+        // L/R landing lights (LIGHTING_LANDING_2 = left, _3 = right): 0=On, 1=Off, 2=Retract.
+        // The position var is template-DERIVED (a direct write reverts) — drive the lamp via the
+        // indexed stock event + the retract animation L:var; the template converges the position
+        // var itself.
+        if (varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3")
+        {
+            int idx = varKey.EndsWith("_3", StringComparison.Ordinal) ? 3 : 2;
+            int on = value < 0.5 ? 1 : 0;          // value 0 = On
+            int retr = value >= 1.5 ? 1 : 0;       // value 2 = Retract
+            simConnect.SetLVar($"LANDING_{idx}_RETRACTED", retr);
+            simConnect.ExecuteCalculatorCode($"{on} {idx} r (>K:2:LANDING_LIGHTS_SET)");
+            return true;
+        }
+        // "All Landing Lights" momentary buttons (Exterior Lighting panel + FO BT_LANDING_LT /
+        // AL_LANDING_OFF). Drive BOTH L/R via the indexed event + retract L:var — the SAME
+        // actuator as the per-side combo above. On = extend + illuminate; Off = retract.
+        // (Previously SetLVar("LIGHTING_LANDING_2/3") directly — VERIFIED a no-op: the lamp
+        // never lit because the position var reverts. The indexed event is the fix.)
         if (varKey == "LANDING_LIGHTS_ON_THIRD_PARTY" || varKey == "LANDING_LIGHTS_OFF_THIRD_PARTY")
         {
             if (value > 0.5)
             {
                 bool on = varKey == "LANDING_LIGHTS_ON_THIRD_PARTY";
-                int pos = on ? 0 : 2;     // LIGHTING_LANDING_x: 0 = On, 2 = Retract
-                int retr = on ? 0 : 1;    // LANDING_x_RETRACTED: 1 = retracted
-                simConnect.SetLVar("LIGHTING_LANDING_2", pos);
+                int ev = on ? 1 : 0;
+                int retr = on ? 0 : 1;
                 simConnect.SetLVar("LANDING_2_RETRACTED", retr);
-                simConnect.SetLVar("LIGHTING_LANDING_3", pos);
                 simConnect.SetLVar("LANDING_3_RETRACTED", retr);
+                simConnect.ExecuteCalculatorCode(
+                    $"{ev} 2 r (>K:2:LANDING_LIGHTS_SET) {ev} 3 r (>K:2:LANDING_LIGHTS_SET)");
                 announcer.Announce(on ? "All landing lights on" : "All landing lights retracted");
             }
+            return true;
+        }
+        // Runway turn-off lights: ONE RWY TURN OFF switch → both sides. State key "LIGHT TAXI:2"
+        // (representative; :3 is the right side). The FBW template drives LIGHT TAXI:2/3 via the
+        // indexed TAXI_LIGHTS_SET — a direct simvar write reverts (VERIFIED).
+        if (varKey == "LIGHT TAXI:2")
+        {
+            int on = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"{on} 2 r (>K:2:TAXI_LIGHTS_SET) {on} 3 r (>K:2:TAXI_LIGHTS_SET)");
+            simConnect.RequestVariable("LIGHT TAXI:2", forceUpdate: true);
+            simConnect.RequestVariable("LIGHT TAXI:3", forceUpdate: true);
+            return true;
+        }
+        // Strobe (LIGHTING_STROBE_0): 0=On, 1=Auto, 2=Off. Two writes are BOTH required —
+        // set the position L:var AND STROBE_0_AUTO, then fire STROBES_ON/OFF for the On/Off
+        // detents. VERIFIED 2026-07-12: STROBES_OFF alone leaves the lamp lit (the FBW template
+        // re-derives it from LIGHTING_STROBE_0), and a bare LIGHTING_STROBE_0 write reverts
+        // while STROBE_0_AUTO=1 — but writing the position TOGETHER with STROBE_0_AUTO holds
+        // and the lamp follows. (MainForm's panel path did the position write via its generic
+        // SetLVar before this branch; centralizing here, it must be explicit.)
+        if (varKey == "LIGHTING_STROBE_0")
+        {
+            int pos = (int)Math.Round(value);
+            simConnect.SetLVar("LIGHTING_STROBE_0", pos);
+            if (pos == 2)      { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCode("0 (>K:STROBES_OFF)"); }
+            else if (pos == 0) { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCode("0 (>K:STROBES_ON)"); }
+            else               { simConnect.SetLVar("STROBE_0_AUTO", 1); }
             return true;
         }
 
