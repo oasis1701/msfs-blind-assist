@@ -96,9 +96,12 @@ public static class VATSIMService
                 // 27010G20KT = 270 degrees at 10 knots gusting to 20
                 // VRB03KT = Variable at 3 knots
                 // 00000KT = Calm
+                // 24004MPS = 240 degrees at 4 meters per second
+                // 27010G//KT = 270 degrees at 10 knots, gust unmeasurable
 
-                // Wind pattern: direction (3 digits or VRB) + speed (2-3 digits) + optional gust + KT
-                var windPattern = @"(?:^|\s)((\d{3})|VRB)(\d{2,3})(?:G(\d{2,3}))?KT";
+                // Wind pattern: direction (3 digits or VRB) + speed (2-3 digits) + optional gust
+                // (digits, or "//" = unmeasurable) + unit (KT or MPS)
+                var windPattern = @"(?:^|\s)((\d{3})|VRB)(\d{2,3})(?:G(\d{2,3}|/{2}))?(KT|MPS)";
                 var match = Regex.Match(metar, windPattern, RegexOptions.IgnoreCase);
 
                 if (!match.Success)
@@ -107,16 +110,19 @@ public static class VATSIMService
                 string directionStr = match.Groups[2].Value; // Will be empty if VRB
                 string speedStr = match.Groups[3].Value;
                 string gustStr = match.Groups[4].Value;      // Will be empty if no gust group
+                string unitStr = match.Groups[5].Value;      // KT or MPS
 
                 // Parse speed
-                if (!int.TryParse(speedStr, out int speed))
+                if (!int.TryParse(speedStr, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out int speed))
                     return null;
 
                 // Parse direction
                 int direction = 0;
                 if (!string.IsNullOrEmpty(directionStr))
                 {
-                    if (!int.TryParse(directionStr, out direction))
+                    if (!int.TryParse(directionStr, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out direction))
                         return null;
                 }
                 else
@@ -125,10 +131,21 @@ public static class VATSIMService
                     direction = 0;
                 }
 
-                // Parse gust (0 = none)
+                // Parse gust (0 = none); handle G// (unmeasurable) by treating as 0
                 int gust = 0;
-                if (!string.IsNullOrEmpty(gustStr))
-                    int.TryParse(gustStr, out gust);
+                if (!string.IsNullOrEmpty(gustStr) && gustStr != "//")
+                {
+                    int.TryParse(gustStr, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out gust);
+                }
+
+                // Convert MPS to knots if needed
+                bool isMps = unitStr.Equals("MPS", StringComparison.OrdinalIgnoreCase);
+                if (isMps)
+                {
+                    speed = (int)Math.Round(speed * 1.94384);
+                    gust = (int)Math.Round(gust * 1.94384);
+                }
 
                 return new WindData
                 {

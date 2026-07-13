@@ -111,4 +111,34 @@ public class WindReadoutGustTests
         => Assert.Equal("180 at 10, gusting 25",
             VATSIMService.FormatWind(VATSIMService.ParseMETARWind(
                 "KJFK 071751Z 18010G25KT 10SM -RA FEW020 22/18 A3000")));
+
+    // --- MPS units and unmeasurable gusts -----------------------------------------------
+
+    [Fact]
+    public void ParseMETARWind_converts_mps_to_knots()
+    {
+        var w = VATSIMService.ParseMETARWind("UUEE 131930Z 24004MPS 9999 BKN020 12/08 Q1013");
+        Assert.NotNull(w);
+        Assert.Equal(240, w!.Value.Direction);
+        Assert.Equal(8, w.Value.Speed);      // 4 m/s × 1.94384 ≈ 7.78 → 8 kt
+        Assert.Equal(0, w.Value.Gust);
+    }
+
+    [Fact]
+    public void ParseMETARWind_converts_mps_gust_to_knots()
+    {
+        var w = VATSIMService.ParseMETARWind("UUEE 131930Z 24007G12MPS 9999 BKN020 12/08 Q1013");
+        Assert.Equal(14, w!.Value.Speed);    // 7 m/s → 13.6 → 14 kt
+        Assert.Equal(23, w.Value.Gust);      // 12 m/s → 23.3 → 23 kt
+    }
+
+    [Fact]
+    public void ParseMETARWind_unmeasurable_gust_keeps_direction_and_speed()
+    {
+        var w = VATSIMService.ParseMETARWind("EGLL 131920Z 27010G//KT 9999 FEW030 18/09 Q1021");
+        Assert.NotNull(w);                   // G// must not fail the whole match
+        Assert.Equal(270, w!.Value.Direction);
+        Assert.Equal(10, w.Value.Speed);
+        Assert.Equal(0, w.Value.Gust);
+    }
 }
