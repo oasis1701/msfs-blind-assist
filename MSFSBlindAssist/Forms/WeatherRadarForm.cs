@@ -859,12 +859,21 @@ public class WeatherRadarForm : Form
         if (_activeSkyAvailable != true) return "unavailable";
         string? raw = await _activeSky.GetRouteAdvisoriesTextAsync();
         if (raw == null) return "unavailable";
+        var advisories = MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw);
+
+        // Location context (spec 2026-07-13): additive-only — an empty dictionary
+        // renders the box exactly as before. Recomputed per pass (the aircraft moves);
+        // the DisplayListBox reconcile keeps an updating row from stealing the cursor.
+        Dictionary<string, string> locations = new();
+        if (_simConnect.LastKnownPosition is { } pos)
+            locations = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeLocationsAsync(
+                _activeSky, advisories, pos, spoken: false);
+
         // Decode gating rides the same checkbox as the Nearby Advisories box; the
         // CheckedChanged handler saves the setting and the next refresh (≤30 s auto
         // or F5) picks it up — same latency contract as the sibling box.
         return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoriesText(
-            MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw),
-            SettingsManager.Current.DecodeWeatherAdvisories);
+            advisories, SettingsManager.Current.DecodeWeatherAdvisories, locations);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -2323,6 +2323,15 @@ public partial class MainForm
             var newKeys = _routeAdvisoryTracker.Observe(advisories.Select(a => a.Key).ToList());
 
             if (!IsHandleCreated || IsDisposed) return;
+
+            // Spoken location context for the new keys (spec 2026-07-13) — one probe +
+            // cached-feed lookups. Bounded by the probe's 5 s timeout (spec §8.2); every
+            // failure path yields "no suffix" — the announcement is never dropped.
+            Dictionary<string, string> locations = new();
+            if (newKeys.Count > 0 && simConnectManager.LastKnownPosition is { } locPos)
+                locations = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeLocationsAsync(
+                    weatherActiveSky, advisories, locPos, spoken: true);
+
             foreach (string key in newKeys)
             {
                 // ALWAYS decoded when possible, independent of the radar form's decode
@@ -2333,7 +2342,8 @@ public partial class MainForm
                 var adv = advisories.FirstOrDefault(a =>
                     string.Equals(a.Key, key, StringComparison.OrdinalIgnoreCase));
                 string phrase = adv != null
-                    ? MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(adv)
+                    ? MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(
+                        adv, locations.TryGetValue(key, out string? loc) ? loc : null)
                     : key;
                 Log.Debug("MainForm", $"route advisory: \"{key}\" -> \"{phrase}\"");
                 // Neutral phrasing (no "New"): the same announce serves both first
