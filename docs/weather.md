@@ -755,11 +755,18 @@ aircraft's own position, then resolves each advisory's geometry:
   circle shapes and `ENTIRE FIR` bodies are out of scope for v1 — they fall through to tier 2, or
   render with no Location line, by design.
 - **Tier 2 — aviationweather.gov cross-match** (US convective bodies, whose AS text has its
-  location line stripped — §13): `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)`
-  refreshes the SAME TTL-cached `airsigmet`/`isigmet` feeds the Nearby Advisories box already
-  uses (no extra HTTP within the TTL window, same lock discipline) and calls
-  `FindAdvisoryPolygonInGeoJson(geojson, identityPhrase)`, which finds the cached feature whose
-  raw text contains the advisory's decoded `Identity` phrase and returns its first polygon ring.
+  location line stripped — §13): `ComputeLocationsAsync` calls `WeatherService.
+  RefreshAndGetSigmetFeedsAsync()` — which refreshes the SAME TTL-cached `airsigmet`/`isigmet`
+  feeds the Nearby Advisories box already uses (no extra HTTP within the TTL window, same lock
+  discipline) — and then `FindAdvisoryPolygonInGeoJson(geojson, identityPhrase)`, which finds the
+  cached feature whose raw text contains the advisory's decoded `Identity` phrase at a WORD
+  BOUNDARY (not a bare substring — a phrase that is a prefix of a longer identity in the same feed,
+  e.g. "CONVECTIVE SIGMET 5E" vs. "…5E1", must not match) and returns its first polygon ring. The
+  feed refresh is fetched LAZILY and at most ONCE per computation pass — the standalone
+  `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)` (still used by any other caller)
+  remains a thin per-call delegate to the same refresh+snapshot logic, but `ComputeLocationsAsync`
+  calls the refresh directly so a pass with several tier-2 advisories doesn't re-fetch per advisory
+  (final-review Fix 2).
 - **The positional probe is the authoritative inside-check**, independent of whether geometry
   resolved. Per the §13 bundling finding, `ComputeLocationsAsync` treats ONLY the first advisory
   parsed from the probe response (`ParseRouteAdvisories(probeRaw)[0]`) as position-matched —
@@ -784,8 +791,12 @@ bearing choices rather than oversights:
 
 - **Nearest-VERTEX distance, not nearest-edge or nearest-point-on-boundary** —
   `AdvisoryGeometry.NearestVertex` walks the polygon's vertices only, the SAME approximation
-  `WeatherService.ClosestPoint` already uses for the Nearby Advisories box, so the two boxes can
-  never disagree about one advisory's distance.
+  `WeatherService.ClosestPoint` already uses for the Nearby Advisories box, so the two boxes
+  normally agree about one advisory's distance. Recorded caveat: tier-2 (`FindAdvisoryPolygonInGeoJson`)
+  only ever returns the FIRST polygon ring of a `MultiPolygon` feature, while the Nearby Advisories
+  box scans every ring, so a rare multi-area advisory (a single feature whose `MultiPolygon` has
+  more than one ring) can legitimately show different nearest-vertex distances in the two boxes —
+  a follow-up, not a bug to fix here.
 - **True HEADING, not ground track, decides ahead/behind** — `IsBehind` compares the bearing to
   the nearest vertex against the aircraft's TRUE heading (`pos.HeadingMagnetic +
   pos.MagneticVariation`, the codebase's existing convention), because heading is already on
@@ -814,7 +825,13 @@ phrase," never an exception, and never withholds the advisory's own text:
    (`MainForm.Announcers.cs`'s `CheckRouteAdvisoriesAsync`), so a hung probe adds at most its
    bounded 5 s HTTP timeout (`GetPositionalAdvisoriesTextAsync`'s `CancellationTokenSource`)
    before the announcement goes out — against the 30 s tick cadence, imperceptible — and on ANY
-   failure the announcement still fires, just without the suffix. The box
+   failure the announcement still fires, just without the suffix. The true worst case per pass is
+   the probe's 5 s PLUS at most one SIGMET-feed refresh (`WeatherService.
+   RefreshAndGetSigmetFeedsAsync`'s shared `HttpClient`'s 15 s timeout) — never one refresh per
+   advisory: `RouteAdvisoryLocator.ComputeLocationsAsync` fetches the feeds lazily, at most ONCE
+   per pass, only when some advisory actually needs tier-2 geometry (final-review Fix 2; a hung
+   feed also doesn't stamp its cache time on failure, so a persistently-unreachable feed retries
+   this same bounded timeout on every pass rather than backing off). The box
    (`WeatherRadarForm.FetchRouteAdvisoriesAsync`) is never blocked either; it rides the same
    30 s auto-refresh as the rest of §12(c) with no new poll loop.
 5. `ParseWiPolygon` rejects malformed/short `WI` token sequences permissively — it returns `null`

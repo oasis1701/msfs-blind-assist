@@ -879,3 +879,5 @@ No unit tests — sim-facing wiring; the in-sim plan covers it. Build + full sui
 5. **Announce:** a NEW advisory appearing mid-session speaks "…, N nautical miles ahead." exactly once; an advisory with no resolvable geometry announces exactly as today (no suffix, no delay).
 6. **Degradation:** disconnect the sim (no position) or switch AS to Historic with a convective advisory → affected advisories render with no Location line and nothing else changes.
 7. **ENTIRE-FIR-style advisory (tier 1 fails by design):** with an advisory whose body has no `WI` polygon (e.g. "ENTIRE FIR") on route in Live mode, sim connected → its block renders with NO Location line while other advisories in the same box keep theirs.
+8. **Probe-only inside (non-Live mode):** in Historic/Custom AS mode, slew inside a route convective advisory → its block shows `Location: at your position (inside the area)` from the positional probe alone (no geometry resolvable in non-Live modes).
+9. *(Optional)* Internet blocked but AS reachable: advisories still render and announcements still fire; the only added delay is the single bounded feed-refresh timeout on the first tier-2 attempt.

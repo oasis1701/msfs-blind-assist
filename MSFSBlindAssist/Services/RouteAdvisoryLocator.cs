@@ -1,5 +1,6 @@
 using MSFSBlindAssist.SimConnect;   // SimConnectManager.AircraftPosition (namespace is NOT
                                     // in GlobalUsings; precedent: ActiveSkyClient.cs)
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -27,40 +28,65 @@ internal static class RouteAdvisoryLocator
 
     /// <summary>One positional probe + per-advisory tier-1/tier-2 geometry →
     /// key → phrase (OrdinalIgnoreCase). Empty dictionary when the position is
-    /// unusable. Recomputed per pass — the aircraft moves (spec §7).</summary>
+    /// unusable. Recomputed per pass — the aircraft moves (spec §7). The tier-2
+    /// SIGMET feeds are refreshed LAZILY, at most ONCE per pass (only when some
+    /// advisory actually needs tier-2 geometry), never once per advisory — a
+    /// stalled feed refresh costs at most one bounded HTTP timeout per pass, not
+    /// one per advisory (final-review Fix 2). Never throws: every failure path
+    /// (including an unexpected exception) yields whatever partial results were
+    /// already computed, so an escaping exception can never fault a caller's
+    /// Task.WhenAll or silently drop announcements.</summary>
     internal static async Task<Dictionary<string, string>> ComputeLocationsAsync(
         ActiveSkyClient client, IReadOnlyList<ActiveSkyFormatting.RouteAdvisory> advisories,
         SimConnectManager.AircraftPosition pos, bool spoken)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (advisories.Count == 0) return result;
-        if (pos.Latitude == 0 && pos.Longitude == 0) return result;   // spec §8.4
-
-        double trueHeading = ((pos.HeadingMagnetic + pos.MagneticVariation) % 360 + 360) % 360;
-
-        // One authoritative containment probe; FIRST advisory only (bundling, §13).
-        string? probeKey = null;
-        string? probeRaw = await client.GetPositionalAdvisoriesTextAsync(pos.Latitude, pos.Longitude);
-        if (probeRaw != null)
+        try
         {
-            var hits = ActiveSkyFormatting.ParseRouteAdvisories(probeRaw);
-            if (hits.Count > 0) probeKey = hits[0].Key;
+            if (advisories.Count == 0) return result;
+            if (pos.Latitude == 0 && pos.Longitude == 0) return result;   // spec §8.4
+
+            double trueHeading = ((pos.HeadingMagnetic + pos.MagneticVariation) % 360 + 360) % 360;
+
+            // One authoritative containment probe; FIRST advisory only (bundling, §13).
+            string? probeKey = null;
+            string? probeRaw = await client.GetPositionalAdvisoriesTextAsync(pos.Latitude, pos.Longitude);
+            if (probeRaw != null)
+            {
+                var hits = ActiveSkyFormatting.ParseRouteAdvisories(probeRaw);
+                if (hits.Count > 0) probeKey = hits[0].Key;
+            }
+
+            // Lazy, once-per-pass snapshot of the tier-2 feeds — populated on first use.
+            (string Airsigmet, string Isigmet)? feeds = null;
+
+            foreach (var a in advisories)
+            {
+                bool probeMatched = probeKey != null
+                    && string.Equals(a.Key, probeKey, StringComparison.OrdinalIgnoreCase);
+
+                // Tier 1: the advisory's own WI polygon (body = all lines after the header).
+                var vertices = AdvisoryGeometry.ParseWiPolygon(string.Join(" ", a.Lines.Skip(1)));
+                // Tier 2: cached aviationweather.gov geometry by identity (US convective).
+                if (vertices == null && !probeMatched && a.Identity != null)
+                {
+                    feeds ??= await WeatherService.RefreshAndGetSigmetFeedsAsync();
+                    vertices = (feeds.Value.Airsigmet.Length > 0
+                            ? WeatherService.FindAdvisoryPolygonInGeoJson(feeds.Value.Airsigmet, a.Identity)
+                            : null)
+                        ?? (feeds.Value.Isigmet.Length > 0
+                            ? WeatherService.FindAdvisoryPolygonInGeoJson(feeds.Value.Isigmet, a.Identity)
+                            : null);
+                }
+
+                string? phrase = Compose(vertices, probeMatched,
+                    pos.Latitude, pos.Longitude, trueHeading, spoken);
+                if (phrase != null) result[a.Key] = phrase;
+            }
         }
-
-        foreach (var a in advisories)
+        catch (Exception ex)
         {
-            bool probeMatched = probeKey != null
-                && string.Equals(a.Key, probeKey, StringComparison.OrdinalIgnoreCase);
-
-            // Tier 1: the advisory's own WI polygon (body = all lines after the header).
-            var vertices = AdvisoryGeometry.ParseWiPolygon(string.Join(" ", a.Lines.Skip(1)));
-            // Tier 2: cached aviationweather.gov geometry by identity (US convective).
-            if (vertices == null && !probeMatched && a.Identity != null)
-                vertices = await WeatherService.TryGetAdvisoryPolygonAsync(a.Identity);
-
-            string? phrase = Compose(vertices, probeMatched,
-                pos.Latitude, pos.Longitude, trueHeading, spoken);
-            if (phrase != null) result[a.Key] = phrase;
+            Log.Debug("Services", $"Route-advisory location pass error: {ex.Message}");
         }
         return result;
     }

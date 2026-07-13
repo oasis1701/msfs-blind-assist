@@ -180,6 +180,29 @@ public static class WeatherService
         }
     }
 
+    /// <summary>EXACT identity match, not substring: true only when
+    /// <paramref name="phrase"/> occurs in <paramref name="text"/> with a
+    /// non-alphanumeric (or start/end-of-string) boundary on BOTH sides. Guards
+    /// against a phrase that is a PREFIX of a longer identity in the same feed
+    /// (e.g. searching "CONVECTIVE SIGMET 5E" must not match a raw that only
+    /// contains "CONVECTIVE SIGMET 5E1") — a plain <c>string.Contains</c> would
+    /// false-positive there. Scans every occurrence rather than stopping at the
+    /// first: an early rejected position must not hide a later valid one.</summary>
+    private static bool ContainsWordBoundaryMatch(string text, string phrase)
+    {
+        int searchFrom = 0;
+        while (true)
+        {
+            int idx = text.IndexOf(phrase, searchFrom, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return false;
+            bool beforeOk = idx == 0 || !char.IsLetterOrDigit(text[idx - 1]);
+            int after = idx + phrase.Length;
+            bool afterOk = after >= text.Length || !char.IsLetterOrDigit(text[after]);
+            if (beforeOk && afterOk) return true;
+            searchFrom = idx + 1;
+        }
+    }
+
     /// <summary>Tier-2 geometry for route-advisory location (spec 2026-07-13 §4):
     /// finds the cached-feed feature whose raw text contains the advisory's identity
     /// phrase and returns its first polygon ring as (lat,lon). Raw text is
@@ -199,7 +222,7 @@ public static class WeatherService
                 if (raw.Length == 0) raw = GetString(props, "rawSigmet");
                 string normalized = string.Join(" ",
                     raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-                if (!normalized.Contains(identityPhrase, StringComparison.OrdinalIgnoreCase))
+                if (!ContainsWordBoundaryMatch(normalized, identityPhrase))
                     continue;
 
                 // A matched feature with unusable geometry is SKIPPED, not terminal —
@@ -225,8 +248,32 @@ public static class WeatherService
         catch { return null; }
     }
 
-    /// <summary>Async shell: refreshes the two SIGMET feeds through their existing
-    /// TTL caches (no extra HTTP within the TTL) and searches airsigmet first
+    /// <summary>Refreshes the two SIGMET feeds through their existing TTL caches (no
+    /// extra HTTP within the TTL) and returns a locked snapshot of both raw GeoJSON
+    /// strings (empty string when a feed is unavailable). Shared by
+    /// <see cref="TryGetAdvisoryPolygonAsync"/> (one call per lookup) and
+    /// <see cref="RouteAdvisoryLocator"/>.ComputeLocationsAsync, which calls this
+    /// AT MOST ONCE per computation pass — lazily, only when some advisory actually
+    /// needs tier-2 geometry — instead of once per advisory (final-review Fix 2).</summary>
+    internal static async Task<(string Airsigmet, string Isigmet)> RefreshAndGetSigmetFeedsAsync()
+    {
+        await Task.WhenAll(
+            RefreshCacheAsync(ISIGMET_URL,   false, SIGMET_CACHE_MINUTES,
+                s => { lock (_cacheLock) _isigmetJson = s; },
+                () => { lock (_cacheLock) return _isigmetCacheTime; },
+                t => { lock (_cacheLock) _isigmetCacheTime = t; }),
+            RefreshCacheAsync(AIRSIGMET_URL, false, SIGMET_CACHE_MINUTES,
+                s => { lock (_cacheLock) _airsigmetJson = s; },
+                () => { lock (_cacheLock) return _airsigmetCacheTime; },
+                t => { lock (_cacheLock) _airsigmetCacheTime = t; })
+        );
+        string isigmet, airsigmet;
+        lock (_cacheLock) { isigmet = _isigmetJson; airsigmet = _airsigmetJson; }
+        return (airsigmet, isigmet);
+    }
+
+    /// <summary>Async shell: refreshes the two SIGMET feeds (via
+    /// <see cref="RefreshAndGetSigmetFeedsAsync"/>) and searches airsigmet first
     /// (US convective lives there), then isigmet. Thin by design — the pure core
     /// above carries the tests.</summary>
     internal static async Task<List<(double Lat, double Lon)>?> TryGetAdvisoryPolygonAsync(
@@ -234,18 +281,7 @@ public static class WeatherService
     {
         try
         {
-            await Task.WhenAll(
-                RefreshCacheAsync(ISIGMET_URL,   false, SIGMET_CACHE_MINUTES,
-                    s => { lock (_cacheLock) _isigmetJson = s; },
-                    () => { lock (_cacheLock) return _isigmetCacheTime; },
-                    t => { lock (_cacheLock) _isigmetCacheTime = t; }),
-                RefreshCacheAsync(AIRSIGMET_URL, false, SIGMET_CACHE_MINUTES,
-                    s => { lock (_cacheLock) _airsigmetJson = s; },
-                    () => { lock (_cacheLock) return _airsigmetCacheTime; },
-                    t => { lock (_cacheLock) _airsigmetCacheTime = t; })
-            );
-            string isigmet, airsigmet;
-            lock (_cacheLock) { isigmet = _isigmetJson; airsigmet = _airsigmetJson; }
+            var (airsigmet, isigmet) = await RefreshAndGetSigmetFeedsAsync();
             return (airsigmet.Length > 0 ? FindAdvisoryPolygonInGeoJson(airsigmet, identityPhrase) : null)
                 ?? (isigmet.Length  > 0 ? FindAdvisoryPolygonInGeoJson(isigmet,  identityPhrase) : null);
         }

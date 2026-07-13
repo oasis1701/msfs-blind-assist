@@ -2332,6 +2332,8 @@ public partial class MainForm
                 locations = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeLocationsAsync(
                     weatherActiveSky, advisories, locPos, spoken: true);
 
+            if (!IsHandleCreated || IsDisposed) return;
+
             foreach (string key in newKeys)
             {
                 // ALWAYS decoded when possible, independent of the radar form's decode

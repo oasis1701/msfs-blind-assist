@@ -15,8 +15,10 @@ internal static class AdvisoryGeometry
 
     /// <summary>Extracts the "WI lat lon - lat lon - …" polygon from an ICAO-style
     /// advisory body. Coordinates BEFORE the WI token (e.g. a VA SIGMET's PSN) are
-    /// ignored. Null when there is no WI token or fewer than 3 distinct vertices;
-    /// a duplicated closing vertex (polygon closure) is dropped.</summary>
+    /// ignored. Null when there is no WI token or fewer than 3 vertices after
+    /// dropping a duplicated closing vertex (polygon closure) — interior duplicate
+    /// vertices are not deduped; harmless downstream (ray-cast and nearest-vertex
+    /// math both tolerate a repeated point).</summary>
     internal static List<(double Lat, double Lon)>? ParseWiPolygon(string body)
     {
         if (string.IsNullOrEmpty(body)) return null;
@@ -55,7 +57,11 @@ internal static class AdvisoryGeometry
 
     /// <summary>Distance/bearing to the nearest VERTEX — deliberately the same
     /// approximation the Nearby Advisories box uses (WeatherService.ClosestPoint),
-    /// so the two boxes never disagree about one advisory's distance.</summary>
+    /// so the two boxes normally agree about one advisory's distance. Caveat: tier-2
+    /// geometry only ever supplies the FIRST ring of a MultiPolygon feature, while
+    /// the Nearby Advisories box scans every ring — a rare multi-area advisory can
+    /// therefore show a different nearest-vertex distance in the two boxes (recorded
+    /// follow-up, not fixed here).</summary>
     internal static (double DistanceNm, double BearingTrueDeg) NearestVertex(
         IReadOnlyList<(double Lat, double Lon)> vertices, double lat, double lon)
     {

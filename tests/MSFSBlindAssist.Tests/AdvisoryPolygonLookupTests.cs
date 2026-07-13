@@ -58,4 +58,22 @@ public class AdvisoryPolygonLookupTests
     [Fact]
     public void Returns_null_on_malformed_json()
         => Assert.Null(WeatherService.FindAdvisoryPolygonInGeoJson("{not json", "X"));
+
+    // Fixture for the word-boundary regression (final-review Fix 3): a raw whose
+    // only occurrence of the search phrase's text is as a PREFIX of a longer
+    // identity ("5E1" vs. "5E") — a naive substring Contains() false-positives here.
+    private const string PrefixCollisionFixture = """
+    {"type":"FeatureCollection","features":[
+      {"type":"Feature","properties":{"rawAirSigmet":"WSUS31 KKCI 131455 SIGE\nCONVECTIVE SIGMET 5E1\nVALID UNTIL 1700Z\nFL CSTL WTRS"},
+       "geometry":{"type":"Polygon","coordinates":[[[-79.0,28.0],[-78.0,28.0],[-78.0,30.0],[-79.0,28.0]]]}}
+    ]}
+    """;
+
+    [Fact]
+    public void Identity_match_is_word_boundary_not_substring()
+        // "CONVECTIVE SIGMET 5E" must NOT match a raw whose only occurrence is
+        // "CONVECTIVE SIGMET 5E1" — "5E" is a prefix of "5E1", so a plain
+        // Contains() false-positives (CLAUDE.md: EXACT identity match only).
+        => Assert.Null(WeatherService.FindAdvisoryPolygonInGeoJson(
+            PrefixCollisionFixture, "CONVECTIVE SIGMET 5E"));
 }
