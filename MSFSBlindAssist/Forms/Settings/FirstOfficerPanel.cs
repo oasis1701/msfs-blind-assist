@@ -19,6 +19,8 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private Label apAltitudeLabel = null!;
     private TextBox apAltitudeText = null!;
     private CheckBox autoLights10kCheck = null!;
+    private Label autoSeatbeltLabel = null!;
+    private ComboBox autoSeatbeltCombo = null!;
 
     public string TabTitle => "First Officer";
 
@@ -102,10 +104,34 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Turn the landing lights (and nose light where fitted) off climbing through 10,000 feet and on descending through it"
         };
 
+        autoSeatbeltLabel = new Label
+        {
+            Text = "Auto seat belt signs:",
+            Location = new Point(20, 265),
+            AutoSize = true,
+            AccessibleName = "Auto seat belt signs label"
+        };
+
+        autoSeatbeltCombo = new ComboBox
+        {
+            Location = new Point(200, 262),
+            Size = new Size(240, 23),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Auto seat belt signs mode",
+            AccessibleDescription = "When to switch the seat belt signs automatically using the aircraft's own control. Disabled; at 10,000 feet; or off at top of climb and on at top of descent."
+        };
+        autoSeatbeltCombo.Items.AddRange(new object[]
+        {
+            "Disabled",
+            "At 10,000 feet",
+            "Top of climb and top of descent"
+        });
+
         Controls.AddRange(new Control[]
         {
             titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
-            apAltitudeLabel, apAltitudeText, autoLights10kCheck
+            apAltitudeLabel, apAltitudeText, autoLights10kCheck,
+            autoSeatbeltLabel, autoSeatbeltCombo
         });
     }
 
@@ -119,6 +145,8 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         apAltitudeLabel.TabIndex = 5;
         apAltitudeText.TabIndex = 6;
         autoLights10kCheck.TabIndex = 7;
+        autoSeatbeltLabel.TabIndex = 8;
+        autoSeatbeltCombo.TabIndex = 9;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -129,6 +157,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoApCheck.Checked = settings.FOAutoApEnabled;
         apAltitudeText.Text = settings.FOAutoApEngageAltitudeAgl.ToString();
         autoLights10kCheck.Checked = settings.FOAutoLights10kEnabled;
+        autoSeatbeltCombo.SelectedIndex = Math.Clamp(settings.FOAutoSeatbeltMode, 0, 2);
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -152,6 +181,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoApEnabled = autoApCheck.Checked;
         settings.FOAutoApEngageAltitudeAgl = int.Parse(apAltitudeText.Text);
         settings.FOAutoLights10kEnabled = autoLights10kCheck.Checked;
+        settings.FOAutoSeatbeltMode = autoSeatbeltCombo.SelectedIndex < 0 ? 0 : autoSeatbeltCombo.SelectedIndex;
     }
 
     /// <summary>No transient resources (no test tone) — nothing to stop when this tab is left.</summary>

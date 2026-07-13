@@ -25,6 +25,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     private readonly AircraftActionExecutor _executor;
     private readonly AircraftStateEvaluator _state;
     private readonly ScreenReaderAnnouncer  _announcer;
+    private readonly SeatbeltAutomation _seatbelt;
 
     // -----------------------------------------------------------------------
     // Constants
@@ -60,6 +61,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         _executor  = executor;
         _state     = state;
         _announcer = announcer;
+        _seatbelt  = new SeatbeltAutomation(on => _executor.SetSeatbeltSign(on), announcer.AnnounceImmediate);
     }
 
     // -----------------------------------------------------------------------
@@ -85,6 +87,14 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _prevAbove10k = null;
         _prevInStd    = null;
+        _seatbelt.Reset();
+    }
+
+    /// <inheritdoc/>
+    public FoSeatbeltMode AutoSeatbeltMode
+    {
+        get => _seatbelt.Mode;
+        set => _seatbelt.Mode = value;
     }
 
     /// <summary>
@@ -100,6 +110,9 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
 
         // ---- 10,000 ft crossing (landing lights) ----
         Check10kCrossing(altitudeFt, climbing, descending);
+
+        // ---- Auto seat-belt-sign automation ----
+        _seatbelt.Update(altitudeFt, verticalSpeedFpm);
 
         // ---- Transition altitude / level (altimeters) ----
         if (_transAltFt > 0)

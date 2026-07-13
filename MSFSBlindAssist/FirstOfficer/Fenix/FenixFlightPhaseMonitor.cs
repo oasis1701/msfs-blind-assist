@@ -22,6 +22,7 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
 {
     private readonly FenixActionExecutor _executor;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly SeatbeltAutomation _seatbelt;
 
     private const int LandingLightThresholdFt = 10_000;
     private const int HysteresisFt = 300;
@@ -37,6 +38,7 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
     {
         _executor = executor;
         _announcer = announcer;
+        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.AnnounceImmediate);
     }
 
     public void SetThresholds(int transAltFt, int transLevelFt)
@@ -50,6 +52,14 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         _prevAbove10k = null;
         _prevInStd = null;
         _noTransReminderFired = false;
+        _seatbelt.Reset();
+    }
+
+    /// <inheritdoc/>
+    public FoSeatbeltMode AutoSeatbeltMode
+    {
+        get => _seatbelt.Mode;
+        set => _seatbelt.Mode = value;
     }
 
     public void Update(double altitudeFt, double verticalSpeedFpm)
@@ -60,6 +70,9 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         bool descending = verticalSpeedFpm < -150;
 
         Check10kCrossing(altitudeFt, climbing, descending);
+
+        // ---- Auto seat-belt-sign automation ----
+        _seatbelt.Update(altitudeFt, verticalSpeedFpm);
 
         if (_transAltFt > 0)
             CheckTransitionCrossing(altitudeFt, climbing, descending);

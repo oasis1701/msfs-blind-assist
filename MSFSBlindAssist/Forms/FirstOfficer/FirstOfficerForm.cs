@@ -124,6 +124,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _flowMgr     = new FlowManager<TExec, TState>(_stateEval, _actionExec, _checklistMgr, announcer);
         _flightPhaseMon = profile.CreatePhaseMonitor(_actionExec, _stateEval, announcer);
         _flightPhaseMon.AutoLights10kEnabled = settings.FOAutoLights10kEnabled;
+        _flightPhaseMon.AutoSeatbeltMode = (FoSeatbeltMode)settings.FOAutoSeatbeltMode;
         _foAutoMgr   = profile.CreateAutoManager(_actionExec, _stateEval, announcer, settings);
 
         // Wire services
@@ -202,6 +203,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     {
         _foAutoMgr.AutoFlapsEnabled    = _settings.FOAutoFlapsEnabled;
         _flightPhaseMon.AutoLights10kEnabled = _settings.FOAutoLights10kEnabled;
+        _flightPhaseMon.AutoSeatbeltMode = (FoSeatbeltMode)_settings.FOAutoSeatbeltMode;
     }
 
     /// <summary>Update the data manager reference when SimConnect reconnects.</summary>

@@ -33,6 +33,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     // the _prevInStd latch rather than querying the evaluator.
     private readonly AircraftStateEvaluator _state;
     private readonly ScreenReaderAnnouncer  _announcer;
+    private readonly SeatbeltAutomation _seatbelt;
 
     // -----------------------------------------------------------------------
     // Landing-light threshold constants
@@ -68,6 +69,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         _executor  = executor;
         _state     = state;
         _announcer = announcer;
+        _seatbelt  = new SeatbeltAutomation(on => _executor.SetSeatbeltSign(on), announcer.AnnounceImmediate);
     }
 
     // -----------------------------------------------------------------------
@@ -92,6 +94,14 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _prevAbove10k = null;
         _prevInStd    = null;
+        _seatbelt.Reset();
+    }
+
+    /// <inheritdoc/>
+    public FoSeatbeltMode AutoSeatbeltMode
+    {
+        get => _seatbelt.Mode;
+        set => _seatbelt.Mode = value;
     }
 
     /// <summary>
@@ -106,6 +116,9 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         bool descending = verticalSpeedFpm < -150;
 
         Check10kCrossing(altitudeFt, climbing, descending);
+
+        // ---- Auto seat-belt-sign automation ----
+        _seatbelt.Update(altitudeFt, verticalSpeedFpm);
 
         if (_transAltFt > 0)
             CheckTransitionCrossing(altitudeFt, climbing, descending);
