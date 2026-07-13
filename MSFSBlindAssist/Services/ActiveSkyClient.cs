@@ -54,8 +54,10 @@ public class ActiveSkyClient
     /// <summary>Body of the last successful /GetMode probe (e.g. "Live Real time mode
     /// (Active) (2026/7/10 1935z)"). Refreshed by every successful liveness probe —
     /// callers that just ran IsRunningAsync() can read it without another request.
-    /// Null until AS has been reached once this session.</summary>
-    public string? LastModeText { get; private set; }
+    /// Null until AS has been reached once this session. Setter is `internal` solely so
+    /// the test assembly can seed/assert it directly — same precedent as
+    /// <see cref="LastSuccessfulPort"/>. App code must never assign it.</summary>
+    public string? LastModeText { get; internal set; }
 
     private static readonly HttpClient _http;
 
@@ -175,6 +177,7 @@ public class ActiveSkyClient
         if (!Settings.SettingsManager.Current.ActiveSkyEnabled)
         {
             LastSuccessfulPort = null;
+            LastModeText = null;
             LastStatus = "disabled in settings";
             return false;
         }
@@ -186,6 +189,7 @@ public class ActiveSkyClient
         {
             if (await ProbePortAsync(cached) is { } cachedStatus && cachedStatus.success)
             {
+                if (cachedStatus.modeBody != null) LastModeText = cachedStatus.modeBody;
                 LastStatus = $"detected on port {cached}";
                 Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
                 return true;
@@ -200,7 +204,7 @@ public class ActiveSkyClient
         // CancellationToken so the timeout actually cancels the underlying
         // HTTP call rather than letting it idle on a connect attempt.
         var tasks = CandidatePortList.Select(p => ProbePortAsync(p)).ToList();
-        var results = new List<(int port, bool success, string err)>();
+        var results = new List<(int port, bool success, string err, string? modeBody)>();
 
         while (tasks.Count > 0)
         {
@@ -209,6 +213,11 @@ public class ActiveSkyClient
             var r = await done;
             if (r.success)
             {
+                // Only the WINNING probe may write LastModeText — abandoned
+                // ProbePortAsync tasks for the other candidate ports keep running
+                // in the background after we return here, and a late foreign-port
+                // 200 would otherwise overwrite the mode text after the fact.
+                if (r.modeBody != null) LastModeText = r.modeBody;
                 LastSuccessfulPort = r.port;
                 LastStatus = $"detected on port {r.port}";
                 Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
@@ -221,12 +230,13 @@ public class ActiveSkyClient
         // informative; subsequent ports tend to fail with the same reason).
         string firstErr = results.FirstOrDefault().err ?? "no candidate ports tried";
         LastSuccessfulPort = null;
+        LastModeText = null;
         LastStatus = $"not detected ({firstErr})";
         Log.Debug("ActiveSky", $"probe failed: {LastStatus} in {sw.ElapsedMilliseconds} ms");
         return false;
     }
 
-    private async Task<(int port, bool success, string err)> ProbePortAsync(int port)
+    private async Task<(int port, bool success, string err, string? modeBody)> ProbePortAsync(int port)
     {
         using var cts = new System.Threading.CancellationTokenSource(ProbeTimeout);
         try
@@ -235,23 +245,28 @@ public class ActiveSkyClient
             if (resp.IsSuccessStatusCode)
             {
                 // Free mode capture — the probe already fetched the body's request.
-                try { LastModeText = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim(); }
+                // The body is returned to the caller instead of written to
+                // LastModeText here — only the winning probe (decided by the
+                // caller) may write it; see the comment at the parallel-probe
+                // call site in IsRunningAsync.
+                string? body = null;
+                try { body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim(); }
                 catch { /* liveness result stands even if the body read fails */ }
-                return (port, true, "");
+                return (port, true, "", body);
             }
-            return (port, false, $"port {port}: HTTP {(int)resp.StatusCode}");
+            return (port, false, $"port {port}: HTTP {(int)resp.StatusCode}", null);
         }
         catch (OperationCanceledException)
         {
-            return (port, false, $"port {port}: timeout");
+            return (port, false, $"port {port}: timeout", null);
         }
         catch (HttpRequestException ex)
         {
-            return (port, false, $"port {port}: {ShortenHttpError(ex.Message)}");
+            return (port, false, $"port {port}: {ShortenHttpError(ex.Message)}", null);
         }
         catch (Exception ex)
         {
-            return (port, false, $"port {port}: {ex.GetType().Name}");
+            return (port, false, $"port {port}: {ex.GetType().Name}", null);
         }
     }
 
@@ -589,7 +604,9 @@ public class ActiveSkyClient
 
     /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
     /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
-    /// Null on malformed input; permissive per-field like ParseConditionsJson.</summary>
+    /// Null on malformed input; permissive per-field AND per-element like
+    /// ParseConditionsJson — a stray non-object array entry is skipped rather than
+    /// failing the whole parse.</summary>
     internal static List<AtmosphereLevel>? ParseAtmosphereJson(string json)
     {
         try
@@ -601,6 +618,7 @@ public class ActiveSkyClient
             var list = new List<AtmosphereLevel>();
             foreach (var el in arr.EnumerateArray())
             {
+                if (el.ValueKind != JsonValueKind.Object) continue;
                 list.Add(new AtmosphereLevel
                 {
                     AltitudeFt = (int)Math.Round(ReadDouble(el, "Altitude")),

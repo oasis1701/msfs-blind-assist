@@ -43,6 +43,15 @@ public class ActiveSkyAtmosphereTests
     }
 
     [Fact]
+    public void ParseAtmosphereJson_skips_a_non_object_element_instead_of_failing_the_parse()
+    {
+        string json = "{\"WeatherData\":[{\"Altitude\":\"31000\",\"WindDirection\":\"332.0\",\"WindSpeed\":\"9.0\",\"Temperature\":\"-33.4\"},\"stray\"]}";
+        var levels = ActiveSkyClient.ParseAtmosphereJson(json);
+        Assert.NotNull(levels);
+        Assert.Single(levels!);
+    }
+
+    [Fact]
     public void WindsAloftAltitudes_mirrors_the_open_meteo_window()
         => Assert.Equal(new[] { 31000, 32000, 33000, 34000, 35000, 36000, 37000, 38000, 39000, 40000, 41000 },
             ActiveSkyFormatting.WindsAloftAltitudes(36000));
