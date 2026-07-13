@@ -81,7 +81,13 @@ does not belong to the ambient wind being read out (at FL360 it produced "061 at
 21", the cruise wind glued to the ground gust six miles below — the 2026-07 fix). The
 destination half of the same announcement speaks the gust from the destination METAR's wind
 group (`VATSIMService.ParseMETARWind` captures `G##`), which is where an approach-relevant
-gust actually comes from. With the switch **off**, SimConnect is authoritative and correct —
+gust actually comes from. The same parser handles two edge cases in that wind group
+(2026-07-13 fix): a METAR reporting speed in metres per second (`24004MPS`, common outside the
+US/UK) has its direction/speed AND gust converted to knots (`× 1.94384`, rounded) instead of
+silently failing the wind match entirely — the old regex only recognized `KT`; and `G//`
+(some stations' convention for an unmeasurable/estimated gust) degrades to "no gust" rather
+than failing the whole match, so the base direction/speed still comes through even when the
+gust figure itself is unusable. With the switch **off**, SimConnect is authoritative and correct —
 full stop.
 
 The two sources can legitimately diverge: AS applies its own wind smoothing/interpolation, so
@@ -102,11 +108,20 @@ the unchanged Open-Meteo path (`WeatherService.GetWindsAloftAsync`) rather than 
 outright. With the switch **off**, Open-Meteo is used directly, exactly as before. Both paths
 end with a visible source tag line — `"Source: ActiveSky"` (`ActiveSkyFormatting.
 BuildWindsAloftText`) or `"Source: Open-Meteo"` — so the reader always knows which engine
-answered. The altitude window itself — ±5,000 ft of the aircraft in 1,000-ft steps, clamped at
-0 — must stay identical between the two sources: `ActiveSkyFormatting.WindsAloftAltitudes`
-(`Services/ActiveSkyFormatting.cs`) mirrors the window `WeatherService.ParseWindsAloft` builds
-for the Open-Meteo path, so switching source never changes which levels the pilot hears — only
-who answered for them.
+answered. The header line above the level table is worded honestly per source rather than
+shared text (2026-07-13 fix): `BuildWindsAloftText` reads `"Aircraft: {alt} ft | current
+winds:"` — it's a live AS query, sim-truth for right now — while the Open-Meteo builder
+(`WeatherRadarForm.FetchWindsAloftAsync`) keeps `"… | forecast winds:"`, because Open-Meteo
+genuinely is a forecast model, not an observation; calling AS's data "forecast" would have been
+dishonest about what the pilot is hearing. The altitude window itself — ±5,000 ft of the
+aircraft in 1,000-ft steps, clamped at 0 — must stay identical between the two sources, and as
+of 2026-07-13 that's enforced structurally rather than by convention: `WeatherService.
+ParseWindsAloft` (the Open-Meteo path, `Services/WeatherService.cs`) now CALLS the single shared
+`ActiveSkyFormatting.WindsAloftAltitudes` (`Services/ActiveSkyFormatting.cs`) instead of
+recomputing its own copy of the ±5,000/1,000-ft-step math, so switching source never changes
+which levels the pilot hears — only who answered for them — and the two windows can no longer
+drift apart by editing one copy and forgetting the other. Never reintroduce an inline copy of
+this window in either path.
 
 ## 4. Precipitation source precedence
 
@@ -278,15 +293,30 @@ when the switch is off.
 
 **(a) Mode status line + mode-change announce.** `ActiveSkyClient.ProbePortAsync` (`Services/
 ActiveSkyClient.cs`) — the same GET that already runs for every liveness probe — captures the
-`/GetMode` response body into `LastModeText` for free (zero extra requests). `ActiveSkyFormatting
-.ParseModeText` (`Services/ActiveSkyFormatting.cs`) strips the trailing `"(Active)"`/
+`/GetMode` response body for free (zero extra requests), but only the WINNING probe writes it
+into `LastModeText` (2026-07-13 fix): `IsRunningAsync`'s parallel candidate-port race fires
+`ProbePortAsync` against all three candidate ports at once, and the abandoned tasks for the
+losing ports keep running in the background after the caller returns on the first success — if
+`ProbePortAsync` itself wrote `LastModeText`, a late 200 from one of those abandoned tasks could
+silently overwrite the mode text after the fact with a foreign port's body. `ProbePortAsync` now
+just returns the body alongside its success/port/error tuple, and only the call site that
+observes the winning result assigns `LastModeText`. `LastModeText` is also nulled in the same two
+branches that already null `LastSuccessfulPort` — the disabled-switch guard and the
+all-candidates-failed path — closing the same enable→discover→disable leak (§1) for the mode
+text: a "Live Real time mode (Active)" string captured while AS was reachable must not survive
+AS going away or the switch being turned off. `ActiveSkyFormatting.ParseModeText`
+(`Services/ActiveSkyFormatting.cs`) strips the trailing `"(Active)"`/
 `"(Inactive)"` marker and the `"(...z)"` weather-clock group out of that raw text; `FormatModeLine`
 renders it as `"ActiveSky: Live Real time mode, weather time 1935Z"`. `WeatherRadarForm.
 RefreshAsync` (`Forms/WeatherRadarForm.cs`) shows this in `_asModeBox` at the top of the form — a
 **read-only TextBox, deliberately not a Label**: labels have no tab stop, so a screen-reader user
 could never reach the mode line by keyboard (Robin's 2026-07-11 review finding). It substitutes
 `"ActiveSky: {LastStatus}"` when AS is enabled but unreachable, and hides the box entirely when
-the switch is off.
+the switch is off. The write itself goes through `DisplayText.SetPreserveCaret`, not a raw
+`Text =` assignment (2026-07-13 fix): the rendered line embeds the AS weather clock
+(`weather time 1935Z`), which advances every minute, so a plain reassignment would reset the
+NVDA review cursor to position 0 on every clock roll while a user is mid-read of the line — the
+same reasoning as the `DisplayListBox` reconciliation in §11, applied to a single-line control.
 
 The *spoken* side is separate: `ActiveSkyModeTracker.Observe` (`Services/
 ActiveSkyModeTracker.cs`) is pure decision logic wired into `ActiveSkyWeatherMonitor.OnTickAsync`
@@ -353,22 +383,58 @@ FetchProfileAsync` (`Forms/WeatherRadarForm.cs`) is AS-only by construction: it 
 `"unavailable"` immediately when `_activeSkyAvailable != true`, with no SimConnect fallback —
 there is no vertical-profile data source outside ActiveSky.
 
+Two 2026-07-13 review fixes tighten the edge cases here. **A well-formed but windless response
+reads "unavailable," never a positive "no cloud layers" claim**: a genuine `/GetWeatherInfoXml`
+response always carries the full 13-level wind ladder (live-verified 2026-07-13), so a parsed
+`VerticalProfile` with zero wind layers is schema-drifted or empty, not a real answer.
+`ActiveSkyFormatting.ProfileLooksValid` (`p.WindLayers.Count > 0`) gates `FetchProfileAsync`
+alongside the existing `profile == null` check, so that case now also short-circuits to
+`"unavailable"` instead of falling through into `BuildProfileNarrative`, which would otherwise
+render a reassuring-sounding "No cloud layers" line for a response that never actually answered.
+**A cloud layer carrying a hazard phrase is never dropped for an out-of-vocabulary Coverage
+value**: the "cloud coverage is oktas" rule above (1-2 few, 3-4 scattered, 5-7 broken, 8
+overcast) still governs `CoverageWord`, but a layer whose `CoverageOktas` falls outside that
+range is no longer excluded outright — if it carries an icing, precip, or turbulence phrase it
+still renders, as `"Unknown coverage, {base} to {top} feet, {hazard}"`, because dropping a
+severe-icing layer over a bad Coverage byte would hide the one thing the briefing exists to say.
+A layer with neither a recognizable coverage nor any hazard phrase stays dropped exactly as
+before, and an empty cloud-layer list after filtering still renders `"No cloud layers"`.
+
 **(d) Forecast combo.** `ActiveSkyFormatting.ForecastPresets` (`Services/
 ActiveSkyFormatting.cs`) is the fixed offset table — a full hourly ladder, Now through
 +6 hours, i.e. 0/3600/7200/10800/14400/18000/21600 seconds — consumed both to populate `METARReportForm`'s
-`forecastCombo` (`Forms/METARReportForm.cs`) and, in `FetchMETAR`, as the `timeoffset` argument
+`forecastCombo` (`Forms/METARReportForm.cs`) and, as the `timeoffset` argument
 to `ActiveSkyClient.GetMetarAsync`. The combo sits BELOW the AS METAR box, last in the tab order
 before Close (Robin's 2026-07-12 review), so Tab/Shift+Tab hops directly between the AS text
 and the offset selector. `BuildAsMetarCaption` renders the AS METAR box's label so it
 always states which offset is showing — `"ActiveSky METAR:"` at the `Now` preset,
 `"ActiveSky METAR (+4 hours):"` otherwise — so a screen-reader user tabbing between the label
-and the box never has to guess which forecast they're reading. The **VATSIM box is always
+and the box never has to guess which forecast they're reading; `BuildAsMetarAccessibleName`
+puts the same fact into the box's own `AccessibleName` (`"ActiveSky METAR, +2 hours"`,
+2026-07-13 fix) since a Label's caption text is invisible to a screen reader that has focused the
+box itself rather than the label preceding it — a blind pilot arrowing straight to the box with
+no label read gets the offset either way. The **VATSIM box is always
 current**: `FetchMETAR`'s `vatsimTask` calls `VATSIMService.GetMETARAsync(icao)` with no offset
 parameter at all, regardless of the combo's selection — VATSIM has no forecast concept, and the
 combo only ever parameterizes the AS fetch. Both the forecast combo and the AS METAR section
 share one visibility flag (`asMetarTextBox.Visible`, set once on `Load` from
 `_activeSky.IsRunningAsync()`), so when AS is off or unreachable at open time the form reverts
 to its original compact VATSIM-only layout.
+
+`RefreshAsMetarAsync` (`Forms/METARReportForm.cs`) is the SINGLE writer of the AS METAR
+box/caption/AccessibleName (2026-07-13, two fix passes) — called both from the combo's
+`SelectedIndexChanged` (an AS-only refetch: it never re-hits VATSIM and never disables
+`icaoTextBox`, since WinForms yanks focus off a disabled control) and from `FetchMETAR`'s
+Enter-key full fetch, which now delegates its entire AS leg to it rather than fetching AS
+inline. A single-flight `_asFetching` latch plus an `_asPending` replay flag means a combo step
+(or a second Enter-key fetch) landing while an AS fetch is already in flight is REPLAYED, never
+dropped: the internal `do`/`while` loop re-reads the LIVE `forecastCombo.SelectedIndex` on each
+iteration, so the box, its caption, and its `AccessibleName` always converge on wherever the
+combo ends up resting, not wherever it was when the fetch started. This also closes a race the
+first fix pass left open: because `FetchMETAR` originally fetched AS inline instead of through
+the latch, a slower pre-existing combo-triggered fetch could land its stale write AFTER a newer
+full-fetch write — routing both call sites through the one latch means overlapping fetches
+always self-serialize and the box can never end up mislabeled by a stale concurrent write.
 
 A fifth surface — an `ActiveSkyClient.LastStatus` line in the Weather settings panel — shipped
 on this branch and was then REMOVED on Robin's 2026-07-13 review: a connection-status readout
@@ -392,7 +458,12 @@ announcers ride the existing 60-second `ActiveSkyWeatherMonitor` tick and the ex
 `Conditions.AmbientTurbulence` (AS's 1–100 value), read once per `ActiveSkyWeatherMonitor
 .OnTickAsync` (`Services/ActiveSkyWeatherMonitor.cs`) right after the conditions fetch
 succeeds — before the weather-refresh/throttle logic, so a category change is never absorbed
-by the "unchanged weather" or interval-throttle branches. Category boundaries are copied
+by the "unchanged weather" or interval-throttle branches. The observe is also placed BEFORE the
+tick's `positionMetar` early-return (2026-07-13 fix): it originally sat after that check, so a
+single blank/failed `GetPositionMetarAsync` call — an unrelated fetch that has nothing to do
+with turbulence — could silently delay a real category boundary crossing to the next tick;
+moving the turbulence observe up decouples it from position-METAR fetch success entirely, since
+its only real data dependency is `conditions`. Category boundaries are copied
 **verbatim** from the Weather Radar's `CategorizeTurbulence` (§8): ≤25 smooth, ≤50 light, ≤75
 moderate, ≤90 severe, >90 extreme — the same FAA AIM 7-1-23 wording, so the spoken category
 always matches what the radar form's Turbulence line would show for the same value.
@@ -419,10 +490,13 @@ returns null — nothing is spoken about the turbulence the app happened to find
 baseline **survives AS-unreachable gaps**: `OnTickAsync`'s early-return path (AS not detected)
 resets the monitor's own refresh-detection state but never calls `Reset()` on the turbulence
 tracker, so a genuine category change that happened while AS was unreachable still announces
-once AS comes back. `Reset()` is called only on aircraft switch
+once AS comes back. `Reset()` is called on BOTH aircraft switch
 (`MainForm.AircraftSwitch.cs SwitchAircraft`, via `activeSkyWeatherMonitor
-?.ResetTurbulenceTracker()`) — a stale category from the previous airframe must not read as a
-"change" on the new one. Gated on `AnnounceTurbulenceEnabled`, checked per tick (no
+?.ResetTurbulenceTracker()`) AND SimConnect reconnect (`OnConnectionStatusChanged`'s Connected
+branch, 2026-07-13 fix — the same rationale as the icing tracker's reconnect reset in (b): flight
+1 can end in moderate turbulence, and without a reconnect re-baseline flight 2's first calm poll
+would announce a phantom "Smooth air" transition) — a stale category from the previous
+flight/airframe must not read as a "change" on the new one. Gated on `AnnounceTurbulenceEnabled`, checked per tick (no
 `ApplyRuntimeSettings` wiring needed) and — because the data source is AS-only — implicitly on
 `ActiveSkyWeatherMonitor.ShouldRun` (§5): with AS off or auto-announce off, the tick that would
 call `Observe` never runs at all.
@@ -440,9 +514,12 @@ sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "STRUCTURAL ICE PCT", "per
 landing in `AmbientWeatherData.StructuralIcePct` (`SimConnect/SimConnectManager.cs`) and
 arriving on the same 30-second `RequestWeatherInfo` ambient tick §2's table describes — the
 same 3-second timeout/null-skip protection against a stalled sim applies, so no separate
-polling was added. `AnnounceAmbientChanges` (`MainForm.Announcers.cs`) clamps a `NaN` or
-negative sample to 0 before calling `Observe`, so a bad read can't corrupt the tracker's
-hysteresis state.
+polling was added. `AnnounceAmbientChanges` (`MainForm.Announcers.cs`) SKIPS a `NaN` or negative
+sample entirely — it does not call `Observe` at all that tick (2026-07-13 fix, superseding an
+earlier clamp-to-0 approach): clamping mid-episode would itself have spoken a phantom "Icing
+conditions cleared" as the clamped 0 crossed the falling threshold, then re-announced the onset
+on the next good sample — a bad read must leave the tracker's hysteresis state untouched, not
+manufacture a false clear/re-onset pair.
 
 Thresholds are **copied verbatim from the FBW A380's sim-verified constants**
 (`FlyByWireA380Definition.cs`, `ICING_DETECT_RATIO`/`ICING_CLEAR_RATIO`) — 0.05 rising, 0.02
@@ -541,12 +618,26 @@ conversion — it stays the read-only TextBox from the 2026-07-11 keyboard-reach
 a one-line list adds nothing, and that box already has its own carve-out from the original
 consistency pass.
 
+The form's own fetch-status readout got the same keyboard-reachability fix, one review pass
+later (2026-07-13): `_statusLabel` (a `Label`) became `_statusBox`, a read-only `TextBox` at
+`TabIndex 10` — this is the ONLY surface for a fetch's error text and the "Last updated"
+freshness stamp, including errors raised by the unattended 30 s auto-refresh tick, and a Label
+would have made both unreachable by keyboard exactly like the mode box before it. `SetStatus`
+writes it through `DisplayText.SetPreserveCaret` rather than a raw `Text =` assignment too, for
+the same caret-preservation reason as the mode box (§9a).
+
 **The Refresh button is deliberately never disabled**, even mid-fetch: `RefreshAsync` used to
 set `_refreshButton.Enabled = false` for the duration of a fetch, but WinForms moves focus off a
 disabled control automatically — with a 30 s timer now running unconditionally, that would steal
 focus from a user resting on the Refresh button every single tick. The `Enabled` toggle (both
 the disable and the `finally` re-enable) was removed entirely; the pre-existing `_isFetching`
-guard already makes a mid-fetch click or tick a harmless no-op.
+guard already makes a mid-fetch click or tick a harmless no-op. That no-op is now a REPLAY, not
+a drop (2026-07-13 fix): a manual F5 that lands while the 30 s timer's own `RefreshAsync` is
+already in flight sets `_pendingForceRefresh |= forceRefresh` instead of returning silently, and
+the `finally` block that clears `_isFetching` fires one forced pass
+(`RefreshAsync(forceRefresh: true)`) if that flag is set — so a pilot who presses Refresh mid-tick
+still gets one guaranteed uncached pull, it just lands right after the in-flight tick finishes
+instead of being silently absorbed by it.
 
 ## 12. En-route advisories (ActiveSky route SIGMETs/AIRMETs) (2026-07)
 
@@ -761,12 +852,19 @@ aircraft's own position, then resolves each advisory's geometry:
   discipline) — and then `FindAdvisoryPolygonInGeoJson(geojson, identityPhrase)`, which finds the
   cached feature whose raw text contains the advisory's decoded `Identity` phrase at a WORD
   BOUNDARY (not a bare substring — a phrase that is a prefix of a longer identity in the same feed,
-  e.g. "CONVECTIVE SIGMET 5E" vs. "…5E1", must not match) and returns its first polygon ring. The
-  feed refresh is fetched LAZILY and at most ONCE per computation pass — the standalone
-  `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)` (still used by any other caller)
-  remains a thin per-call delegate to the same refresh+snapshot logic, but `ComputeLocationsAsync`
-  calls the refresh directly so a pass with several tier-2 advisories doesn't re-fetch per advisory
-  (final-review Fix 2).
+  e.g. "CONVECTIVE SIGMET 5E" vs. "…5E1", must not match) and returns its first polygon ring. A
+  matched feature whose geometry is unusable — an unrecognized `type`, fewer than 3 vertices, or a
+  malformed/EMPTY `coordinates` array — is SKIPPED per-feature, not terminal (2026-07-13 fix):
+  `FindAdvisoryPolygonInGeoJson` wraps the per-feature geometry walk so a bad shape just moves on
+  to the next candidate feature with the same identity match, instead of throwing out of the loop
+  and failing the whole lookup for that advisory. `RefreshAndGetSigmetFeedsAsync` together with
+  `FindAdvisoryPolygonInGeoJson` are now the ENTIRE tier-2 API, called from `ComputeLocationsAsync`
+  at most ONCE per computation pass — lazily, only when some advisory actually needs tier-2
+  geometry — instead of once per advisory (final-review Fix 2). The standalone
+  `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)` thin per-call wrapper this tier
+  originally routed through was dead code once `ComputeLocationsAsync` started calling the refresh
+  directly, and was deleted on 2026-07-13 — there is no other tier-2 entry point, and no other
+  caller to keep it alive for.
 - **The positional probe is the authoritative inside-check**, independent of whether geometry
   resolved. Per the §13 bundling finding, `ComputeLocationsAsync` treats ONLY the first advisory
   parsed from the probe response (`ParseRouteAdvisories(probeRaw)[0]`) as position-matched —
