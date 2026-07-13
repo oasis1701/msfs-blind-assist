@@ -180,6 +180,82 @@ public static class WeatherService
         }
     }
 
+    /// <summary>Tier-2 geometry for route-advisory location (spec 2026-07-13 §4):
+    /// finds the cached-feed feature whose raw text contains the advisory's identity
+    /// phrase and returns its first polygon ring as (lat,lon). Raw text is
+    /// whitespace-normalized before matching (feed raws contain newlines). Pure;
+    /// null on no match / no usable geometry / malformed JSON.</summary>
+    internal static List<(double Lat, double Lon)>? FindAdvisoryPolygonInGeoJson(
+        string geojson, string identityPhrase)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(geojson);
+            if (!doc.RootElement.TryGetProperty("features", out var features)) return null;
+            foreach (var f in features.EnumerateArray())
+            {
+                if (!f.TryGetProperty("properties", out var props)) continue;
+                string raw = GetString(props, "rawAirSigmet");
+                if (raw.Length == 0) raw = GetString(props, "rawSigmet");
+                string normalized = string.Join(" ",
+                    raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+                if (!normalized.Contains(identityPhrase, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // A matched feature with unusable geometry is SKIPPED, not terminal —
+                // a later feature may match the same identity with a real polygon
+                // (pinned by Matched_feature_without_geometry_is_skipped_not_terminal).
+                if (!f.TryGetProperty("geometry", out var geom)
+                    || geom.ValueKind != JsonValueKind.Object
+                    || !geom.TryGetProperty("type", out var gt)) continue;
+                JsonElement ring;
+                switch (gt.GetString())
+                {
+                    case "Polygon":      ring = geom.GetProperty("coordinates")[0]; break;
+                    case "MultiPolygon": ring = geom.GetProperty("coordinates")[0][0]; break;
+                    default: continue;
+                }
+                var verts = new List<(double Lat, double Lon)>();
+                foreach (var p in ring.EnumerateArray())
+                    verts.Add((p[1].GetDouble(), p[0].GetDouble()));   // GeoJSON is [lon,lat]
+                if (verts.Count >= 3) return verts;
+            }
+            return null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Async shell: refreshes the two SIGMET feeds through their existing
+    /// TTL caches (no extra HTTP within the TTL) and searches airsigmet first
+    /// (US convective lives there), then isigmet. Thin by design — the pure core
+    /// above carries the tests.</summary>
+    internal static async Task<List<(double Lat, double Lon)>?> TryGetAdvisoryPolygonAsync(
+        string identityPhrase)
+    {
+        try
+        {
+            await Task.WhenAll(
+                RefreshCacheAsync(ISIGMET_URL,   false, SIGMET_CACHE_MINUTES,
+                    s => { lock (_cacheLock) _isigmetJson = s; },
+                    () => { lock (_cacheLock) return _isigmetCacheTime; },
+                    t => { lock (_cacheLock) _isigmetCacheTime = t; }),
+                RefreshCacheAsync(AIRSIGMET_URL, false, SIGMET_CACHE_MINUTES,
+                    s => { lock (_cacheLock) _airsigmetJson = s; },
+                    () => { lock (_cacheLock) return _airsigmetCacheTime; },
+                    t => { lock (_cacheLock) _airsigmetCacheTime = t; })
+            );
+            string isigmet, airsigmet;
+            lock (_cacheLock) { isigmet = _isigmetJson; airsigmet = _airsigmetJson; }
+            return (airsigmet.Length > 0 ? FindAdvisoryPolygonInGeoJson(airsigmet, identityPhrase) : null)
+                ?? (isigmet.Length  > 0 ? FindAdvisoryPolygonInGeoJson(isigmet,  identityPhrase) : null);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Services", $"Advisory polygon lookup error: {ex.Message}");
+            return null;
+        }
+    }
+
     // ── PIREPs ──────────────────────────────────────────────────────────────
 
     public static async Task<List<WeatherPirep>> GetNearbyPirepsAsync(
