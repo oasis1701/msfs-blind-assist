@@ -33,6 +33,13 @@ public partial class METARReportForm : Form
         private readonly ActiveSkyClient _activeSky = new();
         private bool _asFetching;
         private bool _asPending;
+        // The ICAO FetchMETAR last kicked off a fetch for. RefreshAsMetarAsync reads
+        // THIS, never the live icaoTextBox.Text — the combo/loop parameterizes the
+        // LAST FETCHED lookup. A live textbox read would let a user type a new ICAO
+        // without pressing Enter, then arrow the combo, and split the two METAR boxes
+        // across different airports (AS box refetches the new ICAO, VATSIM box still
+        // shows the old one).
+        private string? _lastFetchedIcao;
 
         public METARReportForm(ScreenReaderAnnouncer announcer)
         {
@@ -127,7 +134,11 @@ public partial class METARReportForm : Form
                 // handles a step made while a full fetch's AS leg is already in flight — it
                 // either joins the in-flight loop via _asPending or runs a harmless AS-only
                 // refetch in parallel with the VATSIM leg.
-                if (icaoTextBox.Text.Trim().Length == 4)
+                // Gate on _lastFetchedIcao (not the live textbox) so a combo step before ANY
+                // fetch — or after typing a new, not-yet-fetched ICAO — is a no-op here too;
+                // RefreshAsMetarAsync's own bail is authoritative, this just avoids a
+                // pointless awaited call into it.
+                if (_lastFetchedIcao != null)
                     await RefreshAsMetarAsync();
             };
 
@@ -262,13 +273,15 @@ public partial class METARReportForm : Form
             }
         }
 
-        /// <summary>The single writer of the AS METAR box/caption/AccessibleName — called both
-        /// by the forecast combo (AS-only refetch: never re-hits VATSIM, never disables inputs
-        /// since WinForms yanks focus off a disabled control, never steals focus) and by
-        /// FetchMETAR's full-fetch AS leg. A step made while a fetch is in flight is REPLAYED
-        /// (not dropped) by the do/while — the box and its caption/AccessibleName always
-        /// converge on the final combo position, so the caption can never mislabel, and a
-        /// slower concurrent fetch can never land a stale write after a newer one.</summary>
+        /// <summary>The single writer of the AS METAR box/caption/AccessibleName — including
+        /// the initial "Loading…" placeholder — called both by the forecast combo (AS-only
+        /// refetch: never re-hits VATSIM, never disables inputs since WinForms yanks focus off
+        /// a disabled control, never steals focus) and by FetchMETAR's full-fetch AS leg. A
+        /// step made while a fetch is in flight is REPLAYED (not dropped) by the do/while —
+        /// the box and its caption/AccessibleName always converge on the final combo position,
+        /// so the caption can never mislabel, and a slower concurrent fetch can never land a
+        /// stale write after a newer one. Fetches for `_lastFetchedIcao`, not the live
+        /// textbox — see that field's comment.</summary>
         private async Task RefreshAsMetarAsync()
         {
             if (_asFetching) { _asPending = true; return; }
@@ -278,8 +291,9 @@ public partial class METARReportForm : Form
                 do
                 {
                     _asPending = false;
-                    string icao = icaoTextBox.Text.Trim();
-                    if (icao.Length != 4 || !asMetarTextBox.Visible) return;
+                    string? icao = _lastFetchedIcao;
+                    if (icao == null || icao.Length != 4 || !asMetarTextBox.Visible) return;
+                    asMetarTextBox.Text = "Loading METAR data from ActiveSky...";
                     int presetIndex = Math.Clamp(Math.Max(0, forecastCombo.SelectedIndex),
                         0, ActiveSkyFormatting.ForecastPresets.Length - 1);
                     string? asMetar = await _activeSky.GetMetarAsync(
@@ -292,7 +306,14 @@ public partial class METARReportForm : Form
             {
                 Log.Debug("Forms", $"Error fetching AS METAR: {ex.Message}");
             }
-            finally { _asFetching = false; }
+            finally
+            {
+                // Defense-in-depth: GetMetarAsync catches internally so _asPending should
+                // never be left set when an exception escapes the do/while, but clear it
+                // here too so a latched pending replay can never go stale.
+                _asFetching = false;
+                _asPending = false;
+            }
         }
 
         private void ApplyAsMetar(string icao, int presetIndex, string? asMetar)
@@ -322,12 +343,14 @@ public partial class METARReportForm : Form
                 return;
             }
 
+            _lastFetchedIcao = icao;
+
             try
             {
                 statusLabel.Text = "Fetching METAR...";
                 metarTextBox.Text = "Loading METAR data from VATSIM...";
-                if (asMetarTextBox.Visible)
-                    asMetarTextBox.Text = "Loading METAR data from ActiveSky...";
+                // The AS "Loading…" placeholder is written by RefreshAsMetarAsync itself
+                // (the single writer of the AS box) at the top of its loop, not here.
 
                 // Disable input during fetch
                 icaoTextBox.Enabled = false;
