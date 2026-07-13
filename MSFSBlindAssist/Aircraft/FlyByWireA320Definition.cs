@@ -2492,29 +2492,34 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // L:vars (A32NX_AUTOTHRUST_TLA:n precedent).
         // Silent caches — their speech rides the A32NX_TCAS_STATE monitor entry,
         // so they're hidden from the Ctrl+M list (ExcludeFromMonitorManager).
+        // ⚠️ Units MUST be "number" (raw), NEVER "feet per minute": FBW writes the
+        // VSPEED bands + rate-to-maintain already in fpm but UNITLESS, so a velocity-unit
+        // data-def read multiplies by 196.85 (native assumed m/s) — a 1500-fpm target
+        // spoke "295276". The "feet per minute" label is hardcoded in TcasRaGuidance.
+        // (Same bug + fix as the A380; do not re-add a velocity unit here.)
         ["A32NX_TCAS_VSPEED_GREEN:1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_GREEN:1", DisplayName = "TCAS target vertical speed minimum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_GREEN:2"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_GREEN:2", DisplayName = "TCAS target vertical speed maximum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_RED:1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_RED:1", DisplayName = "TCAS avoid vertical speed minimum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_RED:2"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_RED:2", DisplayName = "TCAS avoid vertical speed maximum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_RA_CORRECTIVE"] = new SimConnect.SimVarDefinition
         {
@@ -2538,7 +2543,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_TCAS_RA_RATE_TO_MAINTAIN", DisplayName = "TCAS RA rate to maintain",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         // EGPWS (GPWS/TAWS) escape-maneuver callouts — enum verified against the FBW EGPWS source.
         ["A32NX_GPWS_AURAL_OUTPUT"] = new SimConnect.SimVarDefinition
