@@ -209,8 +209,8 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     /// <summary>Write one control by its A320 varKey (checklist CheckAction path).</summary>
     public Task<bool> Set(string varKey, int value) => DispatchAsync(varKey, value);
 
-    /// <summary>Fenix/A380-parity hold for the per-source fire TEST L:vars.</summary>
-    public const int FireTestHoldMs = 3000;
+    /// <summary>Hold time for the per-source fire TEST L:vars (user-set 1.5 s).</summary>
+    public const int FireTestHoldMs = 1500;
 
     /// <summary>Held fire test: write the per-source A32NX_FIRE_TEST_{APU,ENG1,ENG2} L:var
     /// 1 → hold → 0 through the def's dedicated branch (UiVariableSet.cs), which on the
