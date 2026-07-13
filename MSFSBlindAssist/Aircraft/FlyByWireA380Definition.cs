@@ -1155,9 +1155,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // speed equivalent exists). PRIM1 ARINC429 words, knots. RENAMED 2026-07 from the
         // FAC to the PRIM — FBW #10797 deleted the A380 FAC computer and moved the Flight-
         // Envelope function into the PRIMs (PrimFePublisher), so A32NX_FAC_1_V_* → A32NX_PRIM_1_V_*
-        // (indexed 1/2/3; PRIM 1 = captain). Same ARINC429-knots encoding, decoded in the PFD
-        // via Arinc429LocalVarConsumerSubject exactly as the FAC words were. On an older A380X
+        // (indexed 1/2/3). Same ARINC429-knots encoding, decoded in the PFD via
+        // Arinc429LocalVarConsumerSubject exactly as the FAC words were. On an older A380X
         // build without #10797 these read NCD → "not available" (graceful).
+        // KNOWN LIMITATION — PRIM 1 single-sourced: the real PFD (PrimChoiceProvider.tsx)
+        // selects the MASTER PRIM via bit 21 of A32NX_PRIM_{1,2,3}_FCTL_LAW_STATUS_WORD
+        // (priority 1→2→3, default 1 when none valid), so with PRIM 1 failed it keeps
+        // showing FE data from PRIM 2/3 while these reads go "not available". Do NOT add
+        // SSM-based failover blind: whether a dead PRIM's FE words go FW/NCD or freeze
+        // stale-but-valid is unverified — needs a live PRIM-failure scenario first.
         ArincKt("PFD_VALPHAPROT", "A32NX_PRIM_1_V_ALPHA_PROT", "Alpha Prot speed");
         ArincKt("PFD_VALPHAMAX", "A32NX_PRIM_1_V_ALPHA_LIM", "Alpha Max speed");
         ArincKt("PFD_VSW", "A32NX_PRIM_1_V_STALL_WARN", "Stall Warning speed");
@@ -1170,11 +1176,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincKt("PFD_SPEEDTREND", "A32NX_PRIM_1_SPEED_TREND", "Speed trend");
         // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
         // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
-        void ArincUnit(string key, string name, string display, string unit) => vars[key] = new SimVarDefinition
+        void ArincUnit(string key, string name, string display, string unit, string fmt = "0") => vars[key] = new SimVarDefinition
         {
             Name = name, DisplayName = display, Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.OnRequest,
-            IsArinc429 = true, Arinc429Unit = unit, Arinc429Format = "0",
+            IsArinc429 = true, Arinc429Unit = unit, Arinc429Format = fmt,
             Arinc429NotAvailableText = "not available"
         };
         ArincUnit("PFD_RA", "A32NX_RA_1_RADIO_ALTITUDE", "Radio altitude", "feet");
@@ -1183,9 +1189,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Flight path angle from the PRIM FE bus (FBW #10797; live-verified Normal Op on the
         // ground, both ~0°). GAMMA_A = aerodynamic FPA (the actual air-mass flight-path angle,
         // the FPV/bird); GAMMA_T = energy (track) angle including thrust/drag energy state.
-        // ARINC429 degrees, same SSM-gated decode.
-        ArincUnit("PFD_GAMMA_A", "A32NX_PRIM_1_GAMMA_A", "Flight path angle", "degrees");
-        ArincUnit("PFD_GAMMA_T", "A32NX_PRIM_1_GAMMA_T", "Energy flight path angle", "degrees");
+        // ARINC429 degrees, same SSM-gated decode. Tenth-degree format: FPA lives in the
+        // ±0.5–4° range, so integer degrees would erase most of the signal — matches the
+        // FCU FPA readout's "{0.0} degrees" precision.
+        ArincUnit("PFD_GAMMA_A", "A32NX_PRIM_1_GAMMA_A", "Flight path angle", "degrees", "0.0");
+        ArincUnit("PFD_GAMMA_T", "A32NX_PRIM_1_GAMMA_T", "Energy flight path angle", "degrees", "0.0");
         // Transition LEVEL (descent) — ARINC429 word, engineering value already in FL hundreds
         // (e.g. 60 = FL060). Decoded to "flight level N" / "not set" in TryGetDisplayOverride
         // (NOT IsArinc429 so the generic feet decoder doesn't grab it). Complements TRANS ALT.
