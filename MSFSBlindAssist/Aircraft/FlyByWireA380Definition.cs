@@ -1135,9 +1135,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // WEIGHT/CONFIG-BASED speeds (VLS, VMAX, green-dot, F, S) — source from the FBW
         // managed-speed L-vars `A32NX_SPEEDS_*`, which compute continuously and have real
         // values on the GROUND as well as in flight (live-verified VLS 147, VMAX 222, GD 211,
-        // F 159, S 191 cold on the ground). The FAC ARINC words `A32NX_FAC_1_V_*` were NCD on
-        // the ground → "not available"; the SPEEDS_* set fixes that and matches the PFD tape in
-        // flight. Plain numeric L-vars (knots); formatted in TryGetDisplayOverride.
+        // F 159, S 191 cold on the ground). The PRIM ARINC words `A32NX_PRIM_1_V_*` (ex-FAC,
+        // see the PROTECTION-speeds block below) are NCD on the ground → "not available"; the
+        // SPEEDS_* set fixes that and matches the PFD tape in flight. Plain numeric L-vars
+        // (knots); formatted in TryGetDisplayOverride.
         void SpdLvar(string key, string name, string display) => vars[key] = new SimVarDefinition
         {
             Name = name, DisplayName = display, Type = SimVarType.LVar,
@@ -1149,25 +1150,50 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         SpdLvar("PFD_V3", "A32NX_SPEEDS_F", "F speed (slat retract)");
         SpdLvar("PFD_V4", "A32NX_SPEEDS_S", "S speed (flap retract)");
         // PROTECTION speeds (alpha-prot, alpha-max, stall-warn, VFE-next) — genuinely
-        // in-flight-only: the FAC computes them only with live AoA/airspeed, so they read
+        // in-flight-only: the PRIM computes them only with live AoA/airspeed, so they read
         // "not available" on the ground (NCD) and that is correct + unavoidable (no managed-
-        // speed equivalent exists). FAC1 ARINC429 words, knots.
-        ArincKt("PFD_VALPHAPROT", "A32NX_FAC_1_V_ALPHA_PROT", "Alpha Prot speed");
-        ArincKt("PFD_VALPHAMAX", "A32NX_FAC_1_V_ALPHA_LIM", "Alpha Max speed");
-        ArincKt("PFD_VSW", "A32NX_FAC_1_V_STALL_WARN", "Stall Warning speed");
-        ArincKt("PFD_VFENEXT", "A32NX_FAC_1_V_FE_NEXT", "VFE next");
+        // speed equivalent exists). PRIM1 ARINC429 words, knots. RENAMED 2026-07 from the
+        // FAC to the PRIM — FBW #10797 deleted the A380 FAC computer and moved the Flight-
+        // Envelope function into the PRIMs (PrimFePublisher), so A32NX_FAC_1_V_* → A32NX_PRIM_1_V_*
+        // (indexed 1/2/3). Same ARINC429-knots encoding, decoded in the PFD via
+        // Arinc429LocalVarConsumerSubject exactly as the FAC words were. On an older A380X
+        // build without #10797 these read NCD → "not available" (graceful).
+        // KNOWN LIMITATION — PRIM 1 single-sourced: the real PFD (PrimChoiceProvider.tsx)
+        // selects the MASTER PRIM via bit 21 of A32NX_PRIM_{1,2,3}_FCTL_LAW_STATUS_WORD
+        // (priority 1→2→3, default 1 when none valid), so with PRIM 1 failed it keeps
+        // showing FE data from PRIM 2/3 while these reads go "not available". Do NOT add
+        // SSM-based failover blind: whether a dead PRIM's FE words go FW/NCD or freeze
+        // stale-but-valid is unverified — needs a live PRIM-failure scenario first.
+        ArincKt("PFD_VALPHAPROT", "A32NX_PRIM_1_V_ALPHA_PROT", "Alpha Prot speed");
+        ArincKt("PFD_VALPHAMAX", "A32NX_PRIM_1_V_ALPHA_LIM", "Alpha Max speed");
+        ArincKt("PFD_VSW", "A32NX_PRIM_1_V_STALL_WARN", "Stall Warning speed");
+        ArincKt("PFD_VFENEXT", "A32NX_PRIM_1_V_FE_NEXT", "VFE next");
+        // NEW PRIM-FE readouts (FBW #10797 PrimFePublisher; live-verified 2026-07 on the A380):
+        // 1g stall speed Vs1g (Normal Op even on the ground — read 64 kt at a light boarding
+        // weight, scales with sqrt(weight)) and the speed-trend value that drives the PFD trend
+        // arrow, in knots (0 when static, positive = accelerating). ARINC429 knots, same decode.
+        ArincKt("PFD_VSTALL1G", "A32NX_PRIM_1_V_STALL_1G", "1g Stall speed");
+        ArincKt("PFD_SPEEDTREND", "A32NX_PRIM_1_SPEED_TREND", "Speed trend");
         // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
         // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
-        void ArincUnit(string key, string name, string display, string unit) => vars[key] = new SimVarDefinition
+        void ArincUnit(string key, string name, string display, string unit, string fmt = "0") => vars[key] = new SimVarDefinition
         {
             Name = name, DisplayName = display, Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.OnRequest,
-            IsArinc429 = true, Arinc429Unit = unit, Arinc429Format = "0",
+            IsArinc429 = true, Arinc429Unit = unit, Arinc429Format = fmt,
             Arinc429NotAvailableText = "not available"
         };
         ArincUnit("PFD_RA", "A32NX_RA_1_RADIO_ALTITUDE", "Radio altitude", "feet");
         ArincUnit("PFD_VS", "A32NX_ADIRS_IR_1_VERTICAL_SPEED", "Vertical speed", "feet per minute");
         ArincUnit("PFD_TRANS_ALT", "A32NX_FM1_TRANS_ALT", "Transition altitude", "feet");
+        // Flight path angle from the PRIM FE bus (FBW #10797; live-verified Normal Op on the
+        // ground, both ~0°). GAMMA_A = aerodynamic FPA (the actual air-mass flight-path angle,
+        // the FPV/bird); GAMMA_T = energy (track) angle including thrust/drag energy state.
+        // ARINC429 degrees, same SSM-gated decode. Tenth-degree format: FPA lives in the
+        // ±0.5–4° range, so integer degrees would erase most of the signal — matches the
+        // FCU FPA readout's "{0.0} degrees" precision.
+        ArincUnit("PFD_GAMMA_A", "A32NX_PRIM_1_GAMMA_A", "Flight path angle", "degrees", "0.0");
+        ArincUnit("PFD_GAMMA_T", "A32NX_PRIM_1_GAMMA_T", "Energy flight path angle", "degrees", "0.0");
         // Transition LEVEL (descent) — ARINC429 word, engineering value already in FL hundreds
         // (e.g. 60 = FL060). Decoded to "flight level N" / "not set" in TryGetDisplayOverride
         // (NOT IsArinc429 so the generic feet decoder doesn't grab it). Complements TRANS ALT.
@@ -1221,10 +1247,17 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // unindexed reads could never see an RA. Continuous (batch path — the proven
         // transport for colon-indexed L:vars, same as A32NX_AUTOTHRUST_TLA:n); cached
         // silently in ProcessSimVarUpdate and spoken as composed RA guidance.
-        MonNum("A32NX_TCAS_VSPEED_GREEN:1", "TCAS target vertical speed minimum", "feet per minute");
-        MonNum("A32NX_TCAS_VSPEED_GREEN:2", "TCAS target vertical speed maximum", "feet per minute");
-        MonNum("A32NX_TCAS_VSPEED_RED:1", "TCAS avoid vertical speed minimum", "feet per minute");
-        MonNum("A32NX_TCAS_VSPEED_RED:2", "TCAS avoid vertical speed maximum", "feet per minute");
+        // ⚠️ Units MUST be "number" (raw), NEVER "feet per minute": FBW already stores
+        // these bands in fpm (RA_VARIANTS green/red use MAX_VS/MIN_VS = ±6000 fpm), but
+        // these L:vars are written unitless ('Number'), so the SimConnect data-def read
+        // path treats a velocity unit's native as m/s and multiplies by 196.85 —
+        // e.g. a 1500-fpm climb target read as "feet per minute" spoke "295276" (the
+        // reported garbage RA numbers). Read raw; the "feet per minute" LABEL is
+        // hardcoded in TcasRaGuidance.Compose + the :1 display overrides.
+        MonNum("A32NX_TCAS_VSPEED_GREEN:1", "TCAS target vertical speed minimum");
+        MonNum("A32NX_TCAS_VSPEED_GREEN:2", "TCAS target vertical speed maximum");
+        MonNum("A32NX_TCAS_VSPEED_RED:1", "TCAS avoid vertical speed minimum");
+        MonNum("A32NX_TCAS_VSPEED_RED:2", "TCAS avoid vertical speed maximum");
         // RA detail (plain unindexed L:vars): corrective flag, up/down advisory status
         // (0 none, 1 climb/descend, 2 don't, 3/4/5 don't >500/1000/2000 fpm) and the
         // rate to maintain — together these compose the spoken "what to fly" guidance
@@ -1232,7 +1265,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         MonNum("A32NX_TCAS_RA_CORRECTIVE", "TCAS RA corrective");
         MonNum("A32NX_TCAS_RA_UP_ADVISORY_STATUS", "TCAS RA up advisory");
         MonNum("A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", "TCAS RA down advisory");
-        MonNum("A32NX_TCAS_RA_RATE_TO_MAINTAIN", "TCAS RA rate to maintain", "feet per minute");
+        // Rate-to-maintain is likewise stored in fpm (RA_VARIANTS rateToMaintain = 0/±1500/±2500);
+        // "number" (raw) for the same ×196.85 reason as the VSPEED bands above.
+        MonNum("A32NX_TCAS_RA_RATE_TO_MAINTAIN", "TCAS RA rate to maintain");
         // Managed / preselected target speeds + selected V/S + expedite + flight directors.
         // Decoded in TryGetDisplayOverride (none / knots / mach / fpm). Preselect = -1 when unset.
         Read("A32NX_SPEEDS_MANAGED_PFD", "Managed speed", "knots");
