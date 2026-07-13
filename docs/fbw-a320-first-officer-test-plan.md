@@ -42,13 +42,14 @@ system is also silently wrong:
    `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION` (the real cockpit-button input) and that the write
    sticks — the `_SYSTEM_*` L:vars are Rust-owned per-frame outputs and any write to those reverts
    within ~2 s regardless of phase (a known A32NX gotcha, not specific to this feature).
-5. **ECAM ECP page pulses.** Unlike the A380 (a sticky page-index write), the A320 selects SD
-   pages via **momentary ECP button press/release pulses**
-   (`ECAM_ENG/APU/BLEED/COND/ELEC/HYD/FUEL/PRESS/DOOR/STS`). Confirm each ★-marked ECAM page step
-   (DOOR at Preflight/Parking, APU at Before Start, ENG at Engine Start, STS at After Start)
-   actually changes the visible SD page — and confirm the pulse is a genuine press-then-release
-   (a stuck "pressed" ECP button is a plausible failure mode). There is deliberately **no F/CTL or
-   WHEEL ECP key** — the takeoff-config-test ECAM check stays a Captain reminder.
+5. **ECAM SD page selection is now a direct, held-safe page-index write** (2026-07 fix):
+   `FireEcamPageAsync` writes `A32NX_ECAM_SD_CURRENT_PAGE_INDEX` directly (matching the
+   `SdPages` enum: ENG=0, BLEED=1, PRESS=2, ELEC=3, HYD=4, FUEL=5, APU=6, COND=7, DOOR=8,
+   WHEEL=9, FCTL=10, STS=12) instead of the earlier ECP press/release H-var pulse — no
+   held-button risk. Confirm each ★-marked ECAM page step (DOOR at Preflight/Parking, APU
+   at Before Start, ENG at Engine Start, STS at After Start) actually changes the visible
+   SD page. There is deliberately no automated F/CTL or WHEEL page trigger in the flow —
+   the takeoff-config-test ECAM check stays a Captain reminder for the F/CTL page itself.
 6. **`PUSH_OVHD_CALLS_ALL` / other `_IS_PRESSED` release pulses.** Cabin notify
    (`CABIN_CALL_ALL` → `PUSH_OVHD_CALLS_ALL`) and the fire-test PBs
    (`A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED`, `A32NX_FIRE_TEST_ENG1/ENG2/APU`) must each land as **two
@@ -93,7 +94,8 @@ just the FO's own narration.
    off, park brake on), batteries ON, ext power ON (a guarded momentary), nav + logo lights ON,
    **cockpit lighting SET (day/prep scene)** per §4.1 — ANN Bright, dome Bright, standby compass
    ON, floods/integrals to their Prep defaults.
-2. **Preflight**: CVR test (Captain reminder — no verified write), IRS 1-3 to NAV, crew oxygen
+2. **Preflight**: recorder ground control ON (`A32NX_RCDR_GROUND_CONTROL_ON`), CVR test (held
+   ~3 s, confirm the test tone sounds — needs ground control ON), IRS 1-3 to NAV, crew oxygen
    ON, **fire tests (APU/ENG1/ENG2, held ~3 s)** — confirm each sounds the fire bell/master
    warning and self-cancels, packs ON, crossbleed AUTO, pack flow NORMAL, hot air ON, pressurization
    mode AUTO, strobes/wing lights/no-smoking/emergency-exit lighting, altitude reporting ON
@@ -113,7 +115,8 @@ just the FO's own narration.
    anti-ice as required, pitch trim.
 6. **Before Takeoff / Taxi**: autobrake MAX (confirm it actually arms — see risk item 3 above),
    weather radar ON, predictive windshear AUTO, TCAS TA/RA, transponder AUTO, takeoff-config test
-   (Captain reminder — no F/CTL ECP key), turn-off lights OFF, landing lights ON, nose light →
+   (held ~2 s ECP button — confirm the FWC actually reports the test result, not just that the
+   button was pressed), turn-off lights OFF, landing lights ON, nose light →
    T.O., strobes ON, **cabin notify: advise cabin for takeoff** (`CABIN_CALL_ALL` — confirm the
    chime sounds once and stops, see risk item 6). Captain: takeoff clearance.
 7. **After Takeoff**: ground spoilers DISARM, packs ON, turn-off lights OFF. (Gear/AP handled by
@@ -141,16 +144,17 @@ just the FO's own narration.
     def's own internal `Announce()` calls are dropped and only the FO's step narration speaks.
     See the note at the end of this document about the ONE expected exception (continuously
     monitored vars).
-15. **Captain reminders announce and wait.** Every `Captain(...)` step (CVR test, recorder ground
-    control, takeoff-config test, ECAM page selection where no ECP key exists, minimums,
-    landing autobrake, flaps, IFR clearance, MCDU programming, etc.) is spoken as a reminder and
-    the flow **pauses for acknowledgement** — confirm it does not silently auto-complete.
+15. **Captain reminders announce and wait.** Every remaining `Captain(...)` step (minimums,
+    landing autobrake, flaps, IFR clearance, MCDU programming, ECAM page selection where no ECP
+    key exists, etc.) is spoken as a reminder and the flow **pauses for acknowledgement** —
+    confirm it does not silently auto-complete. (CVR test, recorder ground control, and the
+    takeoff-config test are no longer Captain reminders — see item 2/6 above.)
 16. **Already-in-target-state steps announce as skipped.** Re-run a flow (or a step) whose switch
     is already correct — confirm the matching step announces a quiet skip ("Already set" or
     equivalent) instead of re-firing the action. This matters especially for autobrake MAX
     (re-running Before Takeoff / Taxi while MAX is already armed must not disarm/re-arm it) and
-    ECAM page pulses (re-selecting a page already displayed should not double-pulse the ECP
-    button).
+    the recorder-ground-control step (re-running Preflight while it's already ON must not
+    re-toggle it).
 
 ---
 
@@ -181,8 +185,10 @@ Approach, Landing, After Landing, Parking, Securing).
    brightness: SET" is a manual-only action item with no auto-revert (the analog knobs have no
    readable target state).
 7. **ECAM page items.** Tick an ECAM-page checklist item by hand (e.g. "ECAM page: APU" in Before
-   Start) — confirm it pulses the matching ECP button once, not repeatedly, and does not
-   re-pulse if ticked again while that page is already displayed.
+   Start) — confirm it writes the SD page index once and the SD actually shows that page; unlike
+   the old ECP pulse there is no button to get stuck, but confirm re-ticking the same page item
+   doesn't visibly disturb an already-displayed different page (auto-SD logic may have since
+   moved on, which is expected).
 8. **Spot-check a group with no matching STATE/ACTION group** (e.g. Descent, which is mostly
    reminders) — confirm it behaves as pure reminders with no auto-ticking.
 9. **Engine anti-ice / wing anti-ice readbacks.** Turn anti-ice ON by hand, confirm the After
@@ -288,17 +294,19 @@ legitimate state feedback, not a double-announce bug.
 
 ## Known limitations (by design)
 
-- **CVR test, recorder ground control, and the takeoff-config test are Captain reminders** — no
-  verified A320 write key exists for these, so they remain `Captain(...)` reminders rather than
-  automated actions. This is intentional, not a gap to fill during this pass. (Altitude reporting
-  and the gear-lever check are now automated/auto-detected — see the Task 12 audit: PF_ALTRPTG
-  writes/detects `A32NX_SWITCH_ATC_ALT`, and EPU_CHK_GEAR detect-only reads
-  `GEAR_HANDLE_POSITION`; the gear lever itself still can't be written, so the flow step stays a
-  Captain reminder even though the checklist item now auto-detects.)
-- **Candidates to automate pending live A32NX verification**: takeoff-config test
-  (`A32NX_BTN_TOCONFIG`), recorder ground control (`A32NX_RCDR_GROUND_CONTROL_ON`), CVR test
-  (`A32NX_RCDR_TEST`), and CONF3-landing detection — all seen only in A380 probe dumps; confirm
-  each exists and behaves the same way on the A32NX build before wiring.
+- **CVR test, recorder ground control, and the takeoff-config test are now automated**
+  (2026-07, sim + source verified): recorder ground control writes/auto-detects the plain
+  bool `A32NX_RCDR_GROUND_CONTROL_ON`; CVR test holds `A32NX_RCDR_TEST` 1→0 for 3s via
+  `FbwA320ActionExecutor.CvrTestAsync` (needs ground control ON to actually sound); the
+  takeoff-config test holds the ECP `A32NX_ECP_TO_CONF_TEST_PRESSED`/`_RELEASED` H-event
+  for 2s via `TakeoffConfigTestAsync` (the FWC latches the result at ≥1.5s held). (Altitude
+  reporting and the gear-lever check are also automated/auto-detected — see the Task 12
+  audit: PF_ALTRPTG writes/detects `A32NX_SWITCH_ATC_ALT`, and EPU_CHK_GEAR detect-only
+  reads `GEAR_HANDLE_POSITION`; the gear lever itself still can't be written, so the flow
+  step stays a Captain reminder even though the checklist item now auto-detects.)
+- **CONF3-landing detection remains absent** — no equivalent of the A380's
+  `A32NX_SPEEDS_LANDING_CONF3` exists in `FlyByWireA320Definition`; this is a genuine data
+  gap on the A32NX build, not a Captain-reminder-by-policy item, and stays unautomated.
 - **No FMC/MCDU programming, ever** (project-wide deliberate decision) — SimBrief load-only.
 - **Landing autobrake selection is a Captain item on every aircraft**, including this one.
 - **No takeoff-flap automation** — the takeoff flap setting stays a Captain item; auto-flaps only

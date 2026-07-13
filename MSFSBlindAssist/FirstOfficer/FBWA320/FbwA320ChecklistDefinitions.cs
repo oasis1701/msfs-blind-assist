@@ -23,8 +23,10 @@ using CheckFn = System.Func<FbwA320ActionExecutor, FbwA320StateEvaluator, System
 /// borrowed from the A380 template: ANN/dome/standby-compass get their own Auto
 /// items (each independently settable), plus one ActionManual "Panel and integral
 /// brightness: SET" per phase that fires the full <see cref="FbwA320ActionExecutor.SetCockpitLighting"/>
-/// scene; ECAM page items are ActionManual (momentary ECP press, no persistent page
-/// index on this build — unlike the A380's real page-index readback).
+/// scene; ECAM page items are ActionManual (a direct SD page-index write, held-safe —
+/// see FbwA320ActionExecutor.FireEcamPageAsync — but still fired as a one-shot checklist
+/// action here rather than an auto-detected state, since auto-SD logic can override the
+/// manual index on the next event).
 /// </summary>
 public static class FbwA320ChecklistDefinitions
 {
@@ -98,9 +100,10 @@ public static class FbwA320ChecklistDefinitions
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
         {
-            // No confirmed A32NX write key (Task 6 decision) — Captain reminders.
-            Reminder("PF_GNDCTL", "PREFLIGHT", "Recorder ground control: as required"),
-            Reminder("PF_CVR", "PREFLIGHT", "CVR test: as required"),
+            // Recorder ground control + CVR test — sim + source verified (2026-07).
+            Auto("PF_GNDCTL", "PREFLIGHT", "Recorder ground control: ON", "A32NX_RCDR_GROUND_CONTROL_ON",
+                v => v > 0.5, (e, _) => e.Set("A32NX_RCDR_GROUND_CONTROL_ON", 1)),
+            ActionManual("PF_CVR", "PREFLIGHT", "CVR test (listen for the test tone)", (e, _) => e.CvrTest()),
             Auto("PF_IRS", "PREFLIGHT", "IRS 1, 2 and 3: NAV", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
                 v => System.Math.Abs(v - 1) < 0.5,
                 new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
@@ -287,8 +290,8 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 2)),
             Auto("BT_XPDRAUTO", "BEFORE_TAKEOFF", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 1)),
-            // No F/CTL ECP key (Task 6 decision) — Captain reminder.
-            Reminder("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff configuration test — Instrument section, ECAM Control Panel"),
+            // Takeoff config test — sim + source verified held ECP button (2026-07).
+            ActionManual("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
             Auto("BT_TURNOFF", "BEFORE_TAKEOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2",
                 v => v > 0.5, (e, _) => e.Set("LIGHT TAXI:2", 1)),
             Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON", "LIGHTING_LANDING_2",

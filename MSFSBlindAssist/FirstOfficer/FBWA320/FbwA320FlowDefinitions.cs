@@ -13,8 +13,9 @@ using Step = Models.FlowStep<FbwA320StateEvaluator>;
 /// steps write A320 varKeys via <see cref="FbwA320ActionExecutor"/>, which delegates
 /// most writes to <see cref="MSFSBlindAssist.Aircraft.FlyByWireA320Definition.ApplyUIVariable"/>
 /// — the same verified panel-write path the FBW A320 panels use — plus the executor's
-/// pseudo-keys (FIRE_TEST_APU/ENG1/ENG2, CABIN_CALL_ALL, ECAM_PAGE_DOOR/APU/ENG/STS,
-/// BARO_STD/QNH, FCU_PUSH_SPEED/HEADING/ALT, AP1_ENGAGE) for non-combo actions.
+/// pseudo-keys (FIRE_TEST_APU/ENG1/ENG2, CVR_TEST, TO_CONFIG_TEST, CABIN_CALL_ALL,
+/// ECAM_PAGE_* (direct SD page-index write), BARO_STD/QNH, FCU_PUSH_SPEED/HEADING/ALT,
+/// AP1_ENGAGE) for non-combo actions.
 ///
 /// Value conventions (from <see cref="FbwA320StateEvaluator"/>, <see cref="FbwA320ActionExecutor"/>,
 /// and the FlyByWireA320Definition panel definitions — the A320 is 2 engines, no ESS/APU
@@ -39,10 +40,11 @@ using Step = Models.FlowStep<FbwA320StateEvaluator>;
 /// - Crew oxygen PUSH_OVHD_OXYGEN_CREW is INVERTED: 0=On, 1=Off (pushbutton-out=on).
 /// - Autobrake write key AUTOBRAKE_MODE (backed by A32NX_AUTOBRAKES_ARMED_MODE): 0=DIS,
 ///   1=LO, 2=MED, 3=MAX.
-/// - Recorder ground control / CVR test and the takeoff-config test have no confirmed
-///   A32NX write key in GetVariables() (ECAM_TO_CONF exists as an HVar but the design brief
-///   explicitly calls the takeoff-config/F-CTL page a Captain reminder — "no F/CTL ECP
-///   key") — all three are Captain reminders here rather than invented/unverified writes.
+/// - Recorder ground control (A32NX_RCDR_GROUND_CONTROL_ON, plain bool), CVR test (held
+///   A32NX_RCDR_TEST via the executor's CvrTestAsync), and the takeoff-config test (held
+///   ECP A32NX_ECP_TO_CONF_TEST_PRESSED/RELEASED via TakeoffConfigTestAsync) are all
+///   sim + source verified and automated (2026-07). The F/CTL ECAM page itself still has
+///   no dedicated key and stays a Captain reminder ("no F/CTL ECP key").
 /// - Takeoff flaps are NEVER auto-set (project-wide "no takeoff-flap automation" rule) —
 ///   unlike the Fenix source, AS_FLAPS here is a Captain reminder (matches the A380 flow).
 /// - Cockpit lighting (§4.1): flow steps only pulse the ANN light key
@@ -124,10 +126,11 @@ public static class FbwA320FlowDefinitions
         RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
         Steps = new()
         {
-            // No confirmed A32NX recorder-ground-control / CVR-test key in GetVariables()
-            // (unlike the Fenix S_OH_RCRD_GND_CTL / CVR_TEST) — Captain reminder.
-            Captain("PF_GNDCTL", "Recorder ground control: as required"),
-            Captain("PF_CVR", "CVR test: as required"),
+            // Recorder ground control (plain bool, latches on write) + CVR test (held
+            // button via the executor's CvrTestAsync pseudo-key) — sim + source verified.
+            Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "A32NX_RCDR_GROUND_CONTROL_ON", 1),
+                s => s.IsOn("A32NX_RCDR_GROUND_CONTROL_ON")), "PF_GNDCTL"),
+            Done(SW("PF_CVR", "CVR test — listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
             // ADIRS
             Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
                     ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 1), ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 1),
@@ -330,9 +333,10 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 2)), "BT_TCAS"),
             Done(Skip(SW("BT_XPDRAUTO", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE", 1),
                 s => s.IsPosition("A32NX_TRANSPONDER_MODE", 1)), "BT_XPDRAUTO"),
-            // Takeoff config test / F-CTL page: no F/CTL ECP key — Captain reminder
-            // per the design brief (ECAM_TO_CONF exists as an HVar but is not automated here).
-            Captain("BT_CONFIG", "Takeoff configuration test — Instrument section, ECAM Control Panel"),
+            // Takeoff config test: held ECP TO_CONF_TEST H-event via the executor's
+            // TakeoffConfigTestAsync pseudo-key (sim + source verified; the F/CTL ECAM
+            // page itself still has no dedicated key and stays out of scope here).
+            Done(SW("BT_CONFIG", "Takeoff config test", "TO_CONFIG_TEST", 1), "BT_CONFIG"),
             Done(Skip(SW("BT_TURNOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2", 1),
                 s => s.IsOn("LIGHT TAXI:2")), "BT_TURNOFF"),
             Done(SW("BT_LANDING_LT", "Landing lights: ON", "LANDING_LIGHTS_ON_THIRD_PARTY", 1), "BT_LANDING_LT"),

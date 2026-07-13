@@ -59,6 +59,10 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
                 if (step.EventName == "FIRE_TEST_APU" || step.EventName == "FIRE_TEST_ENG1"
                     || step.EventName == "FIRE_TEST_ENG2")
                     return await FireTestAsync(step.EventName);
+                // Held self-completing recorder/config tests — same rationale as the fire
+                // tests above (must not fall through to the generic SetLVar dispatch).
+                if (step.EventName == "CVR_TEST") return await CvrTestAsync();
+                if (step.EventName == "TO_CONFIG_TEST") return await TakeoffConfigTestAsync();
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
             case FlowStepActionType.SetSwitchMultiple:
@@ -150,30 +154,22 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         return true;
     }
 
-    private static readonly Dictionary<string, string> EcamPageToEcp = new()
+    private static readonly Dictionary<string, int> EcamPageIndex = new()
     {
-        ["ECAM_PAGE_DOOR"] = "ECAM_DOOR", ["ECAM_PAGE_APU"] = "ECAM_APU",
-        ["ECAM_PAGE_ENG"]  = "ECAM_ENG",  ["ECAM_PAGE_STS"] = "ECAM_STS",
-        ["ECAM_PAGE_BLEED"] = "ECAM_BLEED", ["ECAM_PAGE_COND"] = "ECAM_COND",
-        ["ECAM_PAGE_ELEC"] = "ECAM_ELEC", ["ECAM_PAGE_HYD"] = "ECAM_HYD",
-        ["ECAM_PAGE_FUEL"] = "ECAM_FUEL", ["ECAM_PAGE_PRESS"] = "ECAM_PRESS",
+        ["ECAM_PAGE_ENG"]=0, ["ECAM_PAGE_BLEED"]=1, ["ECAM_PAGE_PRESS"]=2,
+        ["ECAM_PAGE_ELEC"]=3, ["ECAM_PAGE_HYD"]=4, ["ECAM_PAGE_FUEL"]=5,
+        ["ECAM_PAGE_APU"]=6, ["ECAM_PAGE_COND"]=7, ["ECAM_PAGE_DOOR"]=8,
+        ["ECAM_PAGE_WHEEL"]=9, ["ECAM_PAGE_FCTL"]=10, ["ECAM_PAGE_STS"]=12,
     };
 
-    private async Task<bool> FireEcamPageAsync(string pseudoKey)
+    // Direct SD page-index write — held-safe (the earlier ECP press/release pulse could
+    // leave a button stuck). PagesContainer reads A32NX_ECAM_SD_CURRENT_PAGE_INDEX as the
+    // displayed page; auto-SD logic overrides a manual index on the next auto event (fine
+    // for a checklist callout, same as the A380's real page-index write).
+    private Task<bool> FireEcamPageAsync(string pseudoKey)
     {
-        if (_sc is not { IsConnected: true } || _def == null) return false;
-        if (!EcamPageToEcp.TryGetValue(pseudoKey, out var ecpKey)) return false;
-        // ECP buttons are H-var press/release events (not L:vars, ApplySilent's SetLVar
-        // fallback would silently no-op) — fire them directly, same as MainForm's panel
-        // path (SimConnectManager.SendButtonPressRelease), but awaited since a WinForms
-        // Timer won't tick reliably on this background dispatch task.
-        if (!_def.GetVariables().TryGetValue(ecpKey, out var d)
-            || string.IsNullOrEmpty(d.PressEvent) || string.IsNullOrEmpty(d.ReleaseEvent))
-            return false;
-        _sc.SendHVar(d.PressEvent);
-        await Task.Delay(d.PressReleaseDelay > 0 ? d.PressReleaseDelay : 200);
-        _sc.SendHVar(d.ReleaseEvent);
-        return true;
+        if (!EcamPageIndex.TryGetValue(pseudoKey, out int idx)) return Task.FromResult(false);
+        return Task.FromResult(ApplySilent("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", idx));
     }
 
     public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
@@ -244,6 +240,54 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>Fenix/A380-parity hold for the CVR test button.</summary>
+    public const int CvrTestHoldMs = 3000;
+
+    /// <summary>Held CVR test: A32NX_RCDR_TEST 1 → hold → 0 (needs
+    /// A32NX_RCDR_GROUND_CONTROL_ON on to actually sound the test tone). Holds the gate
+    /// for the whole test so WaitForDispatchDrainAsync covers the checklist grace.</summary>
+    public async Task<bool> CvrTestAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            ApplySilent("A32NX_RCDR_TEST", 1);
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(CvrTestHoldMs);
+            ApplySilent("A32NX_RCDR_TEST", 0);
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+    public Task<bool> CvrTest() => CvrTestAsync();
+
+    /// <summary>FWC latch hold for the ECP TO CONFIG TEST button.</summary>
+    public const int ToConfigHoldMs = 2000;
+
+    /// <summary>TO CONFIG test: fire the ECP TO_CONF_TEST press H-event, hold, release
+    /// (FWC latches the test result at ≥1.5s held). No direct L:var exists for this
+    /// button — it is genuinely an ECP momentary, unlike the SD page keys above.</summary>
+    public async Task<bool> TakeoffConfigTestAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(ToConfigHoldMs);
+            _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED");
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+    public Task<bool> TakeoffConfigTest() => TakeoffConfigTestAsync();
 
     // ---- Convenience methods for the auto-manager / phase monitor ----
     // GEAR_HANDLE_POSITION is a read-only stock SimVar (no HandleUIVariableSet write branch) —

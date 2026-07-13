@@ -57,6 +57,7 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         // was removed (Task 12 audit) — confirmed absent from FlyByWireA320Definition.
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
         "WIPER_LEFT", "WIPER_RIGHT",
+        "A32NX_RCDR_GROUND_CONTROL_ON",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
