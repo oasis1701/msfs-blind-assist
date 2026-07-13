@@ -34,12 +34,13 @@ public class WeatherRadarForm : Form
     private DisplayListBox _advisoriesBox = null!;
     private Label _windsAloftLabel = null!;
     private DisplayListBox _windsAloftBox = null!;
-    private Label _statusLabel = null!;
+    private TextBox _statusBox = null!;
     private Button _refreshButton = null!;
     private Button _closeButton = null!;
     private CheckBox _decodeCheckBox = null!;
 
     private bool _isFetching = false;
+    private bool _pendingForceRefresh;
 
     // 30 s live refresh (spec 2026-07-12 §3). Safe only because the readouts are
     // DisplayListBox rows reconciled in place — an unchanged tick is a no-op and a
@@ -258,12 +259,17 @@ public class WeatherRadarForm : Form
         };
         _closeButton.Click += CloseButton_Click;
 
-        _statusLabel = new Label
+        // Read-only TextBox, not a Label: this is the only surface for fetch errors and
+        // the "Last updated" freshness stamp, and background auto-refresh errors land
+        // here — a Label has no tab stop, so a blind user could never reach either.
+        _statusBox = new TextBox
         {
             Location = new Point(12, y + 6),
-            Size = new Size(370, 20),
+            Size = new Size(370, 22),
+            ReadOnly = true,
             Text = "",
-            AccessibleName = "Status"
+            AccessibleName = "Status",
+            AccessibleDescription = "Fetch status, errors, and last-updated time"
         };
 
         Controls.AddRange(new Control[]
@@ -275,7 +281,7 @@ public class WeatherRadarForm : Form
             _routeAdvisoriesLabel, _routeAdvisoriesBox,
             _advisoriesLabel, _advisoriesBox,
             _windsAloftLabel, _windsAloftBox,
-            _decodeCheckBox, _statusLabel, _refreshButton, _closeButton
+            _decodeCheckBox, _statusBox, _refreshButton, _closeButton
         });
 
         CancelButton = _closeButton;
@@ -293,6 +299,7 @@ public class WeatherRadarForm : Form
         _decodeCheckBox.TabIndex = 7;
         _refreshButton.TabIndex = 8;
         _closeButton.TabIndex = 9;
+        _statusBox.TabIndex = 10;
 
         Load += async (s, e) =>
         {
@@ -327,7 +334,13 @@ public class WeatherRadarForm : Form
 
     private async Task RefreshAsync(bool forceRefresh)
     {
-        if (_isFetching) return;
+        if (_isFetching)
+        {
+            // A manual F5 during an in-flight auto tick must not silently lose its
+            // cache-bust — remember it and replay one forced pass after this one.
+            _pendingForceRefresh |= forceRefresh;
+            return;
+        }
         _isFetching = true;
         SetStatus("Fetching weather data...");
         // The Refresh button is deliberately NEVER disabled: WinForms moves focus
@@ -353,9 +366,12 @@ public class WeatherRadarForm : Form
             bool asEnabled = SettingsManager.Current.ActiveSkyEnabled;
             _asModeBox.Visible = asEnabled;
             if (asEnabled)
-                _asModeBox.Text = _activeSkyAvailable == true
+                // SetPreserveCaret, not Text= : the mode line embeds the AS weather clock,
+                // which advances every minute — a raw reassignment resets the NVDA review
+                // cursor to position 0 on every clock roll while the user reads the line.
+                DisplayText.SetPreserveCaret(_asModeBox, _activeSkyAvailable == true
                     ? MSFSBlindAssist.Services.ActiveSkyFormatting.FormatModeLine(_activeSky.LastModeText)
-                    : $"ActiveSky: {_activeSky.LastStatus}";
+                    : $"ActiveSky: {_activeSky.LastStatus}");
             _stationLabel.Visible = asEnabled;
             _stationBox.Visible = asEnabled;
             _profileLabel.Visible = asEnabled;
@@ -407,6 +423,11 @@ public class WeatherRadarForm : Form
         finally
         {
             _isFetching = false;
+            if (_pendingForceRefresh && !IsDisposed)
+            {
+                _pendingForceRefresh = false;
+                _ = RefreshAsync(forceRefresh: true);
+            }
         }
     }
 
@@ -881,7 +902,7 @@ public class WeatherRadarForm : Form
 
     private void SetStatus(string text)
     {
-        if (IsHandleCreated && !IsDisposed) _statusLabel.Text = text;
+        if (IsHandleCreated && !IsDisposed) DisplayText.SetPreserveCaret(_statusBox, text);
     }
 
     private void CloseButton_Click(object? sender, EventArgs e)
