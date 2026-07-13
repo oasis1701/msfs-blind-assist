@@ -162,7 +162,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
         _pirepAlerts = new CheckBox
         {
-            Text = "Auto-announce approaching pilot reports (&PIREPs)",
+            Text = "Auto-announce approaching pilot repo&rts (PIREPs)",
             Location = new System.Drawing.Point(12, 168),
             Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Auto-announce approaching PIREPs",
