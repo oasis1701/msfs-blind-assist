@@ -462,7 +462,8 @@ public static class PMDG777FlowDefinitions
                 s => s.AreFlapsUp()),
             Skip(Momentary("AL_SPEEDBRAKE_DN", "Speedbrake: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "AL_SPEEDBRAKE"),
                 s => s.IsSpeedbrakeDown()),
-            SW("AL_XPNDR_STBY",   "Transponder: STBY",     "EVT_TCAS_MODE",               0),
+            // Transponder → STBY moved to the Shutdown flow (SD_XPNDR_STBY); after landing
+            // it must stay active so ground/tower still see the aircraft.
             // APU Start sequence for on-ground power. Skip policy (not Stop): engines are
             // running, so an APU failure here is announced but must not abort the
             // remaining cleanup. ELEC_APU_Selector was the old wait field — it reads 1
@@ -544,6 +545,13 @@ public static class PMDG777FlowDefinitions
                 ("EVT_OH_AIRCOND_PACK_SWITCH_L", 0), ("EVT_OH_AIRCOND_PACK_SWITCH_R", 0)),
             SW("SEC_APU_OFF",    "APU: OFF",             "EVT_OH_ELEC_APU_SEL_SWITCH",  0),
             Wait("SEC_APU_WAIT", "APU cooling down", 30),
+            // Disconnect ground power (APU is now off, but the aircraft is being secured on
+            // battery). Each GPU is checked independently — skip if it is already off, so a
+            // re-run and a never-connected-GPU both no-op. Mirrors Before Start L243–246.
+            Skip(Momentary("SEC_GND_PWR_PRIM", "Ground power primary: PUSH",
+                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"), s => !s.IsGpuPower1On()),
+            Skip(Momentary("SEC_GND_PWR_SEC", "Ground power secondary: PUSH",
+                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),  s => !s.IsGpuPower2On()),
             Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
                "ELEC_Battery_Sw_ON", v => v < 0.5, "EPD_BATTERY_OFF"),
                 s => !s.IsBatteryOn()),

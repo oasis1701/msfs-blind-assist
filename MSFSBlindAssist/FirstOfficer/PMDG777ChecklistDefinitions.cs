@@ -649,9 +649,8 @@ public static class PMDG777ChecklistDefinitions
             Auto("AL_FLAPS_UP", "AFTER_LANDING", "Flap lever: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5,
                 action: (e, _) => e.SetFlapsPosition(0)),
-            Auto("AL_TRANSPONDER", "AFTER_LANDING", "Transponder: STBY",
-                "XPDR_ModeSel", v => v < 0.5,
-                action: (e, _) => e.SetTransponderMode(0)),
+            // Transponder → STBY moved to the Shutdown group (SD_XPNDR_STBY); after landing
+            // it must stay active so ground/tower still see the aircraft.
             ActionManualAsync("AL_APU", "AFTER_LANDING", "APU: START (for gate power)",
                 (e, _) => e.StartApuAsync()),
             Manual("AL_WX_RADAR_OFF", "AFTER_LANDING", "WX Radar: OFF"),
@@ -755,6 +754,15 @@ public static class PMDG777ChecklistDefinitions
                 "AIR_Pack_Sw_AUTO_0", v => v < 0.5,
                 new[] { "AIR_Pack_Sw_AUTO_1" },
                 (e, _) => e.SetPacks(0)),
+            // GPU buttons are momentary TOGGLES — press only the side that is actually on,
+            // or a tick with no GPU connected would CONNECT one. Guarded per side (mirrors
+            // the ELEC_POWER_DOWN disconnect); a single confirm line for the Secure flow.
+            ActionManual("SEC_GND_PWR_OFF", "SECURE", "Ground power: OFF",
+                (e, s) =>
+                {
+                    if (s.IsGpuPower1On()) e.PushGroundPowerPrimary();
+                    if (s.IsGpuPower2On()) e.PushGroundPowerSecondary();
+                }),
         }
     };
 
