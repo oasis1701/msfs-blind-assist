@@ -487,6 +487,13 @@ public partial class MainForm : Form
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+
+        // Universal (all-aircraft) auto-gear/AP service. Construct BEFORE the
+        // AircraftPositionReceived subscription + feed timer below reference it.
+        universalAutomation = new MSFSBlindAssist.Automation.UniversalAutomationService(
+            eventName => simConnectManager.SendEvent(eventName),
+            msg => announcer.AnnounceImmediate(msg));
+
         simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
 
         _universalAutomationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -571,10 +578,6 @@ public partial class MainForm : Form
         landingRateAnnouncer = new MSFSBlindAssist.Services.LandingRateAnnouncer();
         // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
         altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
-
-        universalAutomation = new MSFSBlindAssist.Automation.UniversalAutomationService(
-            eventName => simConnectManager.SendEvent(eventName),
-            msg => announcer.AnnounceImmediate(msg));
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
