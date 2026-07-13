@@ -1,14 +1,14 @@
 namespace MSFSBlindAssist.FirstOfficer;
 
+/// <summary>
+/// Per-aircraft automatic FLAP management (gear and AP-engage moved to the universal
+/// MSFSBlindAssist.Automation.UniversalAutomationService, 2026-07). Live only on the
+/// A380/A32NX (their CheckFlaps schedule); a no-op elsewhere. Kept as a layer so the
+/// A380/A32NX flap automation keeps its home.
+/// </summary>
 public interface IFoAutoManager
 {
-    bool AutoGearUpEnabled { get; set; }
-    bool AutoGearDownEnabled { get; set; }
     bool AutoFlapsEnabled { get; set; }
-    bool AutoApEnabled { get; set; }
-
-    /// <summary>Height (ft AGL) at which AutoAp engages the autopilot on climbout (user setting, default 350).</summary>
-    int AutoApEngageAltitudeAgl { get; set; }
 
     void Reset();
     void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts);

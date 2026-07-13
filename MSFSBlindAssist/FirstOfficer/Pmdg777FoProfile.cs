@@ -35,11 +35,7 @@ public sealed class Pmdg777FoProfile : IFoProfile<AircraftActionExecutor, Aircra
         ScreenReaderAnnouncer a, UserSettings s)
         => new FOAutoManager(exec, state, a)
         {
-            AutoGearUpEnabled   = s.FOAutoGearUpEnabled,
-            AutoGearDownEnabled = s.FOAutoGearDownEnabled,
-            AutoFlapsEnabled    = s.FOAutoFlapsEnabled,
-            AutoApEnabled       = s.FOAutoApEnabled,
-            AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl,
+            AutoFlapsEnabled = s.FOAutoFlapsEnabled,
         };
 
     public IFoPhaseMonitor CreatePhaseMonitor(

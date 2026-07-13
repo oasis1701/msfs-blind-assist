@@ -200,11 +200,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     /// <summary>Apply updated automation settings (call after the Settings dialog's First Officer panel saves).</summary>
     public void ApplySettings()
     {
-        _foAutoMgr.AutoGearUpEnabled   = _settings.FOAutoGearUpEnabled;
-        _foAutoMgr.AutoGearDownEnabled = _settings.FOAutoGearDownEnabled;
         _foAutoMgr.AutoFlapsEnabled    = _settings.FOAutoFlapsEnabled;
-        _foAutoMgr.AutoApEnabled       = _settings.FOAutoApEnabled;
-        _foAutoMgr.AutoApEngageAltitudeAgl = _settings.FOAutoApEngageAltitudeAgl;
         _flightPhaseMon.AutoLights10kEnabled = _settings.FOAutoLights10kEnabled;
     }
 

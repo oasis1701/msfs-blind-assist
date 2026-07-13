@@ -18,15 +18,8 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
     private readonly FbwA320StateEvaluator _state;
     private readonly ScreenReaderAnnouncer _announcer;
 
-    public bool AutoGearUpEnabled   { get; set; }
-    public bool AutoGearDownEnabled { get; set; }
     public bool AutoFlapsEnabled    { get; set; }
-    public bool AutoApEnabled       { get; set; }
-    public int AutoApEngageAltitudeAgl { get; set; } = 350;
 
-    private bool _gearRaisedThisLeg;
-    private bool _gearLoweredThisLeg;
-    private bool _apEngagedThisLeg;
     private bool _wasOnGround = true;
 
     // ---- Flap schedule state ----
@@ -62,10 +55,7 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
 
     public void Reset()
     {
-        _gearRaisedThisLeg  = false;
-        _gearLoweredThisLeg = false;
-        _apEngagedThisLeg   = false;
-        _wasOnGround        = true;
+        _wasOnGround = true;
         ResetFlapState();
     }
 
@@ -96,61 +86,17 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
         if (onGround)
         {
             if (!_wasOnGround)
-            {
-                _gearRaisedThisLeg = false;
-                _apEngagedThisLeg  = false;
                 ResetFlapState();   // touchdown: after-landing flaps-up is a Captain item
-            }
             _wasOnGround = true;
             return;
         }
         _wasOnGround = false;
 
-        // Above 3000 ft (go-around or cruise) — allow gear to be lowered again
-        if (altitudeAgl > 3000)
-            _gearLoweredThisLeg = false;
-
         bool climbing   = verticalSpeedFpm >  200;
         bool descending = verticalSpeedFpm < -100;
 
-        if (AutoGearUpEnabled || AutoGearDownEnabled)
-            CheckGear(altitudeAgl, climbing, descending);
-
-        if (AutoApEnabled)
-            CheckAp(altitudeAgl, climbing);
-
         if (AutoFlapsEnabled)
             CheckFlaps(airspeedKts, verticalSpeedFpm, altitudeAgl, climbing, descending);
-    }
-
-    private void CheckGear(double agl, bool climbing, bool descending)
-    {
-        double v = _state.GetValue("GEAR_HANDLE_POSITION");
-        bool gearDown = double.IsNaN(v) || v > 0.5;
-
-        if (AutoGearUpEnabled && !_gearRaisedThisLeg && gearDown && climbing && agl > 50)
-        {
-            _ = _executor.SetGear(down: false);
-            _announcer.AnnounceImmediate("Positive rate. Gear up.");
-            _gearRaisedThisLeg = true;
-        }
-
-        if (AutoGearDownEnabled && !_gearLoweredThisLeg && !gearDown && descending && agl < 2000 && agl > 100)
-        {
-            _ = _executor.SetGear(down: true);
-            _announcer.AnnounceImmediate("Two thousand feet. Gear down.");
-            _gearLoweredThisLeg = true;
-        }
-    }
-
-    private void CheckAp(double agl, bool climbing)
-    {
-        if (!_apEngagedThisLeg && climbing && agl >= AutoApEngageAltitudeAgl)
-        {
-            _ = _executor.EngageAp1();
-            _announcer.AnnounceImmediate($"{AutoApEngageAltitudeAgl} feet. Autopilot one engaged.");
-            _apEngagedThisLeg = true;
-        }
     }
 
     // -----------------------------------------------------------------------

@@ -44,11 +44,7 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
         ScreenReaderAnnouncer a, UserSettings s)
         => new FenixFOAutoManager(exec, state, a)
         {
-            AutoGearUpEnabled   = s.FOAutoGearUpEnabled,
-            AutoGearDownEnabled = s.FOAutoGearDownEnabled,
-            AutoFlapsEnabled    = s.FOAutoFlapsEnabled,   // stored; Fenix manager never acts on it
-            AutoApEnabled       = s.FOAutoApEnabled,
-            AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl,
+            AutoFlapsEnabled = s.FOAutoFlapsEnabled,   // stored; Fenix manager never acts on it
         };
 
     public IFoPhaseMonitor CreatePhaseMonitor(
