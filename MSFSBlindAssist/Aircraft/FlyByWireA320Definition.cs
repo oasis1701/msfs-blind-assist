@@ -4987,14 +4987,23 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         // Recorder ground control — plain bool, latches on a direct write of 1 while on
-        // the ground. Registered (read-only use) so the FO's PF_GNDCTL auto-detects it;
-        // A32NX_RCDR_TEST (the CVR test held button) is write-only via the calc path and
-        // needs no registration.
+        // the ground. Registered so the FO's PF_GNDCTL auto-detects it AND as a panel
+        // control (Overhead > Recorder and Misc).
         ["A32NX_RCDR_GROUND_CONTROL_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_RCDR_GROUND_CONTROL_ON", DisplayName = "Recorder Ground Control",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off/Auto", [1] = "On" }
+        },
+        // CVR test — held test button (HOLD_SIMVAR in the cockpit; the FO's CvrTest holds
+        // it 1->3s->0). Exposed as an Off/Active combo (parity with the fire-test controls),
+        // written via the A32NX_ calc-path catch-all. The test tone only sounds while
+        // Recorder Ground Control is ON. Select Active to test, then Off.
+        ["A32NX_RCDR_TEST"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RCDR_TEST", DisplayName = "CVR Test",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
         },
         // APU auto-exit RESET — momentary held button (HOLD_SIMVAR, pairs with the existing TEST).
         ["A32NX_APU_AUTOEXITING_RESET"] = new SimConnect.SimVarDefinition
@@ -5654,6 +5663,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_DFDR_EVENT_ON",
             "A32NX_CREW_HEAD_SET",
             "A32NX_RCDR_GROUND_CONTROL_ON",
+            "A32NX_RCDR_TEST",
             "A32NX_AVIONICS_COMPLT_ON",
             // Completeness pass (2026-07): modelled-but-inop overhead switches.
             "A32NX_ELT_ON",
