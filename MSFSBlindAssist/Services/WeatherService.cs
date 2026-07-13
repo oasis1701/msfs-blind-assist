@@ -489,7 +489,8 @@ public static class WeatherService
         return results;
     }
 
-    private static List<WindAtAltitude> ParseWindsAloft(string json, int aircraftAltFt)
+    // Internal for tests (ActiveSkyAtmosphereTests).
+    internal static List<WindAtAltitude> ParseWindsAloft(string json, int aircraftAltFt)
     {
         var results = new List<WindAtAltitude>();
         try
@@ -532,11 +533,10 @@ public static class WeatherService
 
             if (levelData.Count < 2) return results;
 
-            // Show ±5000 ft around aircraft altitude in 1000 ft steps
-            int lowAlt  = (int)Math.Max(0, Math.Round((aircraftAltFt - 5000) / 1000.0) * 1000);
-            int highAlt = (int)Math.Round((aircraftAltFt + 5000) / 1000.0) * 1000;
-
-            for (int altFt = lowAlt; altFt <= highAlt; altFt += 1000)
+            // ±5000 ft window in 1000-ft steps — the ONE shared definition
+            // (ActiveSkyFormatting.WindsAloftAltitudes), so the AS and Open-Meteo
+            // boxes can never silently diverge on which levels the pilot hears.
+            foreach (int altFt in ActiveSkyFormatting.WindsAloftAltitudes(aircraftAltFt))
             {
                 (double dir, double spd) = InterpolateWind(levelData, altFt);
                 results.Add(new WindAtAltitude(altFt, dir, spd));

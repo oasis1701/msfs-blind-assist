@@ -60,4 +60,18 @@ public class ActiveSkyAtmosphereTests
         Assert.Contains("0 ft:  208° / 4 kts, 37°C", text);
         Assert.EndsWith("Source: ActiveSky", text);
     }
+
+    [Fact]
+    public void ParseWindsAloft_levels_equal_the_shared_altitude_window()
+    {
+        string hour = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:00");
+        // Two-level fixture bracketing the window; 1000 hPa ≈ 364 ft, 250 hPa ≈ 34000 ft.
+        // Values are arbitrary (will be interpolated to the window altitudes).
+        string json = "{\"hourly\":{\"time\":[\"" + hour + "\"]," +
+            "\"wind_speed_1000hPa\":[10],\"wind_direction_1000hPa\":[270]," +
+            "\"wind_speed_250hPa\":[50],\"wind_direction_250hPa\":[300]}}";
+        var winds = WeatherService.ParseWindsAloft(json, 17_300);
+        Assert.Equal(ActiveSkyFormatting.WindsAloftAltitudes(17_300),
+            winds.Select(w => w.AltitudeFt).ToArray());
+    }
 }
