@@ -231,17 +231,24 @@ public static class WeatherService
                 if (!f.TryGetProperty("geometry", out var geom)
                     || geom.ValueKind != JsonValueKind.Object
                     || !geom.TryGetProperty("type", out var gt)) continue;
-                JsonElement ring;
-                switch (gt.GetString())
+
+                List<(double Lat, double Lon)>? verts = null;
+                try
                 {
-                    case "Polygon":      ring = geom.GetProperty("coordinates")[0]; break;
-                    case "MultiPolygon": ring = geom.GetProperty("coordinates")[0][0]; break;
-                    default: continue;
+                    JsonElement ring;
+                    switch (gt.GetString())
+                    {
+                        case "Polygon":      ring = geom.GetProperty("coordinates")[0]; break;
+                        case "MultiPolygon": ring = geom.GetProperty("coordinates")[0][0]; break;
+                        default: continue;
+                    }
+                    var v = new List<(double Lat, double Lon)>();
+                    foreach (var p in ring.EnumerateArray())
+                        v.Add((p[1].GetDouble(), p[0].GetDouble()));   // GeoJSON is [lon,lat]
+                    if (v.Count >= 3) verts = v;
                 }
-                var verts = new List<(double Lat, double Lon)>();
-                foreach (var p in ring.EnumerateArray())
-                    verts.Add((p[1].GetDouble(), p[0].GetDouble()));   // GeoJSON is [lon,lat]
-                if (verts.Count >= 3) return verts;
+                catch { /* unusable geometry — skip this feature */ }
+                if (verts != null) return verts;
             }
             return null;
         }
@@ -250,11 +257,10 @@ public static class WeatherService
 
     /// <summary>Refreshes the two SIGMET feeds through their existing TTL caches (no
     /// extra HTTP within the TTL) and returns a locked snapshot of both raw GeoJSON
-    /// strings (empty string when a feed is unavailable). Shared by
-    /// <see cref="TryGetAdvisoryPolygonAsync"/> (one call per lookup) and
-    /// <see cref="RouteAdvisoryLocator"/>.ComputeLocationsAsync, which calls this
-    /// AT MOST ONCE per computation pass — lazily, only when some advisory actually
-    /// needs tier-2 geometry — instead of once per advisory (final-review Fix 2).</summary>
+    /// strings (empty string when a feed is unavailable). Called by
+    /// <see cref="RouteAdvisoryLocator"/>.ComputeLocationsAsync at most once per
+    /// computation pass — lazily, only when some advisory actually needs tier-2
+    /// geometry — instead of once per advisory (final-review Fix 2).</summary>
     internal static async Task<(string Airsigmet, string Isigmet)> RefreshAndGetSigmetFeedsAsync()
     {
         await Task.WhenAll(
@@ -270,26 +276,6 @@ public static class WeatherService
         string isigmet, airsigmet;
         lock (_cacheLock) { isigmet = _isigmetJson; airsigmet = _airsigmetJson; }
         return (airsigmet, isigmet);
-    }
-
-    /// <summary>Async shell: refreshes the two SIGMET feeds (via
-    /// <see cref="RefreshAndGetSigmetFeedsAsync"/>) and searches airsigmet first
-    /// (US convective lives there), then isigmet. Thin by design — the pure core
-    /// above carries the tests.</summary>
-    internal static async Task<List<(double Lat, double Lon)>?> TryGetAdvisoryPolygonAsync(
-        string identityPhrase)
-    {
-        try
-        {
-            var (airsigmet, isigmet) = await RefreshAndGetSigmetFeedsAsync();
-            return (airsigmet.Length > 0 ? FindAdvisoryPolygonInGeoJson(airsigmet, identityPhrase) : null)
-                ?? (isigmet.Length  > 0 ? FindAdvisoryPolygonInGeoJson(isigmet,  identityPhrase) : null);
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Services", $"Advisory polygon lookup error: {ex.Message}");
-            return null;
-        }
     }
 
     // ── PIREPs ──────────────────────────────────────────────────────────────

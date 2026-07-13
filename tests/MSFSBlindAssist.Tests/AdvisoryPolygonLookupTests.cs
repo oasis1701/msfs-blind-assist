@@ -76,4 +76,28 @@ public class AdvisoryPolygonLookupTests
         // Contains() false-positives (CLAUDE.md: EXACT identity match only).
         => Assert.Null(WeatherService.FindAdvisoryPolygonInGeoJson(
             PrefixCollisionFixture, "CONVECTIVE SIGMET 5E"));
+
+    [Fact]
+    public void Matched_feature_with_empty_coordinates_is_skipped_not_terminal()
+    {
+        string geojson = "{\"features\":[" +
+            "{\"properties\":{\"rawAirSigmet\":\"CONVECTIVE SIGMET 5E\"}," +
+             "\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[]}}," +
+            "{\"properties\":{\"rawAirSigmet\":\"CONVECTIVE SIGMET 5E\"}," +
+             "\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[10,50],[11,50],[11,51],[10,50]]]}}]}";
+        var poly = WeatherService.FindAdvisoryPolygonInGeoJson(geojson, "CONVECTIVE SIGMET 5E");
+        Assert.NotNull(poly);
+        Assert.Equal(4, poly!.Count);
+        Assert.Equal(50, poly[0].Lat);
+    }
+
+    [Fact]
+    public void Identity_rejected_as_prefix_is_still_found_later_in_the_same_raw()
+    {
+        string geojson = "{\"features\":[{\"properties\":{\"rawAirSigmet\":" +
+            "\"CONVECTIVE SIGMET 5E1 REF CONVECTIVE SIGMET 5E VALID\"}," +
+            "\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[10,50],[11,50],[11,51],[10,50]]]}}]}";
+        var poly = WeatherService.FindAdvisoryPolygonInGeoJson(geojson, "CONVECTIVE SIGMET 5E");
+        Assert.NotNull(poly);   // the continue-scan finds the second, boundary-clean occurrence
+    }
 }
