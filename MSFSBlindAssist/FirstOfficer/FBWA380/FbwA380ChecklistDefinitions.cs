@@ -119,7 +119,10 @@ public static class FbwA380ChecklistDefinitions
             // the same held test the flow runs — Fenix PF_FIRE_* pattern).
             ActionManual("CP_FIRETEST", "COCKPIT_PREP", "Fire test",
                 (e, _) => e.FireTestAsync()),
-            Reminder("CP_GNDCTL", "COCKPIT_PREP", "Ground control: on"),
+            // Recorder ground control — writable bool (ground-only; reverts in flight). Manual
+            // tick fires the write, matching the flow's CP_GNDCTL automation.
+            ActionManual("CP_GNDCTL", "COCKPIT_PREP", "Ground control: on",
+                (e, _) => e.Set("A32NX_RCDR_GROUND_CONTROL_ON", 1)),
             Multi("CP_NAVLOGO", "COCKPIT_PREP", "Nav and logo lights: ON", "LIGHT_NAV", v => v > 0.5,
                 new[] { "LIGHT_LOGO" },
                 async (e, _) => { await e.Set("LIGHT_NAV", 1); await e.Set("LIGHT_LOGO", 1); }),
@@ -228,11 +231,19 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0);
                 }),
             Reminder("BS_GPU_DISC", "BEFORE_START", "Disconnect ground power on the EFB"),
+            // ALL 20 pumps ON — 8 feed + 12 transfer (outer/mid/inner/trim). Transfer pumps are
+            // manual on/off pumps like the feed pumps; FBW's POWERUP_CONFIG preset turns all 20
+            // on and A380 SOP runs the transfer pumps continuously (see the flow's BS_FUELPUMPS).
             Multi("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ON", "FUELPUMP_FEEDTK1_MAIN", v => v > 0.5,
                 new[]
                 {
                     "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
                     "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+                    "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT",
+                    "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
+                    "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
+                    "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
+                    "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
                 },
                 async (e, _) =>
                 {
@@ -244,6 +255,18 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("FUELPUMP_FEEDTK3_STBY", 1);
                     await e.Set("FUELPUMP_FEEDTK4_MAIN", 1);
                     await e.Set("FUELPUMP_FEEDTK4_STBY", 1);
+                    await e.Set("FUELPUMP_OUTR_L", 1);
+                    await e.Set("FUELPUMP_MID_L_FWD", 1);
+                    await e.Set("FUELPUMP_MID_L_AFT", 1);
+                    await e.Set("FUELPUMP_INR_L_FWD", 1);
+                    await e.Set("FUELPUMP_INR_L_AFT", 1);
+                    await e.Set("FUELPUMP_OUTR_R", 1);
+                    await e.Set("FUELPUMP_MID_R_FWD", 1);
+                    await e.Set("FUELPUMP_MID_R_AFT", 1);
+                    await e.Set("FUELPUMP_INR_R_FWD", 1);
+                    await e.Set("FUELPUMP_INR_R_AFT", 1);
+                    await e.Set("FUELPUMP_TRIM_L", 1);
+                    await e.Set("FUELPUMP_TRIM_R", 1);
                 }),
             Auto("BS_BEACON", "BEFORE_START", "Beacon lights: ON", "LIGHT_BEACON",
                 v => v > 0.5, (e, _) => e.Set("LIGHT_BEACON", 1)),
@@ -344,6 +367,9 @@ public static class FbwA380ChecklistDefinitions
             Reminder("TX_FLAPS", "TAXI", "Flaps: set for takeoff"),
             Auto("TX_ECAMPAGE", "TAXI", "ECAM page: flight controls", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
                 v => Math.Abs(v - 11) < 0.5, (e, _) => e.Set("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 11)),
+            // Takeoff config test — held ECP button (no persistent state, so ActionManual:
+            // ticking runs the press/release test; mirrors the flow's TX_CONFIG).
+            ActionManual("TX_CONFIG", "TAXI", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
         }
     };
 
@@ -369,6 +395,8 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("LIGHT_LANDING", 1);
                     await e.Set("NOSE_LIGHT", 0);   // T.O.
                 }),
+            Auto("LU_TURNOFF", "LINEUP", "Runway turn-off lights: ON", "LIGHT_RWY_TURNOFF",
+                v => v > 0.5, (e, _) => e.Set("LIGHT_RWY_TURNOFF", 1)),
             // Advise the cabin crew for takeoff — momentary CALLS ALL chime (no persistent
             // state, so ActionManual: ticking pulses the button; no auto-detect / revert).
             ActionManual("LU_CABIN", "LINEUP", "Advise the cabin crew for takeoff (call all)",
@@ -391,6 +419,8 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
             Auto("AT_NOSE_TAXI", "AFTER_TAKEOFF", "Nose light: TAXI", "NOSE_LIGHT",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
+            Auto("AT_TURNOFF_OFF", "AFTER_TAKEOFF", "Runway turn-off lights: OFF", "LIGHT_RWY_TURNOFF",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_RWY_TURNOFF", 0)),
         }
     };
 
@@ -526,11 +556,17 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("WING_ANTI_ICE_OVHD", 0)),
             Auto("PK_APUBLEED", "PARKING", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
+            // ALL 20 pumps OFF — mirrors POWERUP_CONFIG_OFF (feed + transfer).
             Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", "FUELPUMP_FEEDTK1_MAIN", v => v < 0.5,
                 new[]
                 {
                     "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
                     "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+                    "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT",
+                    "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
+                    "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
+                    "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
+                    "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
                 },
                 async (e, _) =>
                 {
@@ -542,6 +578,18 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("FUELPUMP_FEEDTK3_STBY", 0);
                     await e.Set("FUELPUMP_FEEDTK4_MAIN", 0);
                     await e.Set("FUELPUMP_FEEDTK4_STBY", 0);
+                    await e.Set("FUELPUMP_OUTR_L", 0);
+                    await e.Set("FUELPUMP_MID_L_FWD", 0);
+                    await e.Set("FUELPUMP_MID_L_AFT", 0);
+                    await e.Set("FUELPUMP_INR_L_FWD", 0);
+                    await e.Set("FUELPUMP_INR_L_AFT", 0);
+                    await e.Set("FUELPUMP_OUTR_R", 0);
+                    await e.Set("FUELPUMP_MID_R_FWD", 0);
+                    await e.Set("FUELPUMP_MID_R_AFT", 0);
+                    await e.Set("FUELPUMP_INR_R_FWD", 0);
+                    await e.Set("FUELPUMP_INR_R_AFT", 0);
+                    await e.Set("FUELPUMP_TRIM_L", 0);
+                    await e.Set("FUELPUMP_TRIM_R", 0);
                 }),
             Auto("PK_SEATBELTS_OFF", "PARKING", "Seatbelt signs: OFF", "SEATBELT_SIGN_LIGHT",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("SEATBELT_SIGN", 2)),

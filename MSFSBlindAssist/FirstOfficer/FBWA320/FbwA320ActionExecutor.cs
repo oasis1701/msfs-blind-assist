@@ -145,13 +145,21 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     }
 
     // Cabin call: release pulse. A stuck 1 = endless horn; write 1, delay, write 0
-    // as two separate writes.
+    // as two separate writes. The release is in a finally so an interrupted hold
+    // (exception during the delay) can NEVER leave the call horn latched on.
     private async Task<bool> FireCabinCallAsync()
     {
-        ApplySilent("PUSH_OVHD_CALLS_ALL", 1);
-        await Task.Delay(400);
-        ApplySilent("PUSH_OVHD_CALLS_ALL", 0);
-        return true;
+        try
+        {
+            ApplySilent("PUSH_OVHD_CALLS_ALL", 1);
+            await Task.Delay(400);
+            return true;
+        }
+        finally
+        {
+            if (_sc is { IsConnected: true } && _def != null && _announcer != null)
+                ApplySilent("PUSH_OVHD_CALLS_ALL", 0);
+        }
     }
 
     private static readonly Dictionary<string, int> EcamPageIndex = new()
@@ -231,12 +239,20 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
-            ApplySilent(varKey, 1);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(FireTestHoldMs);
-            ApplySilent(varKey, 0);
-            _lastWriteUtc = DateTime.UtcNow;
-            return true;
+            try
+            {
+                ApplySilent(varKey, 1);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(FireTestHoldMs);
+                return true;
+            }
+            finally
+            {
+                // ALWAYS release the held fire-test PB, even on an interrupted hold — a stuck 1
+                // leaves the fire test active (continuous test bell). Guarded for a dropped sim.
+                if (_sc is { IsConnected: true } && _def != null && _announcer != null) ApplySilent(varKey, 0);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
         }
         finally { _gate.Release(); }
     }
@@ -254,12 +270,20 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
-            ApplySilent("A32NX_RCDR_TEST", 1);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(CvrTestHoldMs);
-            ApplySilent("A32NX_RCDR_TEST", 0);
-            _lastWriteUtc = DateTime.UtcNow;
-            return true;
+            try
+            {
+                ApplySilent("A32NX_RCDR_TEST", 1);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(CvrTestHoldMs);
+                return true;
+            }
+            finally
+            {
+                // ALWAYS release the held CVR test button, even on an interrupted hold. Guarded
+                // for a dropped sim.
+                if (_sc is { IsConnected: true } && _def != null && _announcer != null) ApplySilent("A32NX_RCDR_TEST", 0);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
         }
         finally { _gate.Release(); }
     }
@@ -278,12 +302,20 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
-            _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(ToConfigHoldMs);
-            _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED");
-            _lastWriteUtc = DateTime.UtcNow;
-            return true;
+            try
+            {
+                _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(ToConfigHoldMs);
+                return true;
+            }
+            finally
+            {
+                // ALWAYS send the release H-event, even on an interrupted hold — a missed release
+                // leaves the ECP TO CONFIG button held down. Guarded for a dropped sim.
+                if (_sc is { IsConnected: true }) _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED");
+                _lastWriteUtc = DateTime.UtcNow;
+            }
         }
         finally { _gate.Release(); }
     }

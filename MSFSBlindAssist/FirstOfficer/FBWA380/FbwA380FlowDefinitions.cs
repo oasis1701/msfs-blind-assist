@@ -101,7 +101,11 @@ public static class FbwA380FlowDefinitions
             // the master warning. Fenix order: oxygen → fire test.
             Done(SW("CP_FIRETEST", "Fire test — listen for the fire warning", "FIRE_TEST", 1),
                 "CP_FIRETEST"),
-            Captain("CP_GNDCTL", "Ground control: on"),
+            // Recorder ground control: the CVR/recorder ground-test enable. A plain writable
+            // bool (calc-path via the executor's SetLVar fallback). It is a GROUND-ONLY function
+            // — the FBW system inhibits/reverts it in flight (live-verified), which is fine since
+            // Cockpit Prep runs on the ground. No Skip (state isn't polled; the write is idempotent).
+            SW("CP_GNDCTL", "Ground control: on", "A32NX_RCDR_GROUND_CONTROL_ON", 1),
             Multi("CP_NAVLOGO", "Nav and logo lights: ON", ("LIGHT_NAV", 1), ("LIGHT_LOGO", 1)),
             Skip(SW("CP_SEATBELT", "Seatbelt signs: ON", "SEATBELT_SIGN", 0), s => s.IsOn("SEATBELT_SIGN_LIGHT")),
             Skip(SW("CP_NOSMOKE", "No smoking signs: AUTO", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 1),
@@ -186,11 +190,22 @@ public static class FbwA380FlowDefinitions
                 ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
                 ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)),
             Captain("BS_GPU_DISC", "Disconnect ground power on the EFB"),
+            // ALL 20 pumps ON — 8 feed + 12 transfer (outer/mid/inner/trim). The transfer
+            // pumps are manual on/off pumps like the feed pumps (same electrical-circuit
+            // toggle), NOT auto-starting: FBW's own POWERUP_CONFIG preset turns all 20 on and
+            // real A380 SOP runs the transfer pumps continuously (the FQMS schedules WHICH tank
+            // transfers into the feed tanks, but the pumps stay on). Feeding only the 8 feed
+            // pumps left the transfer pumps off — an incomplete config vs FBW's own preset.
             Multi("BS_FUELPUMPS", "Fuel pumps: ON",
                 ("FUELPUMP_FEEDTK1_MAIN", 1), ("FUELPUMP_FEEDTK1_STBY", 1),
                 ("FUELPUMP_FEEDTK2_MAIN", 1), ("FUELPUMP_FEEDTK2_STBY", 1),
                 ("FUELPUMP_FEEDTK3_MAIN", 1), ("FUELPUMP_FEEDTK3_STBY", 1),
-                ("FUELPUMP_FEEDTK4_MAIN", 1), ("FUELPUMP_FEEDTK4_STBY", 1)),
+                ("FUELPUMP_FEEDTK4_MAIN", 1), ("FUELPUMP_FEEDTK4_STBY", 1),
+                ("FUELPUMP_OUTR_L", 1), ("FUELPUMP_MID_L_FWD", 1), ("FUELPUMP_MID_L_AFT", 1),
+                ("FUELPUMP_INR_L_FWD", 1), ("FUELPUMP_INR_L_AFT", 1),
+                ("FUELPUMP_OUTR_R", 1), ("FUELPUMP_MID_R_FWD", 1), ("FUELPUMP_MID_R_AFT", 1),
+                ("FUELPUMP_INR_R_FWD", 1), ("FUELPUMP_INR_R_AFT", 1),
+                ("FUELPUMP_TRIM_L", 1), ("FUELPUMP_TRIM_R", 1)),
             Skip(SW("BS_BEACON", "Beacon lights: ON", "LIGHT_BEACON", 1), s => s.IsOn("LIGHT_BEACON")),
             Captain("BS_THROTTLES", "Confirm thrust levers idle"),
             Skip(SW("BS_PARKBRK", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS", 1),
@@ -293,6 +308,11 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_Position", 1)),
             Captain("TX_FLAPS", "Flaps: set for takeoff"),
             SW("TX_ECAMPAGE", "ECAM page: flight controls", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 11),
+            // Takeoff config test: held ECP T.O CONFIG button via the executor's
+            // TakeoffConfigTestAsync pseudo-key (press → 2 s → release; sim-verified the
+            // A32NX_BTN_TOCONFIG L:var holds). Done after flaps/config so the FWC verifies
+            // a complete takeoff configuration ("T.O CONFIG NORMAL" on the ECAM).
+            SW("TX_CONFIG", "Takeoff config test", "TO_CONFIG_TEST", 1),
         }
     };
 
@@ -314,6 +334,10 @@ public static class FbwA380FlowDefinitions
             Skip(Multi("LU_LANDING", "Landing and nose lights: ON",
                     ("LIGHT_LANDING", 1), ("NOSE_LIGHT", 0)),
                 s => s.IsOn("LIGHT_LANDING") && s.IsPosition("NOSE_LIGHT", 0)),
+            // Runway turn-off lights ON (drives LIGHT TAXI:2 + :3 via the indexed
+            // TAXI_LIGHTS_SET — live-verified 2026-07-13). Turned OFF in After Takeoff.
+            Skip(SW("LU_TURNOFF", "Runway turn-off lights: ON", "LIGHT_RWY_TURNOFF", 1),
+                s => s.IsOn("LIGHT_RWY_TURNOFF")),
             // Advise the cabin crew for takeoff: pulse CALLS ALL (the verified
             // A380X_MSFSBA_SIGNAL_CABIN_READY branch presses + releases it → cabin chime).
             Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)",
@@ -338,6 +362,8 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("A32NX_AUTOBRAKES_SELECTED_MODE", 0)),
             Skip(SW("AT_NOSE_TAXI", "Nose light: TAXI", "NOSE_LIGHT", 1),
                 s => s.IsPosition("NOSE_LIGHT", 1)),
+            Skip(SW("AT_TURNOFF_OFF", "Runway turn-off lights: OFF", "LIGHT_RWY_TURNOFF", 0),
+                s => s.IsPosition("LIGHT_RWY_TURNOFF", 0)),
         }
     };
 
@@ -449,11 +475,17 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("WING_ANTI_ICE_OVHD", 0)),
             Skip(SW("PK_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")),
+            // ALL 20 pumps OFF at parking — mirrors POWERUP_CONFIG_OFF (feed + transfer).
             Multi("PK_FUELPUMPS_OFF", "Fuel pumps: OFF",
                 ("FUELPUMP_FEEDTK1_MAIN", 0), ("FUELPUMP_FEEDTK1_STBY", 0),
                 ("FUELPUMP_FEEDTK2_MAIN", 0), ("FUELPUMP_FEEDTK2_STBY", 0),
                 ("FUELPUMP_FEEDTK3_MAIN", 0), ("FUELPUMP_FEEDTK3_STBY", 0),
-                ("FUELPUMP_FEEDTK4_MAIN", 0), ("FUELPUMP_FEEDTK4_STBY", 0)),
+                ("FUELPUMP_FEEDTK4_MAIN", 0), ("FUELPUMP_FEEDTK4_STBY", 0),
+                ("FUELPUMP_OUTR_L", 0), ("FUELPUMP_MID_L_FWD", 0), ("FUELPUMP_MID_L_AFT", 0),
+                ("FUELPUMP_INR_L_FWD", 0), ("FUELPUMP_INR_L_AFT", 0),
+                ("FUELPUMP_OUTR_R", 0), ("FUELPUMP_MID_R_FWD", 0), ("FUELPUMP_MID_R_AFT", 0),
+                ("FUELPUMP_INR_R_FWD", 0), ("FUELPUMP_INR_R_AFT", 0),
+                ("FUELPUMP_TRIM_L", 0), ("FUELPUMP_TRIM_R", 0)),
             Skip(SW("PK_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 2),
                 s => s.IsPosition("SEATBELT_SIGN_LIGHT", 0)),
             Captain("PK_XPDR", "Transponder: standby"),

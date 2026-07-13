@@ -40,6 +40,11 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "XMLVAR_A320_WeatherRadar_Sys", "A32NX_SWITCH_RADAR_PWS_Position",
         "FUELPUMP_FEEDTK1_MAIN", "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
         "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+        // Transfer-tank pumps (outer/mid/inner/trim) — checklist "Fuel pumps: ON/OFF" detects
+        // all 20; these are Continuous-cached, listed here for parity with the feed pumps above.
+        "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT", "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
+        "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT", "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
+        "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
         "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "A32NX_OVHD_APU_START_PB_IS_ON",
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_SELECTED_MODE",

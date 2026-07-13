@@ -57,6 +57,9 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
                 // Held self-completing fire test (Fenix FIRE_TEST_* precedent) — must not
                 // reach the generic dispatch (its SetLVar fallback would write a bogus L:var).
                 if (step.EventName == "FIRE_TEST") return await FireTestAsync();
+                // Held T.O CONFIG TEST — the ECP button is a momentary PressSilent, so it needs
+                // a held press/release (a normal dispatch would pulse it too fast to latch).
+                if (step.EventName == "TO_CONFIG_TEST") return await TakeoffConfigTestAsync();
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
             case FlowStepActionType.SetSwitchMultiple:
@@ -161,15 +164,58 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
-            ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 1);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(FireTestHoldMs);
-            ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0);
-            _lastWriteUtc = DateTime.UtcNow;
-            return true;
+            try
+            {
+                ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 1);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(FireTestHoldMs);
+                return true;
+            }
+            finally
+            {
+                // ALWAYS release the held fire-test PB, even on an interrupted hold — a stuck 1
+                // leaves the fire test active (continuous test bell). Guarded for a dropped sim.
+                if (_sc is { IsConnected: true } && _def != null && _announcer != null)
+                    ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>FWC latch hold for the ECP T.O CONFIG TEST button. The button (A32NX_BTN_TOCONFIG)
+    /// is a momentary PressSilent — actuating it via ApplyUIVariable would pulse it 1→0 too fast to
+    /// latch — so write the L:var DIRECTLY via the calc path: 1 → hold 2 s → 0, exactly mirroring
+    /// FBW's POWERUP/TAXI preset (1 (>L:A32NX_BTN_TOCONFIG) … 2000 ms … 0 (>L:…)) and the A32NX FO.
+    /// Live-verified 2026-07-13 on the A380: the L:var holds at 1 when written and releases at 0.
+    /// Holds the gate for the whole test so WaitForDispatchDrainAsync covers the checklist grace.</summary>
+    public const int ToConfigHoldMs = 2000;
+    public async Task<bool> TakeoffConfigTestAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            try
+            {
+                _sc.ExecuteCalculatorCode("1 (>L:A32NX_BTN_TOCONFIG)");
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(ToConfigHoldMs);
+                return true;
+            }
+            finally
+            {
+                // ALWAYS release the momentary button, even if the hold was interrupted by an
+                // exception — a stuck 1 leaves the ECP button held down (the Fenix stuck-TO-CONFIG
+                // lesson). Guarded so a release attempt after a dropped sim is a harmless no-op.
+                if (_sc is { IsConnected: true }) _sc.ExecuteCalculatorCode("0 (>L:A32NX_BTN_TOCONFIG)");
+                _lastWriteUtc = DateTime.UtcNow;
+            }
+        }
+        finally { _gate.Release(); }
+    }
+    public Task<bool> TakeoffConfigTest() => TakeoffConfigTestAsync();
 
     // ---- Convenience methods for the auto-manager / phase monitor ----
     public Task<bool> SetGear(bool down)       => DispatchAsync("A32NX_GEAR_HANDLE_POSITION", down ? 1 : 0);
