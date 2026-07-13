@@ -31,4 +31,24 @@ public class RouteAdvisoryLocatorTests
     [Fact]
     public void No_geometry_and_no_probe_is_null()
         => Assert.Null(RouteAdvisoryLocator.Compose(null, false, 9.0, 20.0, 0, spoken: false));
+
+    [Fact]
+    public void Compose_probe_match_overrides_geometry_that_says_outside()
+    {
+        var farPoly = new List<(double Lat, double Lon)> { (50, 10), (51, 10), (51, 11) };
+        string? p = RouteAdvisoryLocator.Compose(farPoly, probeMatched: true,
+            lat: 0.5, lon: 0.5, trueHeadingDeg: 0, spoken: true);
+        Assert.Equal("at your position", p);   // probe is authoritative (locator rule, line ~19)
+    }
+
+    [Fact]
+    public async Task ComputeLocationsAsync_zero_position_yields_no_phrases()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            "MHTG SIGMET J5 EMBD TS\r\nValid until: 2200z\r\nMHCC CENTRAL AMERICAN FIR EMBD TS OBS TOPS FL520 STNR NC");
+        var pos = default(MSFSBlindAssist.SimConnect.SimConnectManager.AircraftPosition); // Lat/Lon 0 — returns before any I/O (spec §8.4)
+        var result = await RouteAdvisoryLocator.ComputeLocationsAsync(
+            new ActiveSkyClient(), advisories, pos, spoken: true);
+        Assert.Empty(result);
+    }
 }
