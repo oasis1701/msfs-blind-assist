@@ -415,7 +415,6 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_Position", 0)),
             Skip(SW("AL_ENGMODE", "Engine mode: NORM", "ENGINE_MODE_SELECTOR", 1),
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 1)),
-            Captain("AL_TCAS", "TCAS mode: standby"),
             Captain("AL_FLAPS_UP", "Flaps: up"),
             // APU for the gate — same master → START → AVAIL sequence as Before Start,
             // but Skip policy on the wait: engines are running (no power-loss hazard) and
@@ -492,6 +491,18 @@ public static class FbwA380FlowDefinitions
             Captain("PK_TCAS", "TCAS mode: standby"),
             Skip(SW("PK_COCKPITDOOR", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED", 0),
                 s => s.IsPosition("A32NX_COCKPIT_DOOR_LOCKED", 0)),
+            // Power-down: external power OFF then APU master OFF (secure/parking). Guarded so
+            // they no-op when no external power is connected / the APU is already off, mirroring
+            // the Before-Start ext-pwr-off Multi (BS_GPU_OFF) and the After-Start APU-off (AS_APU_OFF).
+            Skip(Multi("PK_EXTPWR_OFF", "External power: OFF",
+                    ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
+                    ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)),
+                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON")
+                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON")
+                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON")
+                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON")),
+            Skip(SW("PK_APU_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
+                s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN_LIGHT", v => v < 0.5, 60),
         }
     };

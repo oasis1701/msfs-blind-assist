@@ -472,7 +472,6 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_Position", 0)),
             Auto("AL_ENGMODE", "AFTER_LANDING", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
-            Reminder("AL_TCAS", "AFTER_LANDING", "TCAS mode: standby"),
             Reminder("AL_FLAPS_UP", "AFTER_LANDING", "Flaps: up"),
             // Same master → dwell → START press as the Before Start item.
             Auto("AL_APU", "AFTER_LANDING", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
@@ -597,6 +596,21 @@ public static class FbwA380ChecklistDefinitions
             Reminder("PK_TCAS", "PARKING", "TCAS mode: standby"),
             Auto("PK_COCKPITDOOR", "PARKING", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 0)),
+            // Power-down: external power OFF (mirrors BS_GPU_OFF), then APU master OFF
+            // (mirrors AS_APU_OFF) — 1:1 mirror of the flow's PK_EXTPWR_OFF / PK_APU_OFF.
+            Multi("PK_EXTPWR_OFF", "PARKING", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON",
+                v => v < 0.5,
+                new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
+                        "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0);
+                }),
+            Auto("PK_APU_OFF", "PARKING", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
         }
     };
 
