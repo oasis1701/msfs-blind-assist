@@ -100,6 +100,15 @@ public static class ActiveSkyFormatting
         return p.OffsetSeconds == 0 ? "ActiveSky METAR:" : $"ActiveSky METAR ({p.Label}):";
     }
 
+    /// <summary>AccessibleName for the AS METAR box — carries the offset so a screen
+    /// reader hears WHICH forecast time the box shows. The caption Label states it too,
+    /// but a Label has no tab stop and is unreachable by keyboard.</summary>
+    internal static string BuildAsMetarAccessibleName(int presetIndex)
+    {
+        var p = ForecastPresets[Math.Clamp(presetIndex, 0, ForecastPresets.Length - 1)];
+        return p.OffsetSeconds == 0 ? "ActiveSky METAR" : $"ActiveSky METAR, {p.Label}";
+    }
+
     /// <summary>The Winds Aloft box's altitude set: ±5000 ft of the aircraft in
     /// 1000-ft steps, clamped at 0 — kept identical to the Open-Meteo path's
     /// window (WeatherService.ParseWindsAloft) so switching source never

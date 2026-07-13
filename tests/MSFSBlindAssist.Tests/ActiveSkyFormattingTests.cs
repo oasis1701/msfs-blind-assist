@@ -112,6 +112,14 @@ public class ActiveSkyFormattingTests
     public void As_metar_caption_states_the_offset(int index, string expected)
         => Assert.Equal(expected, ActiveSkyFormatting.BuildAsMetarCaption(index));
 
+    [Fact]
+    public void BuildAsMetarAccessibleName_carries_the_offset()
+    {
+        Assert.Equal("ActiveSky METAR", ActiveSkyFormatting.BuildAsMetarAccessibleName(0));
+        Assert.Equal("ActiveSky METAR, +2 hours", ActiveSkyFormatting.BuildAsMetarAccessibleName(2));
+        Assert.Equal("ActiveSky METAR, +6 hours", ActiveSkyFormatting.BuildAsMetarAccessibleName(99)); // clamped
+    }
+
     // --- BuildNearbyAdvisoriesModeCaveat -------------------------------------------------
     // The Nearby Advisories box is aviationweather.gov-sourced (live real-world data);
     // when AS runs a non-Live mode the sim's weather diverges from it, so the box gets
