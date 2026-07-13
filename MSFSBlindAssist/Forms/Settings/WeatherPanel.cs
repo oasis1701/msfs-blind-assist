@@ -143,7 +143,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
         _announceIcing = new CheckBox
         {
-            Text = "Announce &icing",
+            Text = "Announce icin&g",
             Location = new System.Drawing.Point(12, 96),
             Size = new System.Drawing.Size(420, 24),
             AccessibleName = "Announce icing",
