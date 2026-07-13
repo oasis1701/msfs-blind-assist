@@ -464,6 +464,8 @@ public static class ActiveSkyFormatting
             return $"surface to FL{m.Groups[1].Value}";
         if ((m = Regex.Match(body, @"\bSFC/(\d{3,5})FT\b")).Success)
             return $"surface to {FeetWord(m.Groups[1].Value)}";
+        if ((m = Regex.Match(body, @"\b(\d{3,5})FT/FL(\d{3})\b")).Success)
+            return $"{FeetWord(m.Groups[1].Value)} to FL{m.Groups[2].Value}";
         if ((m = Regex.Match(body, @"\bFL(\d{3})/(\d{3})\b")).Success)
             return $"FL{m.Groups[1].Value} to FL{m.Groups[2].Value}";
         if ((m = Regex.Match(body, @"\b(\d{4,5})/(\d{4,5})FT\b")).Success)

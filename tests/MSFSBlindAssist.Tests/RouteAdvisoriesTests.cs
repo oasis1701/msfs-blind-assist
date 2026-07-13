@@ -335,6 +335,20 @@ public class RouteAdvisoriesTests
     }
 
     [Fact]
+    public void Mixed_feet_flightlevel_extent_decodes()
+    {
+        // Live capture 2026-07-13 (route endpoint, Melbourne FIR mountain-wave SIGMET):
+        // the vertical extent arrives as "3000FT/FL300" — feet floor, flight-level top.
+        var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(
+            "YMMM SIGMET B10 TURB\r\nValid until: 1800z\r\n"
+            + "YMMM MELBOURNE FIR SEV MTW FCST WI S3620 E14750 - S3420 E15000 - S3420 E15110 - S3630 E15010 - S3820 E14550 - S3730 E14520 3000FT/FL300 STNR NC="));
+        Assert.Equal("severe mountain waves", a.Hazard);
+        Assert.Equal("3,000 feet to FL300", a.VerticalExtent);
+        Assert.Equal("stationary", a.Movement);
+        Assert.Equal("no change expected", a.Trend);
+    }
+
+    [Fact]
     public void Body_without_fir_declaration_has_null_firname()
     {
         var a = Assert.Single(ActiveSkyFormatting.ParseRouteAdvisories(OneBlock));
