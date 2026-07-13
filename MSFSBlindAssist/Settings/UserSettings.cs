@@ -235,6 +235,11 @@ public class UserSettings
         // this toggle existed; a missing key in old settings files deserializes to it.
         public bool FOAutoLights10kEnabled { get; set; } = true;
 
+        // Auto seat-belt-sign automation, actuated via each aircraft's own seatbelt control:
+        // 0 = Disabled (default), 1 = switch at the 10,000 ft crossing, 2 = off at Top of
+        // Climb / on at Top of Descent (vertical-speed profile). See FoSeatbeltMode.
+        public int FOAutoSeatbeltMode { get; set; } = 0;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -524,6 +529,7 @@ public class UserSettings
             FOAutoApEnabled    = FOAutoApEnabled,
             FOAutoApEngageAltitudeAgl = FOAutoApEngageAltitudeAgl,
             FOAutoLights10kEnabled = FOAutoLights10kEnabled,
+            FOAutoSeatbeltMode = FOAutoSeatbeltMode,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
             PmdgMonitorDefaultsSeeded = PmdgMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
