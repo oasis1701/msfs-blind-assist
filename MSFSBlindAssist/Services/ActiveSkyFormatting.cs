@@ -312,8 +312,13 @@ public static class ActiveSkyFormatting
     /// "No advisories on route." With decode=true (the "Decode advisories into plain
     /// English" checkbox) each advisory renders as its rebuilt plain-English summary —
     /// the WI lat/lon polygon is dropped (noise when read aloud) — falling back to the
-    /// verbatim block when nothing was recognized, so decoding never hides data.</summary>
-    internal static string BuildRouteAdvisoriesText(IReadOnlyList<RouteAdvisory> advisories, bool decode)
+    /// verbatim block when nothing was recognized, so decoding never hides data.
+    /// <paramref name="locations"/> is an optional Key → location-phrase map (design
+    /// 2026-07-13 route-advisory-location); when a block's key is present, a
+    /// "Location: {phrase}" line is appended as the block's FINAL line in both raw and
+    /// decoded modes. Missing entries render exactly as before (no location line).</summary>
+    internal static string BuildRouteAdvisoriesText(IReadOnlyList<RouteAdvisory> advisories, bool decode,
+        IReadOnlyDictionary<string, string>? locations = null)
     {
         if (advisories.Count == 0) return "No advisories on route.";
         var sb = new System.Text.StringBuilder();
@@ -330,6 +335,8 @@ public static class ActiveSkyFormatting
             {
                 foreach (var line in a.Lines) sb.AppendLine(line);
             }
+            if (locations != null && locations.TryGetValue(a.Key, out string? loc))
+                sb.AppendLine($"Location: {loc}");
         }
         return sb.ToString().TrimEnd();
     }

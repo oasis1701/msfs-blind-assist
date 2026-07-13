@@ -268,6 +268,30 @@ public class RouteAdvisoriesTests
         }, rows);
     }
 
+    [Fact]
+    public void Location_line_renders_in_raw_and_decoded_modes()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(OneBlock);
+        var locations = new Dictionary<string, string> { ["CONVECTIVE SIGMET 18E"] = "123 nm ahead" };
+
+        string raw = ActiveSkyFormatting.BuildRouteAdvisoriesText(advisories, decode: false, locations);
+        Assert.EndsWith("Location: 123 nm ahead", raw);
+        Assert.StartsWith("CONVECTIVE SIGMET 18E", raw);          // verbatim block untouched above
+
+        string decoded = ActiveSkyFormatting.BuildRouteAdvisoriesText(advisories, decode: true, locations);
+        Assert.EndsWith("Location: 123 nm ahead", decoded);
+    }
+
+    [Fact]
+    public void Missing_location_key_renders_exactly_as_today()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(OneBlock);
+        Assert.Equal(
+            ActiveSkyFormatting.BuildRouteAdvisoriesText(advisories, decode: false),
+            ActiveSkyFormatting.BuildRouteAdvisoriesText(advisories, decode: false,
+                new Dictionary<string, string>()));
+    }
+
     // --- Decoded vs raw rendering (decode checkbox, design §3.3) ----------------------
 
     [Fact]
