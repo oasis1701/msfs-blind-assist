@@ -392,6 +392,12 @@ public static class PMDG737ChecklistDefinitions
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(0)),
             Auto("SE_PACKS", "SECURE", "Packs: OFF", "AIR_PackSwitch_0", v => v < 0.5,
                 new[] { "AIR_PackSwitch_1" }, (e, _) => e.SetPacks(0)),
+            Auto("SE_APU_OFF", "SECURE", "APU: OFF", "APU_Selector", v => v < 0.5, (e, _) => e.SetApuSelector(0)),
+            // Ground power OFF: no reliable stateless "GPU on bus" signal to auto-detect,
+            // so this is a manual-tick action guarded on IsGpuOn() — inverts the EPU_GPU
+            // "Ground power: ON" form (SetGroundPower(1)) and no-ops when no GPU is present.
+            ActionManual("SE_GND_PWR_OFF", "SECURE", "Ground power: OFF",
+                (e, s) => { if (s.IsGpuOn()) e.SetGroundPower(0); }),
         }
     };
 
@@ -401,7 +407,6 @@ public static class PMDG737ChecklistDefinitions
         Items = new()
         {
             Auto("EPD_BAT", "ELEC_POWER_DOWN", "Battery: OFF", "ELEC_BatSelector", v => v < 0.5, (e, _) => e.SetBattery(0)),
-            Reminder("EPD_PWR", "ELEC_POWER_DOWN", "APU or ground power: OFF (after the 2-minute APU cooldown)"),
         }
     };
 

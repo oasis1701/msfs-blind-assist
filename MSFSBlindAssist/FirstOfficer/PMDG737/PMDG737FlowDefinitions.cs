@@ -457,6 +457,12 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),
             Multi("SE_PACKS_OFF", "Packs: OFF", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
+            // APU selector to OFF (absolute set — idempotent when already off). Ground
+            // power OFF is a directional press, so it is skip-guarded on IsGpuOn() to no-op
+            // when no GPU is connected (mirrors the Before-Start BS_GPU_OFF drop).
+            SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0),
+            Skip(SW("SE_GND_PWR_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
+                s => !s.IsGpuOn()),
         }
     };
 
