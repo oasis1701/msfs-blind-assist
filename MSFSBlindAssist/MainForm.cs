@@ -168,6 +168,10 @@ public partial class MainForm : Form
 
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
 
+    private MSFSBlindAssist.Automation.UniversalAutomationService universalAutomation = null!;
+    private System.Windows.Forms.Timer _universalAutomationTimer = null!;
+    private double _universalLatestAgl;
+
     private ElectronicFlightBagForm? electronicFlightBagForm;
 
     private TrackFixForm? trackFixForm;
@@ -483,6 +487,22 @@ public partial class MainForm : Form
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
+
+        _universalAutomationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        _universalAutomationTimer.Tick += (_, _) =>
+        {
+            if (!simConnectManager.IsConnected) return;
+            var s = SettingsManager.Current;
+            universalAutomation.AutoGearUpEnabled       = s.FOAutoGearUpEnabled;
+            universalAutomation.AutoGearDownEnabled     = s.FOAutoGearDownEnabled;
+            universalAutomation.AutoApEnabled           = s.FOAutoApEnabled;
+            universalAutomation.AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl;
+            if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
+            simConnectManager.RequestAircraftPosition();
+            simConnectManager.RequestFOAltitudeAGL();
+        };
+        _universalAutomationTimer.Start();
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
 
@@ -551,6 +571,10 @@ public partial class MainForm : Form
         landingRateAnnouncer = new MSFSBlindAssist.Services.LandingRateAnnouncer();
         // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
         altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
+
+        universalAutomation = new MSFSBlindAssist.Automation.UniversalAutomationService(
+            eventName => simConnectManager.SendEvent(eventName),
+            msg => announcer.AnnounceImmediate(msg));
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
@@ -796,6 +820,9 @@ public partial class MainForm : Form
 
         _displayRepaintDebounce?.Stop();
         _displayRepaintDebounce?.Dispose();
+
+        _universalAutomationTimer?.Stop();
+        _universalAutomationTimer?.Dispose();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();

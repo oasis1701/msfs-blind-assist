@@ -623,6 +623,9 @@ public partial class MainForm
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
 
+        universalAutomation?.Reset();
+        _universalLatestAgl = 0;
+
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
         {
