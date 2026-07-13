@@ -9,6 +9,9 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public static class ActiveSkyFormatting
 {
+    /// <summary>All builder output is invariant-formatted — pinned tests and screen-reader
+    /// wording must not change with the OS locale (matches FeetWord/BuildLocationPhrase).</summary>
+    private static string Inv(FormattableString f) => FormattableString.Invariant(f);
     /// <summary>
     /// Parses the /GetMode body, e.g. "Live Real time mode (Active) (2026/7/10 1935z)"
     /// → ("Live Real time mode", "2026/7/10 1935z"). Unknown strings pass through
@@ -55,7 +58,7 @@ public static class ActiveSkyFormatting
         if (string.IsNullOrWhiteSpace(positionMetar)) return null;
         var d = ActiveSkyWeatherMonitor.DecodeMetar(positionMetar);
         if (d.TemperatureC.HasValue && d.DewPointC.HasValue)
-            return $"Temperature/dew point: {d.TemperatureC} / {d.DewPointC}°C";
+            return Inv($"Temperature/dew point: {d.TemperatureC} / {d.DewPointC}°C");
         return null;
     }
 
@@ -115,12 +118,12 @@ public static class ActiveSkyFormatting
     internal static string BuildWindsAloftText(int aircraftAltFt, IReadOnlyList<ActiveSkyClient.AtmosphereLevel> levels)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Aircraft: {aircraftAltFt:N0} ft  |  forecast winds:");
+        sb.AppendLine(Inv($"Aircraft: {aircraftAltFt:N0} ft  |  current winds:"));
         sb.AppendLine(new string('─', 36));
         foreach (var w in levels)
         {
             string marker = Math.Abs(w.AltitudeFt - aircraftAltFt) < 500 ? " (nearest)" : "";
-            sb.AppendLine($"{w.AltitudeFt:N0} ft:  {w.WindDirection:F0}° / {w.WindSpeed:F0} kts, {w.TemperatureC:F0}°C{marker}");
+            sb.AppendLine(Inv($"{w.AltitudeFt:N0} ft:  {w.WindDirection:F0}° / {w.WindSpeed:F0} kts, {w.TemperatureC:F0}°C{marker}"));
         }
         sb.AppendLine("Source: ActiveSky");
         return sb.ToString().TrimEnd();
@@ -149,7 +152,7 @@ public static class ActiveSkyFormatting
             foreach (var c in realClouds)
             {
                 var line = new System.Text.StringBuilder(
-                    $"{CoverageWord(c.CoverageOktas)}, {c.BaseFt:N0} to {c.TopFt:N0} feet");
+                    Inv($"{CoverageWord(c.CoverageOktas)}, {c.BaseFt:N0} to {c.TopFt:N0} feet"));
                 if (SeverityWord(c.IcingEnum) is { } icing) line.Append($", {icing} icing");
                 if (PrecipWord(c.PrecipType) is { } precip) line.Append($", {precip}");
                 if (SeverityWord(c.TurbulenceEnum) is { } turb) line.Append($", {turb} turbulence");
@@ -163,10 +166,10 @@ public static class ActiveSkyFormatting
             sb.AppendLine("Winds and temperatures aloft:");
             foreach (var w in curated)
             {
-                string label = w.IsSurface ? "Surface" : $"{w.AltitudeFt:N0} feet";
+                string label = w.IsSurface ? "Surface" : Inv($"{w.AltitudeFt:N0} feet");
                 var line = new System.Text.StringBuilder(
-                    $"{label}: {(int)Math.Round(w.DirectionDeg):000} at {w.SpeedKts:F0}");
-                if (w.IsSurface && w.GustKts > 0) line.Append($", gusting {w.GustKts:F0}");
+                    Inv($"{label}: {(int)Math.Round(w.DirectionDeg):000} at {w.SpeedKts:F0}"));
+                if (w.IsSurface && w.GustKts > 0) line.Append(Inv($", gusting {w.GustKts:F0}"));
                 line.Append($", {TempWord(w.TemperatureC)}");
                 if (SeverityWord(w.TurbulenceEnum) is { } turb) line.Append($", {turb} turbulence");
                 sb.AppendLine(line.ToString());

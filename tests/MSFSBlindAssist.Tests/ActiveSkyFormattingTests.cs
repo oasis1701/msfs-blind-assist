@@ -178,4 +178,35 @@ public class ActiveSkyFormattingTests
     [Fact]
     public void Location_phrase_null_without_geometry()
         => Assert.Null(ActiveSkyFormatting.BuildLocationPhrase(null, inside: false, behind: false, spoken: false));
+
+    // --- Invariant-culture formatting -------------------------------------------------------
+
+    [Fact]
+    public void Builders_format_invariantly_under_a_comma_decimal_culture()
+    {
+        var prev = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+            var levels = new List<ActiveSkyClient.AtmosphereLevel>
+            {
+                new() { AltitudeFt = 34000, WindDirection = 350, WindSpeed = 8, TemperatureC = -39.7 },
+            };
+            string winds = ActiveSkyFormatting.BuildWindsAloftText(34000, levels);
+            Assert.Contains("Aircraft: 34,000 ft", winds);          // not "34.000"
+            Assert.Contains("34,000 ft:  350° / 8 kts, -40°C", winds); // ASCII minus, invariant group
+            Assert.Contains("current winds:", winds);
+
+            var p = new ActiveSkyClient.VerticalProfile();
+            p.WindLayers.Add(new ActiveSkyClient.ProfileWindLayer { AltitudeFt = 34000, DirectionDeg = 350, SpeedKts = 8, TemperatureC = -39.7 });
+            p.CloudLayers.Add(new ActiveSkyClient.ProfileCloudLayer { BaseFt = 13038, TopFt = 24705, CoverageOktas = 2 });
+            string narrative = ActiveSkyFormatting.BuildProfileNarrative(p, 34000);
+            Assert.Contains("Few, 13,038 to 24,705 feet", narrative);
+            Assert.Contains("34,000 feet: 350 at 8, minus 40", narrative);
+
+            Assert.Equal("Temperature/dew point: -5 / -8°C",
+                ActiveSkyFormatting.BuildTempDewLine("PANC 071751Z 30012KT 1SM SHSN OVC008 M05/M08 A2990"));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = prev; }
+    }
 }
