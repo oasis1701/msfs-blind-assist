@@ -699,7 +699,11 @@ all exercise the real captured text, not a hand-written approximation. The captu
 KMIA→YSSY (Miami→Sydney) plan Robin dispatched deliberately to cross many FIRs, which is why the
 response carries both a Central-American-FIR SIGMET (MHTG) and a Melbourne-FIR SIGMET (YMMM) —
 the route-filtered framing is confirmed, since both FIRs genuinely lie along that great-circle
-route.
+route. A second live capture (2026-07-13, KMIA→KJFK) confirmed the ROUTE endpoint also serves
+US convective advisories in the same shape — CONVECTIVE SIGMET 54E repeated 5× across
+route-segment intersections, deduped to one — and added the wind-style movement group
+("MOV FROM 27010KT" → "moving from 270 degrees at 10 knots") to the decoder's vocabulary;
+that capture is pinned in `RouteAdvisoriesTests.cs` too.
 
 What remains unverified is narrower: a genuinely NEW advisory appearing mid-flight — an advisory
 absent from the tracker's baseline that then shows up on a later 30 s tick and fires

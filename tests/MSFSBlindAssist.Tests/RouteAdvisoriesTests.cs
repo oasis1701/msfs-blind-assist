@@ -334,6 +334,31 @@ public class RouteAdvisoriesTests
             ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a));
     }
 
+    // Live capture 2026-07-13 (route endpoint, KMIA→KJFK plan): the first US convective
+    // advisory observed on the ROUTE variant — same 3-line/single-CRLF/no-blank-line shape
+    // as the ICAO capture, repeated once per route-segment intersection (5×), and a
+    // wind-style movement group ("MOV FROM 27010KT") instead of the compass form.
+    private const string LiveConvectiveBody =
+        "AREA TS MOV FROM 27010KT. TOPS ABV FL450. REF INTL SIGMET ECHO SERIES. OUTLOOK VALID 131755-132155 FROM 40ENE CVG-RIC-180ESE ECG-150SSE ILM-140SE MIA-EYW-100WSW PIE-170SE LEV-70WNW BNA-40ENE CVG WST ISSUANCES EXPD. REFER TO MOST RECENT ACUS01 KWNS FROM STORM PREDICTION CENTER FOR SYNOPSIS AND METEOROLOGICAL DETAILS.";
+    private const string LiveConvectiveBlock =
+        "CONVECTIVE SIGMET 54E\r\nValid until: 1700z\r\n" + LiveConvectiveBody + "\r\n";
+
+    [Fact]
+    public void Live_route_convective_capture_dedups_and_decodes()
+    {
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            string.Concat(Enumerable.Repeat(LiveConvectiveBlock, 5)));
+        var a = Assert.Single(advisories);
+        Assert.Equal("CONVECTIVE SIGMET 54E", a.Key);
+        Assert.Equal("CONVECTIVE SIGMET 54E", a.Identity);
+        Assert.Equal("thunderstorms", a.Hazard);
+        Assert.Equal("tops above FL450", a.VerticalExtent);
+        Assert.Equal("moving from 270 degrees at 10 knots", a.Movement);
+        Assert.Equal("1700Z", a.ValidUntil);
+        Assert.Equal("CONVECTIVE SIGMET 54E, thunderstorms, tops above FL450",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a));
+    }
+
     [Fact]
     public void Mixed_feet_flightlevel_extent_decodes()
     {

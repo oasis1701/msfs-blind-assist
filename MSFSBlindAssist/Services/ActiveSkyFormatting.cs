@@ -444,8 +444,15 @@ public static class ActiveSkyFormatting
         a.VerticalExtent = MatchVerticalExtent(body);
 
         var mov = Regex.Match(body, @"\bMOV\s+([NSEW]{1,3})\s*(\d{1,3})\s*KT\b", RegexOptions.IgnoreCase);
+        var movFrom = Regex.Match(body, @"\bMOV\s+FROM\s+(\d{3})(\d{2,3})KT\b", RegexOptions.IgnoreCase);
         if (mov.Success && CompassWords.TryGetValue(mov.Groups[1].Value, out string? dir))
             a.Movement = $"moving {dir} at {int.Parse(mov.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)} knots";
+        else if (movFrom.Success)
+            // US convective wind-style movement ("MOV FROM 27010KT" = from 270° at 10 kt,
+            // live-captured 2026-07-13). Spoken as-is — no from→toward compass conversion,
+            // which would just add a translation error risk.
+            a.Movement = $"moving from {int.Parse(movFrom.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture):000} degrees"
+                + $" at {int.Parse(movFrom.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)} knots";
         else if (Regex.IsMatch(body, @"\bSTNR\b", RegexOptions.IgnoreCase))
             a.Movement = "stationary";
 
