@@ -244,6 +244,24 @@ public class RouteAdvisoriesTests
             ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(advisories[0]));
     }
 
+    [Fact]
+    public void Announcement_appends_the_location_phrase()
+    {
+        var a = ActiveSkyFormatting.ParseRouteAdvisories(OneBlock)[0];
+        Assert.Equal("CONVECTIVE SIGMET 18E, thunderstorms, 123 nautical miles ahead",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a, "123 nautical miles ahead"));
+        Assert.Equal("CONVECTIVE SIGMET 18E, thunderstorms",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a));                 // unchanged default
+    }
+
+    [Fact]
+    public void Raw_key_fallback_also_carries_the_location()
+    {
+        var a = ActiveSkyFormatting.ParseRouteAdvisories("No flight plan is currently loaded")[0];
+        Assert.Equal("No flight plan is currently loaded, at your position",
+            ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(a, "at your position"));
+    }
+
     // --- BuildRouteAdvisoriesText ---------------------------------------------------------
 
     [Fact]

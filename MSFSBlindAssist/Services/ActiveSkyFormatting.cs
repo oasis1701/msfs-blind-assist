@@ -536,14 +536,19 @@ public static class ActiveSkyFormatting
     /// (+ hazard, + vertical extent). Falls back to the raw Key when the essentials
     /// didn't decode — a spoken announcement never goes blank. Movement/trend/validity
     /// are deliberately box-only: announcements are interruptions, the box is the
-    /// briefing.</summary>
-    internal static string BuildRouteAdvisoryAnnouncement(RouteAdvisory a)
+    /// briefing. The location phrase, when provided, is appended last on both paths.</summary>
+    internal static string BuildRouteAdvisoryAnnouncement(RouteAdvisory a, string? locationPhrase = null)
     {
-        if (a.Identity == null || a.Hazard == null) return a.Key;
-        var parts = new List<string> { a.Identity };
-        if (a.FirName != null) parts.Add(a.FirName);
-        parts.Add(a.Hazard);
-        if (a.VerticalExtent != null) parts.Add(a.VerticalExtent);
-        return string.Join(", ", parts);
+        string core;
+        if (a.Identity == null || a.Hazard == null) core = a.Key;
+        else
+        {
+            var parts = new List<string> { a.Identity };
+            if (a.FirName != null) parts.Add(a.FirName);
+            parts.Add(a.Hazard);
+            if (a.VerticalExtent != null) parts.Add(a.VerticalExtent);
+            core = string.Join(", ", parts);
+        }
+        return locationPhrase == null ? core : $"{core}, {locationPhrase}";
     }
 }
