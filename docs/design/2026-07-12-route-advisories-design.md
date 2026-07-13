@@ -168,6 +168,30 @@ plus docs. In-sim items appended to the PR checklist.
 - Positional `GetActiveSigmetsAt?lat=&lon=` as an aviationweather.gov replacement for the
   Nearby Advisories box (the audit's consistency argument for AS historic/custom modes —
   separate feature, separate conversation).
+  *2026-07-13 UPDATE — investigated live and decided AGAINST implementing; a non-Live-mode
+  caveat line on the Nearby Advisories box was added instead (docs/weather.md §13 carries the
+  decision + full rationale). The live probe session (aircraft at KMIA, three real SIGMETs
+  within 300 nm, all cross-verified against aviationweather.gov) answered this doc's open
+  questions and is recorded here so any future revival starts de-risked:*
+  - *Content parity in Live mode: all three aviationweather.gov advisories hit on the AS
+    positional endpoint when probed inside their polygons; the oceanic-FIR body was
+    verbatim-identical. The consistency win exists ONLY in historic/custom/SimTime modes.*
+  - *Strict containment: a probe 3 nm outside a convective SIGMET boundary returns the no-hit
+    sentence — no tolerance, no radius parameter, no list-within-range form. A proximity
+    feature must sample PROJECTED points (ring/track probes); grid density = detection
+    resolution.*
+  - *Positional no-hit sentence: "No airmet/sigmet active at the requested position" — covered
+    by the parser's existing `StartsWith("No airmet/sigmet")` prefix check.*
+  - *US convective bodies arrive GEOMETRY-STRIPPED (the "FROM 160SE CHS-…" line is consumed by
+    AS) — polygon-parsing designs are dead for that advisory class; ICAO bodies keep `WI`
+    polygons.*
+  - *A hit can BUNDLE unrelated advisories after `---------------------- Hazard: XX` separators
+    on one body line (observed: matched oceanic SIGMET + a mid-Atlantic SIGMET + an Indonesian
+    VA SIGMET, the latter two nowhere near the probe point) — only the FIRST advisory of a hit
+    is position-matched.*
+  - *AS's "Valid until:" is suspect (all three hits said 1600z vs real validities 1605Z/1655Z —
+    possibly AS's data-window time, not advisory validity), and identities render differently
+    ("SIGA SIGMET E5 TS" for aviationweather.gov's "SIGMET ECHO 5").*
 - Revisit the block/key strategy (per-line advisory detection vs. the current first-line-as-key
   approach) once the first real route hit is observed in the wild and the genuine hit format is
   actually known. Also: the "AS running, no flight plan loaded" response wording needs to be

@@ -554,7 +554,8 @@ Design doc: `docs/design/2026-07-12-route-advisories-design.md`. A read-only Wea
 addition plus a background announcer, both riding `ActiveSkyClient.GetRouteAdvisoriesTextAsync()`
 — a parameterless `GET /GetActiveSigmetsAt` that answers for whatever flight plan is currently
 **loaded in ActiveSky itself**, not for the aircraft's proximity like the existing SIGMET/AIRMET
-box (§4's Nearby Advisories, which stays position+range and untouched by this feature).
+box (the Nearby Advisories box, which stays position+range and aviationweather.gov-sourced —
+§13 records that decision and its live-probe evidence).
 
 **(a) Route source and the API-only constraint.** The 2026-07-10 audit had assumed this needed
 MSFSBA to export a `.pln` and push it via `LoadFlightPlan`. Live verification on 2026-07-12
@@ -710,3 +711,49 @@ advisory, with no startup burst, rests on the tracker's characterization tests
 (`tests/MSFSBlindAssist.Tests/RouteAdvisoriesTests.cs`) and the now-live-verified parser/decoder
 rather than an observed live "new advisory" event — a narrower but real distinction worth
 remembering before calling this feature fully tested end to end.
+
+## 13. Nearby advisories stay aviationweather.gov-sourced (2026-07-13 decision)
+
+The Weather Radar's **Nearby Advisories** box and the SIGMET/PIREP **proximity auto-announce**
+(`WeatherService.GetNearbyAdvisoriesAsync` / `GetNearbyPirepsAsync` — aviationweather.gov
+`isigmet`/`airsigmet`/`pirep` GeoJSON, position+range filtered) deliberately do NOT follow the
+per-engine source rule (§3). This was investigated and decided against on 2026-07-13, with live
+probes against a running ASFS (aircraft at KMIA, three real SIGMETs within 300 nm):
+
+- **In Live mode the two sources carry identical content.** All three aviationweather.gov
+  advisories (one KZWY/KZMA oceanic-FIR `FRQ TS` SIGMET + two US convective SIGMETs) hit on
+  ActiveSky's positional `GetActiveSigmetsAt?lat=&lon=` when probed inside their polygons; the
+  oceanic body text was verbatim-identical. So switching sources gains nothing for the Live-mode
+  majority while LOSING precision: aviationweather.gov's structured geometry gives the announcer
+  its exact "bearing 240 degrees, 85 nautical miles" phrasing, which AS cannot provide (below).
+- **The divergence window is non-Live modes only** (historic/custom/SimTime) — handled by a
+  cheap caveat instead of a source switch: `ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat`
+  (pure, CI-tested) appends "Note: nearby advisories are live real-world data; ActiveSky is in
+  {mode}." under the box header whenever AS is enabled+reachable and its parsed mode doesn't
+  start with "Live". Zero extra I/O — the mode text rides the liveness probe already. Unknown
+  /unreadable mode → no caveat; unrecognized mode text passes through verbatim (FormatModeLine's
+  never-hide philosophy).
+
+**Live-probe facts recorded for any future AS-sourced-proximity design** (also in the
+2026-07-12 route-advisories design doc §10; these answer that doc's open questions):
+
+- `GetActiveSigmetsAt?lat=&lon=` is strict point-in-polygon **containment** — a probe 3 nm
+  outside a convective SIGMET's boundary already returns the no-hit sentence. No tolerance, no
+  radius parameter, no "list all within N nm" form. A proximity feature must probe PROJECTED
+  points (ring/track sampling); sampling density fully determines detection resolution.
+- The positional no-hit sentence is **"No airmet/sigmet active at the requested position"** —
+  different wording from the route variant's, but the parser's `StartsWith("No airmet/sigmet")`
+  check covers both.
+- **US convective bodies come back with their geometry stripped** — AS consumes the
+  "FROM 160SE CHS-…" location line, returning "AREA TS MOV LTL. TOPS ABV FL450. …" only. There
+  is no position data to parse out of AS text for US advisories; polygon-parsing designs are
+  dead for that class. ICAO-style bodies keep their `WI` polygons.
+- **A hit can bundle unrelated advisories** after `---------------------- Hazard: XX` separators
+  on one body line — the ECHO 5 probe returned the matched advisory plus a mid-Atlantic SIGMET
+  and an Indonesian volcanic-ash SIGMET, neither containing the probe point. Any consumer must
+  treat only the FIRST advisory of a hit as position-matched (our block parser keeps the bundle
+  as one block whose leading text is the matched advisory, so hazard/extent decode correctly).
+- **AS's "Valid until:" line is suspect** — all three hits said `1600z` against real validities
+  of 1605Z/1655Z; it may be AS's own data-window time, not the advisory's validity.
+- **AS renders identities differently** — "SIGA SIGMET E5 TS" for aviationweather.gov's
+  "SIGMET ECHO 5" (KZWY/KZMA). `IdentityPattern` matches both shapes.
