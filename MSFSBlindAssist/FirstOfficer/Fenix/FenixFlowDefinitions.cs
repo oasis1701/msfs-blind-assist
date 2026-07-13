@@ -204,6 +204,7 @@ public static class FenixFlowDefinitions
             Done(SW("BS_COCKPITDOOR", "Cockpit door: closed and locked", "S_COCKPIT_DOOR", 0), "BS_COCKPITDOOR"),
             Captain("BS_DOORS", "Close doors and remove ground services on the EFB"),
             Captain("BS_THRLEVERS", "Confirm thrust levers idle"),
+            Captain("BS_ACARS", "Start ACARS"),
             Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
         }
     };

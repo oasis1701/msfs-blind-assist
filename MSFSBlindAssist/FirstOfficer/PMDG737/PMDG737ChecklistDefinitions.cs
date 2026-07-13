@@ -166,7 +166,9 @@ public static class PMDG737ChecklistDefinitions
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed air: ON", "AIR_APUBleedAirSwitch", v => v > 0.5, (e, _) => e.SetApuBleed(1)),
             Auto("BS_ANTICOL", "BEFORE_START", "Anti-collision light: ON", "LTS_AntiCollisionSw", v => v > 0.5, (e, _) => e.SetBeacon(1)),
             Auto("BS_XPDR", "BEFORE_START", "Transponder: TA/RA", "XPDR_ModeSel", v => v > 3.5, (e, _) => e.SetTransponderMode(4)),
-            Reminder("BS_GND", "BEFORE_START", "Confirm ground power and chocks removed, doors closed, and taxi clearance"),
+            Reminder("BS_GND", "BEFORE_START", "Confirm ground power and chocks removed, doors closed"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
+            Reminder("BS_CLEARANCE", "BEFORE_START", "Obtain pushback and start clearance"),
         }
     };
 

@@ -209,6 +209,7 @@ public static class FbwA320ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 1)),
             Reminder("BS_DOORS", "BEFORE_START", "Close doors and remove ground services on the EFB"),
             Reminder("BS_THRLEVERS", "BEFORE_START", "Confirm thrust levers idle"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
             Reminder("BS_CLEARANCE", "BEFORE_START", "Obtain pushback and start clearance"),
         }
     };
@@ -538,13 +539,14 @@ public static class FbwA320ChecklistDefinitions
         Id = "BEFORE_START_CL", Name = "Before Start Checklist",
         Items = new()
         {
-            Auto("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
-                v => v > 0.5, action: null),
             Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds: READBACK"),
-            Reminder("BSC_DOORS", "BEFORE_START_CL", "Doors: CLOSED"),
             Auto("BSC_SEATBELTS", "BEFORE_START_CL", "Seatbelt signs: ON", "CABIN SEATBELTS ALERT SWITCH",
                 v => v > 0.5, action: null),
+            Info("BSC_LINE", "BEFORE_START_CL", "— Down to the line —"),
+            Reminder("BSC_DOORS", "BEFORE_START_CL", "Doors: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT BEACON",
+                v => v > 0.5, action: null),
+            Auto("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
                 v => v > 0.5, action: null),
         }
     };
@@ -602,6 +604,7 @@ public static class FbwA320ChecklistDefinitions
             Reminder("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flaps: SET"),
             Reminder("BTC_TOSPEEDS", "BEFORE_TAKEOFF_CL", "Takeoff speeds: READBACK"),
             Reminder("BTC_ALTITUDE", "BEFORE_TAKEOFF_CL", "Altitude: READBACK"),
+            Info("BTC_LINE", "BEFORE_TAKEOFF_CL", "— Below the line —"),
             Auto("BTC_AUTOBRAKE", "BEFORE_TAKEOFF_CL", "Autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
                 v => System.Math.Abs(v - 3) < 0.5, action: null),
             Auto("BTC_TCAS", "BEFORE_TAKEOFF_CL", "TCAS: SET", "A32NX_SWITCH_TCAS_POSITION",

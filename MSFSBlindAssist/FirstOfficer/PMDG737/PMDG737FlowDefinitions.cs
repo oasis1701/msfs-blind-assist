@@ -194,7 +194,9 @@ public static class PMDG737FlowDefinitions
             SW("BS_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1),
             SW("BS_ANTICOL", "Anti-collision light: ON", "EVT_OH_LIGHTS_ANT_COL", 1),
             SW("BS_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4),
-            Captain("BS_GND", "Confirm ground power and chocks removed, doors closed, and taxi clearance."),
+            Captain("BS_GND", "Confirm ground power and chocks removed, doors closed."),
+            Captain("BS_ACARS", "Start ACARS"),
+            Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
         }
     };
 

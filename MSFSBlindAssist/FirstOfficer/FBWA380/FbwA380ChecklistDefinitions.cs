@@ -275,10 +275,10 @@ public static class FbwA380ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("A32NX_PARK_BRAKE_LEVER_POS", 1)),
             Reminder("BS_XPDR", "BEFORE_START", "Transponder: set for departure"),
             Reminder("BS_TCAS", "BEFORE_START", "TCAS mode: TA/RA"),
-            Reminder("BS_TAXICLR", "BEFORE_START", "Obtain taxi clearance"),
-            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
             Reminder("BS_MCDUPERF", "BEFORE_START", "Program the MCDU PERF page"),
             Reminder("BS_TRIM", "BEFORE_START", "Set trim"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
+            Reminder("BS_TAXICLR", "BEFORE_START", "Obtain pushback and start clearance"),
         }
     };
 
@@ -631,11 +631,12 @@ public static class FbwA380ChecklistDefinitions
         Id = "BEFORE_START_CL", Name = "Before Start Checklist",
         Items = new()
         {
-            Auto("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
-                v => v > 0.5, action: null),
             Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds: READBACK"),
+            Info("BSC_LINE", "BEFORE_START_CL", "— Down to the line —"),
             Reminder("BSC_DOORS", "BEFORE_START_CL", "Doors: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT_BEACON",
+                v => v > 0.5, action: null),
+            Auto("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
                 v => v > 0.5, action: null),
         }
     };

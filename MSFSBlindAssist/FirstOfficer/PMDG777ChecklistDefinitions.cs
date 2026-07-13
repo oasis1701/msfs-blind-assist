@@ -347,8 +347,8 @@ public static class PMDG777ChecklistDefinitions
             Auto("BS_TRANSPONDER", "BEFORE_START", "Transponder: XPNDR",
                 "XPDR_ModeSel", v => v > 1.5 && v < 2.5,
                 action: (e, _) => e.SetTransponderMode(2)),
-            Reminder("BS_TAXI_CLR", "BEFORE_START", "Obtain taxi clearance"),
-            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS if required"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
+            Reminder("BS_TAXI_CLR", "BEFORE_START", "Obtain pushback and start clearance"),
         }
     };
 

@@ -212,10 +212,10 @@ public static class FbwA380FlowDefinitions
                 s => s.IsOn("A32NX_PARK_BRAKE_LEVER_POS")),
             Captain("BS_XPDR", "Transponder: set for departure"),
             Captain("BS_TCAS", "TCAS mode: TA/RA"),
-            Captain("BS_TAXICLR", "Obtain taxi clearance"),
-            Captain("BS_ACARS", "Start ACARS"),
             Captain("BS_MCDUPERF", "Program the MCDU PERF page"),
             Captain("BS_TRIM", "Set trim"),
+            Captain("BS_ACARS", "Start ACARS"),
+            Captain("BS_TAXICLR", "Obtain pushback and start clearance"),
         }
     };
 

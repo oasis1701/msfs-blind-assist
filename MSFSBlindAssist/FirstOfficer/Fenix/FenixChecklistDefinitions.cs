@@ -176,6 +176,7 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.SetCockpitDoor(false)),
             Reminder("BS_DOORS", "BEFORE_START", "Close doors and remove ground services on the EFB"),
             Reminder("BS_THRLEVERS", "BEFORE_START", "Confirm thrust levers idle"),
+            Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
             Reminder("BS_CLEARANCE", "BEFORE_START", "Obtain pushback and start clearance"),
         }
     };
@@ -506,10 +507,6 @@ public static class FenixChecklistDefinitions
                 "S_FC_FLAPS", v => v < 0.5, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: ON",
                 "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
-                action: null),
-            Info("ATC_LINE", "AFTER_TAKEOFF_CL", "— Below the line (at transition altitude) —"),
-            Auto("ATC_BARO", "AFTER_TAKEOFF_CL", "Baro ref: STANDARD set",
-                "S_FCU_EFIS1_BARO_STD", v => v > 0.5, new[] { "S_FCU_EFIS2_BARO_STD" },
                 action: null),
         }
     };

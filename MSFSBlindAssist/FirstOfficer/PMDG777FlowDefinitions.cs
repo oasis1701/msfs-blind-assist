@@ -244,8 +244,8 @@ public static class PMDG777FlowDefinitions
                 "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"), s => !s.IsGpuPower1On()),
             Skip(Momentary("BS_GND_PWR_2", "Ground power secondary: disconnect",
                 "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),  s => !s.IsGpuPower2On()),
-            Captain("BS_TAXI_CLR", "Obtain taxi clearance"),
-            Captain("BS_START_ACARS", "Start ACARS if required"),
+            Captain("BS_START_ACARS", "Start ACARS"),
+            Captain("BS_TAXI_CLR", "Obtain pushback and start clearance"),
         }
     };
 
