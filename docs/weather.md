@@ -713,6 +713,111 @@ no startup burst. The feature is now live-verified end to end: parser and decode
 real captures (2026-07-12 ICAO, 2026-07-13 US convective), and the baseline/new-key announce
 path against a real mid-session route change.
 
+**(g) Location context (2026-07).** Design doc: `docs/design/2026-07-13-route-advisory-location-design.md`.
+On top of the advisory list above, every route advisory gains a derived, position-relative fact —
+how far the aircraft is from the advisory area, and whether that area is ahead, behind, or the
+aircraft is inside it — computed purely from the aircraft's own SimConnect position. The feature
+is strictly ADDITIVE: nothing that already renders changes, and an advisory MSFSBA can't resolve
+geometry for renders exactly as it did before this feature existed.
+
+**Output contract (design §3).** Both the box and the spoken announcement carry the SAME fact in
+two renderings, both produced by the pure `ActiveSkyFormatting.BuildLocationPhrase(double?
+distanceNm, bool inside, bool behind, bool spoken)`:
+
+- **Box** (`BuildRouteAdvisoriesText`'s new optional `locations` parameter, honored in BOTH the
+  raw and the decoded render mode): a trailing `Location: {phrase}` line appended as each block's
+  FINAL line — `Location: 123 nm ahead`, `Location: 95 nm behind you`, `Location: less than one
+  nautical mile ahead` (a distance that rounds to 0 nm — i.e. under 0.5 nm while still outside the
+  polygon — renders this wording, never "0 nm"), `Location: at your position (inside the area)`.
+  An advisory whose key is missing from `locations` gets no line at all.
+- **Spoken** (`BuildRouteAdvisoryAnnouncement(RouteAdvisory a, string? locationPhrase = null)`):
+  the same fact appended, comma-joined, after the existing decoded fields —
+  `"…, 123 nautical miles ahead."` / `"…, at your position."` / `"…, 95 nautical miles behind
+  you."` — no parenthetical and no "nm" abbreviation, and the unit is deliberately SINGULAR at
+  exactly one (`"1 nautical mile ahead"`, never "1 nautical miles"); `locationPhrase == null`
+  appends nothing, matching the box's missing-key behavior.
+- Distance rounds with explicit `MidpointRounding.AwayFromZero` (never .NET's default banker's
+  rounding) and formats with invariant `"N0"`, so both renderings pick up a thousands separator
+  on a four-digit distance — `"1,234 nm ahead"` in the box, `"1,234 nautical miles ahead"` spoken.
+  This exact rounding/singular/separator behavior is a post-review fix (commit `328b6eec`), not
+  in the original design text — read the code, not the plan, for the precise wording.
+
+**Geometry tiers + the one positional probe (design §4).** `RouteAdvisoryLocator.
+ComputeLocationsAsync` (`Services/RouteAdvisoryLocator.cs`) is the thin I/O shell shared by both
+call sites (below). Per computation pass it fires exactly ONE `ActiveSkyClient.
+GetPositionalAdvisoriesTextAsync(lat, lon)` probe — the positional sibling of the route call in
+§12(a), same gate/port/timeout/null-on-error contract, invariant-culture lat/lon — at the
+aircraft's own position, then resolves each advisory's geometry:
+
+- **Tier 1 — the advisory's own `WI` polygon** (ICAO-style bodies): `AdvisoryGeometry.
+  ParseWiPolygon` extracts the `[NS]ddmm [EW]dddmm` vertex pairs following the `WI` token; fewer
+  than 3 parsed vertices (or no `WI` token at all) → no tier-1 geometry. `WI … NM OF CENTRE`
+  circle shapes and `ENTIRE FIR` bodies are out of scope for v1 — they fall through to tier 2, or
+  render with no Location line, by design.
+- **Tier 2 — aviationweather.gov cross-match** (US convective bodies, whose AS text has its
+  location line stripped — §13): `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)`
+  refreshes the SAME TTL-cached `airsigmet`/`isigmet` feeds the Nearby Advisories box already
+  uses (no extra HTTP within the TTL window, same lock discipline) and calls
+  `FindAdvisoryPolygonInGeoJson(geojson, identityPhrase)`, which finds the cached feature whose
+  raw text contains the advisory's decoded `Identity` phrase and returns its first polygon ring.
+- **The positional probe is the authoritative inside-check**, independent of whether geometry
+  resolved. Per the §13 bundling finding, `ComputeLocationsAsync` treats ONLY the first advisory
+  parsed from the probe response (`ParseRouteAdvisories(probeRaw)[0]`) as position-matched —
+  bundled advisories after `---------------------- Hazard:` separators are unrelated, not
+  additional hits. A probe match wins unconditionally over geometry (`RouteAdvisoryLocator.
+  Compose` checks `probeMatched` before `vertices`), so a route advisory whose own text carries no
+  geometry at all can still render "at your position" purely from the probe.
+
+**Pure/tested vs. thin/untested (design §9).** The math and parsing are pure and CI-pinned:
+`AdvisoryGeometry` (`ParseWiPolygon`, `IsInside`, `NearestVertex`, `IsBehind` —
+`AdvisoryGeometryTests.cs`), `ActiveSkyFormatting.BuildLocationPhrase` (all four wordings plus the
+singular/rounding/separator cases), `RouteAdvisoryLocator.Compose` (`RouteAdvisoryLocatorTests.cs`
+— probe-wins-without-geometry, polygon containment, outside distance/direction, null-when-nothing-
+resolves), and `WeatherService.FindAdvisoryPolygonInGeoJson` (a trimmed real `airsigmet` fixture,
+the live 54E feature). `RouteAdvisoryLocator.ComputeLocationsAsync` and `ActiveSkyClient.
+GetPositionalAdvisoriesTextAsync` are deliberately NOT unit-tested — they're the thin HTTP/
+orchestration shells this doc's testing philosophy (§12(f), and the sim-facing-paths rule in
+CLAUDE.md) reserves for the in-sim test plan, matching every other AS network call in this doc.
+
+**Approximations carried from design §5.** Two deliberate approximations, both already load-
+bearing choices rather than oversights:
+
+- **Nearest-VERTEX distance, not nearest-edge or nearest-point-on-boundary** —
+  `AdvisoryGeometry.NearestVertex` walks the polygon's vertices only, the SAME approximation
+  `WeatherService.ClosestPoint` already uses for the Nearby Advisories box, so the two boxes can
+  never disagree about one advisory's distance.
+- **True HEADING, not ground track, decides ahead/behind** — `IsBehind` compares the bearing to
+  the nearest vertex against the aircraft's TRUE heading (`pos.HeadingMagnetic +
+  pos.MagneticVariation`, the codebase's existing convention), because heading is already on
+  `AircraftPosition` and track is not. In a strong crab the two can differ by 10-20°, which flips
+  the ahead/behind word only when the advisory sits nearly abeam — acceptable at advisory-level
+  awareness.
+- **Binary, strict `>90°`** — `IsBehind` returns true only when the absolute relative bearing
+  exceeds 90°; there are no clock positions, by design (Robin asked for ahead/behind only, not a
+  bearing readout).
+
+**Degradation ladder (design §8) — additive-only end to end.** Every failure path yields "no
+phrase," never an exception, and never withholds the advisory's own text:
+
+1. No usable SimConnect position (`LastKnownPosition` is null, or exactly `(0,0)`) →
+   `ComputeLocationsAsync` returns an empty dictionary immediately — no Location lines, no
+   announcement suffixes, both call sites render exactly as they did before this feature existed.
+2. The positional probe fails, times out, or AS is unreachable mid-pass → the probe simply
+   contributes nothing; per-advisory geometry (tier 1 / tier 2) may still resolve independently,
+   so distance/ahead-behind can still render without an "at your position" override.
+3. No geometry AND no probe hit for a given advisory → that advisory alone gets no Location line
+   or announce suffix; every other advisory in the same box/announcement batch is unaffected.
+4. The probe runs inside the SAME background tick that fires the announcement
+   (`MainForm.Announcers.cs`'s `CheckRouteAdvisoriesAsync`), so a hung probe adds at most its
+   bounded 5 s HTTP timeout (`GetPositionalAdvisoriesTextAsync`'s `CancellationTokenSource`)
+   before the announcement goes out — against the 30 s tick cadence, imperceptible — and on ANY
+   failure the announcement still fires, just without the suffix. The box
+   (`WeatherRadarForm.FetchRouteAdvisoriesAsync`) is never blocked either; it rides the same
+   30 s auto-refresh as the rest of §12(c) with no new poll loop.
+5. `ParseWiPolygon` rejects malformed/short `WI` token sequences permissively — it returns `null`
+   for that advisory and never throws, matching the parser's existing never-drop-never-crash
+   philosophy from §12(b).
+
 ## 13. Nearby advisories stay aviationweather.gov-sourced (2026-07-13 decision)
 
 The Weather Radar's **Nearby Advisories** box and the SIGMET/PIREP **proximity auto-announce**
