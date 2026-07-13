@@ -56,4 +56,38 @@ public class AdvisoryGeometryTests
     [InlineData("")]
     public void ParseWiPolygon_returns_null_when_unusable(string body)
         => Assert.Null(AdvisoryGeometry.ParseWiPolygon(body));
+
+    // 1°×1° square centred on (10.5, 20.5).
+    private static readonly (double Lat, double Lon)[] Square =
+        { (10, 20), (10, 21), (11, 21), (11, 20) };
+
+    [Fact]
+    public void IsInside_detects_containment()
+    {
+        Assert.True(AdvisoryGeometry.IsInside(Square, 10.5, 20.5));
+        Assert.False(AdvisoryGeometry.IsInside(Square, 12.0, 20.5));
+        Assert.False(AdvisoryGeometry.IsInside(new[] { (10.0, 20.0), (11.0, 21.0) }, 10.5, 20.5));
+    }
+
+    [Fact]
+    public void NearestVertex_returns_distance_and_true_bearing()
+    {
+        // From 1° due south of the (10,20) corner: that corner is nearest,
+        // ~60 nm away, bearing ~000.
+        var (dist, brg) = AdvisoryGeometry.NearestVertex(Square, 9.0, 20.0);
+        Assert.InRange(dist, 59, 61);
+        Assert.True(brg < 1 || brg > 359);
+    }
+
+    [Theory]
+    [InlineData(0, 0, false)]      // dead ahead
+    [InlineData(89, 0, false)]     // just forward of abeam
+    [InlineData(90, 0, false)]     // exactly abeam: strict > 90 rule (spec §5) → ahead
+    [InlineData(91, 0, true)]      // just aft of abeam
+    [InlineData(180, 0, true)]     // dead astern
+    [InlineData(10, 350, false)]   // wrap: 20° relative
+    [InlineData(170, 350, true)]   // wrap: 180° relative
+    public void IsBehind_uses_relative_bearing_with_wraparound(
+        double bearingTo, double heading, bool behind)
+        => Assert.Equal(behind, AdvisoryGeometry.IsBehind(bearingTo, heading));
 }

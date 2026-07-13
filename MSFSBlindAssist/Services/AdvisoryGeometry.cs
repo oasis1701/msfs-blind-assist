@@ -35,4 +35,47 @@ internal static class AdvisoryGeometry
         if (verts.Count > 1 && verts[0] == verts[^1]) verts.RemoveAt(verts.Count - 1);
         return verts.Count >= 3 ? verts : null;
     }
+
+    /// <summary>Ray-cast point-in-polygon on plain lat/lon (adequate at SIGMET
+    /// scales; antimeridian-spanning polygons are a documented non-goal).</summary>
+    internal static bool IsInside(IReadOnlyList<(double Lat, double Lon)> vertices, double lat, double lon)
+    {
+        if (vertices.Count < 3) return false;
+        bool inside = false;
+        for (int i = 0, j = vertices.Count - 1; i < vertices.Count; j = i++)
+        {
+            (double yi, double xi) = (vertices[i].Lat, vertices[i].Lon);
+            (double yj, double xj) = (vertices[j].Lat, vertices[j].Lon);
+            if ((yi > lat) != (yj > lat)
+                && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    /// <summary>Distance/bearing to the nearest VERTEX — deliberately the same
+    /// approximation the Nearby Advisories box uses (WeatherService.ClosestPoint),
+    /// so the two boxes never disagree about one advisory's distance.</summary>
+    internal static (double DistanceNm, double BearingTrueDeg) NearestVertex(
+        IReadOnlyList<(double Lat, double Lon)> vertices, double lat, double lon)
+    {
+        double bestDist = double.MaxValue, bestBrg = 0;
+        foreach (var (vLat, vLon) in vertices)
+        {
+            double d = Navigation.NavigationCalculator.CalculateDistance(lat, lon, vLat, vLon);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestBrg = Navigation.NavigationCalculator.CalculateBearing(lat, lon, vLat, vLon);
+            }
+        }
+        return (bestDist, bestBrg);
+    }
+
+    /// <summary>|relative bearing| &gt; 90° = behind. Binary by design (spec §5).</summary>
+    internal static bool IsBehind(double bearingToDeg, double trueHeadingDeg)
+    {
+        double rel = ((bearingToDeg - trueHeadingDeg) % 360 + 540) % 360 - 180;
+        return Math.Abs(rel) > 90;
+    }
 }
