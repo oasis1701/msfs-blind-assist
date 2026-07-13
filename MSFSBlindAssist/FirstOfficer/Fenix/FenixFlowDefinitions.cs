@@ -379,10 +379,6 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_WR_SYS", WxOff)), "AL_WXR_OFF"),                  // [RADAR]
             Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "S_WR_PRED_WS", PwsOff), // [RADAR]
                 s => s.IsPosition("S_WR_PRED_WS", PwsOff)), "AL_PWS_OFF"),             // [RADAR]
-            Done(Skip(SW("AL_XPDR_STBY", "Transponder: STANDBY", "S_XPDR_OPERATION", 0),
-                s => s.IsPosition("S_XPDR_OPERATION", 0)), "AL_XPDR_STBY"),
-            Skip(SW("AL_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
-                s => s.IsPosition("S_XPDR_MODE", 0)),
             Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "S_OH_EXT_LT_STROBE", 1),
                 s => s.IsPosition("S_OH_EXT_LT_STROBE", 1)), "AL_STROBE_AUTO"),
             Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_BOTH", 1), "AL_LANDING_OFF"),
@@ -424,6 +420,18 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_ENG_MASTER_1", 0)), "SD_ENG1_OFF"),
             Done(Skip(SW("SD_ENG2_OFF", "Engine 2 master: OFF", "S_ENG_MASTER_2", 0),
                 s => s.IsPosition("S_ENG_MASTER_2", 0)), "SD_ENG2_OFF"),
+            // Transponder/TCAS to STANDBY here (moved from After Landing) so traffic
+            // reporting continues until the aircraft is parked and shut down.
+            Done(Skip(SW("SD_XPDR_STBY", "Transponder: STANDBY", "S_XPDR_OPERATION", 0),
+                s => s.IsPosition("S_XPDR_OPERATION", 0)), "SD_XPDR_STBY"),
+            Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
+                s => s.IsPosition("S_XPDR_MODE", 0)),
+            // LS pushbuttons OFF (pulse the BASE var S_FCU_EFISn_LS, mirrors approach AP_LSn
+            // inverted — pulse only when the indicator I_FCU_EFISn_LS reads on).
+            Done(Skip(SW("SD_LS1", "LS captain: OFF", "S_FCU_EFIS1_LS", 1),
+                s => !s.IsOn("I_FCU_EFIS1_LS")), "SD_LS1"),
+            Done(Skip(SW("SD_LS2", "LS first officer: OFF", "S_FCU_EFIS2_LS", 1),
+                s => !s.IsOn("I_FCU_EFIS2_LS")), "SD_LS2"),
             Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "S_OH_SIGNS", 0),
                 s => s.IsPosition("S_OH_SIGNS", 0)), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "S_OH_EXT_LT_BEACON", 0),

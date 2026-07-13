@@ -338,8 +338,6 @@ public static class FenixChecklistDefinitions
                 "S_WR_SYS", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_WR_SYS", 1)), // [RADAR]
             Auto("AL_PWS_OFF", "AFTER_LANDING", "Predictive windshear: OFF",           // [RADAR]
                 "S_WR_PRED_WS", v => v < 0.5, (e, _) => e.Set("S_WR_PRED_WS", 0)),     // [RADAR]
-            Auto("AL_XPDR_STBY", "AFTER_LANDING", "Transponder: STANDBY",
-                "S_XPDR_OPERATION", v => v < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 0)),
             Auto("AL_STROBE_AUTO", "AFTER_LANDING", "Strobes: AUTO",
                 "S_OH_EXT_LT_STROBE", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_EXT_LT_STROBE", 1)),
             Auto("AL_LANDING_OFF", "AFTER_LANDING", "Landing lights: OFF",
@@ -374,6 +372,17 @@ public static class FenixChecklistDefinitions
                 "S_ENG_MASTER_1", v => v < 0.5, (e, _) => e.Set("S_ENG_MASTER_1", 0)),
             Auto("SD_ENG2_OFF", "SHUTDOWN", "Engine 2 master: OFF",
                 "S_ENG_MASTER_2", v => v < 0.5, (e, _) => e.Set("S_ENG_MASTER_2", 0)),
+            // Transponder/TCAS to STANDBY here (moved from After Landing).
+            Auto("SD_XPDR_STBY", "SHUTDOWN", "Transponder: STANDBY",
+                "S_XPDR_OPERATION", v => v < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 0)),
+            // Guarded: momentary pulse on a latching light — act only when currently on
+            // (mirrors the APPROACH AP_LSn item inverted). Base var S_FCU_EFISn_LS, NOT "_PRESS".
+            Auto("SD_LS1", "SHUTDOWN", "LS captain: OFF",
+                "I_FCU_EFIS1_LS", v => v < 0.5,
+                (e, s) => !s.IsOn("I_FCU_EFIS1_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS1_LS")),
+            Auto("SD_LS2", "SHUTDOWN", "LS first officer: OFF",
+                "I_FCU_EFIS2_LS", v => v < 0.5,
+                (e, s) => !s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS")),
             Auto("SD_SEATBELTS_OFF", "SHUTDOWN", "Seatbelt signs: OFF",
                 "S_OH_SIGNS", v => v < 0.5, (e, _) => e.Set("S_OH_SIGNS", 0)),
             Auto("SD_BEACON_OFF", "SHUTDOWN", "Beacon: OFF",
