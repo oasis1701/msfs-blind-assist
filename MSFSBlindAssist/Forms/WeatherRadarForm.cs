@@ -366,9 +366,17 @@ public class WeatherRadarForm : Form
             // Get aircraft position (needed for advisories and winds aloft)
             (double lat, double lon, int altFt) = await GetPositionAsync();
 
+            // Nearby Advisories stays aviationweather.gov-sourced (live real-world data,
+            // exact geometry). When AS runs a non-Live mode the sim's weather diverges
+            // from live data, so the box carries a caveat line instead of switching
+            // source (2026-07-13 decision — see docs/weather.md §13).
+            string? advisoriesModeCaveat = _activeSkyAvailable == true
+                ? MSFSBlindAssist.Services.ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat(_activeSky.LastModeText)
+                : null;
+
             // Fetch all five in parallel
             var ambientTask          = FetchAmbientAsync();
-            var advisoriesTask       = FetchAdvisoriesAsync(lat, lon, forceRefresh);
+            var advisoriesTask       = FetchAdvisoriesAsync(lat, lon, forceRefresh, advisoriesModeCaveat);
             var windsTask            = FetchWindsAloftAsync(lat, lon, altFt, forceRefresh);
             var profileTask          = FetchProfileAsync(lat, lon, altFt);
             var routeAdvisoriesTask  = FetchRouteAdvisoriesAsync();
@@ -708,7 +716,8 @@ public class WeatherRadarForm : Form
 
     // ── Advisories (SIGMETs + PIREPs) ────────────────────────────────────────
 
-    private async Task<string> FetchAdvisoriesAsync(double lat, double lon, bool forceRefresh)
+    private async Task<string> FetchAdvisoriesAsync(double lat, double lon, bool forceRefresh,
+        string? modeCaveat = null)
     {
         if (lat == 0 && lon == 0)
             return "Aircraft position unavailable — connect to simulator first.";
@@ -734,6 +743,11 @@ public class WeatherRadarForm : Form
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Position: {lat:F2}°, {lon:F2}° | Range: {displayRange} nm");
         sb.AppendLine(new string('─', 58));
+        if (modeCaveat != null)
+        {
+            sb.AppendLine(modeCaveat);
+            sb.AppendLine();
+        }
 
         if (sigmets.Count > 0)
         {

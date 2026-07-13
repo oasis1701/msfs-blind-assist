@@ -111,4 +111,38 @@ public class ActiveSkyFormattingTests
     [InlineData(-1, "ActiveSky METAR:")]              // clamped
     public void As_metar_caption_states_the_offset(int index, string expected)
         => Assert.Equal(expected, ActiveSkyFormatting.BuildAsMetarCaption(index));
+
+    // --- BuildNearbyAdvisoriesModeCaveat -------------------------------------------------
+    // The Nearby Advisories box is aviationweather.gov-sourced (live real-world data);
+    // when AS runs a non-Live mode the sim's weather diverges from it, so the box gets
+    // a caveat line. Live mode stays caveat-free (live-verified 2026-07-13: identical
+    // SIGMET content between the two sources in Live mode).
+
+    [Fact]
+    public void Mode_caveat_is_null_in_live_mode()
+        => Assert.Null(ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat(
+            "Live Real time mode (Active) (2026/7/10 1935z)"));
+
+    [Theory]
+    [InlineData("Custom static mode (Active) (2026/7/10 2100z)", "Custom static mode")]
+    [InlineData("Historic dynamic mode (Active) (2019/3/4 0600z)", "Historic dynamic mode")]
+    public void Mode_caveat_names_the_non_live_mode(string raw, string mode)
+        => Assert.Equal(
+            $"Note: nearby advisories are live real-world data; ActiveSky is in {mode}.",
+            ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat(raw));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Mode_caveat_is_null_when_mode_unknown(string? raw)
+        => Assert.Null(ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat(raw));
+
+    [Fact]
+    public void Mode_caveat_passes_unrecognized_mode_text_through()
+        // Same never-hide philosophy as FormatModeLine: an unrecognized /GetMode body is
+        // shown verbatim rather than suppressed — it is by definition not Live mode.
+        => Assert.Equal(
+            "Note: nearby advisories are live real-world data; ActiveSky is in wibble.",
+            ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat("wibble"));
 }

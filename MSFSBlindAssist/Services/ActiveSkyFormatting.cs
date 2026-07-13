@@ -59,6 +59,23 @@ public static class ActiveSkyFormatting
         return null;
     }
 
+    /// <summary>
+    /// Caveat line for the Nearby Advisories box, which is aviationweather.gov-sourced
+    /// (live real-world data): when ActiveSky runs a non-Live mode (historic/custom),
+    /// the sim's weather diverges from live data, so nearby advisories may not match
+    /// what AS renders (live-verified 2026-07-13: in Live mode the two sources carried
+    /// identical SIGMET content). Null — no caveat — in Live mode or when the mode is
+    /// unknown/unreadable. Unrecognized mode text passes through verbatim, matching
+    /// FormatModeLine's never-hide philosophy.
+    /// </summary>
+    internal static string? BuildNearbyAdvisoriesModeCaveat(string? rawModeText)
+    {
+        string mode = ParseModeText(rawModeText).ModeName;
+        if (mode == "unknown") return null;
+        if (mode.StartsWith("Live", StringComparison.OrdinalIgnoreCase)) return null;
+        return $"Note: nearby advisories are live real-world data; ActiveSky is in {mode}.";
+    }
+
     /// <summary>Forecast offsets for the METAR form's combo. AS synthesizes a
     /// forecast METAR from current METAR + TAF at the given offset (live-verified:
     /// distinct output at +4h/+12h/+24h).</summary>
