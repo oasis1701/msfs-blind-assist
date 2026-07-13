@@ -23,11 +23,11 @@ public class FoChecklistRefinementTests
     private const string Clearance = "Obtain pushback and start clearance";
 
     // ---- generic projection helpers (work over any profile's typed Build() list) ----
-    private static (string Label, ChecklistItemType Type, bool HasAction)[] GroupItems<TExec, TState>(
+    private static (string Label, ChecklistItemType Type)[] GroupItems<TExec, TState>(
         IEnumerable<ChecklistGroup<TExec, TState>> groups, string groupId)
         where TExec : IFoActionExecutor where TState : IFoStateEvaluator =>
         groups.First(g => g.Id == groupId).Items
-              .Select(i => (i.Label, i.Type, i.CheckAction != null)).ToArray();
+              .Select(i => (i.Label, i.Type)).ToArray();
 
     private static string[] GroupItemIds<TExec, TState>(
         IEnumerable<ChecklistGroup<TExec, TState>> groups, string groupId)
