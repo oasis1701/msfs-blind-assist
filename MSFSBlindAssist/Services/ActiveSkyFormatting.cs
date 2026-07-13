@@ -129,6 +129,19 @@ public static class ActiveSkyFormatting
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>A genuine /GetWeatherInfoXml response always carries the full 13-level
+    /// wind ladder (live-verified 2026-07-13); a well-formed but empty/schema-drifted
+    /// document parses to 0 wind layers. Callers must treat that as "unavailable" —
+    /// never render it as a positive "no cloud layers" clear-sky claim.</summary>
+    internal static bool ProfileLooksValid(ActiveSkyClient.VerticalProfile p) => p.WindLayers.Count > 0;
+
+    /// <summary>A layer whose Coverage is out of vocabulary but which carries a hazard
+    /// phrase must still be rendered — dropping a severe-icing layer over a bad
+    /// Coverage attribute hides the one thing the briefing exists to say.</summary>
+    private static bool HasHazardPhrase(ActiveSkyClient.ProfileCloudLayer c)
+        => SeverityWord(c.IcingEnum) != null || PrecipWord(c.PrecipType) != null
+           || SeverityWord(c.TurbulenceEnum) != null;
+
     /// <summary>
     /// Curated vertical-profile briefing (design doc 2026-07-10 §3.2): every cloud
     /// layer with base/top/coverage plus icing/precip/turbulence phrases only when
@@ -140,7 +153,7 @@ public static class ActiveSkyFormatting
     {
         var sb = new System.Text.StringBuilder();
 
-        var realClouds = p.CloudLayers.Where(c => CoverageWord(c.CoverageOktas) != null)
+        var realClouds = p.CloudLayers.Where(c => CoverageWord(c.CoverageOktas) != null || HasHazardPhrase(c))
                                       .OrderBy(c => c.BaseFt).ToList();
         if (realClouds.Count == 0)
         {
@@ -152,7 +165,7 @@ public static class ActiveSkyFormatting
             foreach (var c in realClouds)
             {
                 var line = new System.Text.StringBuilder(
-                    Inv($"{CoverageWord(c.CoverageOktas)}, {c.BaseFt:N0} to {c.TopFt:N0} feet"));
+                    Inv($"{CoverageWord(c.CoverageOktas) ?? "Unknown coverage"}, {c.BaseFt:N0} to {c.TopFt:N0} feet"));
                 if (SeverityWord(c.IcingEnum) is { } icing) line.Append($", {icing} icing");
                 if (PrecipWord(c.PrecipType) is { } precip) line.Append($", {precip}");
                 if (SeverityWord(c.TurbulenceEnum) is { } turb) line.Append($", {turb} turbulence");

@@ -848,7 +848,8 @@ public class WeatherRadarForm : Form
         if (_activeSkyAvailable != true) return "unavailable";
         if (lat == 0 && lon == 0) return "Aircraft position unavailable — connect to simulator first.";
         var profile = await _activeSky.GetWeatherInfoXmlAsync(lat, lon);
-        if (profile == null) return "unavailable";
+        if (profile == null || !MSFSBlindAssist.Services.ActiveSkyFormatting.ProfileLooksValid(profile))
+            return "unavailable";
         return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProfileNarrative(profile, altFt);
     }
 

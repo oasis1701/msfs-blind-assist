@@ -124,6 +124,37 @@ public class ActiveSkyProfileTests
         Assert.Contains("Surface: 100 at 5, 15", text);
     }
 
+    // --- ProfileLooksValid ---------------------------------------------------------------
+
+    [Fact]
+    public void ProfileLooksValid_rejects_a_windless_profile_and_accepts_a_real_one()
+    {
+        Assert.False(ActiveSkyFormatting.ProfileLooksValid(new ActiveSkyClient.VerticalProfile()));
+        var real = ActiveSkyClient.ParseWeatherInfoXml(LiveFixture);
+        Assert.NotNull(real);
+        Assert.True(ActiveSkyFormatting.ProfileLooksValid(real!));
+    }
+
+    [Fact]
+    public void Cloud_layer_with_unknown_coverage_but_icing_is_rendered_not_dropped()
+    {
+        var p = new ActiveSkyClient.VerticalProfile();
+        p.WindLayers.Add(new ActiveSkyClient.ProfileWindLayer { AltitudeFt = 10000, DirectionDeg = 270, SpeedKts = 10, TemperatureC = -5 });
+        p.CloudLayers.Add(new ActiveSkyClient.ProfileCloudLayer { BaseFt = 8000, TopFt = 12000, CoverageOktas = 9, IcingEnum = 4 });
+        string s = ActiveSkyFormatting.BuildProfileNarrative(p, 10000);
+        Assert.Contains("Unknown coverage, 8,000 to 12,000 feet, severe icing", s);
+        Assert.DoesNotContain("No cloud layers", s);
+    }
+
+    [Fact]
+    public void Hazardless_zero_coverage_layer_stays_dropped()
+    {
+        var p = new ActiveSkyClient.VerticalProfile();
+        p.WindLayers.Add(new ActiveSkyClient.ProfileWindLayer { AltitudeFt = 10000 });
+        p.CloudLayers.Add(new ActiveSkyClient.ProfileCloudLayer { BaseFt = 0, TopFt = 0, CoverageOktas = 0 });
+        Assert.Contains("No cloud layers", ActiveSkyFormatting.BuildProfileNarrative(p, 10000));
+    }
+
     // --- Enum word maps -------------------------------------------------------------------
 
     [Theory]
