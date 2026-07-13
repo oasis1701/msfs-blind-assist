@@ -490,6 +490,35 @@ public class ActiveSkyClient
     }
 
     /// <summary>
+    /// /GetActiveSigmetsAt?lat=&lon= — advisories ACTIVE AT the passed position
+    /// (strict containment; weather.md §13). Same contract as the route variant:
+    /// raw response text, or null on error / AS off / unreachable. Per the
+    /// 2026-07-13 bundling finding, callers must treat only the FIRST parsed
+    /// advisory of a hit as position-matched.
+    /// </summary>
+    public async Task<string?> GetPositionalAdvisoriesTextAsync(double lat, double lon)
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            string url = $"{BaseUrl(port)}/GetActiveSigmetsAt"
+                + $"?lat={lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&lon={lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}";
+            using var resp = await _http.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            string body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim();
+            return string.IsNullOrWhiteSpace(body) ? null : body;
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetPositionalAdvisories failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
     /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
     /// invariant culture for floats). We tolerate missing fields and parse
