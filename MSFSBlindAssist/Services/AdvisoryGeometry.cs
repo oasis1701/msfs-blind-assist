@@ -15,10 +15,13 @@ internal static class AdvisoryGeometry
 
     /// <summary>Extracts the "WI lat lon - lat lon - …" polygon from an ICAO-style
     /// advisory body. Coordinates BEFORE the WI token (e.g. a VA SIGMET's PSN) are
-    /// ignored. Null when there is no WI token or fewer than 3 vertices after
-    /// dropping a duplicated closing vertex (polygon closure) — interior duplicate
-    /// vertices are not deduped; harmless downstream (ray-cast and nearest-vertex
-    /// math both tolerate a repeated point).</summary>
+    /// ignored. The first coordinate pair after WI is accepted unconditionally; subsequent
+    /// pairs are chained by separators (whitespace, dashes) only — the first wordy gap ends
+    /// collection (VA/TC bodies routinely carry a SECOND coordinate group after the polygon,
+    /// "FCST AT 1750Z …" or "TC CENTRE PSN …", which does not belong to THIS ring).
+    /// Null when there is no WI token or fewer than 3 vertices after dropping a duplicated
+    /// closing vertex (polygon closure) — interior duplicate vertices are not deduped;
+    /// harmless downstream (ray-cast and nearest-vertex math both tolerate a repeated point).</summary>
     internal static List<(double Lat, double Lon)>? ParseWiPolygon(string body)
     {
         if (string.IsNullOrEmpty(body)) return null;
@@ -26,13 +29,22 @@ internal static class AdvisoryGeometry
         if (!wi.Success) return null;
 
         var verts = new List<(double Lat, double Lon)>();
+        int prevEnd = -1;
         foreach (Match m in CoordPair.Matches(body, wi.Index))
         {
-            double lat = int.Parse(m.Groups[2].Value) + int.Parse(m.Groups[3].Value) / 60.0;
+            // VA/TC bodies routinely carry a SECOND coordinate group after the polygon
+            // ("FCST AT 1750Z … WI …", "TC CENTRE PSN …"). Pairs belong to THIS ring only
+            // while chained by separators (whitespace/dashes); the first wordy gap ends it.
+            if (prevEnd >= 0 && !Regex.IsMatch(body[prevEnd..m.Index], @"^[\s\-]*$"))
+                break;
+            double lat = int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)
+                + int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture) / 60.0;
             if (m.Groups[1].Value == "S") lat = -lat;
-            double lon = int.Parse(m.Groups[5].Value) + int.Parse(m.Groups[6].Value) / 60.0;
+            double lon = int.Parse(m.Groups[5].Value, System.Globalization.CultureInfo.InvariantCulture)
+                + int.Parse(m.Groups[6].Value, System.Globalization.CultureInfo.InvariantCulture) / 60.0;
             if (m.Groups[4].Value == "W") lon = -lon;
             verts.Add((lat, lon));
+            prevEnd = m.Index + m.Length;
         }
         if (verts.Count > 1 && verts[0] == verts[^1]) verts.RemoveAt(verts.Count - 1);
         return verts.Count >= 3 ? verts : null;

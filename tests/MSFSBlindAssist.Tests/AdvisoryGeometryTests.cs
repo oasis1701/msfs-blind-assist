@@ -50,6 +50,28 @@ public class AdvisoryGeometryTests
         Assert.Equal(-(8 + 20 / 60.0), v[0].Lat, 6);
     }
 
+    [Fact]
+    public void ParseWiPolygon_stops_at_a_forecast_coordinate_group()
+    {
+        string body = "VA CLD OBS AT 1150Z WI S0820 E12333 - S0850 E12400 - S0900 E12320 "
+            + "FCST AT 1750Z VA CLD WI S0830 E12320 - S0860 E12420 - S0910 E12340";
+        var poly = AdvisoryGeometry.ParseWiPolygon(body);
+        Assert.NotNull(poly);
+        Assert.Equal(3, poly!.Count);
+        Assert.Equal(-(8 + 20 / 60.0), poly[0].Lat, 5);
+        Assert.Equal(123 + 33 / 60.0, poly[0].Lon, 5);
+    }
+
+    [Fact]
+    public void ParseWiPolygon_excludes_a_trailing_tc_centre_position()
+    {
+        string body = "TC GIL OBS WI N1000 W06000 - N1100 W06100 - N1200 W06000 - N1000 W06000 "
+            + "FCST AT 1800Z TC CENTRE PSN N1530 W07030";
+        var poly = AdvisoryGeometry.ParseWiPolygon(body);
+        Assert.NotNull(poly);
+        Assert.Equal(3, poly!.Count);   // closure vertex dropped; the PSN pair never merged
+    }
+
     [Theory]
     [InlineData("EMBD TS OBS AT 1830Z TOP FL520 MOV W 05KT NC=")]          // no WI
     [InlineData("SEV TURB FCST WI S3640 E14800 - S3340 E15000 SFC/8000FT")] // only 2 vertices
