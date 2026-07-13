@@ -145,4 +145,30 @@ public class ActiveSkyFormattingTests
         => Assert.Equal(
             "Note: nearby advisories are live real-world data; ActiveSky is in wibble.",
             ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat("wibble"));
+
+    // --- BuildLocationPhrase -------------------------------------------------------------
+
+    [Theory]
+    [InlineData(123.4, false, false, false, "123 nm ahead")]
+    [InlineData(123.4, false, false, true,  "123 nautical miles ahead")]
+    [InlineData(95.0,  false, true,  false, "95 nm behind you")]
+    [InlineData(95.0,  false, true,  true,  "95 nautical miles behind you")]
+    [InlineData(0.4,   false, false, false, "less than one nautical mile ahead")]
+    [InlineData(0.4,   false, true,  true,  "less than one nautical mile behind you")]
+    public void Location_phrase_distances(double d, bool inside, bool behind, bool spoken, string expected)
+        => Assert.Equal(expected,
+            ActiveSkyFormatting.BuildLocationPhrase(d, inside, behind, spoken));
+
+    [Fact]
+    public void Location_phrase_inside_wins_and_differs_by_surface()
+    {
+        Assert.Equal("at your position (inside the area)",
+            ActiveSkyFormatting.BuildLocationPhrase(50, inside: true, behind: false, spoken: false));
+        Assert.Equal("at your position",
+            ActiveSkyFormatting.BuildLocationPhrase(null, inside: true, behind: true, spoken: true));
+    }
+
+    [Fact]
+    public void Location_phrase_null_without_geometry()
+        => Assert.Null(ActiveSkyFormatting.BuildLocationPhrase(null, inside: false, behind: false, spoken: false));
 }

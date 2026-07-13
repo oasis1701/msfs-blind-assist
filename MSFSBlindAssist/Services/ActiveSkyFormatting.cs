@@ -507,6 +507,19 @@ public static class ActiveSkyFormatting
         => string.Join(" ", upperWords.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(w => w.Length == 1 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
 
+    /// <summary>Spec 2026-07-13 §3 wording. Inside wins over distance. Box form
+    /// abbreviates ("123 nm ahead"); spoken form spells the unit and drops the
+    /// parenthetical. Null = no location resolved (caller renders nothing).</summary>
+    internal static string? BuildLocationPhrase(double? distanceNm, bool inside, bool behind, bool spoken)
+    {
+        if (inside) return spoken ? "at your position" : "at your position (inside the area)";
+        if (distanceNm is not double d) return null;
+        string dir = behind ? "behind you" : "ahead";
+        int whole = (int)Math.Round(d);
+        if (whole < 1) return $"less than one nautical mile {dir}";
+        return spoken ? $"{whole} nautical miles {dir}" : $"{whole} nm {dir}";
+    }
+
     /// <summary>The always-decoded announce phrase (design §3.4): identity + FIR name
     /// (+ hazard, + vertical extent). Falls back to the raw Key when the essentials
     /// didn't decode — a spoken announcement never goes blank. Movement/trend/validity
