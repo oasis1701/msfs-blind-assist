@@ -155,6 +155,13 @@ public class ActiveSkyFormattingTests
     [InlineData(95.0,  false, true,  true,  "95 nautical miles behind you")]
     [InlineData(0.4,   false, false, false, "less than one nautical mile ahead")]
     [InlineData(0.4,   false, true,  true,  "less than one nautical mile behind you")]
+    // Rounding boundaries (explicit AwayFromZero — 0.5 rounds UP, never banker's)
+    // and the spoken singular: "1 nautical mile", never "1 nautical miles".
+    [InlineData(0.5,   false, false, true,  "1 nautical mile ahead")]
+    [InlineData(1.0,   false, false, false, "1 nm ahead")]
+    [InlineData(1.5,   false, false, true,  "2 nautical miles ahead")]
+    // Thousands separator (invariant N0, like FeetWord) for transoceanic distances.
+    [InlineData(1234.0, false, false, false, "1,234 nm ahead")]
     public void Location_phrase_distances(double d, bool inside, bool behind, bool spoken, string expected)
         => Assert.Equal(expected,
             ActiveSkyFormatting.BuildLocationPhrase(d, inside, behind, spoken));

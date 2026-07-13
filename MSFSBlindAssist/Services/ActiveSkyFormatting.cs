@@ -508,16 +508,21 @@ public static class ActiveSkyFormatting
             .Select(w => w.Length == 1 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
 
     /// <summary>Spec 2026-07-13 §3 wording. Inside wins over distance. Box form
-    /// abbreviates ("123 nm ahead"); spoken form spells the unit and drops the
-    /// parenthetical. Null = no location resolved (caller renders nothing).</summary>
+    /// abbreviates ("123 nm ahead"); spoken form spells the unit — singular at
+    /// exactly 1 ("1 nautical mile ahead") — and drops the parenthetical. Rounding
+    /// is explicit AwayFromZero (0.5 → 1, never banker's) and the whole number is
+    /// invariant "N0" (like FeetWord) so 1234 reads "1,234 nm ahead". Null = no
+    /// location resolved (caller renders nothing).</summary>
     internal static string? BuildLocationPhrase(double? distanceNm, bool inside, bool behind, bool spoken)
     {
         if (inside) return spoken ? "at your position" : "at your position (inside the area)";
         if (distanceNm is not double d) return null;
         string dir = behind ? "behind you" : "ahead";
-        int whole = (int)Math.Round(d);
+        int whole = (int)Math.Round(d, MidpointRounding.AwayFromZero);
         if (whole < 1) return $"less than one nautical mile {dir}";
-        return spoken ? $"{whole} nautical miles {dir}" : $"{whole} nm {dir}";
+        string n = whole.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+        if (!spoken) return $"{n} nm {dir}";
+        return whole == 1 ? $"{n} nautical mile {dir}" : $"{n} nautical miles {dir}";
     }
 
     /// <summary>The always-decoded announce phrase (design §3.4): identity + FIR name
