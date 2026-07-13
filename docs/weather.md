@@ -705,16 +705,13 @@ route-segment intersections, deduped to one — and added the wind-style movemen
 ("MOV FROM 27010KT" → "moving from 270 degrees at 10 knots") to the decoder's vocabulary;
 that capture is pinned in `RouteAdvisoriesTests.cs` too.
 
-What remains unverified is narrower: a genuinely NEW advisory appearing mid-flight — an advisory
-absent from the tracker's baseline that then shows up on a later 30 s tick and fires
-`"Route advisory: …"` in real time — has not yet been observed, because both advisories in the
-2026-07-12 session were already present at baseline (preflight discovery, not a live "new key"
-event). It gets its first true end-to-end verification only when a flight's route genuinely
-picks up new weather mid-route. Until then, the announce firing correctly, exactly once per
-advisory, with no startup burst, rests on the tracker's characterization tests
-(`tests/MSFSBlindAssist.Tests/RouteAdvisoriesTests.cs`) and the now-live-verified parser/decoder
-rather than an observed live "new advisory" event — a narrower but real distinction worth
-remembering before calling this feature fully tested end to end.
+The last remaining path — a genuinely NEW advisory appearing after the tracker's baseline and
+firing `"Route advisory: …"` live — was verified on 2026-07-13: with the app running and the
+announce toggle on, Robin loaded a new KMIA→KJFK plan into ActiveSky mid-session, the next tick
+picked up CONVECTIVE SIGMET 54E as a new key, and the announcement was heard exactly once, with
+no startup burst. The feature is now live-verified end to end: parser and decoder against two
+real captures (2026-07-12 ICAO, 2026-07-13 US convective), and the baseline/new-key announce
+path against a real mid-session route change.
 
 ## 13. Nearby advisories stay aviationweather.gov-sourced (2026-07-13 decision)
 
