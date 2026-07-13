@@ -717,8 +717,8 @@ path against a real mid-session route change.
 On top of the advisory list above, every route advisory gains a derived, position-relative fact —
 how far the aircraft is from the advisory area, and whether that area is ahead, behind, or the
 aircraft is inside it — computed purely from the aircraft's own SimConnect position. The feature
-is strictly ADDITIVE: nothing that already renders changes, and an advisory MSFSBA can't resolve
-geometry for renders exactly as it did before this feature existed.
+is strictly ADDITIVE: nothing that already renders changes, and an advisory that MSFSBA can't
+resolve geometry for renders exactly as it did before this feature existed.
 
 **Output contract (design §3).** Both the box and the spoken announcement carry the SAME fact in
 two renderings, both produced by the pure `ActiveSkyFormatting.BuildLocationPhrase(double?
@@ -799,9 +799,12 @@ bearing choices rather than oversights:
 **Degradation ladder (design §8) — additive-only end to end.** Every failure path yields "no
 phrase," never an exception, and never withholds the advisory's own text:
 
-1. No usable SimConnect position (`LastKnownPosition` is null, or exactly `(0,0)`) →
-   `ComputeLocationsAsync` returns an empty dictionary immediately — no Location lines, no
-   announcement suffixes, both call sites render exactly as they did before this feature existed.
+1. No usable SimConnect position → no Location lines, no announcement suffixes; both call
+   sites render exactly as they did before this feature existed. The null case is filtered at
+   the CALL SITES (`is { } pos` pattern matches in `WeatherRadarForm.FetchRouteAdvisoriesAsync`
+   and `MainForm.CheckRouteAdvisoriesAsync` leave the empty dictionary untouched —
+   `ComputeLocationsAsync` takes a non-nullable struct and cannot see a null); the `(0,0)`
+   case is `ComputeLocationsAsync`'s own first guard, returning the empty dictionary.
 2. The positional probe fails, times out, or AS is unreachable mid-pass → the probe simply
    contributes nothing; per-advisory geometry (tier 1 / tier 2) may still resolve independently,
    so distance/ahead-behind can still render without an "at your position" override.
