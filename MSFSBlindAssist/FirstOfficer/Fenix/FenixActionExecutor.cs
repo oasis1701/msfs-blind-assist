@@ -186,6 +186,9 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// <summary>Nose light: 0=Off, 1=Taxi, 2=TO.</summary>
     public Task<bool> SetNoseLight(int pos) => DispatchAsync("S_OH_EXT_LT_NOSE", pos);
 
+    /// <summary>Seat-belt sign: S_OH_SIGNS held L:var (1 = On, 0 = Off).</summary>
+    public Task<bool> SetSeatbeltSign(bool on) => Set("S_OH_SIGNS", on ? 1 : 0);
+
     /// <summary>Gear lever: true=Down (1), false=Up (0).</summary>
     public Task<bool> SetGear(bool down) => DispatchAsync("S_MIP_GEAR", down ? 1 : 0);
 

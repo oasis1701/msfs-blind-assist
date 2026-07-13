@@ -179,4 +179,8 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     /// <summary>Nose light 3-position selector: 0=T.O., 1=Taxi, 2=Off (the old on/off
     /// LIGHT_TAXI_OVHD key was removed with the faithful-switch rework, PR #139).</summary>
     public Task<bool> SetNoseLight(int pos)    => DispatchAsync("NOSE_LIGHT", pos);
+
+    /// <summary>Seat-belt sign: SEATBELT_SIGN position — ON = 0, OFF = 2 (1 = Auto). The
+    /// def's ApplyUIVariable drives the stock CABIN SEATBELTS ALERT SWITCH toggle from this.</summary>
+    public Task<bool> SetSeatbeltSign(bool on) => Set("SEATBELT_SIGN", on ? 0 : 2);
 }

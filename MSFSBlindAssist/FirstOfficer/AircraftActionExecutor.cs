@@ -410,6 +410,9 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     // Signs
     public bool SetSeatBelts(int position)      => ExecuteSingle("EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", position, false, false);
+
+    /// <summary>Seat-belt sign: ON = position 2, OFF = position 0 (0=OFF,1=AUTO,2=ON).</summary>
+    public bool SetSeatbeltSign(bool on) => SetSeatBelts(on ? 2 : 0);
     public bool SetNoSmoking(int position)      => ExecuteSingle("EVT_OH_NO_SMOKING_LIGHT_SWITCH", position, false, false);
 
     // Emer exit lights (guarded switch — guard must be closed/open first)

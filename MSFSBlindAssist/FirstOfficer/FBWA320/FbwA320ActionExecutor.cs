@@ -309,4 +309,16 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     /// <summary>Nose light (LIGHTING_LANDING_1): 0=T.O., 1=Taxi, 2=Off.</summary>
     public Task<bool> SetNoseLight(int pos)    => DispatchAsync("LIGHTING_LANDING_1", pos);
     public Task<bool> CabinCall()              => DispatchAsync("CABIN_CALL_ALL", 1);
+
+    /// <summary>Seat-belt sign (2-position, no AUTO). The A320 sign is a stock TOGGLE
+    /// (CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE) with state simvar CABIN SEATBELTS ALERT SWITCH
+    /// (0=Off/1=On). Fire the toggle only when the live state differs from the target —
+    /// mirroring the A380 def's guarded toggle and the panel's stock-event send.</summary>
+    public Task<bool> SetSeatbeltSign(bool on)
+    {
+        if (_sc == null) return Task.FromResult(false);
+        bool currentOn = (_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH") ?? (on ? 0.0 : 1.0)) > 0.5;
+        if (currentOn != on) _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+        return Task.FromResult(true);
+    }
 }
