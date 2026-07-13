@@ -386,8 +386,6 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 1)),
             Auto("AL_PWS_OFF", "AFTER_LANDING", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_POSITION",
                 v => v < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_POSITION", 0)),
-            Auto("AL_XPDR_STBY", "AFTER_LANDING", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE",
-                v => v < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 0)),
             Auto("AL_STROBE_AUTO", "AFTER_LANDING", "Strobes: AUTO", "LIGHTING_STROBE_0",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("LIGHTING_STROBE_0", 1)),
             Auto("AL_LANDING_OFF", "AFTER_LANDING", "Landing lights: OFF", "LIGHTING_LANDING_2",
@@ -432,6 +430,14 @@ public static class FbwA320ChecklistDefinitions
                 v => v < 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 0)),
             Auto("SD_ENG2_OFF", "SHUTDOWN", "Engine 2 master: OFF", "ENGINE_2_MASTER",
                 v => v < 0.5, (e, _) => e.Set("ENGINE_2_MASTER", 0)),
+            // Transponder to standby at shutdown (moved from After Landing).
+            Auto("SD_XPDR_STBY", "SHUTDOWN", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE",
+                v => v < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 0)),
+            // LS pushbuttons off at shutdown (mirrors approach AP_LS1/AP_LS2, inverted).
+            Auto("SD_LS1", "SHUTDOWN", "LS captain: OFF", "A32NX_EFIS_L_LS_BUTTON_IS_ON",
+                v => v < 0.5, (e, _) => e.Set("A32NX_EFIS_L_LS_BUTTON_IS_ON", 0)),
+            Auto("SD_LS2", "SHUTDOWN", "LS first officer: OFF", "A32NX_EFIS_R_LS_BUTTON_IS_ON",
+                v => v < 0.5, (e, _) => e.Set("A32NX_EFIS_R_LS_BUTTON_IS_ON", 0)),
             Auto("SD_SEATBELTS_OFF", "SHUTDOWN", "Seatbelt signs: OFF", "CABIN SEATBELTS ALERT SWITCH",
                 v => v < 0.5, (e, s) => !s.IsOn("CABIN SEATBELTS ALERT SWITCH")
                     ? Task.CompletedTask : e.Set("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0)),

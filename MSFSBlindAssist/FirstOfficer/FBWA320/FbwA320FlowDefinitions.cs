@@ -430,10 +430,6 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)), "AL_WXR_OFF"),
             Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_POSITION", 0),
                 s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 0)), "AL_PWS_OFF"),
-            Done(Skip(SW("AL_XPDR_STBY", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE", 0),
-                s => s.IsPosition("A32NX_TRANSPONDER_MODE", 0)), "AL_XPDR_STBY"),
-            Skip(SW("AL_TCAS_STBY", "TCAS: STANDBY", "A32NX_SWITCH_TCAS_POSITION", 0),
-                s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 0)),
             Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "LIGHTING_STROBE_0", 1),
                 s => s.IsPosition("LIGHTING_STROBE_0", 1)), "AL_STROBE_AUTO"),
             Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_OFF_THIRD_PARTY", 1), "AL_LANDING_OFF"),
@@ -475,6 +471,17 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("ENGINE_1_MASTER", 0)), "SD_ENG1_OFF"),
             Done(Skip(SW("SD_ENG2_OFF", "Engine 2 master: OFF", "ENGINE_2_MASTER", 0),
                 s => s.IsPosition("ENGINE_2_MASTER", 0)), "SD_ENG2_OFF"),
+            // Transponder/TCAS to standby at shutdown (moved from After Landing so they
+            // stay active until the aircraft is parked).
+            Done(Skip(SW("SD_XPDR_STBY", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE", 0),
+                s => s.IsPosition("A32NX_TRANSPONDER_MODE", 0)), "SD_XPDR_STBY"),
+            Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "A32NX_SWITCH_TCAS_POSITION", 0),
+                s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 0)),
+            // LS pushbuttons off at shutdown (mirrors approach AP_LS1/AP_LS2, inverted to 0).
+            Done(Skip(SW("SD_LS1", "LS captain: OFF", "A32NX_EFIS_L_LS_BUTTON_IS_ON", 0),
+                s => !s.IsOn("A32NX_EFIS_L_LS_BUTTON_IS_ON")), "SD_LS1"),
+            Done(Skip(SW("SD_LS2", "LS first officer: OFF", "A32NX_EFIS_R_LS_BUTTON_IS_ON", 0),
+                s => !s.IsOn("A32NX_EFIS_R_LS_BUTTON_IS_ON")), "SD_LS2"),
             Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0),
                 s => !s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "BEACON_LIGHTS_SET", 0),
