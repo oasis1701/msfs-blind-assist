@@ -202,6 +202,10 @@ public partial class MainForm
             _prevVisLow = false;
             _prevAsPrecip = null;
             _iceAccretionTracker.Reset();
+            // Same rationale as the ice reset: flight 1 can end in moderate turbulence;
+            // without a reconnect re-baseline, flight 2's first calm poll would announce
+            // a phantom "Smooth air" transition.
+            activeSkyWeatherMonitor?.ResetTurbulenceTracker();
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;

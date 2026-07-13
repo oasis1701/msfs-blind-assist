@@ -186,17 +186,11 @@ public class ActiveSkyWeatherMonitor : IDisposable
             var conditions = await conditionsTask;
             string? positionMetar = await positionMetarTask;
 
-            if (conditions == null || string.IsNullOrWhiteSpace(positionMetar))
-            {
-                Log.Debug("Services", "tick: AS detected but data fetch failed");
-                return;
-            }
-
             // Turbulence category announce (baseline-first; TurbulenceCategoryTracker).
-            // Per-call settings read keeps the Weather-tab toggle live with no rewiring.
-            // Placed before the weather-refresh logic so a category change announces
-            // even on ticks the refresh detector considers "unchanged weather".
-            if (Settings.SettingsManager.Current.AnnounceTurbulenceEnabled)
+            // Needs only `conditions` — deliberately BEFORE the position-METAR check, so a
+            // blank METAR fetch can't delay a boundary crossing to the next tick
+            // (weather.md §10a: the read happens right after the conditions fetch succeeds).
+            if (conditions != null && Settings.SettingsManager.Current.AnnounceTurbulenceEnabled)
             {
                 string? turb = _turbulenceTracker.Observe(conditions.AmbientTurbulence);
                 if (turb != null && !_disposed)
@@ -204,6 +198,12 @@ public class ActiveSkyWeatherMonitor : IDisposable
                     Log.Debug("Services", $"turbulence: \"{turb}\"");
                     _announcer.Announce(turb);
                 }
+            }
+
+            if (conditions == null || string.IsNullOrWhiteSpace(positionMetar))
+            {
+                Log.Debug("Services", "tick: AS detected but data fetch failed");
+                return;
             }
 
             // Decide whether this poll represents a real AS refresh.

@@ -2135,14 +2135,14 @@ public partial class MainForm
 
         // Ice accretion (generic, sim-truth). Aircraft with their own tuned icing
         // announcer (HasOwnIcingAnnouncer, e.g. the FBW A380's ice stick) are skipped
-        // entirely so one icing episode never speaks twice. NaN/negative clamp keeps
-        // a bad sample from corrupting the tracker's hysteresis state.
+        // entirely so one icing episode never speaks twice. A NaN/negative sample is
+        // SKIPPED, not clamped — clamping to 0 mid-episode would speak a phantom
+        // "Icing conditions cleared" and re-announce on the next good sample.
         if (MSFSBlindAssist.Settings.SettingsManager.Current.AnnounceIcingEnabled
-            && currentAircraft?.HasOwnIcingAnnouncer != true)
+            && currentAircraft?.HasOwnIcingAnnouncer != true
+            && !double.IsNaN(data.StructuralIcePct) && data.StructuralIcePct >= 0)
         {
-            double ice = double.IsNaN(data.StructuralIcePct) || data.StructuralIcePct < 0
-                ? 0 : data.StructuralIcePct;
-            string? icing = _iceAccretionTracker.Observe(ice);
+            string? icing = _iceAccretionTracker.Observe(data.StructuralIcePct);
             if (icing != null)
                 announcer.Announce(icing);
         }
@@ -2325,8 +2325,10 @@ public partial class MainForm
             if (!IsHandleCreated || IsDisposed) return;
 
             // Spoken location context for the new keys (spec 2026-07-13) — one probe +
-            // cached-feed lookups. Bounded by the probe's 5 s timeout (spec §8.2); every
-            // failure path yields "no suffix" — the announcement is never dropped.
+            // cached-feed lookups. Bounded by the probe's 5 s timeout plus at most one
+            // aviationweather feed refresh (15 s HttpClient timeout) when tier-2 geometry
+            // is needed (weather.md §12(g)); every failure path yields "no suffix" — the
+            // announcement is never dropped.
             Dictionary<string, string> locations = new();
             if (newKeys.Count > 0 && simConnectManager.LastKnownPosition is { } locPos)
                 locations = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeLocationsAsync(
