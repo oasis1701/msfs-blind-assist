@@ -720,53 +720,124 @@ requires a decoded HAZARD (`HasDecodedContent`): a block whose phenomenon is out
 vocabulary renders verbatim even with decoding on, no matter how many other fields decoded
 — a summary must never drop what the SIGMET is FOR. Decoding never hides data.
 
-**(d) Announce lifecycle.** `MainForm.WeatherAnnouncementTimer_Tick` calls
-`CheckRouteAdvisoriesAsync` (`MainForm.Announcers.cs`) on the same 30 s tick as the SIGMET/PIREP
+**(d) Announce lifecycle — proximity events, not key-novelty (2026-07-14 redesign).** Design doc:
+`docs/design/2026-07-14-route-advisory-proximity-design.md`. `MainForm.WeatherAnnouncementTimer_Tick`
+calls `CheckRouteAdvisoriesAsync` (`MainForm.Announcers.cs`) on the same 30 s tick as the SIGMET/PIREP
 proximity check, guarded by its own reentrancy flag (`_routeAdvisoryCheckRunning`, the
-`_proximityCheckRunning` pattern) and gated on `AnnounceRouteAdvisoriesEnabled`. The central AS
-gate inside `IsRunningAsync()` (§1) makes the check free for non-AS users despite riding the
-tick unconditionally. A failed fetch (`raw == null`) touches nothing — the tracker's state is
-left exactly as it was.
+`_proximityCheckRunning` pattern) and gated on `AnnounceRouteAdvisoriesEnabled`. The central AS gate
+inside `IsRunningAsync()` (§1) makes the check free for non-AS users despite riding the tick
+unconditionally.
 
-Key-set decisions are pure, in `Services/RouteAdvisoryTracker.cs`
-(`RouteAdvisoryTracker.Observe`), following the same `ActiveSkyModeTracker` shape as every other
-tracker in this doc:
+**Why key-novelty was replaced.** The original tracker (`Services/RouteAdvisoryTracker.cs`,
+seen-set + a 15-minute `ClearAnnouncedKeys()` reminder mirroring `_announcedSigmetKeys`) re-announced
+EVERY still-active advisory once the 15-minute window elapsed, including advisories already behind
+the aircraft — and US convective SIGMETs are re-issued hourly under a new identifier for what is
+geometrically the same cell (live-observed: `CONVECTIVE SIGMET 68E` → `78E`), so the seen-set treated
+each re-issue as a brand-new key and announced it on sight, regardless of position. Net effect Robin
+reported: whenever the advisory list changed, everything re-announced, including areas already
+behind. `RouteAdvisoryTracker.cs` and its seen-set/`ClearAnnouncedKeys` reminder, and the old
+`RouteAdvisoriesTests` coverage of it, are DELETED — replaced end to end by
+`Services/RouteAdvisoryProximityTracker.cs` (field `_routeAdvisoryProximity` in `MainForm.cs`), a
+pure per-key proximity zone state machine pinned by `RouteAdvisoryProximityTrackerTests.cs`.
 
-- **Baseline-first.** The first successful `Observe` call records every key it sees and returns
-  nothing — a route that already has advisories on it when the app connects (or when AS itself
-  is found already running) is preflight discovery for the radar box, not a startup announcement
-  burst.
-- **New keys only, after baseline.** Subsequent calls return only keys never seen before; each
-  one produces exactly one queued announce. The spoken announcement is ALWAYS decoded when
-  possible, independent of the box's checkbox — plain English is preferred over raw SIGMET
-  abbreviations: `announcer.Announce($"Route advisory: {BuildRouteAdvisoryAnnouncement(adv)}.")`,
-  e.g. `"Route advisory: MHTG SIGMET J5, Central American FIR, embedded thunderstorms, tops FL520."`
-  (`BuildRouteAdvisoryAnnouncement`: identity + FIR name + hazard + vertical extent;
-  movement/trend/validity stay box-only). When identity/hazard don't decode it deliberately
-  falls back to the raw key, abbreviations and all — an out-of-vocabulary advisory must still
-  be heard, never dropped (never `AnnounceImmediate` —
-  this is a background change, not a user action). The phrasing is deliberately neutral — no
-  "New" — because the identical announce also fires as the 15-minute reminder below, where a
-  newness claim would mislead (the sibling SIGMET/PIREP proximity alerts use the same neutral
-  "category: content" pattern).
-- **15-minute reminder clear**, matching `_announcedSigmetKeys`/`_sigmetKeysClearedAt`
-  byte-for-byte in shape: `CheckRouteAdvisoriesAsync` tracks its own
-  `_routeAdvisoryKeysClearedAt` and calls `_routeAdvisoryTracker.ClearAnnouncedKeys()` once more
-  than 15 minutes have passed, so a still-active advisory legitimately re-announces as a
-  reminder rather than going silent for the rest of the flight. `ClearAnnouncedKeys()` drops only
-  the seen-key set — the baseline latch (`_baselineDone`) is untouched, so the next tick after a
-  clear does NOT re-baseline silently; it treats every currently-present key as "new" again,
-  which is the intended reminder behavior.
-- **Persists across AS-unreachable gaps.** A tick where `IsRunningAsync()` returns false, or
-  where the fetch fails, returns early without touching the tracker at all — no re-announce
-  storm on reconnect, and no baseline reset.
-- **Resets on both SimConnect connect and aircraft switch** — `RouteAdvisoryTracker.Reset()` is
-  called from `MainForm.AircraftSwitch.cs`'s `OnConnectionStatusChanged` "Connected" branch
-  (alongside `_announcedSigmetKeys.Clear()`) and from `SwitchAircraft` (alongside the other
-  hazard trackers' resets — turbulence, icing). Only the `OnConnectionStatusChanged` Connected
-  branch also resets `_routeAdvisoryKeysClearedAt = DateTime.UtcNow`; `SwitchAircraft` calls only
-  `_routeAdvisoryTracker.Reset()`. This is functionally harmless — the 15-minute clear is a no-op
-  immediately after a `Reset()` regardless, since there are no announced keys left to clear.
+**Zone table.** Each advisory key (OrdinalIgnoreCase) sits in one of four zones, driven each tick
+by the `LocationFact` computed for it (§12(g)):
+
+| Zone | Meaning | Reached from | Leaves to |
+|---|---|---|---|
+| Unplaced | no geometry resolved for this key (no WI polygon, no tier-2 match) | first sight with no geometry | Inside only, via a later positional probe match — see below |
+| Far | outside the 100 nm ring | first sight, or Near receding past 110 nm | Near, on advancing to ≤100 nm |
+| Near | within 100 nm, not inside | first sight, or Far advancing past 100 nm | Far (>110 nm) or Inside |
+| Inside | positionally inside the area | first sight, or Near/Far entering | Near/Far, after 2 consecutive not-inside ticks |
+
+**Constants** (`RouteAdvisoryProximityTracker`, fixed — no setting): `ApproachNm = 100` is the
+approach ring; `RearmNm = 110` is a 10 nm hysteresis band above it, so a key sitting right at the
+ring can't flap Approach on and off tick to tick; `LeaveConfirmTicks = 2` (~1 minute at the 30 s
+cadence) means a single tick's boundary graze — a polygon edge crossed back and forth by GPS
+noise — cannot fire a spurious Leave, and the outside-tick counter resets to 0 the instant a tick
+reports Inside again.
+
+**Events and wording** (`ActiveSkyFormatting.BuildProximityAnnouncement`):
+
+- **Approach** — first sight within 100 nm, or a Far→Near crossing, while the area is NOT behind
+  the aircraft: `"Route advisory, {n} nautical miles ahead: {core}."` A Near crossing (or first
+  sight) that IS behind the aircraft is silent and latches Approach off for that key.
+  **Behind-suppression is Approach-ONLY** — it never applies to Enter or Leave, so a behind-latched
+  area the aircraft is later routed through still Enters normally.
+- **AtPosition** — first sight already inside: `"Route advisory at your position: {core}."`
+- **Enter** — any Far/Near→Inside transition, first sight or later, REGARDLESS of bearing:
+  `"Entering advisory area: {core}."`
+- **Leave** — 2 consecutive not-inside ticks after Inside: `"Left advisory area:
+  {identity-or-key}."` — deliberately brief (identity or raw key only, no full decode): a Leave is
+  an interruption, not a re-briefing.
+- **AnnounceOnce** — a no-geometry key at first sight: `"Route advisory: {core}."` (unchanged
+  wording from the pre-2026-07-14 tracker).
+
+**Once Inside, Approach is latched off forever.** A key that has ever been Inside never fires
+Approach again — not even after a full Leave → Far → re-Near cycle; only Enter/Leave stay live for
+it. Re-entry is still a real event and still announces (Enter); a second "getting close" warning
+for ground already covered once is not. This latch is set on **all five** code paths that reach
+Inside — three on an already-zoned key (new key first-sight inside via geometry, an existing
+zoned key crossing in via geometry, and the geometry-hiccup `Enter` where a zoned key momentarily
+lost geometry but the probe still confirms Inside) AND two no-geometry paths (a first-sight
+`AtPosition` with no geometry at all, and an `Unplaced` key's later probe-driven `Enter`). The two
+no-geometry paths were a review-found hole (a key
+that went Inside with no geometry could re-announce Approach once geometry later appeared, receded
+past 110 nm, and re-approached) — fixed in commit `3e8e3a12`, pinned by two regression tests,
+`After_probe_at_position_inside_approach_never_fires_when_geometry_appears` and
+`After_probe_enter_inside_approach_never_fires_when_geometry_appears`.
+
+**No-geometry keys: announce-once, probe-Enter, never Leave.** A key with neither a WI polygon
+(tier 1) nor a tier-2 aviationweather.gov match (§12(g)) tracks in the distance-less `Unplaced`
+zone. Its only live transition is the positional probe: if the probe later matches the key
+(`Inside` becomes true), **Enter** fires once. Because probe-match loss is not "outside" (§12(g)'s
+probe-strengthens-only rule), a no-geometry key can never produce Leave — once probe-matched it
+stays silently Inside forever.
+**Recorded follow-up (not fixed here):** an `Unplaced` key stays `Unplaced` for its whole life even
+if tier-2 geometry becomes available for it on a LATER tick (e.g. the tier-2 feed happened to be
+down on the exact tick the key was first observed, then recovered) — it never gains normal
+Far/Near/Inside zoning, only the no-geometry rules above. This is a rare tier-2-outage-at-first-
+sight case, not the common path. A future upgrade could let a still-`Unplaced` key adopt geometry
+the first time it becomes available and re-zone from there; the design would need to guard against
+double-announcing Approach for a key already Inside-latched via the no-geometry path.
+
+**Silent expiry — deliberate.** A key absent from the current fact set (its SIGMET expired, or was
+replaced by a re-issued identifier) is pruned with NO event, even if it was Inside. This is the
+second half of the churn fix: announcing expiry would resurrect the exact double-announce the
+redesign exists to kill (old number's expiry + new number's first-sight both speaking) — the
+Shift+R box shows current advisories; the spoken channel does not narrate expiry.
+
+**The frozen-tick contract.** `RouteAdvisoryProximityTracker.Observe` may be called ONLY with a
+fact set that exactly covers every current advisory — `CheckRouteAdvisoriesAsync` enforces this
+with `if (facts.Count != advisories.Count) return;` immediately before calling `Observe`. This
+matters because `Observe`'s prune rule treats ANY tracked key missing from the fact dictionary as
+expired (see Silent expiry above); a partial fact set — from an unusable aircraft position or a
+mid-loop failure inside `ComputeFactsAsync` — would otherwise be indistinguishable from "these keys
+expired," silently losing live zone/latch state and re-announcing those keys as first-sight next
+tick. So the caller freezes the tick outright (does not call `Observe` at all) whenever the counts
+don't match — including a failed fetch (`raw == null`, returns before `advisories` or `facts` are
+even computed) and an unusable/unknown aircraft position (`simConnectManager.LastKnownPosition`
+null leaves `facts` at its empty default, which only equals `advisories.Count` when there are no
+advisories to place). A genuinely empty feed — `advisories.Count == 0`, hence `ComputeFactsAsync`
+correctly returns an empty dictionary with no I/O — is the one valid EMPTY call, and correctly
+prunes every tracked key.
+
+**Reset.** `_routeAdvisoryProximity.Reset()` is called from the same two sites the old tracker's
+`Reset()` was — `MainForm.AircraftSwitch.cs`'s `OnConnectionStatusChanged` "Connected" branch
+(alongside `_announcedSigmetKeys.Clear()`) and `SwitchAircraft` (alongside the other hazard
+trackers' resets — turbulence, icing) — forgetting every key's zone/latches so a reconnect or
+aircraft swap re-baselines from first sight.
+
+**Route advisories no longer share the SIGMET/PIREP reminder cadence.** The nearby-SIGMET/PIREP
+proximity alerts (§13) still clear their seen-set every 15 minutes (`_announcedSigmetKeys` /
+`_sigmetKeysClearedAt`) — that cadence is correct THERE because those alerts are already
+proximity-filtered (an aviationweather.gov position+range query) before a key is even generated, so
+a 15-minute re-announce is a legitimate "still nearby" reminder. Route advisories were never
+proximity-filtered before keying — ActiveSky's route endpoint returns everything on the loaded
+route regardless of aircraft position — which is exactly why the same reminder shape produced churn
+here instead. There is no route-advisory equivalent of `ClearAnnouncedKeys()` any more: the
+Approach/Enter/Leave zone events ARE the reminder mechanism now, tied to real proximity, not a
+clock.
 
 **(e) Settings.** `UserSettings.AnnounceRouteAdvisoriesEnabled` (bool, default `true`, both the
 property and `Clone()`) backs a new checkbox in the Weather panel's Announcements group,
@@ -804,23 +875,31 @@ no startup burst. The feature is now live-verified end to end: parser and decode
 real captures (2026-07-12 ICAO, 2026-07-13 US convective), and the baseline/new-key announce
 path against a real mid-session route change.
 
-**(g) Location context (2026-07).** Design doc: `docs/design/2026-07-13-route-advisory-location-design.md`.
+**(g) Location context (2026-07, amended 2026-07-14).** Design docs:
+`docs/design/2026-07-13-route-advisory-location-design.md` and, for the edge-distance +
+facts/proximity amendments below, `docs/design/2026-07-14-route-advisory-proximity-design.md` §3-4.
 On top of the advisory list above, every route advisory gains a derived, position-relative fact —
 how far the aircraft is from the advisory area, and whether that area is ahead, behind, or the
 aircraft is inside it — computed purely from the aircraft's own SimConnect position. The feature
 is strictly ADDITIVE: nothing that already renders changes, and an advisory that MSFSBA can't
-resolve geometry for renders exactly as it did before this feature existed.
+resolve geometry for renders exactly as it did before this feature existed. As of 2026-07-14 this
+location fact is also what feeds §12(d)'s proximity zone tracker — the box, the spoken Approach/
+AtPosition suffix, and the zone tracker's own distance/inside checks all read the identical
+`LocationFact` for a key, never three separate computations.
 
-**Output contract (design §3).** Both the box and the spoken announcement carry the SAME fact in
-two renderings, both produced by the pure `ActiveSkyFormatting.BuildLocationPhrase(double?
-distanceNm, bool inside, bool behind, bool spoken)`:
+**Output contract (design §3, box wording amended §6).** Both the box and the spoken announcement
+carry the SAME fact in two renderings, both produced by the pure `ActiveSkyFormatting.
+BuildLocationPhrase(double? distanceNm, bool inside, bool behind, bool spoken)`:
 
-- **Box** (`BuildRouteAdvisoriesText`'s new optional `locations` parameter, honored in BOTH the
-  raw and the decoded render mode): a trailing `Location: {phrase}` line appended as each block's
-  FINAL line — `Location: 123 nm ahead`, `Location: 95 nm behind you`, `Location: less than one
+- **Box** (`BuildRouteAdvisoriesText`'s optional `locations` parameter, honored in BOTH the raw and
+  the decoded render mode): a trailing `Location: {phrase}` line appended as each block's FINAL
+  line — `Location: 123 nm ahead`, `Location: 95 nm behind` (2026-07-14: dropped "you" — Robin's
+  call, a listbox row reads faster terse than as a full sentence), `Location: less than one
   nautical mile ahead` (a distance that rounds to 0 nm — i.e. under 0.5 nm while still outside the
-  polygon — renders this wording, never "0 nm"), `Location: at your position (inside the area)`.
-  An advisory whose key is missing from `locations` gets no line at all.
+  polygon — renders this wording, never "0 nm"), `Location: Inside` (2026-07-14: was "at your
+  position (inside the area)"). The SPOKEN forms are unchanged by this — see below — only the box's
+  two terse forms moved; ahead wording is untouched on both sides. An advisory whose key is missing
+  from `locations` gets no line at all.
 - **Spoken** (`BuildRouteAdvisoryAnnouncement(RouteAdvisory a, string? locationPhrase = null)`):
   the same fact appended, comma-joined, after the existing decoded fields —
   `"…, 123 nautical miles ahead."` / `"…, at your position."` / `"…, 95 nautical miles behind
@@ -833,12 +912,21 @@ distanceNm, bool inside, bool behind, bool spoken)`:
   This exact rounding/singular/separator behavior is a post-review fix (commit `328b6eec`), not
   in the original design text — read the code, not the plan, for the precise wording.
 
-**Geometry tiers + the one positional probe (design §4).** `RouteAdvisoryLocator.
-ComputeLocationsAsync` (`Services/RouteAdvisoryLocator.cs`) is the thin I/O shell shared by both
-call sites (below). Per computation pass it fires exactly ONE `ActiveSkyClient.
-GetPositionalAdvisoriesTextAsync(lat, lon)` probe — the positional sibling of the route call in
-§12(a), same gate/port/timeout/null-on-error contract, invariant-culture lat/lon — at the
-aircraft's own position, then resolves each advisory's geometry:
+**Facts-core / phrase-wrapper split (2026-07-14, design §4).** `RouteAdvisoryLocator.
+ComputeFactsAsync` (`Services/RouteAdvisoryLocator.cs`) is now the actual core — it does the one
+positional probe plus all per-advisory geometry work and returns a `Dictionary<string,
+LocationFact>` (`LocationFact { bool HasGeometry, bool Inside, double? DistanceNm, bool Behind }`),
+ONE fact per advisory key, including no-geometry keys (so a caller can tell "no facts computed this
+tick" apart from "computed, nothing to say"). `ComputeLocationsAsync` — the box's call site — is now
+a THIN wrapper: it calls `ComputeFactsAsync` and maps each fact through the pure `ComposePhrase`
+(box/spoken phrase for one fact; `null` = no line) via `RouteAdvisoryLocator.ComposePhrase`. The
+announcer (`MainForm.CheckRouteAdvisoriesAsync`, §12(d)) calls `ComputeFactsAsync` DIRECTLY — it
+needs the raw facts to feed `RouteAdvisoryProximityTracker.Observe`, not phrases; the box needs only
+phrases. Same underlying computation, two thin consumers, so the box and the zone tracker can never
+observe a different fact for the same key on the same tick. Per computation pass `ComputeFactsAsync`
+fires exactly ONE `ActiveSkyClient.GetPositionalAdvisoriesTextAsync(lat, lon)` probe — the
+positional sibling of the route call in §12(a), same gate/port/timeout/null-on-error contract,
+invariant-culture lat/lon — at the aircraft's own position, then resolves each advisory's geometry:
 
 - **Tier 1 — the advisory's own `WI` polygon** (ICAO-style bodies): `AdvisoryGeometry.
   ParseWiPolygon` extracts the `[NS]ddmm [EW]dddmm` vertex pairs following the `WI` token; fewer
@@ -846,7 +934,7 @@ aircraft's own position, then resolves each advisory's geometry:
   circle shapes and `ENTIRE FIR` bodies are out of scope for v1 — they fall through to tier 2, or
   render with no Location line, by design.
 - **Tier 2 — aviationweather.gov cross-match** (US convective bodies, whose AS text has its
-  location line stripped — §13): `ComputeLocationsAsync` calls `WeatherService.
+  location line stripped — §13): `ComputeFactsAsync` calls `WeatherService.
   RefreshAndGetSigmetFeedsAsync()` — which refreshes the SAME TTL-cached `airsigmet`/`isigmet`
   feeds the Nearby Advisories box already uses (no extra HTTP within the TTL window, same lock
   discipline) — and then `FindAdvisoryPolygonInGeoJson(geojson, identityPhrase)`, which finds the
@@ -858,49 +946,73 @@ aircraft's own position, then resolves each advisory's geometry:
   `FindAdvisoryPolygonInGeoJson` wraps the per-feature geometry walk so a bad shape just moves on
   to the next candidate feature with the same identity match, instead of throwing out of the loop
   and failing the whole lookup for that advisory. `RefreshAndGetSigmetFeedsAsync` together with
-  `FindAdvisoryPolygonInGeoJson` are now the ENTIRE tier-2 API, called from `ComputeLocationsAsync`
+  `FindAdvisoryPolygonInGeoJson` are now the ENTIRE tier-2 API, called from `ComputeFactsAsync`
   at most ONCE per computation pass — lazily, only when some advisory actually needs tier-2
   geometry — instead of once per advisory (final-review Fix 2). The standalone
   `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)` thin per-call wrapper this tier
-  originally routed through was dead code once `ComputeLocationsAsync` started calling the refresh
+  originally routed through was dead code once the locator started calling the refresh
   directly, and was deleted on 2026-07-13 — there is no other tier-2 entry point, and no other
   caller to keep it alive for.
 - **The positional probe is the authoritative inside-check**, independent of whether geometry
-  resolved. Per the §13 bundling finding, `ComputeLocationsAsync` treats ONLY the first advisory
+  resolved. Per the §13 bundling finding, `ComputeFactsAsync` treats ONLY the first advisory
   parsed from the probe response (`ParseRouteAdvisories(probeRaw)[0]`) as position-matched —
   bundled advisories after `---------------------- Hazard:` separators are unrelated, not
-  additional hits. A probe match wins unconditionally over geometry (`RouteAdvisoryLocator.
-  Compose` checks `probeMatched` before `vertices`), so a route advisory whose own text carries no
-  geometry at all can still render "at your position" purely from the probe.
+  additional hits. A probe match wins unconditionally over geometry: `inside = probeMatched ||
+  AdvisoryGeometry.IsInside(vertices, …)` for a geometry key, and `LocationFact(false, probeMatched,
+  null, false)` directly for a no-geometry key — so a route advisory whose own text carries no
+  geometry at all can still render "at your position"/`Inside` purely from the probe. This is also
+  the probe-strengthens-never-weakens rule §12(d) leans on: `ComposePhrase`/the zone tracker check
+  `fact.Inside` (which folds in the probe) before geometry-derived distance, never the reverse — a
+  probe match that goes away on a later tick does NOT flip `Inside` back to false (another
+  overlapping advisory may simply have become the response's first block), so nothing downstream can
+  mistake a lost probe match for "left the area."
 
 **Pure/tested vs. thin/untested (design §9).** The math and parsing are pure and CI-pinned:
-`AdvisoryGeometry` (`ParseWiPolygon`, `IsInside`, `NearestVertex`, `IsBehind` —
+`AdvisoryGeometry` (`ParseWiPolygon`, `IsInside`, `NearestVertex`, `NearestEdge`, `IsBehind` —
 `AdvisoryGeometryTests.cs`), `ActiveSkyFormatting.BuildLocationPhrase` (all four wordings plus the
-singular/rounding/separator cases), `RouteAdvisoryLocator.Compose` (`RouteAdvisoryLocatorTests.cs`
-— probe-wins-without-geometry, polygon containment, outside distance/direction, null-when-nothing-
-resolves), and `WeatherService.FindAdvisoryPolygonInGeoJson` (a trimmed real `airsigmet` fixture,
-the live 54E feature). `RouteAdvisoryLocator.ComputeLocationsAsync` and `ActiveSkyClient.
-GetPositionalAdvisoriesTextAsync` are deliberately NOT unit-tested — they're the thin HTTP/
-orchestration shells this doc's testing philosophy (§12(f), and the sim-facing-paths rule in
-CLAUDE.md) reserves for the in-sim test plan, matching every other AS network call in this doc.
+singular/rounding/separator cases and the 2026-07-14 box-wording pins),
+`RouteAdvisoryLocator.ComposePhrase` (`RouteAdvisoryLocatorTests.cs` — inside-wins-over-distance,
+no-geometry yields no line, no-geometry-but-probe-inside still reads Inside, outside uses
+distance+behindness) and its `ComputeFactsAsync` zero-position guard
+(`ComputeFactsAsync_zero_position_yields_empty`), and `WeatherService.FindAdvisoryPolygonInGeoJson`
+(a trimmed real `airsigmet` fixture, the live 54E feature). The proximity zone tracker itself is
+pure and exhaustively pinned — `RouteAdvisoryProximityTrackerTests.cs` asserts the FULL event list
+of every `Observe` call against the §12(d) zone table, row by row (see §12(d)). What remains
+deliberately NOT unit-tested is `ComputeFactsAsync`'s live HTTP/tier-2 orchestration itself and
+`ActiveSkyClient.GetPositionalAdvisoriesTextAsync` — the thin HTTP shells this doc's testing
+philosophy (§12(f), and the sim-facing-paths rule in CLAUDE.md) reserves for the in-sim test plan,
+matching every other AS network call in this doc.
 
-**Approximations carried from design §5.** Two deliberate approximations, both already load-
-bearing choices rather than oversights:
+**Approximations carried from design §5 (distance approximation superseded 2026-07-14).** Two
+deliberate approximations, both already load-bearing choices rather than oversights:
 
-- **Nearest-VERTEX distance, not nearest-edge or nearest-point-on-boundary** —
-  `AdvisoryGeometry.NearestVertex` walks the polygon's vertices only, the SAME approximation
-  `WeatherService.ClosestPoint` already uses for the Nearby Advisories box, so the two boxes
-  normally agree about one advisory's distance. Recorded caveat: tier-2 (`FindAdvisoryPolygonInGeoJson`)
-  only ever returns the FIRST polygon ring of a `MultiPolygon` feature, while the Nearby Advisories
-  box scans every ring, so a rare multi-area advisory (a single feature whose `MultiPolygon` has
-  more than one ring) can legitimately show different nearest-vertex distances in the two boxes —
-  a follow-up, not a bug to fix here.
+- **Edge-true distance (locally projected), not spherical-geodesic** — `AdvisoryGeometry.
+  NearestEdge` computes point-to-segment distance over EVERY polygon edge (not just its vertices),
+  in a local equirectangular frame centred on the aircraft (1° lat = 60 nm, 1° lon = 60·cos(lat)
+  nm) — adequate at advisory scales (a documented non-goal near poles/the antimeridian, same as
+  `IsInside`'s ray-cast). This REPLACED the original `NearestVertex`-everywhere design (2026-07-14,
+  proximity design §3 amendment): convective outlook polygons have edges long enough that
+  nearest-VERTEX distance is off by tens of nm, and since the 100 nm approach ring (§12(d)) IS the
+  distance, the trigger has to be edge-true — one number used for the trigger, the box `Location:`
+  line, AND the spoken Approach suffix everywhere within route advisories, so they can never
+  disagree with each other.
+  **Recorded, accepted divergence from a DIFFERENT box:** the separate Nearby Advisories box (§13
+  — a position+range aviationweather.gov query, unrelated to route advisories) still uses
+  `AdvisoryGeometry.NearestVertex`, matching `WeatherService.ClosestPoint`'s existing approximation
+  there, for THAT box's own cross-box-consistency need. `NearestVertex` is no longer called
+  anywhere in the route-advisory location path — it remains solely for Nearby Advisories — so the
+  two boxes can legitimately show a slightly different distance for the same advisory; this was a
+  known tradeoff at design time, not a regression. The pre-existing MultiPolygon caveat still
+  applies on top of it: tier-2 (`FindAdvisoryPolygonInGeoJson`) only ever returns the FIRST polygon
+  ring of a `MultiPolygon` feature, while the Nearby Advisories box scans every ring, so a rare
+  multi-area advisory can diverge for that reason too — both are recorded follow-ups, not bugs to
+  fix here.
 - **True HEADING, not ground track, decides ahead/behind** — `IsBehind` compares the bearing to
-  the nearest vertex against the aircraft's TRUE heading (`pos.HeadingMagnetic +
-  pos.MagneticVariation`, the codebase's existing convention), because heading is already on
-  `AircraftPosition` and track is not. In a strong crab the two can differ by 10-20°, which flips
-  the ahead/behind word only when the advisory sits nearly abeam — acceptable at advisory-level
-  awareness.
+  the nearest boundary point (the nearest EDGE point since 2026-07-14, formerly the nearest vertex)
+  against the aircraft's TRUE heading (`pos.HeadingMagnetic + pos.MagneticVariation`, the
+  codebase's existing convention), because heading is already on `AircraftPosition` and track is
+  not. In a strong crab the two can differ by 10-20°, which flips the ahead/behind word only when
+  the advisory sits nearly abeam — acceptable at advisory-level awareness.
 - **Binary, strict `>90°`** — `IsBehind` returns true only when the absolute relative bearing
   exceeds 90°; there are no clock positions, by design (Robin asked for ahead/behind only, not a
   bearing readout).
@@ -908,25 +1020,31 @@ bearing choices rather than oversights:
 **Degradation ladder (design §8) — additive-only end to end.** Every failure path yields "no
 phrase," never an exception, and never withholds the advisory's own text:
 
-1. No usable SimConnect position → no Location lines, no announcement suffixes; both call
-   sites render exactly as they did before this feature existed. The null case is filtered at
-   the CALL SITES (`is { } pos` pattern matches in `WeatherRadarForm.FetchRouteAdvisoriesAsync`
-   and `MainForm.CheckRouteAdvisoriesAsync` leave the empty dictionary untouched —
-   `ComputeLocationsAsync` takes a non-nullable struct and cannot see a null); the `(0,0)`
-   case is `ComputeLocationsAsync`'s own first guard, returning the empty dictionary.
+1. No usable SimConnect position → the two call sites now degrade differently (2026-07-14). For
+   the box (`WeatherRadarForm.FetchRouteAdvisoriesAsync`), simply no `Location:` lines — everything
+   else renders exactly as it did before this feature existed. The null case is filtered at the
+   CALL SITE (`is { } pos` pattern match feeds `ComputeLocationsAsync`); the `(0,0)` case is
+   `ComputeFactsAsync`'s own first guard, returning the empty dictionary before any I/O. For the
+   announcer (`MainForm.CheckRouteAdvisoriesAsync`), the consequence is stronger: an unusable
+   position means `ComputeFactsAsync` is never even called, `facts` stays empty, and (per §12(d)'s
+   frozen-tick contract) the WHOLE proximity tick freezes for that pass — no announcement of any
+   kind fires, and every key's zone/latch state is held untouched for the next tick, not just its
+   location suffix.
 2. The positional probe fails, times out, or AS is unreachable mid-pass → the probe simply
    contributes nothing; per-advisory geometry (tier 1 / tier 2) may still resolve independently,
-   so distance/ahead-behind can still render without an "at your position" override.
+   so distance/ahead-behind can still render without an "at your position"/`Inside` override.
 3. No geometry AND no probe hit for a given advisory → that advisory alone gets no Location line
-   or announce suffix; every other advisory in the same box/announcement batch is unaffected.
+   or announce suffix; every other advisory in the same box/announcement batch is unaffected. (On
+   the announcer side this is the no-geometry `Unplaced` zone, §12(d) — the advisory still
+   announces once via `AnnounceOnce`, just with no distance/direction attached.)
 4. The probe runs inside the SAME background tick that fires the announcement
    (`MainForm.Announcers.cs`'s `CheckRouteAdvisoriesAsync`), so a hung probe adds at most its
    bounded 5 s HTTP timeout (`GetPositionalAdvisoriesTextAsync`'s `CancellationTokenSource`)
-   before the announcement goes out — against the 30 s tick cadence, imperceptible — and on ANY
-   failure the announcement still fires, just without the suffix. The true worst case per pass is
-   the probe's 5 s PLUS at most one SIGMET-feed refresh (`WeatherService.
+   before the tick's facts are ready — against the 30 s tick cadence, imperceptible — and on ANY
+   failure the pass still completes, just with weaker per-advisory facts. The true worst case per
+   pass is the probe's 5 s PLUS at most one SIGMET-feed refresh (`WeatherService.
    RefreshAndGetSigmetFeedsAsync`'s shared `HttpClient`'s 15 s timeout) — never one refresh per
-   advisory: `RouteAdvisoryLocator.ComputeLocationsAsync` fetches the feeds lazily, at most ONCE
+   advisory: `RouteAdvisoryLocator.ComputeFactsAsync` fetches the feeds lazily, at most ONCE
    per pass, only when some advisory actually needs tier-2 geometry (final-review Fix 2; a hung
    feed also doesn't stamp its cache time on failure, so a persistently-unreachable feed retries
    this same bounded timeout on every pass rather than backing off). The box
@@ -935,6 +1053,12 @@ phrase," never an exception, and never withholds the advisory's own text:
 5. `ParseWiPolygon` rejects malformed/short `WI` token sequences permissively — it returns `null`
    for that advisory and never throws, matching the parser's existing never-drop-never-crash
    philosophy from §12(b).
+6. `ComputeFactsAsync` itself never throws out of the pass — any unexpected exception mid-loop is
+   caught, logged (`Log.Debug("Services", …)`), and whatever facts were already computed are
+   returned as-is. On the announcer side this typically yields a short fact set, which (§12(d))
+   fails the `facts.Count != advisories.Count` check and freezes the tick rather than calling
+   `Observe` with a partial dictionary — so an escaping exception degrades to "silent this tick,"
+   never a crash and never a corrupted zone/latch state.
 
 ## 13. Nearby advisories stay aviationweather.gov-sourced (2026-07-13 decision)
 
