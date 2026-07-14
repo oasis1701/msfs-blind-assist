@@ -144,12 +144,13 @@ public static class PMDG737ChecklistDefinitions
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "EFIS_ModeSel_0", v => v > 1.5 && v < 2.5, (e, _) => e.SetEFISModeCapt(2)),
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "EFIS_RangeSel_0", v => v > 2.5 && v < 3.5, (e, _) => e.SetEFISRangeCapt(3)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
-            // GPWS + WXR tests last (mirrors the flow) so their audio never overlaps TCAS's
-            // or each other's; ticking fires the same test the flow runs.
-            ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
-                (e, _) => e.GpwsTestAsync()),
+            // WXR then GPWS last (mirrors the flow) so their audio never overlaps TCAS's or
+            // each other's — WXR first (awaited to completion), GPWS last (its callouts trail
+            // after the step). Ticking fires the same test the flow runs.
             ActionManualAsync("PF_WXR_TEST", "PREFLIGHT", "Weather radar test",
                 (e, _) => e.WxrTestAsync()),
+            ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
+                (e, _) => e.GpwsTestAsync()),
         }
     };
 

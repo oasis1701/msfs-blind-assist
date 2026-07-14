@@ -56,9 +56,11 @@ public class FoSystemTestsStructureTests
         int wxr = steps.IndexOf("PF_WXR_TEST");
         Assert.True(ovspd2 >= 0 && tcas >= 0 && gpws >= 0 && wxr >= 0);
         Assert.Equal(ovspd2 + 1, tcas);                       // TCAS stays with warning tests
-        Assert.True(gpws > tcas + 1, "GPWS must be well separated from TCAS");
-        Assert.Equal(steps.Count - 2, gpws);                  // GPWS second-to-last
-        Assert.Equal(steps.Count - 1, wxr);                   // WXR concludes the flow
+        Assert.True(wxr > tcas + 1, "WXR must be well separated from TCAS");
+        // WXR runs before GPWS: WXR is fully awaited (audio done before the next step);
+        // GPWS only fires-and-returns (callouts trail after), so GPWS must be last.
+        Assert.Equal(steps.Count - 2, wxr);                   // WXR second-to-last
+        Assert.Equal(steps.Count - 1, gpws);                  // GPWS concludes the flow
     }
 
     [Fact]

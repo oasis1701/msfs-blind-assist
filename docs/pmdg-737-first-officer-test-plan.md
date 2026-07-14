@@ -816,16 +816,17 @@ no app-side announcements (the aircraft audio is the verification).
 
 **Ordering (deliberate — the tests are SEPARATED so their audios never overlap):** TCAS test
 stays with the warning tests near the start (its "TEST PASS" plays ~8 s later, over the
-following preflight steps); GPWS then WXR are the LAST two flow steps. Confirm you never hear
-two test audios at once.
+following preflight steps); WXR then GPWS are the LAST two flow steps. WXR is first because
+it is fully awaited (audio finishes before the next step); GPWS is last because its callouts
+trail after the step. Confirm you never hear two test audios at once.
 
 ### V.1 737 preflight flow — short GPWS variant (737 loaded)
 1. Settings → First Officer → GPWS test type = Short test.
 2. Run the Preflight flow. Expect:
    - Early (right after the overspeed tests): "TCAS TEST" then, ~8 s later, "TCAS TEST PASS".
-   - At the very END of the flow: GPWS short self-test callouts, then the weather-radar
-     sequence ending in "MONITOR RADAR DISPLAY … WINDSHEAR" (the concluding step).
-3. The flow continues after each; PF_TCAS_TEST (early) and PF_GPWS_TEST / PF_WXR_TEST (end)
+   - At the very END of the flow: the weather-radar sequence ending in "MONITOR RADAR
+     DISPLAY … WINDSHEAR", then GPWS short self-test callouts (the concluding step).
+3. The flow continues after each; PF_TCAS_TEST (early) and PF_WXR_TEST / PF_GPWS_TEST (end)
    tick in the PREFLIGHT checklist.
 
 ### V.2 737 GPWS long variant + checklist ticks

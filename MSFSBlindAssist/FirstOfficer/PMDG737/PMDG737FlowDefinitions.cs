@@ -145,15 +145,18 @@ public static class PMDG737FlowDefinitions
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "EVT_EFIS_CPT_MODE", 2),
             SW("PF_EFIS_RANGE", "EFIS range: 40", "EVT_EFIS_CPT_RANGE", 3),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
-            // GPWS + weather-radar tests run LAST so their (and TCAS's, above) audio never
-            // overlaps. GPWS variant (short/long) resolves from FOGpws737LongTest at dispatch;
-            // the label stays generic so a settings change needs no window reopen. The WXR
-            // step runs the full managed sequence (overlay on → TEST → callout → WX mode →
-            // overlay off, ~30 s) and concludes the flow.
-            SW("PF_GPWS_TEST", "GPWS system test — listen for the self-test callouts",
-                "GPWS_TEST", 1, checklistItemId: "PF_GPWS_TEST"),
+            // WXR + GPWS tests run LAST so their (and TCAS's, above) audio never overlaps.
+            // ORDER MATTERS: WXR goes FIRST because its managed sequence is fully AWAITED
+            // (the flow blocks the whole ~30 s incl. the windshear callout), so its audio is
+            // finished before the next step. GPWS goes LAST because it only fires-and-returns
+            // — its self-test callouts trail for several seconds (up to ~30 s on the long
+            // variant) AFTER the step completes, so nothing must follow it. GPWS variant
+            // (short/long) resolves from FOGpws737LongTest at dispatch; the label stays
+            // generic so a settings change needs no window reopen.
             SW("PF_WXR_TEST", "Weather radar test — listen for the windshear callout",
                 "WXR_TEST", 1, checklistItemId: "PF_WXR_TEST"),
+            SW("PF_GPWS_TEST", "GPWS system test — listen for the self-test callouts",
+                "GPWS_TEST", 1, checklistItemId: "PF_GPWS_TEST"),
         }
     };
 
