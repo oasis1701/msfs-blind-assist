@@ -49,6 +49,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // yaw inertia in the fleet needs the most lead. 1.8 s; re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.8;
 
+    // The FBW ice-stick announcer (see the A32NX_ICING_STATE_ICING_STICK_INDICATOR
+    // block) is this airframe's single icing voice; the generic announcer yields.
+    public override bool HasOwnIcingAnnouncer => true;
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
