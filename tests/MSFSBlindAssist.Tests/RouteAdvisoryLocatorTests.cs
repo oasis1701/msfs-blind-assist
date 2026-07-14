@@ -18,6 +18,18 @@ public class RouteAdvisoryLocatorTests
             new LocationFact(false, false, null, false), spoken: false));
 
     [Fact]
+    public void ComposePhrase_no_geometry_probe_inside_still_reads_inside()
+    {
+        // The probe-confirmed no-geometry inside case: HasGeometry is false but the
+        // positional probe matched (Inside true). The Inside check MUST stay ordered
+        // BEFORE the HasGeometry guard, or this drops to "no line" and the box/speech
+        // silently lose the one location a blind pilot most needs.
+        var fact = new LocationFact(HasGeometry: false, Inside: true, DistanceNm: null, Behind: false);
+        Assert.Equal("Inside", RouteAdvisoryLocator.ComposePhrase(fact, spoken: false));
+        Assert.Equal("at your position", RouteAdvisoryLocator.ComposePhrase(fact, spoken: true));
+    }
+
+    [Fact]
     public void ComposePhrase_outside_uses_distance_and_behindness()
         => Assert.Equal("95 nm behind", RouteAdvisoryLocator.ComposePhrase(
             new LocationFact(true, false, 95.0, true), spoken: false));

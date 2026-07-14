@@ -1,10 +1,9 @@
-// Route-advisory parsing + announce-decision rules (spec 2026-07-12): the hit format is
-// live-verified (2026-07-12 capture, pinned below as fixtures — 3-line advisories,
-// single-CRLF separators, per-route-segment duplicates), but the parser REMAINS
-// deliberately defensive for unrecognized shapes — unknown text renders verbatim as its
-// own block rather than being dropped. The tracker is baseline-first; ClearAnnouncedKeys()
-// keeps the baseline (15-minute reminder semantics, matching _announcedSigmetKeys);
-// Reset() re-baselines fully.
+// Route-advisory parsing rules (spec 2026-07-12): the hit format is live-verified
+// (2026-07-12 capture, pinned below as fixtures — 3-line advisories, single-CRLF
+// separators, per-route-segment duplicates), but the parser REMAINS deliberately
+// defensive for unrecognized shapes — unknown text renders verbatim as its own block
+// rather than being dropped. The announce-decision logic moved to the proximity zone
+// tracker (RouteAdvisoryProximityTrackerTests) in the 2026-07-14 design.
 
 using MSFSBlindAssist.Services;
 
@@ -437,66 +436,5 @@ public class RouteAdvisoriesTests
         Assert.Equal(new[] { "LFFF SIGMET 9 GR", "Valid until: 1900z",
             "LFFF PARIS FIR GR OBS AT 1400Z TOP FL300 MOV E 10KT NC=" },
             text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));  // …but render is verbatim
-    }
-
-    // --- RouteAdvisoryTracker ---------------------------------------------------------------
-
-    [Fact]
-    public void First_read_baselines_silently_even_with_advisories_present()
-    {
-        var t = new RouteAdvisoryTracker();
-        Assert.Empty(t.Observe(new[] { "SIGMET B4" }));
-        Assert.Empty(t.Observe(new[] { "SIGMET B4" }));          // unchanged: silent
-    }
-
-    [Fact]
-    public void New_key_is_reported_once()
-    {
-        var t = new RouteAdvisoryTracker();
-        t.Observe(new string[0]);                                 // baseline: clear route
-        Assert.Equal(new[] { "SIGMET B4" }, t.Observe(new[] { "SIGMET B4" }));
-        Assert.Empty(t.Observe(new[] { "SIGMET B4" }));
-    }
-
-    [Fact]
-    public void Duplicate_key_within_one_observe_call_announces_once()
-    {
-        var t = new RouteAdvisoryTracker();
-        t.Observe(new string[0]);                                 // baseline: clear route
-        Assert.Equal(new[] { "SIGMET B4" }, t.Observe(new[] { "SIGMET B4", "SIGMET B4" }));
-    }
-
-    [Fact]
-    public void Keys_persist_across_gaps()
-    {
-        // The caller never Observes on failed fetches — keys simply persist, so a
-        // reconnect with the same advisories stays silent.
-        var t = new RouteAdvisoryTracker();
-        t.Observe(new string[0]);
-        t.Observe(new[] { "SIGMET B4" });                         // announced
-        Assert.Empty(t.Observe(new[] { "SIGMET B4" }));           // after a gap: silent
-    }
-
-    [Fact]
-    public void ClearAnnouncedKeys_keeps_baseline_and_reannounces_active_advisories()
-    {
-        // 15-minute reminder semantics, matching _announcedSigmetKeys: after the
-        // periodic clear, a still-active advisory announces again.
-        var t = new RouteAdvisoryTracker();
-        t.Observe(new string[0]);
-        t.Observe(new[] { "SIGMET B4" });
-        t.ClearAnnouncedKeys();
-        Assert.Equal(new[] { "SIGMET B4" }, t.Observe(new[] { "SIGMET B4" }));
-    }
-
-    [Fact]
-    public void Reset_rebaselines_silently()
-    {
-        var t = new RouteAdvisoryTracker();
-        t.Observe(new string[0]);
-        t.Observe(new[] { "SIGMET B4" });
-        t.Reset();
-        Assert.Empty(t.Observe(new[] { "SIGMET B4", "AIRMET T1" }));   // first read after reset
-        Assert.Equal(new[] { "SIGMET Z9" }, t.Observe(new[] { "SIGMET B4", "SIGMET Z9" }));
     }
 }

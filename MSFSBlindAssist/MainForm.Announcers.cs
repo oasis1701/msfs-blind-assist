@@ -2299,6 +2299,15 @@ public partial class MainForm
         }
     }
 
+    /// <summary>
+    /// Proximity-event route advisories (design 2026-07-14): every 30 s tick, fetch +
+    /// parse the on-route advisories, compute a location fact per advisory, and let the
+    /// proximity zone tracker decide what to say. An advisory announces when the aircraft
+    /// first comes within 100 nm of its area (ahead), when it Enters, and when it Leaves —
+    /// nothing else repeats (no more 15-minute reminder, no re-announce of areas behind or
+    /// of hourly SIGMET re-issues beyond 100 nm). Gates unchanged: AnnounceRouteAdvisories
+    /// setting (caller) + the central ActiveSky gate below.
+    /// </summary>
     private async Task CheckRouteAdvisoriesAsync()
     {
         _routeAdvisoryCheckRunning = true;
@@ -2309,51 +2318,32 @@ public partial class MainForm
             if (!await weatherActiveSky.IsRunningAsync()) return;
 
             string? raw = await weatherActiveSky.GetRouteAdvisoriesTextAsync();
-            if (raw == null) return;                             // failed fetch: tracker untouched
-
-            // Same 15-minute reminder cadence as _announcedSigmetKeys: a still-active
-            // route advisory re-announces after the clear.
-            if ((DateTime.UtcNow - _routeAdvisoryKeysClearedAt).TotalMinutes > 15)
-            {
-                _routeAdvisoryTracker.ClearAnnouncedKeys();
-                _routeAdvisoryKeysClearedAt = DateTime.UtcNow;
-            }
+            if (raw == null) return;                              // failed fetch: tracker untouched (frozen tick)
 
             var advisories = MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw);
-            var newKeys = _routeAdvisoryTracker.Observe(advisories.Select(a => a.Key).ToList());
 
             if (!IsHandleCreated || IsDisposed) return;
 
-            // Spoken location context for the new keys (spec 2026-07-13) — one probe +
-            // cached-feed lookups. Bounded by the probe's 5 s timeout plus at most one
-            // aviationweather feed refresh (15 s HttpClient timeout) when tier-2 geometry
-            // is needed (weather.md §12(g)); every failure path yields "no suffix" — the
-            // announcement is never dropped.
-            Dictionary<string, string> locations = new();
-            if (newKeys.Count > 0 && simConnectManager.LastKnownPosition is { } locPos)
-                locations = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeLocationsAsync(
-                    weatherActiveSky, advisories, locPos, spoken: true);
+            // Proximity facts for EVERY advisory (spec 2026-07-14 §4-5). Anything short of a
+            // COMPLETE fact set (unusable position, or a partial dict from a mid-loop failure)
+            // freezes the tick — Observe would PRUNE any key missing from the dict, losing its
+            // zone state and re-announcing it as first-sight next tick. Only an exact-match
+            // fact set may advance the tracker; a genuinely empty feed (0 == 0) still prunes.
+            Dictionary<string, MSFSBlindAssist.Services.LocationFact> facts = new();
+            if (simConnectManager.LastKnownPosition is { } locPos)
+                facts = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeFactsAsync(
+                    weatherActiveSky, advisories, locPos);
+            if (facts.Count != advisories.Count) return;
 
             if (!IsHandleCreated || IsDisposed) return;
 
-            foreach (string key in newKeys)
+            var byKey = advisories.ToDictionary(a => a.Key, a => a, StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, evt, dist) in _routeAdvisoryProximity.Observe(facts))
             {
-                // ALWAYS decoded when possible, independent of the radar form's decode
-                // checkbox — the spoken phrase prefers plain English over raw SIGMET
-                // abbreviations ("EMBD TS"). When identity/hazard don't decode, it
-                // deliberately falls back to the raw key, abbreviations and all: an
-                // out-of-vocabulary advisory must still be heard, never dropped.
-                var adv = advisories.FirstOrDefault(a =>
-                    string.Equals(a.Key, key, StringComparison.OrdinalIgnoreCase));
-                string phrase = adv != null
-                    ? MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement(
-                        adv, locations.TryGetValue(key, out string? loc) ? loc : null)
-                    : key;
-                Log.Debug("MainForm", $"route advisory: \"{key}\" -> \"{phrase}\"");
-                // Neutral phrasing (no "New"): the same announce serves both first
-                // appearance and the 15-minute reminder re-announce, matching the
-                // sibling proximity alerts' "category: content" wording.
-                announcer.Announce($"Route advisory: {phrase}.");
+                if (!byKey.TryGetValue(key, out var adv)) continue;   // defensive; facts derive from advisories
+                string phrase = MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProximityAnnouncement(evt, adv, dist);
+                Log.Debug("MainForm", $"route advisory {evt}: \"{key}\" -> \"{phrase}\"");
+                announcer.Announce(phrase);
             }
         }
         catch (Exception ex)

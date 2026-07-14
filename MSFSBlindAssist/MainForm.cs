@@ -352,9 +352,7 @@ public partial class MainForm : Form
 
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
-    private readonly MSFSBlindAssist.Services.RouteAdvisoryTracker _routeAdvisoryTracker = new();
-
-    private DateTime _routeAdvisoryKeysClearedAt = DateTime.MinValue;
+    private readonly MSFSBlindAssist.Services.RouteAdvisoryProximityTracker _routeAdvisoryProximity = new();
 
     private bool _routeAdvisoryCheckRunning;
 

@@ -579,4 +579,24 @@ public static class ActiveSkyFormatting
         }
         return locationPhrase == null ? core : $"{core}, {locationPhrase}";
     }
+
+    /// <summary>Spoken wording for a proximity event (design 2026-07-14 §2). The core is
+    /// the existing <see cref="BuildRouteAdvisoryAnnouncement"/> decoded summary (raw-key
+    /// fallback preserved). Approach embeds the ahead distance through the spoken
+    /// <see cref="BuildLocationPhrase"/> path ("87 nautical miles ahead"); Leave stays brief
+    /// (identity or raw key only — a Leave is an interruption, not a re-briefing).</summary>
+    internal static string BuildProximityAnnouncement(RouteAdvisoryEvent e, RouteAdvisory a, double? distanceNm)
+    {
+        string core = BuildRouteAdvisoryAnnouncement(a);
+        return e switch
+        {
+            RouteAdvisoryEvent.AnnounceOnce => $"Route advisory: {core}.",
+            RouteAdvisoryEvent.Approach =>
+                $"Route advisory, {BuildLocationPhrase(distanceNm, inside: false, behind: false, spoken: true)}: {core}.",
+            RouteAdvisoryEvent.AtPosition => $"Route advisory at your position: {core}.",
+            RouteAdvisoryEvent.Enter => $"Entering advisory area: {core}.",
+            RouteAdvisoryEvent.Leave => $"Left advisory area: {a.Identity ?? a.Key}.",
+            _ => $"Route advisory: {core}.",
+        };
+    }
 }
