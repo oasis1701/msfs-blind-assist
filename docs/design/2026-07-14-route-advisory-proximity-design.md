@@ -44,7 +44,7 @@ The "{core}" is the existing `ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement
 
 ## 3. Geometry — true edge distance
 
-New `AdvisoryGeometry.DistanceToPolygonNm(vertices, lat, lon)`: minimum point-to-segment distance over the polygon's edges, locally projected (lon scaled by cos lat; adequate ≤ a few hundred nm), **0 when inside**. Rationale: convective outlook polygons have edges long enough that nearest-VERTEX distance is off by tens of nm; the trigger IS the distance, so it must be edge-true. The nearest-vertex approximation stays where it lives today (the box's distance line and the Nearby Advisories box) for cross-box consistency; only the ring trigger and the Approach announcement's spoken distance use edge distance. Behind-ness uses the bearing to the nearest edge point.
+New `AdvisoryGeometry.NearestEdge(vertices, lat, lon)`: minimum point-to-segment distance over the polygon's edges, locally projected (lon scaled by cos lat; adequate ≤ a few hundred nm), **0 when inside**. Rationale: convective outlook polygons have edges long enough that nearest-VERTEX distance is off by tens of nm; the trigger IS the distance, so it must be edge-true. **Amended during implementation (Task 3):** edge distance is used for the box line, the trigger, AND announcements — one number per advisory everywhere within route advisories, so the box and speech can never disagree. `NearestVertex` remains only in the separate Nearby Advisories feature (a different box with its own cross-box-consistency need against `WeatherService.ClosestPoint`); it is no longer used anywhere in the route-advisory location path. Behind-ness uses the bearing to the nearest edge point.
 
 ## 4. Facts, not phrases — `RouteAdvisoryLocator` refactor
 
