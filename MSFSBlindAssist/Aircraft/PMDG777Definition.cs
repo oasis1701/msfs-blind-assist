@@ -8035,6 +8035,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["EVT_TCAS_MODE"]                      = 70381,
             ["EVT_TCAS_IDENT"]                     = 70378,
             ["EVT_TCAS_TEST"]                      = 77123,
+            ["EVT_WXR_TEST"]                       = 70217,   // base + 585 (WXR panel TEST mode)
+            ["EVT_WXR_L_WX"]                       = 70209,   // base + 577 (WX mode — exits TEST)
 
             // CDU Right and Center brightness (missing from initial registration)
             ["EVT_CDU_R_BRITENESS"]                = 70105,

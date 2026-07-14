@@ -30,6 +30,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     private const uint MouseFlagLeftReleaseU = 0x00020000u;
     public const int FireOvhtTestHoldMs = 3000;   // Fenix-parity hold
 
+    /// <summary>System-test timings (live-verified on the 777 2026-07-13, user-tunable).
+    /// The 777 TCAS TEST commits ONLY via the transmit press/release — the def's usual CDA
+    /// param-1 momentary was SILENT for it (same finding family as EVT_OH_FIRE_OVHT_TEST).</summary>
+    public const int QuickTestHoldMs = 150;
+    public const int WxrOverlaySettleMs = 4000;
+    public const int WxrTestWaitMs = 20000;
+
     public void SetSimConnect(SimConnectManager? sc) => _simConnect = sc;
 
     public bool IsAvailable => _simConnect is { IsConnected: true };
@@ -64,9 +71,16 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
     {
         if (!IsAvailable) return Task.FromResult(false);
-        // Pseudo-key: held self-completing FIRE/OVHT test (Fenix FIRE_TEST_* precedent).
-        if (step.ActionType == Models.FlowStepActionType.SetSwitch && step.EventName == "FIRE_OVHT_TEST")
-            return FireOvhtTestAsync();
+        // Pseudo-keys: held self-completing system tests (Fenix FIRE_TEST_* precedent).
+        if (step.ActionType == Models.FlowStepActionType.SetSwitch)
+        {
+            switch (step.EventName)
+            {
+                case "FIRE_OVHT_TEST": return FireOvhtTestAsync();
+                case "TCAS_TEST":      return TcasTestAsync();
+                case "WXR_TEST":       return WxrTestAsync();
+            }
+        }
         return step.ActionType switch
         {
             Models.FlowStepActionType.SetSwitch =>
@@ -178,16 +192,12 @@ public class AircraftActionExecutor : IFoActionExecutor
         PushGroundPowerSecondary();
     }
 
-    /// <summary>FIRE/OVHT TEST button, HELD: transmit LEFTSINGLE, hold, LEFTRELEASE —
-    /// fire bell + fire warning lights while held, self-releasing. NOT the panel's
-    /// momentary CDA param-1 press (that is a bare blip; the test wants a real hold,
-    /// and CDA has no release). In-sim verification: 737 test plan Part U (the 777
-    /// shares that plan); fallback if transmit proves inert on this button is the
-    /// CDA param-1 press.</summary>
-    public async Task<bool> FireOvhtTestAsync()
+    /// <summary>Held transmit press/release for buttons with no CDA release semantics
+    /// (param 0 also registers as a press on the 777 — docs/pmdg-777.md).</summary>
+    public async Task<bool> HeldTransmitTestAsync(string eventName, int holdMs)
     {
         var sc = _simConnect;
-        if (sc == null || !PMDG777Definition.EventIds.TryGetValue("EVT_OH_FIRE_OVHT_TEST", out int evId))
+        if (sc == null || !PMDG777Definition.EventIds.TryGetValue(eventName, out int evId))
             return false;
         await _dispatchGate.WaitAsync();
         try
@@ -195,12 +205,38 @@ public class AircraftActionExecutor : IFoActionExecutor
             await PaceAsync();
             sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
             _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(FireOvhtTestHoldMs);
+            await Task.Delay(holdMs);
             sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
             _lastWriteUtc = DateTime.UtcNow;
             return true;
         }
         finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>FIRE/OVHT TEST button, HELD: transmit LEFTSINGLE, hold, LEFTRELEASE —
+    /// fire bell + fire warning lights while held, self-releasing. NOT the panel's
+    /// momentary CDA param-1 press (that is a bare blip; the test wants a real hold,
+    /// and CDA has no release). In-sim verification: 737 test plan Part U (the 777
+    /// shares that plan); fallback if transmit proves inert on this button is the
+    /// CDA param-1 press.</summary>
+    public Task<bool> FireOvhtTestAsync() =>
+        HeldTransmitTestAsync("EVT_OH_FIRE_OVHT_TEST", FireOvhtTestHoldMs);
+
+    /// <summary>TCAS self-test — quick press; "TCAS TEST" → ~8 s → "TCAS TEST PASS".</summary>
+    public Task<bool> TcasTestAsync() => HeldTransmitTestAsync("EVT_TCAS_TEST", QuickTestHoldMs);
+
+    /// <summary>WXR/PWS test — same managed sequence as the 737 (see that executor's doc):
+    /// EFIS WXR overlay on (blind toggle, assumed OFF) → settle → TEST → callout wait →
+    /// WX mode (never leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.</summary>
+    public async Task<bool> WxrTestAsync()
+    {
+        if (!await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs)) return false;
+        await Task.Delay(WxrOverlaySettleMs);
+        if (!await HeldTransmitTestAsync("EVT_WXR_TEST", QuickTestHoldMs)) return false;
+        await Task.Delay(WxrTestWaitMs);
+        bool ok = await HeldTransmitTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
+        ok &= await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
+        return ok;
     }
 
     /// <summary>APU start sequence: selector ON, wait, then START (springs back to ON).</summary>
