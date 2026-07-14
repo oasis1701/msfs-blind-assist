@@ -584,6 +584,11 @@ public partial class MainForm
         // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
         (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
 
+        // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
+        // spring switch open-ended via a transmit press — release it on swap so it can't
+        // keep sounding or bleed into the next aircraft (mirrors StopAllMotion above).
+        (oldAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
+
         // An armed liftoff → Hand Fly handoff must not survive the switch — its
         // confirm could otherwise fire against the new aircraft in the middle of
         // the re-registration churn below (same hygiene as the disconnect path

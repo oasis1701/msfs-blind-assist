@@ -854,3 +854,16 @@ trail after the step. Confirm you never hear two test audios at once.
    silent, so this confirms the transmit fix), and Pedestal → Weather Radar →
    "Weather Radar Test".
 3. Confirm there is NO GPWS test item/button on the 777 (none exists in the SDK).
+
+## Part W — manual warning-test panel toggles (stick shaker / overspeed clacker, 2026-07-13)
+
+737 powered, IRS aligned (silent otherwise). Overhead → Warning Tests panel section.
+
+1. **Stick Shaker Test 1** → press: the stick shaker sounds and KEEPS sounding; the app says
+   "Stick Shaker Test 1 engaged". Press again: it STOPS; the app says "released".
+2. **Stick Shaker Test 2** — same, independent of Test 1.
+3. **Overspeed Clacker Test 1** and **2** — same behaviour with the overspeed clacker.
+4. Engage a test (leave it sounding), then switch to another aircraft and back: the shaker/
+   clacker STOPS on the switch (release-on-swap), and no audio is stuck.
+5. The First Officer preflight stall/overspeed auto-tests still fire their brief ~1.5–3.5 s
+   held tests as before (unchanged).

@@ -251,3 +251,17 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
   failed; the app's state-change announcement is the confirmation channel.
 - Seats themselves are **not movable** — `L:capt_seat` / `L:fo_seat` are model-variant
   visibility selectors, not positions. Headrests are the only adjustable seat part.
+
+### Manual warning-test panel toggles (stick shaker / overspeed clacker, 2026-07-13)
+
+The Overhead → **Warning Tests** panel section exposes four app-tracked toggle buttons —
+**Stick Shaker Test 1/2** and **Overspeed Clacker Test 1/2** — for manual engage/release of
+the aft-overhead P5 warning-test buttons (`EVT_OH_WARNING_TEST_STALL_1/2_PUSH`,
+`EVT_OH_WARNING_TEST_MACH_IAS_1/2_PUSH`). The NG3 SDK exposes NO state for these, so each
+button is a `RenderAsButton` toggle whose engaged/released state lives in the def
+(`_warnTestEngaged`); pressing fires a transmit **LEFTSINGLE** (engage — holds the spring
+switch so the shaker/clacker sounds continuously, live-verified open-ended) or **LEFTRELEASE**
+(release — stop), and the def announces the new state (the label is static). The keys are NOT
+in `_simpleEventMap` (the 4e branch in `HandleUIVariableSet` owns them). `SwitchAircraft`
+calls `ReleaseEngagedWarningTests` so a held test can't leak into the next aircraft. The FO
+preflight auto-timed stall/overspeed tests are unchanged.
