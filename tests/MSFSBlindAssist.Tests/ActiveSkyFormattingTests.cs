@@ -159,9 +159,10 @@ public class ActiveSkyFormattingTests
     [Theory]
     [InlineData(123.4, false, false, false, "123 nm ahead")]
     [InlineData(123.4, false, false, true,  "123 nautical miles ahead")]
-    [InlineData(95.0,  false, true,  false, "95 nm behind you")]
+    [InlineData(95.0,  false, true,  false, "95 nm behind")]
     [InlineData(95.0,  false, true,  true,  "95 nautical miles behind you")]
     [InlineData(0.4,   false, false, false, "less than one nautical mile ahead")]
+    [InlineData(0.4,   false, true,  false, "less than one nautical mile behind")]
     [InlineData(0.4,   false, true,  true,  "less than one nautical mile behind you")]
     // Rounding boundaries (explicit AwayFromZero — 0.5 rounds UP, never banker's)
     // and the spoken singular: "1 nautical mile", never "1 nautical miles".
@@ -177,7 +178,7 @@ public class ActiveSkyFormattingTests
     [Fact]
     public void Location_phrase_inside_wins_and_differs_by_surface()
     {
-        Assert.Equal("at your position (inside the area)",
+        Assert.Equal("Inside",
             ActiveSkyFormatting.BuildLocationPhrase(50, inside: true, behind: false, spoken: false));
         Assert.Equal("at your position",
             ActiveSkyFormatting.BuildLocationPhrase(null, inside: true, behind: true, spoken: true));

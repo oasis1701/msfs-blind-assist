@@ -547,9 +547,12 @@ public static class ActiveSkyFormatting
     /// location resolved (caller renders nothing).</summary>
     internal static string? BuildLocationPhrase(double? distanceNm, bool inside, bool behind, bool spoken)
     {
-        if (inside) return spoken ? "at your position" : "at your position (inside the area)";
+        // Box form says "Inside" (Robin 2026-07-14 — terse row in a listbox); the spoken
+        // form keeps the natural "at your position". Same split for behind: the box says
+        // "…nm behind", speech says "…behind you".
+        if (inside) return spoken ? "at your position" : "Inside";
         if (distanceNm is not double d) return null;
-        string dir = behind ? "behind you" : "ahead";
+        string dir = behind ? (spoken ? "behind you" : "behind") : "ahead";
         int whole = (int)Math.Round(d, MidpointRounding.AwayFromZero);
         if (whole < 1) return $"less than one nautical mile {dir}";
         string n = whole.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);

@@ -14,7 +14,7 @@ public class RouteAdvisoryLocatorTests
 
     [Fact]
     public void Polygon_containment_reads_inside()
-        => Assert.Equal("at your position (inside the area)",
+        => Assert.Equal("Inside",
             RouteAdvisoryLocator.Compose(Square, probeMatched: false, 10.5, 20.5, 0, spoken: false));
 
     [Fact]
