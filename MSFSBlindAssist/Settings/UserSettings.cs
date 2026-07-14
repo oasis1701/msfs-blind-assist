@@ -160,10 +160,19 @@ public class UserSettings
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
 
+        // AI provider selection. Gemini (default) preserves existing behavior; Claude routes ALL
+        // three AI features (display reading, scene description, route briefing) through Anthropic.
+        public AiProvider AiProvider { get; set; } = AiProvider.Gemini;
+
         // Gemini AI Settings
         public string GeminiApiKey { get; set; } = "";
         public bool GeminiSearchGrounding { get; set; } = false;
         public string GeminiModel { get; set; } = "gemini-flash-latest";
+
+        // Claude (Anthropic) AI Settings — used when AiProvider == Claude. User-supplied key only.
+        public string ClaudeApiKey { get; set; } = "";
+        public string ClaudeModel { get; set; } = "claude-opus-4-8";
+        public bool ClaudeWebSearch { get; set; } = false;
 
         // Range Settings (in selected distance units)
         public int NearbyCitiesRange { get; set; } = 25;
@@ -538,9 +547,13 @@ public class UserSettings
             GeoNamesApiUsername = GeoNamesApiUsername,
             NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
+            AiProvider = AiProvider,
             GeminiApiKey = GeminiApiKey,
             GeminiSearchGrounding = GeminiSearchGrounding,
             GeminiModel = GeminiModel,
+            ClaudeApiKey = ClaudeApiKey,
+            ClaudeModel = ClaudeModel,
+            ClaudeWebSearch = ClaudeWebSearch,
             NearbyCitiesRange = NearbyCitiesRange,
             RegionalCitiesRange = RegionalCitiesRange,
             MajorCitiesRange = MajorCitiesRange,

@@ -9,12 +9,12 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// Service for analyzing cockpit displays using Google Gemini AI.
 /// </summary>
-public class GeminiService
+public class GeminiService : IAiProvider
 {
     private static readonly HttpClient httpClient = new HttpClient();
 
     // The model is user-selectable (UserSettings.GeminiModel, populated from a live fetch in the
-    // Gemini Settings dialog). DEFAULT_MODEL is a rolling alias that always resolves to a current
+    // Settings dialog's AI tab). DEFAULT_MODEL is a rolling alias that always resolves to a current
     // Flash model, so a fresh install / failed fetch still has a working default.
     private const string API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
     private const string DEFAULT_MODEL = "gemini-flash-latest";
@@ -38,33 +38,20 @@ public class GeminiService
             : SettingsManager.Current.GeminiApiKey;
     }
 
-    /// <summary>A Gemini model usable for generateContent, for the settings dropdown.</summary>
-    public sealed class GeminiModelInfo
-    {
-        public string Id { get; }
-        public string DisplayName { get; }
-        public GeminiModelInfo(string id, string displayName)
-        {
-            Id = id;
-            DisplayName = displayName;
-        }
-        public override string ToString() => DisplayName;
-    }
-
     /// <summary>
     /// Fetches the account's available models, filtered to generateContent-capable Gemini
     /// chat/vision models, collapsed to one (latest) entry per family, sorted newest-first.
     /// Throws on HTTP/network failure (caller falls back to a curated
     /// list). Does not retry — this is an interactive, best-effort dialog populate.
     /// </summary>
-    public async Task<IReadOnlyList<GeminiModelInfo>> ListAvailableModelsAsync()
+    public async Task<IReadOnlyList<AiModelInfo>> ListAvailableModelsAsync()
     {
         if (string.IsNullOrEmpty(apiKey))
         {
             throw new InvalidOperationException("Gemini API key is not configured.");
         }
 
-        var models = new List<GeminiModelInfo>();
+        var models = new List<AiModelInfo>();
         string? pageToken = null;
         do
         {
@@ -91,7 +78,7 @@ public class GeminiService
                     string displayName = string.IsNullOrWhiteSpace(m.DisplayName) ? id : m.DisplayName!;
                     if (IsNonChatModel(id, displayName)) continue;
 
-                    models.Add(new GeminiModelInfo(id, displayName));
+                    models.Add(new AiModelInfo(id, displayName));
                 }
             }
             pageToken = list?.NextPageToken;
@@ -99,7 +86,7 @@ public class GeminiService
 
         // Collapse every variant of a model line (dated snapshots, -preview, -exp) to ONE
         // representative per family so the picker isn't flooded with snapshots.
-        List<GeminiModelInfo> result = SelectFamilyRepresentatives(models);
+        List<AiModelInfo> result = SelectFamilyRepresentatives(models);
 
         // Newest-first: descending by the leading version number parsed from the id; unversioned
         // ids (rolling aliases like gemini-flash-latest) sort last; ties broken alphabetically.
@@ -121,9 +108,9 @@ public class GeminiService
     /// stable snapshot > newest preview/experimental. The rolling "*-latest" aliases are their
     /// own families and are kept.
     /// </summary>
-    private static List<GeminiModelInfo> SelectFamilyRepresentatives(List<GeminiModelInfo> models)
+    private static List<AiModelInfo> SelectFamilyRepresentatives(List<AiModelInfo> models)
     {
-        var byFamily = new Dictionary<string, GeminiModelInfo>(StringComparer.OrdinalIgnoreCase);
+        var byFamily = new Dictionary<string, AiModelInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in models)
         {
             string family = FamilyKey(m.Id);
@@ -132,7 +119,7 @@ public class GeminiService
                 byFamily[family] = m;
             }
         }
-        return new List<GeminiModelInfo>(byFamily.Values);
+        return new List<AiModelInfo>(byFamily.Values);
     }
 
     /// <summary>
@@ -268,7 +255,7 @@ public class GeminiService
     /// <summary>
     /// Generates a prompt for scene description focused on the visual experience.
     /// </summary>
-    private string GetScenePrompt()
+    internal static string GetScenePrompt()
     {
         return @"You are describing the visual flight simulator scene for a blind pilot.
 
@@ -320,7 +307,7 @@ Describe what you see directly and factually, helping someone understand the vis
     /// <summary>
     /// Generates an appropriate prompt for each display type.
     /// </summary>
-    private string GetPromptForDisplay(DisplayType displayType)
+    internal static string GetPromptForDisplay(DisplayType displayType)
     {
         return displayType switch
         {
@@ -592,7 +579,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     {
         if (string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini Settings.");
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Settings > AI tab.");
         }
 
         string model = SettingsManager.Current.GeminiModel;
@@ -663,7 +650,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 string errorContent = await response.Content.ReadAsStringAsync();
                 response.Dispose();
                 string message = status == System.Net.HttpStatusCode.NotFound
-                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Gemini Settings. ({errorContent})"
+                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Settings > AI tab. ({errorContent})"
                     : $"Gemini API request failed with status {code}: {errorContent}";
                 throw new HttpRequestException(message);
             }
@@ -740,7 +727,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     /// <summary>
     /// Generates the prompt for route description.
     /// </summary>
-    private string GetRouteDescriptionPrompt(string flightData)
+    internal static string GetRouteDescriptionPrompt(string flightData)
     {
         return $@"You are writing a flight briefing for a blind flight simulator pilot. Based on the flight plan data below, write a narrative description of the route that helps the pilot understand what they will experience during this flight.
 

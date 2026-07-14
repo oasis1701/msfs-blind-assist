@@ -687,7 +687,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             announcer.Announce($"Capturing {displayName}...");
 
             var screenshotService = new Services.ScreenshotService();
-            var geminiService = new Services.GeminiService();
+            var aiProvider = Services.AiProviderFactory.Create();
 
             if (!screenshotService.IsMsfsWindowAvailable())
             {
@@ -702,7 +702,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 return;
             }
 
-            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
+            string analysis = await aiProvider.AnalyzeDisplayAsync(screenshot, displayType);
 
             var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
             resultForm.ShowForm();
@@ -711,13 +711,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
+            announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
             System.Windows.Forms.MessageBox.Show(
                 parentForm,
-                "Gemini API key is not configured.\n\n" +
-                "Please configure your API key in:\n" +
-                "File > Gemini Settings\n\n" +
-                "Get a free API key at: https://aistudio.google.com/apikey",
+                "AI provider API key is not configured.\n\n" +
+                "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
+                "File > Settings > AI tab",
                 "API Key Required",
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Warning);

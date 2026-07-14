@@ -2003,9 +2003,10 @@ public partial class MainForm
         {
             announcer.AnnounceImmediate("Capturing scene...");
 
-            // Create screenshot and Gemini services
+            // Resolve the AI provider fresh per call (same as ReadDisplay and the EFB route
+            // briefing) so a provider switch in Settings applies to the very next scene read.
             var screenshotService = new ScreenshotService();
-            var geminiService = new GeminiService();
+            var aiProvider = AiProviderFactory.Create();
 
             // Check if MSFS window is available
             if (!screenshotService.IsMsfsWindowAvailable())
@@ -2022,8 +2023,8 @@ public partial class MainForm
                 return;
             }
 
-            // Analyze scene with Gemini
-            string analysis = await geminiService.AnalyzeSceneAsync(screenshot);
+            // Analyze scene with the selected AI provider
+            string analysis = await aiProvider.AnalyzeSceneAsync(screenshot);
 
             // Show result in form (independent window with synchronous focus)
             var resultForm = new DisplayReadingResultForm("Scene", analysis, "Description");
@@ -2033,7 +2034,7 @@ public partial class MainForm
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.AnnounceImmediate("Gemini API key not configured. Please configure it in File menu, Gemini Settings.");
+            announcer.AnnounceImmediate("AI provider API key not configured. Please configure it in File menu, Settings, AI tab.");
         }
         catch (Exception ex)
         {
