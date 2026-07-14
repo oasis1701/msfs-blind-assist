@@ -205,7 +205,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS", "Fire Protection", "Cargo Fire",
+                "Control Stand", "Transponder/TCAS", "Weather Radar", "Fire Protection", "Cargo Fire",
                 "Radio", "Calls", "Flight Deck Door", "Boris Audio Works"
             },
             ["Glareshield"] = new List<string>
@@ -1238,6 +1238,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // GPWS system test — momentary push; plays the EGPWS self-test sequence
         // (visual + audible). SDK exposes only the event, no state field.
         d["GPWS_SysTest"]              = Momentary("GPWS_SysTest", "GPWS System Test");
+        // GPWS long self-test — same button HELD 5 s (extended callout sequence). Synthetic
+        // key: dispatched by a dedicated HandleUIVariableSet branch (held transmit), NOT the
+        // generic momentary path (SendPMDGMomentaryToggle can't hold).
+        d["GPWS_SysTestLong"]          = Momentary("GPWS_SysTestLong", "GPWS System Test (Long)");
 
         // =================================================================
         // CONTROL STAND — CDU annunciators, COMM counters, ACP, stab trim, fire, xpdr, etc.
@@ -1429,6 +1433,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // TCAS self-test — momentary push; plays the TCAS test sequence (TA/RA
         // audio + display callouts). SDK exposes only the event, no state field.
         d["XPDR_TcasTest"]        = Momentary("XPDR_TcasTest", "TCAS Test");
+        // Weather radar / predictive-windshear test — synthetic managed sequence (the EFIS
+        // WXR overlay is a blind toggle with NO readable state in the NG3 SDK, and the WXR
+        // TEST mode latches): overlay ON → settle → TEST ("MONITOR RADAR DISPLAY …
+        // WINDSHEAR" aural) → wait → WX mode → overlay OFF. Assumes the overlay starts OFF.
+        d["WXR_Test"]                  = Momentary("WXR_Test", "Weather Radar Test");
         // Transponder IDENT — momentary push; squawks IDENT to make the aircraft
         // blip flash on ATC radar for ~18 seconds. SDK exposes only the event.
         d["XPDR_Ident"]           = Momentary("XPDR_Ident", "Ident");
@@ -2000,7 +2009,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["GPWS"] = new List<string>
             {
                 "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM",
-                "GPWS_SysTest"
+                "GPWS_SysTest", "GPWS_SysTestLong"
             },
             ["Instruments"] = new List<string>
             {
@@ -2028,6 +2037,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
                 "TRANSPONDER_CODE_SET",
                 "XPDR_Ident", "XPDR_TcasTest"
+            },
+            ["Weather Radar"] = new List<string>
+            {
+                "WXR_Test"
             },
             ["Fire Protection"] = new List<string>
             {
@@ -3644,6 +3657,37 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         simConnect.SendPMDGEvent(eventName, eventId, 0);
     }
 
+    private const uint MOUSE_FLAG_LEFTSINGLE_U  = 0x20000000u;
+    private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
+
+    /// <summary>Held transmit press/release — for the spring test buttons that only commit
+    /// via the '#id' transmit path (GPWS long test, the WXR sequence's presses).</summary>
+    private static async Task HeldTransmitAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, int holdMs)
+    {
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
+        await Task.Delay(holdMs).ConfigureAwait(false);
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
+    }
+
+    /// <summary>WXR/PWS test managed sequence — see the WXR_Test def comment. Restore
+    /// (WX mode + overlay off) runs unconditionally after the wait.</summary>
+    private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
+    {
+        if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+            !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+            !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+            return;
+        const int quick = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.QuickTestHoldMs;
+        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
+        await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrOverlaySettleMs).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)testEv, quick).ConfigureAwait(false);
+        await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrTestWaitMs).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)wxEv, quick).ConfigureAwait(false);
+        await Task.Delay(350).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
+    }
+
     // Overhead bins: rows 1–18 left/right + the two small TC-layout row-3 bins.
     private static readonly string[] s_binLvars = BuildBinLvarList();
     private static string[] BuildBinLvarList()
@@ -4759,6 +4803,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 _posLtWalkOp = RunPosLtWalkAsync();
             }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4d. Synthetic system-test buttons (transmit press/hold/release — the
+        //     same live-verified mechanism as the FO executor's pseudo-keys;
+        //     timings shared from the executor's public consts). Fire-and-forget:
+        //     the test announces itself aurally in-sim, no app-side announcement.
+        // ------------------------------------------------------------------
+        if (varKey == "GPWS_SysTestLong" && EventIds.TryGetValue("EVT_GPWS_SYS_TEST_BTN", out int gpwsLongEv))
+        {
+            _ = HeldTransmitAsync(simConnect, (uint)gpwsLongEv,
+                MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.GpwsLongTestHoldMs);
+            return true;
+        }
+        if (varKey == "WXR_Test")
+        {
+            _ = WxrTestSequenceAsync(simConnect);
             return true;
         }
 
