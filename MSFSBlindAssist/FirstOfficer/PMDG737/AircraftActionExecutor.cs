@@ -520,14 +520,28 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// restore leaves state consistent for the retry.</summary>
     public async Task<bool> WxrTestAsync()
     {
+        // Turn the overlay on first; if even that fails (no SimConnect) nothing was
+        // touched, so bail before the try — no restore owed.
         if (!await WarningTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs)) return false;
-        await Task.Delay(WxrOverlaySettleMs);
-        if (!await WarningTestAsync("EVT_WXR_TEST", QuickTestHoldMs)) return false;
-        await Task.Delay(WxrTestWaitMs);
-        // Restore unconditionally from here — never leave the radar latched in TEST.
-        bool ok = await WarningTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
-        ok &= await WarningTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
-        return ok;
+        try
+        {
+            await Task.Delay(WxrOverlaySettleMs);
+            return await WarningTestAsync("EVT_WXR_TEST", QuickTestHoldMs)
+                && await DelayThenTrueAsync(WxrTestWaitMs);
+        }
+        finally
+        {
+            // Restore UNCONDITIONALLY once the overlay is on — never leave the radar
+            // latched in TEST or the overlay stuck on, even if the TEST press failed.
+            await WarningTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
+            await WarningTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
+        }
+    }
+
+    private static async Task<bool> DelayThenTrueAsync(int ms)
+    {
+        await Task.Delay(ms);
+        return true;
     }
 
     /// <summary>APU start sequence: selector ON, dwell, then momentary START (springs back to ON).

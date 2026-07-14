@@ -230,13 +230,28 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// WX mode (never leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.</summary>
     public async Task<bool> WxrTestAsync()
     {
+        // Overlay on first; if that fails (no SimConnect) nothing was touched — bail
+        // before the try, no restore owed.
         if (!await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs)) return false;
-        await Task.Delay(WxrOverlaySettleMs);
-        if (!await HeldTransmitTestAsync("EVT_WXR_TEST", QuickTestHoldMs)) return false;
-        await Task.Delay(WxrTestWaitMs);
-        bool ok = await HeldTransmitTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
-        ok &= await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
-        return ok;
+        try
+        {
+            await Task.Delay(WxrOverlaySettleMs);
+            return await HeldTransmitTestAsync("EVT_WXR_TEST", QuickTestHoldMs)
+                && await DelayThenTrueAsync(WxrTestWaitMs);
+        }
+        finally
+        {
+            // Restore UNCONDITIONALLY once the overlay is on — never leave the radar
+            // latched in TEST or the overlay stuck on, even if the TEST press failed.
+            await HeldTransmitTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
+            await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
+        }
+    }
+
+    private static async Task<bool> DelayThenTrueAsync(int ms)
+    {
+        await Task.Delay(ms);
+        return true;
     }
 
     /// <summary>APU start sequence: selector ON, wait, then START (springs back to ON).</summary>
