@@ -53,4 +53,39 @@ public class FoSystemTestsStructureTests
         Assert.Equal(ovspd2 + 2, steps.IndexOf("PF_TCAS_TEST"));
         Assert.Equal(ovspd2 + 3, steps.IndexOf("PF_WXR_TEST"));
     }
+
+    [Theory]
+    [InlineData("CP_TCAS_TEST", "TCAS_TEST", "PF_TCAS_TEST")]
+    [InlineData("CP_WXR_TEST", "WXR_TEST", "PF_WXR_TEST")]
+    public void B777_CockpitPrepFlow_HasSystemTestStep(string stepId, string pseudoKey, string itemId)
+    {
+        var flows = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build();
+        var step = flows.SelectMany(f => f.Steps).FirstOrDefault(s => s.Id == stepId);
+        Assert.NotNull(step);
+        Assert.Equal(FlowStepActionType.SetSwitch, step!.ActionType);
+        Assert.Equal(pseudoKey, step.EventName);
+        Assert.Equal(itemId, step.CompletesChecklistItemId);
+    }
+
+    [Theory]
+    [InlineData("PF_TCAS_TEST")]
+    [InlineData("PF_WXR_TEST")]
+    public void B777_PreflightChecklist_HasManualTestItem(string itemId)
+    {
+        var group = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build()
+            .First(g => g.Id == "PREFLIGHT");
+        var item = group.Items.FirstOrDefault(i => i.Id == itemId);
+        Assert.NotNull(item);
+        Assert.Equal(ChecklistItemType.Actionable, item!.Type);
+        Assert.True(item.ManualCompletionAllowed);
+        Assert.NotNull(item.CheckAction);
+    }
+
+    [Fact]
+    public void B777_HasNoGpwsTest()   // the 777 SDK has no GPWS self-test button
+    {
+        var allStepEvents = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build()
+            .SelectMany(f => f.Steps).Select(s => s.EventName).ToList();
+        Assert.DoesNotContain("GPWS_TEST", allStepEvents);
+    }
 }
