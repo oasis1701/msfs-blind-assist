@@ -18,6 +18,8 @@ decoded-weather monitor's lifecycle, and two standing implementation gotchas.
   announcement
 - `Services/RouteAdvisoryProximityTracker.cs` — pure per-key zone state machine for the en-route
   advisory proximity announcements (§12)
+- `Services/TurnaroundLiftoffDetector.cs` — pure touchdown+dwell+liftoff detector that fires the
+  third reset trigger on the proximity tracker (§12d)
 - `MainForm.Announcers.cs` — output+I wind (`RequestWindInfo`), the ambient auto-announce
   (`CheckAmbientWeatherChanges` / `AnnounceAmbientChanges`)
 - `Forms/WeatherRadarForm.cs` — the on-demand weather radar/briefing window
@@ -839,6 +841,19 @@ prunes every tracked key.
 (alongside `_announcedSigmetKeys.Clear()`) and `SwitchAircraft` (alongside the other hazard
 trackers' resets — turbulence, icing) — forgetting every key's zone/latches so a reconnect or
 aircraft swap re-baselines from first sight.
+
+**Third reset trigger — turnaround liftoff (2026-07-14, Robin's turnaround question).**
+`Services/TurnaroundLiftoffDetector.cs` (field `_turnaroundDetector` in `MainForm.cs`) watches the
+`SIM_ON_GROUND` edges alongside the cache in `MainForm.Announcers.cs` and reports a "turnaround
+liftoff" — a touchdown edge followed by at least 5 minutes on the ground, then a liftoff edge — at
+which point `_routeAdvisoryProximity.Reset()` (and `_emptyRouteFeedTicks = 0`) fire a third time.
+Rationale: an advisory key can survive a same-session turnaround unchanged in the ActiveSky feed
+(same SIGMET number, still on the loaded route), so without this reset flight 1's `EverInside`
+latch would silently suppress flight 2's 100 nm Approach call for that same key. Touch-and-goes and
+oleo-bounce flickers (dwell &lt; 5 min) never fire it, and the session's first departure never fires
+it either (arming requires an observed touchdown first). The detector is reset alongside the tracker
+at both reset sites above, so a stale touchdown stamp from before a reconnect/aircraft-switch can
+never fire a bonus reset later.
 
 **Route advisories no longer share the SIGMET/PIREP reminder cadence.** The nearby-SIGMET/PIREP
 proximity alerts (§13) still clear their seen-set every 15 minutes (`_announcedSigmetKeys` /

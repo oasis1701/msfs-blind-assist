@@ -581,6 +581,18 @@ public partial class MainForm
             // air/ground state without a separate MainForm dependency.
             simConnectManager.LastKnownOnGround = onGround;
 
+            // Turnaround re-baseline for the route-advisory proximity announcements:
+            // a liftoff after landing + ≥5 min on the ground is a NEW flight — reset so
+            // flight 2 gets its full cycle (approach/enter/leave) even for an advisory
+            // key that survived the turnaround in the AS feed. Touch-and-goes and
+            // bounce flickers never fire (dwell gate inside the detector).
+            if (_turnaroundDetector.ObserveEdge(justTouchedDown, justLiftedOff, DateTime.UtcNow))
+            {
+                _routeAdvisoryProximity.Reset();
+                _emptyRouteFeedTicks = 0;
+                Log.Debug("MainForm", "route-advisory proximity reset (turnaround liftoff)");
+            }
+
             // Auto-deactivate visual guidance on touchdown: from this moment on,
             // the landing-exit planner / taxi guidance take over the rollout and
             // taxi guidance respectively, so the dual-tone guidance no longer

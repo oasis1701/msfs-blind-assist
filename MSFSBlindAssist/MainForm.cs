@@ -354,6 +354,10 @@ public partial class MainForm : Form
 
     private readonly MSFSBlindAssist.Services.RouteAdvisoryProximityTracker _routeAdvisoryProximity = new();
 
+    // Turnaround liftoff re-baseline for the route-advisory proximity tracker — see
+    // Services/TurnaroundLiftoffDetector.cs for the touchdown+dwell+liftoff semantics.
+    private readonly MSFSBlindAssist.Services.TurnaroundLiftoffDetector _turnaroundDetector = new();
+
     private bool _routeAdvisoryCheckRunning;
 
     // Consecutive-empty-feed counter for the route-advisory proximity tracker (M3, final

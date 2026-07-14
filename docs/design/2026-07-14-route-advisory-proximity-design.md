@@ -40,6 +40,25 @@ Latches: once a key has been Inside, Approach is permanently latched off for it 
 
 No-geometry keys (`HasGeometry == false`, probe not matched): **AnnounceOnce** event at first sight — the existing wording ("Route advisory: {core}.") unchanged — and the key is tracked in a distance-less zone (no Far/Near transitions possible). The one transition it can still make: if the positional probe later matches it (`Inside` becomes true), **Enter** fires; it can never make Leave (probe-match loss ≠ outside, see §4).
 
+**Post-design note (2026-07-14, turnaround liftoff reset, Robin's turnaround question).**
+`Reset()` above was originally called only at connect / aircraft switch. Robin then asked what
+happens on a same-session turnaround (flight 1 lands, taxis in, flight 2 departs without an
+aircraft switch or reconnect): if an advisory key survives unchanged in the ActiveSky feed across
+the turnaround (same SIGMET number, still on the loaded route), its `EverInside` latch from flight
+1 would silently suppress flight 2's 100 nm Approach call for that same key. Fix: a third reset
+trigger, `Services/TurnaroundLiftoffDetector.cs` (pure, clock supplied by the caller) — a
+touchdown edge followed by at least 5 minutes on the ground, then a liftoff edge, calls
+`_routeAdvisoryProximity.Reset()` from `MainForm.Announcers.cs`'s `SIM_ON_GROUND` handler.
+Deliberately **armed on the touchdown edge, not on ground dwell alone**: that means a genuine
+landing is required before the dwell timer even starts, so (a) the session's FIRST departure never
+fires it (no touchdown has ever been observed — the tracker is already fresh from `Reset()` at
+connect, so there is nothing to protect against and, more importantly, a long taxi-out before that
+first departure must not double-announce an advisory already approached during taxi), and (b)
+touch-and-goes and oleo-bounce flickers (dwell &lt; 5 min) never fire it either. The detector is
+itself `Reset()` at both the connect and aircraft-switch sites so a stale touchdown timestamp from
+before either event can't produce a bonus reset later. Tests:
+`tests/MSFSBlindAssist.Tests/TurnaroundLiftoffDetectorTests.cs`.
+
 The "{core}" is the existing `ActiveSkyFormatting.BuildRouteAdvisoryAnnouncement` decoded core (identity, FIR, hazard, extent — raw-key fallback preserved). The distance in the Approach form comes through `BuildLocationPhrase`'s spoken path.
 
 ## 3. Geometry — true edge distance

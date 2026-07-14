@@ -211,6 +211,7 @@ public partial class MainForm
             _sigmetKeysClearedAt = DateTime.UtcNow;
             _routeAdvisoryProximity.Reset();
             _emptyRouteFeedTicks = 0;
+            _turnaroundDetector.Reset();
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -632,6 +633,7 @@ public partial class MainForm
         _iceAccretionTracker.Reset();
         _routeAdvisoryProximity.Reset();
         _emptyRouteFeedTicks = 0;
+        _turnaroundDetector.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
