@@ -171,11 +171,11 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
         _routeAdvisoryAlerts = new CheckBox
         {
-            Text = "Auto-announce new r&oute advisories (ActiveSky)",
+            Text = "Announce r&oute advisories by proximity (ActiveSky)",
             Location = new System.Drawing.Point(12, 204),
             Size = new System.Drawing.Size(420, 24),
-            AccessibleName = "Auto-announce new route advisories",
-            AccessibleDescription = "Announce when a new SIGMET or AIRMET appears on the flight-plan route loaded in ActiveSky. Requires ActiveSky."
+            AccessibleName = "Announce route advisories by proximity",
+            AccessibleDescription = "Announce SIGMETs and AIRMETs on the ActiveSky flight-plan route when approaching within 100 nautical miles, when entering the area, and when leaving it. Requires ActiveSky."
         };
 
         var rangeLabel = new Label

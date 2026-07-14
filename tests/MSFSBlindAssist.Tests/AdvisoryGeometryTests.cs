@@ -136,4 +136,26 @@ public class AdvisoryGeometryTests
         double toCorner = Navigation.NavigationCalculator.CalculateDistance(38.0, -102.0, 40.0, -100.0);
         Assert.InRange(edgeDist, toCorner - 2, toCorner + 2);   // local-projection tolerance
     }
+
+    [Fact]
+    public void NearestEdge_from_inside_the_polygon_returns_a_positive_boundary_distance()
+    {
+        // NearestEdge has no inside/outside special case — it always measures to the nearest
+        // point on the BOUNDARY, so a point well inside the polygon still gets a nonzero
+        // distance back (here, ~30 nm from the centre of the 1°x1° Square to its nearest edge).
+        // This is why RouteAdvisoryLocator.ComputeFactsAsync gates on AdvisoryGeometry.IsInside
+        // FIRST and hardcodes DistanceNm=0 for the Inside fact (spec 2026-07-14 §3/§4) rather
+        // than trusting NearestEdge to report 0 for an inside point — it never will.
+        Assert.True(AdvisoryGeometry.IsInside(Square, 10.5, 20.5));   // sanity: point is inside
+        var (dist, _) = AdvisoryGeometry.NearestEdge(Square, 10.5, 20.5);
+        Assert.True(dist > 0, $"expected a positive boundary distance from an interior point, got {dist}");
+    }
+
+    [Fact]
+    public void NearestEdge_with_empty_vertex_list_returns_sentinel()
+    {
+        var (dist, brg) = AdvisoryGeometry.NearestEdge(new List<(double Lat, double Lon)>(), 10.0, 20.0);
+        Assert.Equal(double.MaxValue, dist);
+        Assert.Equal(0, brg);
+    }
 }

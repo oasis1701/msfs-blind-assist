@@ -210,6 +210,7 @@ public partial class MainForm
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
             _routeAdvisoryProximity.Reset();
+            _emptyRouteFeedTicks = 0;
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -630,6 +631,7 @@ public partial class MainForm
         activeSkyWeatherMonitor?.ResetTurbulenceTracker();
         _iceAccretionTracker.Reset();
         _routeAdvisoryProximity.Reset();
+        _emptyRouteFeedTicks = 0;
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)

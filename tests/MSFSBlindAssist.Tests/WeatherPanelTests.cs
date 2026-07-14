@@ -255,7 +255,7 @@ public class WeatherPanelTests
         using var panel = new WeatherPanel();
         panel.LoadFrom(new UserSettings());                       // AS off, master off
 
-        var route = FindByAccessibleName(panel, "Auto-announce new route advisories");
+        var route = FindByAccessibleName(panel, "Announce route advisories by proximity");
         var asSwitch = (CheckBox)FindByAccessibleName(panel, "Enable ActiveSky integration");
         var master = (CheckBox)FindByAccessibleName(panel, "Auto-announce weather state changes");
 

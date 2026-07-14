@@ -788,19 +788,30 @@ past 110 nm, and re-approached) — fixed in commit `3e8e3a12`, pinned by two re
 `After_probe_at_position_inside_approach_never_fires_when_geometry_appears` and
 `After_probe_enter_inside_approach_never_fires_when_geometry_appears`.
 
-**No-geometry keys: announce-once, probe-Enter, never Leave.** A key with neither a WI polygon
-(tier 1) nor a tier-2 aviationweather.gov match (§12(g)) tracks in the distance-less `Unplaced`
-zone. Its only live transition is the positional probe: if the probe later matches the key
-(`Inside` becomes true), **Enter** fires once. Because probe-match loss is not "outside" (§12(g)'s
-probe-strengthens-only rule), a no-geometry key can never produce Leave — once probe-matched it
-stays silently Inside forever.
-**Recorded follow-up (not fixed here):** an `Unplaced` key stays `Unplaced` for its whole life even
-if tier-2 geometry becomes available for it on a LATER tick (e.g. the tier-2 feed happened to be
-down on the exact tick the key was first observed, then recovered) — it never gains normal
-Far/Near/Inside zoning, only the no-geometry rules above. This is a rare tier-2-outage-at-first-
-sight case, not the common path. A future upgrade could let a still-`Unplaced` key adopt geometry
-the first time it becomes available and re-zone from there; the design would need to guard against
-double-announcing Approach for a key already Inside-latched via the no-geometry path.
+**No-geometry keys: announce-once, probe-Enter, and probe-match LOSS ALONE never Leaves.** A key
+with neither a WI polygon (tier 1) nor a tier-2 aviationweather.gov match (§12(g)) tracks in the
+distance-less `Unplaced` zone. Its only live transition while it stays `Unplaced` is the positional
+probe: if the probe later matches the key (`Inside` becomes true), **Enter** fires once and the key
+leaves `Unplaced` behind, becoming a normally-zoned `Inside` key. Because probe-match loss is not
+"outside" (§12(g)'s probe-strengthens-only rule), losing the probe match BY ITSELF can never produce
+Leave for a key that stays no-geometry forever — it stays silently Inside. **This is narrower than
+"never Leave" overall, though:** once real (tier-1 or tier-2) geometry subsequently appears for that
+same now-`Inside` key, geometry becomes authoritative for it exactly like any other zoned key, and a
+later confirmed-outside reading (`LeaveConfirmTicks`) fires Leave normally — the "never Leave" rule
+covers only the probe-match signal in isolation, not a key whose geometry later resolves. Pinned by
+the two regression tests `After_probe_at_position_inside_approach_never_fires_when_geometry_appears`
+and `After_probe_enter_inside_approach_never_fires_when_geometry_appears` (both drive a probe-Entered
+key through a later-appearing geometry fact all the way to a genuine Leave).
+**Recorded follow-up (not fixed here):** an `Unplaced` key that never goes Inside stays `Unplaced`
+for its whole life even if tier-2 geometry becomes available for it on a LATER tick (e.g. the
+tier-2 feed happened to be down on the exact tick the key was first observed, then recovered) — it
+never gains normal Far/Near/Inside zoning while it keeps missing both the probe and geometry, only
+the no-geometry rules above. (This is a separate limitation from the paragraph above — a key that
+DOES go Inside, whether via the probe or real geometry, is no longer `Unplaced` and is not subject
+to it.) This is a rare tier-2-outage-at-first-sight case, not the common path. A future upgrade
+could let a still-outside `Unplaced` key adopt geometry the first time it becomes available and
+re-zone from there; the design would need to guard against double-announcing Approach for a key
+already Inside-latched via the no-geometry path.
 
 **Silent expiry — deliberate.** A key absent from the current fact set (its SIGMET expired, or was
 replaced by a re-issued identifier) is pruned with NO event, even if it was Inside. This is the
@@ -842,7 +853,9 @@ clock.
 
 **(e) Settings.** `UserSettings.AnnounceRouteAdvisoriesEnabled` (bool, default `true`, both the
 property and `Clone()`) backs a new checkbox in the Weather panel's Announcements group,
-`"Auto-announce new route advisories (ActiveSky)"`, placed with the SIGMET/PIREP proximity rows
+`"Announce route advisories by proximity (ActiveSky)"` (caption updated 2026-07-14 alongside the
+proximity-event redesign in §12 above — the old text/AccessibleName described the superseded
+key-novelty semantics), placed with the SIGMET/PIREP proximity rows
 (`Forms/Settings/WeatherPanel.cs`). Like those two siblings it is a proximity-alert-style
 sub-toggle **independent of the "Auto-announce weather state changes" master** — unlike them
 (and unlike the turbulence/icing toggles in §10d, which need the master), its visibility is

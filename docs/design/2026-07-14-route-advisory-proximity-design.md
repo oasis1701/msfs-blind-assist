@@ -48,7 +48,9 @@ New `AdvisoryGeometry.NearestEdge(vertices, lat, lon)`: minimum point-to-segment
 
 ## 4. Facts, not phrases — `RouteAdvisoryLocator` refactor
 
-`ComputeFactsAsync(client, advisories, pos) → Dictionary<string, LocationFact>` becomes the core; the existing `ComputeLocationsAsync` (phrases for the box) becomes a thin wrapper over the facts (via `BuildLocationPhrase`), so the Shift+R box pipeline is unchanged in shape. Geometry per key is cached (WI parse / tier-2 lookup once per key); per-tick work is pure math plus the existing lazy once-per-pass tier-2 feed refresh and ONE positional probe (local HTTP, 5 s cap).
+`ComputeFactsAsync(client, advisories, pos) → Dictionary<string, LocationFact>` becomes the core; the existing `ComputeLocationsAsync` (phrases for the box) becomes a thin wrapper over the facts (via `BuildLocationPhrase`), so the Shift+R box pipeline is unchanged in shape. Per-tick work is pure math plus the existing lazy once-per-pass tier-2 feed refresh and ONE positional probe (local HTTP, 5 s cap).
+
+**Implementation note (2026-07-14, post-review, M2):** this section originally claimed "Geometry per key is cached (WI parse / tier-2 lookup once per key)" — that was never built. `AdvisoryGeometry.ParseWiPolygon` re-parses each advisory's WI body from scratch every tick, and the tier-2 lookup re-scans the already-fetched feed per advisory that needs it, every tick. Only the tier-2 SIGMET *feed fetch itself* is cached, and only for the duration of one pass (`WeatherService.RefreshAndGetSigmetFeedsAsync`'s lazy once-per-pass refresh, populated on first use and reused for the rest of that tick) — there is no cross-tick, per-key geometry cache. The cost is trivial in practice (a flight plan carries at most a handful of route advisories, re-parsed every 30 s), so this was correctly left as pure per-tick recomputation rather than adding a key-keyed cache; the sentence above is corrected to describe the actual behavior.
 
 Probe semantics (unchanged bundling rule — only the FIRST advisory of a positional hit is matched): a probe match can only **strengthen** an inside verdict (`Inside |= probeMatched`), never weaken one — probe-match loss does not mean "outside" (another overlapping advisory may simply have become the response's first block). Consequently a no-geometry advisory can gain Enter via the probe but can never produce Leave.
 
@@ -69,6 +71,20 @@ Per tick (cadence and gates unchanged: `AnnounceRouteAdvisoriesEnabled` + the ce
 - Locator: facts wrapper equivalence (phrases unchanged for the box — existing tests pin), probe-strengthens-never-weakens.
 - Formatting: new/updated `BuildLocationPhrase` pins ("Inside", "…nm behind").
 - Sim-facing: the announcer wiring — in-sim plan: one convective-day flight; expect exactly: one "…nautical miles ahead" per advisory crossed inward through 100 nm, one "Entering…", one "Left…" per area, silence from hourly re-issues beyond 100 nm, silence from areas behind.
+- **Amendment (2026-07-14, post-review):** the hourly-re-issue silence promise above is scoped to
+  advisories still beyond 100 nm. An hourly convective re-issue (new SIGMET number) whose area is
+  WITHIN the 100 nm ring, or that the aircraft is already inside, is NOT silenced — the new number
+  is a brand-new tracker key indistinguishable from any other new key, so it speaks once per
+  re-issue (the old key's silent prune, §2's "any / (pruned)" row, plus the new key's own
+  first-sight Approach or AtPosition). Only the >100 nm case is quiet across a re-issue.
+- **Empty-feed flap guard (2026-07-14, post-review, M3):** a single successfully-fetched empty
+  feed ("No airmet/sigmet…") no longer prunes every tracked zone in one tick.
+  `MainForm._emptyRouteFeedTicks` requires two consecutive empty ticks before
+  `CheckRouteAdvisoriesAsync` lets the prune reach `Observe`; any tick that returns advisories
+  resets the counter, and it is also reset at both `RouteAdvisoryProximityTracker.Reset()` call
+  sites. See `docs/weather.md` §12 for the rationale — symmetric with `LeaveConfirmTicks`, a
+  1-tick feed flap (e.g. ActiveSky reloading its flight plan) must not wipe zone state and
+  re-announce everything nearby as first-sight.
 
 ## 8. Out of scope (deliberate)
 

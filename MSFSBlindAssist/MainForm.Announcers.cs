@@ -2317,6 +2317,14 @@ public partial class MainForm
             // costs nothing for non-AS users despite riding every 30 s tick.
             if (!await weatherActiveSky.IsRunningAsync()) return;
 
+            // Fire-and-forget position refresh (same pattern as GroundTrafficMonitor.OnTick):
+            // nothing else refreshes LastKnownPosition during quiet cruise, so without this it
+            // goes stale and silently breaks the 100 nm proximity triggers below — a null cache
+            // freezes every tick, even AnnounceOnce. Never awaited: keeps the cache at most one
+            // 30 s tick stale (same lesson as the Landing Exit Planner invariant — LastKnownPosition
+            // can be stale from a prior mode) without delaying this tick's own read.
+            if (simConnectManager.IsConnected) simConnectManager.RequestAircraftPosition();
+
             string? raw = await weatherActiveSky.GetRouteAdvisoriesTextAsync();
             if (raw == null) return;                              // failed fetch: tracker untouched (frozen tick)
 
@@ -2324,11 +2332,29 @@ public partial class MainForm
 
             if (!IsHandleCreated || IsDisposed) return;
 
+            // M3 (final review): a single successfully-fetched empty feed ("No airmet/sigmet…")
+            // must not prune every tracked zone in one tick — symmetric with LeaveConfirmTicks, a
+            // 1-tick feed flap (e.g. ActiveSky reloading its flight plan) can't wipe zone state
+            // and re-announce everything nearby as first-sight; two consecutive empty ticks
+            // confirm a genuine plan change. The frozen branch returns before Observe is ever
+            // called, so the tracker's live state is untouched (same "freeze the tick" contract
+            // as the other guards above/below).
+            if (advisories.Count == 0)
+            {
+                if (++_emptyRouteFeedTicks < 2) return;   // one flap: frozen tick, wait for confirmation
+                // else: fall through — confirmed empty; Observe(empty facts) below prunes for real.
+            }
+            else
+            {
+                _emptyRouteFeedTicks = 0;
+            }
+
             // Proximity facts for EVERY advisory (spec 2026-07-14 §4-5). Anything short of a
             // COMPLETE fact set (unusable position, or a partial dict from a mid-loop failure)
             // freezes the tick — Observe would PRUNE any key missing from the dict, losing its
             // zone state and re-announcing it as first-sight next tick. Only an exact-match
-            // fact set may advance the tracker; a genuinely empty feed (0 == 0) still prunes.
+            // fact set may advance the tracker; a CONFIRMED empty feed (0 == 0, past the
+            // _emptyRouteFeedTicks guard above) still prunes.
             Dictionary<string, MSFSBlindAssist.Services.LocationFact> facts = new();
             if (simConnectManager.LastKnownPosition is { } locPos)
                 facts = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeFactsAsync(
