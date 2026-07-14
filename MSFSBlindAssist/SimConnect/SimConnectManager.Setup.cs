@@ -210,6 +210,8 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT WIND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "STRUCTURAL ICE PCT", "percent over 100",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
         sc.RegisterDataDefineStruct<AmbientWeatherData>(DATA_DEFINITIONS.WEATHER_DATA);
 
         // NAV Radio data

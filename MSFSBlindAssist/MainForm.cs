@@ -334,6 +334,8 @@ public partial class MainForm : Form
 
     private double _prevInCloud = -1;
 
+    private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
@@ -349,6 +351,23 @@ public partial class MainForm : Form
     private readonly HashSet<string> _announcedPirepKeys  = new HashSet<string>();
 
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
+
+    private readonly MSFSBlindAssist.Services.RouteAdvisoryProximityTracker _routeAdvisoryProximity = new();
+
+    // Turnaround liftoff re-baseline for the route-advisory proximity tracker — see
+    // Services/TurnaroundLiftoffDetector.cs for the touchdown+dwell+liftoff semantics.
+    private readonly MSFSBlindAssist.Services.TurnaroundLiftoffDetector _turnaroundDetector = new();
+
+    private bool _routeAdvisoryCheckRunning;
+
+    // Consecutive-empty-feed counter for the route-advisory proximity tracker (M3, final
+    // review): a single successfully-fetched empty feed ("No airmet/sigmet…") must NOT prune
+    // every tracked zone in one tick — symmetric with LeaveConfirmTicks, a 1-tick feed flap
+    // (e.g. ActiveSky reloading its flight plan) can't wipe zone state and re-announce
+    // everything nearby as first-sight. Two consecutive empty ticks confirm a genuine plan
+    // change before CheckRouteAdvisoriesAsync lets the prune through. Reset to 0 on any tick
+    // that returns advisories, and on both tracker Reset sites.
+    private int _emptyRouteFeedTicks;
 
     // Reentrancy latch for CheckWeatherProximityAsync — the announcement timer tick fires
     // it fire-and-forget, and a slow WeatherService call could still be in flight when the

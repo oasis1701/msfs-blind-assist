@@ -581,6 +581,18 @@ public partial class MainForm
             // air/ground state without a separate MainForm dependency.
             simConnectManager.LastKnownOnGround = onGround;
 
+            // Turnaround re-baseline for the route-advisory proximity announcements:
+            // a liftoff after landing + ≥5 min on the ground is a NEW flight — reset so
+            // flight 2 gets its full cycle (approach/enter/leave) even for an advisory
+            // key that survived the turnaround in the AS feed. Touch-and-goes and
+            // bounce flickers never fire (dwell gate inside the detector).
+            if (_turnaroundDetector.ObserveEdge(justTouchedDown, justLiftedOff, DateTime.UtcNow))
+            {
+                _routeAdvisoryProximity.Reset();
+                _emptyRouteFeedTicks = 0;
+                Log.Debug("MainForm", "route-advisory proximity reset (turnaround liftoff)");
+            }
+
             // Auto-deactivate visual guidance on touchdown: from this moment on,
             // the landing-exit planner / taxi guidance take over the rollout and
             // taxi guidance respectively, so the dual-tone guidance no longer
@@ -1886,7 +1898,7 @@ public partial class MainForm
                 sourceNotice = "ActiveSky not responding, using simulator wind. ";
             if (asConditions != null)
             {
-                currentWind = FormatActiveSkyWind(asConditions);
+                currentWind = FormatActiveSkyWind(asConditions, _lastOnGround);
             }
             else
             {
@@ -1958,15 +1970,20 @@ public partial class MainForm
         catch { return null; }
     }
 
-    /// <summary>ActiveSky wind-at-altitude for output+I — matches the Weather Radar's
-    /// "Wind (at altitude)" line, plus the surface gust when AS reports one (#129).</summary>
-    private static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c)
+    /// <summary>ActiveSky wind for output+I — matches the Weather Radar's
+    /// "Wind (at altitude)" line. The surface gust (#129) is appended only when the
+    /// aircraft is ON the ground: AS's Ambient* and Surface* field groups are
+    /// independent quantities (at-altitude vs ground level below the aircraft), so
+    /// airborne the surface gust doesn't belong to the wind being read out — at
+    /// FL360 it produced "061 at 11 gusting 21" mixing cruise wind with the ground
+    /// gust six miles below. Internal for tests (WindReadoutGustTests).</summary>
+    internal static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c, bool onGround)
     {
         int direction = (int)Math.Round(c.AmbientWindDirection);
         int speed = (int)Math.Round(c.AmbientWindSpeed);
         if (speed == 0) return "calm";
         string text = $"{direction:000} at {speed}";
-        if (c.SurfaceGustSpeed > 0)
+        if (onGround && c.SurfaceGustSpeed > 0)
             text += $", gusting {(int)Math.Round(c.SurfaceGustSpeed)}";
         return text;
     }
@@ -2077,6 +2094,9 @@ public partial class MainForm
         if ((settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled) && !_proximityCheckRunning)
             _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
                     settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
+
+        if (settings.AnnounceRouteAdvisoriesEnabled && !_routeAdvisoryCheckRunning)
+            _ = CheckRouteAdvisoriesAsync();
     }
 
     private async void CheckAmbientWeatherChanges()
@@ -2124,6 +2144,20 @@ public partial class MainForm
         if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
             announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
         _prevInCloud = inCloud;
+
+        // Ice accretion (generic, sim-truth). Aircraft with their own tuned icing
+        // announcer (HasOwnIcingAnnouncer, e.g. the FBW A380's ice stick) are skipped
+        // entirely so one icing episode never speaks twice. A NaN/negative sample is
+        // SKIPPED, not clamped — clamping to 0 mid-episode would speak a phantom
+        // "Icing conditions cleared" and re-announce on the next good sample.
+        if (MSFSBlindAssist.Settings.SettingsManager.Current.AnnounceIcingEnabled
+            && currentAircraft?.HasOwnIcingAnnouncer != true
+            && !double.IsNaN(data.StructuralIcePct) && data.StructuralIcePct >= 0)
+        {
+            string? icing = _iceAccretionTracker.Observe(data.StructuralIcePct);
+            if (icing != null)
+                announcer.Announce(icing);
+        }
 
         if (asPrecip != null)
         {
@@ -2274,6 +2308,97 @@ public partial class MainForm
         finally
         {
             _proximityCheckRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Proximity-event route advisories (design 2026-07-14, distance made a setting
+    /// 2026-07-14 same-day revision): every 30 s tick, fetch + parse the on-route advisories,
+    /// compute a location fact per advisory, and let the proximity zone tracker decide what to
+    /// say. An advisory announces when the aircraft first comes within the configured approach
+    /// ring (<see cref="MSFSBlindAssist.Settings.UserSettings.RouteAdvisoryProximityNm"/>,
+    /// default 100 nm, clamped 10-500) of its area (ahead), when it Enters, and when it
+    /// Leaves — nothing else repeats (no more 15-minute reminder, no re-announce of areas
+    /// behind or of hourly SIGMET re-issues beyond the ring). Independent of
+    /// <see cref="MSFSBlindAssist.Settings.UserSettings.SigmetProximityRangeNm"/> — the two
+    /// settings must never be folded together. Gates unchanged: AnnounceRouteAdvisories
+    /// setting (caller) + the central ActiveSky gate below.
+    /// </summary>
+    private async Task CheckRouteAdvisoriesAsync()
+    {
+        _routeAdvisoryCheckRunning = true;
+        try
+        {
+            // Central AS gate: instant false when the switch is off — this check
+            // costs nothing for non-AS users despite riding every 30 s tick.
+            if (!await weatherActiveSky.IsRunningAsync()) return;
+
+            // Fire-and-forget position refresh (same pattern as GroundTrafficMonitor.OnTick):
+            // nothing else refreshes LastKnownPosition during quiet cruise, so without this it
+            // goes stale and silently breaks the 100 nm proximity triggers below — a null cache
+            // freezes every tick, even AnnounceOnce. Never awaited: keeps the cache at most one
+            // 30 s tick stale (same lesson as the Landing Exit Planner invariant — LastKnownPosition
+            // can be stale from a prior mode) without delaying this tick's own read.
+            if (simConnectManager.IsConnected) simConnectManager.RequestAircraftPosition();
+
+            string? raw = await weatherActiveSky.GetRouteAdvisoriesTextAsync();
+            if (raw == null) return;                              // failed fetch: tracker untouched (frozen tick)
+
+            var advisories = MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw);
+
+            if (!IsHandleCreated || IsDisposed) return;
+
+            // M3 (final review): a single successfully-fetched empty feed ("No airmet/sigmet…")
+            // must not prune every tracked zone in one tick — symmetric with LeaveConfirmTicks, a
+            // 1-tick feed flap (e.g. ActiveSky reloading its flight plan) can't wipe zone state
+            // and re-announce everything nearby as first-sight; two consecutive empty ticks
+            // confirm a genuine plan change. The frozen branch returns before Observe is ever
+            // called, so the tracker's live state is untouched (same "freeze the tick" contract
+            // as the other guards above/below).
+            if (advisories.Count == 0)
+            {
+                if (++_emptyRouteFeedTicks < 2) return;   // one flap: frozen tick, wait for confirmation
+                // else: fall through — confirmed empty; Observe(empty facts) below prunes for real.
+            }
+            else
+            {
+                _emptyRouteFeedTicks = 0;
+            }
+
+            // Proximity facts for EVERY advisory (spec 2026-07-14 §4-5). Anything short of a
+            // COMPLETE fact set (unusable position, or a partial dict from a mid-loop failure)
+            // freezes the tick — Observe would PRUNE any key missing from the dict, losing its
+            // zone state and re-announcing it as first-sight next tick. Only an exact-match
+            // fact set may advance the tracker; a CONFIRMED empty feed (0 == 0, past the
+            // _emptyRouteFeedTicks guard above) still prunes.
+            Dictionary<string, MSFSBlindAssist.Services.LocationFact> facts = new();
+            if (simConnectManager.LastKnownPosition is { } locPos)
+                facts = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeFactsAsync(
+                    weatherActiveSky, advisories, locPos);
+            if (facts.Count != advisories.Count) return;
+
+            if (!IsHandleCreated || IsDisposed) return;
+
+            // Clamp defensively: the NumericUpDown enforces 10-500 in the settings UI, but a
+            // hand-edited settings JSON must not hand the tracker a 0/negative or absurd ring.
+            double approachNm = Math.Clamp(MSFSBlindAssist.Settings.SettingsManager.Current.RouteAdvisoryProximityNm, 10, 500);
+
+            var byKey = advisories.ToDictionary(a => a.Key, a => a, StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, evt, dist) in _routeAdvisoryProximity.Observe(facts, approachNm))
+            {
+                if (!byKey.TryGetValue(key, out var adv)) continue;   // defensive; facts derive from advisories
+                string phrase = MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProximityAnnouncement(evt, adv, dist);
+                Log.Debug("MainForm", $"route advisory {evt}: \"{key}\" -> \"{phrase}\"");
+                announcer.Announce(phrase);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("MainForm", $"Route advisory check error: {ex.Message}");
+        }
+        finally
+        {
+            _routeAdvisoryCheckRunning = false;
         }
     }
 

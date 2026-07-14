@@ -13,7 +13,8 @@ namespace MSFSBlindAssist.Forms
     /// Parallel to <see cref="DisplayText.SetPreserveCaret"/> (the TextBox equivalent, now used
     /// only by single-line/blob boxes). This IS the single home for the list-update pattern:
     /// MainForm's status display, every DisplayListBox window (E/WD, OANS, RMP, HS787 display +
-    /// EICAS, GSX menu), the ECL checklist, and all MCDU/CDU/DCDU forms reconcile through it.
+    /// EICAS, GSX menu, Weather Radar), the ECL checklist, and all MCDU/CDU/DCDU forms
+    /// reconcile through it.
     /// Per-form selection semantics (title/page force-select, positional index restore for CDU
     /// screens, the ECL's FWS cursor-follow) run CALLER-SIDE after this call and override the
     /// content-based restore below — keep it that way.

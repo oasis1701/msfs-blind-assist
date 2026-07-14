@@ -380,6 +380,40 @@ public class UserSettings
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
 
+        /// <summary>
+        /// Speak turbulence category transitions (ActiveSky-sourced; rides the
+        /// decoded-weather monitor, so it needs ActiveSkyEnabled AND
+        /// WeatherAutoAnnounceEnabled to be live). Default on.
+        /// </summary>
+        public bool AnnounceTurbulenceEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Speak airframe ice-accretion start/clear (sim-truth STRUCTURAL ICE PCT,
+        /// any weather engine; rides the ambient auto-announce tick, so it needs
+        /// WeatherAutoAnnounceEnabled to be live). Default on.
+        /// </summary>
+        public bool AnnounceIcingEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Announce a NEW SIGMET/AIRMET appearing on the flight-plan route loaded in
+        /// ActiveSky (parameterless GetActiveSigmetsAt; AS's SimBrief link keeps the
+        /// route current). Independent of WeatherAutoAnnounceEnabled — a sibling of
+        /// the SIGMET/PIREP proximity alerts — but requires ActiveSkyEnabled.
+        /// Default on.
+        /// </summary>
+        public bool AnnounceRouteAdvisoriesEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Approach-ring distance (nautical miles) for the en-route advisory proximity
+        /// announcements (<see cref="Services.RouteAdvisoryProximityTracker"/>) — the ring
+        /// at which an ahead advisory first announces "approach". Independent of
+        /// <see cref="SigmetProximityRangeNm"/> (the nearby-SIGMET/AIRMET/PIREP alert range)
+        /// BY DESIGN: tuning one must not silently move the other. Default 100 (matches the
+        /// tracker's former fixed constant); UI-clamped 10-500. A missing key in an older
+        /// settings JSON deserializes to this property initializer's default, 100.
+        /// </summary>
+        public int RouteAdvisoryProximityNm { get; set; } = 100;
+
         // HS787 bridge — community folder override for non-standard installs
         public string? Hs787CommunityFolderOverride { get; set; } = null;
         // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
@@ -501,6 +535,10 @@ public class UserSettings
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
             SigmetProximityRangeNm = SigmetProximityRangeNm,
             DecodeWeatherAdvisories = DecodeWeatherAdvisories,
+            AnnounceTurbulenceEnabled = AnnounceTurbulenceEnabled,
+            AnnounceIcingEnabled = AnnounceIcingEnabled,
+            AnnounceRouteAdvisoriesEnabled = AnnounceRouteAdvisoriesEnabled,
+            RouteAdvisoryProximityNm = RouteAdvisoryProximityNm,
             TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
             TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,
