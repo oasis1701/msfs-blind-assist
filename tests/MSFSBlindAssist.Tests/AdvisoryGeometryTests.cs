@@ -112,4 +112,31 @@ public class AdvisoryGeometryTests
     public void IsBehind_uses_relative_bearing_with_wraparound(
         double bearingTo, double heading, bool behind)
         => Assert.Equal(behind, AdvisoryGeometry.IsBehind(bearingTo, heading));
+
+    [Fact]
+    public void NearestEdge_beats_nearest_vertex_on_a_long_edge()
+    {
+        // Long horizontal edge from (40,-100) to (40,-90); aircraft due south of its midpoint.
+        var poly = new List<(double Lat, double Lon)> { (40, -100), (40, -90), (45, -95) };
+        var (edgeDist, brg) = AdvisoryGeometry.NearestEdge(poly, 38.0, -95.0);
+        var (vertexDist, _) = AdvisoryGeometry.NearestVertex(poly, 38.0, -95.0);
+        Assert.True(edgeDist < vertexDist - 50,       // vertex ≈ 270 nm off; edge ≈ 120 nm
+            $"edge {edgeDist:F0} should undercut vertex {vertexDist:F0} by far");
+        Assert.InRange(edgeDist, 110, 130);           // 2° of latitude ≈ 120 nm
+
+        // Clean bearing assertion: compute expected bearing north, assert it's within 5°
+        double expectedBrg = Navigation.NavigationCalculator.CalculateBearing(38, -95, 40, -95);
+        Assert.True(Math.Min(brg, 360 - brg) < 5,
+            $"bearing {brg:F1}° should be ~{expectedBrg:F1}° (north-ish)");
+    }
+
+    [Fact]
+    public void NearestEdge_matches_vertex_distance_when_a_vertex_is_nearest()
+    {
+        var poly = new List<(double Lat, double Lon)> { (40, -100), (40, -90), (45, -95) };
+        // Aircraft south-west of the (40,-100) corner: the corner IS the nearest boundary point.
+        var (edgeDist, _) = AdvisoryGeometry.NearestEdge(poly, 38.0, -102.0);
+        double toCorner = Navigation.NavigationCalculator.CalculateDistance(38.0, -102.0, 40.0, -100.0);
+        Assert.InRange(edgeDist, toCorner - 2, toCorner + 2);   // local-projection tolerance
+    }
 }

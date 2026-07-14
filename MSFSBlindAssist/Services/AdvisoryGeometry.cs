@@ -90,6 +90,40 @@ internal static class AdvisoryGeometry
         return (bestDist, bestBrg);
     }
 
+    /// <summary>Distance (nm) and true bearing to the nearest point on the polygon's
+    /// BOUNDARY — point-to-segment over every edge, in a local equirectangular frame
+    /// centred on the aircraft (adequate at SIGMET scales; poles/antimeridian remain
+    /// non-goals). Unlike <see cref="NearestVertex"/>, this is edge-true: convective
+    /// outlook polygons have edges long enough for vertex distance to be off by tens
+    /// of nm, and the 100 nm approach trigger IS the distance (spec 2026-07-14 §3).</summary>
+    internal static (double DistanceNm, double BearingTrueDeg) NearestEdge(
+        IReadOnlyList<(double Lat, double Lon)> vertices, double lat, double lon)
+    {
+        if (vertices.Count == 0) return (double.MaxValue, 0);
+        double cosLat = Math.Max(0.01, Math.Cos(lat * Math.PI / 180.0));
+        // Local nm coordinates relative to the aircraft: 1° lat = 60 nm, 1° lon = 60·cos(lat) nm.
+        (double X, double Y) Project((double Lat, double Lon) p)
+            => ((p.Lon - lon) * 60.0 * cosLat, (p.Lat - lat) * 60.0);
+
+        double bestSq = double.MaxValue;
+        (double X, double Y) bestPt = default;
+        for (int i = 0, j = vertices.Count - 1; i < vertices.Count; j = i++)
+        {
+            var a = Project(vertices[j]);
+            var b = Project(vertices[i]);
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            double lenSq = dx * dx + dy * dy;
+            double t = lenSq <= 0 ? 0 : Math.Clamp((-(a.X) * dx + -(a.Y) * dy) / lenSq, 0, 1);
+            (double X, double Y) p = (a.X + t * dx, a.Y + t * dy);
+            double dSq = p.X * p.X + p.Y * p.Y;
+            if (dSq < bestSq) { bestSq = dSq; bestPt = p; }
+        }
+        double nearLat = lat + bestPt.Y / 60.0;
+        double nearLon = lon + bestPt.X / (60.0 * cosLat);
+        return (Math.Sqrt(bestSq),
+            Navigation.NavigationCalculator.CalculateBearing(lat, lon, nearLat, nearLon));
+    }
+
     /// <summary>|relative bearing| &gt; 90° = behind. Binary by design (spec §5).</summary>
     internal static bool IsBehind(double bearingToDeg, double trueHeadingDeg)
     {
