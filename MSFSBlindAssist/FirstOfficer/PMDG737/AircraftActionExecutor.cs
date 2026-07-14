@@ -74,6 +74,16 @@ public class AircraftActionExecutor : IFoActionExecutor
     public const int StallTestHoldMs = 3500;
     public const int OverspeedTestHoldMs = 1500;
 
+    /// <summary>System-test timings (live-verified 2026-07-13, user-tunable): TCAS test and
+    /// the GPWS SHORT test are quick presses; the GPWS LONG test is the same button held 5 s
+    /// (extended callout sequence); the WXR/PWS test needs the EFIS WXR overlay ON ~4 s
+    /// before TEST (1 s was silent), then a wait through the "MONITOR RADAR DISPLAY …
+    /// WINDSHEAR" callout before restoring WX mode + overlay OFF.</summary>
+    public const int QuickTestHoldMs = 150;
+    public const int GpwsLongTestHoldMs = 5000;
+    public const int WxrOverlaySettleMs = 4000;
+    public const int WxrTestWaitMs = 20000;
+
     // Transmit mouse flags for held warning-test buttons (press … release). The CDA
     // write path is NOT used for these — only the '#id' transmit moves them (live-probed
     // 2026-07-11, same finding family as the walked rotaries).
@@ -233,6 +243,9 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case "STALL_TEST_2": return WarningTestAsync("EVT_OH_WARNING_TEST_STALL_2_PUSH", StallTestHoldMs);
                 case "OVSPD_TEST_1": return WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH", OverspeedTestHoldMs);
                 case "OVSPD_TEST_2": return WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH", OverspeedTestHoldMs);
+                case "GPWS_TEST":    return GpwsTestAsync();
+                case "TCAS_TEST":    return TcasTestAsync();
+                case "WXR_TEST":     return WxrTestAsync();
             }
         }
         return step.ActionType switch
@@ -476,6 +489,45 @@ public class AircraftActionExecutor : IFoActionExecutor
             return true;
         }
         finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>TCAS self-test: quick press of the transponder panel TEST button.
+    /// Aural "TCAS TEST" then ~8 s later "TCAS TEST PASS" — audio is the verification
+    /// (no readable state). Live-verified 2026-07-13.</summary>
+    public Task<bool> TcasTestAsync() => WarningTestAsync("EVT_TCAS_TEST", QuickTestHoldMs);
+
+    /// <summary>GPWS short self-test (quick press) — brief callout burst.</summary>
+    public Task<bool> GpwsTestShortAsync() => WarningTestAsync("EVT_GPWS_SYS_TEST_BTN", QuickTestHoldMs);
+
+    /// <summary>GPWS long self-test (5 s hold) — full extended callout sequence.</summary>
+    public Task<bool> GpwsTestLongAsync() => WarningTestAsync("EVT_GPWS_SYS_TEST_BTN", GpwsLongTestHoldMs);
+
+    /// <summary>GPWS self-test, variant chosen by the user setting AT DISPATCH TIME (the
+    /// flow/checklist label stays generic; the audible test itself distinguishes the two,
+    /// and a settings change applies immediately without reopening the FO window).</summary>
+    public Task<bool> GpwsTestAsync() =>
+        MSFSBlindAssist.Settings.SettingsManager.Current.FOGpws737LongTest
+            ? GpwsTestLongAsync() : GpwsTestShortAsync();
+
+    /// <summary>Weather-radar / predictive-windshear test. The EFIS WXR overlay is a blind
+    /// TOGGLE with no readable state anywhere in the NG3 SDK, so the sequence assumes it
+    /// starts OFF (cold-and-dark default; the app never sets it elsewhere): overlay ON →
+    /// settle (radar power-up; shorter was silent) → TEST (latching mode button; aural
+    /// "MONITOR RADAR DISPLAY … WINDSHEAR") → wait through the callout → WX mode (exits the
+    /// latched TEST — never leave TEST engaged) → overlay OFF. Each press pair holds the
+    /// dispatch gate; the waits release it (concurrent writes to other switches are safe).
+    /// If the pilot had the overlay ON beforehand the run is silent — re-runnable, and the
+    /// restore leaves state consistent for the retry.</summary>
+    public async Task<bool> WxrTestAsync()
+    {
+        if (!await WarningTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs)) return false;
+        await Task.Delay(WxrOverlaySettleMs);
+        if (!await WarningTestAsync("EVT_WXR_TEST", QuickTestHoldMs)) return false;
+        await Task.Delay(WxrTestWaitMs);
+        // Restore unconditionally from here — never leave the radar latched in TEST.
+        bool ok = await WarningTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
+        ok &= await WarningTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
+        return ok;
     }
 
     /// <summary>APU start sequence: selector ON, dwell, then momentary START (springs back to ON).
