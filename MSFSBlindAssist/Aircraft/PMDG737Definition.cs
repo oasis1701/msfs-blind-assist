@@ -197,7 +197,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "Electrical", "ADIRU", "Hydraulics", "Fuel", "Engines",
                 "Anti-Ice", "Air Systems", "Lights", "Signs", "Oxygen",
-                "Wipers", "Flight Controls", "Flight Recorder"
+                "Wipers", "Flight Controls", "Flight Recorder", "Warning Tests"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -895,6 +895,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // Bleed-overheat detection self-test. Pure momentary push; SDK exposes
         // only the event, no state field.
         d["AIR_BleedOvhtTest"]       = Momentary("AIR_BleedOvhtTest", "Bleed Overheat Test");
+
+        // Manual stick-shaker / overspeed-clacker warning tests (aft overhead P5). No SDK
+        // state exists for these, so they are app-tracked TOGGLES (RenderAsButton): each
+        // press flips engaged/released and fires the transmit press (LEFTSINGLE = hold the
+        // spring switch, shaker/clacker sounds) or release (LEFTRELEASE = stop). Handled by
+        // the dedicated 4e branch in HandleUIVariableSet; the def announces the new state
+        // (the button label is static). Live-verified 2026-07-13 that LEFTSINGLE holds
+        // open-ended until LEFTRELEASE. NOT in _simpleEventMap.
+        static SimConnect.SimVarDefinition WarnTest(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+            };
+        d["WARN_StickShakerTest1"]      = WarnTest("WARN_StickShakerTest1", "Stick Shaker Test 1");
+        d["WARN_StickShakerTest2"]      = WarnTest("WARN_StickShakerTest2", "Stick Shaker Test 2");
+        d["WARN_OverspeedClackerTest1"] = WarnTest("WARN_OverspeedClackerTest1", "Overspeed Clacker Test 1");
+        d["WARN_OverspeedClackerTest2"] = WarnTest("WARN_OverspeedClackerTest2", "Overspeed Clacker Test 2");
 
         // Doors
         d["DOOR_annunFWD_ENTRY"]          = Door("DOOR_annunFWD_ENTRY", "Forward Entry Door");
@@ -1958,6 +1979,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Flight Recorder"] = new List<string>
             {
                 "FLTREC_SwNormal"
+            },
+            ["Warning Tests"] = new List<string>
+            {
+                "WARN_StickShakerTest1", "WARN_StickShakerTest2",
+                "WARN_OverspeedClackerTest1", "WARN_OverspeedClackerTest2",
             },
 
             // ===== Glareshield =====
@@ -3660,6 +3686,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private const uint MOUSE_FLAG_LEFTSINGLE_U  = 0x20000000u;
     private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
 
+    // Manual warning-test toggles: app-tracked engaged state (no SDK readback) + the
+    // var-key → PMDG event map. Engaging fires LEFTSINGLE (holds the spring switch so the
+    // shaker/clacker sounds); releasing fires LEFTRELEASE. Released on aircraft swap
+    // (ReleaseEngagedWarningTests) so a held test can't leak into the next aircraft.
+    private readonly Dictionary<string, bool> _warnTestEngaged = new();
+    private static readonly IReadOnlyDictionary<string, string> _warnTestEventMap =
+        new Dictionary<string, string>
+        {
+            ["WARN_StickShakerTest1"]      = "EVT_OH_WARNING_TEST_STALL_1_PUSH",
+            ["WARN_StickShakerTest2"]      = "EVT_OH_WARNING_TEST_STALL_2_PUSH",
+            ["WARN_OverspeedClackerTest1"] = "EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH",
+            ["WARN_OverspeedClackerTest2"] = "EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH",
+        };
+
     /// <summary>Held transmit press/release — for the spring test buttons that only commit
     /// via the '#id' transmit path (GPWS long test, the WXR sequence's presses).</summary>
     private static async Task HeldTransmitAsync(
@@ -3668,6 +3708,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
         await Task.Delay(holdMs).ConfigureAwait(false);
         simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
+    }
+
+    /// <summary>Release any warning test left ENGAGED — called on aircraft swap so a held
+    /// stick-shaker / overspeed-clacker (LEFTSINGLE holds open-ended) can't sound forever or
+    /// bleed into the next aircraft. Best-effort; a swap must never throw.</summary>
+    public void ReleaseEngagedWarningTests(SimConnect.SimConnectManager? simConnect)
+    {
+        if (simConnect == null) return;
+        foreach (var kv in _warnTestEngaged.Where(e => e.Value).ToList())
+        {
+            try
+            {
+                if (_warnTestEventMap.TryGetValue(kv.Key, out string? evName) &&
+                    EventIds.TryGetValue(evName, out int evId))
+                    simConnect.SendPMDGEventViaTransmitWithTarget((uint)evId, MOUSE_FLAG_LEFTRELEASE_U);
+            }
+            catch { /* swap teardown must not throw */ }
+            _warnTestEngaged[kv.Key] = false;
+        }
     }
 
     /// <summary>WXR/PWS test managed sequence — see the WXR_Test def comment. Restore
@@ -4821,6 +4880,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varKey == "WXR_Test")
         {
             _ = WxrTestSequenceAsync(simConnect);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4e. Manual warning-test TOGGLES (stick shaker / overspeed clacker).
+        //     App-tracked engaged state; each press flips it and fires the
+        //     transmit press (LEFTSINGLE, holds the spring switch so the aural
+        //     sounds) or release (LEFTRELEASE). The def announces the new state
+        //     (static button label). Live-verified: LEFTSINGLE holds open-ended.
+        // ------------------------------------------------------------------
+        if (_warnTestEventMap.TryGetValue(varKey, out string? warnEvName) &&
+            EventIds.TryGetValue(warnEvName, out int warnEvId))
+        {
+            bool nowEngaged = !(_warnTestEngaged.TryGetValue(varKey, out bool wasOn) && wasOn);
+            _warnTestEngaged[varKey] = nowEngaged;
+            simConnect.SendPMDGEventViaTransmitWithTarget((uint)warnEvId,
+                nowEngaged ? MOUSE_FLAG_LEFTSINGLE_U : MOUSE_FLAG_LEFTRELEASE_U);
+            announcer.Announce($"{varDef.DisplayName} {(nowEngaged ? "engaged" : "released")}");
             return true;
         }
 
