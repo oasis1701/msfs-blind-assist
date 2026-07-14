@@ -21,6 +21,8 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private CheckBox autoLights10kCheck = null!;
     private Label autoSeatbeltLabel = null!;
     private ComboBox autoSeatbeltCombo = null!;
+    private Label gpwsTestLabel = null!;
+    private ComboBox gpwsTestCombo = null!;
 
     public string TabTitle => "First Officer";
 
@@ -127,11 +129,29 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             "Top of climb and top of descent"
         });
 
+        gpwsTestLabel = new Label
+        {
+            Text = "GPWS test type (PMDG 737):",
+            Location = new Point(20, 300),
+            AutoSize = true,
+            AccessibleName = "GPWS test type label"
+        };
+
+        gpwsTestCombo = new ComboBox
+        {
+            Location = new Point(240, 297),
+            Size = new Size(200, 23),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "GPWS test type",
+            AccessibleDescription = "Which GPWS self-test the 737 First Officer preflight flow and checklist run: the short test or the long extended test. Both are available as panel buttons regardless."
+        };
+        gpwsTestCombo.Items.AddRange(new object[] { "Short test", "Long test" });
+
         Controls.AddRange(new Control[]
         {
             titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
             apAltitudeLabel, apAltitudeText, autoLights10kCheck,
-            autoSeatbeltLabel, autoSeatbeltCombo
+            autoSeatbeltLabel, autoSeatbeltCombo, gpwsTestLabel, gpwsTestCombo
         });
     }
 
@@ -147,6 +167,8 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoLights10kCheck.TabIndex = 7;
         autoSeatbeltLabel.TabIndex = 8;
         autoSeatbeltCombo.TabIndex = 9;
+        gpwsTestLabel.TabIndex = 10;
+        gpwsTestCombo.TabIndex = 11;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -158,6 +180,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         apAltitudeText.Text = settings.FOAutoApEngageAltitudeAgl.ToString();
         autoLights10kCheck.Checked = settings.FOAutoLights10kEnabled;
         autoSeatbeltCombo.SelectedIndex = Math.Clamp(settings.FOAutoSeatbeltMode, 0, 2);
+        gpwsTestCombo.SelectedIndex = settings.FOGpws737LongTest ? 1 : 0;
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -182,6 +205,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoApEngageAltitudeAgl = int.Parse(apAltitudeText.Text);
         settings.FOAutoLights10kEnabled = autoLights10kCheck.Checked;
         settings.FOAutoSeatbeltMode = autoSeatbeltCombo.SelectedIndex < 0 ? 0 : autoSeatbeltCombo.SelectedIndex;
+        settings.FOGpws737LongTest = gpwsTestCombo.SelectedIndex == 1;
     }
 
     /// <summary>No transient resources (no test tone) — nothing to stop when this tab is left.</summary>

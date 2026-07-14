@@ -240,6 +240,12 @@ public class UserSettings
         // Climb / on at Top of Descent (vertical-speed profile). See FoSeatbeltMode.
         public int FOAutoSeatbeltMode { get; set; } = 0;
 
+        /// <summary>737 GPWS self-test variant run by the First Officer preflight flow and
+        /// checklist tick: false = short test (quick press), true = long test (5 s hold).
+        /// Both panel buttons exist regardless; this only selects the flow/checklist variant.
+        /// Read at DISPATCH time by the 737 executor, so a change applies immediately.</summary>
+        public bool FOGpws737LongTest { get; set; } = false;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -530,6 +536,7 @@ public class UserSettings
             FOAutoApEngageAltitudeAgl = FOAutoApEngageAltitudeAgl,
             FOAutoLights10kEnabled = FOAutoLights10kEnabled,
             FOAutoSeatbeltMode = FOAutoSeatbeltMode,
+            FOGpws737LongTest = FOGpws737LongTest,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
             PmdgMonitorDefaultsSeeded = PmdgMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
