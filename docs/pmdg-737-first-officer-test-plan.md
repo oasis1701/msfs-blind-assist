@@ -807,3 +807,43 @@ plan). Mechanisms: 737 fire = CDA position write 2→hold 2 s→1 (live-probed, 
    param-1 press in `FireOvhtTestAsync` and re-verify (the executor doc comment marks
    this fallback).
 3. Checklist "Fire and overheat test" tick runs the same test; box stays ticked.
+
+## Part V — PMDG system self-tests (TCAS / WXR / GPWS, 2026-07-13)
+
+Aircraft powered (ground power or APU), IRS/ADIRU aligned — the tests are silent on
+battery alone (GPWS INOP lit until alignment). All actuation is transmit press/release;
+no app-side announcements (the aircraft audio is the verification).
+
+### V.1 737 preflight flow — short GPWS variant (737 loaded)
+1. Settings → First Officer → GPWS test type = Short test.
+2. Run the Preflight flow. After the overspeed tests, expect in order:
+   - GPWS short self-test callouts.
+   - "TCAS TEST" then, ~8 s later, "TCAS TEST PASS".
+   - Weather-radar sequence ending in "MONITOR RADAR DISPLAY … WINDSHEAR" (~30 s total).
+3. The flow continues after each; PF_GPWS_TEST / PF_TCAS_TEST / PF_WXR_TEST tick in the
+   PREFLIGHT checklist.
+
+### V.2 737 GPWS long variant + checklist ticks
+1. Settings → GPWS test type = Long test (NO FO-window reopen needed — read at dispatch).
+2. Reset the Preflight section; tick PF_GPWS_TEST: the LONG extended sequence plays.
+3. Tick PF_TCAS_TEST and PF_WXR_TEST: each runs its test (audible); boxes stay ticked.
+
+### V.3 737 panel buttons
+1. Forward Panel → GPWS → "GPWS System Test" (short callouts) and
+   "GPWS System Test (Long)" (extended sequence).
+2. Pedestal → Weather Radar → "Weather Radar Test" (full sequence + windshear callout).
+3. Pedestal → Transponder/TCAS → "TCAS Test".
+
+### V.4 737 WXR restore (run twice)
+1. Run the Weather Radar Test; when it finishes, run it AGAIN.
+2. The second run must ALSO produce the windshear callout — proving the overlay and radar
+   mode were restored (overlay off, radar out of TEST back to WX) after the first run.
+
+### V.5 777 TCAS + WXR (777 loaded)
+1. Run Cockpit Preparation: after the fire/overheat test, expect "TCAS TEST" / "TCAS TEST
+   PASS" then the weather-radar windshear callout. Flow steps CP_TCAS_TEST / CP_WXR_TEST
+   tick checklist items PF_TCAS_TEST / PF_WXR_TEST.
+2. Panels: Pedestal → Transponder/TCAS → "TCAS Test" (must be audible — the CDA press was
+   silent, so this confirms the transmit fix), and Pedestal → Weather Radar →
+   "Weather Radar Test".
+3. Confirm there is NO GPWS test item/button on the 777 (none exists in the SDK).
