@@ -95,6 +95,7 @@ internal sealed class RouteAdvisoryProximityTracker
                     {
                         st.Zone = Zone.Inside;
                         st.EverInside = true;
+                        st.ApproachLatched = true;  // Entering Inside latches Approach off forever, even via no-geometry path
                         events.Add((key, RouteAdvisoryEvent.AtPosition, fact.DistanceNm));
                     }
                     else
@@ -139,6 +140,7 @@ internal sealed class RouteAdvisoryProximityTracker
                 {
                     st.Zone = Zone.Inside;
                     st.EverInside = true;
+                    st.ApproachLatched = true;  // Entering Inside latches Approach off forever, even via no-geometry path
                     events.Add((key, RouteAdvisoryEvent.Enter, fact.DistanceNm));
                 }
                 continue;

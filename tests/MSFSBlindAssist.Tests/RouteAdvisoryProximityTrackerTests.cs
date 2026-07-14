@@ -211,6 +211,55 @@ public class RouteAdvisoryProximityTrackerTests
             t.Observe(F(Fact(true, false, 95, false))));         // post-reset: fresh first-sight
     }
 
+    [Fact]
+    public void After_probe_at_position_inside_approach_never_fires_when_geometry_appears()
+    {
+        var t = new RouteAdvisoryProximityTracker();
+        // No geometry, but probe says Inside at first sight → AtPosition
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, (double?)null) },
+            t.Observe(F(Fact(false, true, null, false))));
+        // Now geometry appears: outside at 50 nm (first tick outside)
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            t.Observe(F(Fact(true, false, 50, false))));
+        // Still outside at 50 nm (second tick outside → Leave)
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 50.0) },
+            t.Observe(F(Fact(true, false, 50, false))));
+        // Recede past rearm threshold (120 nm → Far)
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            t.Observe(F(Fact(true, false, 120, false))));
+        // Re-approach within Approach ring at 90 nm ahead
+        // BUG: before fix, this spuriously announces Approach (because ApproachLatched wasn't set)
+        // FIXED: this must be silent (EverInside latches Approach off forever)
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            t.Observe(F(Fact(true, false, 90, false))));
+    }
+
+    [Fact]
+    public void After_probe_enter_inside_approach_never_fires_when_geometry_appears()
+    {
+        var t = new RouteAdvisoryProximityTracker();
+        // No geometry at first sight → AnnounceOnce
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.AnnounceOnce, (double?)null) },
+            t.Observe(F(Fact(false, false, null, false))));
+        // Probe matches (becomes Inside) → Enter
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Enter, (double?)null) },
+            t.Observe(F(Fact(false, true, null, false))));
+        // Geometry appears: outside at 50 nm (first tick outside)
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            t.Observe(F(Fact(true, false, 50, false))));
+        // Still outside at 50 nm (second tick outside → Leave)
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 50.0) },
+            t.Observe(F(Fact(true, false, 50, false))));
+        // Recede past rearm threshold (120 nm → Far)
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            t.Observe(F(Fact(true, false, 120, false))));
+        // Re-approach within Approach ring at 90 nm ahead
+        // BUG: before fix, this spuriously announces Approach
+        // FIXED: this must be silent (EverInside latches Approach off forever)
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            t.Observe(F(Fact(true, false, 90, false))));
+    }
+
     // --- wording -----------------------------------------------------------------------
 
     [Fact]
