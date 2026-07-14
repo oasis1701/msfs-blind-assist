@@ -212,7 +212,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
         {
             Text = "&En-route advisory distance (nautical miles):",
             Location = new System.Drawing.Point(12, 286),
-            Size = new System.Drawing.Size(300, 20),
+            Size = new System.Drawing.Size(290, 20),
             AccessibleName = "En-route advisory distance label"
         };
 

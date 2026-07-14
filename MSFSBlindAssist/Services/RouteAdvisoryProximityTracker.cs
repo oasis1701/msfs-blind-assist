@@ -16,9 +16,9 @@ internal enum RouteAdvisoryEvent { AnnounceOnce, Approach, AtPosition, Enter, Le
 /// <list type="bullet">
 /// <item><b>NOT baseline-first as a whole.</b> Unlike the old tracker, a brand-new key
 /// announces its current zone immediately (Near-ahead → Approach, Inside → AtPosition,
-/// no-geometry → AnnounceOnce). "First sight far = silent" (distance &gt; 100) is what
-/// replaces the baseline burst and also silences the hourly SIGMET re-issue churn — a
-/// re-numbered area &gt;100 nm away stays quiet.</item>
+/// no-geometry → AnnounceOnce). "First sight far = silent" (distance beyond the ring) is
+/// what replaces the baseline burst and also silences the hourly SIGMET re-issue churn — a
+/// re-numbered area outside the ring stays quiet.</item>
 /// <item><b>Behind-suppression is Approach-only.</b> A Near crossing while the area is
 /// behind the aircraft latches Approach off silently (treated as announced). Enter and
 /// Leave fire regardless of bearing — a behind-latched area you then fly into still
