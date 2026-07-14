@@ -2143,6 +2143,34 @@
     for (var ti = 0; ti < all.length && items.length < 600; ti++) {
       var tn = all[ti];
       if (!A.isVisible(tn)) continue;
+      // Large read-only PREFORMATTED text (the Dispatch OFP <pre>, and any weather /
+      // NOTAM dump rendered the same way): SimBrief dumps the whole operational flight
+      // plan — route, fuel, weights, wind, NOTAMs — into one monospace <pre>. Its text
+      // is thousands of chars, so the 80-char leaf-text cap below dropped it ENTIRELY:
+      // the flight plan was unreadable and only the interspersed status badges (U/S,
+      // CLSD…) leaked through as scattered one-word lines. Emit the whole block as one
+      // "pre" element (the C# renders controlType "pre" as a monospace, newline-
+      // preserving div, change-diffed so it doesn't churn the screen reader), and mark
+      // it owned so those badge spans aren't re-captured. Bounded so a pathological OFP
+      // can't bloat every poll. Keyed on the tag (NOT on insideGroundRegion) so it re-
+      // emits every scrape — markOwned persists on the node, so a self-guard would make
+      // the OFP vanish after the first poll; the mark only suppresses the child badges.
+      if (tn.tagName === "PRE") {
+        var preRaw = (tn.textContent || "").replace(/\r\n/g, "\n")
+          .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+        if (preRaw) {
+          if (preRaw.length > 1000000) preRaw = preRaw.slice(0, 1000000) + "\n… (text truncated)";
+          var preR = tn.getBoundingClientRect();
+          items.push({
+            top: preR.top - rootRect.top, left: preR.left - rootRect.left,
+            idx: 0, kind: "text", tag: "pre", role: "", text: preRaw, value: "",
+            controlType: "pre", clickable: false, level: 0, live: "", disabled: false,
+            options: [], _axis: 0, navRail: false, _selRoot: null, _selOpt: false
+          });
+          A.markOwned(tn);
+        }
+        continue;
+      }
       if (A.insideGroundRegion(tn)) continue; // owned by a Ground builder
       if (A.insideStatusBar(tn)) continue;    // collapsed into the one status line
       if (A.classify(tn)) continue;        // already captured (interactive/heading)
