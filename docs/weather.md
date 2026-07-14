@@ -16,8 +16,8 @@ decoded-weather monitor's lifecycle, and two standing implementation gotchas.
   narrative) — no I/O, fully characterization-tested
 - `Services/ActiveSkyModeTracker.cs` — pure baseline-first decision logic for the mode-change
   announcement
-- `Services/RouteAdvisoryTracker.cs` — pure baseline-first decision logic for the en-route
-  advisory announce (§12)
+- `Services/RouteAdvisoryProximityTracker.cs` — pure per-key zone state machine for the en-route
+  advisory proximity announcements (§12)
 - `MainForm.Announcers.cs` — output+I wind (`RequestWindInfo`), the ambient auto-announce
   (`CheckAmbientWeatherChanges` / `AnnounceAmbientChanges`)
 - `Forms/WeatherRadarForm.cs` — the on-demand weather radar/briefing window
@@ -765,8 +765,9 @@ reports Inside again.
   **Behind-suppression is Approach-ONLY** — it never applies to Enter or Leave, so a behind-latched
   area the aircraft is later routed through still Enters normally.
 - **AtPosition** — first sight already inside: `"Route advisory at your position: {core}."`
-- **Enter** — any Far/Near→Inside transition, first sight or later, REGARDLESS of bearing:
-  `"Entering advisory area: {core}."`
+- **Enter** — a Far/Near→Inside transition observed on a LATER tick (never at first sight — a key
+  seen already-inside on its first tick is AtPosition, not Enter), REGARDLESS of bearing; this
+  includes re-entry after a full Leave: `"Entering advisory area: {core}."`
 - **Leave** — 2 consecutive not-inside ticks after Inside: `"Left advisory area:
   {identity-or-key}."` — deliberately brief (identity or raw key only, no full decode): a Leave is
   an interruption, not a re-briefing.
@@ -968,7 +969,7 @@ invariant-culture lat/lon — at the aircraft's own position, then resolves each
   mistake a lost probe match for "left the area."
 
 **Pure/tested vs. thin/untested (design §9).** The math and parsing are pure and CI-pinned:
-`AdvisoryGeometry` (`ParseWiPolygon`, `IsInside`, `NearestVertex`, `NearestEdge`, `IsBehind` —
+`AdvisoryGeometry` (`ParseWiPolygon`, `IsInside`, `NearestEdge`, `IsBehind` —
 `AdvisoryGeometryTests.cs`), `ActiveSkyFormatting.BuildLocationPhrase` (all four wordings plus the
 singular/rounding/separator cases and the 2026-07-14 box-wording pins),
 `RouteAdvisoryLocator.ComposePhrase` (`RouteAdvisoryLocatorTests.cs` — inside-wins-over-distance,
@@ -990,23 +991,25 @@ deliberate approximations, both already load-bearing choices rather than oversig
   NearestEdge` computes point-to-segment distance over EVERY polygon edge (not just its vertices),
   in a local equirectangular frame centred on the aircraft (1° lat = 60 nm, 1° lon = 60·cos(lat)
   nm) — adequate at advisory scales (a documented non-goal near poles/the antimeridian, same as
-  `IsInside`'s ray-cast). This REPLACED the original `NearestVertex`-everywhere design (2026-07-14,
+  `IsInside`'s ray-cast). This REPLACED the original nearest-vertex-everywhere design (2026-07-14,
   proximity design §3 amendment): convective outlook polygons have edges long enough that
   nearest-VERTEX distance is off by tens of nm, and since the 100 nm approach ring (§12(d)) IS the
   distance, the trigger has to be edge-true — one number used for the trigger, the box `Location:`
   line, AND the spoken Approach suffix everywhere within route advisories, so they can never
   disagree with each other.
   **Recorded, accepted divergence from a DIFFERENT box:** the separate Nearby Advisories box (§13
-  — a position+range aviationweather.gov query, unrelated to route advisories) still uses
-  `AdvisoryGeometry.NearestVertex`, matching `WeatherService.ClosestPoint`'s existing approximation
-  there, for THAT box's own cross-box-consistency need. `NearestVertex` is no longer called
-  anywhere in the route-advisory location path — it remains solely for Nearby Advisories — so the
-  two boxes can legitimately show a slightly different distance for the same advisory; this was a
-  known tradeoff at design time, not a regression. The pre-existing MultiPolygon caveat still
-  applies on top of it: tier-2 (`FindAdvisoryPolygonInGeoJson`) only ever returns the FIRST polygon
-  ring of a `MultiPolygon` feature, while the Nearby Advisories box scans every ring, so a rare
-  multi-area advisory can diverge for that reason too — both are recorded follow-ups, not bugs to
-  fix here.
+  — a position+range aviationweather.gov query, unrelated to route advisories) has always used its
+  OWN independent nearest-vertex scan in `WeatherService.ClosestPointGeometry` — a separate
+  implementation that happens to share the same vertex-only approximation, not a shared call
+  target. `AdvisoryGeometry` used to carry a distinct nearest-vertex helper of its own, but it had
+  zero production callers even before this refactor (the Nearby box never called it — it always
+  called `ClosestPointGeometry` directly), so it has now been deleted as dead code, along with its
+  unit test; `ClosestPointGeometry` is unaffected. The two boxes can legitimately show a slightly
+  different distance for the same advisory; this was a known tradeoff at design time, not a
+  regression. The pre-existing MultiPolygon caveat still applies on top of it: tier-2
+  (`FindAdvisoryPolygonInGeoJson`) only ever returns the FIRST polygon ring of a `MultiPolygon`
+  feature, while the Nearby Advisories box scans every ring, so a rare multi-area advisory can
+  diverge for that reason too — both are recorded follow-ups, not bugs to fix here.
 - **True HEADING, not ground track, decides ahead/behind** — `IsBehind` compares the bearing to
   the nearest boundary point (the nearest EDGE point since 2026-07-14, formerly the nearest vertex)
   against the aircraft's TRUE heading (`pos.HeadingMagnetic + pos.MagneticVariation`, the

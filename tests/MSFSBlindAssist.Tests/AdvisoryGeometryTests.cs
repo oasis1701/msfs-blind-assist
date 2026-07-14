@@ -91,16 +91,6 @@ public class AdvisoryGeometryTests
         Assert.False(AdvisoryGeometry.IsInside(new[] { (10.0, 20.0), (11.0, 21.0) }, 10.5, 20.5));
     }
 
-    [Fact]
-    public void NearestVertex_returns_distance_and_true_bearing()
-    {
-        // From 1° due south of the (10,20) corner: that corner is nearest,
-        // ~60 nm away, bearing ~000.
-        var (dist, brg) = AdvisoryGeometry.NearestVertex(Square, 9.0, 20.0);
-        Assert.InRange(dist, 59, 61);
-        Assert.True(brg < 1 || brg > 359);
-    }
-
     [Theory]
     [InlineData(0, 0, false)]      // dead ahead
     [InlineData(89, 0, false)]     // just forward of abeam
@@ -119,7 +109,14 @@ public class AdvisoryGeometryTests
         // Long horizontal edge from (40,-100) to (40,-90); aircraft due south of its midpoint.
         var poly = new List<(double Lat, double Lon)> { (40, -100), (40, -90), (45, -95) };
         var (edgeDist, brg) = AdvisoryGeometry.NearestEdge(poly, 38.0, -95.0);
-        var (vertexDist, _) = AdvisoryGeometry.NearestVertex(poly, 38.0, -95.0);
+
+        // Hand-computed nearest-VERTEX distance (the dedicated nearest-vertex helper that used
+        // to live in AdvisoryGeometry was dead code and has been deleted): the minimum
+        // great-circle distance from the aircraft to each of the polygon's vertices, ~270 nm to
+        // the nearer corner.
+        double vertexDist = new[] { (40.0, -100.0), (40.0, -90.0), (45.0, -95.0) }
+            .Min(v => Navigation.NavigationCalculator.CalculateDistance(38.0, -95.0, v.Item1, v.Item2));
+
         Assert.True(edgeDist < vertexDist - 50,       // vertex ≈ 270 nm off; edge ≈ 120 nm
             $"edge {edgeDist:F0} should undercut vertex {vertexDist:F0} by far");
         Assert.InRange(edgeDist, 110, 130);           // 2° of latitude ≈ 120 nm

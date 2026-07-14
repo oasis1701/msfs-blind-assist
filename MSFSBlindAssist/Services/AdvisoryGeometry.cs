@@ -67,35 +67,15 @@ internal static class AdvisoryGeometry
         return inside;
     }
 
-    /// <summary>Distance/bearing to the nearest VERTEX — deliberately the same
-    /// approximation the Nearby Advisories box uses (WeatherService.ClosestPoint),
-    /// so the two boxes normally agree about one advisory's distance. Caveat: tier-2
-    /// geometry only ever supplies the FIRST ring of a MultiPolygon feature, while
-    /// the Nearby Advisories box scans every ring — a rare multi-area advisory can
-    /// therefore show a different nearest-vertex distance in the two boxes (recorded
-    /// follow-up, not fixed here).</summary>
-    internal static (double DistanceNm, double BearingTrueDeg) NearestVertex(
-        IReadOnlyList<(double Lat, double Lon)> vertices, double lat, double lon)
-    {
-        double bestDist = double.MaxValue, bestBrg = 0;
-        foreach (var (vLat, vLon) in vertices)
-        {
-            double d = Navigation.NavigationCalculator.CalculateDistance(lat, lon, vLat, vLon);
-            if (d < bestDist)
-            {
-                bestDist = d;
-                bestBrg = Navigation.NavigationCalculator.CalculateBearing(lat, lon, vLat, vLon);
-            }
-        }
-        return (bestDist, bestBrg);
-    }
-
     /// <summary>Distance (nm) and true bearing to the nearest point on the polygon's
     /// BOUNDARY — point-to-segment over every edge, in a local equirectangular frame
     /// centred on the aircraft (adequate at SIGMET scales; poles/antimeridian remain
-    /// non-goals). Unlike <see cref="NearestVertex"/>, this is edge-true: convective
-    /// outlook polygons have edges long enough for vertex distance to be off by tens
-    /// of nm, and the 100 nm approach trigger IS the distance (spec 2026-07-14 §3).</summary>
+    /// non-goals). This is edge-true: convective outlook polygons have edges long
+    /// enough for vertex distance to be off by tens of nm, and the 100 nm approach
+    /// trigger IS the distance (spec 2026-07-14 §3). (The nearest-vertex-only sibling
+    /// method this replaced was deleted as dead code — the separate Nearby Advisories
+    /// box has always used its own independent vertex scan in
+    /// WeatherService.ClosestPointGeometry, not this class.)</summary>
     internal static (double DistanceNm, double BearingTrueDeg) NearestEdge(
         IReadOnlyList<(double Lat, double Lon)> vertices, double lat, double lon)
     {
