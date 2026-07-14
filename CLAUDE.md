@@ -595,7 +595,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[Development](docs/development.md)** - Dependencies, key files, development notes
 - **[Developer Tooling Guide](docs/tooling.md)** - Coherent debugger (`:19999`) probes/scrapers/drivers in `tools/`, how to run each, and crash diagnosis
 
-## Gemini AI (display reading + scene/route description)
+## AI Providers (display reading + scene/route description) — Gemini OR Claude
 
 Details: [docs/gemini.md](docs/gemini.md).
 
