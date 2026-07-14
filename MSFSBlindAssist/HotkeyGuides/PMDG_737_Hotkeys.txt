@@ -107,7 +107,7 @@ Waypoint Tracking (use Fix Track window to add):
   4          Track Slot 4
   5          Track Slot 5
 
-AI Display Reading (requires Gemini API key in File > Gemini Settings):
+AI Display Reading (requires an AI API key — Gemini or Claude — in File > Settings > AI tab):
   Alt+P      Read PFD (use Ctrl+2 cockpit view first)
   Alt+N      Read Navigation Display (use Ctrl+2 cockpit view first)
   Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)

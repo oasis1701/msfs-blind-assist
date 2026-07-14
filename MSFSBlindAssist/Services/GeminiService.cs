@@ -14,7 +14,7 @@ public class GeminiService : IAiProvider
     private static readonly HttpClient httpClient = new HttpClient();
 
     // The model is user-selectable (UserSettings.GeminiModel, populated from a live fetch in the
-    // Gemini Settings dialog). DEFAULT_MODEL is a rolling alias that always resolves to a current
+    // Settings dialog's AI tab). DEFAULT_MODEL is a rolling alias that always resolves to a current
     // Flash model, so a fresh install / failed fetch still has a working default.
     private const string API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
     private const string DEFAULT_MODEL = "gemini-flash-latest";
@@ -579,7 +579,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     {
         if (string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini Settings.");
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Settings > AI tab.");
         }
 
         string model = SettingsManager.Current.GeminiModel;
@@ -650,7 +650,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 string errorContent = await response.Content.ReadAsStringAsync();
                 response.Dispose();
                 string message = status == System.Net.HttpStatusCode.NotFound
-                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Gemini Settings. ({errorContent})"
+                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Settings > AI tab. ({errorContent})"
                     : $"Gemini API request failed with status {code}: {errorContent}";
                 throw new HttpRequestException(message);
             }

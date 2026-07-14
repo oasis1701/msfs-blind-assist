@@ -3,7 +3,7 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// Returns the AI provider the user selected in AI Settings. Every AI call site builds its
+/// Returns the AI provider the user selected in the Settings dialog's AI tab. Every AI call site builds its
 /// provider through this factory, so switching <c>UserSettings.AiProvider</c> routes ALL three
 /// features (display reading, scene description, route briefing) through the chosen backend.
 /// Hard switch by design: there is no silent cross-provider fallback.

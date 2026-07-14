@@ -709,12 +709,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.Announce("AI provider API key not configured. Please go to File menu, AI Settings.");
+            announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
             System.Windows.Forms.MessageBox.Show(
                 parentForm,
                 "AI provider API key is not configured.\n\n" +
                 "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
-                "File > AI Settings",
+                "File > Settings > AI tab",
                 "API Key Required",
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Warning);

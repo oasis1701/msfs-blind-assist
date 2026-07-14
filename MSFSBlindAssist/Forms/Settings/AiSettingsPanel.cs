@@ -45,6 +45,14 @@ public class AiSettingsPanel : UserControl, ISettingsPanel
     private bool _populatingGemini;
     private bool _populatingClaude;
 
+    // Lazy model-populate: fetch a provider's model list only when its section is first
+    // shown, not both on dialog open (two network calls when both keys are set). _loaded
+    // gates the SelectedIndexChanged path so a populate never runs against the
+    // not-yet-filled key textboxes while LoadFrom is still assigning them.
+    private bool _loaded;
+    private bool _geminiModelsPopulated;
+    private bool _claudeModelsPopulated;
+
     public string TabTitle => "AI";
 
     public AiSettingsPanel()
@@ -71,7 +79,11 @@ public class AiSettingsPanel : UserControl, ISettingsPanel
         };
         providerComboBox.Items.Add("Google Gemini");
         providerComboBox.Items.Add("Anthropic Claude");
-        providerComboBox.SelectedIndexChanged += (_, _) => UpdateProviderVisibility();
+        providerComboBox.SelectedIndexChanged += (_, _) =>
+        {
+            UpdateProviderVisibility();
+            PopulateVisibleProviderIfNeeded();
+        };
 
         instructionsLabel = new Label
         {
@@ -136,14 +148,32 @@ public class AiSettingsPanel : UserControl, ISettingsPanel
         claudeKeyTextBox.Text = settings.ClaudeApiKey ?? "";
         claudeWebSearchCheckBox.Checked = settings.ClaudeWebSearch;
         UpdateProviderVisibility();
-        _ = PopulateGeminiModelsAsync();
-        _ = PopulateClaudeModelsAsync();
+        _loaded = true;
+        PopulateVisibleProviderIfNeeded();
+    }
+
+    /// <summary>
+    /// Fire-and-forget model populate for the provider whose section is visible — once per
+    /// provider per dialog open (the Refresh buttons re-fetch explicitly at any time).
+    /// </summary>
+    private void PopulateVisibleProviderIfNeeded()
+    {
+        if (!_loaded) return;
+        if (providerComboBox.SelectedIndex == 1)
+        {
+            if (!_claudeModelsPopulated) _ = PopulateClaudeModelsAsync();
+        }
+        else if (!_geminiModelsPopulated)
+        {
+            _ = PopulateGeminiModelsAsync();
+        }
     }
 
     private async Task PopulateGeminiModelsAsync()
     {
         if (_populatingGemini) return;
         _populatingGemini = true;
+        _geminiModelsPopulated = true;
         geminiRefreshButton.Enabled = false;
         try
         {
@@ -187,6 +217,7 @@ public class AiSettingsPanel : UserControl, ISettingsPanel
     {
         if (_populatingClaude) return;
         _populatingClaude = true;
+        _claudeModelsPopulated = true;
         claudeRefreshButton.Enabled = false;
         try
         {

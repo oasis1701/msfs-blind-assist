@@ -872,7 +872,7 @@ public partial class ElectronicFlightBagForm : Form
             // Resolve the AI provider fresh on each briefing. The EFB form is REUSED across opens
             // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
             // keep calling whichever backend was active when the form was first created — ignoring a
-            // later switch in AI Settings. Display/scene reads already resolve per-call; match that.
+            // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
             var aiProvider = AiProviderFactory.Create();
             string description = await aiProvider.DescribeRouteAsync(
                 _flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
@@ -887,7 +887,7 @@ public partial class ElectronicFlightBagForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            _announcer.Announce("AI provider API key not configured. Please configure it in File menu, AI Settings.");
+            _announcer.Announce("AI provider API key not configured. Please configure it in File menu, Settings, AI tab.");
             UpdateStatus("AI provider API key not configured");
         }
         catch (Exception ex)

@@ -1,6 +1,8 @@
 using System.Net.Http;
 using System.Linq;
 using System.Text;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using Newtonsoft.Json;
 using MSFSBlindAssist.Settings;
 
@@ -23,7 +25,7 @@ public class ClaudeService : IAiProvider
     private const string ANTHROPIC_VERSION = "2023-06-01";
 
     // Concrete model required (Anthropic has no rolling "*-latest" alias). Default is the latest
-    // flagship Opus; the AI Settings dropdown lets the user pick a cheaper model (Sonnet/Haiku).
+    // flagship Opus; the Settings dialog's AI tab lets the user pick a cheaper model (Sonnet/Haiku).
     private const string DEFAULT_MODEL = "claude-opus-4-8";
 
     // web_search server tool for route-briefing NOTAM grounding (no beta header). The dated variant
@@ -36,8 +38,14 @@ public class ClaudeService : IAiProvider
     // searches. ~5 covers departure + arrival NOTAMs + weather + SIGMETs without runaway latency.
     private const int WEB_SEARCH_MAX_USES = 5;
 
-    // Generous enough for a 300-500 word route briefing; display/scene reads use far fewer.
-    private const int MAX_TOKENS = 2048;
+    // The Messages API REQUIRES max_tokens (it cannot be omitted), so "no cap" means a value
+    // the response never reaches: 16000 is ~30x a 300-500 word briefing, within every current
+    // model's output limit, and the documented ceiling for non-streaming requests (larger
+    // values need SSE streaming to avoid HTTP timeouts).
+    private const int MAX_TOKENS = 16000;
+
+    // Max long-edge pixels for a vision image; see ComputeScaledSize.
+    private const int MAX_IMAGE_LONG_EDGE = 2576;
 
     // Route-briefing system prompt (text path only). With web_search enabled the model otherwise
     // emits process narration ("Let me search for NOTAMs… Now I'll compose the briefing.") before
@@ -89,12 +97,16 @@ public class ClaudeService : IAiProvider
             return await SendTextRequestAsync(prompt, enableSearch);
         }
         catch (HttpRequestException ex) when (enableSearch &&
-            (ex.Message.Contains("web_search", StringComparison.OrdinalIgnoreCase) ||
-             ex.Message.Contains("tool", StringComparison.OrdinalIgnoreCase)))
+            ex.Message.Contains("web_search", StringComparison.OrdinalIgnoreCase))
         {
-            // The selected model doesn't support the web_search tool — degrade to an
-            // ungrounded briefing rather than failing the whole request.
-            return await SendTextRequestAsync(prompt, false);
+            // The selected model doesn't support the web_search tool (the API's 400 body names
+            // the rejected tool type, so it always contains "web_search" — a broader match like
+            // "tool" would swallow unrelated 400s). Degrade to an ungrounded briefing rather
+            // than failing, but SAY SO up front: a blind pilot who asked for NOTAM grounding
+            // must not silently receive an ungrounded briefing as if it were current.
+            string briefing = await SendTextRequestAsync(prompt, false);
+            return "Note: web search is not available for the selected Claude model, so this " +
+                   "briefing is not grounded with current NOTAM or weather data.\n\n" + briefing;
         }
     }
 
@@ -106,6 +118,7 @@ public class ClaudeService : IAiProvider
 
     private async Task<string> SendImageRequestAsync(string prompt, byte[] imageBytes)
     {
+        imageBytes = DownscaleImageIfNeeded(imageBytes);
         var requestBody = new
         {
             model = ResolveModel(),
@@ -168,7 +181,7 @@ public class ClaudeService : IAiProvider
     {
         if (string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Claude API key is not configured. Please configure it in File > AI Settings.");
+            throw new InvalidOperationException("Claude API key is not configured. Please configure it in File > Settings > AI tab.");
         }
 
         string jsonRequest = JsonConvert.SerializeObject(requestBody);
@@ -211,54 +224,55 @@ public class ClaudeService : IAiProvider
                 break;
             }
 
-            if (response.IsSuccessStatusCode)
+            // using guarantees disposal on every exit below — including a throw from
+            // ReadAsStringAsync, which the old manual Dispose calls leaked on.
+            using (response)
             {
-                string okJson = await response.Content.ReadAsStringAsync();
-                response.Dispose();
-                return ParseResponse(okJson);
-            }
-
-            var status = response.StatusCode;
-            int code = (int)status;
-
-            // Client errors won't be fixed by retrying — fail fast with the body.
-            if (status == System.Net.HttpStatusCode.BadRequest ||      // 400
-                status == System.Net.HttpStatusCode.Unauthorized ||    // 401
-                status == System.Net.HttpStatusCode.Forbidden ||       // 403
-                status == System.Net.HttpStatusCode.NotFound)          // 404 (model unavailable)
-            {
-                string errorContent = await response.Content.ReadAsStringAsync();
-                response.Dispose();
-                string message = status switch
+                if (response.IsSuccessStatusCode)
                 {
-                    System.Net.HttpStatusCode.NotFound =>
-                        $"Claude model '{ResolveModel()}' is unavailable — choose a different model in File > AI Settings. ({errorContent})",
-                    System.Net.HttpStatusCode.Unauthorized =>
-                        $"Claude API key was rejected (401). Check the key in File > AI Settings. ({errorContent})",
-                    _ => $"Claude API request failed with status {code}: {errorContent}"
-                };
-                throw new HttpRequestException(message);
-            }
-
-            // Transient server / rate-limit errors (429, 5xx) — retry with backoff.
-            if (status == System.Net.HttpStatusCode.TooManyRequests || (code >= 500 && code <= 599))
-            {
-                string busyBody = await response.Content.ReadAsStringAsync();
-                lastTransient = new HttpRequestException($"Claude transient error ({code}): {busyBody}");
-                int delaySeconds = GetRetryDelay(response, attempt);
-                response.Dispose();
-                if (attempt < maxAttempts - 1)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
-                    continue;
+                    string okJson = await response.Content.ReadAsStringAsync();
+                    return ParseResponse(okJson);
                 }
-                break;
-            }
 
-            // Any other unexpected status — fail with the body.
-            string otherBody = await response.Content.ReadAsStringAsync();
-            response.Dispose();
-            throw new HttpRequestException($"Claude API request failed with status {code}: {otherBody}");
+                var status = response.StatusCode;
+                int code = (int)status;
+
+                // Client errors won't be fixed by retrying — fail fast with the body.
+                if (status == System.Net.HttpStatusCode.BadRequest ||      // 400
+                    status == System.Net.HttpStatusCode.Unauthorized ||    // 401
+                    status == System.Net.HttpStatusCode.Forbidden ||       // 403
+                    status == System.Net.HttpStatusCode.NotFound)          // 404 (model unavailable)
+                {
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    string message = status switch
+                    {
+                        System.Net.HttpStatusCode.NotFound =>
+                            $"Claude model '{ResolveModel()}' is unavailable — choose a different model in File > Settings > AI tab. ({errorContent})",
+                        System.Net.HttpStatusCode.Unauthorized =>
+                            $"Claude API key was rejected (401). Check the key in File > Settings > AI tab. ({errorContent})",
+                        _ => $"Claude API request failed with status {code}: {errorContent}"
+                    };
+                    throw new HttpRequestException(message);
+                }
+
+                // Transient server / rate-limit errors (429, 5xx) — retry with backoff.
+                if (status == System.Net.HttpStatusCode.TooManyRequests || (code >= 500 && code <= 599))
+                {
+                    string busyBody = await response.Content.ReadAsStringAsync();
+                    lastTransient = new HttpRequestException($"Claude transient error ({code}): {busyBody}");
+                    int delaySeconds = GetRetryDelay(response, attempt);
+                    if (attempt < maxAttempts - 1)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                        continue;
+                    }
+                    break;
+                }
+
+                // Any other unexpected status — fail with the body.
+                string otherBody = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"Claude API request failed with status {code}: {otherBody}");
+            }
         }
 
         throw new HttpRequestException(
@@ -266,7 +280,7 @@ public class ClaudeService : IAiProvider
             lastTransient);
     }
 
-    private static string ParseResponse(string responseJson)
+    internal static string ParseResponse(string responseJson)
     {
         var result = JsonConvert.DeserializeObject<ClaudeResponse>(responseJson);
         if (result?.Content == null || result.Content.Length == 0)
@@ -290,10 +304,75 @@ public class ClaudeService : IAiProvider
             .Skip(lastToolIndex + 1)
             .Where(b => b.Type == "text" && !string.IsNullOrEmpty(b.Text))
             .Select(b => b.Text));
-        return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
+
+        // Surface truncation to the (blind) user — they cannot visually notice a briefing that
+        // just stops. "max_tokens" = output cap hit; "pause_turn" = a web-search turn was paused
+        // server-side before the answer was composed. Any other stop_reason (end_turn,
+        // stop_sequence, or absent) returns the text unchanged.
+        bool incomplete = result.StopReason is "max_tokens" or "pause_turn";
+        if (string.IsNullOrWhiteSpace(combined))
+        {
+            return incomplete
+                ? "Claude stopped before completing a response. Please try again."
+                : "No description available.";
+        }
+        return incomplete
+            ? combined + "\n\n(Response may be incomplete — Claude stopped before finishing.)"
+            : combined;
     }
 
-    private static int GetRetryDelay(HttpResponseMessage response, int attempt)
+    /// <summary>
+    /// Target size for a screenshot sent to the vision API. Anthropic caps each image at 5 MB
+    /// and current models accept at most <see cref="MAX_IMAGE_LONG_EDGE"/> px on the long edge
+    /// (larger images are downscaled server-side anyway), so shrinking client-side loses no
+    /// fidelity while keeping 4K screenshots under the byte cap. 1080p/1440p pass unchanged.
+    /// </summary>
+    internal static (int Width, int Height) ComputeScaledSize(int width, int height)
+    {
+        int longEdge = Math.Max(width, height);
+        if (longEdge <= MAX_IMAGE_LONG_EDGE)
+        {
+            return (width, height);
+        }
+        double scale = (double)MAX_IMAGE_LONG_EDGE / longEdge;
+        return (
+            Math.Max(1, (int)Math.Round(width * scale, MidpointRounding.AwayFromZero)),
+            Math.Max(1, (int)Math.Round(height * scale, MidpointRounding.AwayFromZero)));
+    }
+
+    /// <summary>
+    /// Re-encodes a screenshot at the size <see cref="ComputeScaledSize"/> chose (no-op for
+    /// 1080p/1440p). Any decode/encode failure falls back to the original bytes — a resize
+    /// problem must never kill a display read; the API surfaces its own limit errors.
+    /// </summary>
+    private static byte[] DownscaleImageIfNeeded(byte[] imageBytes)
+    {
+        try
+        {
+            using var input = new MemoryStream(imageBytes);
+            using var source = new Bitmap(input);
+            var (targetWidth, targetHeight) = ComputeScaledSize(source.Width, source.Height);
+            if (targetWidth == source.Width && targetHeight == source.Height)
+            {
+                return imageBytes;
+            }
+            using var scaled = new Bitmap(targetWidth, targetHeight);
+            using (var graphics = Graphics.FromImage(scaled))
+            {
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.DrawImage(source, 0, 0, targetWidth, targetHeight);
+            }
+            using var output = new MemoryStream();
+            scaled.Save(output, ImageFormat.Png);
+            return output.ToArray();
+        }
+        catch
+        {
+            return imageBytes;
+        }
+    }
+
+    internal static int GetRetryDelay(HttpResponseMessage response, int attempt)
     {
         if (response.Headers.RetryAfter?.Delta is TimeSpan delta)
         {
@@ -372,6 +451,7 @@ public class ClaudeService : IAiProvider
     private class ClaudeResponse
     {
         [JsonProperty("content")] public ContentBlock[]? Content { get; set; }
+        [JsonProperty("stop_reason")] public string? StopReason { get; set; }
     }
 
     private class ContentBlock
