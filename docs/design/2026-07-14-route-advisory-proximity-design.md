@@ -108,6 +108,30 @@ Per tick (cadence and gates unchanged: `AnnounceRouteAdvisoriesEnabled` + the ce
 ## 8. Out of scope (deliberate)
 
 - Expiry-while-inside announcements (churn risk — see §2 table).
-- Configurable approach distance.
+- ~~Configurable approach distance.~~ **Revised same-day — see the post-note below.**
 - Changing the Nearby Advisories (aviationweather.gov) alert semantics — untouched.
 - Multi-ring/MultiPolygon beyond the first ring (existing recorded follow-up).
+
+**Post-note (2026-07-14, later the same day — approach distance made a setting).** The §0
+decision "The 100 nm threshold is a fixed constant (no setting)" and the §8 "Configurable
+approach distance" out-of-scope line above were both revised the same day at Robin's request,
+after seeing the new Weather settings tab and asking why the ring couldn't be tuned there like
+the SIGMET/PIREP proximity range next to it. Implementation: `RouteAdvisoryProximityTracker.
+Observe` gained a required `approachNm` parameter (no default baked into the tracker itself —
+the caller always supplies it), replacing the fixed `ApproachNm` constant; `RearmNm` became
+`RearmBandNm = 10`, a fixed hysteresis WIDTH added on top of whatever ring is passed in
+(`rearmNm = approachNm + RearmBandNm`) rather than a second fixed absolute threshold — this
+keeps the tuned hysteresis behavior identical at the old default (100 + 10 = 110, unchanged) while
+letting it ride any configured ring. The new setting,
+`UserSettings.RouteAdvisoryProximityNm` (default 100, Weather-tab `NumericUpDown`, clamped
+10-500 both in the UI and defensively again where `MainForm.Announcers.CheckRouteAdvisoriesAsync`
+reads it), is a SEPARATE setting from `SigmetProximityRangeNm` by design — same UI shape, two
+different features, never folded together. Because the ring is a per-call parameter rather than
+a tracker field, a mid-flight change takes effect on the very next 30 s tick: the tracker's
+transitions are already edge-based off the current zone and the current tick's distance, so
+shrinking the ring silently re-arms an already-Near key the moment it now sits outside the new
+(ring + band) boundary, and growing the ring fires Approach on the next tick for any key that is
+now genuinely inside it. See `docs/weather.md` §12(d)/(e) for the user-facing writeup and
+`RouteAdvisoryProximityTrackerTests.Custom_ring_is_respected` /
+`Rearm_band_rides_the_configured_ring` / `Shrinking_the_ring_mid_flight_rearms_silently` for the
+pinned behavior.

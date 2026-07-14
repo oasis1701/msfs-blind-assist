@@ -748,20 +748,47 @@ by the `LocationFact` computed for it (§12(g)):
 | Zone | Meaning | Reached from | Leaves to |
 |---|---|---|---|
 | Unplaced | no geometry resolved for this key (no WI polygon, no tier-2 match) | first sight with no geometry | Inside only, via a later positional probe match — see below |
-| Far | outside the 100 nm ring | first sight, or Near receding past 110 nm | Near, on advancing to ≤100 nm |
-| Near | within 100 nm, not inside | first sight, or Far advancing past 100 nm | Far (>110 nm) or Inside |
+| Far | outside the approach ring | first sight, or Near receding past the re-arm threshold | Near, on advancing to ≤ ring |
+| Near | within the ring, not inside | first sight, or Far advancing past the ring | Far (past the re-arm threshold) or Inside |
 | Inside | positionally inside the area | first sight, or Near/Far entering | Near/Far, after 2 consecutive not-inside ticks |
 
-**Constants** (`RouteAdvisoryProximityTracker`, fixed — no setting): `ApproachNm = 100` is the
-approach ring; `RearmNm = 110` is a 10 nm hysteresis band above it, so a key sitting right at the
-ring can't flap Approach on and off tick to tick; `LeaveConfirmTicks = 2` (~1 minute at the 30 s
+**Constants and setting** (`RouteAdvisoryProximityTracker`). The approach ring is now a
+per-call parameter, not a fixed constant — the distance made a setting the same day it was
+designed, on Robin's request after seeing the settings tab (see the design doc's post-note).
+`Observe(facts, approachNm)` takes the live ring (nm) on every call, so a mid-flight settings
+change applies on the very next 30 s tick with no rewiring: `RouteAdvisoryProximityNm`
+(`UserSettings`, default 100, Weather-tab-editable, clamped 10-500 by
+`CheckRouteAdvisoriesAsync` before it reaches the tracker) is read fresh every tick.
+`DefaultApproachNm = 100` is the constant's old fixed value, kept as the property/tracker
+default and as a named constant tests can reference. `RearmBandNm = 10` is a **fixed** 10 nm hysteresis band ABOVE
+whatever ring is in effect (`rearmNm = approachNm + RearmBandNm`) — this is the tuned hysteresis
+WIDTH, not a second knob, so a key sitting right at the ring can't flap Approach on and off tick
+to tick even after the ring itself changes. `LeaveConfirmTicks = 2` (~1 minute at the 30 s
 cadence) means a single tick's boundary graze — a polygon edge crossed back and forth by GPS
 noise — cannot fire a spurious Leave, and the outside-tick counter resets to 0 the instant a tick
 reports Inside again.
 
+Because every transition is edge-based (dispatched off the CURRENT zone plus the CURRENT
+distance/ring, never a remembered "old ring"), a threshold change mid-flight behaves sanely
+with no special-casing: shrinking the ring lets an already-Near key re-arm silently the instant
+it sits outside the new (ring + band) boundary (a `Near→Far` transition, which is always silent
+regardless of why the boundary moved); growing the ring fires Approach on the very next tick for
+any key now genuinely inside it — from the tracker's point of view that key just entered the
+ring, whether the aircraft moved or the ring did.
+`RouteAdvisoryProximityTrackerTests.Custom_ring_is_respected`,
+`Rearm_band_rides_the_configured_ring`, and `Shrinking_the_ring_mid_flight_rearms_silently`
+pin this.
+
+`RouteAdvisoryProximityNm` is **deliberately independent of `SigmetProximityRangeNm`** (the
+nearby-SIGMET/AIRMET/PIREP proximity-alert range, §13) — they are separate settings on separate
+features (route-advisory zone events vs. aviationweather.gov position+range queries) that happen
+to share the same UI shape (a 10-500 nm `NumericUpDown`); tuning one must never silently move
+the other.
+
 **Events and wording** (`ActiveSkyFormatting.BuildProximityAnnouncement`):
 
-- **Approach** — first sight within 100 nm, or a Far→Near crossing, while the area is NOT behind
+- **Approach** — first sight within the configured ring (default 100 nm), or a Far→Near
+  crossing, while the area is NOT behind
   the aircraft: `"Route advisory, {n} nautical miles ahead: {core}."` A Near crossing (or first
   sight) that IS behind the aircraft is silent and latches Approach off for that key.
   **Behind-suppression is Approach-ONLY** — it never applies to Enter or Leave, so a behind-latched
@@ -849,7 +876,7 @@ liftoff" — a touchdown edge followed by at least 5 minutes on the ground, then
 which point `_routeAdvisoryProximity.Reset()` (and `_emptyRouteFeedTicks = 0`) fire a third time.
 Rationale: an advisory key can survive a same-session turnaround unchanged in the ActiveSky feed
 (same SIGMET number, still on the loaded route), so without this reset flight 1's `EverInside`
-latch would silently suppress flight 2's 100 nm Approach call for that same key. Touch-and-goes and
+latch would silently suppress flight 2's configured-ring Approach call for that same key. Touch-and-goes and
 oleo-bounce flickers (dwell &lt; 5 min) never fire it, and the session's first departure never fires
 it either (arming requires an observed touchdown first). The detector is reset alongside the tracker
 at both reset sites above, so a stale touchdown stamp from before a reconnect/aircraft-switch can
@@ -878,6 +905,30 @@ gated on ActiveSky alone: `_routeAdvisoryAlerts.Visible = _activeSkyEnabled.Chec
 `UpdateActiveSkyDependentVisibility`, because the data source is AS-only and the checkbox is
 meaningless without it. Hiding never resets the stored value; `LoadFrom`/`ApplyTo` round-trip it
 unconditionally either way.
+
+**Approach-ring distance is a setting (2026-07-14, same-day revision).** The design doc's §0
+decision — "The 100 nm threshold is a fixed constant (no setting)" — was revised the same day at
+Robin's request after seeing the settings tab: `UserSettings.RouteAdvisoryProximityNm` (int,
+default `100`, both the property and `Clone()`) is a new "En-route advisory distance (nautical
+miles)" `NumericUpDown` row placed directly below the existing SIGMET/PIREP "Proximity range"
+row, `Min/Max = 10/500` matching that sibling control. It is **route-advisory-only**, so its
+Label + `NumericUpDown` are gated exactly like the `_routeAdvisoryAlerts` checkbox itself
+(`_routeAdvisoryDistanceLabel/_routeAdvisoryDistance.Visible = _activeSkyEnabled.Checked`) — not
+a new gating mechanism, the same one joined. `CheckRouteAdvisoriesAsync` reads
+`Math.Clamp(SettingsManager.Current.RouteAdvisoryProximityNm, 10, 500)` fresh every 30 s tick and
+passes it straight into `RouteAdvisoryProximityTracker.Observe(facts, approachNm)` — the clamp
+exists because the UI already enforces 10-500, but a hand-edited settings JSON must not hand the
+tracker a 0/negative or absurd ring. Because the ring is a per-call parameter rather than a
+tracker field, a mid-flight settings change takes effect on the very next tick with no
+reconnect/restart and no explicit rewiring — see the Constants-and-setting paragraph above for
+how shrinking/growing the ring behaves against live zone state. **Deliberately independent of
+`SigmetProximityRangeNm`** — they are two settings for two different features that happen to
+share the same UI shape; tuning one must never silently move the other. A missing key in an
+older settings JSON deserializes to the property initializer's default, 100, same as any other
+`UserSettings` property. `RouteAdvisoryDistance_roundtrips_independently_of_sigmet_range`,
+`RouteAdvisoryDistance_defaults_to_100`,
+`RouteAdvisoryDistance_needs_activesky_only_same_as_its_checkbox`, and
+`HiddenRouteAdvisoryDistance_StillRoundTripsItsValue` in `WeatherPanelTests.cs` pin this.
 
 **(f) Honest verification caveat.** The no-hit path, the box's three-way rendering, the 30 s
 refresh, and the settings toggle are all verifiable on demand and were exercised during
@@ -1021,7 +1072,7 @@ deliberate approximations, both already load-bearing choices rather than oversig
   nm) — adequate at advisory scales (a documented non-goal near poles/the antimeridian, same as
   `IsInside`'s ray-cast). This REPLACED the original nearest-vertex-everywhere design (2026-07-14,
   proximity design §3 amendment): convective outlook polygons have edges long enough that
-  nearest-VERTEX distance is off by tens of nm, and since the 100 nm approach ring (§12(d)) IS the
+  nearest-VERTEX distance is off by tens of nm, and since the configured approach ring (§12(d)) IS the
   distance, the trigger has to be edge-true — one number used for the trigger, the box `Location:`
   line, AND the spoken Approach suffix everywhere within route advisories, so they can never
   disagree with each other.

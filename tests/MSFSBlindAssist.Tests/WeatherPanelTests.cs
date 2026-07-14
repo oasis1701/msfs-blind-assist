@@ -267,4 +267,73 @@ public class WeatherPanelTests
         asSwitch.Checked = false;
         Assert.False(route.Visible);
     }
+
+    // ---- RouteAdvisoryProximityNm: a SEPARATE setting from SigmetProximityRangeNm (never
+    // fold them together), defaulting to 100, round-tripped like its sibling _proximityRange,
+    // and gated on ActiveSky exactly like the route-advisory checkbox it sits under (it
+    // configures nothing else).
+
+    [Fact]
+    public void RouteAdvisoryDistance_roundtrips_independently_of_sigmet_range()
+    {
+        var source = new UserSettings
+        {
+            SigmetProximityRangeNm = 250,
+            RouteAdvisoryProximityNm = 75
+        };
+
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(source);
+        var target = new UserSettings();
+        panel.ApplyTo(target);
+
+        Assert.Equal(250, target.SigmetProximityRangeNm);
+        Assert.Equal(75, target.RouteAdvisoryProximityNm);       // independent value, not clobbered by the sibling
+    }
+
+    [Fact]
+    public void RouteAdvisoryDistance_defaults_to_100()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings());
+        var target = new UserSettings { RouteAdvisoryProximityNm = 999 };
+        panel.ApplyTo(target);
+
+        Assert.Equal(100, target.RouteAdvisoryProximityNm);
+    }
+
+    [Fact]
+    public void RouteAdvisoryDistance_needs_activesky_only_same_as_its_checkbox()
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings());                       // AS off, master off
+
+        var label = FindByAccessibleName(panel, "En-route advisory distance label");
+        var numeric = FindByAccessibleName(panel, "En-route advisory distance in nautical miles");
+        var asSwitch = (CheckBox)FindByAccessibleName(panel, "Enable ActiveSky integration");
+        var master = (CheckBox)FindByAccessibleName(panel, "Auto-announce weather state changes");
+
+        Assert.False(label.Visible);
+        Assert.False(numeric.Visible);
+        asSwitch.Checked = true;                                  // AS alone suffices
+        Assert.True(label.Visible);
+        Assert.True(numeric.Visible);
+        master.Checked = true;                                    // master irrelevant
+        Assert.True(numeric.Visible);
+        asSwitch.Checked = false;
+        Assert.False(label.Visible);
+        Assert.False(numeric.Visible);
+    }
+
+    [Fact]
+    public void HiddenRouteAdvisoryDistance_StillRoundTripsItsValue()
+    {
+        // Hiding must never reset the stored value (same pattern as the interval combo above).
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = false, RouteAdvisoryProximityNm = 65 });
+        var target = new UserSettings();
+        panel.ApplyTo(target);
+
+        Assert.Equal(65, target.RouteAdvisoryProximityNm);
+    }
 }

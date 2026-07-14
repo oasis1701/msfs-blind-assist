@@ -21,6 +21,15 @@ public class RouteAdvisoryProximityTrackerTests
     private static (string, RouteAdvisoryEvent, double?) Ev(RouteAdvisoryEvent e, double? dist)
         => (K, e, dist);
 
+    /// <summary>Observe at the tracker's default ring (100 nm / 110 nm re-arm) — keeps every
+    /// pre-existing test's semantics unchanged while the production signature now takes the
+    /// ring as a per-call parameter (settings-driven, see RouteAdvisoryProximityNm).</summary>
+    private static IReadOnlyList<(string Key, RouteAdvisoryEvent Event, double? DistanceNm)> Obs(
+        RouteAdvisoryProximityTracker t,
+        Dictionary<string, LocationFact> facts,
+        double approachNm = RouteAdvisoryProximityTracker.DefaultApproachNm)
+        => t.Observe(facts, approachNm);
+
     private static void AssertEvents(
         (string, RouteAdvisoryEvent, double?)[] expected,
         IReadOnlyList<(string Key, RouteAdvisoryEvent Event, double? DistanceNm)> actual)
@@ -33,9 +42,9 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 250, false))));        // far: silent, but tracked
+            Obs(t, F(Fact(true, false, 250, false))));        // far: silent, but tracked
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 90.0) },
-            t.Observe(F(Fact(true, false, 90, false))));         // later inbound → Approach
+            Obs(t, F(Fact(true, false, 90, false))));         // later inbound → Approach
     }
 
     [Fact]
@@ -43,7 +52,7 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 87.0) },
-            t.Observe(F(Fact(true, false, 87, false))));
+            Obs(t, F(Fact(true, false, 87, false))));
     }
 
     [Fact]
@@ -51,9 +60,9 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 87, true))));          // near but behind: silent, latched
+            Obs(t, F(Fact(true, false, 87, true))));          // near but behind: silent, latched
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 60, false))));         // dips ahead within ring: still silent
+            Obs(t, F(Fact(true, false, 60, false))));         // dips ahead within ring: still silent
     }
 
     [Fact]
@@ -61,7 +70,7 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));
+            Obs(t, F(Fact(true, true, 0, false))));
     }
 
     [Fact]
@@ -69,9 +78,9 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AnnounceOnce, (double?)null) },
-            t.Observe(F(Fact(false, false, null, false))));
+            Obs(t, F(Fact(false, false, null, false))));
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(false, false, null, false))));      // identical next tick: nothing
+            Obs(t, F(Fact(false, false, null, false))));      // identical next tick: nothing
     }
 
     [Fact]
@@ -79,7 +88,7 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, (double?)null) },
-            t.Observe(F(Fact(false, true, null, false))));
+            Obs(t, F(Fact(false, true, null, false))));
     }
 
     // --- transitions -------------------------------------------------------------------
@@ -89,17 +98,17 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 120, false))));        // Far
+            Obs(t, F(Fact(true, false, 120, false))));        // Far
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 95.0) },
-            t.Observe(F(Fact(true, false, 95, false))));         // Far→Near: Approach
+            Obs(t, F(Fact(true, false, 95, false))));         // Far→Near: Approach
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 105, false))));        // still ≤110: no re-arm, silent
+            Obs(t, F(Fact(true, false, 105, false))));        // still ≤110: no re-arm, silent
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 95, false))));         // 105→95: silent (latched)
+            Obs(t, F(Fact(true, false, 95, false))));         // 105→95: silent (latched)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 115, false))));        // >110: re-arm, silent
+            Obs(t, F(Fact(true, false, 115, false))));        // >110: re-arm, silent
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 95.0) },
-            t.Observe(F(Fact(true, false, 95, false))));         // Far→Near again: Approach
+            Obs(t, F(Fact(true, false, 95, false))));         // Far→Near again: Approach
     }
 
     [Fact]
@@ -107,13 +116,13 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 120, true))));         // Far (behind)
+            Obs(t, F(Fact(true, false, 120, true))));         // Far (behind)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 90, true))));          // Far→Near behind: silent, latched
+            Obs(t, F(Fact(true, false, 90, true))));          // Far→Near behind: silent, latched
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 115, true))));         // >110: re-arm
+            Obs(t, F(Fact(true, false, 115, true))));         // >110: re-arm
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 90.0) },
-            t.Observe(F(Fact(true, false, 90, false))));         // Far→Near ahead: announces
+            Obs(t, F(Fact(true, false, 90, false))));         // Far→Near ahead: announces
     }
 
     [Fact]
@@ -121,9 +130,9 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 87, true))));          // Near, behind-latched
+            Obs(t, F(Fact(true, false, 87, true))));          // Near, behind-latched
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Enter, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));           // →Inside: Enter regardless of bearing
+            Obs(t, F(Fact(true, true, 0, false))));           // →Inside: Enter regardless of bearing
     }
 
     [Fact]
@@ -131,17 +140,17 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));           // Inside
+            Obs(t, F(Fact(true, true, 0, false))));           // Inside
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 50, false))));         // out 1 tick
+            Obs(t, F(Fact(true, false, 50, false))));         // out 1 tick
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, true, 0, false))));           // back inside: counter reset, no Leave
+            Obs(t, F(Fact(true, true, 0, false))));           // back inside: counter reset, no Leave
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 50, false))));         // out 1 tick
+            Obs(t, F(Fact(true, false, 50, false))));         // out 1 tick
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 50.0) },
-            t.Observe(F(Fact(true, false, 50, false))));         // out 2 ticks: Leave once
+            Obs(t, F(Fact(true, false, 50, false))));         // out 2 ticks: Leave once
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 50, false))));         // still out: no repeat
+            Obs(t, F(Fact(true, false, 50, false))));         // still out: no repeat
     }
 
     [Fact]
@@ -149,17 +158,17 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));           // Inside (everInside latches)
+            Obs(t, F(Fact(true, true, 0, false))));           // Inside (everInside latches)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 50, false))));         // out 1
+            Obs(t, F(Fact(true, false, 50, false))));         // out 1
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 50.0) },
-            t.Observe(F(Fact(true, false, 50, false))));         // out 2: Leave → Near
+            Obs(t, F(Fact(true, false, 50, false))));         // out 2: Leave → Near
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 115, false))));        // drift >110: Near→Far, NO re-arm (everInside)
+            Obs(t, F(Fact(true, false, 115, false))));        // drift >110: Near→Far, NO re-arm (everInside)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 90, false))));         // back ≤100: NO Approach (approach dead)
+            Obs(t, F(Fact(true, false, 90, false))));         // back ≤100: NO Approach (approach dead)
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Enter, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));           // re-entering: Enter again
+            Obs(t, F(Fact(true, true, 0, false))));           // re-entering: Enter again
     }
 
     [Fact]
@@ -167,11 +176,11 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AnnounceOnce, (double?)null) },
-            t.Observe(F(Fact(false, false, null, false))));      // announce-once
+            Obs(t, F(Fact(false, false, null, false))));      // announce-once
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Enter, (double?)null) },
-            t.Observe(F(Fact(false, true, null, false))));       // probe matches → Enter
+            Obs(t, F(Fact(false, true, null, false))));       // probe matches → Enter
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(false, false, null, false))));      // probe lost: NO Leave, silent
+            Obs(t, F(Fact(false, false, null, false))));      // probe lost: NO Leave, silent
     }
 
     [Fact]
@@ -179,11 +188,11 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));           // Inside
+            Obs(t, F(Fact(true, true, 0, false))));           // Inside
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(new Dictionary<string, LocationFact>()));  // key gone: silent prune, even while Inside
+            Obs(t, new Dictionary<string, LocationFact>()));  // key gone: silent prune, even while Inside
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, 0.0) },
-            t.Observe(F(Fact(true, true, 0, false))));           // reappears: fresh first-sight
+            Obs(t, F(Fact(true, true, 0, false))));           // reappears: fresh first-sight
     }
 
     [Fact]
@@ -191,13 +200,13 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 95.0) },
-            t.Observe(F(Fact(true, false, 95, false))));         // Near, latched
+            Obs(t, F(Fact(true, false, 95, false))));         // Near, latched
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(false, false, null, false))));      // tier-2 hiccup: frozen, silent
+            Obs(t, F(Fact(false, false, null, false))));      // tier-2 hiccup: frozen, silent
         // Zone/latch preserved through the hiccup — a fresh first-sight at 80 nm ahead
         // WOULD announce; the frozen-latched Near stays silent, proving no reset.
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 80, false))));
+            Obs(t, F(Fact(true, false, 80, false))));
     }
 
     [Fact]
@@ -205,10 +214,10 @@ public class RouteAdvisoryProximityTrackerTests
     {
         var t = new RouteAdvisoryProximityTracker();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 95.0) },
-            t.Observe(F(Fact(true, false, 95, false))));
+            Obs(t, F(Fact(true, false, 95, false))));
         t.Reset();
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 95.0) },
-            t.Observe(F(Fact(true, false, 95, false))));         // post-reset: fresh first-sight
+            Obs(t, F(Fact(true, false, 95, false))));         // post-reset: fresh first-sight
     }
 
     [Fact]
@@ -217,21 +226,21 @@ public class RouteAdvisoryProximityTrackerTests
         var t = new RouteAdvisoryProximityTracker();
         // No geometry, but probe says Inside at first sight → AtPosition
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, (double?)null) },
-            t.Observe(F(Fact(false, true, null, false))));
+            Obs(t, F(Fact(false, true, null, false))));
         // Now geometry appears: outside at 50 nm (first tick outside)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 50, false))));
+            Obs(t, F(Fact(true, false, 50, false))));
         // Still outside at 50 nm (second tick outside → Leave)
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 50.0) },
-            t.Observe(F(Fact(true, false, 50, false))));
+            Obs(t, F(Fact(true, false, 50, false))));
         // Recede past rearm threshold (120 nm → Far)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 120, false))));
+            Obs(t, F(Fact(true, false, 120, false))));
         // Re-approach within Approach ring at 90 nm ahead
         // BUG: before fix, this spuriously announces Approach (because ApproachLatched wasn't set)
         // FIXED: this must be silent (EverInside latches Approach off forever)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 90, false))));
+            Obs(t, F(Fact(true, false, 90, false))));
     }
 
     [Fact]
@@ -240,24 +249,24 @@ public class RouteAdvisoryProximityTrackerTests
         var t = new RouteAdvisoryProximityTracker();
         // No geometry at first sight → AnnounceOnce
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.AnnounceOnce, (double?)null) },
-            t.Observe(F(Fact(false, false, null, false))));
+            Obs(t, F(Fact(false, false, null, false))));
         // Probe matches (becomes Inside) → Enter
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Enter, (double?)null) },
-            t.Observe(F(Fact(false, true, null, false))));
+            Obs(t, F(Fact(false, true, null, false))));
         // Geometry appears: outside at 50 nm (first tick outside)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 50, false))));
+            Obs(t, F(Fact(true, false, 50, false))));
         // Still outside at 50 nm (second tick outside → Leave)
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 50.0) },
-            t.Observe(F(Fact(true, false, 50, false))));
+            Obs(t, F(Fact(true, false, 50, false))));
         // Recede past rearm threshold (120 nm → Far)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 120, false))));
+            Obs(t, F(Fact(true, false, 120, false))));
         // Re-approach within Approach ring at 90 nm ahead
         // BUG: before fix, this spuriously announces Approach
         // FIXED: this must be silent (EverInside latches Approach off forever)
         AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
-            t.Observe(F(Fact(true, false, 90, false))));
+            Obs(t, F(Fact(true, false, 90, false))));
     }
 
     // --- wording -----------------------------------------------------------------------
@@ -280,5 +289,43 @@ public class RouteAdvisoryProximityTrackerTests
             ActiveSkyFormatting.BuildProximityAnnouncement(RouteAdvisoryEvent.Enter, a, 0));
         Assert.Equal("Left advisory area: MHTG SIGMET J5.",
             ActiveSkyFormatting.BuildProximityAnnouncement(RouteAdvisoryEvent.Leave, a, null));
+    }
+
+    // --- configurable ring (RouteAdvisoryProximityNm) ----------------------------------
+
+    [Fact]
+    public void Custom_ring_is_respected()
+    {
+        var t = new RouteAdvisoryProximityTracker();
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            Obs(t, F(Fact(true, false, 80, false)), 50));     // 80 > 50: Far, silent
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 45.0) },
+            Obs(t, F(Fact(true, false, 45, false)), 50));     // 45 <= 50: Approach
+    }
+
+    [Fact]
+    public void Rearm_band_rides_the_configured_ring()
+    {
+        var t = new RouteAdvisoryProximityTracker();
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 45.0) },
+            Obs(t, F(Fact(true, false, 45, false)), 50));     // Near, Approach
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            Obs(t, F(Fact(true, false, 55, false)), 50));     // >50, <=60: still Near, silent
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            Obs(t, F(Fact(true, false, 65, false)), 50));     // >60: re-arm to Far, silent
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 45.0) },
+            Obs(t, F(Fact(true, false, 45, false)), 50));     // Far→Near again: Approach
+    }
+
+    [Fact]
+    public void Shrinking_the_ring_mid_flight_rearms_silently()
+    {
+        var t = new RouteAdvisoryProximityTracker();
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 80.0) },
+            Obs(t, F(Fact(true, false, 80, false)), 100));    // ring 100: Approach at 80
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            Obs(t, F(Fact(true, false, 80, false)), 50));     // ring shrinks to 50: Near→Far (80 > 60), silent
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 45.0) },
+            Obs(t, F(Fact(true, false, 45, false)), 50));     // Far→Near: Approach again
     }
 }

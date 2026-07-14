@@ -2312,12 +2312,16 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// Proximity-event route advisories (design 2026-07-14): every 30 s tick, fetch +
-    /// parse the on-route advisories, compute a location fact per advisory, and let the
-    /// proximity zone tracker decide what to say. An advisory announces when the aircraft
-    /// first comes within 100 nm of its area (ahead), when it Enters, and when it Leaves —
-    /// nothing else repeats (no more 15-minute reminder, no re-announce of areas behind or
-    /// of hourly SIGMET re-issues beyond 100 nm). Gates unchanged: AnnounceRouteAdvisories
+    /// Proximity-event route advisories (design 2026-07-14, distance made a setting
+    /// 2026-07-14 same-day revision): every 30 s tick, fetch + parse the on-route advisories,
+    /// compute a location fact per advisory, and let the proximity zone tracker decide what to
+    /// say. An advisory announces when the aircraft first comes within the configured approach
+    /// ring (<see cref="MSFSBlindAssist.Settings.UserSettings.RouteAdvisoryProximityNm"/>,
+    /// default 100 nm, clamped 10-500) of its area (ahead), when it Enters, and when it
+    /// Leaves — nothing else repeats (no more 15-minute reminder, no re-announce of areas
+    /// behind or of hourly SIGMET re-issues beyond the ring). Independent of
+    /// <see cref="MSFSBlindAssist.Settings.UserSettings.SigmetProximityRangeNm"/> — the two
+    /// settings must never be folded together. Gates unchanged: AnnounceRouteAdvisories
     /// setting (caller) + the central ActiveSky gate below.
     /// </summary>
     private async Task CheckRouteAdvisoriesAsync()
@@ -2375,8 +2379,12 @@ public partial class MainForm
 
             if (!IsHandleCreated || IsDisposed) return;
 
+            // Clamp defensively: the NumericUpDown enforces 10-500 in the settings UI, but a
+            // hand-edited settings JSON must not hand the tracker a 0/negative or absurd ring.
+            double approachNm = Math.Clamp(MSFSBlindAssist.Settings.SettingsManager.Current.RouteAdvisoryProximityNm, 10, 500);
+
             var byKey = advisories.ToDictionary(a => a.Key, a => a, StringComparer.OrdinalIgnoreCase);
-            foreach (var (key, evt, dist) in _routeAdvisoryProximity.Observe(facts))
+            foreach (var (key, evt, dist) in _routeAdvisoryProximity.Observe(facts, approachNm))
             {
                 if (!byKey.TryGetValue(key, out var adv)) continue;   // defensive; facts derive from advisories
                 string phrase = MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProximityAnnouncement(evt, adv, dist);

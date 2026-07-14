@@ -403,6 +403,17 @@ public class UserSettings
         /// </summary>
         public bool AnnounceRouteAdvisoriesEnabled { get; set; } = true;
 
+        /// <summary>
+        /// Approach-ring distance (nautical miles) for the en-route advisory proximity
+        /// announcements (<see cref="Services.RouteAdvisoryProximityTracker"/>) — the ring
+        /// at which an ahead advisory first announces "approach". Independent of
+        /// <see cref="SigmetProximityRangeNm"/> (the nearby-SIGMET/AIRMET/PIREP alert range)
+        /// BY DESIGN: tuning one must not silently move the other. Default 100 (matches the
+        /// tracker's former fixed constant); UI-clamped 10-500. A missing key in an older
+        /// settings JSON deserializes to this property initializer's default, 100.
+        /// </summary>
+        public int RouteAdvisoryProximityNm { get; set; } = 100;
+
         // HS787 bridge — community folder override for non-standard installs
         public string? Hs787CommunityFolderOverride { get; set; } = null;
         // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
@@ -527,6 +538,7 @@ public class UserSettings
             AnnounceTurbulenceEnabled = AnnounceTurbulenceEnabled,
             AnnounceIcingEnabled = AnnounceIcingEnabled,
             AnnounceRouteAdvisoriesEnabled = AnnounceRouteAdvisoriesEnabled,
+            RouteAdvisoryProximityNm = RouteAdvisoryProximityNm,
             TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
             TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,

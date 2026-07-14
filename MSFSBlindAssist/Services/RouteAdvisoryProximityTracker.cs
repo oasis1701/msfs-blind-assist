@@ -9,8 +9,8 @@ internal enum RouteAdvisoryEvent { AnnounceOnce, Approach, AtPosition, Enter, Le
 /// one <see cref="Observe"/> call per weather tick maps a full <see cref="LocationFact"/>
 /// set to the announcement events that just became true, keeping per-key zone
 /// (<see cref="Zone"/>), an Approach latch, an ever-inside latch, and an outside-tick
-/// counter. Announce when the aircraft first comes within <see cref="ApproachNm"/> nm of an
-/// area (ahead), when it Enters, and when it Leaves — nothing else repeats.
+/// counter. Announce when the aircraft first comes within the caller-supplied approach ring
+/// (nm) of an area (ahead), when it Enters, and when it Leaves — nothing else repeats.
 ///
 /// Design invariants (see the §2 table — do not "simplify" these away):
 /// <list type="bullet">
@@ -49,10 +49,15 @@ internal enum RouteAdvisoryEvent { AnnounceOnce, Approach, AtPosition, Enter, Le
 /// </summary>
 internal sealed class RouteAdvisoryProximityTracker
 {
-    /// <summary>Ring at which an ahead advisory first announces (nm). Fixed constant, no setting.</summary>
-    public const double ApproachNm = 100;
-    /// <summary>Hysteresis band: a Near key re-arms Approach only after receding past this (nm).</summary>
-    public const double RearmNm = 110;
+    /// <summary>Default ring at which an ahead advisory first announces (nm) — mirrors
+    /// <see cref="Settings.UserSettings.RouteAdvisoryProximityNm"/>'s default. The ring itself
+    /// is now a per-call parameter (see <see cref="Observe"/>) so a mid-flight settings change
+    /// applies on the next tick.</summary>
+    public const double DefaultApproachNm = 100;
+    /// <summary>Hysteresis band: a Near key re-arms Approach only after receding past
+    /// (approachNm + this) nm. Fixed — the tuned hysteresis WIDTH, not a second setting; it
+    /// rides whatever ring the caller passes.</summary>
+    public const double RearmBandNm = 10;
     /// <summary>Consecutive not-inside ticks required to confirm a Leave (~1 min at the 30 s cadence).</summary>
     public const int LeaveConfirmTicks = 2;
 
@@ -70,10 +75,21 @@ internal sealed class RouteAdvisoryProximityTracker
 
     /// <summary>Maps the full fact set for this tick to the events that just became true.
     /// See the class summary for the complete-fact-set contract — callers freeze the tick
-    /// on anything short of an exact-match fact set.</summary>
+    /// on anything short of an exact-match fact set.
+    /// <paramref name="approachNm"/> is the live approach-ring distance (nm) for this tick —
+    /// a per-call parameter, not a field, so a mid-flight settings change
+    /// (<see cref="Settings.UserSettings.RouteAdvisoryProximityNm"/>) takes effect on the very
+    /// next call with no rewiring. The re-arm threshold is always <paramref name="approachNm"/>
+    /// + <see cref="RearmBandNm"/>. Edge-based transitions make a threshold change mid-flight
+    /// behave sanely without any special-casing: shrinking the ring lets an already-Near key
+    /// re-arm silently the moment it sits outside the new (ring + band) boundary; growing the
+    /// ring fires Approach on the very next tick for any key that is now genuinely inside it
+    /// (from the tracker's point of view that key just entered the ring, whether the aircraft
+    /// moved or the ring did).</summary>
     public IReadOnlyList<(string Key, RouteAdvisoryEvent Event, double? DistanceNm)>
-        Observe(IReadOnlyDictionary<string, LocationFact> facts)
+        Observe(IReadOnlyDictionary<string, LocationFact> facts, double approachNm)
     {
+        double rearmNm = approachNm + RearmBandNm;
         var events = new List<(string, RouteAdvisoryEvent, double?)>();
 
         // Rule 1 — prune: any tracked key absent from the fact set has expired (silent),
@@ -115,7 +131,7 @@ internal sealed class RouteAdvisoryProximityTracker
                         st.ApproachLatched = true;
                         events.Add((key, RouteAdvisoryEvent.AtPosition, fact.DistanceNm));
                     }
-                    else if (d <= ApproachNm)
+                    else if (d <= approachNm)
                     {
                         st.Zone = Zone.Near;
                         st.ApproachLatched = true;
@@ -187,14 +203,14 @@ internal sealed class RouteAdvisoryProximityTracker
                     st.OutsideTicks++;
                     if (st.OutsideTicks >= LeaveConfirmTicks)
                     {
-                        st.Zone = dist <= ApproachNm ? Zone.Near : Zone.Far;
+                        st.Zone = dist <= approachNm ? Zone.Near : Zone.Far;
                         st.OutsideTicks = 0;
                         events.Add((key, RouteAdvisoryEvent.Leave, fact.DistanceNm));
                     }
                     break;
 
                 case Zone.Near:
-                    if (dist > RearmNm)
+                    if (dist > rearmNm)
                     {
                         st.Zone = Zone.Far;
                         // Re-arm Approach only if the area has never been Inside — once
@@ -204,7 +220,7 @@ internal sealed class RouteAdvisoryProximityTracker
                     break;
 
                 case Zone.Far:
-                    if (dist <= ApproachNm)
+                    if (dist <= approachNm)
                     {
                         st.Zone = Zone.Near;
                         if (!st.ApproachLatched)
