@@ -97,7 +97,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS",
+                "Control Stand", "Transponder/TCAS", "Weather Radar",
                 "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
                 "Boris Audio Works"
             },
@@ -3854,6 +3854,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 RenderAsButton = true,
                 IsMomentary = true
             },
+            ["WXR_Test"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WXR_Test",
+                DisplayName = "Weather Radar Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
             ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
             {
                 Name = "TRANSPONDER CODE:1",
@@ -5219,6 +5228,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "TRANSPONDER_CODE_SET"
             },
 
+            // Pedestal — Weather Radar (managed PWS test sequence)
+            ["Weather Radar"] = new List<string>
+            {
+                "WXR_Test"
+            },
+
             // Pedestal — CDU
 
             // Pedestal — Evacuation
@@ -5361,6 +5376,38 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["switch_1008_a"] = "EVT_FO_ARMREST_LEFT_SWITCH",
             ["switch_1009_a"] = "EVT_FO_ARMREST_RIGHT_SWITCH",
         };
+
+    private const uint MOUSE_FLAG_LEFTSINGLE_U  = 0x20000000u;
+    private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
+
+    /// <summary>Held transmit press/release — for test buttons whose CDA param-1 press is
+    /// silent (TCAS TEST) or that need a managed sequence (WXR test).</summary>
+    private static async Task HeldTransmitAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, int holdMs)
+    {
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
+        await Task.Delay(holdMs).ConfigureAwait(false);
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
+    }
+
+    /// <summary>WXR/PWS test managed sequence — overlay on (blind toggle, assumed OFF) →
+    /// settle → TEST (aural "MONITOR RADAR DISPLAY … WINDSHEAR") → wait → WX mode (never
+    /// leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.</summary>
+    private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
+    {
+        if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+            !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+            !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+            return;
+        const int quick = MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.QuickTestHoldMs;
+        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
+        await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrOverlaySettleMs).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)testEv, quick).ConfigureAwait(false);
+        await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrTestWaitMs).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)wxEv, quick).ConfigureAwait(false);
+        await Task.Delay(350).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
+    }
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
@@ -5701,7 +5748,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["XPDR_AltSource"]          = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]             = "EVT_TCAS_MODE",
             ["XPDR_Ident"]              = "EVT_TCAS_IDENT",
-            ["XPDR_Test"]               = "EVT_TCAS_TEST",
+            // XPDR_Test is deliberately NOT in this map — its CDA param-1 press is
+            // SILENT (live-verified 2026-07-13); it dispatches via the dedicated
+            // transmit press/release branch in HandleUIVariableSet.
 
             // --- Warning ---
             ["WARN_Reset_L"]            = "EVT_MASTER_WARNING_RESET_LEFT",
@@ -6065,6 +6114,31 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 : $"0 (>L:Window_OpenClose_{side}, Bool) 0 {exitIndex} (>K:TOGGLE_AIRCRAFT_EXIT_FAST) " +
                   $"1 (>L:WindowClose{side}, Bool) 0 (>L:WindowOpen{side}, Bool)";
             simConnect.ExecuteCalculatorCode(code);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1e. Synthetic system-test buttons (transmit press/hold/release — the
+        //     same live-verified mechanism as the FO executor's pseudo-keys;
+        //     timings shared from the executor's public consts). TCAS TEST
+        //     commits ONLY via the transmit press/release: the generic momentary
+        //     CDA param-1 press is SILENT for this button (live-verified
+        //     2026-07-13; same finding family as EVT_OH_FIRE_OVHT_TEST).
+        //     Aural "TCAS TEST" → ~8 s → "TCAS TEST PASS" is the verification.
+        //     Fire-and-forget: the tests announce themselves aurally in-sim,
+        //     no app-side announcement. These keys are deliberately NOT in
+        //     _simpleEventMap (this branch must run before the section-2
+        //     lookup, which early-returns false for unmapped keys).
+        // ------------------------------------------------------------------
+        if (varKey == "XPDR_Test" && EventIds.TryGetValue("EVT_TCAS_TEST", out int tcasTestEv))
+        {
+            _ = HeldTransmitAsync(simConnect, (uint)tcasTestEv,
+                MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.QuickTestHoldMs);
+            return true;
+        }
+        if (varKey == "WXR_Test")
+        {
+            _ = WxrTestSequenceAsync(simConnect);
             return true;
         }
 
