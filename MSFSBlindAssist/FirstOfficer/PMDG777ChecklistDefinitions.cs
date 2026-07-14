@@ -155,10 +155,10 @@ public static class PMDG777ChecklistDefinitions
             // (Fenix PF_FIRE_* pattern); ticking runs the same held test as the flow.
             ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire and overheat test",
                 (e, _) => e.FireOvhtTestAsync()),
+            // TCAS test stays with the fire test; WXR is at the END of this group (mirroring
+            // the flow order) so the two test audios never overlap.
             ActionManualAsync("PF_TCAS_TEST", "PREFLIGHT", "TCAS test",
                 (e, _) => e.TcasTestAsync()),
-            ActionManualAsync("PF_WXR_TEST", "PREFLIGHT", "Weather radar test",
-                (e, _) => e.WxrTestAsync()),
             Auto("PF_WINDOW_HEAT", "PREFLIGHT", "Window Heat switches: ON",
                 "ICE_WindowHeat_Sw_ON_0", v => v > 0.5,
                 new[] { "ICE_WindowHeat_Sw_ON_1", "ICE_WindowHeat_Sw_ON_2", "ICE_WindowHeat_Sw_ON_3" },
@@ -268,6 +268,10 @@ public static class PMDG777ChecklistDefinitions
             Manual("PF_BARO_SET", "PREFLIGHT", "Barometric reference: Set local setting"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
             Reminder("PF_ATIS", "PREFLIGHT", "Obtain ATIS"),
+            // WXR test last (mirrors the flow) so its callout never overlaps TCAS's;
+            // ticking fires the same managed sequence the flow runs.
+            ActionManualAsync("PF_WXR_TEST", "PREFLIGHT", "Weather radar test",
+                (e, _) => e.WxrTestAsync()),
         }
     };
 

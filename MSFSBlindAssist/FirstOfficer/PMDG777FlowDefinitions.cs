@@ -123,13 +123,12 @@ public static class PMDG777FlowDefinitions
             // Held FIRE/OVHT test (executor pseudo-key; fire bell audible while held).
             SW("CP_FIRE_TEST", "Fire and overheat test — listen for the fire bell",
                 "FIRE_OVHT_TEST", 1, checklistItemId: "PF_FIRE_TEST"),
-            // System self-tests (executor pseudo-keys — transmit press/release; the 777 CDA
-            // param-1 momentary is SILENT for TCAS TEST, live-verified 2026-07-13). The WXR
-            // step runs the managed overlay-on → TEST → callout → WX → overlay-off sequence.
+            // TCAS test stays with the fire test (executor pseudo-key — transmit press/release;
+            // the 777 CDA param-1 momentary is SILENT for TCAS TEST, live-verified 2026-07-13).
+            // Its "TEST PASS" callout plays ~8 s later; the WXR test is moved to the END of
+            // the flow so the two test audios never overlap.
             SW("CP_TCAS_TEST", "TCAS test — listen for TCAS test pass",
                 "TCAS_TEST", 1, checklistItemId: "PF_TCAS_TEST"),
-            SW("CP_WXR_TEST", "Weather radar test — listen for the windshear callout",
-                "WXR_TEST", 1, checklistItemId: "PF_WXR_TEST"),
             SW("CP_WINDOW_HEAT_1","Window heat 1: ON",         "EVT_OH_ICE_WINDOW_HEAT_1",           1),
             SW("CP_WINDOW_HEAT_2","Window heat 2: ON",         "EVT_OH_ICE_WINDOW_HEAT_2",           1),
             SW("CP_WINDOW_HEAT_3","Window heat 3: ON",         "EVT_OH_ICE_WINDOW_HEAT_3",           1),
@@ -196,6 +195,11 @@ public static class PMDG777FlowDefinitions
                 PostActionDelayMs = 400 },
             Captain("CP_RESET_CL",   "Reset checklists and obtain IFR clearance"),
             Captain("CP_ATIS",       "Obtain ATIS"),
+            // Weather-radar test runs LAST so its windshear callout never overlaps TCAS's
+            // "TEST PASS" (above). Managed sequence: overlay on → TEST → callout → WX mode →
+            // overlay off (~30 s). Concludes the flow.
+            SW("CP_WXR_TEST", "Weather radar test — listen for the windshear callout",
+                "WXR_TEST", 1, checklistItemId: "PF_WXR_TEST"),
         }
     };
 

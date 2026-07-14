@@ -99,17 +99,13 @@ public static class PMDG737FlowDefinitions
                 "OVSPD_TEST_1", 1, checklistItemId: "PF_OVSPD_TEST1"),
             SW("PF_OVSPD_TEST2", "Overspeed warning test 2 — listen for the clacker",
                 "OVSPD_TEST_2", 1, checklistItemId: "PF_OVSPD_TEST2"),
-            // System self-tests (executor pseudo-keys, transmit press/release — live-verified
-            // 2026-07-13). GPWS variant (short/long) resolves from FOGpws737LongTest at
-            // dispatch; the label stays generic so a settings change needs no window reopen.
-            // The WXR step runs the full managed sequence (overlay on → TEST → callout →
-            // WX mode → overlay off) and takes ~30 s.
-            SW("PF_GPWS_TEST", "GPWS system test — listen for the self-test callouts",
-                "GPWS_TEST", 1, checklistItemId: "PF_GPWS_TEST"),
+            // TCAS test stays here with the other warning tests (executor pseudo-key,
+            // transmit press/release — live-verified 2026-07-13). Its "TEST PASS" callout
+            // plays ~8 s after the press; the GPWS and WXR tests are deliberately moved to
+            // the END of the flow (below) so the three test audios never overlap — the ~15
+            // preflight steps in between give TCAS's callout room to finish.
             SW("PF_TCAS_TEST", "TCAS test — listen for TCAS test pass",
                 "TCAS_TEST", 1, checklistItemId: "PF_TCAS_TEST"),
-            SW("PF_WXR_TEST", "Weather radar test — listen for the windshear callout",
-                "WXR_TEST", 1, checklistItemId: "PF_WXR_TEST"),
             SW("PF_YD", "Yaw damper: ON", "EVT_OH_YAW_DAMPER", 1),
             Multi("PF_FUEL_OFF", "Fuel pumps: OFF",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
@@ -149,6 +145,15 @@ public static class PMDG737FlowDefinitions
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "EVT_EFIS_CPT_MODE", 2),
             SW("PF_EFIS_RANGE", "EFIS range: 40", "EVT_EFIS_CPT_RANGE", 3),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
+            // GPWS + weather-radar tests run LAST so their (and TCAS's, above) audio never
+            // overlaps. GPWS variant (short/long) resolves from FOGpws737LongTest at dispatch;
+            // the label stays generic so a settings change needs no window reopen. The WXR
+            // step runs the full managed sequence (overlay on → TEST → callout → WX mode →
+            // overlay off, ~30 s) and concludes the flow.
+            SW("PF_GPWS_TEST", "GPWS system test — listen for the self-test callouts",
+                "GPWS_TEST", 1, checklistItemId: "PF_GPWS_TEST"),
+            SW("PF_WXR_TEST", "Weather radar test — listen for the windshear callout",
+                "WXR_TEST", 1, checklistItemId: "PF_WXR_TEST"),
         }
     };
 

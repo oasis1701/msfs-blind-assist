@@ -814,14 +814,19 @@ Aircraft powered (ground power or APU), IRS/ADIRU aligned — the tests are sile
 battery alone (GPWS INOP lit until alignment). All actuation is transmit press/release;
 no app-side announcements (the aircraft audio is the verification).
 
+**Ordering (deliberate — the tests are SEPARATED so their audios never overlap):** TCAS test
+stays with the warning tests near the start (its "TEST PASS" plays ~8 s later, over the
+following preflight steps); GPWS then WXR are the LAST two flow steps. Confirm you never hear
+two test audios at once.
+
 ### V.1 737 preflight flow — short GPWS variant (737 loaded)
 1. Settings → First Officer → GPWS test type = Short test.
-2. Run the Preflight flow. After the overspeed tests, expect in order:
-   - GPWS short self-test callouts.
-   - "TCAS TEST" then, ~8 s later, "TCAS TEST PASS".
-   - Weather-radar sequence ending in "MONITOR RADAR DISPLAY … WINDSHEAR" (~30 s total).
-3. The flow continues after each; PF_GPWS_TEST / PF_TCAS_TEST / PF_WXR_TEST tick in the
-   PREFLIGHT checklist.
+2. Run the Preflight flow. Expect:
+   - Early (right after the overspeed tests): "TCAS TEST" then, ~8 s later, "TCAS TEST PASS".
+   - At the very END of the flow: GPWS short self-test callouts, then the weather-radar
+     sequence ending in "MONITOR RADAR DISPLAY … WINDSHEAR" (the concluding step).
+3. The flow continues after each; PF_TCAS_TEST (early) and PF_GPWS_TEST / PF_WXR_TEST (end)
+   tick in the PREFLIGHT checklist.
 
 ### V.2 737 GPWS long variant + checklist ticks
 1. Settings → GPWS test type = Long test (NO FO-window reopen needed — read at dispatch).
@@ -840,9 +845,10 @@ no app-side announcements (the aircraft audio is the verification).
    mode were restored (overlay off, radar out of TEST back to WX) after the first run.
 
 ### V.5 777 TCAS + WXR (777 loaded)
-1. Run Cockpit Preparation: after the fire/overheat test, expect "TCAS TEST" / "TCAS TEST
-   PASS" then the weather-radar windshear callout. Flow steps CP_TCAS_TEST / CP_WXR_TEST
-   tick checklist items PF_TCAS_TEST / PF_WXR_TEST.
+1. Run Cockpit Preparation: TCAS test stays right after the fire/overheat test near the
+   start ("TCAS TEST" / "TCAS TEST PASS"); the weather-radar windshear callout is the LAST
+   flow step (separated so the two audios don't overlap). Flow steps CP_TCAS_TEST (early) /
+   CP_WXR_TEST (end) tick checklist items PF_TCAS_TEST / PF_WXR_TEST.
 2. Panels: Pedestal → Transponder/TCAS → "TCAS Test" (must be audible — the CDA press was
    silent, so this confirms the transmit fix), and Pedestal → Weather Radar →
    "Weather Radar Test".

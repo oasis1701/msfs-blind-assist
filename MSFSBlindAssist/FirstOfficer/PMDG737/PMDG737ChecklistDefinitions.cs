@@ -102,12 +102,10 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH", AircraftActionExecutor.OverspeedTestHoldMs)),
             ActionManualAsync("PF_OVSPD_TEST2", "PREFLIGHT", "Overspeed warning test 2",
                 (e, _) => e.WarningTestAsync("EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH", AircraftActionExecutor.OverspeedTestHoldMs)),
-            ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
-                (e, _) => e.GpwsTestAsync()),
+            // TCAS test stays with the warning tests; GPWS + WXR are at the END of this
+            // group (mirroring the flow order) so their audios never overlap.
             ActionManualAsync("PF_TCAS_TEST", "PREFLIGHT", "TCAS test",
                 (e, _) => e.TcasTestAsync()),
-            ActionManualAsync("PF_WXR_TEST", "PREFLIGHT", "Weather radar test",
-                (e, _) => e.WxrTestAsync()),
             Auto("PF_YD", "PREFLIGHT", "Yaw damper: ON", "FCTL_YawDamper_Sw", v => v > 0.5, (e, _) => e.SetYawDamper(1)),
             Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1", "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
@@ -146,6 +144,12 @@ public static class PMDG737ChecklistDefinitions
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "EFIS_ModeSel_0", v => v > 1.5 && v < 2.5, (e, _) => e.SetEFISModeCapt(2)),
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "EFIS_RangeSel_0", v => v > 2.5 && v < 3.5, (e, _) => e.SetEFISRangeCapt(3)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
+            // GPWS + WXR tests last (mirrors the flow) so their audio never overlaps TCAS's
+            // or each other's; ticking fires the same test the flow runs.
+            ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
+                (e, _) => e.GpwsTestAsync()),
+            ActionManualAsync("PF_WXR_TEST", "PREFLIGHT", "Weather radar test",
+                (e, _) => e.WxrTestAsync()),
         }
     };
 

@@ -43,15 +43,35 @@ public class FoSystemTestsStructureTests
     }
 
     [Fact]
-    public void B737_TestsFollowOverspeedTests()
+    public void B737_TcasStaysEarly_GpwsAndWxrConcludeFlow()
     {
+        // The three test audios must not overlap: TCAS stays with the warning tests
+        // (its "TEST PASS" plays ~8 s later, over the following preflight steps), while
+        // GPWS + WXR are moved to the very end so nothing else's test audio collides.
         var steps = B737.PMDG737FlowDefinitions.Build()
             .First(f => f.Id == "PREFLIGHT").Steps.Select(s => s.Id).ToList();
         int ovspd2 = steps.IndexOf("PF_OVSPD_TEST2");
-        Assert.True(ovspd2 >= 0);
-        Assert.Equal(ovspd2 + 1, steps.IndexOf("PF_GPWS_TEST"));
-        Assert.Equal(ovspd2 + 2, steps.IndexOf("PF_TCAS_TEST"));
-        Assert.Equal(ovspd2 + 3, steps.IndexOf("PF_WXR_TEST"));
+        int tcas = steps.IndexOf("PF_TCAS_TEST");
+        int gpws = steps.IndexOf("PF_GPWS_TEST");
+        int wxr = steps.IndexOf("PF_WXR_TEST");
+        Assert.True(ovspd2 >= 0 && tcas >= 0 && gpws >= 0 && wxr >= 0);
+        Assert.Equal(ovspd2 + 1, tcas);                       // TCAS stays with warning tests
+        Assert.True(gpws > tcas + 1, "GPWS must be well separated from TCAS");
+        Assert.Equal(steps.Count - 2, gpws);                  // GPWS second-to-last
+        Assert.Equal(steps.Count - 1, wxr);                   // WXR concludes the flow
+    }
+
+    [Fact]
+    public void B777_TcasStaysEarly_WxrConcludesFlow()
+    {
+        var steps = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build()
+            .SelectMany(f => f.Steps).Select(s => s.Id).ToList();
+        int fire = steps.IndexOf("CP_FIRE_TEST");
+        int tcas = steps.IndexOf("CP_TCAS_TEST");
+        int wxr = steps.IndexOf("CP_WXR_TEST");
+        Assert.True(fire >= 0 && tcas >= 0 && wxr >= 0);
+        Assert.Equal(fire + 1, tcas);                         // TCAS stays with the fire test
+        Assert.True(wxr > tcas + 1, "WXR must be well separated from TCAS");
     }
 
     [Theory]
