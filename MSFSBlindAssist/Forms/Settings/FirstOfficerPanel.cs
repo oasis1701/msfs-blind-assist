@@ -19,6 +19,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private Label apAltitudeLabel = null!;
     private TextBox apAltitudeText = null!;
     private CheckBox autoLights10kCheck = null!;
+    private CheckBox autoCenterPumpsCheck = null!;
     private Label autoSeatbeltLabel = null!;
     private ComboBox autoSeatbeltCombo = null!;
     private Label gpwsTestLabel = null!;
@@ -147,11 +148,21 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         };
         gpwsTestCombo.Items.AddRange(new object[] { "Short test", "Long test" });
 
+        autoCenterPumpsCheck = new CheckBox
+        {
+            Text = "Auto-manage center fuel pumps (PMDG 737 and 777)",
+            Location = new Point(20, 335),
+            AutoSize = true,
+            AccessibleName = "Automatic center fuel pump management",
+            AccessibleDescription = "On the PMDG 737 and 777, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
+        };
+
         Controls.AddRange(new Control[]
         {
             titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
             apAltitudeLabel, apAltitudeText, autoLights10kCheck,
-            autoSeatbeltLabel, autoSeatbeltCombo, gpwsTestLabel, gpwsTestCombo
+            autoSeatbeltLabel, autoSeatbeltCombo, gpwsTestLabel, gpwsTestCombo,
+            autoCenterPumpsCheck
         });
     }
 
@@ -169,6 +180,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoSeatbeltCombo.TabIndex = 9;
         gpwsTestLabel.TabIndex = 10;
         gpwsTestCombo.TabIndex = 11;
+        autoCenterPumpsCheck.TabIndex = 12;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -179,6 +191,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoApCheck.Checked = settings.FOAutoApEnabled;
         apAltitudeText.Text = settings.FOAutoApEngageAltitudeAgl.ToString();
         autoLights10kCheck.Checked = settings.FOAutoLights10kEnabled;
+        autoCenterPumpsCheck.Checked = settings.FOAutoCenterPumpsEnabled;
         autoSeatbeltCombo.SelectedIndex = Math.Clamp(settings.FOAutoSeatbeltMode, 0, 2);
         gpwsTestCombo.SelectedIndex = settings.FOGpws737LongTest ? 1 : 0;
     }
@@ -204,6 +217,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoApEnabled = autoApCheck.Checked;
         settings.FOAutoApEngageAltitudeAgl = int.Parse(apAltitudeText.Text);
         settings.FOAutoLights10kEnabled = autoLights10kCheck.Checked;
+        settings.FOAutoCenterPumpsEnabled = autoCenterPumpsCheck.Checked;
         settings.FOAutoSeatbeltMode = autoSeatbeltCombo.SelectedIndex < 0 ? 0 : autoSeatbeltCombo.SelectedIndex;
         settings.FOGpws737LongTest = gpwsTestCombo.SelectedIndex == 1;
     }
