@@ -4,9 +4,11 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.FirstOfficer;
 
 /// <summary>
-/// PMDG 777 automatic flap management placeholder. Gear and AP-engage moved to the
-/// universal UniversalAutomationService (2026-07); the 777 has no auto-flap schedule,
-/// so AutoFlapsEnabled is stored but never acted on. Retained for IFoAutoManager symmetry.
+/// PMDG 777 per-aircraft FO automation. Gear and AP-engage moved to the universal
+/// UniversalAutomationService (2026-07); the 777 has no auto-flap schedule, so
+/// AutoFlapsEnabled is stored but never acted on. <see cref="Update"/> drives center-tank
+/// fuel pump automation via the shared <see cref="CenterFuelPumpAutomation"/> policy,
+/// gated on <c>SettingsManager.Current.FOAutoCenterPumpsEnabled</c>.
 /// </summary>
 public class FOAutoManager : IFoAutoManager
 {

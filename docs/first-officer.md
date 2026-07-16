@@ -48,6 +48,24 @@ flaps (FBW A380 and A32NX)." In-sim test plan:
 
 **NO FMC programming (deliberate, do NOT re-add).** The FO does NOT program the CDU — `FmcProgrammingService`, the `ProgramFmc` flow-action type + handler were deleted and `Load SimBrief` is **load-only**. Keep checklist text + V-speed read-outs + SimBrief load; never reintroduce CDU-keystroke automation. (User decision; mirrored in project memory `project_no_fmc_programming`.)
 
+### Center fuel pump auto-management (PMDG 737 + 777)
+
+Opt-in via `FOAutoCenterPumpsEnabled` (First Officer settings, default ON; Boeing/PMDG
+only). Runs in the per-aircraft `FOAutoManager.Update` via the shared, unit-tested
+`CenterFuelPumpAutomation` policy. Invariants:
+
+- **Arm ON is ground-only** and gated on the wing pumps already being ON (fuel-panel
+  setup has begun) — never fires cold-and-dark, never in flight.
+- **OFF trigger is the center-pump LOW PRESSURE annunciator**, debounced
+  (`LowPressConfirmTicks`) and only while the pumps are on — a quantity number is used
+  only to *arm*, never to switch off.
+- **Once switched off dry, stays off for the leg**; a turnaround refuel (center qty rising
+  back above `ArmThresholdLbs` on the ground) re-arms.
+- A `SettleTicksAfterOn` window suppresses an immediate OFF right after arming while pump
+  pressure builds.
+- Both actions announce (background state change): "Center fuel pumps on." /
+  "Center tank low. Center fuel pumps off." Thresholds are tune-in-sim consts.
+
 **GOTCHAS (each was a real bug on this branch):**
 - **Transition altitude/level crossings use TWO INDEPENDENT edge detectors (`FirstOfficer/TransitionCrossingDetector.cs`), never one shared "in STD zone" latch (2026-07-15).** All five phase monitors previously tracked a single `_prevInStd` with a trailing `if (nowAboveTrans) _prevInStd = true; else if (nowBelowTrans) _prevInStd = false;`. That silently spammed the "set local QNH" call-out on descent whenever the **destination transition LEVEL sat more than ~600 ft above the origin transition ALTITUDE** (very common in Europe, e.g. TA 4000 / TL 6000) — the two ±300 ft hysteresis bands then OVERLAP, and in the overlap the QNH branch fired every tick while the `nowAboveTrans` arm re-set the latch to true (and flip-flopped STD/QNH if the aircraft levelled off in the band). The shared detector tracks each threshold with its own arming latch (`_belowTa` arms climb→STD, `_aboveTl` arms descent→QNH), so the two crossings can never contradict. It is pure logic with characterization tests (`TransitionCrossingDetectorTests`). Each monitor keeps its own aircraft-specific baro action + wording and just asks the detector for the `Crossing`. Do NOT reintroduce a single `_prevInStd`-style latch. (`pos.Altitude` is `PLANE ALTITUDE` = true MSL, so it does NOT jump when the FO flips STD/QNH — the overlap was the whole cause.)
 - **"Run Related Flow" matches by phase base, not exact group id (2026-07-15).** `RunRelatedFlow` → `FlowForGroup(groupId)` resolves a flow by: exact `RelatedChecklistGroupIds.Contains`, then `flow.Id == BasePhaseId(groupId)` (strip a trailing `_CL`), then any related id's base phase. This fixed the **A380** (its flows list only the `_CL` readback groups, so selecting an ACTION group like `COCKPIT_PREP` reported "No related flow found") and hardens every aircraft against the same action-vs-readback mismatch. `flow.Id` is always the phase base (`COCKPIT_PREP`, `BEFORE_START`, …), which is what makes the fallback safe.
