@@ -52,17 +52,27 @@ flaps (FBW A380 and A32NX)." In-sim test plan:
 
 Opt-in via `FOAutoCenterPumpsEnabled` (First Officer settings, default ON; Boeing/PMDG
 only). Runs in the per-aircraft `FOAutoManager.Update` via the shared, unit-tested
-`CenterFuelPumpAutomation` policy. Invariants:
+`CenterFuelPumpAutomation` policy. `Update` is called on each position-update tick
+(~1-2.7 Hz, driven by `AircraftPositionReceived` — NOT a fixed per-frame rate), so the
+timing windows are **wall-clock seconds, not tick counts** (`LowPressConfirmSeconds`,
+`SettleSecondsAfterOn`) — each adapter owns a `System.Diagnostics.Stopwatch` and passes
+the measured `elapsedMs` into `Update`; the policy defensively clamps it to 2000 ms
+(rejects a first-call/sim-pause/hitch spike without affecting a normal tick). Invariants:
 
 - **Arm ON is ground-only** and gated on the wing pumps already being ON (fuel-panel
   setup has begun) — never fires cold-and-dark, never in flight.
 - **OFF trigger is the center-pump LOW PRESSURE annunciator**, debounced
-  (`LowPressConfirmTicks`) and only while the pumps are on — a quantity number is used
+  (`LowPressConfirmSeconds`) and only while the pumps are on — a quantity number is used
   only to *arm*, never to switch off.
 - **Once switched off dry, stays off for the leg**; a turnaround refuel (center qty rising
-  back above `ArmThresholdLbs` on the ground) re-arms.
-- A `SettleTicksAfterOn` window suppresses an immediate OFF right after arming while pump
-  pressure builds.
+  back above `ArmThresholdLbs` on the ground) re-arms. Switching off dry also marks the
+  quantity as "below arm seen" — so the latch is always clearable by a refuel even if the
+  tank was never observed to physically dip below the threshold before the annunciator lit.
+- **The `SettleSecondsAfterOn` window starts on the OBSERVED center-pump rising edge
+  (off→on), covering ANY switch-on — the automation's own arm, a manual overhead-panel
+  toggle, or a checklist action — not just the automation's own `TurnOn`.** The spin-up
+  transient that briefly lights LOW PRESSURE is identical regardless of who threw the
+  switch, so the settle protection must be too.
 - Both actions announce (background state change): "Center fuel pumps on." /
   "Center tank low. Center fuel pumps off." Thresholds are tune-in-sim consts.
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Settings;
 
@@ -17,6 +18,13 @@ public class FOAutoManager : IFoAutoManager
     private readonly ScreenReaderAnnouncer  _announcer;
     private readonly CenterFuelPumpAutomation _centerPumps = new();
 
+    // Wall-clock elapsed-time measurement for the center-pump policy's wall-clock windows —
+    // Update() is driven by AircraftPositionReceived, a variable-rate feed (~1-2.7 Hz), not
+    // a fixed per-frame tick.
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private double _lastCenterPumpsMs;
+    private bool   _centerPumpsClockPrimed;
+
     public bool AutoFlapsEnabled { get; set; }   // stored, never acted on (PMDG auto-flaps removed 2026-07-08)
 
     public FOAutoManager(
@@ -29,11 +37,20 @@ public class FOAutoManager : IFoAutoManager
         _announcer = announcer;
     }
 
-    public void Reset() { _centerPumps.Reset(); }
+    public void Reset()
+    {
+        _centerPumps.Reset();
+        _centerPumpsClockPrimed = false;
+    }
 
     public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
     {
         if (!_executor.IsAvailable) return;
+
+        double now = _clock.Elapsed.TotalMilliseconds;
+        double elapsedMs = _centerPumpsClockPrimed ? now - _lastCenterPumpsMs : 0;
+        _lastCenterPumpsMs = now;
+        _centerPumpsClockPrimed = true;
 
         var action = _centerPumps.Update(
             enabled:           SettingsManager.Current.FOAutoCenterPumpsEnabled,
@@ -41,7 +58,8 @@ public class FOAutoManager : IFoAutoManager
             centerQtyLbs:      _state.FuelCenterLbs(),
             centerPumpsOn:     _state.IsEitherCenterPumpOn(),
             centerLowPressRaw: _state.IsAnyCenterLowPress(),
-            wingPumpsOn:       _state.AreWingFuelPumpsOn());
+            wingPumpsOn:       _state.AreWingFuelPumpsOn(),
+            elapsedMs:         elapsedMs);
 
         switch (action)
         {

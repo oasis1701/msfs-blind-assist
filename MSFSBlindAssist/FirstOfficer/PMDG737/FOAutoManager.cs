@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Settings;
 
@@ -12,7 +13,8 @@ namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 /// the same AP-enable setting (FOAutoApEnabled) the universal AP-engage uses. There is no
 /// 737 auto-flap schedule, so AutoFlapsEnabled is stored but never acted on.
 ///
-/// Thread-safe: Update() can be called from any thread.
+/// Update() is called only on the SimConnect message thread (not thread-safe in general —
+/// the center-pump policy holds interdependent, non-atomic latch/accumulator state).
 /// </summary>
 public class FOAutoManager : IFoAutoManager
 {
@@ -25,6 +27,13 @@ public class FOAutoManager : IFoAutoManager
     private bool _lnavVnavEngagedThisLeg; // one-shot: LNAV/VNAV pushes at 400 ft AGL
     private bool _wasOnGround = true;
     private readonly CenterFuelPumpAutomation _centerPumps = new();
+
+    // Wall-clock elapsed-time measurement for the center-pump policy's wall-clock windows —
+    // Update() is driven by AircraftPositionReceived, a variable-rate feed (~1-2.7 Hz), not
+    // a fixed per-frame tick.
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private double _lastCenterPumpsMs;
+    private bool   _centerPumpsClockPrimed;
 
     public FOAutoManager(
         AircraftActionExecutor executor,
@@ -41,6 +50,7 @@ public class FOAutoManager : IFoAutoManager
         _lnavVnavEngagedThisLeg = false;
         _wasOnGround            = true;
         _centerPumps.Reset();
+        _centerPumpsClockPrimed = false;
     }
 
     public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
@@ -97,13 +107,19 @@ public class FOAutoManager : IFoAutoManager
     // center fuel loaded; switches OFF when the center low-press light latches (tank dry).
     private void UpdateCenterPumps(double altitudeAgl)
     {
+        double now = _clock.Elapsed.TotalMilliseconds;
+        double elapsedMs = _centerPumpsClockPrimed ? now - _lastCenterPumpsMs : 0;
+        _lastCenterPumpsMs = now;
+        _centerPumpsClockPrimed = true;
+
         var action = _centerPumps.Update(
             enabled:           SettingsManager.Current.FOAutoCenterPumpsEnabled,
             onGround:          altitudeAgl < 20,
             centerQtyLbs:      _state.FuelCenterLbs(),
             centerPumpsOn:     _state.IsEitherCenterPumpOn(),
             centerLowPressRaw: _state.IsAnyCenterLowPress(),
-            wingPumpsOn:       _state.AreWingFuelPumpsOn());
+            wingPumpsOn:       _state.AreWingFuelPumpsOn(),
+            elapsedMs:         elapsedMs);
 
         switch (action)
         {
