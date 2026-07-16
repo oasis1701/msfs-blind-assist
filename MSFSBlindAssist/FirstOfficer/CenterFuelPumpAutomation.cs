@@ -11,10 +11,14 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// SOP: arm the center pumps ON during ground setup when center fuel is present — gated on
 /// the wing pumps already being ON so it never fires cold-and-dark. Switch them OFF when
 /// the center-pump LOW PRESSURE light latches on (tank dry). Once switched off dry, they
-/// stay off for the rest of the leg; a turnaround refuel (center quantity rising back above
-/// the arm threshold while on the ground) re-arms. All thresholds are tune-in-sim consts;
-/// the timing windows are wall-clock SECONDS (not ticks) so they hold steady regardless of
-/// how often the caller's position feed happens to fire.
+/// stay off for the rest of the leg; only a genuine ground refuel re-arms them: the quantity
+/// at the moment of dry-off is recorded, and the latch clears when a later ground reading
+/// exceeds it by more than the refuel margin. (NOT "quantity rose back above the arm
+/// threshold" — after a dry-off the tank stops draining, so that test is vacuously true
+/// forever and oscillates the pumps; see the latch-clear branch in <see cref="Update"/> for
+/// the full rationale.) All thresholds are tune-in-sim consts; the timing windows are
+/// wall-clock SECONDS (not ticks) so they hold steady regardless of how often the caller's
+/// position feed happens to fire.
 /// </summary>
 public sealed class CenterFuelPumpAutomation
 {

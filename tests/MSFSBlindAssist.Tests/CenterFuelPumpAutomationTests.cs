@@ -145,14 +145,32 @@ public class CenterFuelPumpAutomationTests
     public void Reset_ClearsLatches()
     {
         var a = Make();
-        Tick(a, false, 100, pumpsOn: true, lowPress: false, wingPumps: false);
-        DrainSettleWindow(a);
+        // Dry-off at a HIGH quantity so a stale (unreset) sentinel would be unmistakably
+        // different from the reset value.
+        Tick(a, false, 5000, pumpsOn: true, lowPress: false, wingPumps: false);
+        DrainSettleWindow(a, qty: 5000);
         int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
         for (int i = 0; i < confirmTicks; i++)
-            Tick(a, false, 100, true, true, false);   // dry-off latch set
+            Tick(a, false, 5000, true, true, false);   // dry-off latch set, _qtyAtDryOff = 5000
         a.Reset();
+
+        // Pin the dry-off sentinel directly via reflection. It has NO black-box observable
+        // effect through Update() alone once _switchedOffThisLeg is correctly cleared: the
+        // sentinel is read only inside the refuel-clear branch, which is itself gated on
+        // _switchedOffThisLeg == true, and the only place that flag is ever set true again
+        // (the TurnOff branch) simultaneously overwrites the sentinel with the fresh quantity
+        // in the same statement — so a later TurnOff+refuel probe cannot distinguish a reset
+        // sentinel from a stale one. Verified by mutation testing (Reset() with the
+        // `_qtyAtDryOff = double.NaN;` line removed): a black-box "TurnOff then refuel" probe
+        // produces the identical result either way, while this reflection read does not.
+        var qtyAtDryOffField = typeof(CenterFuelPumpAutomation).GetField("_qtyAtDryOff",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var qtyAtDryOff = (double)qtyAtDryOffField.GetValue(a)!;
+        Assert.True(double.IsNaN(qtyAtDryOff),
+            $"Reset() must clear _qtyAtDryOff to NaN; found {qtyAtDryOff} (the pre-reset dry-off quantity).");
+
         // After reset, a fresh ground arm works again immediately.
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, false, false, true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, false, false, true));
     }
 
     // --- FIX 1 regression -------------------------------------------------------------

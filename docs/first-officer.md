@@ -80,6 +80,24 @@ the measured `elapsedMs` into `Update`; the policy defensively clamps it to 2000
 - Both actions announce (background state change): "Center fuel pumps on." /
   "Center tank low. Center fuel pumps off." Thresholds are tune-in-sim consts.
 
+**Known limitation (accepted, not a defect):** a continuously-lit low-press annunciator (e.g.
+a failed pump or bus — NOT a dry tank) combined with a fast ground refuel actively in progress
+(~700 lb/tick) can still cycle the policy: each ~12 s window the uplift exceeds
+`RefuelMarginLbs` → latch clears → `TurnOn` → `SettleSecondsAfterOn` → `TurnOff` +
+announcement, repeating for as long as the refuel keeps arriving (observed ~10 cycles over 2
+minutes in review). This is NOT the oscillation defect the redesign removed: every
+announcement is TRUE (low-press really is lit), no pump is ever driven into a dry tank (fuel
+is present the whole time), and the cycling is bounded to the refuel window — it
+self-terminates the moment the truck stops. It is strictly better than both predecessors (the
+prior code oscillated unconditionally and forever; the version before that stuck the latch
+permanently on any dry-off). The cheap hardening — gating the latch-clear on low-press also
+being extinguished — was considered and deliberately NOT taken: with the pumps off, low-press
+is not a reliable "tank has fuel" signal, and gating on it risks never clearing the latch at
+all. Revisit only with in-sim evidence. **In-sim test plan:** if you ever refuel on the ground
+with a center-pump fault present (failed pump/bus, so low-press stays lit throughout), listen
+for repeated "Center fuel pumps on." / "Center tank low. Center fuel pumps off." during the
+refuel — that is this known limitation, expected and self-terminating, not a new bug.
+
 **GOTCHAS (each was a real bug on this branch):**
 - **Transition altitude/level crossings use TWO INDEPENDENT edge detectors (`FirstOfficer/TransitionCrossingDetector.cs`), never one shared "in STD zone" latch (2026-07-15).** All five phase monitors previously tracked a single `_prevInStd` with a trailing `if (nowAboveTrans) _prevInStd = true; else if (nowBelowTrans) _prevInStd = false;`. That silently spammed the "set local QNH" call-out on descent whenever the **destination transition LEVEL sat more than ~600 ft above the origin transition ALTITUDE** (very common in Europe, e.g. TA 4000 / TL 6000) — the two ±300 ft hysteresis bands then OVERLAP, and in the overlap the QNH branch fired every tick while the `nowAboveTrans` arm re-set the latch to true (and flip-flopped STD/QNH if the aircraft levelled off in the band). The shared detector tracks each threshold with its own arming latch (`_belowTa` arms climb→STD, `_aboveTl` arms descent→QNH), so the two crossings can never contradict. It is pure logic with characterization tests (`TransitionCrossingDetectorTests`). Each monitor keeps its own aircraft-specific baro action + wording and just asks the detector for the `Crossing`. Do NOT reintroduce a single `_prevInStd`-style latch. (`pos.Altitude` is `PLANE ALTITUDE` = true MSL, so it does NOT jump when the FO flips STD/QNH — the overlap was the whole cause.)
 - **"Run Related Flow" matches by phase base, not exact group id (2026-07-15).** `RunRelatedFlow` → `FlowForGroup(groupId)` resolves a flow by: exact `RelatedChecklistGroupIds.Contains`, then `flow.Id == BasePhaseId(groupId)` (strip a trailing `_CL`), then any related id's base phase. This fixed the **A380** (its flows list only the `_CL` readback groups, so selecting an ACTION group like `COCKPIT_PREP` reported "No related flow found") and hardens every aircraft against the same action-vs-readback mismatch. `flow.Id` is always the phase base (`COCKPIT_PREP`, `BEFORE_START`, …), which is what makes the fallback safe.
