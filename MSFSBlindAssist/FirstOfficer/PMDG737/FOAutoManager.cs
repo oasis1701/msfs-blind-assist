@@ -24,6 +24,7 @@ public class FOAutoManager : IFoAutoManager
 
     private bool _lnavVnavEngagedThisLeg; // one-shot: LNAV/VNAV pushes at 400 ft AGL
     private bool _wasOnGround = true;
+    private readonly CenterFuelPumpAutomation _centerPumps = new();
 
     public FOAutoManager(
         AircraftActionExecutor executor,
@@ -39,11 +40,14 @@ public class FOAutoManager : IFoAutoManager
     {
         _lnavVnavEngagedThisLeg = false;
         _wasOnGround            = true;
+        _centerPumps.Reset();
     }
 
     public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
     {
         if (!_executor.IsAvailable) return;
+
+        UpdateCenterPumps(altitudeAgl);
 
         bool onGround = altitudeAgl < 20;
 
@@ -87,5 +91,30 @@ public class FOAutoManager : IFoAutoManager
             _announcer.AnnounceImmediate($"400 feet. {modes} engaged.");
         }
         _lnavVnavEngagedThisLeg = true;
+    }
+
+    // Boeing SOP center-tank pump management (opt-in). Arms ON during ground setup with
+    // center fuel loaded; switches OFF when the center low-press light latches (tank dry).
+    private void UpdateCenterPumps(double altitudeAgl)
+    {
+        var action = _centerPumps.Update(
+            enabled:           SettingsManager.Current.FOAutoCenterPumpsEnabled,
+            onGround:          altitudeAgl < 20,
+            centerQtyLbs:      _state.FuelCenterLbs(),
+            centerPumpsOn:     _state.IsEitherCenterPumpOn(),
+            centerLowPressRaw: _state.IsAnyCenterLowPress(),
+            wingPumpsOn:       _state.AreWingFuelPumpsOn());
+
+        switch (action)
+        {
+            case CenterFuelPumpAutomation.Action.TurnOn:
+                _executor.SetCenterFuelPumps(1);
+                _announcer.AnnounceImmediate("Center fuel pumps on.");
+                break;
+            case CenterFuelPumpAutomation.Action.TurnOff:
+                _executor.SetCenterFuelPumps(0);
+                _announcer.AnnounceImmediate("Center tank low. Center fuel pumps off.");
+                break;
+        }
     }
 }

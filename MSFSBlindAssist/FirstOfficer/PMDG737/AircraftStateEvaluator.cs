@@ -121,6 +121,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsFuelPumpAft2On() => IsOn("FUEL_PumpAftSw_1");
     public bool AreWingFuelPumpsOn() =>
         IsFuelPumpFwd1On() && IsFuelPumpFwd2On() && IsFuelPumpAft1On() && IsFuelPumpAft2On();
+    public bool IsFuelPumpCtr1On()     => IsOn("FUEL_PumpCtrSw_0");
+    public bool IsFuelPumpCtr2On()     => IsOn("FUEL_PumpCtrSw_1");
+    public bool IsEitherCenterPumpOn() => IsFuelPumpCtr1On() || IsFuelPumpCtr2On();
+    // Either center-pump LOW PRESSURE annunciator lit. Reads false until the CDA is ready
+    // (GetValue → NaN, NaN > 0.5 is false), so it never triggers a spurious OFF pre-snapshot.
+    public bool IsAnyCenterLowPress()  => IsOn("FUEL_annunLOWPRESS_Ctr_0") || IsOn("FUEL_annunLOWPRESS_Ctr_1");
+    public int  FuelCenterLbs()        => (int)Math.Round(GetValue("FUEL_QtyCenter")); // NaN → 0 pre-snapshot
     public bool IsEng1Run()        => GetValue("FUEL_annunENG_VALVE_CLOSED_0") < 0.5;
     public bool IsEng2Run()        => GetValue("FUEL_annunENG_VALVE_CLOSED_1") < 0.5;
     public int  Eng1StartSelector()=> (int)Math.Round(GetValue("ENG_StartSelector_0")); // 0=GRD,1=OFF,2=CONT,3=FLT
