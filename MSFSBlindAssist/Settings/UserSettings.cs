@@ -244,6 +244,10 @@ public class UserSettings
         // this toggle existed; a missing key in old settings files deserializes to it.
         public bool FOAutoLights10kEnabled { get; set; } = true;
 
+        // PMDG 737/777 center-tank fuel pump auto-management (default ON — standard SOP,
+        // low-risk). Only the two PMDG jets act on it; other aircraft store-and-ignore.
+        public bool FOAutoCenterPumpsEnabled { get; set; } = true;
+
         // Auto seat-belt-sign automation, actuated via each aircraft's own seatbelt control:
         // 0 = Disabled (default), 1 = switch at the 10,000 ft crossing, 2 = off at Top of
         // Climb / on at Top of Descent (vertical-speed profile). See FoSeatbeltMode.
@@ -582,6 +586,7 @@ public class UserSettings
             FOAutoApEnabled    = FOAutoApEnabled,
             FOAutoApEngageAltitudeAgl = FOAutoApEngageAltitudeAgl,
             FOAutoLights10kEnabled = FOAutoLights10kEnabled,
+            FOAutoCenterPumpsEnabled = FOAutoCenterPumpsEnabled,
             FOAutoSeatbeltMode = FOAutoSeatbeltMode,
             FOGpws737LongTest = FOGpws737LongTest,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
