@@ -129,6 +129,11 @@ public partial class TaxiGuidanceManager : IDisposable
     private string _destinationName = "";
     private string _icao = "";
     private List<string>? _originalTaxiwaySequence;
+    // Taxi planner "CAT III / low-visibility hold (LVP)" preference for the CURRENT
+    // route. Persisted across a mid-taxi recalc so the recalculated route keeps the
+    // same hold choice. Default false = hold at the full-length line (user decision
+    // 2026-07); see TruncateToHoldShort.
+    private bool _preferIlsHold = false;
 
     // Route polyline cache for GuidanceGeometry (node k = segment k's FromNode,
     // last entry = final ToNode). Rebuilt lazily whenever _route changes —

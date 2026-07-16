@@ -72,6 +72,11 @@ public class TaxiAssistForm : Form
     private CheckBox chkIntersection = null!;
     private ComboBox cmbIntersection = null!;
     private readonly Dictionary<string, TaxiGraph.RunwayIntersection> _intersectionMap = new();
+    // CAT III / low-visibility hold (runway destinations only). When ticked, a
+    // runway-destination route holds at the CAT III / ILS hold-short (further
+    // back, protects the ILS critical area — e.g. EGKK A3/C3/M3) instead of the
+    // default full-length line (A1/M1). Passed to LoadRoute as preferIlsHold.
+    private CheckBox chkCatIiiHold = null!;
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
     private CheckBox chkFirstHoldShort = null!;
@@ -467,6 +472,23 @@ public class TaxiAssistForm : Form
         };
         y += 30;
 
+        // CAT III / low-visibility hold. Runway destinations only (same visibility
+        // rule as chkIntersection — see the note there about being born in the
+        // default-selection state because OnDestTypeChanged is wired after the
+        // initial SelectedIndex = 0). Default OFF = hold at the full-length line
+        // (closest to the runway, a normal clearance); ticked = hold further back
+        // at the CAT III / ILS hold to protect the ILS critical area in low vis.
+        chkCatIiiHold = new CheckBox
+        {
+            Text = "CAT III / low-visibility hold (&LVP)",
+            Location = new System.Drawing.Point(controlX, y),
+            AutoSize = true,
+            Visible = cmbDestType.SelectedIndex == 0,
+            AccessibleName = "CAT three, low visibility hold",
+            AccessibleDescription = "When checked, hold at the CAT three / ILS hold-short further back from the runway for low-visibility procedures, instead of the full-length hold closest to the runway"
+        };
+        y += 30;
+
         // First taxiway
         lblFirstTaxiway = new Label
         {
@@ -710,6 +732,7 @@ public class TaxiAssistForm : Form
         this.Controls.Add(cmbDestination);
         this.Controls.Add(chkIntersection);
         this.Controls.Add(cmbIntersection);
+        this.Controls.Add(chkCatIiiHold);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
         this.Controls.Add(chkFirstHoldShort);
@@ -765,6 +788,7 @@ public class TaxiAssistForm : Form
         cmbDestination.TabIndex = tabIdx++;
         chkIntersection.TabIndex = tabIdx++;
         cmbIntersection.TabIndex = tabIdx++;
+        chkCatIiiHold.TabIndex = tabIdx++;
         chkFitFilter.TabIndex = tabIdx++;
         cmbFirstTaxiway.TabIndex = tabIdx++;
         chkFirstHoldShort.TabIndex = tabIdx++;
@@ -1290,6 +1314,12 @@ public class TaxiAssistForm : Form
             chkIntersection.Checked = false; // fires OnIntersectionToggled → hides + clears
         else if (!isRunway)
             cmbIntersection.Visible = false;
+
+        // CAT III / LVP hold is runway-only too. Leaving runway mode unticks it so
+        // a stale low-visibility preference can't leak into a later runway route.
+        chkCatIiiHold.Visible = isRunway;
+        if (!isRunway)
+            chkCatIiiHold.Checked = false;
 
         // Progressive Taxi has no final destination — hide the gate/runway
         // destination picker and route to a terminator on the last taxiway row
@@ -2286,7 +2316,8 @@ public class TaxiAssistForm : Form
             thresholdLat, thresholdLon, destHeadingTrue,
             isRunwayDest,
             prebuiltGraph: _graph,
-            userRunwayHoldShorts: userRunwayHoldShorts.Count > 0 ? userRunwayHoldShorts : null);
+            userRunwayHoldShorts: userRunwayHoldShorts.Count > 0 ? userRunwayHoldShorts : null,
+            preferIlsHold: isRunwayDest && chkCatIiiHold.Checked);
 
         if (error != null)
         {
