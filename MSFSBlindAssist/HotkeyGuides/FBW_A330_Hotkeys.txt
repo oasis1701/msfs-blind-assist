@@ -223,6 +223,28 @@ FCU Set Values (each opens a window: value entry, knob Push/Pull, mode toggles, 
 Windows:
   Shift+M    Open MCDU window
   Shift+T    Open flyPad EFB window
+  Ctrl+Shift+D  Open DCDU window (CPDLC — read uplinks and answer WILCO /
+             STANDBY / UNABLE. Each soft key reads as its key NUMBER at the
+             start of the line, with an arrow marking the side: "1 <STBY" is
+             LEFT key 1, "2          RECALL>" is RIGHT key 2 (right-aligned,
+             arrow after the label). The keys use the same chords as the MCDU
+             line-select keys, including the alternate-keys setting:
+             Ctrl+1/Ctrl+2 = left keys, Alt+1/Alt+2 = right keys (or F1/F2
+             and F7/F8 in alternate mode).
+             Answering is a TWO-STEP flow, like the real unit: the first
+             press arms the answer (e.g. Alt+2 = WILCO) and the keys change
+             to CANCEL / SEND — the second Alt+2 actually transmits. After
+             sending, right 2 becomes CLOSE to dismiss the message.
+             PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
+             scroll within a long message (Ctrl+PageDown = next page). NOTE:
+             on a long multi-page uplink the answer keys stay inactive until
+             you have paged to the END of the message — the window says
+             "not available yet" if you try early. F5 = refresh, Escape =
+             close.
+             Needs a datalink connection: set the ACARS provider (Hoppie /
+             SayIntentions / BeyondATC) in the flyPad Settings, then log on
+             to ATC from the MCDU ATSU pages — the NOTIFY key needs the ATC
+             flight number, the ATC center, AND a FROM/TO on the INIT page.)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)

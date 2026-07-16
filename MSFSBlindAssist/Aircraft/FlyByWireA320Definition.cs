@@ -8518,7 +8518,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return false; // Not handled - use generic logic
     }
 
-    protected virtual void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
+    private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
         if (simConnectMgr.IsConnected)
         {
@@ -8536,7 +8536,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    protected virtual void RequestFCUSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr)
+    private void RequestFCUSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
         if (simConnectMgr.IsConnected)
         {
@@ -8554,7 +8554,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    protected virtual void RequestFCUAltitudeWithStatus(SimConnect.SimConnectManager simConnectMgr)
+    private void RequestFCUAltitudeWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
         if (simConnectMgr.IsConnected)
         {
@@ -8572,7 +8572,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    protected virtual void RequestFCUVerticalSpeedFPA(SimConnect.SimConnectManager simConnectMgr)
+    private void RequestFCUVerticalSpeedFPA(SimConnect.SimConnectManager simConnectMgr)
     {
         if (simConnectMgr.IsConnected)
         {
@@ -8607,8 +8607,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Also reused (with an explicit shorter delayMs) as the general "deferred action" idiom for
     // WRITE-then-WRITE ordering delays that used to be a blocking Thread.Sleep on the UI thread
     // (COM active-frequency swap, FCU altitude increment-then-set) — same timeline, non-blocking.
-    // protected so an FBW fork subclass (HeadwindA330Definition) can reuse the deferred read-out.
-    protected static void DeferReadback(Action readback, int delayMs = 300)
+    private static void DeferReadback(Action readback, int delayMs = 300)
     {
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
@@ -8629,7 +8628,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public void RequestFCUVSReadout(SimConnect.SimConnectManager s) => RequestFCUVerticalSpeedFPA(s);
 
     // hdg: 0-360 whole degrees.
-    public virtual bool SetFCUHeadingValue(int hdg, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    public bool SetFCUHeadingValue(int hdg, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
@@ -8641,7 +8640,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     }
 
     // internalSpeed: knots (100-399) OR Mach*100 (10-99). Caller does the *100.
-    public virtual bool SetFCUSpeedValue(int internalSpeed, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    public bool SetFCUSpeedValue(int internalSpeed, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
@@ -8656,7 +8655,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     }
 
     // feet: whole feet; rounded to the nearest 100 (FCU_ALT_SET requires multiples of 100).
-    public virtual bool SetFCUAltitudeValue(double feet, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    public bool SetFCUAltitudeValue(double feet, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         uint rounded = (uint)(Math.Round(feet / 100) * 100);
@@ -8697,7 +8696,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // value: signed V/S (-6000..6000 fpm) OR FPA (-9.9..9.9 deg). Uses the calc-code
     // K: path (negatives overflow SendEvent's uint).
-    public virtual bool SetFCUVSValue(double value, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    public bool SetFCUVSValue(double value, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         // FPA is sent ×10 per the FBW protocol (FcuComputer consumes vs_fpa/10 in
@@ -8722,7 +8721,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // (A32NX_FCU_AFS_DISPLAY_*_MANAGED, Continuous+IsAnnounced) speaks, and only on a
     // real Managed↔Selected transition. The old unconditional readback spoke the full
     // value on every press — the verbose, "wonky" behaviour the user flagged.
-    public virtual void FireFCUButton(string evt, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a, bool readback = true)
+    public void FireFCUButton(string evt, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a, bool readback = true)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
         s.SendEvent(evt);
@@ -8740,16 +8739,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (readbackAction != null) DeferReadback(readbackAction);
     }
 
-    // Request the live AP/mode state vars so the Autopilot window can refresh labels.
-    // FCU/AP annunciator state-var keys read by the Ctrl+P Autopilot window. Virtual so an
-    // FBW fork on an OLDER base (HorizonSim A321 — legacy FCU with no _LIGHT_ON vars) can point
-    // them at the equivalents it DOES expose without touching the shared window.
+    // FCU/AP annunciator state-var keys read by the Ctrl+P Autopilot window. Virtual so a
+    // future FBW fork whose build exposes different equivalents can repoint them without
+    // touching the shared window (the Headwind A330 keeps the base names).
     public virtual string LocLightVar  => "A32NX_FCU_LOC_LIGHT_ON";
     public virtual string ApprLightVar => "A32NX_FCU_APPR_LIGHT_ON";
     public virtual string FdLeftLightVar  => "A32NX_FCU_EFIS_L_FD_LIGHT_ON";
     public virtual string FdRightLightVar => "A32NX_FCU_EFIS_R_FD_LIGHT_ON";
 
-    public virtual void RequestAutopilotStates(SimConnect.SimConnectManager s)
+    // Request the live AP/mode state vars so the Autopilot window can refresh labels.
+    public void RequestAutopilotStates(SimConnect.SimConnectManager s)
     {
         if (!s.IsConnected) return;
         // Use the REGISTERED FCU button-light L:vars. The old _MODE_ACTIVE / _FD_ACTIVE
@@ -8762,10 +8761,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             s.RequestVariable(v, forceUpdate: true);
     }
 
-    // EFIS baro (Ctrl+B window) — virtual so an FBW fork on an OLDER base (HorizonSim A321,
-    // whose WASM has NO A32NX.FCU_EFIS_*_BARO_* events) can drive the legacy KOHLSMAN_SET +
-    // XMLVAR_Baro mechanism instead. Base impl = the current new-FCU behaviour (both sides),
-    // extracted verbatim from FBWA320BaroWindow so the A320/A330 are unchanged.
+    // EFIS baro (Ctrl+B window) — virtual so an FBW fork can intercept or reroute the
+    // mechanism (the Headwind A330 overrides all four: the setters stamp its window-echo
+    // suppression before delegating here, and the mode read comes from the stock Kohlsman
+    // vars because the FBW baro display words are never delivered on that airframe).
+    // Base impl = the current new-FCU behaviour (both sides), extracted verbatim from
+    // FBWA320BaroWindow so the A320 is unchanged.
     public virtual void SetEfisBaroPressureHpa(double hpa, SimConnect.SimConnectManager s)
     {
         uint encoded = (uint)Math.Round(hpa * 16);

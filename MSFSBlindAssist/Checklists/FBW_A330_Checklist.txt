@@ -20,7 +20,7 @@ MCDU Flight Plan received through AOC menu
 MCDU flight plan requested through init
 MCDU departure Runway and sid selected
 MCDU arrival runway and star selected, not recommended for online
-MCDU FP page check, flight discontinuitys checked and cleared if required
+MCDU FP page check, flight discontinuities checked and cleared if required
 MCDU Init fuel pred page completed
 MCDU perf takeoff page completed, v1, 140, vr, 145, v2, 155, flaps as required
 
@@ -55,14 +55,14 @@ Transponder Ident
 TCAS TA/RA
 Landing lights on
 Nose Light T O
-Parking brakes released
+Parking brake released
 T.O. config test button pressed, no audible alerts
 Departure clearance received
 
 [Takeoff Procedure]
 Apply Flex/MCT or TO/GA power
 Monitor ias with output mode > w
-Rotate at v1 speed
+Rotate at VR
 Gear up
 Autopilot 1 on with input mode > shift+a as soon as possible
 Pull throttle back to CLB position
@@ -105,7 +105,7 @@ Land mode received from FMA
 
 [On Ground]
 Apply reverse thrust when required
-Parking breaks set
+Parking brake set
 Flaps up
 AP red disconnect button pressed
 Teleport to gate through input mode > shift+g

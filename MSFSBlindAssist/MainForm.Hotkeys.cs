@@ -270,13 +270,18 @@ public partial class MainForm
                 }
                 break;
             case HotkeyAction.ShowDCDU:
-                if (currentAircraft?.AircraftCode == "A320")
+                if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
+                    // The Headwind A330 fork shares the whole A32NX DCDU surface: the
+                    // CoherentEvalClient "DCDU" title needle substring-matches its
+                    // A339X_DCDU view, the scrape targets the svg.dcdu markup (CSS
+                    // class, not element name), and the soft keys fire the fork-shared
+                    // H:A32NX_DCDU_* events.
                     ShowA32NXDcduDialog();
                 }
                 else
                 {
-                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX.");
+                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX and the Headwind A330.");
                 }
                 break;
             case HotkeyAction.ShowOANS:

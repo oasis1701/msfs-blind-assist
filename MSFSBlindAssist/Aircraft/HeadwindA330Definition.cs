@@ -49,6 +49,10 @@ namespace MSFSBlindAssist.Aircraft;
 ///     memos + Shift+M MCDU + D/Shift+D — present in the package, but the baro case
 ///     proved "present in the wasm" ≠ "delivered"; the same stock-var override
 ///     pattern applies if any turn out silent.
+///   • Ctrl+Shift+D DCDU with a live datalink uplink: the "DCDU" view needle
+///     substring-matches A339X_DCDU, the scrape keys on the svg.dcdu markup, and the
+///     soft keys fire the fork-shared H:A32NX_DCDU_* events — all expected to work
+///     unchanged, but none of it has been exercised against the A339X yet.
 ///   • Calibrate the glidepath / flare biases below against a coupled ILS autoland.
 /// </summary>
 public class HeadwindA330Definition : FlyByWireA320Definition
@@ -211,9 +215,10 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     }
 
     // Register the stock-altimeter sources as live monitors. ExcludeFromBatch is
-    // REQUIRED (the LVFR A321 precedent): late-added Continuous vars have been observed
-    // to slip out of the continuous batch, leaving the cache stuck at the initial value —
-    // the per-var SIMCONNECT_PERIOD.SECOND subscription keeps them fresh independently.
+    // REQUIRED (the Fenix FCU / HS787 batch-skip precedent): vars this code must be able
+    // to force-read or that a subclass adds late have been observed to slip out of the
+    // continuous batch, leaving the cache stuck at the initial value — the per-var
+    // SIMCONNECT_PERIOD.SECOND subscription keeps them fresh independently.
     // Overrides BuildVariables (not GetVariables) — the base caches GetVariables() and
     // delegates the one-time build here; base.BuildVariables() yields the full A320 set.
     protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
