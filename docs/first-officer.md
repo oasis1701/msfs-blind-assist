@@ -64,10 +64,14 @@ the measured `elapsedMs` into `Update`; the policy defensively clamps it to 2000
 - **OFF trigger is the center-pump LOW PRESSURE annunciator**, debounced
   (`LowPressConfirmSeconds`) and only while the pumps are on — a quantity number is used
   only to *arm*, never to switch off.
-- **Once switched off dry, stays off for the leg**; a turnaround refuel (center qty rising
-  back above `ArmThresholdLbs` on the ground) re-arms. Switching off dry also marks the
-  quantity as "below arm seen" — so the latch is always clearable by a refuel even if the
-  tank was never observed to physically dip below the threshold before the annunciator lit.
+- **Once switched off dry, stays off for the leg**; a turnaround refuel re-arms it. The
+  dry-off latch records the center quantity AT the moment it was set (`_qtyAtDryOff`) and
+  clears only on a **genuine ground uplift**: `centerQtyLbs > _qtyAtDryOff + RefuelMarginLbs`
+  (250 lb margin). Inferring a refuel from "qty is now above `ArmThresholdLbs`" is unsound —
+  after a dry-off the tank stops draining, so the quantity freezes at whatever lit the
+  annunciator, and a threshold-only test passes vacuously on the very next tick with no real
+  fuel truck involved, oscillating the pumps on/off indefinitely (a real bug caught by review
+  before merge; see `SustainedLowPress_OnGround_DoesNotOscillate` in the test suite).
 - **The `SettleSecondsAfterOn` window starts on the OBSERVED center-pump rising edge
   (off→on), covering ANY switch-on — the automation's own arm, a manual overhead-panel
   toggle, or a checklist action — not just the automation's own `TurnOn`.** The spin-up

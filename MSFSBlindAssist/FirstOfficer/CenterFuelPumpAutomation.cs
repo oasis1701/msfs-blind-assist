@@ -31,13 +31,19 @@ public sealed class CenterFuelPumpAutomation
     /// while pump pressure builds cannot immediately switch off. Wall-clock, tune-in-sim.</summary>
     public const double SettleSecondsAfterOn = 10.0;
 
+    /// <summary>Ground quantity uplift (lbs) required, above the quantity recorded at the
+    /// moment the dry-off latch was set, before a reading counts as a genuine refuel and
+    /// clears the latch. Comfortably above sensor/float jitter, far below any real
+    /// center-tank uplift (a real center refuel is thousands of lbs).</summary>
+    public const double RefuelMarginLbs = 250;
+
     /// <summary>Defensive per-call clamp on the caller-measured elapsed time. Rejects a
     /// first-call/sim-pause/long-hitch spike from instantly satisfying a window, while never
     /// clamping a normal ~370-1000 ms tick at the feed's real rate.</summary>
     private const double MaxElapsedMs = 2000;
 
     private bool   _switchedOffThisLeg;   // dry-off latch: no re-arm until refuel
-    private bool   _belowArmSeen;         // center qty has dropped below the arm threshold
+    private double _qtyAtDryOff = double.NaN; // center qty recorded at the moment of dry-off; NaN = not set
     private bool   _prevPumpsOn;          // previous tick's observed centerPumpsOn (edge detect)
     private double _lowPressMs;           // consecutive lit low-press wall-clock ms
     private double _settleMs;             // remaining post-switch-on settle wall-clock ms
@@ -45,7 +51,7 @@ public sealed class CenterFuelPumpAutomation
     public void Reset()
     {
         _switchedOffThisLeg = false;
-        _belowArmSeen       = false;
+        _qtyAtDryOff        = double.NaN;
         _prevPumpsOn        = false;
         _lowPressMs         = 0;
         _settleMs           = 0;
@@ -64,16 +70,16 @@ public sealed class CenterFuelPumpAutomation
 
         elapsedMs = System.Math.Clamp(elapsedMs, 0, MaxElapsedMs);
 
-        // Refuel tracking: once center fuel drops below the arm threshold, a later rise back
-        // above it while on the ground is a turnaround refuel → clear the dry-off latch.
-        if (centerQtyLbs < ArmThresholdLbs)
-        {
-            _belowArmSeen = true;
-        }
-        else if (onGround && _belowArmSeen && _switchedOffThisLeg)
+        // Refuel detection: clear the dry-off latch only on a GENUINE ground uplift above the
+        // quantity recorded when the latch was set. Inferring a refuel from "qty is now above the
+        // arm threshold" is unsound — after a dry-off the tank stops draining, so the quantity
+        // freezes at whatever lit the annunciator and the test would pass vacuously, oscillating
+        // the pumps on/off forever.
+        if (onGround && _switchedOffThisLeg && !double.IsNaN(_qtyAtDryOff)
+            && centerQtyLbs > _qtyAtDryOff + RefuelMarginLbs)
         {
             _switchedOffThisLeg = false;
-            _belowArmSeen       = false;
+            _qtyAtDryOff        = double.NaN;
         }
 
         // Decay the settle window first, THEN check for a rising edge — a fresh edge this
@@ -97,7 +103,7 @@ public sealed class CenterFuelPumpAutomation
         if (centerPumpsOn && lowPressLatched && _settleMs <= 0)
         {
             _switchedOffThisLeg = true;
-            _belowArmSeen       = true;   // declaring the tank dry IS the "below arm" observation
+            _qtyAtDryOff        = centerQtyLbs;
             _lowPressMs         = 0;
             return Action.TurnOff;
         }

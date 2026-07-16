@@ -124,15 +124,20 @@ public class CenterFuelPumpAutomationTests
     {
         var a = Make();
         // Drive to a dry TurnOff (pumps already on, settle drained → no settle protection).
+        // The final tick's qty (600) is what gets recorded as _qtyAtDryOff.
         Tick(a, false, 100, pumpsOn: true, lowPress: false, wingPumps: false);
         DrainSettleWindow(a);
         int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
         for (int i = 0; i < confirmTicks - 1; i++)
             Tick(a, false, 100, true, true, false);
-        Assert.Equal(Action.TurnOff, Tick(a, false, 100, true, true, false));
-        // Back on ground, still dry, pumps off, wing pumps on → must NOT re-arm.
-        Assert.Equal(Action.None, Tick(a, true, 100, pumpsOn: false, lowPress: true, wingPumps: true));
-        // Turnaround refuel on the ground clears the latch → re-arms.
+        Assert.Equal(Action.TurnOff, Tick(a, false, 600, true, true, false));
+        // Back on ground, still dry, pumps off, wing pumps on, qty (700) comfortably ABOVE
+        // ArmThresholdLbs (500) but WITHIN RefuelMarginLbs of the recorded dry-off qty (600 +
+        // 250 = 850) — so only the latch, never the qty>threshold arm gate, can be blocking a
+        // re-arm here, and this assertion is genuinely load-bearing for the latch.
+        Assert.Equal(Action.None, Tick(a, true, 700, pumpsOn: false, lowPress: true, wingPumps: true));
+        // Turnaround refuel on the ground — well above the recorded dry-off qty plus margin —
+        // clears the latch → re-arms.
         Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, lowPress: false, wingPumps: true));
     }
 
@@ -179,14 +184,11 @@ public class CenterFuelPumpAutomationTests
 
     // --- FIX 2 regression -------------------------------------------------------------
     // A dry-off latch set while quantity never dropped below ArmThresholdLbs must still be
-    // clearable by a later ground refuel above the threshold (declaring the tank dry via the
-    // low-press annunciator IS the "below arm" observation).
-    //
-    // Against the pre-fix code (TurnOff only sets _switchedOffThisLeg, never _belowArmSeen),
-    // since qty here never dips below the threshold, _belowArmSeen would stay false forever,
-    // the refuel branch's `_belowArmSeen &&` guard would never pass, and the final assertion
-    // below (TurnOn after refuel) would FAIL — the latch would be permanently stuck, asserting
-    // None instead.
+    // clearable by a later ground refuel — but ONLY by a GENUINE uplift (above the quantity
+    // recorded at the moment of dry-off, plus RefuelMarginLbs), never by "qty is still/again
+    // above ArmThresholdLbs." Each sub-assertion below isolates one way a refuel test could be
+    // unsound: an unchanged reading, a drop, and an uplift too small to be real fuel truck
+    // activity must all leave the latch set; only a genuine uplift past the margin clears it.
     [Fact]
     public void LatchSetAboveThreshold_StillClearableByGroundRefuel()
     {
@@ -198,8 +200,65 @@ public class CenterFuelPumpAutomationTests
         for (int i = 0; i < confirmTicks - 1; i++)
             Tick(a, false, 5000, true, true, false);
         Assert.Equal(Action.TurnOff, Tick(a, false, 5000, true, true, false));
-        // Ground refuel above the threshold must re-arm even though qty never dropped below it.
+        // _qtyAtDryOff is now 5000; the genuine-refuel threshold is 5000 + RefuelMarginLbs (250)
+        // = 5250. All four sub-cases run on the SAME instance/latch in sequence — only the last
+        // one is a genuine uplift, so only it may clear the latch.
+        // (a) Unchanged quantity is not a refuel.
+        Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, lowPress: false, wingPumps: true));
+        // (b) A drop is definitely not a refuel.
+        Assert.Equal(Action.None, Tick(a, true, 4000, pumpsOn: false, lowPress: false, wingPumps: true));
+        // (c) A rise that stays within the margin (5200 < 5250) is not yet a genuine refuel.
+        Assert.Equal(Action.None, Tick(a, true, 5200, pumpsOn: false, lowPress: false, wingPumps: true));
+        // (d) A genuine uplift past qtyAtDryOff + RefuelMarginLbs clears the latch and re-arms.
         Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, lowPress: false, wingPumps: true));
+    }
+
+    // --- Oscillation regression (the defect this fix removes) -------------------------
+    // On the ground with a frozen quantity reading (5000 lb, comfortably above
+    // ArmThresholdLbs) and sustained low-press, the pumps must switch off dry EXACTLY ONCE
+    // and then stay off — never oscillate TurnOff/TurnOn/TurnOff.... The buggy committed code
+    // (a8e7307b) set the old `_belowArmSeen` flag to true INSIDE the TurnOff branch, so on the
+    // very next tick (qty still >= ArmThresholdLbs, unchanged) the refuel-clear branch's
+    // `_belowArmSeen && _switchedOffThisLeg` guard passed vacuously with no real fuel truck
+    // involved, re-arming the pumps immediately — which then dry-tripped again 3 seconds later,
+    // forever. This test drives the loop the way the caller really would: the simulated
+    // `centerPumpsOn` readback tracks whatever action was last returned, so a real re-arm would
+    // show up as a second TurnOff (or an interleaved TurnOn) in the collected action sequence.
+    [Fact]
+    public void SustainedLowPress_OnGround_DoesNotOscillate()
+    {
+        var a = Make();
+        bool pumpsOn = true;
+
+        // Establish the pumps-on rising edge, then fully drain the settle window, so the loop
+        // below exercises only the low-press debounce / dry-off / (absence of) re-arm.
+        a.Update(true, true, 5000, pumpsOn, false, true, NominalTickMs);
+        double remaining = CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000;
+        while (remaining > 0)
+        {
+            double step = System.Math.Min(remaining, 2000);
+            a.Update(true, true, 5000, pumpsOn, false, true, step);
+            remaining -= step;
+        }
+
+        var actions = new System.Collections.Generic.List<Action>();
+        // ~60 simulated seconds at the nominal 1 Hz tick rate.
+        for (int i = 0; i < 60; i++)
+        {
+            Action result = a.Update(true, true, 5000, pumpsOn, true, true, NominalTickMs);
+            actions.Add(result);
+            if (result == Action.TurnOff) pumpsOn = false;
+            else if (result == Action.TurnOn) pumpsOn = true;
+        }
+
+        int turnOffCount = 0, turnOnCount = 0;
+        foreach (Action act in actions)
+        {
+            if (act == Action.TurnOff) turnOffCount++;
+            if (act == Action.TurnOn) turnOnCount++;
+        }
+        Assert.Equal(1, turnOffCount);
+        Assert.Equal(0, turnOnCount);
     }
 
     // --- FIX 3 clamp --------------------------------------------------------------------
