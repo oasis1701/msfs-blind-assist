@@ -271,6 +271,17 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the iFly 737 Monitor Manager. The def honours this
+                // list itself on its light-edge path (which announces from inside
+                // ProcessSimVarUpdate and never reaches here); every other iFly var —
+                // i.e. every switch/selector combo — announces on THIS path and needs the
+                // gate here, or Ctrl+M silently does nothing for it.
+                if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+                    Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // For PMDG variables, build the description from ValueDescriptions
                 // since PMDG events don't carry description strings like SimConnect does
                 string description = e.Description;
@@ -1352,8 +1363,16 @@ public partial class MainForm
         // made the first switch/flap movement after load silent (only the 2nd worked). The
         // 5-second announcement grace period (EnableAnnouncements) already suppresses the
         // cold-and-dark startup snapshot, so treating the A380 like PMDG here is safe.
+        // The iFly 737 MAX is a third case with the same shape: IFlySdkClient fires its
+        // startup sweep as IsInitialSnapshot, which OnSimVarUpdated returns on BEFORE
+        // reaching simVarMonitor — so no baseline is ever seeded and every switch's first
+        // movement of the session was silent (the whole cold-and-dark flow: fuel pumps,
+        // generators, hydraulics). Its lights announce from ProcessSimVarUpdate and were
+        // never affected, which is why only the combo-backed switches went quiet.
         bool isPMDG = currentAircraft is IPMDGAircraft;
-        bool announceInitialChange = isPMDG || currentAircraft?.AircraftCode == "FBW_A380";
+        bool announceInitialChange = isPMDG
+            || currentAircraft?.AircraftCode == "FBW_A380"
+            || currentAircraft?.AircraftCode == "IFLY_737MAX8";
         bool shouldAnnounce = announceInitialChange ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))

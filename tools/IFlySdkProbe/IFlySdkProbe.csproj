@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Link (not copy) the generated SDK bindings + snapshot/client from the main app
+       so the probe can never drift from the app's layout. -->
+  <ItemGroup>
+    <Compile Include="..\..\MSFSBlindAssist\SimConnect\IFly\IFlySdkOffsets.cs" Link="IFlySdkOffsets.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\SimConnect\IFly\IFlySdkFields.cs" Link="IFlySdkFields.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\SimConnect\IFly\IFlyKeyCommand.cs" Link="IFlyKeyCommand.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\SimConnect\IFly\IFlySdkSnapshot.cs" Link="IFlySdkSnapshot.cs" />
+  </ItemGroup>
+
+</Project>

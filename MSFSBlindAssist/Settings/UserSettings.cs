@@ -160,6 +160,10 @@ public class UserSettings
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
 
+        // iFly 737 MAX8 Settings — the SP1 EFB HTTP server port (iFly Manager
+        // default 8084; user-configurable there since hotfix 1.1.0.1).
+        public int IFlyEfbPort { get; set; } = 8084;
+
         // AI provider selection. Gemini (default) preserves existing behavior; Claude routes ALL
         // three AI features (display reading, scene description, route briefing) through Anthropic.
         public AiProvider AiProvider { get; set; } = AiProvider.Gemini;
@@ -271,6 +275,18 @@ public class UserSettings
         /// <summary>Runtime-only HashSet sidecar of <see cref="A32NXDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
         [JsonIgnore]
         public HashSet<string> A32NXDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
+        // Auto-announced iFly 737 MAX8 variables the user has muted via the iFly
+        // Monitor Manager (Ctrl+M, IFly737MonitorManagerForm). Consulted in
+        // MainForm.OnSimVarUpdated when AircraftCode == "IFLY_737MAX8" — both at
+        // the generic Step-6 gate AND via the Step-2.5 Suppressed-wrap (the iFly
+        // def announces annunciators/MCP lights from INSIDE ProcessSimVarUpdate,
+        // the HS787 pattern). Persisted across sessions.
+        public List<string> IFlyDisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="IFlyDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> IFlyDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
@@ -467,6 +483,7 @@ public class UserSettings
         A380DisabledMonitorVariablesSet = new HashSet<string>(A380DisabledMonitorVariables);
         HS787DisabledMonitorVariablesSet = new HashSet<string>(HS787DisabledMonitorVariables);
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
+        IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
     }
 
     /// <summary>
@@ -506,6 +523,7 @@ public class UserSettings
             GeoNamesApiUsername = GeoNamesApiUsername,
             NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
+            IFlyEfbPort = IFlyEfbPort,
             AiProvider = AiProvider,
             GeminiApiKey = GeminiApiKey,
             GeminiSearchGrounding = GeminiSearchGrounding,
@@ -538,6 +556,7 @@ public class UserSettings
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             HS787DisabledMonitorVariables = new List<string>(HS787DisabledMonitorVariables),
             A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),
+            IFlyDisabledMonitorVariables = new List<string>(IFlyDisabledMonitorVariables),
             AltitudeCalloutsEnabled = AltitudeCalloutsEnabled,
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
