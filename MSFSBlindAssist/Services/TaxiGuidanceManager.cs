@@ -134,6 +134,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // same hold choice. Default false = hold at the full-length line (user decision
     // 2026-07); see TruncateToHoldShort.
     private bool _preferIlsHold = false;
+    // Which hold line TruncateToHoldShort actually picked for the CURRENT route
+    // (via RunwayHoldShortSelector). LoadRoute turns this into the LVP
+    // route-summary feedback sentence — with LVP requested, the same-approach
+    // gate can legitimately reject the ILS hold, and a blind pilot has no other
+    // way to know which line the route stops at.
+    private RunwayHoldChoice _lastRunwayHoldChoice = RunwayHoldChoice.None;
 
     // Route polyline cache for GuidanceGeometry (node k = segment k's FromNode,
     // last entry = final ToNode). Rebuilt lazily whenever _route changes —

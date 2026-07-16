@@ -291,6 +291,7 @@ public class TaxiAssistForm : Form
         //   Alt+A  Airport (ICAO)
         //   Alt+T  Destination Type combo
         //   Alt+E  Destination combo (D&estination)
+        //   Alt+L  CAT III / low-visibility hold checkbox ("(&LVP)", runway dest. only)
         //   Alt+F  First taxiway combo
         //   Alt+H  First Hold-short checkbox  (dynamic Hold-shorts share Alt+H — cycle)
         //   Alt+O  Hold short &of runway combo (first row + dynamic — all cycle on Alt+O)
@@ -307,10 +308,11 @@ public class TaxiAssistForm : Form
         //   Alt+2..9  Dynamic Taxiway label (Taxiway &2 .. Taxiway &9)
         //
         // Tab order (top→bottom of form, no jumps to dynamic panel at the end):
-        //   1 txtAirport, 2 cmbDestType, 3 cmbDestination,
-        //   4 cmbFirstTaxiway, 5 chkFirstHoldShort, 6 btnAddTaxiway,
-        //   7 pnlTaxiways (dynamic taxiway groups visit here in insertion order),
-        //   8 btnCalculate, 9 btnStop.
+        //   txtAirport, cmbDestType, txtGateSearch, cmbDestination,
+        //   chkIntersection, cmbIntersection, chkCatIiiHold, chkFitFilter,
+        //   cmbFirstTaxiway, chkFirstHoldShort, cmbFirstHoldShortRunway,
+        //   btnAddTaxiway, pnlTaxiways (dynamic rows in insertion order),
+        //   btnCalculate, btnStop, txtRouteSummary.
 
         // Airport ICAO
         lblAirport = new Label
@@ -807,6 +809,13 @@ public class TaxiAssistForm : Form
             this.Activate();
             txtAirport.Focus();
         };
+
+        // Fit the form to its content NOW. UpdateLayout otherwise only runs on
+        // a destination-type change or row add/remove, so at first open the
+        // initial 480 px Size clipped everything below its client area — the
+        // CAT III / LVP checkbox row pushed Calculate/Stop below the fold, and
+        // the status/route-summary block was already down there before it.
+        UpdateLayout();
     }
 
     // Non-handler async void (called from the airport textbox's Leave lambda and from
@@ -2058,10 +2067,20 @@ public class TaxiAssistForm : Form
         y += 40;
 
         lblStatus.Location = new System.Drawing.Point(15, y);
-        y += 40;
+        y += 25;
+
+        // The route-summary block moves with everything above it. Before this,
+        // UpdateLayout left it at its construction position, so every added
+        // taxiway row pushed the buttons/status DOWN OVER the summary box, and
+        // formHeight never accounted for it (its bottom ~27 px sat below the
+        // computed client area).
+        lblRouteSummary.Location = new System.Drawing.Point(15, y);
+        y += 22;
+        txtRouteSummary.Location = new System.Drawing.Point(15, y);
+        y += txtRouteSummary.Height;
 
         // Resize form to fit
-        int formHeight = y + 50;
+        int formHeight = y + 15;
         if (formHeight < 480) formHeight = 480;
         this.ClientSize = new System.Drawing.Size(this.ClientSize.Width, formHeight);
     }

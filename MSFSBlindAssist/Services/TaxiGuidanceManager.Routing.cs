@@ -443,6 +443,19 @@ public partial class TaxiGuidanceManager
                 string summary = BuildRouteSummary(route, isRunwayDestination, leadIn, firstCleared);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
+                // LVP hold feedback: when the CAT III / low-visibility hold was
+                // requested, say which hold line the route actually stops at —
+                // navdata hold coverage is patchy and the same-approach gate can
+                // legitimately reject the ILS hold, and a blind pilot has no
+                // other way to know. The honoured confirmation rides at the
+                // tail; a fallback is warning-like and goes FIRST (same
+                // interrupt reasoning as the length advisory below).
+                string? lvpNote = RunwayHoldShortSelector.DescribeLvpOutcome(
+                    isRunwayDestination && preferIlsHold, _lastRunwayHoldChoice);
+                if (lvpNote != null)
+                    summary = _lastRunwayHoldChoice == RunwayHoldChoice.IlsHold
+                        ? summary + " " + lvpNote
+                        : lvpNote + " " + summary;
                 // The length advisory goes FIRST, not last. The summary is plain
                 // queued speech, and the first AnnounceImmediate tactical callout
                 // after the pilot starts rolling INTERRUPTS it — a warning at the
@@ -931,6 +944,7 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private void TruncateToHoldShort(TaxiRoute route, string destinationName, bool preferIlsHold = false)
     {
+        _lastRunwayHoldChoice = RunwayHoldChoice.None;
         if (route.Segments.Count == 0) return;
 
         // Pass 1: find the latest (closest-to-runway) ILS hold-short and plain
@@ -947,52 +961,24 @@ public partial class TaxiGuidanceManager
         }
 
         // Hold-line selection between the full-length hold (HS, closest to the
-        // runway) and the CAT III / ILS hold (IHS, further back to protect the ILS
-        // critical area):
-        //   • DEFAULT (preferIlsHold == false): take the hold CLOSEST to the runway
-        //     — the full-length line (e.g. EGKK A1/M1), matching a normal ATC
-        //     clearance. This is a deliberate user decision (2026-07): do NOT make
-        //     the IHS preference the default again.
-        //   • CAT III / LVP (preferIlsHold == true, the Taxi planner's
-        //     "CAT III / low-visibility hold" checkbox): honour the ILS hold when
-        //     it sits just behind the full-length hold on the SAME final approach.
-        //
-        // Prefer the IHS over the HS ONLY when both sit on the SAME final approach
-        // — i.e. the ILS hold is just behind the CAT I hold on the same connector
-        // (the safer "clear the ILS critical area" stop). The old code preferred
-        // the IHS UNCONDITIONALLY, which broke at airports where the route merely
-        // CROSSES an ILS-critical-area hold on a transit taxiway before turning
-        // onto the final connector to the runway: that transit IHS was picked over
-        // the real runway hold, stopping the pilot a whole taxiway early.
-        //   OMDB 30R via N12 (fs2024): the cleared route runs down taxiway N —
-        //   which carries its own IHS nodes ~620 m from N12's HSND hold — then
-        //   turns onto the short N12 connector. The N IHS hijacked the truncation,
-        //   so guidance announced the hold-short on N instead of N12 (the actual
-        //   30R hold). Reported by the user.
-        // Geometric proximity, NOT route-segment count, gates "same approach": a
-        // real CAT II/III hold sits only tens of metres behind the CAT I line,
-        // whereas a transit hold on the prior taxiway is hundreds of metres away.
-        const double SAME_APPROACH_IHS_MAX_M = 150.0;
-        int truncateAt;
-        if (preferIlsHold &&
-            truncateAtIHS >= 0 && truncateAtHS >= 0 && truncateAtIHS < truncateAtHS)
+        // runway) and the CAT III / ILS hold (IHS, further back to protect the
+        // ILS critical area) is delegated to RunwayHoldShortSelector — the pure
+        // decision core that carries the full rationale (default full-length =
+        // user decision 2026-07; the 150 m same-approach gate = the OMDB
+        // 30R-via-N12 transit-IHS fix) and is pinned by
+        // RunwayHoldShortSelectorTests. The separation between the two holds is
+        // only consulted in the LVP branch, when the IHS sits behind the HS.
+        double holdSepM = double.MaxValue;
+        if (truncateAtIHS >= 0 && truncateAtHS >= 0)
         {
-            // LVP only: the IHS is further from the runway than the HS. Honour it
-            // only when the two holds are physically close (same final approach);
-            // otherwise the HS on the final connector is the real runway hold.
             var ihsNode = route.Segments[truncateAtIHS].ToNode!;
             var hsNode  = route.Segments[truncateAtHS].ToNode!;
-            double holdSep = TaxiGraph.FastDistanceMeters(
+            holdSepM = TaxiGraph.FastDistanceMeters(
                 ihsNode.Latitude, ihsNode.Longitude, hsNode.Latitude, hsNode.Longitude);
-            truncateAt = holdSep <= SAME_APPROACH_IHS_MAX_M ? truncateAtIHS : truncateAtHS;
         }
-        else
-        {
-            // DEFAULT full-length hold, or (LVP with) no IHS / no HS / the IHS
-            // already the closest hold to the runway → take whichever hold-short
-            // is latest in the route (closest to the runway).
-            truncateAt = Math.Max(truncateAtIHS, truncateAtHS);
-        }
+        var (truncateAt, holdChoice) = RunwayHoldShortSelector.Select(
+            truncateAtIHS, truncateAtHS, holdSepM, preferIlsHold);
+        _lastRunwayHoldChoice = holdChoice;
 
         // Pass 2 (universal-DB fallback): if the graph has no HS/IHS nodes on
         // this runway at all (common at small airports, new-numbered runways,
