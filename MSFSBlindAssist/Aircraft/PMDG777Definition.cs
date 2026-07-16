@@ -5880,6 +5880,20 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return isCargoKnob ? isFreighter : !isFreighter;
     }
 
+    /// <summary>
+    /// Engage the autopilot via the MCP left A/P engage switch (A/P L). The 777 momentary
+    /// convention is <c>SendPMDGEvent(name, id, 1)</c>. Guarded on the A/P L engaged
+    /// annunciator (<c>MCP_annunAP_0</c>) so re-engaging (a toggle) can't disconnect an
+    /// already-engaged autopilot.
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm != null && dm.GetFieldValue("MCP_annunAP_0") > 0.5) return;   // already engaged
+        if (EventIds.TryGetValue("EVT_MCP_AP_L_SWITCH", out int id))
+            simConnect.SendPMDGEvent("EVT_MCP_AP_L_SWITCH", (uint)id, 1);
+    }
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,

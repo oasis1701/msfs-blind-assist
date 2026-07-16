@@ -35,19 +35,17 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     private const int HysteresisFt = 300;   // Band around each threshold
 
     // -----------------------------------------------------------------------
-    // Configurable thresholds (set from SimBrief OFP)
-    // -----------------------------------------------------------------------
-
-    private int _transAltFt = 0;    // 0 = not configured; skip altimeter actions
-    private int _transLvlFt = 0;
-
-    // -----------------------------------------------------------------------
     // State tracking (nullable = not yet determined — prevents false triggers
     // when starting mid-flight)
     // -----------------------------------------------------------------------
 
     private bool? _prevAbove10k;    // null = initial; true = was above; false = was below
-    private bool? _prevInStd;       // null = initial; true = was in STD zone; false = in QNH zone
+
+    // Transition altitude (climb→STD) / level (descent→QNH) crossings. Two INDEPENDENT
+    // edge detectors, never a single shared "in STD zone" latch — a shared latch spammed
+    // the QNH call-out when the destination TL sat well above the origin TA (bands overlap;
+    // see TransitionCrossingDetector).
+    private readonly TransitionCrossingDetector _trans = new();
 
     // -----------------------------------------------------------------------
     // Constructor
@@ -74,8 +72,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     /// </summary>
     public void SetThresholds(int transAltFt, int transLevelFt)
     {
-        _transAltFt = transAltFt;
-        _transLvlFt  = transLevelFt > 0 ? transLevelFt : transAltFt;
+        _trans.SetThresholds(transAltFt, transLevelFt);
     }
 
     /// <summary>
@@ -86,7 +83,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     public void Reset()
     {
         _prevAbove10k = null;
-        _prevInStd    = null;
+        _trans.Reset();
         _seatbelt.Reset();
     }
 
@@ -115,7 +112,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         _seatbelt.Update(altitudeFt, verticalSpeedFpm);
 
         // ---- Transition altitude / level (altimeters) ----
-        if (_transAltFt > 0)
+        if (_trans.HasThresholds)
             CheckTransitionCrossing(altitudeFt, climbing, descending);
         else
             CheckNoTransitionReminder(altitudeFt, climbing);
@@ -178,39 +175,24 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
 
     private void CheckTransitionCrossing(double alt, bool climbing, bool descending)
     {
-        int transAltHigh = _transAltFt + HysteresisFt;
-        int transLvlLow  = _transLvlFt - HysteresisFt;
-
-        bool nowAboveTrans = alt > transAltHigh;
-        bool nowBelowTrans = alt < transLvlLow;
-
-        // Direction gates are "!descending"/"!climbing" (NOT "climbing"/"descending") —
-        // a momentary VS lull on the tick that first sees the aircraft past the band
-        // used to skip the push while the latch below still flipped, permanently
-        // burning the crossing (see the 737 monitor for the full note).
-        if (!descending && nowAboveTrans && _prevInStd == false)
+        switch (_trans.Update(alt, climbing, descending))
         {
-            // Climbing through transition altitude — set both altimeters to STD
-            bool captIsStd = _state.IsBaroSTDCapt();
-            bool foIsStd   = _state.IsBaroSTDFO();
-            if (!captIsStd) _executor.PushBaroSTDCapt();
-            if (!foIsStd)   _executor.PushBaroSTDFO();
-            _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
-            _prevInStd = true;
+            case TransitionCrossingDetector.Crossing.ClimbToStd:
+            {
+                // Climbing through transition altitude — set both altimeters to STD
+                if (!_state.IsBaroSTDCapt()) _executor.PushBaroSTDCapt();
+                if (!_state.IsBaroSTDFO())   _executor.PushBaroSTDFO();
+                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                break;
+            }
+            case TransitionCrossingDetector.Crossing.DescendToQnh:
+            {
+                // Descending through transition level — deselect STD, announce QNH
+                if (_state.IsBaroSTDCapt()) _executor.PushBaroSTDCapt();
+                if (_state.IsBaroSTDFO())   _executor.PushBaroSTDFO();
+                _announcer.AnnounceImmediate("Transition level. Altimeters set to local QNH. Set local pressure now.");
+                break;
+            }
         }
-        else if (!climbing && nowBelowTrans && _prevInStd == true)
-        {
-            // Descending through transition level — deselect STD, announce QNH
-            bool captIsStd = _state.IsBaroSTDCapt();
-            bool foIsStd   = _state.IsBaroSTDFO();
-            if (captIsStd) _executor.PushBaroSTDCapt();
-            if (foIsStd)   _executor.PushBaroSTDFO();
-            _announcer.AnnounceImmediate("Transition level. Altimeters set to local QNH. Set local pressure now.");
-            _prevInStd = false;
-        }
-
-        // Update stable state (only outside the band)
-        if (nowAboveTrans)       _prevInStd = true;
-        else if (nowBelowTrans)  _prevInStd = false;
     }
 }

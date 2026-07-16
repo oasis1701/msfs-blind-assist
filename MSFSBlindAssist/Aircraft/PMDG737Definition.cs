@@ -4023,6 +4023,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
     }
 
+    /// <summary>
+    /// Engage the autopilot via MCP CMD A — the NG3 momentary MCP push commits only via a
+    /// LEFTSINGLE+LEFTRELEASE pair (<see cref="SimConnect.SimConnectManager.SendPMDGMomentaryToggle"/>);
+    /// the stock <c>AUTOPILOT_ON</c> engages the basic AFDS, not CMD. Guarded on the CMD A
+    /// annunciator so re-engaging (CMD A is a toggle) can't disconnect an already-engaged AP.
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm != null && dm.GetFieldValue("MCP_annunCMD_A") > 0.5) return;   // already engaged
+        if (EventIds.TryGetValue("EVT_MCP_CMD_A_SWITCH", out int id))
+            _ = simConnect.SendPMDGMomentaryToggle((uint)id, 1);
+    }
+
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
     public override bool HandleUIVariableSet(
         string varKey, double value,

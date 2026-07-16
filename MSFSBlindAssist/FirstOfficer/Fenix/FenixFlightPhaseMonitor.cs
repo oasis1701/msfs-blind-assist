@@ -27,12 +27,13 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
     private const int LandingLightThresholdFt = 10_000;
     private const int HysteresisFt = 300;
 
-    private int _transAltFt;
-    private int _transLvlFt;
-
     private bool? _prevAbove10k;
-    private bool? _prevInStd;
     private bool _noTransReminderFired;
+
+    // Two INDEPENDENT transition-crossing detectors (never a single shared "in STD zone"
+    // latch — that spammed the QNH call-out when the destination TL sat well above the
+    // origin TA; see TransitionCrossingDetector).
+    private readonly TransitionCrossingDetector _trans = new();
 
     public FenixFlightPhaseMonitor(FenixActionExecutor executor, ScreenReaderAnnouncer announcer)
     {
@@ -43,14 +44,13 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
 
     public void SetThresholds(int transAltFt, int transLevelFt)
     {
-        _transAltFt = transAltFt;
-        _transLvlFt = transLevelFt > 0 ? transLevelFt : transAltFt;
+        _trans.SetThresholds(transAltFt, transLevelFt);
     }
 
     public void Reset()
     {
         _prevAbove10k = null;
-        _prevInStd = null;
+        _trans.Reset();
         _noTransReminderFired = false;
         _seatbelt.Reset();
     }
@@ -74,7 +74,7 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         // ---- Auto seat-belt-sign automation ----
         _seatbelt.Update(altitudeFt, verticalSpeedFpm);
 
-        if (_transAltFt > 0)
+        if (_trans.HasThresholds)
             CheckTransitionCrossing(altitudeFt, climbing, descending);
         else
             CheckNoTransitionReminder(altitudeFt, climbing);
@@ -126,26 +126,16 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
 
     private void CheckTransitionCrossing(double alt, bool climbing, bool descending)
     {
-        int transAltHigh = _transAltFt + HysteresisFt;
-        int transLvlLow  = _transLvlFt - HysteresisFt;
-
-        bool nowAboveTrans = alt > transAltHigh;
-        bool nowBelowTrans = alt < transLvlLow;
-
-        if (!descending && nowAboveTrans && _prevInStd == false)
+        switch (_trans.Update(alt, climbing, descending))
         {
-            _ = _executor.SetBaroStdBoth(true);
-            _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
-            _prevInStd = true;
+            case TransitionCrossingDetector.Crossing.ClimbToStd:
+                _ = _executor.SetBaroStdBoth(true);
+                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                break;
+            case TransitionCrossingDetector.Crossing.DescendToQnh:
+                _ = _executor.SetBaroStdBoth(false);
+                _announcer.AnnounceImmediate("Transition level. Altimeters set to QNH mode. Set local pressure now.");
+                break;
         }
-        else if (!climbing && nowBelowTrans && _prevInStd == true)
-        {
-            _ = _executor.SetBaroStdBoth(false);
-            _announcer.AnnounceImmediate("Transition level. Altimeters set to QNH mode. Set local pressure now.");
-            _prevInStd = false;
-        }
-
-        if (nowAboveTrans)      _prevInStd = true;
-        else if (nowBelowTrans) _prevInStd = false;
     }
 }

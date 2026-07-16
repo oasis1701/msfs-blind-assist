@@ -287,6 +287,15 @@ public interface IAircraftDefinition
     bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>
+    /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
+    /// stock <c>AUTOPILOT_ON</c> event; aircraft whose autopilot ignores or misreads that
+    /// (the PMDG jets — CMD A on the 737, A/P L on the 777) override to press their own MCP
+    /// engage switch. Implementations should no-op if the autopilot is already engaged so a
+    /// toggle-style engage switch can't disconnect it.
+    /// </summary>
+    void EngageAutopilot(SimConnect.SimConnectManager simConnect);
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 

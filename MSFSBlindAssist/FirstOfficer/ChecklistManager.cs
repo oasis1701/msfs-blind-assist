@@ -88,6 +88,36 @@ public class ChecklistManager<TExec, TState>
         }
     }
 
+    /// <summary>
+    /// Mark an ENTIRE group complete — called when a related flow finishes. Ticks every
+    /// tickable (non-Informational) item, records participation, and latches the group so
+    /// RevertToState won't un-tick it. Rationale: running a flow IS the First Officer
+    /// working that phase, so its checklist should stand complete as the phase's historical
+    /// record (same philosophy as the group-completion latch). Without this, a flow that
+    /// set all the switches left the checklist header stuck at a partial "N of M" because
+    /// the phase's Captain-reminder / reminder items never auto-tick from state.
+    /// </summary>
+    public void MarkGroupComplete(string groupId)
+    {
+        var group = FindGroup(groupId);
+        if (group == null) return;
+
+        group.HasParticipation = true;
+        foreach (var item in group.Items)
+        {
+            if (item.Type == ChecklistItemType.Informational) continue;   // separators aren't tickable
+            if (!item.IsChecked)
+            {
+                item.IsChecked = true;
+                ItemStateChanged?.Invoke(group, item);
+            }
+        }
+        // The flow already ran its actions; freeze the group as a historical record so a
+        // later flow moving the same switches can't un-tick it.
+        group.CompletionLatched = true;
+        GroupProgressChanged?.Invoke(group);
+    }
+
     // -----------------------------------------------------------------------
     // Reset
     // -----------------------------------------------------------------------

@@ -10,14 +10,20 @@ namespace MSFSBlindAssist.Automation;
 ///            above 3000 ft AGL (go-around).
 /// AP engage: climbing through AutoApEngageAltitudeAgl. Once per leg; reset on touchdown.
 ///
-/// No gear/AP state is read — the per-leg latch plus the climb/descent gates prevent
-/// redundant fires, and stock GEAR_UP/GEAR_DOWN/AUTOPILOT_ON are idempotent in the sim.
-/// Actuation and announcements go through injected delegates so the logic is unit-testable.
+/// No gear state is read — the per-leg latch plus the climb/descent gates prevent
+/// redundant fires, and stock GEAR_UP/GEAR_DOWN are idempotent in the sim. AP engage is
+/// routed through an injected delegate: the PMDG jets press their own MCP switch (CMD A on
+/// the 737, A/P L on the 777, each self-guarded against toggling an already-engaged AP);
+/// every other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements
+/// go through injected delegates so the logic is unit-testable.
 /// </summary>
 public sealed class UniversalAutomationService
 {
     private readonly Action<string> _sendStockEvent;
     private readonly Action<string> _announce;
+    // AP engage is aircraft-routed: PMDG jets press their own MCP switch (CMD A / A/P L),
+    // everything else fires the stock AUTOPILOT_ON. Null => stock fallback.
+    private readonly Action? _engageAutopilot;
 
     public bool AutoGearUpEnabled   { get; set; }
     public bool AutoGearDownEnabled { get; set; }
@@ -29,10 +35,12 @@ public sealed class UniversalAutomationService
     private bool _apEngagedThisLeg;
     private bool _wasOnGround = true;
 
-    public UniversalAutomationService(Action<string> sendStockEvent, Action<string> announce)
+    public UniversalAutomationService(Action<string> sendStockEvent, Action<string> announce,
+        Action? engageAutopilot = null)
     {
         _sendStockEvent = sendStockEvent;
         _announce = announce;
+        _engageAutopilot = engageAutopilot;
     }
 
     public bool AnyEnabled => AutoGearUpEnabled || AutoGearDownEnabled || AutoApEnabled;
@@ -83,7 +91,8 @@ public sealed class UniversalAutomationService
 
         if (AutoApEnabled && !_apEngagedThisLeg && climbing && altitudeAgl >= AutoApEngageAltitudeAgl)
         {
-            _sendStockEvent("AUTOPILOT_ON");
+            if (_engageAutopilot != null) _engageAutopilot();
+            else _sendStockEvent("AUTOPILOT_ON");
             _announce($"{AutoApEngageAltitudeAgl} feet. Autopilot engaged.");
             _apEngagedThisLeg = true;
         }

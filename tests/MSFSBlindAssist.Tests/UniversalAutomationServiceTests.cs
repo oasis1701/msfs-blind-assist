@@ -65,6 +65,23 @@ public class UniversalAutomationServiceTests
         Assert.Contains("350 feet. Autopilot engaged.", spoken);
     }
 
+    // When an aircraft-routed AP-engage delegate is supplied (PMDG CMD A / A/P L), it is
+    // used instead of the stock AUTOPILOT_ON event.
+    [Fact]
+    public void Ap_UsesInjectedEngageDelegateWhenProvided()
+    {
+        int engaged = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add, () => engaged++);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 350;
+        s.Update(300, 900, 300);
+        s.Update(500, 900, 400);   // through 350
+        s.Update(700, 900, 600);
+        Assert.Equal(1, engaged);
+        Assert.DoesNotContain("AUTOPILOT_ON", events);   // stock event NOT used
+        Assert.Contains("350 feet. Autopilot engaged.", spoken);
+    }
+
     [Fact]
     public void Touchdown_ResetsGearUpAndApLatches()
     {

@@ -511,7 +511,10 @@ public partial class MainForm : Form
         // AircraftPositionReceived subscription + feed timer below reference it.
         universalAutomation = new MSFSBlindAssist.Automation.UniversalAutomationService(
             eventName => simConnectManager.SendEvent(eventName),
-            msg => announcer.AnnounceImmediate(msg));
+            msg => announcer.AnnounceImmediate(msg),
+            // AP engage routes through the current aircraft def: PMDG jets press their own
+            // MCP switch (CMD A / A/P L), everything else falls back to stock AUTOPILOT_ON.
+            () => currentAircraft?.EngageAutopilot(simConnectManager));
 
         simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
 

@@ -645,6 +645,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>
+    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the sim).
+    /// The PMDG jets override this to press their MCP engage switch instead.
+    /// </summary>
+    public virtual void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+        => simConnect.SendEvent("AUTOPILOT_ON");
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 

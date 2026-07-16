@@ -43,19 +43,17 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     private const int HysteresisFt            =    300;
 
     // -----------------------------------------------------------------------
-    // Configurable transition altitudes (set from SimBrief or settings)
-    // -----------------------------------------------------------------------
-
-    private int _transAltFt  = 0;
-    private int _transLvlFt  = 0;
-
-    // -----------------------------------------------------------------------
     // State latches
     // -----------------------------------------------------------------------
 
     // null = not yet determined (no hysteresis band crossed yet this session)
     private bool? _prevAbove10k;
-    private bool? _prevInStd;
+
+    // Transition altitude (climb→STD) / level (descent→QNH) crossings — two INDEPENDENT
+    // edge detectors, never a single shared "in STD zone" latch (a shared latch spammed
+    // the QNH call-out when the destination TL sat well above the origin TA;
+    // see TransitionCrossingDetector).
+    private readonly TransitionCrossingDetector _trans = new();
 
     // -----------------------------------------------------------------------
     // Constructor
@@ -83,8 +81,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     /// </summary>
     public void SetThresholds(int transAltFt, int transLevelFt)
     {
-        _transAltFt = transAltFt;
-        _transLvlFt = transLevelFt > 0 ? transLevelFt : transAltFt;
+        _trans.SetThresholds(transAltFt, transLevelFt);
     }
 
     /// <summary>
@@ -93,7 +90,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     public void Reset()
     {
         _prevAbove10k = null;
-        _prevInStd    = null;
+        _trans.Reset();
         _seatbelt.Reset();
     }
 
@@ -120,7 +117,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         // ---- Auto seat-belt-sign automation ----
         _seatbelt.Update(altitudeFt, verticalSpeedFpm);
 
-        if (_transAltFt > 0)
+        if (_trans.HasThresholds)
             CheckTransitionCrossing(altitudeFt, climbing, descending);
         else
             CheckNoTransitionReminder(altitudeFt, climbing);
@@ -191,39 +188,19 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
 
     private void CheckTransitionCrossing(double alt, bool climbing, bool descending)
     {
-        // Each band edge carries hysteresis to prevent oscillating callouts
-        int transAltHigh = _transAltFt + HysteresisFt;  // climbing target
-        int transLvlLow  = _transLvlFt - HysteresisFt;  // descending target
-
-        bool nowAboveTrans = alt > transAltHigh;
-        bool nowBelowTrans = alt < transLvlLow;
-
-        // Direction gates are "!descending"/"!climbing" (NOT "climbing"/"descending"):
-        // the fire check and the latch update run in the same tick, so if the 1 Hz
-        // sample that first sees the aircraft past the band happens to catch VS in a
-        // momentary lull (autopilot altitude capture, turbulence), a strict VS gate
-        // skipped the push while the latch below still flipped — permanently burning
-        // the crossing. That silent miss is one way "altimeters never went to STD".
-        if (!descending && nowAboveTrans && _prevInStd == false)
+        switch (_trans.Update(alt, climbing, descending))
         {
-            // Climbing through transition altitude — rotate both EFIS baro knobs to
-            // standard (fire-and-forget; the executor sequences the two knobs itself).
-            // The _prevInStd latch prevents a repeat on subsequent Update() calls.
-            _ = _executor.SetAltimetersStandardAsync();
-            _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
-            _prevInStd = true;
+            case TransitionCrossingDetector.Crossing.ClimbToStd:
+                // Climbing through transition altitude — rotate both EFIS baro knobs to
+                // standard (fire-and-forget; the executor sequences the two knobs itself).
+                _ = _executor.SetAltimetersStandardAsync();
+                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                break;
+            case TransitionCrossingDetector.Crossing.DescendToQnh:
+                // Descending through transition level — the local QNH is unknowable here,
+                // so this is announce-only; the pilot sets pressure via the Ctrl+B dialog.
+                _announcer.AnnounceImmediate("Transition level. Set local altimeter pressure now.");
+                break;
         }
-        else if (!climbing && nowBelowTrans && _prevInStd == true)
-        {
-            // Descending through transition level — the local QNH is unknowable here,
-            // so this is announce-only; the pilot sets pressure via the Ctrl+B dialog.
-            _announcer.AnnounceImmediate("Transition level. Set local altimeter pressure now.");
-            _prevInStd = false;
-        }
-
-        // Update latch only when outside the hysteresis band
-        if (nowAboveTrans)      _prevInStd = true;
-        else if (nowBelowTrans) _prevInStd = false;
-        // Inside the band: latch holds its previous value
     }
 }
