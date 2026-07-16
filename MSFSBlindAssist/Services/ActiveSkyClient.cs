@@ -51,6 +51,14 @@ public class ActiveSkyClient
     /// <summary>Last detection result reason — surfaced to the UI so the user can diagnose.</summary>
     public string LastStatus { get; private set; } = "not yet checked";
 
+    /// <summary>Body of the last successful /GetMode probe (e.g. "Live Real time mode
+    /// (Active) (2026/7/10 1935z)"). Refreshed by every successful liveness probe —
+    /// callers that just ran IsRunningAsync() can read it without another request.
+    /// Null until AS has been reached once this session. Setter is `internal` solely so
+    /// the test assembly can seed/assert it directly — same precedent as
+    /// <see cref="LastSuccessfulPort"/>. App code must never assign it.</summary>
+    public string? LastModeText { get; internal set; }
+
     private static readonly HttpClient _http;
 
     static ActiveSkyClient()
@@ -108,6 +116,48 @@ public class ActiveSkyClient
         public List<string> Tafs { get; set; } = new();
     }
 
+    /// <summary>One level from /GetAtmosphere — sim-truth wind + temperature.</summary>
+    public sealed class AtmosphereLevel
+    {
+        public int AltitudeFt;
+        public double WindDirection;
+        public double WindSpeed;
+        public double TemperatureC;
+    }
+
+    /// <summary>Parsed /GetWeatherInfoXml — the vertical weather profile.</summary>
+    public sealed class VerticalProfile
+    {
+        public List<ProfileWindLayer> WindLayers { get; } = new();
+        public List<ProfileCloudLayer> CloudLayers { get; } = new();
+    }
+
+    /// <summary>One wind layer. AltFeet arrives in FEET (surface layer = 0).
+    /// TurbulenceEnum is the FSX-style severity 0-4, NOT the 0-100 JSON scale.</summary>
+    public sealed class ProfileWindLayer
+    {
+        public bool IsSurface;
+        public int AltitudeFt;
+        public double DirectionDeg;
+        public double SpeedKts;
+        public double TemperatureC;
+        public int TurbulenceEnum;
+        public double GustKts;          // surface layer only; 0 elsewhere
+    }
+
+    /// <summary>One cloud layer. Base/top arrive in METRES and are converted to
+    /// feet at parse time. Coverage is oktas; Icing/Turbulence are severity 0-4;
+    /// PrecipType 0 none / 1 rain / 2 snow.</summary>
+    public sealed class ProfileCloudLayer
+    {
+        public int BaseFt;
+        public int TopFt;
+        public int CoverageOktas;
+        public int IcingEnum;
+        public int PrecipType;
+        public int TurbulenceEnum;
+    }
+
     private string BaseUrl(int port) => $"http://localhost:{port}/ActiveSky/API";
 
     /// <summary>
@@ -127,6 +177,7 @@ public class ActiveSkyClient
         if (!Settings.SettingsManager.Current.ActiveSkyEnabled)
         {
             LastSuccessfulPort = null;
+            LastModeText = null;
             LastStatus = "disabled in settings";
             return false;
         }
@@ -138,6 +189,7 @@ public class ActiveSkyClient
         {
             if (await ProbePortAsync(cached) is { } cachedStatus && cachedStatus.success)
             {
+                if (cachedStatus.modeBody != null) LastModeText = cachedStatus.modeBody;
                 LastStatus = $"detected on port {cached}";
                 Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
                 return true;
@@ -152,7 +204,7 @@ public class ActiveSkyClient
         // CancellationToken so the timeout actually cancels the underlying
         // HTTP call rather than letting it idle on a connect attempt.
         var tasks = CandidatePortList.Select(p => ProbePortAsync(p)).ToList();
-        var results = new List<(int port, bool success, string err)>();
+        var results = new List<(int port, bool success, string err, string? modeBody)>();
 
         while (tasks.Count > 0)
         {
@@ -161,6 +213,11 @@ public class ActiveSkyClient
             var r = await done;
             if (r.success)
             {
+                // Only the WINNING probe may write LastModeText — abandoned
+                // ProbePortAsync tasks for the other candidate ports keep running
+                // in the background after we return here, and a late foreign-port
+                // 200 would otherwise overwrite the mode text after the fact.
+                if (r.modeBody != null) LastModeText = r.modeBody;
                 LastSuccessfulPort = r.port;
                 LastStatus = $"detected on port {r.port}";
                 Log.Debug("ActiveSky", $"probe ok: {LastStatus} in {sw.ElapsedMilliseconds} ms");
@@ -173,32 +230,43 @@ public class ActiveSkyClient
         // informative; subsequent ports tend to fail with the same reason).
         string firstErr = results.FirstOrDefault().err ?? "no candidate ports tried";
         LastSuccessfulPort = null;
+        LastModeText = null;
         LastStatus = $"not detected ({firstErr})";
         Log.Debug("ActiveSky", $"probe failed: {LastStatus} in {sw.ElapsedMilliseconds} ms");
         return false;
     }
 
-    private async Task<(int port, bool success, string err)> ProbePortAsync(int port)
+    private async Task<(int port, bool success, string err, string? modeBody)> ProbePortAsync(int port)
     {
         using var cts = new System.Threading.CancellationTokenSource(ProbeTimeout);
         try
         {
             using var resp = await _http.GetAsync($"{BaseUrl(port)}/GetMode", cts.Token);
             if (resp.IsSuccessStatusCode)
-                return (port, true, "");
-            return (port, false, $"port {port}: HTTP {(int)resp.StatusCode}");
+            {
+                // Free mode capture — the probe already fetched the body's request.
+                // The body is returned to the caller instead of written to
+                // LastModeText here — only the winning probe (decided by the
+                // caller) may write it; see the comment at the parallel-probe
+                // call site in IsRunningAsync.
+                string? body = null;
+                try { body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim(); }
+                catch { /* liveness result stands even if the body read fails */ }
+                return (port, true, "", body);
+            }
+            return (port, false, $"port {port}: HTTP {(int)resp.StatusCode}", null);
         }
         catch (OperationCanceledException)
         {
-            return (port, false, $"port {port}: timeout");
+            return (port, false, $"port {port}: timeout", null);
         }
         catch (HttpRequestException ex)
         {
-            return (port, false, $"port {port}: {ShortenHttpError(ex.Message)}");
+            return (port, false, $"port {port}: {ShortenHttpError(ex.Message)}", null);
         }
         catch (Exception ex)
         {
-            return (port, false, $"port {port}: {ex.GetType().Name}");
+            return (port, false, $"port {port}: {ex.GetType().Name}", null);
         }
     }
 
@@ -360,6 +428,112 @@ public class ActiveSkyClient
     }
 
     /// <summary>
+    /// /GetAtmosphere?lat=&lon=&altitudes=a|b|c — sim-truth winds/temps at the
+    /// requested altitudes (feet, pipe-separated; invariant decimal separators
+    /// per the AS API doc). Null on error or when AS is off/unreachable.
+    /// </summary>
+    public async Task<List<AtmosphereLevel>?> GetAtmosphereAsync(double lat, double lon, IEnumerable<int> altitudesFt)
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            string url = $"{BaseUrl(port)}/GetAtmosphere"
+                + $"?lat={lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&lon={lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&altitudes={string.Join("|", altitudesFt)}&timeoffset=0";
+            using var resp = await _http.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            return ParseAtmosphereJson(await resp.Content.ReadAsStringAsync(cts.Token));
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetAtmosphere failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>/GetWeatherInfoXml?lat=&lon= — the comprehensive vertical profile
+    /// at a position (13 wind/temp/turbulence layers to FL560, cloud layers with
+    /// tops and icing). Null on error or when AS is off/unreachable.</summary>
+    public async Task<VerticalProfile?> GetWeatherInfoXmlAsync(double lat, double lon)
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            string url = $"{BaseUrl(port)}/GetWeatherInfoXml"
+                + $"?lat={lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&lon={lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}&timeoffset=0";
+            using var resp = await _http.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            return ParseWeatherInfoXml(await resp.Content.ReadAsStringAsync(cts.Token));
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetWeatherInfoXml failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// /GetActiveSigmetsAt with NO parameters — SIGMETs/AIRMETs affecting the flight
+    /// plan currently loaded in ActiveSky (AS's own SimBrief link keeps that current;
+    /// MSFSBA never pushes a plan). Returns the raw response text — either advisory
+    /// blocks or the "No airmet/sigmet affecting currently loaded flight plan route"
+    /// sentence — or null on error / AS off / unreachable.
+    /// </summary>
+    public async Task<string?> GetRouteAdvisoriesTextAsync()
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            using var resp = await _http.GetAsync($"{BaseUrl(port)}/GetActiveSigmetsAt", cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            string body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim();
+            return string.IsNullOrWhiteSpace(body) ? null : body;
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetRouteAdvisories failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// /GetActiveSigmetsAt?lat=&lon= — advisories ACTIVE AT the passed position
+    /// (strict containment; weather.md §13). Same contract as the route variant:
+    /// raw response text, or null on error / AS off / unreachable. Per the
+    /// 2026-07-13 bundling finding, callers must treat only the FIRST parsed
+    /// advisory of a hit as position-matched.
+    /// </summary>
+    public async Task<string?> GetPositionalAdvisoriesTextAsync(double lat, double lon)
+    {
+        if (!Settings.SettingsManager.Current.ActiveSkyEnabled) return null;   // master switch — no AS I/O when off
+        if (LastSuccessfulPort is not int port) return null;
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            string url = $"{BaseUrl(port)}/GetActiveSigmetsAt"
+                + $"?lat={lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&lon={lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}";
+            using var resp = await _http.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            string body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim();
+            return string.IsNullOrWhiteSpace(body) ? null : body;
+        }
+        catch
+        {
+            Log.Debug("ActiveSky", "GetPositionalAdvisories failed (timeout or connection error)");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
     /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
     /// invariant culture for floats). We tolerate missing fields and parse
@@ -426,6 +600,104 @@ public class ActiveSkyClient
         {
             return null;
         }
+    }
+
+    /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
+    /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
+    /// Null on malformed input; permissive per-field AND per-element like
+    /// ParseConditionsJson — a stray non-object array entry is skipped rather than
+    /// failing the whole parse.</summary>
+    internal static List<AtmosphereLevel>? ParseAtmosphereJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("WeatherData", out var arr)
+                || arr.ValueKind != JsonValueKind.Array)
+                return null;
+            var list = new List<AtmosphereLevel>();
+            foreach (var el in arr.EnumerateArray())
+            {
+                if (el.ValueKind != JsonValueKind.Object) continue;
+                list.Add(new AtmosphereLevel
+                {
+                    AltitudeFt = (int)Math.Round(ReadDouble(el, "Altitude")),
+                    WindDirection = ReadDouble(el, "WindDirection"),
+                    WindSpeed = ReadDouble(el, "WindSpeed"),
+                    TemperatureC = ReadDouble(el, "Temperature"),
+                });
+            }
+            return list;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Parses the /GetWeatherInfoXml body. The response declares
+    /// encoding="utf-16", which matches .NET strings — XDocument.Parse handles it.
+    /// Permissive: missing attributes default to 0, unknown elements are ignored,
+    /// malformed XML → null.</summary>
+    internal static VerticalProfile? ParseWeatherInfoXml(string xml)
+    {
+        try
+        {
+            var root = System.Xml.Linq.XDocument.Parse(xml).Root;
+            if (root == null) return null;
+            var p = new VerticalProfile();
+
+            var windLayers = root.Element("WindLayers");
+            if (windLayers != null)
+            {
+                foreach (var el in windLayers.Elements())
+                {
+                    bool isSurface = el.Name.LocalName == "SurfaceLayer";
+                    if (!isSurface && el.Name.LocalName != "Layer") continue;
+                    p.WindLayers.Add(new ProfileWindLayer
+                    {
+                        IsSurface = isSurface,
+                        AltitudeFt = isSurface ? 0 : (int)Math.Round(Attr(el, "AltFeet")),
+                        DirectionDeg = Attr(el, "WindDirection"),
+                        SpeedKts = Attr(el, "WindSpeed"),
+                        TemperatureC = Attr(el, "Temp"),
+                        TurbulenceEnum = (int)Math.Round(Attr(el, "Turbulence")),
+                        GustKts = Attr(el, "Gust"),
+                    });
+                }
+            }
+
+            var clouds = root.Element("Clouds");
+            if (clouds != null)
+            {
+                foreach (var el in clouds.Elements("Cloud"))
+                {
+                    p.CloudLayers.Add(new ProfileCloudLayer
+                    {
+                        BaseFt = (int)Math.Round(Attr(el, "CloudBaseMeters") * 3.28084),
+                        TopFt = (int)Math.Round(Attr(el, "CloudTopMeters") * 3.28084),
+                        CoverageOktas = (int)Math.Round(Attr(el, "Coverage")),
+                        IcingEnum = (int)Math.Round(Attr(el, "Icing")),
+                        PrecipType = (int)Math.Round(Attr(el, "PrecipType")),
+                        TurbulenceEnum = (int)Math.Round(Attr(el, "CloudTurbulence")),
+                    });
+                }
+            }
+
+            return p;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double Attr(System.Xml.Linq.XElement el, string name)
+    {
+        var a = el.Attribute(name);
+        if (a == null) return 0;
+        return double.TryParse(a.Value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
     }
 
     private static double ReadDouble(JsonElement obj, string field)

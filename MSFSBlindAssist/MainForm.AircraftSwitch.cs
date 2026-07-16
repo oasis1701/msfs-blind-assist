@@ -202,9 +202,17 @@ public partial class MainForm
             _prevVisibility = -1;
             _prevVisLow = false;
             _prevAsPrecip = null;
+            _iceAccretionTracker.Reset();
+            // Same rationale as the ice reset: flight 1 can end in moderate turbulence;
+            // without a reconnect re-baseline, flight 2's first calm poll would announce
+            // a phantom "Smooth air" transition.
+            activeSkyWeatherMonitor?.ResetTurbulenceTracker();
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
+            _routeAdvisoryProximity.Reset();
+            _emptyRouteFeedTicks = 0;
+            _turnaroundDetector.Reset();
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -619,6 +627,14 @@ public partial class MainForm
         // This prevents flooding TTS with hundreds of "initial" values when switching aircraft
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
+
+        // Hazard announcers re-baseline on switch — stale category/ice baselines
+        // from the previous airframe must not announce as "changes".
+        activeSkyWeatherMonitor?.ResetTurbulenceTracker();
+        _iceAccretionTracker.Reset();
+        _routeAdvisoryProximity.Reset();
+        _emptyRouteFeedTicks = 0;
+        _turnaroundDetector.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)

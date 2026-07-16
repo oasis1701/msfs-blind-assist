@@ -180,6 +180,104 @@ public static class WeatherService
         }
     }
 
+    /// <summary>EXACT identity match, not substring: true only when
+    /// <paramref name="phrase"/> occurs in <paramref name="text"/> with a
+    /// non-alphanumeric (or start/end-of-string) boundary on BOTH sides. Guards
+    /// against a phrase that is a PREFIX of a longer identity in the same feed
+    /// (e.g. searching "CONVECTIVE SIGMET 5E" must not match a raw that only
+    /// contains "CONVECTIVE SIGMET 5E1") — a plain <c>string.Contains</c> would
+    /// false-positive there. Scans every occurrence rather than stopping at the
+    /// first: an early rejected position must not hide a later valid one.</summary>
+    private static bool ContainsWordBoundaryMatch(string text, string phrase)
+    {
+        int searchFrom = 0;
+        while (true)
+        {
+            int idx = text.IndexOf(phrase, searchFrom, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return false;
+            bool beforeOk = idx == 0 || !char.IsLetterOrDigit(text[idx - 1]);
+            int after = idx + phrase.Length;
+            bool afterOk = after >= text.Length || !char.IsLetterOrDigit(text[after]);
+            if (beforeOk && afterOk) return true;
+            searchFrom = idx + 1;
+        }
+    }
+
+    /// <summary>Tier-2 geometry for route-advisory location (spec 2026-07-13 §4):
+    /// finds the cached-feed feature whose raw text contains the advisory's identity
+    /// phrase and returns its first polygon ring as (lat,lon). Raw text is
+    /// whitespace-normalized before matching (feed raws contain newlines). Pure;
+    /// null on no match / no usable geometry / malformed JSON.</summary>
+    internal static List<(double Lat, double Lon)>? FindAdvisoryPolygonInGeoJson(
+        string geojson, string identityPhrase)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(geojson);
+            if (!doc.RootElement.TryGetProperty("features", out var features)) return null;
+            foreach (var f in features.EnumerateArray())
+            {
+                if (!f.TryGetProperty("properties", out var props)) continue;
+                string raw = GetString(props, "rawAirSigmet");
+                if (raw.Length == 0) raw = GetString(props, "rawSigmet");
+                string normalized = string.Join(" ",
+                    raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+                if (!ContainsWordBoundaryMatch(normalized, identityPhrase))
+                    continue;
+
+                // A matched feature with unusable geometry is SKIPPED, not terminal —
+                // a later feature may match the same identity with a real polygon
+                // (pinned by Matched_feature_without_geometry_is_skipped_not_terminal).
+                if (!f.TryGetProperty("geometry", out var geom)
+                    || geom.ValueKind != JsonValueKind.Object
+                    || !geom.TryGetProperty("type", out var gt)) continue;
+
+                List<(double Lat, double Lon)>? verts = null;
+                try
+                {
+                    JsonElement ring;
+                    switch (gt.GetString())
+                    {
+                        case "Polygon":      ring = geom.GetProperty("coordinates")[0]; break;
+                        case "MultiPolygon": ring = geom.GetProperty("coordinates")[0][0]; break;
+                        default: continue;
+                    }
+                    var v = new List<(double Lat, double Lon)>();
+                    foreach (var p in ring.EnumerateArray())
+                        v.Add((p[1].GetDouble(), p[0].GetDouble()));   // GeoJSON is [lon,lat]
+                    if (v.Count >= 3) verts = v;
+                }
+                catch { /* unusable geometry — skip this feature */ }
+                if (verts != null) return verts;
+            }
+            return null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Refreshes the two SIGMET feeds through their existing TTL caches (no
+    /// extra HTTP within the TTL) and returns a locked snapshot of both raw GeoJSON
+    /// strings (empty string when a feed is unavailable). Called by
+    /// <see cref="RouteAdvisoryLocator"/>.ComputeLocationsAsync at most once per
+    /// computation pass — lazily, only when some advisory actually needs tier-2
+    /// geometry — instead of once per advisory (final-review Fix 2).</summary>
+    internal static async Task<(string Airsigmet, string Isigmet)> RefreshAndGetSigmetFeedsAsync()
+    {
+        await Task.WhenAll(
+            RefreshCacheAsync(ISIGMET_URL,   false, SIGMET_CACHE_MINUTES,
+                s => { lock (_cacheLock) _isigmetJson = s; },
+                () => { lock (_cacheLock) return _isigmetCacheTime; },
+                t => { lock (_cacheLock) _isigmetCacheTime = t; }),
+            RefreshCacheAsync(AIRSIGMET_URL, false, SIGMET_CACHE_MINUTES,
+                s => { lock (_cacheLock) _airsigmetJson = s; },
+                () => { lock (_cacheLock) return _airsigmetCacheTime; },
+                t => { lock (_cacheLock) _airsigmetCacheTime = t; })
+        );
+        string isigmet, airsigmet;
+        lock (_cacheLock) { isigmet = _isigmetJson; airsigmet = _airsigmetJson; }
+        return (airsigmet, isigmet);
+    }
+
     // ── PIREPs ──────────────────────────────────────────────────────────────
 
     public static async Task<List<WeatherPirep>> GetNearbyPirepsAsync(
@@ -377,7 +475,8 @@ public static class WeatherService
         return results;
     }
 
-    private static List<WindAtAltitude> ParseWindsAloft(string json, int aircraftAltFt)
+    // Internal for tests (ActiveSkyAtmosphereTests).
+    internal static List<WindAtAltitude> ParseWindsAloft(string json, int aircraftAltFt)
     {
         var results = new List<WindAtAltitude>();
         try
@@ -420,11 +519,10 @@ public static class WeatherService
 
             if (levelData.Count < 2) return results;
 
-            // Show ±5000 ft around aircraft altitude in 1000 ft steps
-            int lowAlt  = (int)Math.Max(0, Math.Round((aircraftAltFt - 5000) / 1000.0) * 1000);
-            int highAlt = (int)Math.Round((aircraftAltFt + 5000) / 1000.0) * 1000;
-
-            for (int altFt = lowAlt; altFt <= highAlt; altFt += 1000)
+            // ±5000 ft window in 1000-ft steps — the ONE shared definition
+            // (ActiveSkyFormatting.WindsAloftAltitudes), so the AS and Open-Meteo
+            // boxes can never silently diverge on which levels the pilot hears.
+            foreach (int altFt in ActiveSkyFormatting.WindsAloftAltitudes(aircraftAltFt))
             {
                 (double dir, double spd) = InterpolateWind(levelData, altFt);
                 results.Add(new WindAtAltitude(altFt, dir, spd));
