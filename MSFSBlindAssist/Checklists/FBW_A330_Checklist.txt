@@ -61,7 +61,7 @@ Departure clearance received
 
 [Takeoff Procedure]
 Apply Flex/MCT or TO/GA power
-Monitor ias with output mode > w
+Monitor airspeed with output mode then S
 Rotate at VR
 Gear up
 Autopilot 1 on with input mode > shift+a as soon as possible

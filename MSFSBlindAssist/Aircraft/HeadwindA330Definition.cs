@@ -44,7 +44,11 @@ namespace MSFSBlindAssist.Aircraft;
 /// LIVE-VERIFICATION TODO (this is an alpha airframe):
 ///   • Baro fix: B in QNH reads the value; knob turns announce; STD pull/push tracks
 ///     KOHLSMAN SETTING STD:1; unit selector flips the readout order; Ctrl+B window
-///     mode agrees and its set/STD/unit controls still work (base events).
+///     mode agrees and its set/STD/unit controls still work (base events). The EFIS
+///     Captain/F.O. panel display rows + Baro Push/Pull button readbacks are repointed
+///     at the stock STD flags too (GetPanelDisplayVariables/GetButtonStateMapping
+///     overrides below) — verify the F/O side actually tracks KOHLSMAN SETTING STD:2
+///     (the Captain flag is confirmed; :2 assumes the A339X drives both altimeters).
 ///   • Spot-check Shift+H/S/A/V FCU readouts + Ctrl+P LOC/APPR/FD labels + Alt+E EWD
 ///     memos + Shift+M MCDU + D/Shift+D — present in the package, but the baro case
 ///     proved "present in the wasm" ≠ "delivered"; the same stock-var override
@@ -256,7 +260,54 @@ public class HeadwindA330Definition : FlyByWireA320Definition
             ExcludeFromBatch = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "hPa", [1] = "inHg" }
         };
+        // F/O-side stock STD flag (OnRequest — display row + Baro button readback only;
+        // the announce monitor stays Captain-side, matching the announce path above).
+        vars["KOHLSMAN SETTING STD:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING STD:2",
+            DisplayName = "Altimeter Standard Mode First Officer",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" }
+        };
 
         return vars;
+    }
+
+    // The EFIS Captain/First Officer panels' third display row is the FBW baro
+    // display-mode word — the same never-delivered family as the announce path (stuck
+    // at 0 the row would read "STD" forever, contradicting the live Kohlsman rows
+    // right above it). Swap it for the stock STD flag registered above.
+    public override Dictionary<string, List<string>> GetPanelDisplayVariables()
+    {
+        var d = base.GetPanelDisplayVariables();
+        ReplaceDisplayVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
+        ReplaceDisplayVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
+        return d;
+    }
+
+    private static void ReplaceDisplayVar(Dictionary<string, List<string>> d, string panel, string oldVar, string newVar)
+    {
+        if (!d.TryGetValue(panel, out var list)) return;
+        int i = list.IndexOf(oldVar);
+        if (i >= 0) list[i] = newVar;
+    }
+
+    // The EFIS Baro Push/Pull panel buttons' post-press readback keys on
+    // A32NX_FCU_EFIS_L/R_DISPLAY_BARO_MODE — dead on this airframe (would always
+    // announce "STD"). Repoint at the stock STD flags. Captain side: the forced
+    // re-read lands in this class's ProcessSimVarUpdate case, so the press speaks
+    // via the Kohlsman phrase monitor (announce-on-real-change, like the FCU knobs).
+    // F/O side: no def case exists for STD:2, so the generic button-state feedback
+    // announces its QNH/Standard description.
+    public override Dictionary<string, string> GetButtonStateMapping()
+    {
+        var m = base.GetButtonStateMapping();
+        m["A32NX.FCU_EFIS_L_BARO_PUSH"] = "KOHLSMAN SETTING STD:1";
+        m["A32NX.FCU_EFIS_L_BARO_PULL"] = "KOHLSMAN SETTING STD:1";
+        m["A32NX.FCU_EFIS_R_BARO_PUSH"] = "KOHLSMAN SETTING STD:2";
+        m["A32NX.FCU_EFIS_R_BARO_PULL"] = "KOHLSMAN SETTING STD:2";
+        return m;
     }
 }
