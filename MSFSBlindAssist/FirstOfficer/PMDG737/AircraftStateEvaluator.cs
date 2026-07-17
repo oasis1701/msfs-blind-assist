@@ -68,6 +68,16 @@ public class AircraftStateEvaluator : IFoStateEvaluator
             return !CdaReady ? double.NaN
                 : (RawFieldOn("ELEC_annunGRD_POWER_AVAILABLE")
                    && (RawFieldOn("ELEC_BusPowered_9") || RawFieldOn("ELEC_BusPowered_10")) ? 1 : 0);
+
+        // Merged Before-Start "Fuel pumps: ON" detection (§6): wing on AND center matches
+        // fuel state. ONE synthetic (never a primary+additional split — the Auto() helper
+        // applies the same condition to every field, which cannot express wing≠center logic).
+        if (field == "FO_FUEL_PUMPS_BS_OK")
+            return !CdaReady ? double.NaN
+                : (FuelSystemLogic.BeforeStartFuelPumpsOk(
+                       AreWingFuelPumpsOn(), IsEitherCenterPumpOn(),
+                       FuelCenterLbs() > CenterFuelPumpAutomation.ArmThresholdLbs) ? 1 : 0);
+
         // CDA fields: INDETERMINATE (NaN) until the first snapshot arrives — GetFieldValue
         // returns 0.0 for EVERY field before then (interface contract), which false-matched
         // every OFF/closed checklist condition at startup and latched items complete.
@@ -124,10 +134,26 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsFuelPumpCtr1On()     => IsOn("FUEL_PumpCtrSw_0");
     public bool IsFuelPumpCtr2On()     => IsOn("FUEL_PumpCtrSw_1");
     public bool IsEitherCenterPumpOn() => IsFuelPumpCtr1On() || IsFuelPumpCtr2On();
-    // Either center-pump LOW PRESSURE annunciator lit. Reads false until the CDA is ready
-    // (GetValue → NaN, NaN > 0.5 is false), so it never triggers a spurious OFF pre-snapshot.
+
+    // Either center-pump LOW PRESSURE annunciator lit. Retained until the adapter rewires
+    // to the composites below; delete when the last caller is gone.
     public bool IsAnyCenterLowPress()  => IsOn("FUEL_annunLOWPRESS_Ctr_0") || IsOn("FUEL_annunLOWPRESS_Ctr_1");
-    public int  FuelCenterLbs()        => (int)Math.Round(GetValue("FUEL_QtyCenter")); // NaN → 0 pre-snapshot
+
+    /// <summary>Center tank dry (M-2/M-4; F5). False when !IsDataReady.</summary>
+    public bool IsCenterTankDry() => IsDataReady && FuelSystemLogic.CenterTankDry(
+        IsFuelPumpCtr1On(), IsFuelPumpCtr2On(),
+        IsOn("FUEL_annunLOWPRESS_Ctr_0"), IsOn("FUEL_annunLOWPRESS_Ctr_1"));
+
+    /// <summary>Fuel system credible: ≥1 wing pump ON with light OUT (M-3). False when !IsDataReady.</summary>
+    public bool IsFuelSystemCredible() => IsDataReady && FuelSystemLogic.FuelSystemCredible(
+        IsFuelPumpFwd1On(), IsOn("FUEL_annunLOWPRESS_Fwd_0"),
+        IsFuelPumpFwd2On(), IsOn("FUEL_annunLOWPRESS_Fwd_1"),
+        IsFuelPumpAft1On(), IsOn("FUEL_annunLOWPRESS_Aft_0"),
+        IsFuelPumpAft2On(), IsOn("FUEL_annunLOWPRESS_Aft_1"));
+
+    // NaN-safe (F13/M1): the old "// NaN → 0" comment was FALSE — (int)Math.Round(NaN) is
+    // int.MinValue on x64. SafeRoundToInt returns 0 pre-snapshot.
+    public int  FuelCenterLbs()        => FuelSystemLogic.SafeRoundToInt(GetValue("FUEL_QtyCenter"));
     public bool IsEng1Run()        => GetValue("FUEL_annunENG_VALVE_CLOSED_0") < 0.5;
     public bool IsEng2Run()        => GetValue("FUEL_annunENG_VALVE_CLOSED_1") < 0.5;
     public int  Eng1StartSelector()=> (int)Math.Round(GetValue("ENG_StartSelector_0")); // 0=GRD,1=OFF,2=CONT,3=FLT
@@ -334,6 +360,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // (interface contract), which would false-match a sea-level (0 ft) planned LAND ALT
     // and let a preflight-flow SkipCondition report "Already set" on a not-ready sim.
     private bool CdaReady => _dm is { IsReady: true };
+
+    /// <summary>First CDA snapshot received (public form of the private CdaReady).</summary>
+    public bool IsDataReady => CdaReady;
 
     // Window-vs-plan match, strictly less than one knob step: window values are
     // step-quantized, so a full-step difference is a DIFFERENT setting, not a match;
