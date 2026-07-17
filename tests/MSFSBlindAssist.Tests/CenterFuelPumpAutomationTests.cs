@@ -143,8 +143,8 @@ public class CenterFuelPumpAutomationTests
             if (r == Action.TurnOff) pumpsOn = false;
             else if (r == Action.TurnOn) pumpsOn = true;
         }
-        Assert.Equal(1, actions.FindAll(x => x == Action.TurnOff).Count);
-        Assert.Equal(0, actions.FindAll(x => x == Action.TurnOn).Count);
+        Assert.Single(actions.FindAll(x => x == Action.TurnOff));
+        Assert.Empty(actions.FindAll(x => x == Action.TurnOn));
     }
 
     // T-13b (was AbsurdElapsed): now proven via the GAP mechanism (R-M4), not "low-press never
@@ -464,7 +464,7 @@ public class CenterFuelPumpAutomationTests
             if (r == Action.TurnOff) pumpsOn = false;
             else if (r == Action.TurnOn) pumpsOn = true;
         }
-        Assert.Equal(1, actions.FindAll(x => x == Action.TurnOff).Count);
+        Assert.Single(actions.FindAll(x => x == Action.TurnOff));
     }
 
     // T-19 (I2): a data gap must NOT burn the confirm window. Fails if _pendingMs accrues above the
