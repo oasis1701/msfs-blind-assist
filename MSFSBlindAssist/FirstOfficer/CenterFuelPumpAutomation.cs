@@ -1,127 +1,185 @@
+using System;
+
 namespace MSFSBlindAssist.FirstOfficer;
 
 /// <summary>
-/// Shared, sim-agnostic decision logic for automatic Boeing center-tank fuel pump
-/// management (PMDG 737 + 777). Stateful across calls (low-press debounce + per-leg
-/// dry-off latch). The per-aircraft FOAutoManager gathers raw inputs from its evaluator,
-/// calls <see cref="Update"/> on each position-update tick (~1-2.7 Hz, driven by
-/// AircraftPositionReceived — NOT a fixed per-frame rate), and actuates on the returned
-/// action.
+/// Shared, sim-agnostic decision logic for automatic Boeing center-tank fuel pump management
+/// (PMDG 737 + 777). PURE (no SimConnect / aircraft deps). Stateful across calls: a debounced
+/// low-press dry-off, a settle window on the observed switch-on edge, a per-leg dry-off latch,
+/// a user-intent (manual-off) latch, a monotonic refuel floor, and a pending-command latch that
+/// stops re-issuing a write until its readback lands (or a 30 s failure-path timeout). Timing
+/// windows are wall-clock SECONDS. See docs/superpowers/specs/2026-07-15-center-pump-corrective-redesign.md.
 ///
-/// SOP: arm the center pumps ON during ground setup when center fuel is present — gated on
-/// the wing pumps already being ON so it never fires cold-and-dark. Switch them OFF when
-/// the center-pump LOW PRESSURE light latches on (tank dry). Once switched off dry, they
-/// stay off for the rest of the leg; only a genuine ground refuel re-arms them: the quantity
-/// at the moment of dry-off is recorded, and the latch clears when a later ground reading
-/// exceeds it by more than the refuel margin. (NOT "quantity rose back above the arm
-/// threshold" — after a dry-off the tank stops draining, so that test is vacuously true
-/// forever and oscillates the pumps; see the latch-clear branch in <see cref="Update"/> for
-/// the full rationale.) All thresholds are tune-in-sim consts; the timing windows are
-/// wall-clock SECONDS (not ticks) so they hold steady regardless of how often the caller's
-/// position feed happens to fire.
+/// SOP: arm the center pumps ON during ground setup when center fuel is present, gated on the
+/// wing pumps already being ON (so it never fires cold-and-dark and never in preflight). Switch
+/// them OFF when the center tank latches dry (low-press confirmed while the wing pumps prove the
+/// system is credible). Once off dry, they stay off for the leg; a genuine ground refuel above
+/// the recorded floor + margin re-arms them, as does anyone switching the pumps back on.
 /// </summary>
 public sealed class CenterFuelPumpAutomation
 {
     public enum Action { None, TurnOn, TurnOff }
+    private enum Pending { None, On, Off }
 
     /// <summary>Center fuel (lbs) above which the tank holds usable fuel worth running the
-    /// pumps. Comfortably above unusable residual.</summary>
+    /// pumps. Also the shared executor ON-gate threshold (§6).</summary>
     public const double ArmThresholdLbs = 500;
-    /// <summary>Consecutive lit low-press wall-clock seconds required before OFF triggers
-    /// (rejects a single-tick annunciator flicker). Wall-clock, tune-in-sim.</summary>
+    /// <summary>Consecutive confirmed-dry wall-clock seconds required before OFF triggers.</summary>
     public const double LowPressConfirmSeconds = 3.0;
-    /// <summary>After the center pumps are observed switching on (automated or manual),
-    /// skip OFF-detection for this many wall-clock seconds so the brief low-press transient
-    /// while pump pressure builds cannot immediately switch off. Wall-clock, tune-in-sim.</summary>
+    /// <summary>Skip OFF-detection for this many seconds after an observed switch-on rising edge
+    /// (spin-up transient). Empirical (≈6× over M-6's 1.74 s engines-off lower bound); tune-in-sim.</summary>
     public const double SettleSecondsAfterOn = 10.0;
-
-    /// <summary>Ground quantity uplift (lbs) required, above the quantity recorded at the
-    /// moment the dry-off latch was set, before a reading counts as a genuine refuel and
-    /// clears the latch. Comfortably above sensor/float jitter, far below any real
-    /// center-tank uplift (a real center refuel is thousands of lbs).</summary>
+    /// <summary>Ground uplift (lbs) above the recorded floor before a reading counts as a refuel.</summary>
     public const double RefuelMarginLbs = 250;
 
-    /// <summary>Defensive per-call clamp on the caller-measured elapsed time. Rejects a
-    /// first-call/sim-pause/long-hitch spike from instantly satisfying a window, while never
-    /// clamping a normal ~370-1000 ms tick at the feed's real rate.</summary>
+    /// <summary>Per-tick clamp on caller elapsed time (rejects a first-call/pause/hitch spike).
+    /// Bounds a single tick's contribution to a window.</summary>
     private const double MaxElapsedMs = 2000;
+    /// <summary>Elapsed above which observation continuity is declared broken (M-4/R-M4).
+    /// DELIBERATELY ≠ MaxElapsedMs: keying the gap on the clamp would mark every sustained
+    /// sub-0.5 Hz tick a gap → phantom rising edge every tick → OFF could never fire.</summary>
+    private const double ObservationGapMs = 5000;
+    /// <summary>Un-sticks a pending command on a lost readback. Failure-path bound only,
+    /// sized for the 20 s+ dispatch-gate tail.</summary>
+    private const double CommandConfirmSeconds = 30.0;
 
-    private bool   _switchedOffThisLeg;   // dry-off latch: no re-arm until refuel
-    private double _qtyAtDryOff = double.NaN; // center qty recorded at the moment of dry-off; NaN = not set
-    private bool   _prevPumpsOn;          // previous tick's observed centerPumpsOn (edge detect)
-    private double _lowPressMs;           // consecutive lit low-press wall-clock ms
-    private double _settleMs;             // remaining post-switch-on settle wall-clock ms
+    // Observation state — physical reality; runs regardless of `enabled`; NOT touched by ClearPolicyLatches().
+    private bool   _prevPumpsOn;
+    private double _settleMs;
+    private double _lowPressMs;
+    private bool   _lastCommandedOff;   // edge attribution (M3): set by TurnOff; cleared by any rising edge.
 
+    // Policy state — decisions; cleared by ClearPolicyLatches().
+    private bool    _switchedOffThisLeg;
+    private double  _qtyFloor = double.NaN;   // refuel reference; NaN iff no latch is set (enforced, step 9).
+    private bool    _manualOffLatch;
+    private Pending _pendingCommand = Pending.None;
+    private double  _pendingMs;
+
+    // Edge tracking.
+    private bool _prevEnabled;
+
+    /// <summary>Full reset (aircraft switch / adapter Reset). No production call site otherwise.</summary>
     public void Reset()
     {
+        _prevPumpsOn      = false;
+        _settleMs         = 0;
+        _lowPressMs       = 0;
+        _lastCommandedOff = false;
+        _prevEnabled      = false;
+        ClearPolicyLatches();
+    }
+
+    // Clears ONLY the policy group (the enable-edge + refuel clear + the OFF/ON decisions use it).
+    private void ClearPolicyLatches()
+    {
         _switchedOffThisLeg = false;
-        _qtyAtDryOff        = double.NaN;
-        _prevPumpsOn        = false;
-        _lowPressMs         = 0;
-        _settleMs           = 0;
+        _qtyFloor           = double.NaN;
+        _manualOffLatch     = false;
+        _pendingCommand     = Pending.None;
+        _pendingMs          = 0;
+    }
+
+    // Idempotent floor seed; first latch wins. Guards int.MinValue / negatives (F13 defence-in-depth).
+    private void SeedFloor(double q)
+    {
+        if (double.IsNaN(_qtyFloor) && !double.IsNaN(q) && !double.IsInfinity(q) && q >= 0)
+            _qtyFloor = q;
     }
 
     public Action Update(
-        bool enabled, bool onGround, double centerQtyLbs,
-        bool centerPumpsOn, bool centerLowPressRaw, bool wingPumpsOn, double elapsedMs)
+        bool enabled, bool dataReady, bool onGround, double centerQtyLbs,
+        bool centerPumpsOn, bool centerTankDry, bool systemCredible, bool wingPumpsOn,
+        double rawElapsedMs)
     {
-        if (!enabled)
+        // 0. gap + clamp
+        bool gap = rawElapsedMs > ObservationGapMs;
+        double elapsedMs = Math.Clamp(rawElapsedMs, 0, MaxElapsedMs);
+
+        // 1. enable-edge clear — BEFORE any decision; needs no data; runs unconditionally.
+        if (enabled && !_prevEnabled) ClearPolicyLatches();
+        _prevEnabled = enabled;
+
+        // 2. settle decays — physics passes whether observed or not.
+        _settleMs = Math.Max(0, _settleMs - elapsedMs);
+
+        // 3. cannot observe → touch NO latch, NO pending; force a fresh settle when data returns.
+        if (!dataReady)
         {
-            _lowPressMs  = 0;             // don't carry stale debounce across an enable toggle
-            _prevPumpsOn = centerPumpsOn; // so re-enabling sees no phantom edge
-            return Action.None;
+            _lowPressMs  = 0;
+            _prevPumpsOn = false;
+            return Action.None;   // _pendingMs is NOT accrued (I2)
         }
 
-        elapsedMs = System.Math.Clamp(elapsedMs, 0, MaxElapsedMs);
+        // 4. pending accrual — AFTER the !dataReady return (I2).
+        if (_pendingCommand != Pending.None) _pendingMs += elapsedMs;
 
-        // Refuel detection: clear the dry-off latch only on a GENUINE ground uplift above the
-        // quantity recorded when the latch was set. Inferring a refuel from "qty is now above the
-        // arm threshold" is unsound — after a dry-off the tank stops draining, so the quantity
-        // freezes at whatever lit the annunciator and the test would pass vacuously, oscillating
-        // the pumps on/off forever.
-        if (onGround && _switchedOffThisLeg && !double.IsNaN(_qtyAtDryOff)
-            && centerQtyLbs > _qtyAtDryOff + RefuelMarginLbs)
+        // 5. a gap breaks the debounce's "unbroken run" contract — BEFORE edge detect.
+        if (gap) { _prevPumpsOn = false; _lowPressMs = 0; }
+
+        // 6. edges.
+        bool rising  =  centerPumpsOn && !_prevPumpsOn;
+        bool falling = !centerPumpsOn &&  _prevPumpsOn;
+        if (rising)
         {
-            _switchedOffThisLeg = false;
-            _qtyAtDryOff        = double.NaN;
-        }
-
-        // Decay the settle window first, THEN check for a rising edge — a fresh edge this
-        // tick must arm the FULL window, not the window minus one tick's decay.
-        _settleMs = System.Math.Max(0, _settleMs - elapsedMs);
-
-        // Rising edge on the OBSERVED switch state (automation-driven or manual) starts the
-        // settle window uniformly — the spin-up transient is identical regardless of who
-        // threw the switch.
-        if (centerPumpsOn && !_prevPumpsOn)
-        {
-            _settleMs = SettleSecondsAfterOn * 1000;
+            _settleMs         = SettleSecondsAfterOn * 1000;
+            _lastCommandedOff = false;   // pumps are back on; the old Off is history
+            _manualOffLatch   = false;   // C-A: someone re-armed by hand; the old off-intent is stale
         }
         _prevPumpsOn = centerPumpsOn;
+        _lowPressMs  = (centerTankDry && systemCredible) ? _lowPressMs + elapsedMs : 0;
+        bool dryLatched = _lowPressMs >= LowPressConfirmSeconds * 1000;
 
-        _lowPressMs = centerLowPressRaw ? _lowPressMs + elapsedMs : 0;
-        bool lowPressLatched = _lowPressMs >= LowPressConfirmSeconds * 1000;
+        // 7. pending resolution.
+        if (_pendingCommand == Pending.On && centerPumpsOn) _pendingCommand = Pending.None;
+        else if (_pendingCommand == Pending.Off && !centerPumpsOn) _pendingCommand = Pending.None;
+        else if (_pendingCommand != Pending.None && _pendingMs >= CommandConfirmSeconds * 1000)
+            _pendingCommand = Pending.None;
 
-        // OFF: pumps running and the tank has latched dry (any phase). Suppressed during
-        // the post-switch-on settle window.
-        if (centerPumpsOn && lowPressLatched && _settleMs <= 0)
+        // 8. user-intent latch — a falling edge we did not command, while the wing pumps are on.
+        if (falling && !_lastCommandedOff && wingPumpsOn)
+        {
+            _manualOffLatch = true;
+            SeedFloor(centerQtyLbs);
+        }
+
+        // 9. refuel floor ratchet + latch clear (inert unless a latch is set); then structural
+        //    NaN-iff-no-latch so a rising-edge latch clear can't leave a stale floor behind.
+        bool anyLatch = _switchedOffThisLeg || _manualOffLatch;
+        if (anyLatch && !double.IsNaN(_qtyFloor) && !double.IsNaN(centerQtyLbs)
+            && centerQtyLbs >= 0 && centerQtyLbs < _qtyFloor)
+            _qtyFloor = centerQtyLbs;                                   // ratchet monotonically DOWN
+        if (onGround && anyLatch && !double.IsNaN(_qtyFloor)
+            && centerQtyLbs > _qtyFloor + RefuelMarginLbs)
+            ClearPolicyLatches();                                       // a refuel tick can now arm below
+        if (!(_switchedOffThisLeg || _manualOffLatch))
+            _qtyFloor = double.NaN;
+
+        // 10. decision gate (enabled + pending).
+        if (!enabled) return Action.None;
+        if (_pendingCommand != Pending.None) return Action.None;
+
+        // 11. OFF — pumps running and confirmed dry, ANY phase, no onGround gate.
+        if (centerPumpsOn && dryLatched && _settleMs <= 0)
         {
             _switchedOffThisLeg = true;
-            _qtyAtDryOff        = centerQtyLbs;
+            SeedFloor(centerQtyLbs);
             _lowPressMs         = 0;
+            _lastCommandedOff   = true;
+            _pendingCommand     = Pending.Off; _pendingMs = 0;
             return Action.TurnOff;
         }
 
-        // ON: ground setup only, fuel present, pumps off, not already dry-latched, and the
-        // fuel-panel setup has begun (wing pumps on). No settle-window assignment here — the
-        // rising-edge detector above starts the window once the readback confirms the pumps
-        // are actually on.
-        if (onGround && !centerPumpsOn && !_switchedOffThisLeg
+        // 12. ON — ground setup only.
+        if (onGround && !centerPumpsOn && !_switchedOffThisLeg && !_manualOffLatch
             && centerQtyLbs > ArmThresholdLbs && wingPumpsOn)
         {
+            _lastCommandedOff = false;
+            _pendingCommand   = Pending.On; _pendingMs = 0;
             return Action.TurnOn;
         }
 
+        // 13.
         return Action.None;
     }
 }

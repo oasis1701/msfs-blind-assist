@@ -113,13 +113,15 @@ public class FOAutoManager : IFoAutoManager
         _centerPumpsClockPrimed = true;
 
         var action = _centerPumps.Update(
-            enabled:           SettingsManager.Current.FOAutoCenterPumpsEnabled,
-            onGround:          altitudeAgl < 20,
-            centerQtyLbs:      _state.FuelCenterLbs(),
-            centerPumpsOn:     _state.IsEitherCenterPumpOn(),
-            centerLowPressRaw: _state.IsAnyCenterLowPress(),
-            wingPumpsOn:       _state.AreWingFuelPumpsOn(),
-            elapsedMs:         elapsedMs);
+            enabled:       SettingsManager.Current.FOAutoCenterPumpsEnabled,
+            dataReady:     _state.IsDataReady,
+            onGround:      altitudeAgl < 20,
+            centerQtyLbs:  _state.FuelCenterLbs(),
+            centerPumpsOn: _state.IsEitherCenterPumpOn(),
+            centerTankDry: _state.IsCenterTankDry(),
+            systemCredible:_state.IsFuelSystemCredible(),
+            wingPumpsOn:   _state.AreWingFuelPumpsOn(),
+            rawElapsedMs:  elapsedMs);
 
         switch (action)
         {

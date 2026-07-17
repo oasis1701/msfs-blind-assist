@@ -117,11 +117,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         IsFuelPump1FwdOn() && IsFuelPump2FwdOn() && IsFuelPump1AftOn() && IsFuelPump2AftOn();
     public bool IsEitherCenterPumpOn() => IsFuelPump1CtrOn() || IsFuelPump2CtrOn();
 
-    // Either center-pump LOW PRESSURE annunciator lit. Reads false until the CDA is ready
-    // (GetValue → NaN, NaN > 0.5 is false). Retained until the adapter rewires to the
-    // composites below; delete when the last caller is gone.
-    public bool IsAnyCenterLowPress()  => IsOn("FUEL_annunLOWPRESS_Ctr_0") || IsOn("FUEL_annunLOWPRESS_Ctr_1");
-
     /// <summary>Center tank dry: ≥1 center pump running and every running one reports low
     /// pressure (M-2/M-4; F5). Returns false when !IsDataReady.</summary>
     public bool IsCenterTankDry() => IsDataReady && FuelSystemLogic.CenterTankDry(
