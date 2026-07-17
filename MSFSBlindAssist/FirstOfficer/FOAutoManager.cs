@@ -43,7 +43,7 @@ public class FOAutoManager : IFoAutoManager
         _centerPumpsClockPrimed = false;
     }
 
-    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
+    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts, bool onGround)
     {
         if (!_executor.IsAvailable) return;
 
@@ -55,7 +55,7 @@ public class FOAutoManager : IFoAutoManager
         var action = _centerPumps.Update(
             enabled:       SettingsManager.Current.FOAutoCenterPumpsEnabled,
             dataReady:     _state.IsDataReady,
-            onGround:      altitudeAgl < 20,
+            onGround:      onGround,
             centerQtyLbs:  _state.FuelCenterLbs(),
             centerPumpsOn: _state.IsEitherCenterPumpOn(),
             centerTankDry: _state.IsCenterTankDry(),

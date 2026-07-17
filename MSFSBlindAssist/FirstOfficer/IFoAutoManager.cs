@@ -11,5 +11,5 @@ public interface IFoAutoManager
     bool AutoFlapsEnabled { get; set; }
 
     void Reset();
-    void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts);
+    void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts, bool onGround);
 }

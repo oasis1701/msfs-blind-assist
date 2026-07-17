@@ -53,13 +53,11 @@ public class FOAutoManager : IFoAutoManager
         _centerPumpsClockPrimed = false;
     }
 
-    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
+    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts, bool onGround)
     {
         if (!_executor.IsAvailable) return;
 
-        UpdateCenterPumps(altitudeAgl);
-
-        bool onGround = altitudeAgl < 20;
+        UpdateCenterPumps(onGround);
 
         // --- Ground-to-air transition resets ---
         if (onGround)
@@ -83,6 +81,7 @@ public class FOAutoManager : IFoAutoManager
     // skips the push rather than risking a wrong-way toggle.
     private void CheckLnavVnav(double agl, bool climbing)
     {
+        if (double.IsNaN(agl)) return;   // no AGL response yet — NaN < 400 is false, but state this positively
         if (_lnavVnavEngagedThisLeg || !climbing || agl < 400) return;
 
         double lnav = _state.GetValue("MCP_annunLNAV");
@@ -105,7 +104,7 @@ public class FOAutoManager : IFoAutoManager
 
     // Boeing SOP center-tank pump management (opt-in). Arms ON during ground setup with
     // center fuel loaded; switches OFF when the center low-press light latches (tank dry).
-    private void UpdateCenterPumps(double altitudeAgl)
+    private void UpdateCenterPumps(bool onGround)
     {
         double now = _clock.Elapsed.TotalMilliseconds;
         double elapsedMs = _centerPumpsClockPrimed ? now - _lastCenterPumpsMs : 0;
@@ -115,7 +114,7 @@ public class FOAutoManager : IFoAutoManager
         var action = _centerPumps.Update(
             enabled:       SettingsManager.Current.FOAutoCenterPumpsEnabled,
             dataReady:     _state.IsDataReady,
-            onGround:      altitudeAgl < 20,
+            onGround:      onGround,
             centerQtyLbs:  _state.FuelCenterLbs(),
             centerPumpsOn: _state.IsEitherCenterPumpOn(),
             centerTankDry: _state.IsCenterTankDry(),

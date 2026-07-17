@@ -57,7 +57,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private SimBriefOFP? _loadedOFP;
 
     // Latest one-shot values fed to FOAutoManager
-    private double _latestAgl;
+    private double _latestAgl = double.NaN;
     private double _latestIas;
     // Latest engine N2 (percent) fed to the state evaluator for engine-start detection
     private double _latestEng1N2;
@@ -273,7 +273,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     {
         // Forward to both monitors (called on SimConnect message thread)
         _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM);
-        _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas);
+        _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas, pos.SimOnGround >= 0.5);
     }
 
     private void OnSimVarUpdated(object? sender, SimConnect.SimVarUpdateEventArgs e)

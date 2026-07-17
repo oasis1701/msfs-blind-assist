@@ -77,11 +77,9 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
         _lastExtendCommand = -1;
     }
 
-    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
+    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts, bool onGround)
     {
         if (!_executor.IsAvailable) return;
-
-        bool onGround = altitudeAgl < 20;
 
         if (onGround)
         {
@@ -106,6 +104,7 @@ public sealed class FbwA380FOAutoManager : IFoAutoManager
     // -----------------------------------------------------------------------
     private void CheckFlaps(double ias, double vs, double agl, bool climbing, bool descending)
     {
+        if (double.IsNaN(agl) || double.IsNaN(ias)) return;   // I3: makes the accidental :127 NaN work explicit
         if (ias < MinActionIasKts) return;   // bogus/cold IAS — never schedule on it
 
         double flapsRaw = _state.GetValue("A32NX_FLAPS_HANDLE_INDEX");

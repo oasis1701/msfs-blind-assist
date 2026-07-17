@@ -27,7 +27,7 @@ public sealed class FenixFOAutoManager : IFoAutoManager
 
     public void Reset() { }
 
-    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts)
+    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts, bool onGround)
     {
         // No Fenix flap schedule; gear/AP now handled by UniversalAutomationService.
     }
