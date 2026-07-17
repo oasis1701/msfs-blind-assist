@@ -1771,9 +1771,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_SPOILERS_HANDLE_POSITION"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPOILERS_HANDLE_POSITION",
-            DisplayName = "Spoiler Handle Position",
+            // "Spoilers", not "Spoiler Handle Position" — Fenix/PMDG announce-wording
+            // parity. Continuous: announced by 10% band from ProcessSimVarUpdate
+            // (mirrors the A380; returns true, so the generic path can never speak a
+            // raw mid-travel fraction like "0.35"). ValueDescriptions only render the
+            // display row at the exact detents.
+            DisplayName = "Spoilers",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Retracted", [0.5] = "Half Extended", [1] = "Full Extended" }
         },
         ["SPOILERS_ON"] = new SimConnect.SimVarDefinition
@@ -1796,7 +1802,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,  // Critical for ground operations
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Released", [1] = "Set" }
+            // On/Off (not Set/Released) — fleet-wide parity: the A380 (OnOff helper),
+            // Fenix (OffOn) and PMDG 737 all announce "Parking brake on/off".
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
         // PEDESTAL SECTION - Engines Panel
@@ -6411,6 +6419,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private double? _wiperSwL, _wiperPwrL, _wiperSwR, _wiperPwrR;
     private int _wiperStateL, _wiperStateR;
 
+    // ---- Speed-brake handle band (10% steps) last announced; -1 = silent first-sample
+    // baseline. See the band announce in ProcessSimVarUpdate (A380 parity).
+    private int _lastSpoilerBand = -1;
+
     // ---- Approach minimums last-announced values (-1 = unset); see ProcessSimVarUpdate.
     private int _lastBaroMin = -1, _lastDh = -1;
     private string _sdBoxContent = "";
@@ -7460,6 +7472,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
             case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
             case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
+        }
+
+        // Speed-brake handle: a 0..1 fraction. Announce by 10% band (with Retracted/Full
+        // at the ends) so a steady lever doesn't spam but movement is spoken — the same
+        // tuned band announce as the A380, with the Fenix/PMDG-parity "Spoilers" wording.
+        // Silent baseline on the first sample.
+        if (varName == "A32NX_SPOILERS_HANDLE_POSITION")
+        {
+            int band = (int)Math.Round(Math.Max(0.0, Math.Min(1.0, value)) * 10.0);
+            if (_lastSpoilerBand < 0) { _lastSpoilerBand = band; return true; }
+            if (band != _lastSpoilerBand)
+            {
+                _lastSpoilerBand = band;
+                string phrase = band == 0 ? "Spoilers retracted"
+                              : band == 10 ? "Spoilers full"
+                              : $"Spoilers {band * 10} percent";
+                announcer.Announce(phrase);
+            }
+            return true;
         }
 
         // Passengers on board: each *_DESIRED* station L:var is an integer seat-bitmask
