@@ -168,8 +168,8 @@ public static class PMDG737ChecklistDefinitions
             // (No separate "Ground power: OFF" item by user decision — the flow drops
             // ground power as part of this transfer, and BS_GND confirms it below.)
             ActionManual("BS_APUGEN", "BEFORE_START", "APU generators: ON", (e, _) => e.SetApuGenerators(1)),
-            Auto("BS_FUEL", "BEFORE_START", "Fuel pumps: ON", "FUEL_PumpFwdSw_0", v => v > 0.5,
-                new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(1)),
+            Auto("BS_FUEL", "BEFORE_START", "Fuel pumps: ON", "FO_FUEL_PUMPS_BS_OK", v => v > 0.5,
+                (e, _) => { e.SetWingFuelPumps(1); e.SetCenterFuelPumps(1); }),
             Auto("BS_HYD", "BEFORE_START", "Electric hydraulic pumps: ON", "HYD_PumpSw_elec_0", v => v > 0.5,
                 new[] { "HYD_PumpSw_elec_1" }, (e, _) => e.SetElecHydPumps(1)),
             Auto("BS_HYDENG", "BEFORE_START", "Engine hydraulic pumps: ON", "HYD_PumpSw_eng_0", v => v > 0.5,
@@ -378,7 +378,9 @@ public static class PMDG737ChecklistDefinitions
             Auto("SD_LOGO", "SHUTDOWN", "Logo lights: OFF", "LTS_LogoSw", v => v < 0.5, (e, _) => e.SetLogo(0)),
             Auto("SD_APUBLEED", "SHUTDOWN", "APU bleed air: ON", "AIR_APUBleedAirSwitch", v => v > 0.5, (e, _) => e.SetApuBleed(1)),
             Auto("SD_FUEL", "SHUTDOWN", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
-                new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, (e, _) => e.SetWingFuelPumps(0)),
+                new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1",
+                        "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
+                (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
             Auto("SD_EAI", "SHUTDOWN", "Engine anti-ice: OFF", "ICE_EngAntiIceSw_0", v => v < 0.5,
                 new[] { "ICE_EngAntiIceSw_1" }, (e, _) => e.SetEngAntiIce(0)),
             Auto("SD_HYDELEC", "SHUTDOWN", "Electric hydraulic pumps: OFF", "HYD_PumpSw_elec_0", v => v < 0.5,
@@ -545,7 +547,8 @@ public static class PMDG737ChecklistDefinitions
         Items = new()
         {
             Auto("SDC_FUEL", "SHUTDOWN_CL", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
-                new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1" }, action: null),
+                new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1",
+                        "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" }, action: null),
             Auto("SDC_PROBE", "SHUTDOWN_CL", "Probe heat: OFF", "ICE_ProbeHeatSw_0", v => v < 0.5, new[] { "ICE_ProbeHeatSw_1" }, action: null),
             Reminder("SDC_HYD", "SHUTDOWN_CL", "Hydraulic panel: set"),
             Reminder("SDC_FLAPS", "SHUTDOWN_CL", "Flaps: UP"),
