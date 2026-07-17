@@ -72,6 +72,11 @@ public class TaxiAssistForm : Form
     private CheckBox chkIntersection = null!;
     private ComboBox cmbIntersection = null!;
     private readonly Dictionary<string, TaxiGraph.RunwayIntersection> _intersectionMap = new();
+    // CAT III / low-visibility hold (runway destinations only). When ticked, a
+    // runway-destination route holds at the CAT III / ILS hold-short (further
+    // back, protects the ILS critical area — e.g. EGKK A3/C3/M3) instead of the
+    // default full-length line (A1/M1). Passed to LoadRoute as preferIlsHold.
+    private CheckBox chkCatIiiHold = null!;
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
     private CheckBox chkFirstHoldShort = null!;
@@ -286,6 +291,7 @@ public class TaxiAssistForm : Form
         //   Alt+A  Airport (ICAO)
         //   Alt+T  Destination Type combo
         //   Alt+E  Destination combo (D&estination)
+        //   Alt+L  CAT III / low-visibility hold checkbox ("(&LVP)", runway dest. only)
         //   Alt+F  First taxiway combo
         //   Alt+H  First Hold-short checkbox  (dynamic Hold-shorts share Alt+H — cycle)
         //   Alt+O  Hold short &of runway combo (first row + dynamic — all cycle on Alt+O)
@@ -302,10 +308,11 @@ public class TaxiAssistForm : Form
         //   Alt+2..9  Dynamic Taxiway label (Taxiway &2 .. Taxiway &9)
         //
         // Tab order (top→bottom of form, no jumps to dynamic panel at the end):
-        //   1 txtAirport, 2 cmbDestType, 3 cmbDestination,
-        //   4 cmbFirstTaxiway, 5 chkFirstHoldShort, 6 btnAddTaxiway,
-        //   7 pnlTaxiways (dynamic taxiway groups visit here in insertion order),
-        //   8 btnCalculate, 9 btnStop.
+        //   txtAirport, cmbDestType, txtGateSearch, cmbDestination,
+        //   chkIntersection, cmbIntersection, chkCatIiiHold, chkFitFilter,
+        //   cmbFirstTaxiway, chkFirstHoldShort, cmbFirstHoldShortRunway,
+        //   btnAddTaxiway, pnlTaxiways (dynamic rows in insertion order),
+        //   btnCalculate, btnStop, txtRouteSummary.
 
         // Airport ICAO
         lblAirport = new Label
@@ -464,6 +471,23 @@ public class TaxiAssistForm : Form
             Visible = false,
             AccessibleName = "Intersection",
             AccessibleDescription = "Select the taxiway intersection to depart from, with runway remaining ahead"
+        };
+        y += 30;
+
+        // CAT III / low-visibility hold. Runway destinations only (same visibility
+        // rule as chkIntersection — see the note there about being born in the
+        // default-selection state because OnDestTypeChanged is wired after the
+        // initial SelectedIndex = 0). Default OFF = hold at the full-length line
+        // (closest to the runway, a normal clearance); ticked = hold further back
+        // at the CAT III / ILS hold to protect the ILS critical area in low vis.
+        chkCatIiiHold = new CheckBox
+        {
+            Text = "CAT III / low-visibility hold (&LVP)",
+            Location = new System.Drawing.Point(controlX, y),
+            AutoSize = true,
+            Visible = cmbDestType.SelectedIndex == 0,
+            AccessibleName = "CAT three, low visibility hold",
+            AccessibleDescription = "When checked, hold at the CAT three / ILS hold-short further back from the runway for low-visibility procedures, instead of the full-length hold closest to the runway"
         };
         y += 30;
 
@@ -710,6 +734,7 @@ public class TaxiAssistForm : Form
         this.Controls.Add(cmbDestination);
         this.Controls.Add(chkIntersection);
         this.Controls.Add(cmbIntersection);
+        this.Controls.Add(chkCatIiiHold);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
         this.Controls.Add(chkFirstHoldShort);
@@ -765,6 +790,7 @@ public class TaxiAssistForm : Form
         cmbDestination.TabIndex = tabIdx++;
         chkIntersection.TabIndex = tabIdx++;
         cmbIntersection.TabIndex = tabIdx++;
+        chkCatIiiHold.TabIndex = tabIdx++;
         chkFitFilter.TabIndex = tabIdx++;
         cmbFirstTaxiway.TabIndex = tabIdx++;
         chkFirstHoldShort.TabIndex = tabIdx++;
@@ -783,6 +809,13 @@ public class TaxiAssistForm : Form
             this.Activate();
             txtAirport.Focus();
         };
+
+        // Fit the form to its content NOW. UpdateLayout otherwise only runs on
+        // a destination-type change or row add/remove, so at first open the
+        // initial 480 px Size clipped everything below its client area — the
+        // CAT III / LVP checkbox row pushed Calculate/Stop below the fold, and
+        // the status/route-summary block was already down there before it.
+        UpdateLayout();
     }
 
     // Non-handler async void (called from the airport textbox's Leave lambda and from
@@ -1290,6 +1323,12 @@ public class TaxiAssistForm : Form
             chkIntersection.Checked = false; // fires OnIntersectionToggled → hides + clears
         else if (!isRunway)
             cmbIntersection.Visible = false;
+
+        // CAT III / LVP hold is runway-only too. Leaving runway mode unticks it so
+        // a stale low-visibility preference can't leak into a later runway route.
+        chkCatIiiHold.Visible = isRunway;
+        if (!isRunway)
+            chkCatIiiHold.Checked = false;
 
         // Progressive Taxi has no final destination — hide the gate/runway
         // destination picker and route to a terminator on the last taxiway row
@@ -2028,10 +2067,20 @@ public class TaxiAssistForm : Form
         y += 40;
 
         lblStatus.Location = new System.Drawing.Point(15, y);
-        y += 40;
+        y += 25;
+
+        // The route-summary block moves with everything above it. Before this,
+        // UpdateLayout left it at its construction position, so every added
+        // taxiway row pushed the buttons/status DOWN OVER the summary box, and
+        // formHeight never accounted for it (its bottom ~27 px sat below the
+        // computed client area).
+        lblRouteSummary.Location = new System.Drawing.Point(15, y);
+        y += 22;
+        txtRouteSummary.Location = new System.Drawing.Point(15, y);
+        y += txtRouteSummary.Height;
 
         // Resize form to fit
-        int formHeight = y + 50;
+        int formHeight = y + 15;
         if (formHeight < 480) formHeight = 480;
         this.ClientSize = new System.Drawing.Size(this.ClientSize.Width, formHeight);
     }
@@ -2286,7 +2335,8 @@ public class TaxiAssistForm : Form
             thresholdLat, thresholdLon, destHeadingTrue,
             isRunwayDest,
             prebuiltGraph: _graph,
-            userRunwayHoldShorts: userRunwayHoldShorts.Count > 0 ? userRunwayHoldShorts : null);
+            userRunwayHoldShorts: userRunwayHoldShorts.Count > 0 ? userRunwayHoldShorts : null,
+            preferIlsHold: isRunwayDest && chkCatIiiHold.Checked);
 
         if (error != null)
         {

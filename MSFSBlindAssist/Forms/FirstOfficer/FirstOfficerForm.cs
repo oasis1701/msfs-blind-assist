@@ -21,7 +21,9 @@ namespace MSFSBlindAssist.Forms.FirstOfficer;
 ///
 /// Accessibility notes:
 /// - NativeAccessibleTreeView used for checklist (bypasses .NET 9 UIA bug)
-/// - TreeView uses CheckBoxes = true so NVDA reads checkbox state natively
+/// - Checkboxes are per-node state images (CheckboxStateImages + ShowCheckBox), NOT
+///   TreeView.CheckBoxes — a TVS_CHECKBOXES tree makes NVDA announce every visited
+///   group header as a checkbox (see NativeAccessibleTreeView doc)
 /// - Space on a checklist node toggles the item
 /// - Flow steps are displayed in a ListBox (simple, screen-reader friendly)
 /// - All status changes are announced via ScreenReaderAnnouncer
@@ -191,9 +193,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         BringToFront();
         Activate();
         _tabs.Focus();
-        // Re-hide group-header checkboxes now the handle is created and the framework's
-        // late checked-state-image restore has run — guards the initial collapsed state
-        // against the posted OnHandleCreated re-hide losing a race with that restore.
+        // Belt-and-braces: re-register group headers now the handle exists. Without
+        // TVS_CHECKBOXES nothing stamps state images on them at handle creation, but this
+        // keeps the interceptor armed from the first moment the tree is visible.
         foreach (TreeNode root in _checklistTree.Nodes)
             _checklistTree.HideCheckBox(root);
     }
@@ -344,11 +346,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        // TreeView
+        // TreeView. Checkboxes come from CheckboxStateImages + per-node ShowCheckBox —
+        // NEVER TreeView.CheckBoxes: in a TVS_CHECKBOXES tree the focused/expanded-once
+        // items report MSAA role "check box" to NVDA even with their state image hidden,
+        // which made every visited group header announce as "check box not checked"
+        // (2026-07-16 fix; see NativeAccessibleTreeView class doc).
         _checklistTree = new NativeAccessibleTreeView
         {
             Dock       = DockStyle.Fill,
-            CheckBoxes = true,
+            CheckboxStateImages = true,
             ShowLines  = true,
             ShowPlusMinus = true,
             ShowRootLines = true,
@@ -361,6 +367,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _checklistTree.BeforeExpand  += ChecklistTree_BeforeExpand;
         _checklistTree.AfterExpand   += ChecklistTree_AfterExpand;
         _checklistTree.AfterCollapse += ChecklistTree_AfterCollapse;
+        _checklistTree.NodeMouseClick += ChecklistTree_NodeMouseClick;
 
         layout.Controls.Add(_checklistTree, 0, 0);
 
@@ -514,13 +521,14 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         _checklistTree.EndUpdate();
 
-        // Group headers are not tickable — hide their checkboxes (CheckBoxes=true is
-        // tree-wide; state image 0 removes it per node, kept 0 by the WndProc interceptor).
-        // The "Loading..." placeholder is deliberately NOT hidden: it is collapsed and never
-        // rendered/announced, and it gets REMOVED on first expand — registering its native
-        // handle would risk suppressing a real leaf's checkbox once comctl32 reuses that
-        // freed handle. Only persistent non-tickable nodes (headers + Informational
-        // separators, hidden in BeforeExpand) are registered with the interceptor.
+        // Group headers are not tickable. Without TVS_CHECKBOXES nothing stamps a state
+        // image on them unsolicited, but registering them with HideCheckBox arms the
+        // WndProc interceptor as a safety net (a stray Checked write on a header would
+        // otherwise give it a checkbox image). The "Loading..." placeholder is deliberately
+        // NOT registered: it gets REMOVED on first expand — registering its native handle
+        // would risk suppressing a real leaf's checkbox once comctl32 reuses that freed
+        // handle. Only persistent non-tickable nodes (headers + Informational separators,
+        // hidden in BeforeExpand) are registered with the interceptor.
         foreach (TreeNode parent in _checklistTree.Nodes)
             _checklistTree.HideCheckBox(parent);
 
@@ -543,16 +551,19 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 var node = new TreeNode(item.Label)
                 {
                     Tag = item.Id,
-                    Checked = item.IsChecked,
+                    Checked = item.IsChecked,   // cached pre-attach; ShowCheckBox applies it
                 };
                 parent.Nodes.Add(node);
-                // Non-tickable items (e.g. "— Below the line —" separators) get no checkbox.
-                if (!item.ManualCompletionAllowed)
+                // Tickable items get a checkbox state image; non-tickable items (e.g.
+                // "— Below the line —" separators) stay plain tree items.
+                if (item.ManualCompletionAllowed)
+                    _checklistTree.ShowCheckBox(node);
+                else
                     _checklistTree.HideCheckBox(node);
             }
-            // Adding children reasserts the PARENT's state-image checkbox (cChildren 0→N),
-            // resurrecting the group header's hidden checkbox — re-hide it after populating.
-            // This is why headers regained a checkbox once a group had been expanded.
+            // Keep the parent registered with the interceptor (under TVS_CHECKBOXES,
+            // adding children used to reassert the parent's state-image checkbox; without
+            // the style this is a no-op guard).
             _checklistTree.HideCheckBox(parent);
             _suppressTreeEvents = false;
         }
@@ -620,6 +631,20 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         UpdateChecklistStatus();
     }
 
+    // Without TVS_CHECKBOXES the native control no longer toggles on a state-image
+    // click, so mouse users get the toggle here (same guarded path as the Space key).
+    private void ChecklistTree_NodeMouseClick(object? sender, TreeNodeMouseClickEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+        if (_checklistTree.HitTest(e.Location).Location != TreeViewHitTestLocations.StateImage) return;
+        if (e.Node?.Tag is not string itemId || itemId == "placeholder" ||
+            e.Node.Parent?.Tag is not string groupId) return;
+
+        var item = _checklistMgr.FindItem(groupId, itemId);
+        if (item != null && item.ManualCompletionAllowed)
+            e.Node.Checked = !e.Node.Checked; // AfterCheck fires and handles the rest
+    }
+
     // Single-expand: keep only one top-level group open at a time so the tree stays
     // short and screen-reader navigation is predictable. Leaf/child nodes unaffected.
     private void ChecklistTree_AfterExpand(object? sender, TreeViewEventArgs e)
@@ -634,15 +659,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             foreach (TreeNode root in _checklistTree.Nodes)
                 if (!ReferenceEquals(root, expanded) && root.IsExpanded)
                     root.Collapse();
-            // Expanding/collapsing a root reasserts its state-image checkbox — re-hide
-            // every group header so none regains a checkbox after navigation.
+            // No-op guard without TVS_CHECKBOXES (under it, expand/collapse used to
+            // reassert header state-image checkboxes) — keeps the interceptor registered.
             foreach (TreeNode root in _checklistTree.Nodes)
                 _checklistTree.HideCheckBox(root);
         }
         finally { _suppressTreeEvents = false; }
     }
 
-    // A user collapsing a group also reasserts its header's state-image checkbox — re-hide.
+    // Same no-op guard on user collapse (see AfterExpand).
     private void ChecklistTree_AfterCollapse(object? sender, TreeViewEventArgs e)
     {
         if (e.Node is { Parent: null } root)
