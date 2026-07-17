@@ -112,6 +112,8 @@ public class AircraftActionExecutor : IFoActionExecutor
         if (since < gap) await Task.Delay(gap - since);
     }
 
+    private double CenterQty() => _sc?.PMDGDataManager?.GetFieldValue("FUEL_QtyCenter") ?? 0.0;
+
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public bool IsAvailable => _sc is { IsConnected: true };
 
@@ -301,6 +303,11 @@ public class AircraftActionExecutor : IFoActionExecutor
         var spec = Table.GetValueOrDefault(eventName);
         Dispatch kind = spec?.Kind ?? Dispatch.Simple;
         int t = target ?? 1;
+
+        // RULING A (§6): see the 777 executor. Param 0 never gated; returns true to keep a
+        // Multi's ok intact.
+        if (CenterPumpGate.ShouldSuppressCenterOn(eventName, (target ?? 1) == 1, CenterQty()))
+            return true;
 
         // Frame-space EVERY write relative to the previous one (see _lastWriteUtc) —
         // callers no longer need their own inter-write delays.

@@ -55,6 +55,11 @@ public class AircraftActionExecutor : IFoActionExecutor
         if (since < gap) await Task.Delay(gap - since);
     }
 
+    // Live center fuel quantity (lbs) for the RULING-A gate. Pre-snapshot → 0.0 (interface
+    // contract) → gate BLOCKS center-ON (fail-safe; self-heals on the next actuation). Never
+    // return a large sentinel here — that would fail OPEN into the dry-run hazard.
+    private double CenterQty() => _simConnect?.PMDGDataManager?.GetFieldValue("FUEL_QtyCenter") ?? 0.0;
+
     /// <summary>
     /// IFoActionExecutor — acquire+release the dispatch gate. SemaphoreSlim async
     /// waiters queue FIFO, so by the time this acquires, every dispatch queued before
@@ -132,6 +137,12 @@ public class AircraftActionExecutor : IFoActionExecutor
             usesMouseFlag = true;
             isMomentary = false;
         }
+
+        // RULING A (§6): suppress a center-pump ON write on an empty tank — BEFORE PaceAsync,
+        // returning true so a Multi's ok-conjunction stays intact (the flow step completes,
+        // only the center half suppressed). Param 0 (OFF) is never gated.
+        if (CenterPumpGate.ShouldSuppressCenterOn(eventName, targetValue == 1, CenterQty()))
+            return true;
 
         await PaceAsync();
         try
