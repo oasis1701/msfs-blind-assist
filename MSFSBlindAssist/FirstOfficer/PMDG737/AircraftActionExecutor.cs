@@ -112,6 +112,8 @@ public class AircraftActionExecutor : IFoActionExecutor
         if (since < gap) await Task.Delay(gap - since);
     }
 
+    // Pre-snapshot/no-manager reads 0.0 → the gate BLOCKS center-ON (fail-safe). Never return a
+    // large sentinel on not-ready — that fails OPEN into the dry-run hazard (see the 777 twin).
     private double CenterQty() => _sc?.PMDGDataManager?.GetFieldValue("FUEL_QtyCenter") ?? 0.0;
 
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
