@@ -50,53 +50,155 @@ flaps (FBW A380 and A32NX)." In-sim test plan:
 
 ### Center fuel pump auto-management (PMDG 737 + 777)
 
-Opt-in via `FOAutoCenterPumpsEnabled` (First Officer settings, default ON; Boeing/PMDG
-only). Runs in the per-aircraft `FOAutoManager.Update` via the shared, unit-tested
-`CenterFuelPumpAutomation` policy. `Update` is called on each position-update tick
-(~1-2.7 Hz, driven by `AircraftPositionReceived` — NOT a fixed per-frame rate), so the
-timing windows are **wall-clock seconds, not tick counts** (`LowPressConfirmSeconds`,
-`SettleSecondsAfterOn`) — each adapter owns a `System.Diagnostics.Stopwatch` and passes
-the measured `elapsedMs` into `Update`; the policy defensively clamps it to 2000 ms
-(rejects a first-call/sim-pause/hitch spike without affecting a normal tick). Invariants:
+Opt-in via `FOAutoCenterPumpsEnabled` (First Officer settings, **default OFF**;
+Boeing/PMDG only). This section describes the corrected, shipped machine after a
+2026-07-15 corrective redesign that fixed 6 distinct defects caught across design and
+review rounds — see `docs/superpowers/specs/2026-07-15-center-pump-corrective-redesign.md`
+for the full defect history if you need it.
+
+Runs in the per-aircraft `FOAutoManager.Update` via the shared, pure, unit-tested
+`CenterFuelPumpAutomation` policy (`MSFSBlindAssist/FirstOfficer/CenterFuelPumpAutomation.cs`).
+Signature:
+
+```csharp
+public Action Update(
+    bool enabled, bool dataReady, bool onGround, double centerQtyLbs,
+    bool centerPumpsOn, bool centerTankDry, bool systemCredible, bool wingPumpsOn,
+    double rawElapsedMs)
+```
+
+`Update` is called on each position-update tick (~1-2.7 Hz, driven by
+`AircraftPositionReceived` — NOT a fixed per-frame rate), so the timing windows are
+**wall-clock seconds, not tick counts** (`LowPressConfirmSeconds`, `SettleSecondsAfterOn`)
+— each adapter owns a `System.Diagnostics.Stopwatch` and passes the measured `elapsedMs`
+into `Update`; the policy defensively clamps it to `MaxElapsedMs` (2000 ms, rejects a
+first-call/sim-pause/hitch spike without affecting a normal tick). `onGround` is
+`pos.SimOnGround >= 0.5` from the position feed (not an AGL threshold). `centerTankDry`
+and `systemCredible` are computed by the caller and passed in — the policy itself is pure
+and touches no SimConnect state.
+
+**Invariants:**
 
 - **Arm ON is ground-only** and gated on the wing pumps already being ON (fuel-panel
   setup has begun) — never fires cold-and-dark, never in flight.
-- **OFF trigger is the center-pump LOW PRESSURE annunciator**, debounced
-  (`LowPressConfirmSeconds`) and only while the pumps are on — a quantity number is used
-  only to *arm*, never to switch off.
-- **Once switched off dry, stays off for the leg**; a turnaround refuel re-arms it. The
-  dry-off latch records the center quantity AT the moment it was set (`_qtyAtDryOff`) and
-  clears only on a **genuine ground uplift**: `centerQtyLbs > _qtyAtDryOff + RefuelMarginLbs`
-  (250 lb margin). Inferring a refuel from "qty is now above `ArmThresholdLbs`" is unsound —
-  after a dry-off the tank stops draining, so the quantity freezes at whatever lit the
-  annunciator, and a threshold-only test passes vacuously on the very next tick with no real
-  fuel truck involved, oscillating the pumps on/off indefinitely (a real bug caught by review
-  before merge; see `SustainedLowPress_OnGround_DoesNotOscillate` in the test suite).
-- **The `SettleSecondsAfterOn` window starts on the OBSERVED center-pump rising edge
+- **OFF trigger is `centerTankDry && systemCredible`, debounced** (`LowPressConfirmSeconds`
+  = 3 s) — **with no `onGround` gate**, so the tank is correctly switched off if it drains
+  in cruise, not just on the ground.
+  - `centerTankDry` (M-2) is the ALL-form composite `FuelSystemLogic.CenterTankDry(sw0,
+    sw1, lp0, lp1)` — each running center pump's own low-press annunciator must be lit
+    (`swN ⟹ lpN`); a single failed pump on an otherwise full tank does **not** trip it
+    (F5), because the other pump's low-press stays out.
+  - `systemCredible` (M-3) is `FuelSystemLogic.FuelSystemCredible(...)` — at least one
+    **wing** pump is ON with its own low-press annunciator **out** (i.e. actually
+    producing pressure). This is a **different model from the center annunciator**: center
+    is gated on its own switch, wing is gated on output pressure. No reasoning transfers
+    between the two families on either aircraft type.
+- **Two clearable arm-suppressor latches, sharing one floor and one clear path:**
+  - `_switchedOffThisLeg` — the dry-off latch, set when OFF fires.
+  - `_manualOffLatch` — set on an *unrequested* falling edge (someone else switched the
+    pumps off) while the wing pumps are still on; it records the intent "a human turned
+    this off, don't re-arm automatically."
+  - Both share one ratcheting floor, `_qtyFloor` (NaN iff neither latch is set — enforced
+    structurally every tick, not just at latch-set time). While either latch is set the
+    floor only ever ratchets **down** to track a draining/steady tank, never up.
+  - **`ClearPolicyLatches()` clears BOTH latches together** and fires on exactly three
+    edges: (1) a genuine ground refuel, `centerQtyLbs > _qtyFloor + RefuelMarginLbs` (250
+    lb margin above the ratcheted floor); (2) the `FOAutoCenterPumpsEnabled` settings
+    false→true edge; (3) a full `Reset()` (aircraft switch). Note the asymmetry: the center
+    **switch's own rising edge** (pumps observed going off→on) clears only
+    `_manualOffLatch` (C-A — "someone re-armed by hand or via Before-Start, the old
+    off-intent is stale"), **not** `_switchedOffThisLeg` — a manual/checklist re-arm after
+    a dry-off does not by itself un-latch the dry-off state; only a real refuel, the
+    settings edge, or a reset does.
+  - Inferring a refuel from "qty is now above `ArmThresholdLbs`" is unsound — after a
+    dry-off the tank stops draining, so the quantity freezes at whatever lit the
+    annunciator, and a threshold-only test passes vacuously on the very next tick with no
+    real fuel truck involved, oscillating the pumps on/off indefinitely (a real bug caught
+    by review before merge; see `SustainedLowPress_OnGround_DoesNotOscillate` in the test
+    suite). The floor-plus-margin design is what replaced it.
+- **The center-pump policy's OFF branch never reads `_switchedOffThisLeg`** — it is
+  written there, never read as a guard on that branch. (An earlier revision *did* narrow
+  the OFF condition on it, which meant a single dry-off permanently prevented the OFF
+  branch from ever firing again for the rest of the leg — the trap this design avoids. The
+  only thing that suppresses re-issuing an OFF write is the self-clearing
+  `_pendingCommand` latch below; the two arm-suppressor latches gate ON only.)
+- **Pending-command latch (write-then-verify):** after commanding TurnOn/TurnOff, the
+  policy sets `_pendingCommand` and returns `Action.None` on every subsequent tick until
+  either (a) the observed `centerPumpsOn` matches the commanded direction (readback
+  landed), or (b) `CommandConfirmSeconds` (30 s, a failure-path bound only, not a retry
+  schedule) elapses with no matching readback — there is **no retry budget**; on an
+  unstuck timeout the policy simply becomes eligible to re-evaluate on the next tick. Under
+  a permanently broken write path this bounds the residual to roughly one announcement
+  attempt per 30 s window (≈2/min) — a named, accepted residual, not assumed away.
+- **The `SettleSecondsAfterOn` window (10 s) starts on the OBSERVED center-pump rising edge
   (off→on), covering ANY switch-on — the automation's own arm, a manual overhead-panel
   toggle, or a checklist action — not just the automation's own `TurnOn`.** The spin-up
   transient that briefly lights LOW PRESSURE is identical regardless of who threw the
   switch, so the settle protection must be too.
+- **`ObservationGapMs` (5000 ms) is deliberately different from `MaxElapsedMs` (2000 ms).**
+  A tick gap wider than `ObservationGapMs` resets the debounce (`_prevPumpsOn = false;
+  _lowPressMs = 0`) so a sustained slow/interrupted feed can't accrete a stale low-press
+  run across a data gap and still correctly turns off once observation resumes. Keying the
+  gap detector on the same value as the elapsed-time clamp would misfire on every normal
+  sub-0.5 Hz tick (a phantom "gap" every update), which would make OFF unable to ever
+  latch a continuous debounce — hence the two constants are independent.
 - Both actions announce (background state change): "Center fuel pumps on." /
-  "Center tank low. Center fuel pumps off." Thresholds are tune-in-sim consts.
+  "Center tank low. Center fuel pumps off." Thresholds (`ArmThresholdLbs` = 500 lb,
+  `LowPressConfirmSeconds` = 3 s, `SettleSecondsAfterOn` = 10 s, `RefuelMarginLbs` = 250
+  lb) are tune-in-sim consts.
 
-**Known limitation (accepted, not a defect):** a continuously-lit low-press annunciator (e.g.
-a failed pump or bus — NOT a dry tank) combined with a fast ground refuel actively in progress
-(~700 lb/tick) can still cycle the policy: each ~12 s window the uplift exceeds
-`RefuelMarginLbs` → latch clears → `TurnOn` → `SettleSecondsAfterOn` → `TurnOff` +
-announcement, repeating for as long as the refuel keeps arriving (observed ~10 cycles over 2
-minutes in review). This is NOT the oscillation defect the redesign removed: every
-announcement is TRUE (low-press really is lit), no pump is ever driven into a dry tank (fuel
-is present the whole time), and the cycling is bounded to the refuel window — it
-self-terminates the moment the truck stops. It is strictly better than both predecessors (the
-prior code oscillated unconditionally and forever; the version before that stuck the latch
-permanently on any dry-off). The cheap hardening — gating the latch-clear on low-press also
-being extinguished — was considered and deliberately NOT taken: with the pumps off, low-press
-is not a reliable "tank has fuel" signal, and gating on it risks never clearing the latch at
-all. Revisit only with in-sim evidence. **In-sim test plan:** if you ever refuel on the ground
-with a center-pump fault present (failed pump/bus, so low-press stays lit throughout), listen
-for repeated "Center fuel pumps on." / "Center tank low. Center fuel pumps off." during the
-refuel — that is this known limitation, expected and self-terminating, not a new bug.
+**Consolidation (§6 of the design doc) — ONE "Fuel pumps" checklist item per phase, on
+both jets:**
+
+- Preflight: one item turns wing + center pumps off (`SetWingFuelPumps(0);
+  SetCenterFuelPumps(0);`).
+- Before-Start: one item turns wing pumps on and turns center pumps on **iff center fuel
+  is loaded**, gated by the single synthetic condition `FO_FUEL_PUMPS_BS_OK` →
+  `FuelSystemLogic.BeforeStartFuelPumpsOk(wingOn, centerOn, centerQty >
+  ArmThresholdLbs)`. There is no separate `FO_CTR_PUMPS_*` item and no standalone
+  `BS_CTR_PUMPS_ON` — those were folded into the one merged item.
+- Shutdown: one item turns wing + center pumps off, in that call order —
+  `SetWingFuelPumps(0); SetCenterFuelPumps(0);` — on both jets, in both the state/action
+  group and the `_CL` readback-detection twin.
+- **Every center-pump ON write — the background automation, a flow's `Multi` step
+  bundle, and a checklist action alike — is gated at the executor's `DispatchCoreAsync`,
+  the single chokepoint all three dispatch paths funnel through**, on `centerQty >
+  ArmThresholdLbs` (`CenterPumpGate.ShouldSuppressCenterOn`, keyed on
+  `EVT_OH_FUEL_PUMP_L_CENTER`/`EVT_OH_FUEL_PUMP_R_CENTER` with the ON param only — OFF,
+  param 0, is never gated). This means the merged Before-Start item TICKS correctly on an
+  empty-center flight (the wing half of the write still succeeds, so the flow/checklist
+  reports success) while the center pumps themselves never spin dry — RULING A. Gating
+  only `ExecuteSingle`/`Fire`/`FireBoth` would have missed this: a flow's `Multi` steps
+  never call those, they call `DispatchCoreAsync` directly, so gating anywhere else leaves
+  the flow path able to dry-run the center pumps on an empty tank.
+
+**Accepted residuals (not defects):**
+
+- **Ruling D — wing-pumps-already-on preflight load.** If the pilot loads with the wing
+  pumps already switched on, Preflight's "all off" item can produce one revert plus one
+  "Center fuel pumps on." announcement before it self-settles. Bounded to once, and
+  self-correcting; not worth special-casing.
+- **The per-bus gap.** A single failed center pump whose bus has also dropped, on an
+  otherwise full tank, can still read as `centerTankDry` (M-2's ALL-form composite treats
+  a bus-dead pump the same as a low-press pump) and announce a false "Center tank low."
+  Harm is announcement-only — no pump is driven into a genuinely dry tank, and no
+  oscillation results.
+- **Continuously-lit low-press during an active ground refuel.** A continuously-lit
+  low-press annunciator (e.g. a failed pump or bus — NOT a dry tank) combined with a fast
+  ground refuel actively in progress (~700 lb/tick) can still cycle the policy: each ~12 s
+  window the uplift exceeds `RefuelMarginLbs` → latch clears → `TurnOn` →
+  `SettleSecondsAfterOn` → `TurnOff` + announcement, repeating for as long as the refuel
+  keeps arriving (observed ~10 cycles over 2 minutes in review). This is **not** the
+  oscillation defect the redesign removed: every announcement is TRUE (low-press really is
+  lit), no pump is ever driven into a dry tank (fuel is present the whole time), and the
+  cycling is bounded to the refuel window — it self-terminates the moment the truck stops.
+  The cheap hardening — gating the latch-clear on low-press also being extinguished — was
+  considered and deliberately NOT taken: with the pumps off, low-press is not a reliable
+  "tank has fuel" signal, and gating on it risks never clearing the latch at all. Revisit
+  only with in-sim evidence. **In-sim test plan:** if you ever refuel on the ground with a
+  center-pump fault present (failed pump/bus, so low-press stays lit throughout), listen
+  for repeated "Center fuel pumps on." / "Center tank low. Center fuel pumps off." during
+  the refuel — that is this known limitation, expected and self-terminating, not a new bug.
 
 **GOTCHAS (each was a real bug on this branch):**
 - **Transition altitude/level crossings use TWO INDEPENDENT edge detectors (`FirstOfficer/TransitionCrossingDetector.cs`), never one shared "in STD zone" latch (2026-07-15).** All five phase monitors previously tracked a single `_prevInStd` with a trailing `if (nowAboveTrans) _prevInStd = true; else if (nowBelowTrans) _prevInStd = false;`. That silently spammed the "set local QNH" call-out on descent whenever the **destination transition LEVEL sat more than ~600 ft above the origin transition ALTITUDE** (very common in Europe, e.g. TA 4000 / TL 6000) — the two ±300 ft hysteresis bands then OVERLAP, and in the overlap the QNH branch fired every tick while the `nowAboveTrans` arm re-set the latch to true (and flip-flopped STD/QNH if the aircraft levelled off in the band). The shared detector tracks each threshold with its own arming latch (`_belowTa` arms climb→STD, `_aboveTl` arms descent→QNH), so the two crossings can never contradict. It is pure logic with characterization tests (`TransitionCrossingDetectorTests`). Each monitor keeps its own aircraft-specific baro action + wording and just asks the detector for the `Crossing`. Do NOT reintroduce a single `_prevInStd`-style latch. (`pos.Altitude` is `PLANE ALTITUDE` = true MSL, so it does NOT jump when the FO flips STD/QNH — the overlap was the whole cause.)
