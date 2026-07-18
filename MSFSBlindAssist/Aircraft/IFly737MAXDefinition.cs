@@ -35,6 +35,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// <summary>The shared-memory SDK client. Owned by the definition; started/bridged by MainForm.</summary>
     public IFlySdkClient Sdk { get; } = new();
 
+    public IFly737MAXDefinition()
+    {
+        // Re-seed the flash-filtered light-edge state on every SDK (re)connect (e.g.
+        // a sim restart mid-session). ConnectionChanged fires AFTER Sdk.Snapshot is set
+        // (IFlySdkClient.Poll assigns _snapshot before posting the connected event), so
+        // ReseedLightState can read live values immediately. See ReseedLightState for
+        // why this is required.
+        Sdk.ConnectionChanged += (_, connected) => { if (connected) ReseedLightState(); };
+    }
+
     // Cached autopilot window (Ctrl+P) — created on first FCUSetAutopilot press,
     // hide-on-close, disposed with the def on aircraft swap (Salty 747 pattern).
     private Forms.IFly737.IFly737AutopilotWindow? _autopilotWindow;
@@ -940,6 +950,83 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     internal bool WindowEchoActive(string field) =>
         _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 2500;
 
+    // Flattened SDK field-name -> (byte offset, Kind) map, built once from
+    // IFlySdkFields.All using the SAME flattening IFlySdkClient.RaiseFieldEvents uses
+    // (Count>1 -> "{Name}_{i}" at Offset + i*Stride; else the bare Name). Lets us read
+    // a raw SDK value straight from a live IFlySdkSnapshot by its flattened event-key
+    // name, independent of any generated IFlySdkOffsets constant.
+    internal static readonly Dictionary<string, (int Offset, char Kind)> FieldOffsetsByKey = BuildFieldOffsets();
+
+    private static Dictionary<string, (int Offset, char Kind)> BuildFieldOffsets()
+    {
+        var map = new Dictionary<string, (int Offset, char Kind)>();
+        foreach (var f in IFlySdkFields.All)
+        {
+            for (int i = 0; i < f.Count; i++)
+            {
+                string key = f.Count > 1 ? $"{f.Name}_{i}" : f.Name;
+                map[key] = (f.Offset + i * f.Stride, f.Kind);
+            }
+        }
+        return map;
+    }
+
+    /// <summary>Reads a raw SDK field value straight from <paramref name="snap"/> by its
+    /// flattened event-key name (see <see cref="FieldOffsetsByKey"/>). Null for an
+    /// unknown key. Used to re-seed light state on reconnect and to render a live
+    /// display value for a var whose ProcessSimVarUpdate self-announce returns true
+    /// (so MainForm's generic displayValues cache is never written for it).</summary>
+    internal static double? ReadRawField(IFlySdkSnapshot snap, string key) =>
+        FieldOffsetsByKey.TryGetValue(key, out var f)
+            ? f.Kind switch
+              {
+                  'B' => snap.ByteAt(f.Offset),
+                  'I' => snap.IntAt(f.Offset),
+                  'D' => snap.DoubleAt(f.Offset),
+                  _ => (double?)null,
+              }
+            : null;
+
+    /// <summary>Re-seeds _litState/_announcedLit/_pendingOff from the live snapshot
+    /// whenever the SDK (re)connects (Sdk.ConnectionChanged, wired in the constructor).
+    ///
+    /// Without this, a light lit-and-announced in a PRIOR session (e.g. before a sim
+    /// restart) leaves _litState[key] stuck at true across the reconnect: the SDK's
+    /// initial-snapshot events after resume never reach ProcessSimVarUpdate (MainForm
+    /// bridges them in at "Step 1.5" and returns before the generic pipeline runs), so
+    /// nothing else re-seeds these dictionaries. If the SAME light trips again in the
+    /// new session, HandleLightEdge's `lit == prev` check silently swallows the "on"
+    /// announce because prev is already true.
+    ///
+    /// Convention: silently baseline on (re)connect — the A380 EWD monitor pattern.
+    /// Lights already lit at connect become the new baseline (never announced this
+    /// session); only changes AFTER connect announce. _pendingOff is cleared too, so a
+    /// stale pending-off from the old session can never fire into the new one.</summary>
+    private void ReseedLightState()
+    {
+        EnsureRegistered();
+        var snap = Sdk.Snapshot;
+        if (snap == null) return;
+
+        void Seed(HashSet<string> keys, Func<double, bool> lit)
+        {
+            foreach (var key in keys)
+            {
+                double? raw = ReadRawField(snap, key);
+                if (raw.HasValue)
+                    _litState[key] = lit(raw.Value);
+                _announcedLit[key] = false;
+            }
+        }
+
+        Seed(_annunKeys, v => v > 0.5);
+        Seed(_mcpModeKeys, v => ((int)Math.Round(v)) % 3 > 0);
+        Seed(_warnLightKeys, v => ((int)Math.Round(v)) % 3 > 0);
+        Seed(_disengageLightKeys, v => v > 0.5);
+
+        _pendingOff.Clear();
+    }
+
     /// <summary>Flash-filtered light announce. Announces "on" once at the first lit
     /// edge; a re-light while an off is pending just cancels the pending off (the
     /// blink reads as continuously on). "off" is announced only after the light has
@@ -1227,7 +1314,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 return true;
             case "Spoiler_Lever_Status":
             {
-                string label = SpeedbrakeDetentName(value);
+                // The T10 self-announce (ProcessSimVarUpdate, "Speedbrake lever" case)
+                // returns true, so MainForm's Step-3 displayValues cache is never written
+                // for this var and the passed-in `value` freezes at its launch reading.
+                // Read the LIVE snapshot instead, same as the SYN_* window cases above.
+                // "--" with no connection, matching MainForm's own no-data convention.
+                if (snap == null) { displayText = "--"; return true; }
+                double raw = ReadRawField(snap, "Spoiler_Lever_Status") ?? value;
+                string label = SpeedbrakeDetentName(raw);
                 displayText = label.StartsWith("Speed brake ", StringComparison.Ordinal)
                     ? label["Speed brake ".Length..]
                     : label;

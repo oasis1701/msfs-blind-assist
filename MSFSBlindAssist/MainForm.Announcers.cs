@@ -306,6 +306,10 @@ public partial class MainForm
                 if (currentAircraft is IFly737MAXDefinition iflyEchoDef &&
                     iflyEchoDef.WindowEchoActive(e.VarName))
                 {
+                    // Update the baseline silently, same as the _uiSetEcho gate below —
+                    // otherwise a later genuine change BACK to the pre-click value is
+                    // swallowed because the monitor still holds the stale pre-echo baseline.
+                    simVarMonitor.SetBaseline(e.VarName, e.Value);
                     return;
                 }
 
