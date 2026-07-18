@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Settings;
@@ -16,6 +18,9 @@ namespace MSFSBlindAssist.Forms.IFly737;
 /// </summary>
 public class IFlyEfbForm : Form
 {
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+
     /// <summary>
     /// Injected after every successful navigation (verified live against the served
     /// EFB v1.1, 2026-07 — the pages are REAL semantic HTML: inputs/buttons/selects/
@@ -230,6 +235,20 @@ public class IFlyEfbForm : Form
           enhance();
 
           document.addEventListener('keydown', function (e) {
+            // Escape/F5 from INSIDE the web content never reach ProcessCmdKey/KeyDown
+            // (the WebView2 browser process owns that focus) — post a message the
+            // .NET side bridges to close/reload. Capture-phase (true) guarantees this
+            // fires even if the page handles the key itself.
+            if (e.key === 'Escape') {
+              window.chrome.webview.postMessage('msfsba-efb-close');
+              e.preventDefault();
+              return;
+            }
+            if (e.key === 'F5') {
+              window.chrome.webview.postMessage('msfsba-efb-reload');
+              e.preventDefault();
+              return;
+            }
             // Alt+Home anywhere = back to the EFB main page.
             if (e.altKey && e.key === 'Home') {
               var home = document.getElementById('homeButton');
@@ -258,8 +277,10 @@ public class IFlyEfbForm : Form
     private readonly WebView2 _webView;
     private readonly TextBox _portBox;
     private readonly Button _goButton;
-    private readonly Label _statusLabel;
+    private readonly TextBox _statusBox;
     private bool _webViewReady;
+    private bool _initStarted;
+    private IntPtr _previousWindow = IntPtr.Zero;
 
     public IFlyEfbForm(ScreenReaderAnnouncer announcer)
     {
@@ -291,12 +312,16 @@ public class IFlyEfbForm : Form
         };
         _goButton.Click += (_, _) => Navigate();
 
-        _statusLabel = new Label
+        _statusBox = new TextBox
         {
             Location = new Point(260, 14),
             Size = new Size(800, 20),
             Text = "",
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            ReadOnly = true,
+            TabStop = true,
+            AccessibleName = "E F B status",
+            BorderStyle = BorderStyle.FixedSingle,
         };
 
         _webView = new WebView2
@@ -310,9 +335,14 @@ public class IFlyEfbForm : Form
         Controls.Add(portLabel);
         Controls.Add(_portBox);
         Controls.Add(_goButton);
-        Controls.Add(_statusLabel);
+        Controls.Add(_statusBox);
         Controls.Add(_webView);
 
+        // Covers Escape/F5 when WinForms chrome (port box, connect button, etc.) has
+        // focus. When the webview's page content has focus, keystrokes are owned by
+        // the WebView2 browser process and never reach here — the injected
+        // AccessibilityShim's capture-phase listener bridges those via
+        // OnWebMessageReceived instead.
         KeyDown += (s, e) =>
         {
             if (e.KeyCode == Keys.F5)
@@ -322,50 +352,66 @@ public class IFlyEfbForm : Form
             }
             else if (e.KeyCode == Keys.Escape)
             {
-                Hide();
+                Close();
                 e.Handled = true;
             }
         };
 
-        FormClosing += (s, e) =>
+        // Hide instead of dispose on close, so reopening returns the user to the EFB
+        // page they were on (and avoids re-initializing WebView2 every time). The
+        // form is disposed for real on aircraft swap (MainForm.IFly737.cs, which
+        // calls Dispose() directly and bypasses this handler). Any user-initiated
+        // close — the X button / Alt+F4 (UserClosing), our own Escape Close()
+        // (CloseReason.None), or the webview close bridge — just hides; only real
+        // app/OS shutdown is allowed to tear the window down.
+        FormClosing += (_, e) =>
         {
-            if (e.CloseReason == CloseReason.UserClosing)
+            if (e.CloseReason is CloseReason.ApplicationExitCall
+                or CloseReason.WindowsShutDown
+                or CloseReason.TaskManagerClosing)
             {
-                e.Cancel = true;
-                Hide();
+                return;
             }
+            e.Cancel = true;
+            Hide();
+            if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         };
     }
 
     public async void ShowForm()
     {
+        // Remember who had focus so we can restore it when the window is dismissed.
+        _previousWindow = GetForegroundWindow();
         Show();
         Activate();
-        if (!_webViewReady)
+        if (!_webViewReady && !_initStarted)
         {
+            _initStarted = true;
             try
             {
                 await _webView.EnsureCoreWebView2Async();
-                _webViewReady = true;
+                _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 _webView.CoreWebView2.NavigationCompleted += async (_, e) =>
                 {
                     if (e.IsSuccess)
                     {
-                        _statusLabel.Text = "Connected.";
+                        _statusBox.Text = "Connected.";
                         _announcer.Announce("iFly EFB loaded.");
                         try { await _webView.CoreWebView2.ExecuteScriptAsync(AccessibilityShim); }
                         catch { }
                     }
                     else
                     {
-                        _statusLabel.Text = "Could not reach the EFB. Check the sim is running with the iFly MAX loaded, and the EFB port in iFly Manager (default 8084).";
+                        _statusBox.Text = "Could not reach the EFB. Check the sim is running with the iFly MAX loaded, and the EFB port in iFly Manager (default 8084).";
                         _announcer.Announce("Could not reach the iFly EFB. Check the EFB port setting.");
                     }
                 };
+                _webViewReady = true;
             }
             catch (Exception ex)
             {
-                _statusLabel.Text = $"WebView2 initialization failed: {ex.Message}";
+                _initStarted = false;
+                _statusBox.Text = $"WebView2 initialization failed: {ex.Message}";
                 _announcer.AnnounceImmediate("EFB browser failed to start.");
                 return;
             }
@@ -374,9 +420,27 @@ public class IFlyEfbForm : Form
         _webView.Focus();
     }
 
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        // Fired on the UI thread. Close() runs the hide-and-restore FormClosing path.
+        var message = e.TryGetWebMessageAsString();
+        if (message == "msfsba-efb-close")
+        {
+            Close();
+        }
+        else if (message == "msfsba-efb-reload")
+        {
+            try { _webView.CoreWebView2.Reload(); } catch { }
+        }
+    }
+
     private void Navigate()
     {
-        if (!_webViewReady) return;
+        if (!_webViewReady)
+        {
+            _announcer.AnnounceImmediate("The browser component is not ready yet. Please try again.");
+            return;
+        }
         if (!int.TryParse(_portBox.Text.Trim(), out int port) || port < 1 || port > 65535)
         {
             _announcer.AnnounceImmediate("Enter a valid port number.");
@@ -390,11 +454,11 @@ public class IFlyEfbForm : Form
         try
         {
             _webView.CoreWebView2.Navigate($"http://localhost:{port}/");
-            _statusLabel.Text = "Connecting...";
+            _statusBox.Text = "Connecting...";
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"Navigation failed: {ex.Message}";
+            _statusBox.Text = $"Navigation failed: {ex.Message}";
         }
     }
 }
