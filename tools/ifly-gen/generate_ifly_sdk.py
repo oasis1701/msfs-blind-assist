@@ -14,6 +14,25 @@ Usage:  python generate_ifly_sdk.py <sdk_dir> <out_dir>
         sdk_dir must contain key_command.h and SDK_Defines.h.
 
 Re-run whenever iFly ships a new SDK version (struct + enum are append-only).
+
+NOTE ON REGENERATION: the vendor headers are NOT checked into this repo (iFly
+SDK distribution terms), so this script cannot actually be re-run here — it
+can only be read/compiled and pointed at a real <sdk_dir> when someone has the
+headers. Both headers are read as GBK (the vendor's inline comments are
+Chinese, GBK-encoded) rather than UTF-8 — reading them as UTF-8 with
+errors="replace" silently mojibakes the comment text that ends up in the
+generated C# XML docs, without failing the build. The three .cs files
+currently committed under MSFSBlindAssist/SimConnect/IFly/ were generated
+BEFORE this GBK fix, so their doc comments are already mojibake; the next real
+regeneration will pick up the fix and rewrite those comments correctly — that
+diff is expected, not a regression.
+
+Any line inside the struct/enum BODY this script can't confidently parse now
+raises SystemExit instead of being silently skipped: the struct offsets and
+the key_command enum values are positional (order IS the wire ABI), so
+silently dropping an unrecognized field/command line would shift every
+offset/ID that follows it without any error. Declaration boilerplate around
+the bodies and full-line comments are still skipped as before.
 """
 import re
 import sys
@@ -33,14 +52,44 @@ TYPE_INFO = {
 def parse_key_commands(path):
     cmds = []
     rx = re.compile(r"^\s*(KEY_COMMAND_[A-Za-z0-9_]+)\s*,(?://(.*))?")
-    with open(path, encoding="utf-8", errors="replace") as f:
+    # Only the enum BODY is checked: the declaration boilerplate around it
+    # (the "typedef enum ... {" opener and the "} KEY_COMMAND_IFLY737MAX;"
+    # closer) contains KEY_COMMAND-shaped tokens but no members, so the
+    # hard-fail below must never see it — mirror parse_struct's in_struct
+    # scoping. Inside the body, any non-blank, non-comment line that fails
+    # the strict member regex (an explicit "= N" initializer, a member split
+    # across lines, odd spacing) would otherwise be silently dropped — and
+    # because enum values are sequential-from-0, a single dropped member
+    # shifts every command ID that follows it. Fail loudly instead.
+    looks_like_content = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    seen_enum_decl = False
+    in_enum = False
+    with open(path, encoding="gbk") as f:
         for line in f:
+            stripped = line.strip()
+            if not in_enum:
+                if not stripped.startswith("//") and re.search(r"\benum\b", stripped):
+                    seen_enum_decl = True
+                if seen_enum_decl and "{" in stripped:
+                    in_enum = True
+                continue
+            if stripped.startswith("}"):
+                break
             m = rx.match(line)
             if m:
                 comment = (m.group(2) or "").strip()
                 # keep only the human description, drop the ValueN help columns
                 comment = re.split(r"\s*Value1:", comment)[0].strip()
                 cmds.append((m.group(1), comment))
+                continue
+            if not stripped or stripped.startswith("//"):
+                continue
+            if stripped.startswith("/*") and stripped.endswith("*/"):
+                continue  # full-line /* ... */ block comment
+            if ";" in stripped or looks_like_content.search(stripped):
+                raise SystemExit(
+                    f"UNPARSED key_command line (a command would be silently dropped): {line!r}"
+                )
     return cmds
 
 
@@ -52,7 +101,15 @@ def parse_struct(path):
         r"^\s*(BYTE|bool|char|int|long|double)\s+([A-Za-z0-9_]+)"
         r"((?:\[\d+\])*)\s*;(?://(.*))?"
     )
-    with open(path, encoding="utf-8", errors="replace") as f:
+    # A struct-body line that isn't blank, isn't a "//" comment or a
+    # full-line "/* ... */" block comment, and still looks like real content
+    # (a ';' statement terminator, or an identifier token) but fails the
+    # field regex above is exactly the "unrecognized type/shape" case that
+    # would otherwise be silently skipped — and since every later offset is
+    # computed cumulatively, a single skipped field shifts every offset
+    # after it with no error. Fail loudly instead.
+    looks_like_content = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    with open(path, encoding="gbk") as f:
         for line in f:
             if "typedef struct ShareMemory737MAXSDK" in line:
                 in_struct = True
@@ -63,6 +120,13 @@ def parse_struct(path):
                 continue
             m = rx.match(line)
             if not m:
+                stripped = line.strip()
+                if (stripped and not stripped.startswith("//")
+                        and not (stripped.startswith("/*") and stripped.endswith("*/"))):
+                    if ";" in stripped or looks_like_content.search(stripped):
+                        raise SystemExit(
+                            f"UNPARSED struct line (offsets would silently shift): {line!r}"
+                        )
                 continue
             ctype, name, dims_s, comment = m.group(1), m.group(2), m.group(3), (m.group(4) or "").strip()
             dims = [int(d) for d in re.findall(r"\[(\d+)\]", dims_s)]
@@ -197,6 +261,9 @@ def main():
     sdk_dir, out_dir = sys.argv[1], sys.argv[2]
     os.makedirs(out_dir, exist_ok=True)
     cmds = parse_key_commands(os.path.join(sdk_dir, "key_command.h"))
+    assert cmds and cmds[-1][0].endswith("_END"), (
+        "key_command enum did not end with the _END sentinel — ordering is the wire ABI"
+    )
     fields, total = parse_struct(os.path.join(sdk_dir, "SDK_Defines.h"))
     n_cmd = emit_commands(cmds, os.path.join(out_dir, "IFlyKeyCommand.cs"))
     n_fld = emit_offsets(fields, total, os.path.join(out_dir, "IFlySdkOffsets.cs"))
