@@ -296,7 +296,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             {
                 "Electrical", "Fuel", "Hydraulics", "Air Systems", "Pressurization",
                 "Anti-Ice", "Engines and APU", "Exterior Lights", "Interior Lights and Signs",
-                "Oxygen", "Flight Controls", "IRS", "Flight Recorder and Warning", "Doors"
+                "Oxygen", "Flight Controls", "IRS", "Flight Recorder and Warning"
             },
             ["Glareshield"] = new List<string>
             {
@@ -469,6 +469,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // 2:switch TEST2"). Both indices registered — unlike the Captain-only policy
         // above, each side's test switch exercises that side's own audible light, so
         // both are independently useful to a blind pilot flying either seat.
+        // LIVE-VERIFY: registered as a plain Sw (bare absolute SET), NOT routed
+        // through the momentary spring-to-NEUTRAL handling in HandleUIVariableSet
+        // (the GRD PWR / ENG-APU generator switches above) — but the switch is
+        // physically spring-loaded, same encoding class as those. If a bare SET
+        // to TEST1/TEST2 pins the switch instead of the SDK auto-springing it
+        // back to NEUTRAL, add this key to that momentary list.
         Sw(P, "AP_AT_Test_Switch_Status_0", "AP/AT Disengage Light Test Captain",
             IFlyKeyCommand.AUTOMATICFLIGHT_L_DISENGAGE_LIGHT_TEST_SET, new[] { "Test 1", "Neutral", "Test 2" });
         Sw(P, "AP_AT_Test_Switch_Status_1", "AP/AT Disengage Light Test First Officer",

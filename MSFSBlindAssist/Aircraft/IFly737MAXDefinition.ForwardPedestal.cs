@@ -425,6 +425,20 @@ public partial class IFly737MAXDefinition
         // change on a live SET), pull them back out; the mic selector + receiver
         // enable + light readback is the safety-relevant "which radio am I
         // hearing/talking on" surface and should stay regardless.
+        //
+        // SILENT BY DESIGN (PR #163 final review): the receiver-enable and
+        // receiver-volume combos below are registered announced: false. Every
+        // other lit-encoding field in this def (annunciators, the ACP mic-selector
+        // lights above) is announced through ProcessSimVarUpdate's flash filter,
+        // which is suppressed while the master LIGHTS TEST is held. The generic
+        // Step-6 announce path these 96 combos would otherwise use has NO such
+        // gate and no flash filter — a held LIGHTS TEST (or any bulk resnapshot
+        // of this struct region) would fire dozens of receiver/volume
+        // announcements back to back while every real lamp stays correctly
+        // silent. The combo rows still show live state (Step 4's control refresh
+        // is not gated on IsAnnounced) and the user's own sets are already
+        // echo-suppressed by the UI-set path, so nothing meaningful is lost by
+        // going silent — only the announce-flood exposure is closed.
 
         // Mic (transmitter) family: a strict SUBSET of the receiver family — you
         // cannot transmit on NAV/ADF/MKR/SPKR, only receive. Verified against
@@ -490,18 +504,21 @@ public partial class IFly737MAXDefinition
                     AnnunD(P, lightKey, $"{unitName} Mic Selector {display} light", AcpMicLightStates);
             }
 
-            // ---- Receiver enable + volume, one pair per channel.
+            // ---- Receiver enable + volume, one pair per channel. Both registered
+            // announced: false — see the panel-header "SILENT BY DESIGN" note above.
             foreach (var (field, display) in rvcChannels)
             {
                 SwD(P, $"ACP_RVC_{field}_Switch_Status_{i}", $"{unitName} {display} receiver",
-                    Cmd($"RVC_{field}_SET"), rvcEnableStates, map: v => v >= 3 ? 1 : 0);
+                    Cmd($"RVC_{field}_SET"), rvcEnableStates, map: v => v >= 3 ? 1 : 0,
+                    announced: false);
 
                 // LIVE-VERIFY: discrete 0-6 with an absolute _VOL_SET (not a
                 // continuous knob) — the def's continuous-knob exclusion elsewhere
                 // does not apply here. See the panel-header LIVE-VERIFY note.
                 Sw(P, $"ACP_RVC_{field}_Volume_Status_{i}", $"{unitName} {display} receiver volume",
                     Cmd($"RVC_{field}_VOL_SET"),
-                    new[] { "0 Min", "1", "2", "3", "4", "5", "6 Max" });
+                    new[] { "0 Min", "1", "2", "3", "4", "5", "6 Max" },
+                    announced: false);
             }
         }
 
@@ -509,16 +526,11 @@ public partial class IFly737MAXDefinition
         Unit(2, "First Officer");
         Unit(3, "Overhead");
 
-        // Readback legitimately differs from the picked value on every receiver-
-        // enable switch above (light bit folded into the same field) — suppress
-        // the post-set echo on the time window alone (PR #163, minor-15 pattern;
-        // same shape as the Cargo Fire arm switches / engine start levers).
-        for (int n = 1; n <= 3; n++)
-        {
-            int i = n - 1;
-            foreach (var (field, _) in rvcChannels)
-                _vars[$"ACP_RVC_{field}_Switch_Status_{i}"].UiEchoMatchesAnyValue = true;
-        }
+        // No post-set echo suppression needed here: both the receiver-enable and
+        // receiver-volume combos above are announced: false, so the generic
+        // Step-6 announce path (the only consumer of UiEchoMatchesAnyValue /
+        // the value-match echo gate) is never reached for them. The combo rows
+        // still refresh from the live snapshot (Step 4 is unconditional).
     }
 
     // =========================================================================

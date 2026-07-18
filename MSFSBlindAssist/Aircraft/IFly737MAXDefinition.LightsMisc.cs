@@ -129,6 +129,14 @@ public partial class IFly737MAXDefinition
         // (PR #163 R2, user opted in) — no write command is registered for any of
         // them; their GENERAL_LIGHT_* commands are per-door lamp-test PRESS buttons,
         // deliberately left out of scope (see the skip note in RegisterInteriorLightsSigns).
+        //
+        // NOT in GetPanelStructure()'s Overhead list (PR #163 final review): every
+        // entry below is Annun-only, and Annun deliberately never adds its field to
+        // the panel's control list (fleet parity with PMDG annunciators — see the
+        // Annun helper's doc comment) — so a "Doors" panel would always render zero
+        // focusable rows, reading as a bug to a screen-reader user. The lamps still
+        // announce on their own lit-edge and stay Ctrl+M-listable via GetVariables;
+        // this registration only stops short of giving them a dead panel page.
         Annun(P, "EQUIP_Light_Status", "Equipment Door light");
         Annun(P, "FWD_ENTRY_Light_Status", "Forward Entry Door light");
         Annun(P, "AFT_ENTRY_Light_Status", "Aft Entry Door light");
