@@ -1,8 +1,8 @@
 // Characterization tests for IFly737CDUForm's pure color-based selection marking
 // (Forms/IFly737/IFly737CDUForm.cs): MarkSelectedOption and CduColorPlaneText.
-// Both were already `private static` pure functions operating only on an
-// IFlySdkSnapshot + row text — promoted to `internal static` (zero logic change) so
-// they're directly testable without constructing the form.
+// Both were written as `internal static` pure functions operating only on an
+// IFlySdkSnapshot + row text — deliberately, specifically so they're directly
+// testable without constructing the form.
 
 namespace MSFSBlindAssist.Tests.IFly;
 

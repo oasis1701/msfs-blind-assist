@@ -515,7 +515,7 @@ Details: [docs/pmdg-777.md](docs/pmdg-777.md).
 
 Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, the 737 EFB has full parity with the 777 (Dashboard / Preferences / Navdata / Performance / Ground Ops / W&B / Manuals) via the shared `FbwEfbForm` over the Coherent debugger (`CoherentPmdgEfbClient` + `coherent-pmdg-efb-agent.js`), opened with Shift+T — the EFB app is byte-identical across all four 737 variants and the 777, so one shared in-page agent serves them all (NO Community-folder package; the retired `zzz-pmdg-efb-accessibility` is auto-removed by `LegacyEfbBridgeCleanup`).
 
-### iFly 737 MAX8 (official SDK shared memory + WM_COPYDATA — NO MobiFlight, NO L:var writes)
+### iFly 737 MAX8 (official SDK shared memory + WM_COPYDATA — NO MobiFlight, NO L:var writes) (one deliberate exception: the autopilot window's engage fallback replays the `VC_Automatic_Flight_trigger_VAL` cockpit clickspot via SetLVar when the SDK command produced no state change)
 
 Details: [docs/ifly-737.md](docs/ifly-737.md).
 

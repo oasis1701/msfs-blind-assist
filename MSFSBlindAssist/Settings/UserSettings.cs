@@ -279,9 +279,9 @@ public class UserSettings
         // Auto-announced iFly 737 MAX8 variables the user has muted via the iFly
         // Monitor Manager (Ctrl+M, IFly737MonitorManagerForm). Consulted in
         // MainForm.OnSimVarUpdated when AircraftCode == "IFLY_737MAX8" — both at
-        // the generic Step-6 gate AND via the Step-2.5 Suppressed-wrap (the iFly
-        // def announces annunciators/MCP lights from INSIDE ProcessSimVarUpdate,
-        // the HS787 pattern). Persisted across sessions.
+        // the generic Step-6 gate AND via the Step-2.5 iflyMuted Suppressed-wrap
+        // (the iFly def announces annunciators/MCP lights from INSIDE
+        // ProcessSimVarUpdate, the HS787 pattern). Persisted across sessions.
         public List<string> IFlyDisabledMonitorVariables { get; set; } = new List<string>();
 
         /// <summary>Runtime-only HashSet sidecar of <see cref="IFlyDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>

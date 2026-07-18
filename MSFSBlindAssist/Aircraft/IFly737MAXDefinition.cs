@@ -235,20 +235,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         DisplayList(panel).Add(field);
     }
 
-    /// <summary>Declares a monitored field with no panel control (announce-only logic).</summary>
-    private void Hidden(string field, string display, bool announced = false)
-    {
-        _vars[field] = new SimConnect.SimVarDefinition
-        {
-            Name = field,
-            DisplayName = display,
-            Type = SimConnect.SimVarType.PMDGVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = announced,
-            ExcludeFromMonitorManager = !announced,
-        };
-    }
-
     // =========================================================================
     // Panel structure
     // =========================================================================

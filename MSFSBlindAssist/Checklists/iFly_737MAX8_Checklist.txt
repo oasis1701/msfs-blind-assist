@@ -47,7 +47,7 @@ Engine 2 start switch to Ground
 At 25 percent N2, engine 2 start lever to Idle
 Engine 2 stabilized, repeat for engine 1
 Engine start switches to Off, generators on
-Probe heat on
+Probe heat auto
 Packs auto
 APU bleed off, APU off
 

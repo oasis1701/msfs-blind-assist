@@ -80,7 +80,7 @@ Position:
 
 Checklists and EFB:
   Shift+C    Open text checklist window (iFly 737 MAX8 normal procedures)
-  Shift+E    Open Flight Planning EFB (Shift+E)
+  Shift+E    Open Flight Planning EFB
 
 Monitoring:
   Ctrl+M     iFly 737 Monitor Manager. Lists every automatically announced
@@ -118,6 +118,7 @@ The MCP panel (Glareshield section) also carries every mode button — CMD A/B,
 CWS A/B, both flight directors, autothrottle arm, TOGA, autopilot and
 autothrottle disconnect, the disengage bar, SPD INTV and ALT INTV — plus
 direct-entry fields for courses, heading, altitude and vertical speed.
+MCP mode buttons read their state (Engaged/Off) on the Glareshield panel.
 
 FMC / CDU (Shift+M):
   Opens the accessible FMC window (same layout as the PMDG 737 CDU window).
@@ -172,4 +173,5 @@ Notes:
   - The squawk code, RTP frequencies and MCP windows all read back the value
     that the aircraft actually accepted.
   - Annunciator lights announce automatically when they come on or go off;
-    announcements are suppressed while the master LIGHTS TEST is held.
+    announcements are suppressed while the master LIGHTS TEST is held; the A/P
+    and A/T disengage lights announce with their color (amber or red).
