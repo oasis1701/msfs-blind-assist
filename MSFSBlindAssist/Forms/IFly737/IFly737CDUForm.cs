@@ -288,7 +288,6 @@ public class IFly737CDUForm : Form
         }
         lines.Add($"Scratchpad: {scratchpad}");
         if (snap.CduExecLit(unit)) lines.Add("EXEC light on");
-        if (snap.CduMsgLit(unit)) lines.Add("MSG light on");
 
         // Diff into the ListBox preserving the reading position.
         int selected = _display.SelectedIndex;
