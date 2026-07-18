@@ -188,7 +188,10 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsButton = true,
-            SuppressRestingButtonState = true,
+            // Button label carries the readable state ("LNAV: Off"/"LNAV: Engaged") —
+            // PR #85 finding M4: 0-state MCP labels are meaningful, never suppress them.
+            ValueDescriptions = new Dictionary<double, string>
+                { [0] = "Off", [1] = "Engaged", [2] = "Engaged", [3] = "Off", [4] = "Engaged", [5] = "Engaged" },
         };
         PanelList(panel).Add(field);
         _writes[field] = new IFlyWrite(click, _ => 0);
