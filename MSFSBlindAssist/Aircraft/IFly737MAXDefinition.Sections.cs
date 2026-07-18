@@ -20,6 +20,7 @@ public partial class IFly737MAXDefinition
         RegisterEnginesApu();
         RegisterExteriorLights();
         RegisterInteriorLightsSigns();
+        RegisterDoors();
         RegisterOxygen();
         RegisterFlightControls();
         RegisterIrs();

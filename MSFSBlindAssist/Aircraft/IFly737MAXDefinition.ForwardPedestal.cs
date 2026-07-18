@@ -26,6 +26,11 @@ public partial class IFly737MAXDefinition
         Btn(P, "BTN_GEAR_LOCK_OVRD", "Landing Gear Lever Lock Override",
             IFlyKeyCommand.GEAR_LEVER_LOCK_SWITCH);
 
+        // Lock-state row: bool field (true = locked), no SET exists — the override
+        // button above is the only write path. set: null renders it read-only text.
+        SwD(P, "Landing_Gear_Lever_Locked", "Landing Gear Lever Lock", set: null,
+            new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" }, announced: false);
+
         // Gear position lights: red = in transit / disagree, green = down and locked.
         Annun(P, "NOSE_GEAR_RedLight_Status", "Nose Gear red light");
         Annun(P, "NOSE_GEAR_GreenLight_Status", "Nose Gear green light");
@@ -103,6 +108,19 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.INSTRUMENT_DISPLAYS_SOURCE_SET, new[] { "All on 1", "Auto", "All on 2" });
         Sw(P, "Control_Panel_Switch_Status", "Displays Control Panel Select",
             IFlyKeyCommand.INSTRUMENT_CONTROL_PANEL_SET, new[] { "Both on 1", "Normal", "Both on 2" });
+
+        // FMC source transfer switch. Status and Value2 share the 0 BOTH ON L /
+        // 1 NORMAL / 2 BOTH ON R encoding. SDK doc names the SET command "...Switch -
+        // Click" (the same vendor naming slip as the VHF NAV transfer in RegisterRadios
+        // and the IRS transfer in RegisterIrs). LIVE-VERIFY the SET actually takes an
+        // absolute position; FMS_FMC_SOURCE_SELECT_DEC/INC exist as a click-through
+        // fallback if it turns out to be a relative toggle instead.
+        Sw(P, "FMC_Switch_Status", "FMC Source Select",
+            IFlyKeyCommand.FMS_FMC_SOURCE_SELECT_SET, new[] { "Both on left", "Normal", "Both on right" });
+
+        // FMC ALERT light — captain side only; the FO copy (_1) stays skipped per the
+        // usual captain/FO annunciator side policy (see RegisterIrs skip note).
+        Annun(P, "FMC_Indicators_Light_Status_0", "FMC Alert light");
     }
 
     // =========================================================================
@@ -312,6 +330,15 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FMS_NAV_1_MODE_UP, IFlyKeyCommand.FMS_NAV_1_MODE_DN);
         Nav(2, IFlyKeyCommand.FMS_NAV_2_TFR, IFlyKeyCommand.FMS_NAV_2_TEST,
             IFlyKeyCommand.FMS_NAV_2_MODE_UP, IFlyKeyCommand.FMS_NAV_2_MODE_DN);
+
+        // VHF NAV source transfer switch. Status and Value2 share the 0 BOTH ON 1 /
+        // 1 NORMAL / 2 BOTH ON 2 encoding. SDK doc names the SET command "...Switch -
+        // Click" (the same vendor naming slip as the IRS transfer in RegisterIrs and
+        // the FMC source transfer in RegisterDisplaySelect). LIVE-VERIFY the SET
+        // actually takes an absolute position; FMS_VHF_NAV_DEC/INC exist as a
+        // click-through fallback if it turns out to be a relative toggle instead.
+        Sw(P, "VHF_NAV_Switch_Status", "VHF NAV Transfer",
+            IFlyKeyCommand.FMS_VHF_NAV_SET, new[] { "Both on 1", "Normal", "Both on 2" });
     }
 
     // =========================================================================
@@ -397,6 +424,13 @@ public partial class IFly737MAXDefinition
         Annun(P, "Extinguisher_Test_Light_APU_Status", "APU Extinguisher Test light");
         Annun(P, "WHEEL_WELL_Light_Status", "Wheel Well Fire light");
         Annun(P, "OverheatDetector_FAULT_Light_Status", "Overheat Detector Fault light");
+
+        // Lavatory smoke detector light — sits in this same struct region as the
+        // other fire/smoke lamps above (offset 724, between WHEEL_WELL_Light_Status
+        // and FWD_Cargo_FIRE_Switch_Status). The separate LavatorySmoke config flag
+        // (0/1, whether the airframe has a lavatory smoke detector fitted at all)
+        // needs no gating here — an un-equipped airframe simply never lights it.
+        Annun(P, "Lavatory_SMOKE_Light_Status", "Lavatory Smoke light");
     }
 
     // =========================================================================
@@ -500,6 +534,22 @@ public partial class IFly737MAXDefinition
         Annun(P, "STAB_OUT_TRIM_Light_Status", "Stabilizer Out of Trim light");
         // 0/1 flag (0 = flag hidden, 1 = flag shown) — Annun handles 0/1 fine.
         Annun(P, "Rudder_Trim_OFF_Light_Status", "Rudder Trim Off flag");
+
+        // Elevator Jam Landing Assist (aft aisle stand control). Guarded switch —
+        // same shape as the Oxygen/ELT/Flight Recorder guards elsewhere in this def
+        // (offset doc: 0 guard CLOSE / 1 guard OPEN, switch OFF / 2 guard OPEN,
+        // switch ON). FLTCTRL_ELEV_JAM_LANDING_ASSIST_SET's doc comment is the same
+        // bare "...Switch - Set" as those other guarded SETs (Value2 0 OFF / 1 ON,
+        // Value3 1 = ignore the guard) — mirrored here exactly.
+        SwD(P, "Elevator_Jam_Landing_Assist_Switch_Status", "Elevator Jam Landing Assist",
+            IFlyKeyCommand.FLTCTRL_ELEV_JAM_LANDING_ASSIST_SET,
+            new Dictionary<double, string>
+            {
+                [0] = "Guard closed, Off",
+                [1] = "Off",
+                [2] = "On",
+            }, map: v => v >= 2 ? 1 : 0, value3: 1);
+        Annun(P, "ASSIST_ON_Light_Status", "Elevator Jam Landing Assist On light");
     }
 
     // =========================================================================

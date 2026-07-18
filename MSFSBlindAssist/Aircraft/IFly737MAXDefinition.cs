@@ -275,7 +275,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             {
                 "Electrical", "Fuel", "Hydraulics", "Air Systems", "Pressurization",
                 "Anti-Ice", "Engines and APU", "Exterior Lights", "Interior Lights and Signs",
-                "Oxygen", "Flight Controls", "IRS", "Flight Recorder and Warning"
+                "Oxygen", "Flight Controls", "IRS", "Flight Recorder and Warning", "Doors"
             },
             ["Glareshield"] = new List<string>
             {
@@ -394,12 +394,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Btn(P, "BTN_AT_DISCONNECT", "Autothrottle Disconnect", IFlyKeyCommand.AUTOMATICFLIGHT_AUTOTHROTTLE_DISCONNECT_1);
 
         // Master annunciators on the MCP/glareshield.
-        // MA_1/MA_2_Light_Status (offsets 262/263) are NOT registered: the generated
-        // header documents only their light-state encoding (off/dim/bright), never
-        // what the lamps ARE, and if they mirror the glareshield master caution lamps
-        // they'd triple-announce with Master_Caution_Light_Status_0 (the Warnings
-        // panel push light, which IS the master caution callout).
-        // LIVE-VERIFY before ever re-adding under a confirmed name. (PR #163, M5.)
+        // MA_1/MA_2_Light_Status (offsets 262/263) — identity RESOLVED (PR #163, M5):
+        // these are the MCP FLIGHT DIRECTOR MASTER lights mounted above each F/D
+        // switch, NOT the glareshield master caution. Confirmed by the cockpit model
+        // XML (iFly737Max_INTERIOR.xml:2800-2807, binding nodes
+        // VC_MCP_MA_LIGHT_LEFT/RIGHT) and the iFly Systems tutorial p30 ("the MA
+        // light above the F/D switch shows which side's flight director is master").
+        // The actual master caution callout is Master_Caution_Light_Status_0 below
+        // (RegisterWarnings) — these two lamps never double-announce it.
+        Annun(P, "MA_1_Light_Status", "Flight Director Master light Captain");
+        Annun(P, "MA_2_Light_Status", "Flight Director Master light First Officer");
         Annun(P, "AT_Light_Status", "Autothrottle light");
 
         // A/P and A/T disengage warning lights (0 off, 1/2 amber, 3/4 red). These

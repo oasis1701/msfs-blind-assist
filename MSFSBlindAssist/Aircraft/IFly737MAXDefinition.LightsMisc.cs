@@ -107,12 +107,42 @@ public partial class IFly737MAXDefinition
         //   EQUIP/FWD_ENTRY/AFT_ENTRY/FWD_SERVICE/AFT_SERVICE/FWD_CARGO/AFT_CARGO/
         //   LEFT_FWD_OVERWING/LEFT_AFT_OVERWING/RIGHT_FWD_OVERWING/RIGHT_AFT_OVERWING/
         //   LEFT_MID_EXIT/RIGHT_MID_EXIT/AIRSTAIR _Light_Status — door annunciator lights
-        //   (and their PRESS commands) are out of this panel set's scope per the plan.
+        //   are registered as Annun lamps in RegisterDoors() (overhead "Doors" panel,
+        //   PR #163 R2, user opted in); their GENERAL_LIGHT_* PRESS commands (per-door
+        //   lamp test buttons) stay skipped — out of scope, the lamps themselves are the ask.
         //   Main_Background/AFDS_Flood/Aft_Electronics_Flood/Aft_Electronics_Panel/Compass
         //   _Light_Switch_Status + CB_Light_Control_Status + OVHT_Panel_Light_Control_Status —
         //   panel brightness knobs other than the two main-panel controls (skip per plan).
         //   Door_Lock_Selector_Status / AUTO_UNLK_Light_Status / LOCK_FAIL_Light_Status —
         //   belong to the pedestal "Door Lock" panel (registered in RegisterDoorLock).
+    }
+
+    // =========================================================================
+    // Doors (overhead door-panel annunciator lights)
+    // =========================================================================
+    private void RegisterDoors()
+    {
+        const string P = "Doors";
+
+        // Thirteen door/exit annunciator lights (SDK_Defines.h offsets 33-46), all
+        // sharing the standard 0 off / 1 dim / 2 bright encoding. Announce-only lamps
+        // (PR #163 R2, user opted in) — no write command is registered for any of
+        // them; their GENERAL_LIGHT_* commands are per-door lamp-test PRESS buttons,
+        // deliberately left out of scope (see the skip note in RegisterInteriorLightsSigns).
+        Annun(P, "EQUIP_Light_Status", "Equipment Door light");
+        Annun(P, "FWD_ENTRY_Light_Status", "Forward Entry Door light");
+        Annun(P, "AFT_ENTRY_Light_Status", "Aft Entry Door light");
+        Annun(P, "FWD_SERVICE_Light_Status", "Forward Service Door light");
+        Annun(P, "AFT_SERVICE_Light_Status", "Aft Service Door light");
+        Annun(P, "FWD_CARGO_Light_Status", "Forward Cargo Door light");
+        Annun(P, "AFT_CARGO_Light_Status", "Aft Cargo Door light");
+        Annun(P, "LEFT_FWD_OVERWING_Light_Status", "Left Forward Overwing Exit light");
+        Annun(P, "LEFT_AFT_OVERWING_Light_Status", "Left Aft Overwing Exit light");
+        Annun(P, "RIGHT_FWD_OVERWING_Light_Status", "Right Forward Overwing Exit light");
+        Annun(P, "RIGHT_AFT_OVERWING_Light_Status", "Right Aft Overwing Exit light");
+        Annun(P, "LEFT_MID_EXIT_Light_Status", "Left Mid Exit Door light");
+        Annun(P, "RIGHT_MID_EXIT_Light_Status", "Right Mid Exit Door light");
+        Annun(P, "AIRSTAIR_Light_Status", "Airstair Door light");
     }
 
     // =========================================================================
@@ -205,8 +235,8 @@ public partial class IFly737MAXDefinition
         //   FLAP_Status, Flap/Slat_Left/Right_Light_Status, LE_Devices_Test_Switch_Status,
         //   Spoiler_Lever_Status, SPEED_BRAKE_ARMED/DO_NOT_ARM/SPEEDBRAKES_EXTENDED_Light_Status —
         //   "Control Stand" panel scope (RegisterControlStand).
-        //   Elevator_Jam_Landing_Assist_Switch_Status + ASSIST_ON_Light_Status — aft aisle
-        //   stand control, left to the Control Stand/Trim partial to avoid double registration.
+        //   Elevator_Jam_Landing_Assist_Switch_Status + ASSIST_ON_Light_Status — registered
+        //   in RegisterTrim (pedestal "Trim" panel — the aft aisle stand control it lives on).
     }
 
     // =========================================================================
@@ -222,6 +252,16 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FMS_IRS_L_MODE_SET, new[] { "Off", "Align", "Nav", "Attitude" });
         Sw(P, "IRS_Mode_Switch_Status_1", "Right IRS Mode Selector",
             IFlyKeyCommand.FMS_IRS_R_MODE_SET, new[] { "Off", "Align", "Nav", "Attitude" });
+
+        // IRS source transfer switch. Status and Value2 share the 0 BOTH ON L /
+        // 1 NORMAL / 2 BOTH ON R encoding. SDK doc names the SET command "...Switch -
+        // Click" (a vendor naming slip shared by this whole three-switch transfer
+        // family — see the VHF NAV transfer in RegisterRadios and the FMC source
+        // transfer in RegisterDisplaySelect). LIVE-VERIFY the SET actually takes an
+        // absolute position; FMS_IRS_TFR_DEC/INC exist as a click-through fallback
+        // if it turns out to be a relative toggle instead.
+        Sw(P, "IRS_Switch_Status", "IRS Transfer",
+            IFlyKeyCommand.FMS_IRS_TFR_SET, new[] { "Both on left", "Normal", "Both on right" });
 
         Annun(P, "IRS_ALIGN_Light_Status_0", "Left IRS Align light");
         Annun(P, "IRS_ALIGN_Light_Status_1", "Right IRS Align light");
@@ -247,8 +287,12 @@ public partial class IFly737MAXDefinition
         Disp(P, "SYN_IRS_DISPLAY", "IRS Display");
 
         // Deliberately skipped Flight Management (IRS part) fields:
-        //   VHF_NAV/IRS/FMC_Switch_Status (source transfer selectors) and
-        //   FMC_Indicators_Light_Switch/Light_Status — Display Select / FMS scope, other partial.
+        //   VHF_NAV_Switch_Status (RegisterRadios) and FMC_Switch_Status
+        //   (RegisterDisplaySelect) — the other two source transfer selectors, registered
+        //   in their own panels. FMC_Indicators_Light_Status_0 (FMC ALERT light) is
+        //   registered in RegisterDisplaySelect too; FMC_Indicators_Light_Switch_Status
+        //   (the alert's own press/test button) and the FO-side _1 copies of both fields
+        //   stay skipped per side policy.
         //   IRS_Brightness_Switch_Status — panel brightness knob (skip per plan).
         //   IRS_Window_L/R_1..7_Status + IRS_Window_L/R_point_1..3_Status — per-digit display
         //   cells, composed into the SYN_IRS_DISPLAY readout by the SDK client.
