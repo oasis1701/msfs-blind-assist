@@ -31,6 +31,7 @@ public partial class IFly737MAXDefinition
         RegisterGpws();
         RegisterEfis();
         RegisterRadios();
+        RegisterAudioControl();
         RegisterFire();
         RegisterCargoFire();
         RegisterTrim();

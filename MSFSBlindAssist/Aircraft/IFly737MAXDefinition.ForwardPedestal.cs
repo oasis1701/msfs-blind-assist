@@ -342,6 +342,147 @@ public partial class IFly737MAXDefinition
     }
 
     // =========================================================================
+    // Audio Control Panel (ACP 1 Captain / ACP 2 First Officer / ACP 3 Overhead)
+    // =========================================================================
+
+    /// <summary>ACP mic (Transmitter) selector light: 0 all lights off / 1-2 upper
+    /// segment dim-bright / 3-4 lower segment dim-bright / 5-6 both segments
+    /// (selected) dim-bright — the two-triangle indicator lamp under the real
+    /// switch cap. Shared by every mic channel EXCEPT PA, whose status field is
+    /// the plain 0 off / 1 dim / 2 bright encoding (registered via the generic
+    /// <see cref="Annun"/> instead — see offsets doc comment,
+    /// ACP_Transmitter_PA_Switch_Status).</summary>
+    private static readonly Dictionary<double, string> AcpMicLightStates = new()
+    {
+        [0] = "off",
+        [1] = "upper segment dim",
+        [2] = "upper segment bright",
+        [3] = "lower segment dim",
+        [4] = "lower segment bright",
+        [5] = "on, dim",
+        [6] = "on, bright",
+    };
+
+    private void RegisterAudioControl()
+    {
+        const string P = "Audio Control";
+
+        // LIVE-VERIFY (whole panel): the iFly SDK doc marks the ACP as only
+        // PARTIALLY modeled. Grepping IFlySdkFields.cs/IFlyKeyCommand.cs/
+        // IFlySdkOffsets.cs confirms exactly three registrable families per unit —
+        // mic (transmitter) selector, receiver enable, receiver volume — plus a
+        // handful of fields explicitly left OUT per the vendor scope (ALT-NORM,
+        // Filter, Push-to-Talk switch position, the SAT1/SAT2 press buttons, and
+        // the SELCAL test commands, none of which carry a doc summary beyond a
+        // bare switch-position/press-state — no cockpit-meaningful state for a
+        // blind pilot). No standalone "cabin call light" field exists anywhere in
+        // the SDK tables (grepped CABIN/CALL case-insensitively): the only CALL
+        // fields are the already-registered Attendant_Call_Switch_Status /
+        // Ground_Call_Switch_Status buttons (RegisterInteriorLightsSigns — Count 1,
+        // not a per-ACP-unit array, and momentary presses, not a light) and
+        // CDU_CALL_Status (the CDU's own annunciator, unrelated to the ACP). The
+        // brief's lead was not found in the tables — reported here rather than
+        // invented. If the volumes below prove dead in-sim (no audible level
+        // change on a live SET), pull them back out; the mic selector + receiver
+        // enable + light readback is the safety-relevant "which radio am I
+        // hearing/talking on" surface and should stay regardless.
+
+        // Mic (transmitter) family: a strict SUBSET of the receiver family — you
+        // cannot transmit on NAV/ADF/MKR/SPKR, only receive. Verified against
+        // both ACP_Transmitter_*_Switch_Status (IFlySdkFields.cs) and the
+        // COMMUNICATION_ACP_{n}_MIC_* commands (IFlyKeyCommand.cs), all 10 present
+        // for all 3 units.
+        (string Field, string Display)[] micChannels =
+        {
+            ("VHF1", "VHF 1"), ("VHF2", "VHF 2"), ("VHF3", "VHF 3"),
+            ("HF1", "HF 1"), ("HF2", "HF 2"),
+            ("INT", "Interphone"), ("CABIN", "Cabin"), ("PA", "PA"),
+            ("SAT1", "SATCOM 1"), ("SAT2", "SATCOM 2"),
+        };
+
+        // Receiver family: all 16 channels the SDK actually exposes (the audit
+        // brief's list — VHF1-3/NAV1-2/ADF1-2/MKR/SPKR — under-counted; HF1-2,
+        // INT, CABIN, PA, SAT1-2 are equally present with the identical
+        // Switch_Status/Volume_Status/_SET/_VOL_SET shape, verified in both tables).
+        (string Field, string Display)[] rvcChannels =
+        {
+            ("VHF1", "VHF 1"), ("VHF2", "VHF 2"), ("VHF3", "VHF 3"),
+            ("HF1", "HF 1"), ("HF2", "HF 2"),
+            ("INT", "Interphone"), ("CABIN", "Cabin"), ("PA", "PA"),
+            ("NAV1", "NAV 1"), ("NAV2", "NAV 2"),
+            ("ADF1", "ADF 1"), ("ADF2", "ADF 2"),
+            ("MKR", "Marker"), ("SAT1", "SATCOM 1"), ("SAT2", "SATCOM 2"),
+            ("SPKR", "Speaker"),
+        };
+
+        // ACP_RVC_*_Switch_Status: 0-2 deselected (light off/dim/bright), 3-5
+        // selected (light off/dim/bright) — same composite shape as the Cargo Fire
+        // arm switches and the engine start levers (RegisterFire/RegisterControlStand):
+        // a base select/deselect bit with a light state folded on top. The *_SET
+        // command's doc is the bare "...Switch - Set" (no Value2 detail beyond the
+        // family name) — inferred by symmetry with those other confirmed-working
+        // composite SETs: Value2 0 = deselect, 1 = select.
+        var rvcEnableStates = new Dictionary<double, string>
+        {
+            [0] = "Deselected",
+            [1] = "Deselected, light dim",
+            [2] = "Deselected, light bright",
+            [3] = "Selected",
+            [4] = "Selected, light dim",
+            [5] = "Selected, light bright",
+        };
+
+        void Unit(int n, string unitName)
+        {
+            int i = n - 1; // SDK array flatten index: 0 Captain / 1 First Officer / 2 Overhead
+            IFlyKeyCommand Cmd(string suffix) => Enum.Parse<IFlyKeyCommand>($"COMMUNICATION_ACP_{n}_{suffix}");
+
+            // ---- Mic (transmitter) selector: per-position click, mirroring the
+            // RTP per-position-click pattern in RegisterRadios (Btn per source; no
+            // absolute SET exists for the mic selector — only "Click" commands).
+            // The resulting composite light announces which source is now selected.
+            foreach (var (field, display) in micChannels)
+            {
+                Btn(P, $"BTN_ACP{n}_MIC_{field}", $"{unitName} Mic Selector {display}", Cmd($"MIC_{field}"));
+                string lightKey = $"ACP_Transmitter_{field}_Switch_Status_{i}";
+                if (field == "PA")
+                    Annun(P, lightKey, $"{unitName} Mic Selector {display} light");
+                else
+                    AnnunD(P, lightKey, $"{unitName} Mic Selector {display} light", AcpMicLightStates);
+            }
+
+            // ---- Receiver enable + volume, one pair per channel.
+            foreach (var (field, display) in rvcChannels)
+            {
+                SwD(P, $"ACP_RVC_{field}_Switch_Status_{i}", $"{unitName} {display} receiver",
+                    Cmd($"RVC_{field}_SET"), rvcEnableStates, map: v => v >= 3 ? 1 : 0);
+
+                // LIVE-VERIFY: discrete 0-6 with an absolute _VOL_SET (not a
+                // continuous knob) — the def's continuous-knob exclusion elsewhere
+                // does not apply here. See the panel-header LIVE-VERIFY note.
+                Sw(P, $"ACP_RVC_{field}_Volume_Status_{i}", $"{unitName} {display} receiver volume",
+                    Cmd($"RVC_{field}_VOL_SET"),
+                    new[] { "0 Min", "1", "2", "3", "4", "5", "6 Max" });
+            }
+        }
+
+        Unit(1, "Captain");
+        Unit(2, "First Officer");
+        Unit(3, "Overhead");
+
+        // Readback legitimately differs from the picked value on every receiver-
+        // enable switch above (light bit folded into the same field) — suppress
+        // the post-set echo on the time window alone (PR #163, minor-15 pattern;
+        // same shape as the Cargo Fire arm switches / engine start levers).
+        for (int n = 1; n <= 3; n++)
+        {
+            int i = n - 1;
+            foreach (var (field, _) in rvcChannels)
+                _vars[$"ACP_RVC_{field}_Switch_Status_{i}"].UiEchoMatchesAnyValue = true;
+        }
+    }
+
+    // =========================================================================
     // Fire Protection
     // =========================================================================
 

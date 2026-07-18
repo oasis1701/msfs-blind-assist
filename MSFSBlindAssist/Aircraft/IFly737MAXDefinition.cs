@@ -187,6 +187,27 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         _annunKeys.Add(field);
     }
 
+    /// <summary>Annunciator light with a caller-supplied composite ValueDescriptions
+    /// dictionary — same announce-only/lit-edge/LIGHTS-TEST-suppressed behavior as
+    /// <see cref="Annun"/> (any nonzero value announces "on"; ValueDescriptions is
+    /// stored for the Ctrl+M monitor listing), but for a field whose encoding is
+    /// wider than the plain 0 off / 1 dim / 2 bright case (e.g. the ACP mic-selector
+    /// transmit lights, which fold an upper/lower segment bit into a 0-6 range).</summary>
+    private void AnnunD(string panel, string field, string display, Dictionary<double, string> descriptions)
+    {
+        _vars[field] = new SimConnect.SimVarDefinition
+        {
+            Name = field,
+            DisplayName = display,
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = descriptions,
+        };
+        PanelList(panel); // bare call — see Annun's comment on why this must not .Add
+        _annunKeys.Add(field);
+    }
+
     /// <summary>Momentary push button — sends one click command; no readable resting state.</summary>
     private void Btn(string panel, string key, string display, IFlyKeyCommand click, double value2 = 0, double value3 = 0)
     {
@@ -287,7 +308,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             },
             ["Pedestal"] = new List<string>
             {
-                "Radios", "Transponder", "Fire Protection", "Cargo Fire",
+                "Radios", "Audio Control", "Transponder", "Fire Protection", "Cargo Fire",
                 "Trim", "Control Stand", "Door Lock"
             },
             ["FMS"] = new List<string>
