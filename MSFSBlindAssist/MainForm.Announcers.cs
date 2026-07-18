@@ -149,6 +149,13 @@ public partial class MainForm
         // them. Suppress right here, exactly like the HS787.
         bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
             Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The iFly def has the same self-announcing shape as the HS787 (annunciators,
+        // MCP mode lights, warning push lights, ALTIMETER_SETTING and the SYN_* MCP
+        // windows all announce from INSIDE ProcessSimVarUpdate) — same wrap, same
+        // reason. The def's off-sweep timer still checks the list itself because it
+        // runs outside this method entirely.
+        bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+            Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -162,7 +169,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -280,6 +287,32 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
+                // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
+                // iflyMuted wrap above; the deferred off-sweep in the def checks the list
+                // itself. This gate covers the plain switch/selector combos that announce
+                // on the generic path.
+                if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+                    Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Suppress the generic announce for a var the iFly autopilot window
+                // JUST wrote: the focused button's label rename is the screen-reader
+                // feedback (NVDA reads the name change), so the Step-6 announce would
+                // speak the same state twice. Time-window echo, same philosophy as
+                // _uiSetEcho; Steps 3-4 already ran, so the panel combo stays fresh.
+                if (currentAircraft is IFly737MAXDefinition iflyEchoDef &&
+                    iflyEchoDef.WindowEchoActive(e.VarName))
+                {
+                    // Update the baseline silently, same as the _uiSetEcho gate below —
+                    // otherwise a later genuine change BACK to the pre-click value is
+                    // swallowed because the monitor still holds the stale pre-echo baseline.
+                    simVarMonitor.SetBaseline(e.VarName, e.Value);
+                    return;
+                }
+
                 // For PMDG variables, build the description from ValueDescriptions
                 // since PMDG events don't carry description strings like SimConnect does
                 string description = e.Description;
@@ -308,9 +341,13 @@ public partial class MainForm
                 // Suppress the duplicate echo of a value the user JUST set via the UI (the
                 // screen reader already spoke the combo). Update the baseline silently so a
                 // later change to this var from any OTHER source still announces. Consumed
-                // once; only a value matching what the user set within the window is dropped.
+                // once; only a value matching what the user set within the window is dropped —
+                // UNLESS the def opts into UiEchoMatchesAnyValue (composite switch+light combos
+                // whose readback legitimately lands on a sibling encoding of the picked value,
+                // e.g. a guard bit or arm light folded into the same field), in which case the
+                // time window alone is enough (PR #163, minor 15).
                 if (_uiSetEcho.TryGetValue(e.VarName, out var echo)
-                    && Math.Abs(echo.value - e.Value) < 0.001
+                    && (Math.Abs(echo.value - e.Value) < 0.001 || varDef.UiEchoMatchesAnyValue)
                     && Environment.TickCount64 - echo.tick < UiSetEchoSuppressMs)
                 {
                     _uiSetEcho.Remove(e.VarName);
@@ -1361,8 +1398,16 @@ public partial class MainForm
         // made the first switch/flap movement after load silent (only the 2nd worked). The
         // 5-second announcement grace period (EnableAnnouncements) already suppresses the
         // cold-and-dark startup snapshot, so treating the A380 like PMDG here is safe.
+        // The iFly 737 MAX is a third case with the same shape: IFlySdkClient fires its
+        // startup sweep as IsInitialSnapshot, which OnSimVarUpdated returns on BEFORE
+        // reaching simVarMonitor — so no baseline is ever seeded and every switch's first
+        // movement of the session was silent (the whole cold-and-dark flow: fuel pumps,
+        // generators, hydraulics). Its lights announce from ProcessSimVarUpdate and were
+        // never affected, which is why only the combo-backed switches went quiet.
         bool isPMDG = currentAircraft is IPMDGAircraft;
-        bool announceInitialChange = isPMDG || currentAircraft?.AircraftCode == "FBW_A380";
+        bool announceInitialChange = isPMDG
+            || currentAircraft?.AircraftCode == "FBW_A380"
+            || currentAircraft?.AircraftCode == "IFLY_737MAX8";
         bool shouldAnnounce = announceInitialChange ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))

@@ -114,6 +114,9 @@
     <None Update="HotkeyGuides\HS787_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\iFly_737MAX8_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- Checklist Files -->
     <None Update="Checklists\FBW_A320_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -125,6 +128,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Checklists\FBW_A380_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Checklists\iFly_737MAX8_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <!-- Coherent in-page agents (injected at runtime via the remote debugger) -->

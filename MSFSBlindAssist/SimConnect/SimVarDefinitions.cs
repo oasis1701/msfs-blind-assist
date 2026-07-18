@@ -83,6 +83,14 @@ public class SimVarDefinition
     /// blanket suppression silenced them (PR #85 review finding M4).
     /// </summary>
     public bool SuppressRestingButtonState { get; set; }
+    /// <summary>
+    /// Opt-in for the generic UI-set echo gate: suppress on the TIME WINDOW
+    /// alone, ignoring the value. For combos whose readback legitimately lands on a
+    /// sibling encoding of the picked value (a guard bit or arm light folded into the
+    /// same field — iFly EEC/cargo-fire/start levers), where the value-matched gate
+    /// silently misses and the change the user just made re-announces.
+    /// </summary>
+    public bool UiEchoMatchesAnyValue { get; set; } = false;
     // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
     // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
     // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,

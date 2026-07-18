@@ -1,0 +1,190 @@
+iFly BOEING 737 MAX8 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+The iFly 737 MAX8 connects through the official iFly SDK. The aircraft must be
+loaded in the simulator for the panels, MCP and FMC windows to have data. All
+switch writes go through the iFly plugin, so the app works with no extra
+add-ons or modules installed.
+
+OUTPUT MODE - Press right bracket to activate
+
+MCP Readouts:
+  Shift+H    Read MCP Heading (includes HDG SEL/LNAV status)
+  Shift+S    Read MCP Speed (blank means the FMC owns the speed)
+  Shift+A    Read MCP Altitude (includes VNAV/ALT HOLD status)
+  Shift+V    Read MCP Vertical Speed
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV radio info
+
+FMC Progress:
+  D          Read distance to destination with time estimate
+  Shift+D    Read distance to top of descent with time estimate
+  Note: these read the FMC PROG page. If neither CDU is showing it, the
+  First Officer's CDU is switched to the PROG page automatically (and left
+  there); the Captain's CDU is never touched.
+
+Fuel:
+  F          Read Fuel Quantity
+  Shift+F    Read Fuel Quantity (kilograms)
+
+Weight:
+  W          Read Gross Weight (pounds)
+  Shift+W    Read Gross Weight (kilograms)
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read altimeter setting
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position
+  Shift+Z    Read Zulu / UTC Time
+
+Position:
+  C          Read Nearest City
+  Ctrl+Shift+T  Cold Temperature Altitude Correction calculator
+
+Checklists and EFB:
+  Shift+C    Open text checklist window (iFly 737 MAX8 normal procedures)
+  Shift+E    Open Flight Planning EFB
+
+Monitoring:
+  Ctrl+M     iFly 737 Monitor Manager. Lists every automatically announced
+             switch, annunciator and mode light; uncheck any to stop it
+             speaking when it changes. Persists across sessions.
+
+FMS Data panel (FMS section) shows the FMC-computed V1, VR, V2, VREF,
+takeoff and landing flaps, cruise altitude, transition altitude and level.
+
+INPUT MODE - Press left bracket to activate
+
+MCP Value Windows:
+  Ctrl+S     Set MCP Speed. Type knots (e.g. 250) or Mach (e.g. M0.78 or .78).
+             Dialog buttons: Speed Intervene (SPD INTV), IAS/Mach Changeover,
+             N1 mode, Speed mode.
+  Ctrl+H     Set MCP Heading. Dialog buttons: Heading Select, LNAV, VOR LOC,
+             Approach, Bank Limit.
+  Ctrl+A     Set MCP Altitude. Dialog buttons: Altitude Hold, Altitude
+             Intervene (ALT INTV), VNAV, Level Change.
+  Ctrl+V     Set MCP Vertical Speed (-7900 to 6000). Dialog buttons: VS mode,
+             Altitude Hold.
+  Ctrl+B     Set Altimeter. Dialog buttons: Standard (STD), Units (inches or
+             hectopascals). Value applies to both altimeters.
+  Ctrl+P     Autopilot window. Buttons show live state: CMD A, CMD B, CWS A,
+             CWS B, Flight Director Captain and First Officer, Autothrottle
+             Arm, Disengage Bar, plus momentary A/P Disconnect and A/T
+             Disconnect.
+  Ctrl+N     Set NAV Radios. Four fields pre-filled with the current values:
+             NAV 1 / NAV 2 frequency (108.00 to 117.95) and course (0 to 359).
+             Set keys each frequency on the NAV control panel keypad, transfers
+             it active, and sets the MCP courses. Read back with N in output
+             mode ("NAV 1 active 110.90 ILS, standby ..., course ...").
+
+The MCP panel (Glareshield section) also carries every mode button — CMD A/B,
+CWS A/B, both flight directors, autothrottle arm, TOGA, autopilot and
+autothrottle disconnect, the disengage bar, SPD INTV and ALT INTV — plus
+direct-entry fields for courses, heading, altitude and vertical speed.
+MCP mode buttons read their state (Engaged/Off) on the Glareshield panel.
+
+FMC / CDU (Shift+M):
+  Opens the accessible FMC window (same layout as the PMDG 737 CDU window).
+  Left/Right CDU selectable. Arrow keys read the screen. Below the display
+  is a Scratchpad field (Alt+S) — type there and press Enter to send — and
+  buttons for every page key plus Exec and CLR/DEL. Typing directly on the
+  display also enters scratchpad text (letters, digits, period, slash,
+  plus/minus, space).
+  Ctrl+1 to Ctrl+6    Left line select keys 1-6
+  Alt+1 to Alt+6      Right line select keys 1-6
+  (F1-F6 / F7-F12 when the alternate LSK setting is on)
+  Alt+I  INIT REF     Alt+R  RTE        Alt+A or Alt+D  DEP ARR
+  Alt+T  ATC          Alt+V  VNAV       Alt+F  FIX
+  Alt+G or Alt+L LEGS Alt+H  HOLD       Alt+O  FMC COMM
+  Alt+P  PROG         Alt+M  MENU       Alt+N  N1 LIMIT
+  PageUp / PageDown   PREV / NEXT page
+  Alt+E or Ctrl+Enter EXEC
+  Alt+C               CLR when the scratchpad has text, DEL when empty
+  Backspace           same as Alt+C (display focused)
+  Delete or Alt+X     DEL
+  Alt+S               focus the Scratchpad field
+  Alt+Home            focus the display
+  Escape              Close the window
+  The EXEC and MSG lights announce automatically; scratchpad changes are
+  read back after you stop typing.
+
+EFB Tablet (Shift+T):
+  Opens the iFly SP1 EFB (the iPad-style tablet) in an embedded browser.
+  The page loads automatically — there is no port field or Connect button.
+  If the EFB can't be reached (simulator not running, aircraft still
+  loading, or the iFly EFB process not started), an accessible status
+  message explains why and a Retry button is focused; press it once the
+  EFB is ready. The EFB includes Performance, Navigraph/SimBrief, Payload
+  and Balance, Ground Services (including pushback), Doors, Failures,
+  Cabin Voice and Settings. F5 reloads the page.
+
+Transponder:
+  The Transponder panel (Pedestal section) has a Set Squawk Code field —
+  type the four digits and the code is keyed into the transponder.
+  Ident is a button on the same panel.
+
+Radios:
+  The Radios panel (Pedestal section) shows active and standby frequencies
+  for all three radio tuning panels, with Set Standby Frequency fields
+  (type e.g. 121.950) and Transfer buttons.
+  The same panel carries the two NAV control panels: NAV 1 and NAV 2 active
+  and standby windows (read with the mode flag, e.g. "110.90 ILS"), a Set
+  Standby Frequency field each (type a VOR/ILS frequency like 110.90, or a
+  five digit GLS channel — it is keyed on the panel keypad and read back),
+  plus Frequency Transfer, Test and Mode Up/Down buttons.
+  The Radios panel also carries the two ADF panels (ADF 1 / ADF 2): a Set
+  Frequency field (190.0 to 1750.0 kHz, stepped on the panel rings and read
+  back), Mode (ADF/ANT/Off), a shared Tone switch and Test buttons. There
+  is no Transfer button for ADF — the frequency is tuned live.
+
+  The Audio Control panel (Pedestal section) has one section per unit —
+  Captain, First Officer, Overhead — each with a Mic Selector button and
+  light per radio source (VHF 1-3, HF 1-2, Interphone, Cabin, PA, SATCOM
+  1-2) plus a receiver enable combo and a receiver volume combo (0 Min to
+  6 Max) for every source the aircraft can listen to, including NAV, ADF,
+  Marker and Speaker.
+
+Notes:
+  - Fuel and payload are set from the EFB Payload and Balance app (Shift+T).
+  - The squawk code, RTP frequencies and MCP windows all read back the value
+    that the aircraft actually accepted.
+  - Annunciator lights announce automatically when they come on or go off;
+    announcements are suppressed while the master LIGHTS TEST is held; the A/P
+    and A/T disengage lights announce with their color (amber or red).

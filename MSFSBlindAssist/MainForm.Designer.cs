@@ -20,6 +20,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -53,6 +54,7 @@ namespace MSFSBlindAssist
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -168,7 +170,8 @@ namespace MSFSBlindAssist
             this.fenixA320MenuItem,
             this.pmdg737MenuItem,
             this.pmdg777MenuItem,
-            this.horizonSim787MenuItem});
+            this.horizonSim787MenuItem,
+            this.ifly737MaxMenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -242,6 +245,16 @@ namespace MSFSBlindAssist
             this.headwindA330MenuItem.Text = "&Headwind Airbus A330-900neo";
             this.headwindA330MenuItem.Checked = false;
             this.headwindA330MenuItem.Click += new System.EventHandler(this.HeadwindA330MenuItem_Click);
+            //
+            // ifly737MaxMenuItem
+            //
+            this.ifly737MaxMenuItem.AccessibleName = "iFly Boeing 737 MAX8";
+            this.ifly737MaxMenuItem.AccessibleDescription = "Switch to the iFly Boeing 737 MAX8";
+            this.ifly737MaxMenuItem.Name = "ifly737MaxMenuItem";
+            this.ifly737MaxMenuItem.Size = new System.Drawing.Size(240, 26);
+            this.ifly737MaxMenuItem.Text = "&iFly Boeing 737 MAX8";
+            this.ifly737MaxMenuItem.Checked = false;
+            this.ifly737MaxMenuItem.Click += new System.EventHandler(this.IFly737MAXMenuItem_Click);
             //
             // sectionsListBox
             // 

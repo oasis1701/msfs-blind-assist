@@ -98,6 +98,7 @@ public partial class MainForm
             "PMDG_737" => new PMDG737Definition(),
             "HS_787" => new HorizonSim787Definition(),
             "HW_A330" => new HeadwindA330Definition(),
+            "IFLY_737MAX8" => new IFly737MAXDefinition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -878,6 +879,18 @@ public partial class MainForm
             StartHS787IrsMonitor();
         else
             DisposeHS787Forms();
+
+        // The iFly def owns the shared-memory SDK client — stop its poll and close the
+        // mapping so it doesn't keep firing events at the new aircraft.
+        if (oldAircraft is IFly737MAXDefinition oldIFly && oldAircraft != newAircraft)
+        {
+            oldIFly.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            oldIFly.Shutdown();
+            DisposeIFlyForms();
+        }
+
+        // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
+        StartIFlySdkBridge();
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
