@@ -13,8 +13,14 @@ namespace MSFSBlindAssist.Forms.IFly737;
 /// (Data\Tool\EFB\iFly-EFB.exe) — the same server the iFly manual documents for
 /// iPad use ("connect to http://&lt;pc&gt;:8084 ... 8084 is the port used by the
 /// EFB"). Hosting it in WebView2 gives the screen reader native browse mode
-/// over whatever HTML the EFB serves. The port is configurable (iFly Manager
-/// hotfix 1.1.0.1 added a user-configurable EFB port) and persists to settings.
+/// over whatever HTML the EFB serves. The port (default 8084; iFly Manager
+/// hotfix 1.1.0.1 added a user-configurable EFB port) is a settings-file-only
+/// knob (UserSettings.IFlyEfbPort) — there is no in-app port field or Connect
+/// button; the form auto-loads on open, the same pattern as the Fenix EFB
+/// (Forms/Fenix/FenixEFBForm.cs). On a navigation failure (EFB process not
+/// running, aircraft still loading, wrong port) the form swaps the browser for
+/// an accessible retry panel and speaks the failure, so a blind user gets
+/// clear feedback instead of WebView2's raw error page.
 /// </summary>
 public class IFlyEfbForm : Form
 {
@@ -275,9 +281,9 @@ public class IFlyEfbForm : Form
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly WebView2 _webView;
-    private readonly TextBox _portBox;
-    private readonly Button _goButton;
-    private readonly TextBox _statusBox;
+    private readonly Panel _errorPanel;
+    private readonly TextBox _errorBox;
+    private readonly Button _retryButton;
     private bool _webViewReady;
     private bool _initStarted;
     private IntPtr _previousWindow = IntPtr.Zero;
@@ -291,54 +297,47 @@ public class IFlyEfbForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
 
-        var portLabel = new Label
-        {
-            Text = "EFB &port:",
-            Location = new Point(12, 14),
-            AutoSize = true,
-        };
-        _portBox = new TextBox
-        {
-            Location = new Point(80, 10),
-            Width = 70,
-            AccessibleName = "EFB port",
-            Text = SettingsManager.Current.IFlyEfbPort.ToString(),
-        };
-        _goButton = new Button
-        {
-            Text = "&Connect",
-            Location = new Point(160, 8),
-            AutoSize = true,
-        };
-        _goButton.Click += (_, _) => Navigate();
-
-        _statusBox = new TextBox
-        {
-            Location = new Point(260, 14),
-            Size = new Size(800, 20),
-            Text = "",
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            ReadOnly = true,
-            TabStop = true,
-            AccessibleName = "E F B status",
-            BorderStyle = BorderStyle.FixedSingle,
-        };
-
         _webView = new WebView2
         {
-            Location = new Point(12, 40),
-            Size = new Size(ClientSize.Width - 24, ClientSize.Height - 52),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+            Dock = DockStyle.Fill,
+            Visible = false,
             AccessibleName = "iFly EFB",
         };
-
-        Controls.Add(portLabel);
-        Controls.Add(_portBox);
-        Controls.Add(_goButton);
-        Controls.Add(_statusBox);
         Controls.Add(_webView);
 
-        // Covers Escape/F5 when WinForms chrome (port box, connect button, etc.) has
+        _retryButton = new Button
+        {
+            Text = "&Retry",
+            AutoSize = true,
+            Location = new Point(12, 120),
+        };
+        _retryButton.Click += (_, _) => Navigate();
+
+        // Read-only multiline TextBox, not a Label — readouts must be a tab-stoppable
+        // control so NVDA/JAWS can review the failure text on demand (repo rule).
+        _errorBox = new TextBox
+        {
+            Location = new Point(12, 12),
+            Size = new Size(700, 100),
+            Multiline = true,
+            ReadOnly = true,
+            TabStop = true,
+            ScrollBars = ScrollBars.Vertical,
+            BorderStyle = BorderStyle.FixedSingle,
+            AccessibleName = "iFly EFB status message",
+        };
+
+        _errorPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Visible = false,
+            AccessibleName = "iFly EFB status",
+        };
+        _errorPanel.Controls.Add(_errorBox);
+        _errorPanel.Controls.Add(_retryButton);
+        Controls.Add(_errorPanel);
+
+        // Covers Escape/F5 when WinForms chrome (the error panel / Retry button) has
         // focus. When the webview's page content has focus, keystrokes are owned by
         // the WebView2 browser process and never reach here — the injected
         // AccessibilityShim's capture-phase listener bridges those via
@@ -347,7 +346,14 @@ public class IFlyEfbForm : Form
         {
             if (e.KeyCode == Keys.F5)
             {
-                try { _webView.Reload(); } catch { }
+                if (_errorPanel.Visible)
+                {
+                    Navigate();
+                }
+                else
+                {
+                    try { _webView.Reload(); } catch { }
+                }
                 e.Handled = true;
             }
             else if (e.KeyCode == Keys.Escape)
@@ -384,40 +390,33 @@ public class IFlyEfbForm : Form
         _previousWindow = GetForegroundWindow();
         Show();
         Activate();
-        if (!_webViewReady && !_initStarted)
+
+        if (_webViewReady)
         {
-            _initStarted = true;
-            try
-            {
-                await _webView.EnsureCoreWebView2Async();
-                _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-                _webView.CoreWebView2.NavigationCompleted += async (_, e) =>
-                {
-                    if (e.IsSuccess)
-                    {
-                        _statusBox.Text = "Connected.";
-                        _announcer.Announce("iFly EFB loaded.");
-                        try { await _webView.CoreWebView2.ExecuteScriptAsync(AccessibilityShim); }
-                        catch { }
-                    }
-                    else
-                    {
-                        _statusBox.Text = "Could not reach the EFB. Check the sim is running with the iFly MAX loaded, and the EFB port in iFly Manager (default 8084).";
-                        _announcer.Announce("Could not reach the iFly EFB. Check the EFB port setting.");
-                    }
-                };
-                _webViewReady = true;
-            }
-            catch (Exception ex)
-            {
-                _initStarted = false;
-                _statusBox.Text = $"WebView2 initialization failed: {ex.Message}";
-                _announcer.AnnounceImmediate("EFB browser failed to start.");
-                return;
-            }
+            // Subsequent opens: just re-focus the already-loaded browser, unless the
+            // last attempt failed — then silently retry rather than leaving the user
+            // staring at a stale error message from a prior open.
+            if (_errorPanel.Visible) Navigate();
+            else _webView.Focus();
+            return;
         }
-        Navigate();
-        _webView.Focus();
+
+        if (_initStarted) return; // init already running from a previous ShowForm() call; it will Navigate() itself once ready.
+
+        _initStarted = true;
+        try
+        {
+            await _webView.EnsureCoreWebView2Async();
+            _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            _webViewReady = true;
+            Navigate();
+        }
+        catch (Exception ex)
+        {
+            _initStarted = false;
+            ShowError($"The browser component could not start. {ex.Message}");
+        }
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -434,31 +433,52 @@ public class IFlyEfbForm : Form
         }
     }
 
+    private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (e.IsSuccess)
+        {
+            ShowBrowser();
+            try { await _webView.CoreWebView2.ExecuteScriptAsync(AccessibilityShim); }
+            catch { }
+            _announcer.Announce("iFly EFB loaded.");
+            _webView.Focus();
+        }
+        else
+        {
+            ShowError(
+                $"iFly EFB is not reachable at http://localhost:{SettingsManager.Current.IFlyEfbPort}. " +
+                "Make sure the simulator is running with the iFly 737 MAX loaded and the EFB is enabled " +
+                "(port 8084 by default — if your iFly install allows changing it, the port in MSFS Blind " +
+                "Assist's settings file must match). Then press Retry.");
+        }
+    }
+
     private void Navigate()
     {
         if (!_webViewReady)
         {
-            _announcer.AnnounceImmediate("The browser component is not ready yet. Please try again.");
+            ShowError("The browser component is not ready yet. Please try again.");
             return;
         }
-        if (!int.TryParse(_portBox.Text.Trim(), out int port) || port < 1 || port > 65535)
-        {
-            _announcer.AnnounceImmediate("Enter a valid port number.");
-            return;
-        }
-        if (SettingsManager.Current.IFlyEfbPort != port)
-        {
-            SettingsManager.Current.IFlyEfbPort = port;
-            SettingsManager.Save();
-        }
-        try
-        {
-            _webView.CoreWebView2.Navigate($"http://localhost:{port}/");
-            _statusBox.Text = "Connecting...";
-        }
-        catch (Exception ex)
-        {
-            _statusBox.Text = $"Navigation failed: {ex.Message}";
-        }
+        int port = SettingsManager.Current.IFlyEfbPort;
+        // Optimistically show the browser; OnNavigationCompleted flips to the error
+        // panel if the load fails.
+        ShowBrowser();
+        _webView.CoreWebView2.Navigate($"http://localhost:{port}/");
+    }
+
+    private void ShowBrowser()
+    {
+        _errorPanel.Visible = false;
+        _webView.Visible = true;
+    }
+
+    private void ShowError(string message)
+    {
+        _errorBox.Text = message;
+        _webView.Visible = false;
+        _errorPanel.Visible = true;
+        _retryButton.Focus();
+        _announcer.AnnounceImmediate(message);
     }
 }
