@@ -107,7 +107,7 @@ public partial class IFly737MAXDefinition
         //   EQUIP/FWD_ENTRY/AFT_ENTRY/FWD_SERVICE/AFT_SERVICE/FWD_CARGO/AFT_CARGO/
         //   LEFT_FWD_OVERWING/LEFT_AFT_OVERWING/RIGHT_FWD_OVERWING/RIGHT_AFT_OVERWING/
         //   LEFT_MID_EXIT/RIGHT_MID_EXIT/AIRSTAIR _Light_Status — door annunciator lights
-        //   are registered as Annun lamps in RegisterDoors() (overhead "Doors" panel,
+        //   are registered as announce-only Annun lamps in RegisterDoors() (no panel —
         //   PR #163 R2, user opted in); their GENERAL_LIGHT_* PRESS commands (per-door
         //   lamp test buttons) stay skipped — out of scope, the lamps themselves are the ask.
         //   Main_Background/AFDS_Flood/Aft_Electronics_Flood/Aft_Electronics_Panel/Compass
