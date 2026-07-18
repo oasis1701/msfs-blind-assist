@@ -376,8 +376,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Btn(P, "BTN_AT_DISCONNECT", "Autothrottle Disconnect", IFlyKeyCommand.AUTOMATICFLIGHT_AUTOTHROTTLE_DISCONNECT_1);
 
         // Master annunciators on the MCP/glareshield.
-        Annun(P, "MA_1_Light_Status", "Master Caution Captain light");
-        Annun(P, "MA_2_Light_Status", "Master Caution First Officer light");
+        // MA_1/MA_2_Light_Status (offsets 262/263) are NOT registered: the generated
+        // header documents only their light-state encoding (off/dim/bright), never
+        // what the lamps ARE, and if they mirror the glareshield master caution lamps
+        // they'd triple-announce with Master_Caution_Light_Status_0 (the Warnings
+        // panel push light, which IS the master caution callout).
+        // LIVE-VERIFY before ever re-adding under a confirmed name. (PR #163, M5.)
         Annun(P, "AT_Light_Status", "Autothrottle light");
     }
 
