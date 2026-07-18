@@ -198,6 +198,14 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         // keeps the interceptor armed from the first moment the tree is visible.
         foreach (TreeNode root in _checklistTree.Nodes)
             _checklistTree.HideCheckBox(root);
+
+        // Auto-load the SimBrief plan on open (mirrors the EFB's Shift+E behavior) so
+        // transition altitudes/flaps/pressurization are set without pressing Load
+        // SimBrief. Only while no plan is loaded yet — reloads stay manual — and the
+        // button-enabled guard prevents a double fetch while one is already in flight.
+        if (_loadedOFP == null && !string.IsNullOrWhiteSpace(_settings.SimbriefUsername)
+            && _loadSimBriefBtn.Enabled)
+            LoadSimBrief();
     }
 
     /// <summary>Apply updated automation settings (call after the Settings dialog's First Officer panel saves).</summary>

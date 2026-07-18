@@ -177,10 +177,13 @@ public static class PMDG777FlowDefinitions
             // FO side EFIS
             SW("CP_EFIS_MODE_FO", "FO EFIS mode: MAP",         "EVT_EFIS_FO_MODE",                   2),
             SW("CP_EFIS_RANGE_FO","FO EFIS range: 40",         "EVT_EFIS_FO_RANGE",                  2),
-            // MCP — FD and AT Arm off for cold preflight state
-            MouseFlag("CP_FD_L",  "Left flight director: OFF", "EVT_MCP_FD_SWITCH_L",     s => !s.IsFDLeftOn()),
-            MouseFlag("CP_AT_ARM","AT Arm: OFF",               "EVT_MCP_AT_ARM_SWITCH_L", s => !s.IsATArmLeftOn()),
-            MouseFlag("CP_FD_R",  "Right flight director: OFF","EVT_MCP_FD_SWITCH_R",     s => !s.IsFDRightOn()),
+            // MCP — FD ON and both A/T ARM switches armed, per the Boeing preflight
+            // procedure (and matching the PREFLIGHT checklist's PF_FD_ON / PF_AT_ARM).
+            // Physical MCP order left-to-right: L FD, L+R A/T ARM, R FD.
+            MouseFlag("CP_FD_L",    "Left flight director: ON",  "EVT_MCP_FD_SWITCH_L",     s => s.IsFDLeftOn()),
+            MouseFlag("CP_AT_ARM_L","Left autothrottle: ARM",    "EVT_MCP_AT_ARM_SWITCH_L", s => s.IsATArmLeftOn()),
+            MouseFlag("CP_AT_ARM_R","Right autothrottle: ARM",   "EVT_MCP_AT_ARM_SWITCH_R", s => s.IsATArmRightOn()),
+            MouseFlag("CP_FD_R",    "Right flight director: ON", "EVT_MCP_FD_SWITCH_R",     s => s.IsFDRightOn()),
             // Autobrake
             Skip(SW("CP_AUTOBRAKE",    "Autobrake: RTO",            "EVT_ABS_AUTOBRAKE_SELECTOR",         0,
                "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1),
