@@ -37,9 +37,14 @@ public partial class IFly737MAXDefinition
         // GEAR_PARKING_BRAKE_SET: Value2 0 = RELEASE, 1 = SET (matches status);
         // Value3 1 = ignore the brake-pedal position and set the lever directly
         // (without it the SDK requires held pedals, which a hotkey user can't do).
-        Sw(P, "Parking_Brake_Lever_Status", "Parking Brake",
-            IFlyKeyCommand.GEAR_PARKING_BRAKE_SET, new[] { "Released", "Set" }, value3: 1);
-        Annun(P, "Parking_Brake_Light_Status", "Parking Brake light");
+        // Fleet parity: every aircraft announces a single "Parking brake on/off"
+        // (A380 OnOff helper, Fenix, PMDG 737 — see FlyByWireA320Definition.cs:1806).
+        // The lever is the one announcing source; the brake LIGHT is a quiet
+        // read-only row so one brake action never speaks twice. (PR #163, M6.)
+        Sw(P, "Parking_Brake_Lever_Status", "Parking brake",
+            IFlyKeyCommand.GEAR_PARKING_BRAKE_SET, new[] { "off", "on" }, value3: 1);
+        SwD(P, "Parking_Brake_Light_Status", "Parking Brake light", set: null,
+            descriptions: new Dictionary<double, string> { [0] = "off", [1] = "on", [2] = "on" }, announced: false);
 
         Disp(P, "Hydraulic_Brake_Pressure_Status", "Hydraulic Brake Pressure PSI");
 
