@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Threading;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.SimConnect.IFly;
 
@@ -50,6 +51,21 @@ public class IFlySdkClient : IDisposable
     private volatile IFlySdkSnapshot? _snapshot;
     private int _pollBusy;
 
+    // Staleness watchdog: a named section survives while ANY handle is open (ours),
+    // so when the sim/plugin exits our reads keep "succeeding" against frozen data —
+    // the exception path never fires. Tick18 advances every FS tick while the plugin
+    // is alive; N consecutive polls without movement = the plugin is gone (or the sim
+    // is paused — also correct to treat as not-live). On resume we re-seed silently
+    // (initial-snapshot semantics), never replaying the gap as announcements.
+    private const int StaleDisconnectPolls = 12; // ~3 s at 250 ms
+    private int _staleCount;
+    private bool _staleMode;
+    private int _lastTick = int.MinValue;
+
+    /// <summary>Runs an action on the captured UI SynchronizationContext (the def's
+    /// background write sequences use this so announces never happen off-thread).</summary>
+    public void RunOnUi(Action action) => Post(action);
+
     /// <summary>Fired on the UI thread for every changed field. Array elements use the "Name_i" key form.</summary>
     public event EventHandler<IFlyVariableChangedEventArgs>? VariableChanged;
 
@@ -60,7 +76,7 @@ public class IFlySdkClient : IDisposable
     public event EventHandler<bool>? ConnectionChanged;
 
     /// <summary>True once the shared memory has been opened and the plugin reports the MAX is running.</summary>
-    public bool IsReady => _connected && (_snapshot?.IsRunning ?? false);
+    public bool IsReady => _connected && !_staleMode && (_snapshot?.IsRunning ?? false);
 
     /// <summary>Latest polled state; null until the first successful poll.</summary>
     public IFlySdkSnapshot? Snapshot => _snapshot;
@@ -104,6 +120,37 @@ public class IFlySdkClient : IDisposable
                 if (gotMutex) _sdkMutex!.ReleaseMutex();
             }
 
+            int tick = BitConverter.ToInt32(data, IFlySdkOffsets.Tick18);
+            if (_staleMode)
+            {
+                if (tick == _lastTick) return; // still frozen — wait
+                _staleMode = false;            // plugin resumed — fall through to a fresh silent seed
+                Log.Info("ifly", "SDK shared memory resumed — re-seeding silently");
+            }
+            else if (_lastData != null && tick == _lastTick)
+            {
+                if (++_staleCount >= StaleDisconnectPolls)
+                {
+                    _staleMode = true;
+                    _staleCount = 0;
+                    _lastData = null;
+                    lock (_lastSynthetic) _lastSynthetic.Clear();
+                    _lastTick = tick;
+                    if (_connected)
+                    {
+                        _connected = false;
+                        Post(() => ConnectionChanged?.Invoke(this, false));
+                    }
+                    Log.Info("ifly", "SDK shared memory went stale (sim/plugin stopped or paused) — suspending until it resumes");
+                    return;
+                }
+            }
+            else
+            {
+                _staleCount = 0;
+            }
+            _lastTick = tick;
+
             bool first = _lastData == null;
             var previous = _lastData;
             _lastData = data;
@@ -113,6 +160,7 @@ public class IFlySdkClient : IDisposable
             {
                 _connected = true;
                 Post(() => ConnectionChanged?.Invoke(this, true));
+                Log.Info("ifly", "SDK shared memory connected");
             }
 
             if (first)
@@ -141,6 +189,7 @@ public class IFlySdkClient : IDisposable
                 _connected = false;
                 Post(() => ConnectionChanged?.Invoke(this, false));
             }
+            Log.Warn("ifly", "SDK shared memory read failed — mapping closed, will re-probe");
         }
         finally
         {
@@ -294,6 +343,7 @@ public class IFlySdkClient : IDisposable
 
     private bool TryOpen()
     {
+        if (_disposed) return false;
         try
         {
             _mmf = MemoryMappedFile.OpenExisting(FileMappingName, MemoryMappedFileRights.Read);
@@ -320,6 +370,9 @@ public class IFlySdkClient : IDisposable
         _sdkMutex = null;
         _lastData = null;
         _snapshot = null;
+        lock (_lastSynthetic) _lastSynthetic.Clear();
+        _lastTick = int.MinValue;
+        _staleCount = 0;
     }
 
     private void Post(Action action)
