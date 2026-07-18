@@ -425,7 +425,10 @@ public class IFlySdkClient : IDisposable
     private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, ref COPYDATASTRUCT lParam, uint flags, uint timeout, out IntPtr result);
 
     private static uint _registeredMessage;
-    private static IntPtr _pluginWindow;
+
+    // Edge-triggered log gate: only speak on the transition into failure, never
+    // once per send in a sustained-failure loop (commands are user- or 40-120 ms-paced).
+    private static bool _lastSendFailed;
 
     private static IntPtr FindPluginWindow()
     {
@@ -447,9 +450,17 @@ public class IFlySdkClient : IDisposable
             _registeredMessage = RegisterWindowMessage(MessageName);
         if (_registeredMessage == 0) return false;
 
-        if (_pluginWindow == IntPtr.Zero)
-            _pluginWindow = FindPluginWindow();
-        if (_pluginWindow == IntPtr.Zero) return false;
+        // Resolve the plugin window EVERY send: a cached HWND can be recycled by
+        // Windows after a sim restart, and WM_COPYDATA to the recycled window
+        // "succeeds" (delivered) while the aircraft hears nothing. A title scan is
+        // microseconds; commands are user- or 40-120 ms-paced. (PR #163 finding M3.)
+        var pluginWindow = FindPluginWindow();
+        if (pluginWindow == IntPtr.Zero)
+        {
+            if (!_lastSendFailed) Log.Warn("ifly", "SendCommand: iFly plugin window not found");
+            _lastSendFailed = true;
+            return false;
+        }
 
         var msg = new IFlyMessage { Command = (int)command, Value1 = value1, Value2 = value2, Value3 = value3 };
         int size = Marshal.SizeOf<IFlyMessage>();
@@ -466,15 +477,25 @@ public class IFlySdkClient : IDisposable
                 cbData = size + 2, // the SDK sample sends sizeof(message)+2 — match it exactly
                 lpData = buffer,
             };
-            var ok = SendMessageTimeout(_pluginWindow, WM_COPYDATA, IntPtr.Zero, ref cds, SMTO_ABORTIFHUNG, 1000, out _);
+            var ok = SendMessageTimeout(pluginWindow, WM_COPYDATA, IntPtr.Zero, ref cds, SMTO_ABORTIFHUNG, 1000, out _);
             if (ok == IntPtr.Zero)
             {
-                // Window may have been recreated (sim restart) — re-resolve once and retry.
-                _pluginWindow = FindPluginWindow();
-                if (_pluginWindow == IntPtr.Zero) return false;
-                ok = SendMessageTimeout(_pluginWindow, WM_COPYDATA, IntPtr.Zero, ref cds, SMTO_ABORTIFHUNG, 1000, out _);
+                // Window may have been recreated between the resolve above and this
+                // send — re-resolve once and retry.
+                pluginWindow = FindPluginWindow();
+                if (pluginWindow != IntPtr.Zero)
+                    ok = SendMessageTimeout(pluginWindow, WM_COPYDATA, IntPtr.Zero, ref cds, SMTO_ABORTIFHUNG, 1000, out _);
             }
-            return ok != IntPtr.Zero;
+
+            if (ok == IntPtr.Zero)
+            {
+                if (!_lastSendFailed) Log.Warn("ifly", $"SendCommand: no answer from the iFly plugin window for {command}");
+                _lastSendFailed = true;
+                return false;
+            }
+
+            _lastSendFailed = false;
+            return true;
         }
         finally
         {
