@@ -447,6 +447,32 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             SwD(P, field, name, set: null, disengageStates, inPanel: false);
             _disengageLightKeys.Add(field);
         }
+
+        // A/P and A/T disengage-light PRESS — the light itself is a push-to-reset
+        // switch, distinct from the light's own on/off/amber/red status above
+        // (AP_Indicators_Light_Switch_Status[2]/AT_Indicators_Light_Switch_Status[2]
+        // are separate 0-released/1-pressed fields at offsets 292/294, next to the
+        // 296/298 light-status fields this def already reads). Captain side only
+        // per side policy (matches BTN_AP_DISCONNECT/BTN_AT_DISCONNECT above,
+        // Captain-only). LIVE-VERIFY: on the real 737 this reset may be the same
+        // physical action as a SECOND press of the yoke A/P disconnect bar / thrust
+        // lever A/T disconnect switch once already disengaged (the two buttons
+        // just above) — confirm in-sim whether this is a distinct control or
+        // redundant with the disconnect buttons' second press.
+        Btn(P, "BTN_AP_DISENGAGE_LIGHT", "Autopilot Disengage Light Press", IFlyKeyCommand.AUTOMATICFLIGHT_AUTOPILOT_DIS_L_LIGHT);
+        Btn(P, "BTN_AT_DISENGAGE_LIGHT", "Autothrottle Disengage Light Press", IFlyKeyCommand.AUTOMATICFLIGHT_AUTOTHROTTLE_DIS_L_LIGHT);
+
+        // AP/AT disengage-light indicator TEST switch — one per side, spring-loaded
+        // 3-position (TEST1/NEUTRAL/TEST2) that drives that side's AP/AT disengage
+        // bulbs through amber/red so a pilot can confirm both filaments still work
+        // (AP_AT_Test_Switch_Status[2], offset 290: "0:switch TEST1 1:switch NEUTRAL
+        // 2:switch TEST2"). Both indices registered — unlike the Captain-only policy
+        // above, each side's test switch exercises that side's own audible light, so
+        // both are independently useful to a blind pilot flying either seat.
+        Sw(P, "AP_AT_Test_Switch_Status_0", "AP/AT Disengage Light Test Captain",
+            IFlyKeyCommand.AUTOMATICFLIGHT_L_DISENGAGE_LIGHT_TEST_SET, new[] { "Test 1", "Neutral", "Test 2" });
+        Sw(P, "AP_AT_Test_Switch_Status_1", "AP/AT Disengage Light Test First Officer",
+            IFlyKeyCommand.AUTOMATICFLIGHT_R_DISENGAGE_LIGHT_TEST_SET, new[] { "Test 1", "Neutral", "Test 2" });
     }
 
     private void RegisterWarnings()
