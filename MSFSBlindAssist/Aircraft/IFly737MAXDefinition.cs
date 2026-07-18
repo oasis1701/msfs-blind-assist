@@ -878,6 +878,50 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private readonly Dictionary<string, string> _lastWindowAnnounce = new();
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // Speedbrake lever announce state (PR #163, minor 9). null initial means the
+    // first post-launch event announces (announceInitialChange semantics for this
+    // aircraft — the initial snapshot sweep never reaches ProcessSimVarUpdate, so
+    // the first call here is always a genuine change).
+    private string? _lastSpeedbrakeDetentName;
+
+    /// <summary>FLAP_Status / FLTCTRL_FLAP_SET lever detent 0-8 → its label ("up",
+    /// "1", "2", "5", "10", "15", "25", "30", "40"). Used by the L hotkey readout
+    /// (ReadFlaps); background flap announces run on the GENERIC combo path off the
+    /// registration's position labels (see the FLAP_Status note in RegisterControlStand).</summary>
+    private static string FlapDetentName(int detent) => detent switch
+    {
+        0 => "up", 1 => "1", 2 => "2", 3 => "5", 4 => "10",
+        5 => "15", 6 => "25", 7 => "30", 8 => "40",
+        _ => detent.ToString(),
+    };
+
+    // Speedbrake lever detents (Control Stand registration comment: 0 = DOWN,
+    // 35 = ARMED, 149 = FLIGHT DETENT, 224 = UP). Labels are transcribed verbatim
+    // from PMDG737Definition.SpeedBrakeDetents for fleet-wide announce parity
+    // (the iFly lever has no analog to PMDG's "50 percent" mid-detent).
+    private static readonly (double Value, string Label)[] SpeedbrakeDetentTable =
+    {
+        (0,   "Speed brake down"),
+        (35,  "Speed brake armed"),
+        (149, "Speed brake flight"),
+        (224, "Speed brake fully deployed"),
+    };
+
+    /// <summary>Nearest-anchor decode of the raw 0-225 Spoiler_Lever_Status value.
+    /// Used by both the background self-announce (full PMDG label) and the panel
+    /// display override (short word, prefix stripped).</summary>
+    private static string SpeedbrakeDetentName(double v)
+    {
+        int best = 0;
+        double bestDist = double.MaxValue;
+        for (int i = 0; i < SpeedbrakeDetentTable.Length; i++)
+        {
+            double d = Math.Abs(v - SpeedbrakeDetentTable[i].Value);
+            if (d < bestDist) { bestDist = d; best = i; }
+        }
+        return SpeedbrakeDetentTable[best].Label;
+    }
+
     // Flash-aware light announce state. Several 737 lights FLASH rather than hold
     // steady (IRS ALIGN blinks through alignment; the A/P and A/T disengage warning
     // lights blink until reset), so a raw lit-edge announce spoke "on"/"off" on every
@@ -1023,6 +1067,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // Speedbrake lever: nearest-detent PMDG-parity wording. Announce only when
+        // the resolved detent NAME changes, so lever motion between anchors (which
+        // moves the raw 0-225 value continuously) stays quiet.
+        if (varName == "Spoiler_Lever_Status")
+        {
+            string name = SpeedbrakeDetentName(value);
+            if (_lastSpeedbrakeDetentName != name)
+            {
+                _lastSpeedbrakeDetentName = name;
+                announcer.Announce(name);
+            }
+            return true;
+        }
+
         // During the master LIGHTS TEST every window shows the 888 test pattern —
         // announcing it (and the restore) is noise. State catches up on the next
         // real change because AnnounceWindow dedups on text.
@@ -1156,6 +1214,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 // Sentinel: the SDK reports <= -100 when the gauge is unpowered/invalid.
                 displayText = value <= -100 ? "Not available" : $"{value:0} degrees";
                 return true;
+            case "Spoiler_Lever_Status":
+            {
+                string label = SpeedbrakeDetentName(value);
+                displayText = label.StartsWith("Speed brake ", StringComparison.Ordinal)
+                    ? label["Speed brake ".Length..]
+                    : label;
+                return true;
+            }
+            case "Rudder_Trim_Pointer_Status":
+                displayText = Math.Abs(value) < 0.01
+                    ? "Neutral"
+                    : $"{(value < 0 ? "Left" : "Right")} {Math.Abs(value):0.00}";
+                return true;
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
@@ -1267,12 +1338,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 var s = Sdk.Snapshot;
                 if (s == null || !s.IsRunning) { announcer.AnnounceImmediate("Flaps unavailable."); return true; }
                 int lever = s.ByteAt(IFlySdkOffsets.FLAP_Status);
-                string detent = lever switch
-                {
-                    0 => "up", 1 => "1", 2 => "2", 3 => "5", 4 => "10",
-                    5 => "15", 6 => "25", 7 => "30", 8 => "40",
-                    _ => lever.ToString(),
-                };
+                string detent = FlapDetentName(lever);
                 // Flap_*_Light_Status: 1/2 = TRANSIT, 3/4 = FULL EXT, 5/6 = both.
                 int ll = s.ByteAt(IFlySdkOffsets.Flap_Left_Light_Status);
                 int rl = s.ByteAt(IFlySdkOffsets.Flap_Right_Light_Status);

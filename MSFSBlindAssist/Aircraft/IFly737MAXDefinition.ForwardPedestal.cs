@@ -534,13 +534,21 @@ public partial class IFly737MAXDefinition
             _vars[k].UiEchoMatchesAnyValue = true;
 
         // FLTCTRL_FLAP_SET Value2 0-8 = lever detents UP..40 — matches FLAP_Status.
-        Sw(P, "FLAP_Status", "Flap Lever",
+        // DisplayName "Flaps" gives the fleet-parity wording on the GENERIC combo
+        // path ("Flaps: 5" / "Flaps: Up" — the colon form this branch already uses
+        // for the parking brake). Deliberately NOT self-announced from
+        // ProcessSimVarUpdate: FLAP_Status is a writable Sw combo, and a def that
+        // returns true for it makes MainForm skip the combo refresh, leaving the
+        // panel stale on cockpit-side flap moves (the HS787 combo-sync note in
+        // MainForm.Announcers.cs). Generic path also keeps Ctrl+M mute + UI echo.
+        Sw(P, "FLAP_Status", "Flaps",
             IFlyKeyCommand.FLTCTRL_FLAP_SET,
             new[] { "Up", "1", "2", "5", "10", "15", "25", "30", "40" });
 
-        // Speedbrake lever raw position (int 0-225):
-        //   0 = DOWN, 35 = ARMED, 149 = FLIGHT DETENT, 224 = UP.
-        Disp(P, "Spoiler_Lever_Status", "Speedbrake Lever Position");
+        // Speedbrake lever raw position (int 0-225): 0 = DOWN, 35 = ARMED,
+        // 149 = FLIGHT DETENT, 224 = UP. Nearest-detent decode + PMDG-parity
+        // announce/display live in IFly737MAXDefinition.SpeedbrakeDetentName.
+        Disp(P, "Spoiler_Lever_Status", "Speedbrake Lever Position", announced: true);
 
         Annun(P, "SPEED_BRAKE_ARMED_Light_Status", "Speed Brake Armed light");
         Annun(P, "SPEED_BRAKE_DO_NOT_ARM_Light_Status", "Speed Brake Do Not Arm light");
