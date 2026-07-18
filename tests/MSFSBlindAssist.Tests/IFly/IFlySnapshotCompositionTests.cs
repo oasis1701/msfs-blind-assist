@@ -119,4 +119,81 @@ public class IFlySnapshotCompositionTests
         b[t0 + 4] = 0;
         Assert.Equal("8460", Snap(b).FuelQuantityText(0));
     }
+
+    // ===== ADF standby window (round-2 task 6) =====
+    // Five digit cells (1000/100/10/1/01, unit stride 1 — index 0 = Left/ADF1,
+    // 1 = Right/ADF2) + four independent decimal-point flags ("Decimal after
+    // 1st/2nd/3rd/4th digital" — one flag per gap between the five cells).
+    // Digit map is the XPDR/fuel-gauge one (10 = blank), NOT the MCP window map
+    // (10 = 'A') — see IFlySdkSnapshot.XpdrFuelDigit's doc comment / PR #163 M4.
+
+    [Fact]
+    public void AdfText_ComposesFrequencyWithPointAfter4thDigit()
+    {
+        var b = Buf();
+        const int u = 0; // Left / ADF1
+        b[IFlySdkOffsets.ADF_num_1000_Status + u] = 10; // blank leading thousands
+        b[IFlySdkOffsets.ADF_num_100_Status + u] = 2;
+        b[IFlySdkOffsets.ADF_num_10_Status + u] = 3;
+        b[IFlySdkOffsets.ADF_num_1_Status + u] = 4;
+        b[IFlySdkOffsets.ADF_num_point4_Status + u] = 1; // decimal after the 4th digit (the '4')
+        b[IFlySdkOffsets.ADF_num_01_Status + u] = 5;
+        Assert.Equal("234.5", Snap(b).AdfText(u));
+    }
+
+    [Fact]
+    public void AdfText_AllBlank_ReturnsEmpty()
+    {
+        var b = Buf();
+        const int u = 1; // Right / ADF2
+        b[IFlySdkOffsets.ADF_num_1000_Status + u] = 10;
+        b[IFlySdkOffsets.ADF_num_100_Status + u] = 10;
+        b[IFlySdkOffsets.ADF_num_10_Status + u] = 10;
+        b[IFlySdkOffsets.ADF_num_1_Status + u] = 10;
+        b[IFlySdkOffsets.ADF_num_01_Status + u] = 10;
+        Assert.Equal("", Snap(b).AdfText(u));
+    }
+
+    [Fact]
+    public void AdfText_PointPlacement_HonorsWhicheverGapFlagIsSet()
+    {
+        // Same five digits as the "234.5" case, but with point2 set instead of
+        // point4 (decimal after the 2nd digit, between the hundreds and tens
+        // cells) — pins that AdfText places the '.' at the FLAGGED gap, not a
+        // hardcoded "one digit before the end" position.
+        var b = Buf();
+        const int u = 0;
+        b[IFlySdkOffsets.ADF_num_1000_Status + u] = 1;
+        b[IFlySdkOffsets.ADF_num_100_Status + u] = 2;
+        b[IFlySdkOffsets.ADF_num_point2_Status + u] = 1; // decimal after the 2nd digit (the '2')
+        b[IFlySdkOffsets.ADF_num_10_Status + u] = 3;
+        b[IFlySdkOffsets.ADF_num_1_Status + u] = 4;
+        b[IFlySdkOffsets.ADF_num_01_Status + u] = 5;
+        Assert.Equal("12.345", Snap(b).AdfText(u));
+    }
+
+    [Fact]
+    public void AdfText_Unit1_IsIndependentOfUnit0()
+    {
+        // Stride isolation: ADF1 (unit 0) tuned to "234.5", ADF2 (unit 1) fully
+        // blanked — reading unit 1 must not pick up any of unit 0's byte cells
+        // (each field is base + unit, stride 1).
+        var b = Buf();
+        b[IFlySdkOffsets.ADF_num_1000_Status + 0] = 10;
+        b[IFlySdkOffsets.ADF_num_100_Status + 0] = 2;
+        b[IFlySdkOffsets.ADF_num_10_Status + 0] = 3;
+        b[IFlySdkOffsets.ADF_num_1_Status + 0] = 4;
+        b[IFlySdkOffsets.ADF_num_point4_Status + 0] = 1;
+        b[IFlySdkOffsets.ADF_num_01_Status + 0] = 5;
+
+        b[IFlySdkOffsets.ADF_num_1000_Status + 1] = 10;
+        b[IFlySdkOffsets.ADF_num_100_Status + 1] = 10;
+        b[IFlySdkOffsets.ADF_num_10_Status + 1] = 10;
+        b[IFlySdkOffsets.ADF_num_1_Status + 1] = 10;
+        b[IFlySdkOffsets.ADF_num_01_Status + 1] = 10;
+
+        var snap = Snap(b);
+        Assert.Equal("234.5", snap.AdfText(0));
+        Assert.Equal("", snap.AdfText(1));
+    }
 }

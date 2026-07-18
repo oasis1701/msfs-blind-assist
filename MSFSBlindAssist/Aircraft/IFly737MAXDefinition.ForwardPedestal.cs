@@ -331,6 +331,45 @@ public partial class IFly737MAXDefinition
         Nav(2, IFlyKeyCommand.FMS_NAV_2_TFR, IFlyKeyCommand.FMS_NAV_2_TEST,
             IFlyKeyCommand.FMS_NAV_2_MODE_UP, IFlyKeyCommand.FMS_NAV_2_MODE_DN);
 
+        // ADF control panel (aft pedestal): left = ADF1, right = ADF2. No keypad,
+        // no active/standby split, and — unlike the RTP/NAV panels above — NO
+        // transfer command exists (grepped IFlyKeyCommand.cs for an
+        // "FMS_ADF_*_TFR"-shaped entry: none). The panel's four ring rotaries
+        // (hundreds/tens/ones/tenths) tune the LIVE frequency directly; the
+        // ring-stepping math lives in SetAdfFrequency (HandleUIVariableSet
+        // intercepts "ADF{n}_FREQ_SET" before the generic write dispatch, same
+        // PLACEHOLDER-command shape as RTP/NAV — `test` below is never actually
+        // fired for that key).
+        void Adf(int n, IFlyKeyCommand modeSet, IFlyKeyCommand test)
+        {
+            int unit = n - 1; // SDK array index: 0 = Left/ADF1, 1 = Right/ADF2
+            string side = unit == 0 ? "L" : "R";
+
+            // Frequency window — client-composed synthetic from the per-digit
+            // ADF_num_* display fields (see IFlySdkSnapshot.AdfText / IFlySdkClient).
+            Disp(P, $"SYN_ADF_{side}", $"ADF {n} Frequency");
+
+            NumSet(P, $"ADF{n}_FREQ_SET", $"Set ADF {n} Frequency", test, 190.0, 1750.0, units: "kilohertz");
+
+            // ADF_Mode_Switch_Status[2]: 0 ADF / 1 ANT / 2 OFF. MODE_SET Value2
+            // assumed to match status directly (no encoding-trap doc note, same
+            // "matches status" default as the GPWS/EFIS-mode SETs elsewhere in
+            // this file) — LIVE-VERIFY.
+            Sw(P, $"ADF_Mode_Switch_Status_{unit}", $"ADF {n} Mode",
+                modeSet, new[] { "ADF", "ANT", "Off" });
+            Btn(P, $"BTN_ADF{n}_TEST", $"ADF {n} Test", test);
+        }
+
+        Adf(1, IFlyKeyCommand.FMS_ADF_L_MODE_SET, IFlyKeyCommand.FMS_ADF_L_TEST);
+        Adf(2, IFlyKeyCommand.FMS_ADF_R_MODE_SET, IFlyKeyCommand.FMS_ADF_R_TEST);
+
+        // Shared ADF TONE switch: a SINGLE field (ADF_Tone_Switch_Status, no [2]
+        // array — one physical switch serving both ADF receivers, unlike every
+        // other per-side control on this panel). SET Value2 matches status
+        // directly (0 switch 1 / 1 OFF / 2 switch 2).
+        Sw(P, "ADF_Tone_Switch_Status", "ADF Tone",
+            IFlyKeyCommand.FMS_ADF_TONE_SET, new[] { "Tone 1", "Off", "Tone 2" });
+
         // VHF NAV source transfer switch. Status and Value2 share the 0 BOTH ON 1 /
         // 1 NORMAL / 2 BOTH ON 2 encoding. SDK doc names the SET command "...Switch -
         // Click" (the same vendor naming slip as the IRS transfer in RegisterIrs and

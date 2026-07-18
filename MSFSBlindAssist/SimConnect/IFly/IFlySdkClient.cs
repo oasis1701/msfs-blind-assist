@@ -317,6 +317,11 @@ public class IFlySdkClient : IDisposable
             Set($"SYN_NAV{nav + 1}_ACTIVE", StableHash(snap.NavWindowText(nav, 0)));
             Set($"SYN_NAV{nav + 1}_STANDBY", StableHash(snap.NavWindowText(nav, 1)));
         }
+        // ADF control panel 1-2 (unit 0 = Left/ADF1, 1 = Right/ADF2): a plain
+        // frequency, no mode flag, so ParseNum (blank -> SyntheticBlank) is the
+        // right shape here — same as the RTP/MCP windows, not the NAV hash path.
+        Set("SYN_ADF_L", ParseNum(snap.AdfText(0)));
+        Set("SYN_ADF_R", ParseNum(snap.AdfText(1)));
         // Text displays: value is a content hash so equality tracks the text.
         Set("SYN_ELEC_LED", StableHash(snap.ElecLedLine(0) + "|" + snap.ElecLedLine(1)));
         Set("SYN_IRS_DISPLAY", StableHash(snap.IrsDisplayText()));

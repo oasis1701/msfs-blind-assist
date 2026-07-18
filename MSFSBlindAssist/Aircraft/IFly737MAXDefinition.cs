@@ -595,6 +595,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // ADF frequency: no absolute SET and no active/standby transfer — the
+        // panel has only the four ring rotaries (hundreds/tens/ones/tenths).
+        // Step them from the CURRENT composed value to the target.
+        if (varKey is "ADF1_FREQ_SET" or "ADF2_FREQ_SET")
+        {
+            int unit = varKey[3] - '1'; // "ADF1_FREQ_SET" -> 0, "ADF2_FREQ_SET" -> 1
+            SetAdfFrequency(unit, value, announcer);
+            return true;
+        }
+
         // Battery: BAT_SET goes through the guard bypass (Value3 = 1, "ignore the
         // guard, press the button directly" — the SDK exposes NO guard/cover
         // command, so the bypass is the only write path), then VERIFIES the switch
@@ -797,6 +807,103 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             Sdk.RunOnUi(() => announcer.AnnounceImmediate(result.Length > 0
                 ? $"NAV {nav} standby {result}"
                 : $"NAV {nav} standby set"));
+        });
+    }
+
+    /// <summary>ADF frequency: no absolute SET and no active/standby transfer in
+    /// the SDK — only four ring rotaries (FMS_ADF_{L,R}_100/_10/_1/_FRAC INC/DEC),
+    /// each an independent digit wheel. Computes a per-ring delta from the
+    /// CURRENT composed value (read via <see cref="IFlySdkSnapshot.AdfText"/>)
+    /// and steps each ring toward the target, 40 ms paced (RTP/NAV pattern).
+    ///
+    /// Band: 190.0-1750.0 kHz is the ICAO/FAA NDB (ADF) aeronautical band.
+    /// Ring-to-digit derivation: the tens/ones/tenths rings are documented as
+    /// plain "the Nth number -1/+1" (a bare 0-9 digit click, matching their
+    /// ADF_num_10/_1/_01 display cells). The HUNDREDS ring has no SDK sibling
+    /// command for the leading "1" (1000s) digit at all — so it is modeled here
+    /// as a single continuous 100 kHz step across the COMBINED hundreds+
+    /// thousands value (floor(kHz/100), range 1-17), matching how the real
+    /// Boeing 737 ADF panel's HUNDREDS knob is a single rotary spanning the
+    /// whole 000-1700 range and auto-lighting the leading "1" past 900. This is
+    /// UNVERIFIED against a live sim (the SDK doc gives no explicit wrap
+    /// behavior) — if the ring turns out to be a bare 0-9 digit wrap instead,
+    /// targets >= 1000 kHz will land short of the target. That failure mode is
+    /// safe: the mandatory readback below always announces the ACTUAL landed
+    /// frequency (never an assumed one), so a wrong model here degrades to an
+    /// honest "didn't reach the target" rather than a false confirmation.
+    private void SetAdfFrequency(int unit, double target, ScreenReaderAnnouncer announcer)
+    {
+        var snap = Sdk.Snapshot;
+        if (snap == null)
+        {
+            announcer.AnnounceImmediate("iFly 737 not detected.");
+            return;
+        }
+        if (target < 190.0 || target > 1750.0)
+        {
+            announcer.AnnounceImmediate("Enter an ADF frequency between 190 and 1750 kilohertz.");
+            return;
+        }
+        string curText = snap.AdfText(unit);
+        if (!double.TryParse(curText, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double current))
+        {
+            announcer.AnnounceImmediate("ADF frequency not readable. Is the radio powered?");
+            return;
+        }
+
+        // Work in integer tenths-of-kHz to avoid float rounding on the digit splits.
+        int targetTenths = (int)Math.Round(target * 10);
+        int currentTenths = (int)Math.Round(current * 10);
+        int hundredsDelta = targetTenths / 1000 - currentTenths / 1000;
+        int tensDelta = targetTenths / 100 % 10 - currentTenths / 100 % 10;
+        int onesDelta = targetTenths / 10 % 10 - currentTenths / 10 % 10;
+        int fracDelta = targetTenths % 10 - currentTenths % 10;
+
+        string side = unit == 0 ? "L" : "R";
+        IFlyKeyCommand? Resolve(string suffix) =>
+            Enum.TryParse<IFlyKeyCommand>($"FMS_ADF_{side}_{suffix}", out var c) ? c : null;
+
+        var hundreds = Resolve(hundredsDelta >= 0 ? "100_INC" : "100_DEC");
+        var tens = Resolve(tensDelta >= 0 ? "10_INC" : "10_DEC");
+        var ones = Resolve(onesDelta >= 0 ? "1_INC" : "1_DEC");
+        var frac = Resolve(fracDelta >= 0 ? "FRAC_INC" : "FRAC_DEC");
+        if (hundreds == null || tens == null || ones == null || frac == null) return;
+
+        bool ok = true;
+        int adfNum = unit + 1;
+        _ = Task.Run(async () =>
+        {
+            for (int i = 0; i < Math.Abs(hundredsDelta) && ok; i++)
+            {
+                ok = Sdk.SendCommand(hundreds.Value);
+                await Task.Delay(40);
+            }
+            for (int i = 0; i < Math.Abs(tensDelta) && ok; i++)
+            {
+                ok = Sdk.SendCommand(tens.Value);
+                await Task.Delay(40);
+            }
+            for (int i = 0; i < Math.Abs(onesDelta) && ok; i++)
+            {
+                ok = Sdk.SendCommand(ones.Value);
+                await Task.Delay(40);
+            }
+            for (int i = 0; i < Math.Abs(fracDelta) && ok; i++)
+            {
+                ok = Sdk.SendCommand(frac.Value);
+                await Task.Delay(40);
+            }
+            if (!ok)
+            {
+                Sdk.RunOnUi(() => announcer.AnnounceImmediate("iFly plugin not responding."));
+                return;
+            }
+            await Task.Delay(600); // let the poll pick up the new display
+            string result = Sdk.Snapshot?.AdfText(unit) ?? "";
+            Sdk.RunOnUi(() => announcer.AnnounceImmediate(result.Length > 0
+                ? $"ADF {adfNum} {result} kilohertz"
+                : $"ADF {adfNum} set"));
         });
     }
 
@@ -1362,6 +1469,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 int nav = varKey[7] - '1';
                 string text = snap.NavWindowText(nav, varKey.EndsWith("_STANDBY") ? 1 : 0);
                 displayText = text.Length > 0 ? text : "Blank";
+                return true;
+            }
+            case "SYN_ADF_L" or "SYN_ADF_R":
+            {
+                if (snap == null) return false;
+                int unit = varKey.EndsWith("_L") ? 0 : 1;
+                string text = snap.AdfText(unit);
+                // Frequency labeling rule (round-1): a bare "890" is ambiguous —
+                // always carry the kHz unit label. "Blank" (not "0" / "--") when
+                // unpowered/mode OFF, matching the RTP/NAV blank convention.
+                displayText = text.Length > 0 ? $"{text} kHz" : "Blank";
                 return true;
             }
             case "FUEL_TEMP_Indicator":

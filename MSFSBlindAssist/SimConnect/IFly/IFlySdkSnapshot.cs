@@ -300,4 +300,38 @@ public sealed class IFlySdkSnapshot
         string flag = NavFlagText(panel, window);
         return freq.Length > 0 && flag.Length > 0 ? $"{freq} {flag}" : freq.Length > 0 ? freq : flag;
     }
+
+    // ------------------------------------------------------------------
+    // ADF control panel (aft pedestal): unit 0 = Left (ADF1), 1 = Right (ADF2).
+    // Five digit cells 1000/100/10/1/01, stride 1 (index by unit directly, no
+    // panel*window flattening like NAV). Digit codes: 0~9 digits, 10 blank; the
+    // 100/10/1 cells additionally document an 11 or 12 "full display" (test
+    // pattern) code — mapped to '8' here like NAV's test-pattern fallback.
+    // Four independent point flags place the decimal after the 1st/2nd/3rd/4th
+    // digit respectively (the gaps between the five cells) — this is NOT the
+    // MCP window digit map (10 = 'A'); see XpdrFuelDigit's doc comment.
+    // ------------------------------------------------------------------
+    private static char AdfDigit(byte v) => v switch
+    {
+        <= 9 => (char)('0' + v),
+        10 => ' ',
+        _ => '8', // full display / test pattern (11 or 12, depending on the cell)
+    };
+
+    /// <summary>ADF frequency window (unit: 0 = Left/ADF1, 1 = Right/ADF2), e.g.
+    /// "234.5"; "" when fully blanked (mode switch OFF / unpowered).</summary>
+    public string AdfText(int unit)
+    {
+        var sb = new StringBuilder(6);
+        sb.Append(AdfDigit(ByteAt(IFlySdkOffsets.ADF_num_1000_Status + unit)));
+        if (ByteAt(IFlySdkOffsets.ADF_num_point1_Status + unit) != 0) sb.Append('.');
+        sb.Append(AdfDigit(ByteAt(IFlySdkOffsets.ADF_num_100_Status + unit)));
+        if (ByteAt(IFlySdkOffsets.ADF_num_point2_Status + unit) != 0) sb.Append('.');
+        sb.Append(AdfDigit(ByteAt(IFlySdkOffsets.ADF_num_10_Status + unit)));
+        if (ByteAt(IFlySdkOffsets.ADF_num_point3_Status + unit) != 0) sb.Append('.');
+        sb.Append(AdfDigit(ByteAt(IFlySdkOffsets.ADF_num_1_Status + unit)));
+        if (ByteAt(IFlySdkOffsets.ADF_num_point4_Status + unit) != 0) sb.Append('.');
+        sb.Append(AdfDigit(ByteAt(IFlySdkOffsets.ADF_num_01_Status + unit)));
+        return sb.ToString().Replace(" ", "");
+    }
 }
