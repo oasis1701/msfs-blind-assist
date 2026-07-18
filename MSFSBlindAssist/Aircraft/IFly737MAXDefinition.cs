@@ -76,6 +76,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private readonly Dictionary<string, IFlyWrite> _writes = new();
     private readonly HashSet<string> _annunKeys = new();
     private readonly HashSet<string> _mcpModeKeys = new();
+    private readonly HashSet<string> _disengageLightKeys = new();
     private bool _registered;
 
     private void EnsureRegistered()
@@ -383,6 +384,23 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // panel push light, which IS the master caution callout).
         // LIVE-VERIFY before ever re-adding under a confirmed name. (PR #163, M5.)
         Annun(P, "AT_Light_Status", "Autothrottle light");
+
+        // A/P and A/T disengage warning lights (0 off, 1/2 amber, 3/4 red). These
+        // BLINK until reset — announced through the flash filter (HandleLightEdge),
+        // which was built for exactly these lights. Read-only; index 0 = Captain.
+        var disengageStates = new Dictionary<double, string>
+            { [0] = "off", [1] = "on, amber", [2] = "on, amber", [3] = "on, red", [4] = "on, red" };
+        foreach (var (field, name) in new[]
+        {
+            ("AP_Indicators_Light_Status_0", "Autopilot Disengage light Captain"),
+            ("AP_Indicators_Light_Status_1", "Autopilot Disengage light First Officer"),
+            ("AT_Indicators_Light_Status_0", "Autothrottle Disengage light Captain"),
+            ("AT_Indicators_Light_Status_1", "Autothrottle Disengage light First Officer"),
+        })
+        {
+            SwD(P, field, name, set: null, disengageStates);
+            _disengageLightKeys.Add(field);
+        }
     }
 
     private void RegisterWarnings()
@@ -967,6 +985,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         if (_warnLightKeys.Contains(varName))
         {
             HandleLightEdge(varName, ((int)Math.Round(value)) % 3 > 0, announcer, "on");
+            return true;
+        }
+
+        // A/P & A/T disengage lights: flash-filtered, with the color spoken (amber =
+        // caution/acknowledged path, red = warning). A color change while lit does not
+        // re-announce (lit-edge semantics).
+        if (_disengageLightKeys.Contains(varName))
+        {
+            HandleLightEdge(varName, value > 0.5, announcer,
+                (int)Math.Round(value) >= 3 ? "on, red" : "on, amber");
             return true;
         }
 
