@@ -44,6 +44,22 @@ public class IFlySnapshotCompositionTests
     }
 
     [Fact]
+    public void McpSpeed_SymbolLetterA_ComposesLiteralText()
+    {
+        // Non-blank, unparseable symbol text (e.g. an "A250" speed-window flag) —
+        // this is the composition the SYN_MCP_SPEED text-sentinel path (IFlySdkClient
+        // .RaiseSyntheticEvents) depends on to speak the literal window text instead
+        // of falsely reporting "blank, FMC managed".
+        var b = Buf();
+        b[IFlySdkOffsets.SPD_Symbol_Status] = 10; // 'A'
+        b[IFlySdkOffsets.SPD_100_Status] = 2;
+        b[IFlySdkOffsets.SPD_10_Status] = 5;
+        b[IFlySdkOffsets.SPD_1_Status] = 0;
+        Assert.Equal("A250", Snap(b).McpSpeedText());
+        Assert.False(Snap(b).McpSpeedBlank());
+    }
+
+    [Fact]
     public void McpVerticalSpeed_NegativeSign_Composes()
     {
         var b = Buf();

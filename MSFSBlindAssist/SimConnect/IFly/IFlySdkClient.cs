@@ -257,6 +257,11 @@ public class IFlySdkClient : IDisposable
 
     public const double SyntheticBlank = -99999;
 
+    // Values <= SyntheticTextBase are hash-coded text (see RaiseSyntheticEvents'
+    // SYN_MCP_SPEED handling below) — the number itself is meaningless, only
+    // "did it change" matters, and the definition re-reads the live text to speak.
+    public const double SyntheticTextBase = -100000;
+
     private readonly Dictionary<string, double> _lastSynthetic = new();
 
     private void RaiseSyntheticEvents(bool isInitial)
@@ -281,7 +286,14 @@ public class IFlySdkClient : IDisposable
             s.Length > 0 && double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v)
                 ? v : SyntheticBlank;
 
-        Set("SYN_MCP_SPEED", snap.McpSpeedBlank() ? SyntheticBlank : ParseNum(snap.McpSpeedText()));
+        // Blank → SyntheticBlank. Parseable → the number. Non-blank but unparseable
+        // (symbol text like "A250") → a text sentinel that still CHANGES when the text
+        // changes, so the def announces the literal window text instead of lying
+        // "blank, FMC managed". Values ≤ SyntheticTextBase are hash-coded text.
+        string spdText = snap.McpSpeedText();
+        Set("SYN_MCP_SPEED", snap.McpSpeedBlank() ? SyntheticBlank
+            : ParseNum(spdText) is var pv && pv != SyntheticBlank ? pv
+            : SyntheticTextBase - (StableHash(spdText) % 100000));
         Set("SYN_MCP_HEADING", ParseNum(snap.McpHeadingText()));
         Set("SYN_MCP_ALTITUDE", ParseNum(snap.McpAltitudeText()));
         Set("SYN_MCP_VS", ParseNum(snap.McpVerticalSpeedText()));

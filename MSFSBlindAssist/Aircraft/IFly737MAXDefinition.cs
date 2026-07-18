@@ -615,8 +615,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 return true;
             }
             // Numeric entry confirmation (screen-reader rule: numeric inputs DO confirm).
+            // Course fields zero-pad to match the MCP window's 3-digit display (and the
+            // SYN_MCP_COURSE_1/2 background-change wording above) — "Set Course 1 005",
+            // not the bare "5" a plain F0 would speak.
             if (_numSetRanges.ContainsKey(varKey))
-                announcer.AnnounceImmediate($"{varDef.DisplayName} {value:F0}");
+                announcer.AnnounceImmediate(varKey is "MCP_COURSE_1_SET" or "MCP_COURSE_2_SET"
+                    ? $"{varDef.DisplayName} {value:000}"
+                    : $"{varDef.DisplayName} {value:F0}");
             return true;
         }
 
@@ -1018,13 +1023,22 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // During the master LIGHTS TEST every window shows the 888 test pattern —
+        // announcing it (and the restore) is noise. State catches up on the next
+        // real change because AnnounceWindow dedups on text.
+        if (varName.StartsWith("SYN_MCP_", StringComparison.Ordinal) && LightsTestActive)
+            return true;
+
         // Synthetic display windows: announce the new value once per composed change.
         switch (varName)
         {
             case "SYN_MCP_SPEED":
-                AnnounceWindow(varName, value == IFlySdkClient.SyntheticBlank
-                    ? "MCP speed blank, FMC managed"
-                    : value < 10 ? $"MCP speed Mach {value:F2}" : $"MCP speed {value:F0}", announcer);
+                if (value <= IFlySdkClient.SyntheticTextBase)
+                    AnnounceWindow(varName, $"MCP speed {Sdk.Snapshot?.McpSpeedText()}", announcer);
+                else
+                    AnnounceWindow(varName, value == IFlySdkClient.SyntheticBlank
+                        ? "MCP speed blank, FMC managed"
+                        : value < 10 ? $"MCP speed Mach {value:F2}" : $"MCP speed {value:F0}", announcer);
                 return true;
             case "SYN_MCP_HEADING":
                 if (value != IFlySdkClient.SyntheticBlank)
@@ -1319,7 +1333,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             case HotkeyAction.ReadHeading:
             {
                 var s = Sdk.Snapshot;
-                if (s == null || !s.IsRunning) return false;
+                if (s == null || !s.IsRunning) { announcer.AnnounceImmediate("MCP data not available."); return true; }
                 string mode = "";
                 if (s.ByteAt(IFlySdkOffsets.HDG_SEL_Switch_Status) % 3 > 0) mode = ", HDG SEL";
                 else if (s.ByteAt(IFlySdkOffsets.LNAV_Switch_Status) % 3 > 0) mode = ", LNAV";
@@ -1329,7 +1343,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             case HotkeyAction.ReadSpeed:
             {
                 var s = Sdk.Snapshot;
-                if (s == null || !s.IsRunning) return false;
+                if (s == null || !s.IsRunning) { announcer.AnnounceImmediate("MCP data not available."); return true; }
                 string mode = "";
                 if (s.ByteAt(IFlySdkOffsets.LVL_CHG_Switch_Status) % 3 > 0) mode = ", LVL CHG";
                 else if (s.ByteAt(IFlySdkOffsets.VNAV_Switch_Status) % 3 > 0) mode = ", VNAV";
@@ -1341,7 +1355,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             case HotkeyAction.ReadAltitude:
             {
                 var s = Sdk.Snapshot;
-                if (s == null || !s.IsRunning) return false;
+                if (s == null || !s.IsRunning) { announcer.AnnounceImmediate("MCP data not available."); return true; }
                 string mode = "";
                 if (s.ByteAt(IFlySdkOffsets.VNAV_Switch_Status) % 3 > 0) mode = ", VNAV";
                 else if (s.ByteAt(IFlySdkOffsets.ALT_HLD_Switch_Status) % 3 > 0) mode = ", ALT HOLD";
@@ -1351,7 +1365,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             case HotkeyAction.ReadFCUVerticalSpeedFPA:
             {
                 var s = Sdk.Snapshot;
-                if (s == null || !s.IsRunning) return false;
+                if (s == null || !s.IsRunning) { announcer.AnnounceImmediate("MCP data not available."); return true; }
                 string vs = s.McpVerticalSpeedText();
                 string mode = s.ByteAt(IFlySdkOffsets.VS_Switch_Status) % 3 > 0 ? ", VS engaged" : "";
                 announcer.AnnounceImmediate(vs.Length == 0 ? $"VS blank{mode}" : $"VS {vs}{mode}");
@@ -1711,10 +1725,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     return;
                 // The iFly SDK has no absolute baro-set command (INC/DEC only), and the
                 // aircraft tracks the stock Kohlsman value, so set it via the stock event
-                // (parameter = millibars * 16) on BOTH altimeters via index 1.
+                // (no index — sets altimeter 1; the iFly appears to track one Kohlsman for
+                // both sides — LIVE-VERIFY) (parameter = millibars * 16).
                 double mb = v >= 100 ? v : v * 33.8639; // inches → millibars
                 simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(mb * 16));
-                announcer.AnnounceImmediate($"Altimeter {input}");
+                // No AnnounceImmediate here — the monitored ALTIMETER_SETTING var (line ~1001)
+                // announces the confirmed value once SimConnect reads it back (PMDG pattern).
             });
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
