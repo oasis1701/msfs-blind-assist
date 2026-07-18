@@ -570,8 +570,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             {
                 await Task.Delay(800); // let the plugin act and the poll refresh
                 if (Sdk.Snapshot is { } snap && snap.ByteAt(IFlySdkOffsets.Battery_Switch_Mode) != target)
-                    announcer.AnnounceImmediate("Battery switch did not move. " +
-                        "Open the battery switch guard in the cockpit and try again.");
+                    // Announce on the UI thread: the Tolk/JAWS path has thread affinity and
+                    // silently drops speech from worker threads (the A380 RMP lesson —
+                    // docs/a380x.md). RunOnUi posts through the SDK client's captured context.
+                    Sdk.RunOnUi(() => announcer.AnnounceImmediate("Battery switch did not move. " +
+                        "Open the battery switch guard in the cockpit and try again."));
             });
             return true;
         }
@@ -692,14 +695,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             }
             if (!ok)
             {
-                announcer.AnnounceImmediate("iFly plugin not responding.");
+                Sdk.RunOnUi(() => announcer.AnnounceImmediate("iFly plugin not responding."));
                 return;
             }
             await Task.Delay(600); // let the poll pick up the new display
             string result = Sdk.Snapshot?.RtpText(rtp - 1, rightSide: true) ?? "";
-            announcer.AnnounceImmediate(result.Length > 0
+            Sdk.RunOnUi(() => announcer.AnnounceImmediate(result.Length > 0
                 ? $"RTP {rtp} standby {result}"
-                : $"RTP {rtp} standby set");
+                : $"RTP {rtp} standby set"));
         });
     }
 
@@ -741,9 +744,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             }
             await Task.Delay(600); // let the panel latch + the poll refresh
             string result = Sdk.Snapshot?.NavWindowText(nav - 1, window: 1) ?? "";
-            announcer.AnnounceImmediate(result.Length > 0
+            Sdk.RunOnUi(() => announcer.AnnounceImmediate(result.Length > 0
                 ? $"NAV {nav} standby {result}"
-                : $"NAV {nav} standby set");
+                : $"NAV {nav} standby set"));
         });
     }
 
@@ -869,7 +872,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 await Task.Delay(120); // pace consecutive keypad presses
                 Sdk.SendCommand(IFlyKeyCommand.FMS_XPNDR_KEYPAD_0 + (d - '0'));
             }
-            announcer.AnnounceImmediate($"Squawk {digits}");
+            Sdk.RunOnUi(() => announcer.AnnounceImmediate($"Squawk {digits}"));
         });
     }
 
