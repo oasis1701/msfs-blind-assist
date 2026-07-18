@@ -130,13 +130,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         var descriptions = new Dictionary<double, string>();
         for (int i = 0; i < positions.Length; i++) descriptions[valueBase + i] = positions[i];
-        SwD(panel, field, display, set, descriptions, map, value3, announced);
+        SwD(panel, field, display, set, descriptions, map, value3, announced: announced);
     }
 
-    /// <summary>Switch with an explicit value→label dictionary (non-contiguous or offset encodings).</summary>
+    /// <summary>Switch with an explicit value→label dictionary (non-contiguous or offset encodings).
+    /// A null <paramref name="set"/> means the SDK has no write command — the field is a read-only
+    /// position indicator, so it renders as a read-only TextBox (RenderAsReadOnlyStatus) instead of
+    /// an interactive ComboBox (PR #163: a combo that rejects the user's selection is confusing).
+    /// <paramref name="inPanel"/> = false drops the control from the panel entirely (used for the
+    /// A/P and A/T disengage lights: they self-announce via ProcessSimVarUpdate, which returns true
+    /// and skips the generic panel-refresh write, so a panel TextBox for them would go stale).</summary>
     private void SwD(string panel, string field, string display, IFlyKeyCommand? set,
                      Dictionary<double, string> descriptions, Func<double, double>? map = null,
-                     double value3 = 0, bool announced = true)
+                     double value3 = 0, bool inPanel = true, bool announced = true)
     {
         _vars[field] = new SimConnect.SimVarDefinition
         {
@@ -146,14 +152,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = announced,
             ValueDescriptions = descriptions,
+            RenderAsReadOnlyStatus = !set.HasValue,
         };
-        PanelList(panel).Add(field);
+        if (inPanel) PanelList(panel).Add(field); else PanelList(panel);
         if (set.HasValue)
             _writes[field] = new IFlyWrite(set.Value, map, value3);
     }
 
     /// <summary>Annunciator light (0 off / 1 dim / 2 bright). Announced on lit-edge only,
-    /// suppressed while the master LIGHTS TEST is held (see ProcessSimVarUpdate).</summary>
+    /// suppressed while the master LIGHTS TEST is held (see ProcessSimVarUpdate).
+    /// Announce-only; not a panel control — fleet parity with PMDG annunciators (user
+    /// ruling 2026-07-18): a pure on/off lamp has no panel row, the spoken announcement
+    /// plus the Ctrl+M monitor listing are the interface (compare PMDG737Definition's
+    /// Annun helper, e.g. ELEC_annunGRD_POWER_AVAILABLE, which is likewise never added
+    /// to any panel's BuildPanelControls list).</summary>
     private void Annun(string panel, string field, string display)
     {
         _vars[field] = new SimConnect.SimVarDefinition
@@ -165,7 +177,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on", [2] = "on" },
         };
-        PanelList(panel).Add(field);
+        // Bare call (no .Add) — keeps the panel's _panelControls entry ALIVE (an empty
+        // list is fine) so GetPanelControls().ContainsKey(panel) still returns true.
+        // Without this, a panel populated ONLY by Annun calls would never get a
+        // dictionary entry at all, and MainForm.PanelBuilder's early return
+        // (`if (!currentAircraft.GetPanelControls().ContainsKey(currentPanel)) return;`)
+        // would strand the whole panel — the HS787 empty-panel bug.
+        PanelList(panel);
         _annunKeys.Add(field);
     }
 
@@ -386,7 +404,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
         // A/P and A/T disengage warning lights (0 off, 1/2 amber, 3/4 red). These
         // BLINK until reset — announced through the flash filter (HandleLightEdge),
-        // which was built for exactly these lights. Read-only; index 0 = Captain.
+        // which was built for exactly these lights and returns true from
+        // ProcessSimVarUpdate (self-announced — see _disengageLightKeys there).
+        // inPanel: false — a panel TextBox would go STALE: the self-announce early
+        // return skips the generic write, so nothing would ever refresh a rendered
+        // box's text after the initial snapshot. Announce-only; index 0 = Captain.
         var disengageStates = new Dictionary<double, string>
             { [0] = "off", [1] = "on, amber", [2] = "on, amber", [3] = "on, red", [4] = "on, red" };
         foreach (var (field, name) in new[]
@@ -397,7 +419,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             ("AT_Indicators_Light_Status_1", "Autothrottle Disengage light First Officer"),
         })
         {
-            SwD(P, field, name, set: null, disengageStates);
+            SwD(P, field, name, set: null, disengageStates, inPanel: false);
             _disengageLightKeys.Add(field);
         }
     }
@@ -627,12 +649,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Read-only status combos (registered with set: null — the SDK has no write
-        // command for them, e.g. Master Lights Test position, Ground Service, CVR
-        // switch, Minimums Reference, Baro Units, fire-switch states, flap/slat
-        // lights). Tell the user and re-sync every control from the live snapshot
-        // (initial-snapshot events update combos silently), so the combo snaps back
-        // to the real state instead of latching a selection the aircraft never took.
+        // Regression guard, not a normal path: read-only status vars (registered with
+        // set: null — the SDK has no write command for them, e.g. Master Lights Test
+        // position, Ground Service, CVR switch, Minimums Reference, Baro Units,
+        // fire-switch states, flap/slat lights) render as read-only TextBoxes
+        // (SwD's RenderAsReadOnlyStatus), which fire no UI change event a user can
+        // reach — MainForm.PanelBuilder never wires a set handler to that branch. If
+        // this is ever reached anyway (a future control-type change, a hotkey, or a
+        // caller MSFSBA doesn't yet have), refuse the write rather than pretending it
+        // stuck, and re-sync every control from the live snapshot so nothing latches
+        // a value the aircraft never took.
         if (_vars.TryGetValue(varKey, out var roDef) && roDef.Type == SimConnect.SimVarType.PMDGVar)
         {
             announcer.AnnounceImmediate($"{roDef.DisplayName} is a read-only indicator.");
