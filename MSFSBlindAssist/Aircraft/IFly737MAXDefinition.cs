@@ -938,6 +938,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private ScreenReaderAnnouncer? _lightAnnouncer;
     private const double LIGHT_OFF_HOLD_SEC = 2.0;
 
+    // The autopilot window replays its own state onto the buttons, so the def's
+    // light-edge announce within this window after a window-originated write is a
+    // duplicate (NVDA already reads the renamed focused button). Same time-window
+    // philosophy as MainForm's _uiSetEcho. (PR #163 review, forms finding 8.)
+    // Consulted in THREE places: HandleLightEdge's ON path and OnOffSweepTick's OFF
+    // path (the McpMode CMD/CWS fields, which self-announce from inside
+    // ProcessSimVarUpdate), and MainForm's Step-6 generic-announce gate (the Sw()
+    // fields — FD, A/T arm, disengage bar — which announce from the generic path).
+    private readonly Dictionary<string, long> _windowWriteEcho = new();
+    internal void NoteWindowWrite(string field) => _windowWriteEcho[field] = Environment.TickCount64;
+    internal bool WindowEchoActive(string field) =>
+        _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 2500;
+
     /// <summary>Flash-filtered light announce. Announces "on" once at the first lit
     /// edge; a re-light while an off is pending just cancels the pending off (the
     /// blink reads as continuously on). "off" is announced only after the light has
@@ -955,10 +968,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             // cancel the pending off so the flashing light reads as one "on".
             _pendingOff.Remove(varName);
             bool alreadyAnnounced = _announcedLit.TryGetValue(varName, out bool a) && a;
-            if (!alreadyAnnounced && !LightsTestActive && _vars.TryGetValue(varName, out var def))
+            if (!LightsTestActive)
             {
+                // State updates even when the speech is skipped by the window echo —
+                // so the window-suppressed "on" isn't re-spoken later — but NOT during
+                // a LIGHTS TEST: leaving _announcedLit=false there keeps the post-test
+                // off-sweep's wasAnnounced gate from flooding "<light>: off" for every
+                // lamp the test lit.
                 _announcedLit[varName] = true;
-                announcer.Announce($"{def.DisplayName}: {onWord}");
+                if (!alreadyAnnounced && !WindowEchoActive(varName) && _vars.TryGetValue(varName, out var def))
+                    announcer.Announce($"{def.DisplayName}: {onWord}");
             }
         }
         else
@@ -994,7 +1013,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 // This runs OUTSIDE MainForm's Step-2.5 Suppressed-wrap, so honour
                 // the Ctrl+M monitor-manager mute explicitly here.
                 bool muted = Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(key);
-                if (wasAnnounced && !muted && !LightsTestActive && _lightAnnouncer != null
+                if (wasAnnounced && !muted && !LightsTestActive && !WindowEchoActive(key) && _lightAnnouncer != null
                     && _vars.TryGetValue(key, out var def))
                 {
                     _lightAnnouncer.Announce($"{def.DisplayName}: off");
@@ -1267,7 +1286,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 hotkeyManager.ExitInputHotkeyMode();
                 if (!RequireSdk(announcer)) return true;
                 if (_autopilotWindow == null || _autopilotWindow.IsDisposed)
-                    _autopilotWindow = new Forms.IFly737.IFly737AutopilotWindow(Sdk, simConnect, announcer);
+                    _autopilotWindow = new Forms.IFly737.IFly737AutopilotWindow(this, Sdk, simConnect, announcer);
                 _autopilotWindow.ShowForm();
                 return true;
             case HotkeyAction.SetNavRadios:

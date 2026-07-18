@@ -298,6 +298,17 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Suppress the generic announce for a var the iFly autopilot window
+                // JUST wrote: the focused button's label rename is the screen-reader
+                // feedback (NVDA reads the name change), so the Step-6 announce would
+                // speak the same state twice. Time-window echo, same philosophy as
+                // _uiSetEcho; Steps 3-4 already ran, so the panel combo stays fresh.
+                if (currentAircraft is IFly737MAXDefinition iflyEchoDef &&
+                    iflyEchoDef.WindowEchoActive(e.VarName))
+                {
+                    return;
+                }
+
                 // For PMDG variables, build the description from ValueDescriptions
                 // since PMDG events don't carry description strings like SimConnect does
                 string description = e.Description;
