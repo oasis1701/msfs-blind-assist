@@ -27,7 +27,7 @@ public class IFly737CDUForm : Form
     private readonly IFlySdkClient _sdk;
     private readonly ScreenReaderAnnouncer _announcer;
 
-    private readonly Label _statusLabel;
+    private readonly TextBox _statusBox;
     private readonly ListBox _display;
     private readonly TextBox _scratchpadInput;
     private readonly ComboBox _unitSelector;
@@ -67,13 +67,15 @@ public class IFly737CDUForm : Form
 
         int y = 10;
 
-        _statusLabel = new Label
+        _statusBox = new TextBox
         {
             Text = "FMC Not Connected",
             Location = new Point(10, y),
             Size = new Size(390, 20),
-            AccessibleName = "FMC status",
-            TabStop = false,
+            AccessibleName = "C D U status",
+            ReadOnly = true,
+            TabStop = true,
+            BorderStyle = BorderStyle.FixedSingle,
         };
 
         _unitSelector = new ComboBox
@@ -173,15 +175,16 @@ public class IFly737CDUForm : Form
             TabStop = false,
         };
 
-        Controls.Add(_statusLabel);
+        Controls.Add(_statusBox);
         Controls.Add(_unitSelector);
         Controls.Add(_display);
         Controls.Add(_scratchpadInput);
         Controls.Add(_helpLabel);
 
-        // Logical tab order: display, scratchpad, unit selector, then the buttons
-        // (already added in visual order).
+        // Logical tab order: status, display, scratchpad, unit selector, then the
+        // buttons (already added in visual order).
         int tab = 0;
+        _statusBox.TabIndex = tab++;
         _display.TabIndex = tab++;
         _scratchpadInput.TabIndex = tab++;
         _unitSelector.TabIndex = tab++;
@@ -245,7 +248,7 @@ public class IFly737CDUForm : Form
         var snap = _sdk.Snapshot;
         if (snap == null || !snap.IsRunning)
         {
-            _statusLabel.Text = "iFly 737 not detected";
+            _statusBox.Text = "iFly 737 not detected";
             if (_display.Items.Count != 1 || (string)_display.Items[0] != "iFly 737 not detected.")
             {
                 _display.Items.Clear();
@@ -254,13 +257,18 @@ public class IFly737CDUForm : Form
             return;
         }
 
-        if (_statusLabel.Text != "FMC Connected")
-            _statusLabel.Text = "FMC Connected";
+        if (_statusBox.Text != "FMC Connected")
+            _statusBox.Text = "FMC Connected";
 
         int unit = CduIndex;
         string screen = snap.CduScreenText(unit);
         string annun = $"{snap.CduExecLit(unit)}|{snap.CduMsgLit(unit)}";
-        string hash = screen + annun;
+        // The color plane (grey/inverse = code 4) is the only cue for the active option
+        // on some pages — the character text alone can be unchanged while a selection
+        // moves, so it must be part of the change hash or a highlight-only change would
+        // never refresh the display.
+        string colors = CduColorPlaneText(snap, unit);
+        string hash = screen + annun + colors;
         if (hash == _lastScreenHash) return;
         _lastScreenHash = hash;
 
@@ -270,8 +278,10 @@ public class IFly737CDUForm : Form
         var lines = new List<string> { title.Length > 0 ? title : "(no title)" };
         for (int pair = 0; pair < 6; pair++)
         {
-            string label = snap.CduLine(unit, 1 + pair * 2).TrimEnd();
-            string data = snap.CduLine(unit, 2 + pair * 2).TrimEnd();
+            int labelRow = 1 + pair * 2;
+            int dataRow = 2 + pair * 2;
+            string label = MarkSelectedOption(snap, unit, labelRow, snap.CduLine(unit, labelRow).TrimEnd());
+            string data = MarkSelectedOption(snap, unit, dataRow, snap.CduLine(unit, dataRow).TrimEnd());
             if (label.Trim().Length > 0)
                 lines.Add("   " + label);
             lines.Add($"{pair + 1}: {data}");
@@ -321,7 +331,7 @@ public class IFly737CDUForm : Form
             // read back on the first poll after the suppression window expires.
             if (scratchpad != _lastScratchpad && DateTime.UtcNow >= _suppressScratchpadUntil)
             {
-                _announcer.Announce(scratchpad.Length > 0 ? scratchpad : "Scratchpad cleared");
+                _announcer.Announce(scratchpad.Length > 0 ? scratchpad : "Cleared");
                 _lastScratchpad = scratchpad;
             }
 
@@ -341,6 +351,57 @@ public class IFly737CDUForm : Form
         _execLit = snap.CduExecLit(unit);
         _msgLit = snap.CduMsgLit(unit);
         _firstRender = false;
+    }
+
+    // ------------------------------------------------------------------
+    // Color-based selection markers
+    // ------------------------------------------------------------------
+
+    /// <summary>Concatenates the raw color byte of every cell on the given unit's
+    /// screen into one string, purely so <see cref="RefreshDisplay"/> can fold it
+    /// into the change hash — a highlight-only change (e.g. a toggled selection)
+    /// can leave every character on the screen identical.</summary>
+    internal static string CduColorPlaneText(IFlySdkSnapshot snap, int unit)
+    {
+        var sb = new System.Text.StringBuilder(IFlySdkSnapshot.CduRows * IFlySdkSnapshot.CduCols);
+        for (int row = 0; row < IFlySdkSnapshot.CduRows; row++)
+            for (int col = 0; col < IFlySdkSnapshot.CduCols; col++)
+                sb.Append((char)snap.CduColor(unit, row, col));
+        return sb.ToString();
+    }
+
+    /// <summary>Marks the active option on a CDU row using the grey/inverse
+    /// background cue (CduColor code 4 — see IFlySdkSnapshot's class comment).
+    /// Unlike the PMDG 737 form (PMDG737CDUForm.MarkSelectedOption), where color is
+    /// only known per adjacent-word pair around a "&lt;&gt;" toggle, the iFly SDK
+    /// exposes color PER CELL, so this scans the row for every contiguous run of
+    /// grey-background cells and marks each one — but uses the exact same marker
+    /// convention (prefix the selected text with "X ", leave everything else
+    /// untouched) so both 737 CDUs sound identical. Whitespace-only runs (a
+    /// highlighted but empty field) are never marked.</summary>
+    internal static string MarkSelectedOption(IFlySdkSnapshot snap, int unit, int row, string text)
+    {
+        var sb = new System.Text.StringBuilder(text.Length + 4);
+        int i = 0;
+        while (i < text.Length)
+        {
+            if (snap.CduColor(unit, row, i) == 4)
+            {
+                int start = i;
+                while (i < text.Length && snap.CduColor(unit, row, i) == 4)
+                    i++;
+                string run = text.Substring(start, i - start);
+                if (!string.IsNullOrWhiteSpace(run))
+                    sb.Append("X ");
+                sb.Append(run);
+            }
+            else
+            {
+                sb.Append(text[i]);
+                i++;
+            }
+        }
+        return sb.ToString();
     }
 
     // ------------------------------------------------------------------
