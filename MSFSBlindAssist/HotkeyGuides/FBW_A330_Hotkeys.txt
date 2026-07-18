@@ -1,0 +1,318 @@
+HEADWIND A330-900neo HOTKEY REFERENCE
+
+(The Headwind A330neo is a FlyByWire A32NX fork; its controls, FCU, MCDU and
+flyPad EFB behave like the FlyByWire A320 reference below.)
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+FCU Controls:
+  Shift+H    Read FCU Heading
+  Shift+S    Read FCU Speed (knots or Mach)
+  Shift+A    Read FCU Altitude
+  Shift+V    Read FCU V/S or FPA
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+  Ctrl+W     Read ND active (TO) waypoint: name, distance, bearing
+
+Characteristic Speeds:
+  Shift+1    Read Green Dot Speed
+  Shift+2    Read S Speed (slat retraction)
+  Shift+3    Read F Speed (flap retraction)
+  Shift+4    Read VLS (minimum selectable speed)
+  Shift+5    Read VS (stall speed)
+  Shift+6    Read VFE Next (next flap limit)
+
+Fuel:
+  F          Read Fuel On Board (pounds)
+  Shift+F    Read Fuel On Board (kilograms)
+
+Weight:
+  W          Read Gross Weight (pounds) + center of gravity
+  Shift+W    Read Gross Weight (kilograms) + center of gravity
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read Altimeter Setting (hPa and inHg, or Standard)
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Approach:
+  Ctrl+0     Read Approach Capability (CAT rating)
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position. Spoken as
+             "HH:MM <time-zone name>" (e.g. "16:38 Eastern Daylight Time"
+             near KJFK), or "HH:MM:SS <time-zone name>" (e.g.
+             "20:30:45 British Summer Time") if "Include seconds in
+             time announcements" is ticked in Announcement Settings.
+             The time-zone name is looked up from the aircraft's
+             geographic position and is DST-aware.
+  Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
+             or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
+
+Transponder:
+  X          Read Squawk Code
+
+Distance:
+  D          Read Distance to Destination (from the FMS)
+  Shift+D    Read Distance + time to Top of Descent (once computed in flight,
+             e.g. "145 miles to top of descent: 00:16:58")
+
+Location:
+  C          Read Nearest City
+
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
+             Fly mode. Enables the same single-letter quick-access hotkeys
+             Hand Fly mode does, plus F for target VS.
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  (Open the form with Input mode > Shift+Y)
+
+Waypoint Tracking (use Fix Track window or EFB route viewer to add):
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Displays:
+  Alt+E      Open E/WD (Engine/Warning Display) window — engine row, memos and
+             active warnings. Read with the arrow keys; auto-refreshes, F5
+             refreshes now, Escape closes.
+  Alt+D      Describe outside scene (AI)
+  Note: the PFD, ND, ISIS and System Display pages have NO hotkey window — read
+        them from the Panels list (Ctrl+2): PFD / ND / Status under the Displays
+        section, ISIS under Instrument, and the SD system pages from the System
+        Display panel combo.
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
+             uses richer data — surface wind+gust, ceiling, QNH, turbulence,
+             METAR-decoded precipitation — when running. Falls back to MSFS
+             SimVars when AS isn't running. Visibility shown in both km and
+             statute miles either way.)
+  Alt+G      Announce nearest ground traffic (up to 3 aircraft on ground with
+             direction and distance; auto-alerts also fire at 500/250/100 ft
+             zone transitions while taxiing)
+
+Displays and Windows:
+  Ctrl+M     FlyByWire A320 Monitor Manager
+  Ctrl+E     Toggle ECAM E/WD auto call-outs
+  Shift+E    Route viewer, procedure planner and airport lookup
+  Shift+L    Location Info
+  Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
+  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
+  Shift+B    SimBrief Briefing
+  Shift+C    Show Checklist (static text, cold-and-dark to shutdown)
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys (same single-letter set as Hand Fly mode, plus F):
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+  F          Read Target VS
+
+Note: both modes share the quick-access hotkeys. Activate Hand Fly mode,
+Visual Guidance mode, or both — the single-letter keys H, V, Q, S, D, B,
+P, A work in either. F is Visual-Guidance-specific (announces "Visual
+guidance not active" if pressed when VG is off).
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
+             In the Access GSX window, press F5 to open the GSX menu, 1-9/0/A-E
+             to choose menu options, C to open GSX Settings, and Escape to hide
+             the window. If multiple GSX services are active, use the Active
+             services combo to choose which service drives tooltip announcements.
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+Autopilot:
+  Shift+A    Toggle Autopilot 1
+  Ctrl+O     Toggle Autopilot 2
+  Shift+P    Toggle Approach Mode
+  Ctrl+J     Toggle Autothrust (A/THR arm / disconnect)
+  Ctrl+L     Toggle Localizer (LOC arm)
+
+FCU Push/Pull:
+  Shift+1    Push Heading Knob
+  Ctrl+1     Pull Heading Knob
+  Shift+2    Push Altitude Knob
+  Ctrl+2     Pull Altitude Knob
+  Shift+3    Push Speed Knob
+  Ctrl+3     Pull Speed Knob
+  Shift+4    Push VS Knob
+  Ctrl+4     Pull VS Knob
+
+FCU Set Values (each opens a window: value entry, knob Push/Pull, mode toggles, spoken readout):
+  Ctrl+S     Speed window (set value; Push/Pull; SPD/MACH toggle)
+  Ctrl+H     Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
+  Ctrl+A     Altitude window (set value; Push/Pull; 100/1000 increment)
+  Ctrl+V     Vertical Speed / FPA window (set value; Push/Pull)
+  Ctrl+P     Autopilot panel (AP1/AP2; A/THR engage + disconnect; APPR/LOC/EXPED; Flight Director status)
+  Ctrl+B     Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg)
+
+Windows:
+  Shift+M    Open MCDU window
+  Shift+T    Open flyPad EFB window
+  Ctrl+Shift+D  Open DCDU window (CPDLC — read uplinks and answer WILCO /
+             STANDBY / UNABLE. Each soft key reads as its key NUMBER at the
+             start of the line, with an arrow marking the side: "1 <STBY" is
+             LEFT key 1, "2          RECALL>" is RIGHT key 2 (right-aligned,
+             arrow after the label). The keys use the same chords as the MCDU
+             line-select keys, including the alternate-keys setting:
+             Ctrl+1/Ctrl+2 = left keys, Alt+1/Alt+2 = right keys (or F1/F2
+             and F7/F8 in alternate mode).
+             Answering is a TWO-STEP flow, like the real unit: the first
+             press arms the answer (e.g. Alt+2 = WILCO) and the keys change
+             to CANCEL / SEND — the second Alt+2 actually transmits. After
+             sending, right 2 becomes CLOSE to dismiss the message.
+             PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
+             scroll within a long message (Ctrl+PageDown = next page). NOTE:
+             on a long multi-page uplink the answer keys stay inactive until
+             you have paged to the END of the message — the window says
+             "not available yet" if you try early. F5 = refresh, Escape =
+             close.
+             Needs a datalink connection: set the ACARS provider (Hoppie /
+             SayIntentions / BeyondATC) in the flyPad Settings, then log on
+             to ATC from the MCDU ATSU pages — the NOTIFY key needs the ATC
+             flight number, the ATC center, AND a FROM/TO on the INIT page.)
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner (pick a runway exit taxiway before
+             touchdown; guidance auto-starts when you land — reuses the ILS
+             destination runway if one is set; announces headwind/tailwind on
+             runway selection so you can pick an exit that matches the rollout)
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
+
+General:
+  Escape     Exit active hotkey mode
+
+MCDU Window (open with [ then Shift+M):
+  This is the A32NX MCDU (Captain side — the SimBridge remote protocol does not
+  expose the First Officer MCDU separately).
+
+Navigation:
+  Up/Down        Read the screen line by line
+  PageUp         Scroll up (flight plan, departure/arrival runways)
+  PageDown       Scroll down
+  Backspace      Clear scratchpad
+
+Line Select Keys (default):
+  Ctrl+1-6       Left LSK 1-6
+  Alt+1-6        Right LSK 1-6
+
+Alternate line select keys (enable via Settings > FMC Settings):
+  F1-F6          Left LSK 1-6
+  F7-F12         Right LSK 1-6
+
+Text Input:
+  Alt+S          Focus scratchpad input field
+  Enter          Submit typed text to MCDU scratchpad
+  Alt+Home       Return focus to display output
+
+MCDU Page Buttons:
+  Alt+I          INIT
+  Alt+D          DIR
+  Alt+P          PROG
+  Alt+F          F-PLN
+  Alt+E          PERF
+  Alt+R          RAD NAV
+  Alt+Shift+F    SEC F-PLN
+  Alt+U          FUEL PRED
+  Alt+K          ATC COM
+  Alt+M          MCDU MENU
+  Alt+A          AIRPORT
+  Alt+T          DATA
+  Alt+O          OVFLY
+  Alt+C          CLR
+
+Arrow Navigation:
+  Left           Previous page (of a multi-page form, e.g. PERF 1/2) — display list focused
+  Right          Next page — display list focused
+  Alt+Left       Previous page (works from anywhere in the window)
+  Alt+Right      Next page (works from anywhere in the window)
+  Alt+Up         Scroll up
+  Alt+Down       Scroll down
+
+Automatic Announcements:
+  - Thrust-lever detents reached (Idle / Climb / Flex MCT / TOGA / Reverse)
+  - Flight Mode Annunciator (FMA) — vertical, lateral and autothrust modes
+  - ECAM warnings, cautions and memos (toggle with Ctrl+E)
+  - Master Warning / Master Caution
+  - Altimeter setting, approach minimums, flaps and gear
+  - Ground speed callouts while on the ground
+  Mute any of these from the Monitor Manager (Ctrl+M).

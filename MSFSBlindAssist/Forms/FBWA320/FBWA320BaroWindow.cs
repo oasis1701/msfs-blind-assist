@@ -84,7 +84,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
         try
         {
             // 0=STD, 1=hPa, 2=inHg; while STD the mode carries no unit info — keep the last unit.
-            double mode = simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE") ?? 1;
+            double mode = aircraft.ReadEfisBaroDisplayMode(simConnect);
             bool std = mode < 0.5;
             modeCombo.SelectedIndex = std ? 1 : 0;
             if (!std) unitCombo.SelectedIndex = mode >= 1.5 ? 1 : 0;
@@ -107,10 +107,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
         if (suppressUiEvents) return;
         _lastUserChangeUtc = DateTime.UtcNow;
         bool std = modeCombo.SelectedIndex == 1;
-        // PULL = STD, PUSH = QNH — the cockpit knob events, both sides.
-        string action = std ? "PULL" : "PUSH";
-        simConnect.SendEvent($"A32NX.FCU_EFIS_L_BARO_{action}", 0);
-        simConnect.SendEvent($"A32NX.FCU_EFIS_R_BARO_{action}", 0);
+        aircraft.SetEfisBaroStd(std, simConnect);   // both sides; airframe-specific mechanism
         // No announcement: the screen reader already announces the combo change.
         UpdateControlState();
     }
@@ -120,9 +117,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
         if (suppressUiEvents) return;
         _lastUserChangeUtc = DateTime.UtcNow;
         bool inHg = unitCombo.SelectedIndex == 1;
-        // Dev-FCU live unit input (read every frame by the FCU model).
-        simConnect.ExecuteCalculatorCode($"{(inHg ? 1 : 0)} (>L:A32NX_FCU_EFIS_L_BARO_IS_INHG)");
-        simConnect.ExecuteCalculatorCode($"{(inHg ? 1 : 0)} (>L:A32NX_FCU_EFIS_R_BARO_IS_INHG)");
+        aircraft.SetEfisBaroUnitInHg(inHg, simConnect);   // both sides; airframe-specific mechanism
         // No announcement: the screen reader already announces the combo change.
     }
 
@@ -145,9 +140,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
             valueTextBox.SelectAll();
             return;
         }
-        uint encoded = (uint)Math.Round(hpa * 16);
-        simConnect.SendEvent("A32NX.FCU_EFIS_L_BARO_SET", encoded);
-        simConnect.SendEvent("A32NX.FCU_EFIS_R_BARO_SET", encoded);
+        aircraft.SetEfisBaroPressureHpa(hpa, simConnect);   // both sides; airframe-specific mechanism
         announcer.AnnounceImmediate(inHg ? $"Altimeter set to {v:F2} inches, both sides" : $"Altimeter set to {hpa:F0} hectopascals, both sides");
         valueTextBox.SelectAll();
     }

@@ -142,6 +142,13 @@ public partial class MainForm
         bool hs787 = currentAircraft!.AircraftCode == "HS_787";
         bool hs787Muted = hs787 &&
             Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName);
+        // Same silent-no-op class for the A32NX family: the A320 (EFIS baro) and the
+        // Headwind A330 (stock-Kohlsman altimeter) announce those vars from INSIDE
+        // ProcessSimVarUpdate, which returns true and exits before the generic
+        // A32NXDisabledMonitorVariables gate below — so a Ctrl+M un-tick never muted
+        // them. Suppress right here, exactly like the HS787.
+        bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
+            Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -155,7 +162,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -257,8 +264,10 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
-                // Check if disabled in the A32NX Monitor Manager.
-                if (currentAircraft.AircraftCode == "A320" &&
+                // Check if disabled in the A32NX Monitor Manager. The Headwind A330
+                // is an A32NX fork that reuses the same monitor-manager form and the
+                // same A32NXDisabledMonitorVariables setting.
+                if ((currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
                     Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
@@ -1477,8 +1486,13 @@ public partial class MainForm
     {
         string js = LoadA32NXFlightInfoJs();
         if (string.IsNullOrEmpty(js)) { announcer.AnnounceImmediate("Flight info unavailable."); return; }
+        // The Headwind A330 hosts the MCDU in the "A339X_MCDU" Coherent view; the A32NX
+        // uses "A32NX_MCDU". The flight-info JS queries both <a32nx-mcdu>/<a339x-mcdu>
+        // elements, so only the view needle changes per airframe.
+        string mcduView = (currentAircraft as Aircraft.FlyByWireA320Definition)?.FlightInfoMcduView
+            ?? "A32NX_MCDU";
         string raw = "";
-        try { raw = await SimConnect.CoherentEvalClient.EvalAsync("A32NX_MCDU", js); }
+        try { raw = await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js); }
         catch (Exception ex) { Log.Debug("MainForm", $"{ex.Message}"); }
         AnnounceFlightInfoJson(raw, tod);
     }

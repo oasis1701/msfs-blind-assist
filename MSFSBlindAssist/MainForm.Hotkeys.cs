@@ -216,8 +216,11 @@ public partial class MainForm
                 {
                     ShowHS787FMCDialog();
                 }
-                else if (currentAircraft?.AircraftCode == "A320")
+                else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
+                    // The Headwind A330 MCDU broadcasts over the same FBW SimBridge
+                    // relay (ws://localhost:8380/interfaces/v1/mcdu) the A32NX uses,
+                    // so the A320 MCDU service/form serve it unchanged.
                     ShowFlyByWireMCDUDialog();
                 }
                 else
@@ -238,11 +241,11 @@ public partial class MainForm
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
                 }
-                else if (currentAircraft?.AircraftCode == "A320")
+                else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
-                    // Unified flyPad: the A320 uses the SAME generic WebView2 form +
-                    // CoherentEFBClient as the A380 (both drive the one shared
-                    // coherent-flypad-agent.js over the "- EFB" Coherent view).
+                    // Unified flyPad: the A320 (and the Headwind A330 fork) use the SAME
+                    // generic WebView2 form + CoherentEFBClient as the A380 (all drive the
+                    // one shared coherent-flypad-agent.js over the "- EFB" Coherent view).
                     ShowFbwEfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "FENIX_A320CEO")
@@ -267,13 +270,18 @@ public partial class MainForm
                 }
                 break;
             case HotkeyAction.ShowDCDU:
-                if (currentAircraft?.AircraftCode == "A320")
+                if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
+                    // The Headwind A330 fork shares the whole A32NX DCDU surface: the
+                    // CoherentEvalClient "DCDU" title needle substring-matches its
+                    // A339X_DCDU view, the scrape targets the svg.dcdu markup (CSS
+                    // class, not element name), and the soft keys fire the fork-shared
+                    // H:A32NX_DCDU_* events.
                     ShowA32NXDcduDialog();
                 }
                 else
                 {
-                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX.");
+                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX and the Headwind A330.");
                 }
                 break;
             case HotkeyAction.ShowOANS:

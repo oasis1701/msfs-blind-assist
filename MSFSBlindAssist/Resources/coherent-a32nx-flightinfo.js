@@ -13,7 +13,10 @@
 //   flightPhase: A32NX_FMGC_FLIGHT_PHASE (>=4 = descent/approach/... = past TOD)
 (function () {
   try {
-    var el = document.querySelector("a32nx-mcdu");
+    // The A32NX hosts <a32nx-mcdu>; the Headwind A330 fork hosts <a339x-mcdu> in its
+    // own A339X_MCDU Coherent view. The FMS shape (legacyFms.guidanceController) is the
+    // same fork, so we resolve whichever element is present in the evaluated view.
+    var el = document.querySelector("a32nx-mcdu") || document.querySelector("a339x-mcdu");
     var fms = el && el.fsInstrument && el.fsInstrument.legacyFms;
     var gc = fms && fms.guidanceController;
     if (!gc) return JSON.stringify({ ok: false, error: "FMS not ready" });
@@ -23,6 +26,41 @@
     var map = gc.alongTrackDistancesToDestination;
     var dtd = (map && map.get) ? map.get(0) : null;   // 0 = active plan
     if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
+
+    // For the distance-to-go fallback (see the pseudo-waypoint loop): the Headwind
+    // A330 fork's pseudo-waypoint flightPlanInfo has NO distanceFromAircraft field
+    // (the A32NX it was copied from did). We reconstruct it on the SAME scale
+    // distToDest uses — leg cumulativeDistanceWithTransitions — so the two never mix
+    // scales (pwp.distanceFromStart is a separate VNAV-profile axis and must NOT be
+    // used here: live-verified it exceeds the destination leg's cumulative distance).
+    //   pwpAlong = legs[alongLegIndex].calculated.cumulativeDistanceWithTransitions
+    //             - pwp.distanceFromLegTermination
+    //   toGo     = distToDest - (destCum - pwpAlong)
+    // Live-verified on the A330 in cruise: computed 591.9 NM vs 586.5 NM implied by
+    // secondsFromPresent x ground speed (the ~1% gap is wind/descent-speed in the
+    // time estimate; the lateral toGo is the accurate value).
+    var _legs = null, _destCum = null;
+    try {
+      var _plan = gc.flightPlanService && gc.flightPlanService.active;
+      if (_plan) {
+        _legs = _plan.allLegs || _plan.cachedAllLegs || null;
+        var _di = (typeof _plan.destinationLegIndex === "number") ? _plan.destinationLegIndex : -1;
+        if (_legs && _di >= 0 && _legs[_di] && _legs[_di].calculated) {
+          var _dc = _legs[_di].calculated.cumulativeDistanceWithTransitions;
+          if (typeof _dc === "number" && isFinite(_dc)) _destCum = _dc;
+        }
+      }
+    } catch (e) {}
+    function pwpToGo(pwp) {
+      if (info.distToDest == null || _destCum == null || !_legs) return null;
+      var ali = pwp.alongLegIndex, dft = pwp.distanceFromLegTermination;
+      if (typeof ali !== "number" || typeof dft !== "number") return null;
+      var leg = _legs[ali];
+      var lc = (leg && leg.calculated) ? leg.calculated.cumulativeDistanceWithTransitions : null;
+      if (typeof lc !== "number" || !isFinite(lc)) return null;
+      var toGo = info.distToDest - (_destCum - (lc - dft));
+      return (isFinite(toGo) && toGo >= 0) ? toGo : null;
+    }
 
     // Time-to-destination (profile-aware): the same vertical-profile prediction the
     // MCDU's DEST UTC comes from. Live-verified on the A32NX:
@@ -52,7 +90,9 @@
       if (!isTD && !isTC) continue;   // ignore (DECEL) etc.
       var fpi = pw[p].flightPlanInfo;
       var secs = (fpi && typeof fpi.secondsFromPresent === "number" && isFinite(fpi.secondsFromPresent)) ? fpi.secondsFromPresent : null;
-      var dGo = (fpi && typeof fpi.distanceFromAircraft === "number" && isFinite(fpi.distanceFromAircraft)) ? fpi.distanceFromAircraft : null;
+      // distanceFromAircraft (A32NX) FIRST; fall back to the leg-cumulative reconstruction
+      // (A330 fork, where distanceFromAircraft is absent).
+      var dGo = (fpi && typeof fpi.distanceFromAircraft === "number" && isFinite(fpi.distanceFromAircraft)) ? fpi.distanceFromAircraft : pwpToGo(pw[p]);
       if (isTD) { if (info.distToTD == null) { info.distToTD = dGo; info.timeToTD = secs; } }
       else { if (info.distToTC == null) { info.distToTC = dGo; info.timeToTC = secs; } }
     }
