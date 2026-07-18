@@ -33,7 +33,8 @@ public partial class IFly737MonitorManagerForm : Form
         // Build the manageable list: every announced continuous var, by display name.
         foreach (var kv in variables)
         {
-            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced) continue;
+            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced
+                || kv.Value.ExcludeFromMonitorManager) continue;
             _keys.Add(kv.Key);
         }
         _keys.Sort((a, b) =>

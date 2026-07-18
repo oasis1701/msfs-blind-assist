@@ -319,12 +319,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         const string P = "MCP";
 
         // Value windows (read-only; set via Ctrl+S/H/A/V dialogs or the _SET fields below).
-        Disp(P, "SYN_MCP_SPEED", "Speed Window");
-        Disp(P, "SYN_MCP_HEADING", "Heading Window");
-        Disp(P, "SYN_MCP_ALTITUDE", "Altitude Window");
-        Disp(P, "SYN_MCP_VS", "Vertical Speed Window");
-        Disp(P, "SYN_MCP_COURSE_1", "Course 1 Window");
-        Disp(P, "SYN_MCP_COURSE_2", "Course 2 Window");
+        Disp(P, "SYN_MCP_SPEED", "Speed Window", announced: true);
+        Disp(P, "SYN_MCP_HEADING", "Heading Window", announced: true);
+        Disp(P, "SYN_MCP_ALTITUDE", "Altitude Window", announced: true);
+        Disp(P, "SYN_MCP_VS", "Vertical Speed Window", announced: true);
+        Disp(P, "SYN_MCP_COURSE_1", "Course 1 Window", announced: true);
+        Disp(P, "SYN_MCP_COURSE_2", "Course 2 Window", announced: true);
 
         // Direct-entry fields.
         NumSet(P, "MCP_COURSE_1_SET", "Set Course 1", IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_1_SET, 0, 359);
@@ -438,7 +438,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         const string P = "Transponder";
 
-        Disp(P, "SYN_XPDR_CODE", "Transponder Code Window");
+        Disp(P, "SYN_XPDR_CODE", "Transponder Code Window", announced: true);
         NumSet(P, "XPDR_CODE_SET", "Set Squawk Code", IFlyKeyCommand.FMS_XPNDR_KEYPAD_0 /* handled specially */, 0, 7777);
 
         Sw(P, "Transponder_Mode_Switch_Status", "Transponder Mode",

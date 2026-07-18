@@ -149,6 +149,13 @@ public partial class MainForm
         // them. Suppress right here, exactly like the HS787.
         bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
             Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The iFly def has the same self-announcing shape as the HS787 (annunciators,
+        // MCP mode lights, warning push lights, ALTIMETER_SETTING and the SYN_* MCP
+        // windows all announce from INSIDE ProcessSimVarUpdate) — same wrap, same
+        // reason. The def's off-sweep timer still checks the list itself because it
+        // runs outside this method entirely.
+        bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+            Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -162,7 +169,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -280,11 +287,11 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
-                // Check if disabled in the iFly 737 Monitor Manager. The def honours this
-                // list itself on its light-edge path (which announces from inside
-                // ProcessSimVarUpdate and never reaches here); every other iFly var —
-                // i.e. every switch/selector combo — announces on THIS path and needs the
-                // gate here, or Ctrl+M silently does nothing for it.
+                // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
+                // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
+                // iflyMuted wrap above; the deferred off-sweep in the def checks the list
+                // itself. This gate covers the plain switch/selector combos that announce
+                // on the generic path.
                 if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
                     Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
