@@ -98,6 +98,11 @@ public sealed class IFlySdkSnapshot
         _ => ' ',
     };
 
+    // Transponder code + fuel-gauge digit cells use a DIFFERENT map from the MCP
+    // windows: the generated header documents 10 = blank for them (the MCP map's
+    // 10 = 'A' applies only to the SPD symbol cell). See PR #163 review finding M4.
+    private static char XpdrFuelDigit(byte v) => v <= 9 ? (char)('0' + v) : ' ';
+
     /// <summary>MCP IAS/MACH window, e.g. "250", ".78", or "" when blanked (FMC speed).</summary>
     public string McpSpeedText()
     {
@@ -193,15 +198,15 @@ public sealed class IFlySdkSnapshot
 
     /// <summary>Transponder code window, e.g. "2000"; "" when blanked.</summary>
     public string TransponderCodeText() =>
-        ($"{Digit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1000_Status))}{Digit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_100_Status))}" +
-         $"{Digit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_10_Status))}{Digit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1_Status))}").Trim();
+        ($"{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1000_Status))}{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_100_Status))}" +
+         $"{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_10_Status))}{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1_Status))}").Trim();
 
     /// <summary>Fuel quantity indicator (tank: 0 = left, 1 = right, 2 = center), digits only.</summary>
     public string FuelQuantityText(int tank)
     {
         var sb = new StringBuilder(5);
         int b = IFlySdkOffsets.Fuel_Quantity_Indicator_Status + tank * IFlySdkOffsets.Fuel_Quantity_Indicator_Status_Stride0;
-        for (int i = 0; i < 5; i++) sb.Append(Digit(ByteAt(b + i)));
+        for (int i = 0; i < 5; i++) sb.Append(XpdrFuelDigit(ByteAt(b + i)));
         return sb.ToString().Trim();
     }
 
