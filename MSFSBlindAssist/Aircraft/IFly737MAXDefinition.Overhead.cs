@@ -324,6 +324,11 @@ public partial class IFly737MAXDefinition
                 [5] = "On, inoperative light bright",
             }, map: v => v >= 3 ? 1 : 0);
 
+        // Readback legitimately differs from the picked value (inoperative-light bit
+        // folded into the same 0-5 field) — suppress the post-set echo on the time
+        // window alone. (PR #163, minor 15.)
+        _vars["High_Altitude_Landing_Switch_Status"].UiEchoMatchesAnyValue = true;
+
         // Annunciators.
         Annun(P, "AUTO_FAIL_Light_Status", "Auto Fail light");
         Annun(P, "OFF_SCHED_DESCENT_Light_Status", "Off Schedule Descent light");
@@ -460,6 +465,12 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.ENGAPU_EEC_1_SET, eecStates, map: v => v >= 6 ? 1 : 0);
         SwD(P, "EEC_Switch_Status_1", "Engine 2 Electronic Engine Control",
             IFlyKeyCommand.ENGAPU_EEC_2_SET, eecStates, map: v => v >= 6 ? 1 : 0);
+
+        // Readback legitimately differs from the picked value (guard/light bit folded
+        // into the same 0-11 field) — suppress the post-set echo on the time window
+        // alone. (PR #163, minor 15.)
+        foreach (var k in new[] { "EEC_Switch_Status_0", "EEC_Switch_Status_1" })
+            _vars[k].UiEchoMatchesAnyValue = true;
 
         // APU switch: 0:OFF 1:ON 2:START (SET Value2 matches). START is spring-loaded —
         // it snaps back to ON once released, so the combo will re-read ON after a start.

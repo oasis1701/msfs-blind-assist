@@ -440,6 +440,16 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FIRE_CARGO_FIRE_DISCH_SET, dischStates,
             map: v => v >= 6 ? 1 : 0, value3: 1);
 
+        // Readback legitimately differs from the picked value (guard/arm-light bit
+        // folded into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163, minor 15.)
+        foreach (var k in new[]
+        {
+            "FWD_Cargo_FIRE_Switch_Status", "AFT_Cargo_FIRE_Switch_Status",
+            "CARGO_FIRE_Discharge_Switch_Status",
+        })
+            _vars[k].UiEchoMatchesAnyValue = true;
+
         Btn(P, "BTN_CARGO_FIRE_TEST", "Cargo Fire Test", IFlyKeyCommand.FIRE_CARGO_FIRE_TEST);
 
         // DET SELECT 1 = FWD loop, 2 = AFT loop (FWD/AFT per the command docs).
@@ -516,6 +526,12 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.ENGAPU_ENG_1_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
         SwD(P, "Engine_Start_Lever_Status_1", "Engine 2 Start Lever",
             IFlyKeyCommand.ENGAPU_ENG_2_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
+
+        // Readback legitimately differs from the picked value (fire-light bit folded
+        // into the same 0-5 field) — suppress the post-set echo on the time window
+        // alone. (PR #163, minor 15.)
+        foreach (var k in new[] { "Engine_Start_Lever_Status_0", "Engine_Start_Lever_Status_1" })
+            _vars[k].UiEchoMatchesAnyValue = true;
 
         // FLTCTRL_FLAP_SET Value2 0-8 = lever detents UP..40 — matches FLAP_Status.
         Sw(P, "FLAP_Status", "Flap Lever",

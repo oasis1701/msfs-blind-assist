@@ -326,9 +326,13 @@ public partial class MainForm
                 // Suppress the duplicate echo of a value the user JUST set via the UI (the
                 // screen reader already spoke the combo). Update the baseline silently so a
                 // later change to this var from any OTHER source still announces. Consumed
-                // once; only a value matching what the user set within the window is dropped.
+                // once; only a value matching what the user set within the window is dropped —
+                // UNLESS the def opts into UiEchoMatchesAnyValue (composite switch+light combos
+                // whose readback legitimately lands on a sibling encoding of the picked value,
+                // e.g. a guard bit or arm light folded into the same field), in which case the
+                // time window alone is enough (PR #163, minor 15).
                 if (_uiSetEcho.TryGetValue(e.VarName, out var echo)
-                    && Math.Abs(echo.value - e.Value) < 0.001
+                    && (Math.Abs(echo.value - e.Value) < 0.001 || varDef.UiEchoMatchesAnyValue)
                     && Environment.TickCount64 - echo.tick < UiSetEchoSuppressMs)
                 {
                     _uiSetEcho.Remove(e.VarName);
