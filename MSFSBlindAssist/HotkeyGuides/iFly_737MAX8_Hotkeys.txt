@@ -147,11 +147,13 @@ FMC / CDU (Shift+M):
 
 EFB Tablet (Shift+T):
   Opens the iFly SP1 EFB (the iPad-style tablet) in an embedded browser.
-  The EFB is served by iFly on port 8084 by default — the port field at the
-  top of the window must match the EFB port setting in iFly Manager.
-  The EFB includes Performance, Navigraph/SimBrief, Payload and Balance,
-  Ground Services (including pushback), Doors, Failures, Cabin Voice and
-  Settings. F5 reloads the page.
+  The page loads automatically — there is no port field or Connect button.
+  If the EFB can't be reached (simulator not running, aircraft still
+  loading, or the iFly EFB process not started), an accessible status
+  message explains why and a Retry button is focused; press it once the
+  EFB is ready. The EFB includes Performance, Navigraph/SimBrief, Payload
+  and Balance, Ground Services (including pushback), Doors, Failures,
+  Cabin Voice and Settings. F5 reloads the page.
 
 Transponder:
   The Transponder panel (Pedestal section) has a Set Squawk Code field —
@@ -167,6 +169,17 @@ Radios:
   Standby Frequency field each (type a VOR/ILS frequency like 110.90, or a
   five digit GLS channel — it is keyed on the panel keypad and read back),
   plus Frequency Transfer, Test and Mode Up/Down buttons.
+  The Radios panel also carries the two ADF panels (ADF 1 / ADF 2): a Set
+  Frequency field (190.0 to 1750.0 kHz, stepped on the panel rings and read
+  back), Mode (ADF/ANT/Off), a shared Tone switch and Test buttons. There
+  is no Transfer button for ADF — the frequency is tuned live.
+
+  The Audio Control panel (Pedestal section) has one section per unit —
+  Captain, First Officer, Overhead — each with a Mic Selector button and
+  light per radio source (VHF 1-3, HF 1-2, Interphone, Cabin, PA, SATCOM
+  1-2) plus a receiver enable combo and a receiver volume combo (0 Min to
+  6 Max) for every source the aircraft can listen to, including NAV, ADF,
+  Marker and Speaker.
 
 Notes:
   - Fuel and payload are set from the EFB Payload and Balance app (Shift+T).

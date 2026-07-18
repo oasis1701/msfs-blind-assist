@@ -124,7 +124,7 @@ public partial class IFly737MAXDefinition
     {
         const string P = "Doors";
 
-        // Thirteen door/exit annunciator lights (SDK_Defines.h offsets 33-46), all
+        // Fourteen door/exit annunciator lights (SDK_Defines.h offsets 33-46), all
         // sharing the standard 0 off / 1 dim / 2 bright encoding. Announce-only lamps
         // (PR #163 R2, user opted in) — no write command is registered for any of
         // them; their GENERAL_LIGHT_* commands are per-door lamp-test PRESS buttons,
