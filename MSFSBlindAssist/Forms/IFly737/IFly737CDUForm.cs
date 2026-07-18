@@ -426,13 +426,24 @@ public class IFly737CDUForm : Form
         _ => null,
     };
 
-    /// <summary>CLR when the live scratchpad has content, DEL when it's empty
-    /// (DEL puts "DELETE" in the scratchpad for field deletion) — PMDG form parity.</summary>
+    /// <summary>Wipes the WHOLE scratchpad when it has content, or arms field
+    /// deletion (DEL puts "DELETE" in the scratchpad) when it's empty. The iFly
+    /// CLR key deletes ONE character (like the real FMC), so a full wipe queues
+    /// one CLR per visible character — a message is cleared by the first press
+    /// and any surplus presses land on an empty scratchpad as harmless no-ops.</summary>
     private void ClearOrDelete()
     {
         string current = _sdk.Snapshot?.CduLine(CduIndex, 13).Trim() ?? "";
-        _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(700);
-        SendKey(current.Length > 0 ? "CLR" : "DEL");
+        if (current.Length == 0)
+        {
+            _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(700);
+            SendKey("DEL");
+            return;
+        }
+        for (int i = 0; i < current.Length; i++)
+            SendKey("CLR");
+        // Hold the per-poll announce until the whole CLR burst has been keyed.
+        _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(current.Length * KeyPumpSpacingMs + 500);
     }
 
     private void Display_KeyPress(object? sender, KeyPressEventArgs e)
@@ -469,12 +480,7 @@ public class IFly737CDUForm : Form
             // poll after that reads the final scratchpad content back.
             _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(queued * KeyPumpSpacingMs + 400);
         }
-        else if (e.KeyCode == Keys.Back && _scratchpadInput.Text.Length == 0)
-        {
-            ClearOrDelete();
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-        }
+        // Backspace on an empty box (CLR) is handled globally in Form_KeyDown.
     }
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
@@ -568,7 +574,10 @@ public class IFly737CDUForm : Form
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 break;
-            case Keys.Back when ActiveControl == _display:
+            // Backspace = CLR from ANYWHERE in the form (KeyPreview delivers it
+            // here first) — the only exception is while editing text in the
+            // scratchpad box, where Backspace must edit that text normally.
+            case Keys.Back when !(ActiveControl == _scratchpadInput && _scratchpadInput.Text.Length > 0):
                 ClearOrDelete();
                 e.Handled = true;
                 e.SuppressKeyPress = true;

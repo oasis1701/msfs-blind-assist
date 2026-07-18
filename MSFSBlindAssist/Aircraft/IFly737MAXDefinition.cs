@@ -710,11 +710,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return;
         }
 
-        // VOR/ILS: 108.00-117.95 keyed as 5 digits with the implied decimal
-        // (110.90 -> 1 1 0 9 0). GLS: a 5-digit channel keyed verbatim.
+        // VOR/ILS: 108.00-117.95. The iFly NAV keypad IMPLIES the leading "1"
+        // (every VOR/ILS frequency is 108-117), so keying all five digits
+        // (109.10 -> 1 0 9 1 0) shifts an extra 1 in and the panel latches
+        // 110.91. Key only the FOUR digits after the hundreds (109.10 -> 0 9 1 0).
+        // GLS: a 5-digit channel keyed verbatim.
         string digits;
         if (target >= 108.0 && target <= 117.95)
-            digits = ((int)Math.Round(target * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            digits = ((int)Math.Round(target * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture)[1..];
         else if (target >= 20000 && target <= 39999 && target == Math.Floor(target))
             digits = ((int)target).ToString(System.Globalization.CultureInfo.InvariantCulture);
         else
@@ -823,7 +826,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
         if (ActiveMatches()) return true; // already tuned — don't disturb standby
 
-        string digits = ((int)Math.Round(freqMHz * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        // Drop the implied leading "1" — see SetNavStandbyFrequency (keying all
+        // five digits shifts an extra 1 in and tunes 110.91 instead of 109.10).
+        string digits = ((int)Math.Round(freqMHz * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture)[1..];
         Sdk.SendCommand(clr.Value);
         foreach (char d in digits)
         {
@@ -1328,9 +1333,18 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 return true;
             }
             case "Rudder_Trim_Pointer_Status":
-                displayText = Math.Abs(value) < 0.01
-                    ? "Neutral"
-                    : $"{(value < 0 ? "Left" : "Right")} {Math.Abs(value):0.00}";
+            {
+                // SDK reports -1.0 (full LEFT) .. 0 (CENTER) .. +1.0 (full RIGHT).
+                // A raw signed decimal reads to a blind user as an unexplained
+                // "negative value" — render direction + magnitude instead.
+                double mag = Math.Abs(value);
+                displayText = mag < 0.02 ? "Centered"
+                    : $"{(value < 0 ? "Left" : "Right")} {mag * 100:0} percent";
+                return true;
+            }
+            case "Stabilizer_Trim_Pointer_Status":
+                // 0-17 stab trim units; one decimal so small changes are audible.
+                displayText = $"{value:0.0} units";
                 return true;
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
