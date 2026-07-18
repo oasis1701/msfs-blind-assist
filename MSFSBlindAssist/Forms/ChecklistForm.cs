@@ -101,6 +101,7 @@ public partial class ChecklistForm : Form
         var filenameMap = new Dictionary<string, string>
         {
             { "A320", "FBW_A320_Checklist.txt" },
+            { "HW_A330", "FBW_A330_Checklist.txt" },
             { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
             { "FBW_A380", "FBW_A380_Checklist.txt" },
             { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }

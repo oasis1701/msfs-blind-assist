@@ -1093,7 +1093,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // pattern; ground-spoiler ARM is a synthetic Disarm/Arm combo driving
         // SPOILERS_ARM_OFF/ON. (Speculative — added without a live A380 to verify; the
         // events are stock MSFS and the pattern matches the verified flaps lever.)
-        MonNum("A32NX_SPOILERS_HANDLE_POSITION", "Speed Brake Handle");
+        // "Spoilers" (not "Speed Brake Handle") — announce/monitor-label parity with the
+        // Fenix/PMDG wording; the band announce in ProcessSimVarUpdate says "Spoilers …".
+        MonNum("A32NX_SPOILERS_HANDLE_POSITION", "Spoilers");
         Act("A380X_MSFSBA_SPEEDBRAKE", "Speed Brake",
             new Dictionary<double, string> { [0] = "Retracted", [1] = "Half", [2] = "Full" });
         ReadEnum("A32NX_SPOILERS_ARMED", "Ground Spoilers", new Dictionary<double, string> { [0] = "Disarmed", [1] = "Armed" });

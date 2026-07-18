@@ -69,11 +69,11 @@ public class FBWA320AutopilotWindow : FBWA320FCUWindowBase
         // A32NX_FCU_{LOC,APPR}_MODE_ACTIVE / EFIS_*_FD_ACTIVE names DON'T EXIST in FBW
         // and weren't registered, so RequestVariable no-op'd and the labels were stuck
         // "off" / never refreshed.
-        SetState(loc, "LOC", "A32NX_FCU_LOC_LIGHT_ON");
-        SetState(appr, "APPR", "A32NX_FCU_APPR_LIGHT_ON");
+        SetState(loc, "LOC", aircraft.LocLightVar);
+        SetState(appr, "APPR", aircraft.ApprLightVar);
         SetState(exped, "EXPED", "A32NX_FMA_EXPEDITE_MODE");
-        bool fdL = (simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_L_FD_LIGHT_ON") ?? 0) > 0.5;
-        bool fdR = (simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_R_FD_LIGHT_ON") ?? 0) > 0.5;
+        bool fdL = (simConnect.GetCachedVariableValue(aircraft.FdLeftLightVar) ?? 0) > 0.5;
+        bool fdR = (simConnect.GetCachedVariableValue(aircraft.FdRightLightVar) ?? 0) > 0.5;
         fdLabel.Text = $"Flight Director: Captain {(fdL ? "on" : "off")}, First Officer {(fdR ? "on" : "off")}";
     }
 

@@ -97,6 +97,7 @@ public partial class MainForm
             "FBW_A380" => new FlyByWireA380Definition(),
             "PMDG_737" => new PMDG737Definition(),
             "HS_787" => new HorizonSim787Definition(),
+            "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
@@ -943,9 +944,16 @@ public partial class MainForm
         flyByWireA380MenuItem.Checked = false;
         pmdg737MenuItem.Checked = false;
         horizonSim787MenuItem.Checked = false;
+        headwindA330MenuItem.Checked = false;
 
-        // Set the check on the current aircraft's menu item
-        if (currentAircraft is FlyByWireA320Definition)
+        // Set the check on the current aircraft's menu item.
+        // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
+        // be tested BEFORE the A320 (a derived instance also matches the base type).
+        if (currentAircraft is HeadwindA330Definition)
+        {
+            headwindA330MenuItem.Checked = true;
+        }
+        else if (currentAircraft is FlyByWireA320Definition)
         {
             flyByWireA320MenuItem.Checked = true;
         }
