@@ -10,7 +10,13 @@ public enum ProgressiveTerminatorType
     HoldShortRunway,
     HoldShortTaxiway,
     AfterCrossingRunway,
-    EndOfTaxiway
+    EndOfTaxiway,
+    /// <summary>
+    /// Hold at a published NAMED holding point (VIKAS, N2E…) sourced from online
+    /// data and resolved onto a navdata node by NamedHoldingPointResolver;
+    /// <see cref="ProgressiveTerminator.Target"/> is the point's designator.
+    /// </summary>
+    HoldAtNamedPoint
 }
 
 /// <summary>
@@ -22,7 +28,7 @@ public enum ProgressiveTerminatorType
 public sealed class ProgressiveTerminator
 {
     public ProgressiveTerminatorType Type { get; }
-    public string Target { get; }   // runway ("09") or taxiway ("C") designator; "" for EndOfTaxiway
+    public string Target { get; }   // runway ("09"), taxiway ("C"), or named holding point ("VIKAS") designator; "" for EndOfTaxiway
 
     public ProgressiveTerminator(ProgressiveTerminatorType type, string target)
     {
@@ -39,6 +45,8 @@ public sealed class ProgressiveTerminator
             $"Hold short of taxiway {Target}. Set a new route when cleared.",
         ProgressiveTerminatorType.AfterCrossingRunway =>
             $"Across runway {Target}. Hold position. Set a new route when cleared.",
+        ProgressiveTerminatorType.HoldAtNamedPoint =>
+            $"Hold at {Target}. Set a new route when cleared.",
         _ =>
             "Route ended. Hold position. Set a new route when cleared.",
     };
