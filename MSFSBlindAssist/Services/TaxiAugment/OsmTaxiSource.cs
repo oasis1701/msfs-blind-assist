@@ -26,7 +26,8 @@ public sealed class OsmTaxiSource : ITaxiDataSource
     {
         string q = $"[out:json][timeout:40];(" +
                    $"way[\"aeroway\"=\"taxiway\"](around:5000,{lat:0.######},{lon:0.######});" +
-                   $"node[\"aeroway\"=\"parking_position\"](around:5000,{lat:0.######},{lon:0.######}););out tags geom;";
+                   $"node[\"aeroway\"=\"parking_position\"](around:5000,{lat:0.######},{lon:0.######});" +
+                   $"node[\"aeroway\"=\"holding_position\"](around:5000,{lat:0.######},{lon:0.######}););out tags geom;";
         foreach (var url in Mirrors)
         {
             try
@@ -89,6 +90,23 @@ public sealed class OsmTaxiSource : ITaxiDataSource
                 if (string.IsNullOrWhiteSpace(pn)) continue;   // skip unnamed apron nodes (mirror taxiways)
                 if (el.TryGetProperty("lat", out var la) && el.TryGetProperty("lon", out var lo))
                     data.Parking.Add((pn, la.GetDouble(), lo.GetDouble()));
+            }
+            else if (aeroway == "holding_position")
+            {
+                // Designator lives in "ref" (VIKAS, N2E, A11…); a few mappers use "name"
+                // instead — same fallback order as taxiways. The vast majority of
+                // holding_position nodes are unnamed painted hold lines: skip those, only
+                // NAMED points are useful as pilot-selectable holds.
+                string hn = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("ref", out var hr)
+                    ? (hr.GetString() ?? "") : "";
+                if (string.IsNullOrWhiteSpace(hn)
+                    && tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("name", out var hnm))
+                    hn = hnm.GetString() ?? "";
+                if (string.IsNullOrWhiteSpace(hn)) continue;
+                string kind = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("holding_position:type", out var hk)
+                    ? (hk.GetString() ?? "") : "";
+                if (el.TryGetProperty("lat", out var hla) && el.TryGetProperty("lon", out var hlo))
+                    data.HoldingPoints.Add((hn.Trim(), hla.GetDouble(), hlo.GetDouble(), kind));
             }
         }
         return data;
