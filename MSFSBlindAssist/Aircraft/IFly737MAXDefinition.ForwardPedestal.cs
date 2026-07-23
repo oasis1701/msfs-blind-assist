@@ -232,7 +232,7 @@ public partial class IFly737MAXDefinition
 
         // MINS_SET Value2 doc says only "altitude" (no explicit range documented);
         // 0..15000 feet covers radio and high-elevation baro minimums.
-        NumSet(P, $"EFIS_{tag}_MINS_SET", "Set Minimums",
+        NumSet(P, $"EFIS_{tag}_MINS_SET", "Minimums",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_MINS_SET, IFlyKeyCommand.INSTRUMENT_EFIS_R_MINS_SET),
             0, 15000, units: "feet");
         Btn(P, $"BTN_EFIS_{tag}_MINS_RST", "Minimums Reset",
@@ -279,7 +279,7 @@ public partial class IFly737MAXDefinition
             // the "RTP{n}_STANDBY_SET" keys in HandleUIVariableSet BEFORE the generic
             // write dispatch and keys the rotaries to the target — the TRANSFER command
             // registered here is never fired for these keys.
-            NumSet(P, $"RTP{n}_STANDBY_SET", $"RTP {n} Set Standby Frequency",
+            NumSet(P, $"RTP{n}_STANDBY_SET", $"RTP {n} Standby Frequency",
                 transfer, 118, 136.975, units: "megahertz");
 
             Btn(P, $"BTN_RTP{n}_TRANSFER", $"RTP {n} Frequency Transfer", transfer);
@@ -317,7 +317,7 @@ public partial class IFly737MAXDefinition
             // the panel keypad — HandleUIVariableSet intercepts "NAV{n}_STANDBY_SET"
             // before the generic write dispatch; the TFR registered here never
             // fires for this key. Accepts 108-117.95 (VOR/ILS) or a 5-digit GLS channel.
-            NumSet(P, $"NAV{n}_STANDBY_SET", $"NAV {n} Set Standby Frequency",
+            NumSet(P, $"NAV{n}_STANDBY_SET", $"NAV {n} Standby Frequency",
                 tfr, 108, 39999, units: "megahertz");
 
             Btn(P, $"BTN_NAV{n}_TRANSFER", $"NAV {n} Frequency Transfer", tfr);
@@ -349,7 +349,7 @@ public partial class IFly737MAXDefinition
             // ADF_num_* display fields (see IFlySdkSnapshot.AdfText / IFlySdkClient).
             Disp(P, $"SYN_ADF_{side}", $"ADF {n} Frequency");
 
-            NumSet(P, $"ADF{n}_FREQ_SET", $"Set ADF {n} Frequency", test, 190.0, 1750.0, units: "kilohertz");
+            NumSet(P, $"ADF{n}_FREQ_SET", $"ADF {n} Frequency", test, 190.0, 1750.0, units: "kilohertz");
 
             // ADF_Mode_Switch_Status[2]: 0 ADF / 1 ANT / 2 OFF. MODE_SET Value2
             // assumed to match status directly (no encoding-trap doc note, same

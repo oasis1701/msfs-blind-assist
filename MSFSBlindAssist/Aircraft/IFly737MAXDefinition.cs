@@ -391,11 +391,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Disp(P, "SYN_MCP_COURSE_2", "Course 2 Window", announced: true);
 
         // Direct-entry fields.
-        NumSet(P, "MCP_COURSE_1_SET", "Set Course 1", IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_1_SET, 0, 359);
-        NumSet(P, "MCP_COURSE_2_SET", "Set Course 2", IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_2_SET, 0, 359);
-        NumSet(P, "MCP_HEADING_SET", "Set Heading", IFlyKeyCommand.AUTOMATICFLIGHT_HDG_SEL_SET, 0, 359);
-        NumSet(P, "MCP_ALTITUDE_SET", "Set Altitude", IFlyKeyCommand.AUTOMATICFLIGHT_ALT_SEL_SET, 0, 50000, units: "feet");
-        NumSet(P, "MCP_VS_SET", "Set Vertical Speed", IFlyKeyCommand.AUTOMATICFLIGHT_VS_SET, -7900, 6000, units: "feet per minute");
+        // NumSet display names must NOT start with "Set" — MainForm.PanelBuilder
+        // labels the pair itself ("<name> value" textbox + "Set <name>" button), so
+        // an embedded "Set" doubles up ("Set Set Squawk Code", live report 2026-07-23).
+        NumSet(P, "MCP_COURSE_1_SET", "Course 1", IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_1_SET, 0, 359);
+        NumSet(P, "MCP_COURSE_2_SET", "Course 2", IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_2_SET, 0, 359);
+        NumSet(P, "MCP_HEADING_SET", "Heading", IFlyKeyCommand.AUTOMATICFLIGHT_HDG_SEL_SET, 0, 359);
+        NumSet(P, "MCP_ALTITUDE_SET", "Altitude", IFlyKeyCommand.AUTOMATICFLIGHT_ALT_SEL_SET, 0, 50000, units: "feet");
+        NumSet(P, "MCP_VS_SET", "Vertical Speed", IFlyKeyCommand.AUTOMATICFLIGHT_VS_SET, -7900, 6000, units: "feet per minute");
 
         // Flight directors + autothrottle arm (real 2-position switches).
         Sw(P, "FD_1_Switch_Status", "Flight Director Captain", IFlyKeyCommand.AUTOMATICFLIGHT_LEFT_FD_SET, new[] { "Off", "On" });
@@ -564,7 +567,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         const string P = "Transponder";
 
         Disp(P, "SYN_XPDR_CODE", "Transponder Code Window", announced: true);
-        NumSet(P, "XPDR_CODE_SET", "Set Squawk Code", IFlyKeyCommand.FMS_XPNDR_KEYPAD_0 /* handled specially */, 0, 7777);
+        NumSet(P, "XPDR_CODE_SET", "Squawk Code", IFlyKeyCommand.FMS_XPNDR_KEYPAD_0 /* handled specially */, 0, 7777);
 
         Sw(P, "Transponder_Mode_Switch_Status", "Transponder Mode",
             IFlyKeyCommand.FMS_XPNDR_MODE_SET, new[] { "ALT OFF", "XPNDR", "TA Only", "TA/RA" });
@@ -715,7 +718,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             }
             // Numeric entry confirmation (screen-reader rule: numeric inputs DO confirm).
             // Course fields zero-pad to match the MCP window's 3-digit display (and the
-            // SYN_MCP_COURSE_1/2 background-change wording above) — "Set Course 1 005",
+            // SYN_MCP_COURSE_1/2 background-change wording above) — "Course 1 005",
             // not the bare "5" a plain F0 would speak.
             if (_numSetRanges.ContainsKey(varKey))
                 announcer.AnnounceImmediate(varKey is "MCP_COURSE_1_SET" or "MCP_COURSE_2_SET"
