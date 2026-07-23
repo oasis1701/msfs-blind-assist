@@ -1079,6 +1079,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         var tfr = Key("TFR");
         if (clr == null || tfr == null) return false;
 
+        var log = MSFSBlindAssist.Utils.Logging.Log.Channel("ifly_nav");
+        string Read() =>
+            $"active='{Sdk.Snapshot?.NavWindowText(nav - 1, 0)}' standby='{Sdk.Snapshot?.NavWindowText(nav - 1, 1)}'";
         bool ActiveMatches()
         {
             string t = Sdk.Snapshot?.NavFrequencyText(nav - 1, window: 0) ?? "";
@@ -1088,9 +1091,32 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
         if (ActiveMatches()) return true; // already tuned — don't disturb standby
 
-        // Drop the implied leading "1" — see SetNavStandbyFrequency (keying all
-        // five digits shifts an extra 1 in and tunes 110.91 instead of 109.10).
+        // Drop the implied leading "1" — every VOR/ILS frequency is 108-117, so the
+        // 4 digits after the hundreds ARE the BCD16 param for the stock NAV events
+        // ("0950" -> 0x0950), the same convention the panel keypad uses.
         string digits = ((int)Math.Round(freqMHz * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture)[1..];
+
+        // PRIMARY: stock SimConnect NAV radio events. iFly's radio is stock-backed,
+        // so a direct-value NAVn_STBY_SET + NAVn_RADIO_SWAP tunes it reliably —
+        // unlike simulating the panel keypad button presses, which dropped digits
+        // and errored the transfer (live log 2026-07-19: keyed 0950 -> standby read
+        // 109.10, then TFR flagged ERR instead of swapping). Mirrors the direct
+        // AUTOMATICFLIGHT_COURSE_n_SET path, which works.
+        if (simConnect != null)
+        {
+            uint bcd = Convert.ToUInt32(digits, 16); // BCD16, leading "1" implied
+            log.Info($"NAV{nav} target={freqMHz:0.00} bcd=0x{bcd:X4}. Stock STBY_SET+SWAP. Pre {Read()}");
+            simConnect.SendEvent($"NAV{nav}_STBY_SET", bcd);
+            await Task.Delay(300);
+            simConnect.SendEvent($"NAV{nav}_RADIO_SWAP");
+            await Task.Delay(600); // radio update + SDK poll refresh (250 ms cycle)
+            log.Info($"NAV{nav} after stock events: {Read()}");
+            if (ActiveMatches()) return true;
+        }
+
+        // FALLBACK: the iFly SDK panel keypad + transfer switch (see the live-log
+        // note above — kept only in case the stock events don't reach this build).
+        log.Info($"NAV{nav} stock events did not confirm; falling back to SDK keypad. {Read()}");
         Sdk.SendCommand(clr.Value);
         foreach (char d in digits)
         {
@@ -1098,21 +1124,38 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             var k = Key($"KEY_{d}");
             if (k != null) Sdk.SendCommand(k.Value);
         }
-        await Task.Delay(400); // let the entry latch in the standby window
-        Sdk.SendCommand(tfr.Value);
-        await Task.Delay(700); // TFR act + SDK poll refresh (250 ms cycle)
-        if (ActiveMatches()) return true;
+        // Match/exceed the standby-set path's 600 ms settle so the freq AND its
+        // VOR/ILS mode flag have fully latched before we transfer.
+        await Task.Delay(700);
+        log.Info($"NAV{nav} keypad fallback keyed digits={digits}. Pre-transfer {Read()}");
+
+        // Retry the SDK transfer "click" up to 3× with a re-check between presses.
+        // The switch swaps active<->standby, so the re-check makes retrying safe:
+        // the instant it takes, ActiveMatches() is true and we stop (no double-swap).
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            Sdk.SendCommand(tfr.Value);
+            await Task.Delay(700); // TFR act + SDK poll refresh (250 ms cycle)
+            log.Info($"NAV{nav} SDK TFR attempt {attempt}: {Read()}");
+            if (ActiveMatches()) return true;
+        }
 
         // SDK TFR click didn't move it — replay the cockpit clickspot's own
         // press/release trigger writes (byte-exact pilot path from the model XML).
+        // NOTE: SetLVar only reaches the sim reliably when the MobiFlight calc path
+        // is VERIFIED (CalcPathVerified) — without the WASM module (or before the
+        // nonce probe completes) this write goes to the data-def path iFly ignores.
         if (simConnect != null)
         {
+            log.Info($"NAV{nav} SDK TFR failed; L:var fallback. CalcPathVerified={simConnect.CalcPathVerified}");
             simConnect.SetLVar("VC_Navigation_trigger_VAL", nav == 1 ? 321 : 323);
             await Task.Delay(150);
             simConnect.SetLVar("VC_Navigation_trigger_VAL", nav == 1 ? 322 : 324);
             await Task.Delay(700);
+            log.Info($"NAV{nav} after L:var fallback: {Read()}");
             if (ActiveMatches()) return true;
         }
+        log.Warn($"NAV{nav} transfer FAILED. Final {Read()}");
         return false;
     }
 
