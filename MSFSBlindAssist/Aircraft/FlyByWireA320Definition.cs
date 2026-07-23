@@ -4315,7 +4315,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_ACTIVE_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM ACTIVE FREQUENCY:1",
-            DisplayName = "COM 1 Set Active Frequency",
+            // No "Set" in NumSet-style display names — MainForm.PanelBuilder labels
+            // the pair itself ("<name> value" textbox + "Set <name>" button), so an
+            // embedded "Set" doubles up ("Set COM 1 Set Active Frequency").
+            DisplayName = "COM 1 Active Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -4323,7 +4326,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM STANDBY FREQUENCY:1",
-            DisplayName = "COM 1 Set Standby Frequency",
+            DisplayName = "COM 1 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -4377,13 +4380,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ---- COM2 / VHF2 (parity: the Radios panel now exposes COM1 + COM2) ----
         ["COM_ACTIVE_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM ACTIVE FREQUENCY:2", DisplayName = "COM 2 Set Active Frequency",
+            Name = "COM ACTIVE FREQUENCY:2", DisplayName = "COM 2 Active Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM STANDBY FREQUENCY:2", DisplayName = "COM 2 Set Standby Frequency",
+            Name = "COM STANDBY FREQUENCY:2", DisplayName = "COM 2 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -4410,13 +4413,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // COM3_RADIO_SWAP; HandleUIVariableSet already branches on idx "3" (varKey.EndsWith(":3")).
         ["COM_ACTIVE_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM ACTIVE FREQUENCY:3", DisplayName = "COM 3 Set Active Frequency",
+            Name = "COM ACTIVE FREQUENCY:3", DisplayName = "COM 3 Active Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["COM_STANDBY_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM STANDBY FREQUENCY:3", DisplayName = "COM 3 Set Standby Frequency",
+            Name = "COM STANDBY FREQUENCY:3", DisplayName = "COM 3 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },

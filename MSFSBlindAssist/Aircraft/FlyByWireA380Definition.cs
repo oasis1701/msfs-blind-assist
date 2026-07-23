@@ -2135,12 +2135,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // altimeters together. Key ends "_SET" -> MainForm renders a numeric box.
         vars["CAPT_QNH_SET"] = new SimVarDefinition
         {
-            Name = "CAPT_QNH_SET", DisplayName = "Set QNH (in Capt unit)",
+            // No "Set" in the display name — MainForm renders the numeric box as a
+            // "<name> value" textbox + "Set <name>" button, so it would double up.
+            Name = "CAPT_QNH_SET", DisplayName = "QNH (in Capt unit)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
         vars["FO_QNH_SET"] = new SimVarDefinition
         {
-            Name = "FO_QNH_SET", DisplayName = "Set QNH (in F/O unit)",
+            Name = "FO_QNH_SET", DisplayName = "QNH (in F/O unit)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
 
