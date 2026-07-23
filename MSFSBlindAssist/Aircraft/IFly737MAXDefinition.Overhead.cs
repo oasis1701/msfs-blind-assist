@@ -167,9 +167,46 @@ public partial class IFly737MAXDefinition
         Disp(P, "SYN_FUEL_QTY_R", "Fuel Quantity Right");
         Disp(P, "SYN_FUEL_QTY_C", "Fuel Quantity Center");
 
-        // Skipped (external refuel access panel, not flight-deck): Refuel_Power_Control_Switch_Status,
-        // Fueling_Indication_Test_Switch_Status, Refuel_Valve_Control_Switch_Status[3],
-        // REFUEL_VALVE_Light_Status[3] (bool-typed), Fuel_Quantity_Indicator_Status[3][5] and
+        // Fueling station (the P15 panel behind the refuel access door on the right
+        // wing — added on user request 2026-07-23 after the EFB fuel-loading
+        // investigation; the iFly's fuel model only accepts fuel through its own
+        // fueling simulation, so these switches matter to a blind user). Three
+        // latching valve switches, 0 CLOSED / 1 OPEN (indices: 0 Left, 1 Right,
+        // 2 Center; commands: VALVE_1 = Left, VALVE_2 = Right, VALVE_C = Center —
+        // live-verified via the OPEN pair lighting status indices 0+1). The SDK has
+        // only per-direction click commands (no absolute SET) -> SwPerValue.
+        // GATING TRAP (live-verified): the whole station is DEAD while the refuel
+        // access panel is closed — the write path in HandleUIVariableSet verifies
+        // and speaks a hint; the panel itself has no SDK command (read-only status
+        // below) and is opened via the EFB Ground Services "Fuel" service door.
+        SwPerValue(P, "Refuel_Valve_Control_Switch_Status_0", "Fueling Valve Left Tank",
+            new[] { IFlyKeyCommand.FUEL_FUELING_VALVE_1_CLOSE, IFlyKeyCommand.FUEL_FUELING_VALVE_1_OPEN },
+            new[] { "Closed", "Open" });
+        SwPerValue(P, "Refuel_Valve_Control_Switch_Status_1", "Fueling Valve Right Tank",
+            new[] { IFlyKeyCommand.FUEL_FUELING_VALVE_2_CLOSE, IFlyKeyCommand.FUEL_FUELING_VALVE_2_OPEN },
+            new[] { "Closed", "Open" });
+        SwPerValue(P, "Refuel_Valve_Control_Switch_Status_2", "Fueling Valve Center Tank",
+            new[] { IFlyKeyCommand.FUEL_FUELING_VALVE_C_CLOSE, IFlyKeyCommand.FUEL_FUELING_VALVE_C_OPEN },
+            new[] { "Closed", "Open" });
+        // Indication test switch: status 0 TEST GAGES / 1 NEUTRAL / 2 FUEL DOOR
+        // SWITCH BYPASS; per-position commands _TEST/_OFF/_BYPASS assumed to map in
+        // that order. LIVE-VERIFY: mapping + whether TEST springs back to NEUTRAL
+        // (the real switch is spring-loaded from TEST) — untestable this session
+        // because ground services were locked out; the write-verify hint only fires
+        // with the access panel closed, so a spring-back never false-alarms.
+        SwPerValue(P, "Fueling_Indication_Test_Switch_Status", "Fueling Indication Test",
+            new[] { IFlyKeyCommand.FUEL_FUELING_INDICATION_TEST_TEST, IFlyKeyCommand.FUEL_FUELING_INDICATION_TEST_OFF,
+                    IFlyKeyCommand.FUEL_FUELING_INDICATION_TEST_BYPASS },
+            new[] { "Test Gauges", "Neutral", "Fuel Door Switch Bypass" });
+        // Access panel state — no SDK write command exists; renders read-only.
+        Sw(P, "Refuel_Power_Control_Switch_Status", "Refuel Access Panel", set: null,
+            new[] { "Closed", "Open" });
+        // Blue valve-open lights (bool fields — Annun's nonzero-is-lit handling fits).
+        Annun(P, "REFUEL_VALVE_Light_Status_0", "Fueling Valve Left Open light");
+        Annun(P, "REFUEL_VALVE_Light_Status_1", "Fueling Valve Right Open light");
+        Annun(P, "REFUEL_VALVE_Light_Status_2", "Fueling Valve Center Open light");
+
+        // Still skipped: Fuel_Quantity_Indicator_Status[3][5] and
         // Fuel_Quantity_Indicator_Index_Status[3] (per-digit gauge cells — covered by SYN_FUEL_QTY_*).
     }
 

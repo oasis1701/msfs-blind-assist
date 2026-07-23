@@ -184,6 +184,30 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             _writes[field] = new IFlyWrite(set.Value, map, value3);
     }
 
+    /// <summary>Multi-position switch whose SDK write is a DISTINCT absolute click
+    /// command per position — no single SET-with-Value2 exists (e.g. the fueling
+    /// station's per-valve OPEN/CLOSE command pairs). Renders as a normal combo off
+    /// the SDK field; HandleUIVariableSet dispatches perValueCommands[selected].</summary>
+    private void SwPerValue(string panel, string field, string display,
+                            IFlyKeyCommand[] perValueCommands, string[] positions, bool announced = true)
+    {
+        var descriptions = new Dictionary<double, string>();
+        for (int i = 0; i < positions.Length; i++) descriptions[i] = positions[i];
+        _vars[field] = new SimConnect.SimVarDefinition
+        {
+            Name = field,
+            DisplayName = display,
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = announced,
+            ValueDescriptions = descriptions,
+        };
+        PanelList(panel).Add(field);
+        _perValueWrites[field] = perValueCommands;
+    }
+
+    private readonly Dictionary<string, IFlyKeyCommand[]> _perValueWrites = new();
+
     /// <summary>Annunciator light (0 off / 1 dim / 2 bright). Announced on lit-edge only,
     /// suppressed while the master LIGHTS TEST is held (see ProcessSimVarUpdate).
     /// Announce-only; not a panel control — fleet parity with PMDG annunciators (user
@@ -320,7 +344,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             ["Overhead"] = new List<string>
             {
                 "Electrical", "Fuel", "Hydraulics", "Air Systems", "Pressurization",
-                "Anti-Ice", "Engines and APU", "Exterior Lights", "Interior Lights and Signs",
+                "Anti-Ice", "Engines and APU", "Exterior Lights", "Interior Lights", "Signs",
                 "Oxygen", "Flight Controls", "IRS", "Flight Recorder and Warning"
             },
             ["Glareshield"] = new List<string>
@@ -580,6 +604,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Sw(P, "Transponder_Reply_Selector_Status", "Transponder Reply",
             IFlyKeyCommand.FMS_XPNDR_REPLY_SELECTOR_SET, new[] { "Standby", "On", "Auto" });
         Btn(P, "BTN_XPDR_IDENT", "Ident", IFlyKeyCommand.FMS_XPNDR_IDENT);
+        // TCAS self-test (2026-07-23 audit finding — PMDG 737 parity with
+        // XPDR_TcasTest): the mode knob's spring-loaded TEST position; the test
+        // result is AURAL ("TCAS TEST OK/FAIL"), so no readout is needed.
+        // LIVE-VERIFY: the click command's in-sim effect is unconfirmed (some
+        // iFly test clicks are unmodeled no-ops — the A/P-A/T light-test class);
+        // the same knob's MODE_SET round-tripped live, which is favorable.
+        Btn(P, "BTN_XPDR_TEST", "TCAS Test", IFlyKeyCommand.FMS_XPNDR_MODE_TEST);
         Annun(P, "Transponder_Fail_Light_Status", "Transponder Fail light");
     }
 
@@ -591,6 +622,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // MainForm's panel builder returns early and renders NOTHING — the HS787
         // Flight-Data-panels bug (see CLAUDE.md "Empty Flight Data panels").
         PanelList(P);
+
+        // CDU FAIL annunciators (2026-07-23 audit finding — PMDG 737 parity with
+        // CDU_annunFAIL_0/_1): the FMC-failure lamp per CDU, the only cue of a
+        // dead FMC a blind pilot can perceive (the CDU window may keep rendering
+        // stale text). Announce-only per the indicator policy; the snapshot helper
+        // CduFailLit existed unused since round 1 — the SDK field is now wired.
+        Annun(P, "CDU_FAIL_Status_0", "Left CDU Fail light");
+        Annun(P, "CDU_FAIL_Status_1", "Right CDU Fail light");
 
         // FMS performance values published by the iFly WASM as plain L:vars.
         void PerfLvar(string key, string lvar, string display, string units = "")
@@ -699,6 +738,40 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // electrical logic never fires (live-verified 2026-07-23) — so they are
         // registered as momentary click-command button pairs in RegisterElectrical
         // and go through the generic button dispatch below.
+
+        // Per-position click-command combos (SwPerValue — e.g. the fueling station
+        // valves): send the absolute click command registered for the selected
+        // position. Fueling-station writes additionally VERIFY the switch moved:
+        // the station's switches live behind the refuel access panel and are dead
+        // while it is closed (live-verified 2026-07-23 — an OPEN with the panel
+        // closed is a silent no-op), and a blind user can't see the panel state,
+        // so a blocked write must be spoken, not silent (the Battery guard pattern).
+        if (_perValueWrites.TryGetValue(varKey, out var perValue))
+        {
+            int posIdx = (int)Math.Round(value);
+            if (posIdx < 0 || posIdx >= perValue.Length) return true;
+            if (!Sdk.SendCommand(perValue[posIdx]))
+            {
+                announcer.AnnounceImmediate("iFly plugin not responding.");
+                return true;
+            }
+            if (varKey.StartsWith("Refuel_Valve", StringComparison.Ordinal)
+                || varKey == "Fueling_Indication_Test_Switch_Status")
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(800); // let the plugin act and the poll refresh
+                    if (Sdk.Snapshot is { } snap
+                        && ReadRawField(snap, varKey) is { } cur
+                        && (int)Math.Round(cur) != posIdx
+                        && snap.ByteAt(IFlySdkOffsets.Refuel_Power_Control_Switch_Status) == 0)
+                        Sdk.RunOnUi(() => announcer.AnnounceImmediate(
+                            "Fueling station did not respond. The refuel access panel is closed — " +
+                            "open the Fuel service door from the EFB Ground Services page first."));
+                });
+            }
+            return true;
+        }
 
         if (_writes.TryGetValue(varKey, out var w))
         {

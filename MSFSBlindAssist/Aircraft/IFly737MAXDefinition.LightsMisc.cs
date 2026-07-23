@@ -50,38 +50,50 @@ public partial class IFly737MAXDefinition
     }
 
     // =========================================================================
-    // Interior Lights and Signs
+    // Interior Lights + Signs (two panels — split 2026-07-23 on user request,
+    // PMDG parity: PMDG737Definition keeps a lighting panel separate from a
+    // "Signs" panel holding Emergency Exit Lights / No Smoking / Fasten Belts)
     // =========================================================================
     private void RegisterInteriorLightsSigns()
     {
-        const string P = "Interior Lights and Signs";
+        const string PL = "Interior Lights";
+        const string PS = "Signs";
 
         // Master LIGHTS TEST: no GENERAL_LIGHTS_TEST_SET exists — read-only position
         // combo plus three absolute-position buttons (TEST / BRT / DIM).
-        Sw(P, "Lights_Test_Status", "Master Lights Test Switch Position", null,
+        Sw(PL, "Lights_Test_Status", "Master Lights Test Switch Position", null,
             new[] { "Test", "Bright", "Dim" });
-        Btn(P, "BTN_LIGHTS_TEST_TEST", "Master Lights Test to Test", IFlyKeyCommand.GENERAL_LIGHTS_TEST_TEST);
-        Btn(P, "BTN_LIGHTS_TEST_BRT", "Master Lights Test to Bright", IFlyKeyCommand.GENERAL_LIGHTS_TEST_BRT);
-        Btn(P, "BTN_LIGHTS_TEST_DIM", "Master Lights Test to Dim", IFlyKeyCommand.GENERAL_LIGHTS_TEST_DIM);
+        Btn(PL, "BTN_LIGHTS_TEST_TEST", "Master Lights Test to Test", IFlyKeyCommand.GENERAL_LIGHTS_TEST_TEST);
+        Btn(PL, "BTN_LIGHTS_TEST_BRT", "Master Lights Test to Bright", IFlyKeyCommand.GENERAL_LIGHTS_TEST_BRT);
+        Btn(PL, "BTN_LIGHTS_TEST_DIM", "Master Lights Test to Dim", IFlyKeyCommand.GENERAL_LIGHTS_TEST_DIM);
 
         // Dome light: status and Value2 share the 0 DIM / 1 OFF / 2 BRIGHT encoding;
         // Value3 = 1 (guard-ignore) offered by the doc.
-        Sw(P, "Dome_Light_Switch_Status", "Dome Light",
+        Sw(PL, "Dome_Light_Switch_Status", "Dome Light",
             IFlyKeyCommand.GENERAL_DOME_LIGHT_SET, new[] { "Dim", "Off", "Bright" }, value3: 1);
 
-        Sw(P, "No_Smoking_Switch_Status", "No Smoking Sign",
+        // The two main-panel brightness controls are exposed; all other brightness
+        // knobs are deliberately skipped (see the skip block below).
+        NumSet(PL, "CAPT_MAIN_PANEL_BRIGHT_SET", "Captain Main Panel Brightness (0 to 20)",
+            IFlyKeyCommand.GENERAL_CAPT_MAIN_PANEL_SET, 0, 20);
+        NumSet(PL, "FO_MAIN_PANEL_BRIGHT_SET", "First Officer Main Panel Brightness (0 to 20)",
+            IFlyKeyCommand.GENERAL_FO_MAIN_PANEL_SET, 0, 20);
+
+        // ---- Signs panel (the passenger-signs overhead cluster; the attendant/
+        // ground call buttons live on the same physical panel and stay with it) ----
+        Sw(PS, "No_Smoking_Switch_Status", "No Smoking Sign",
             IFlyKeyCommand.GENERAL_NO_SMOKING_SET, new[] { "Off", "Auto", "On" });
-        Sw(P, "Fasten_Belts_Switch_Status", "Fasten Seat Belts Sign",
+        Sw(PS, "Fasten_Belts_Switch_Status", "Fasten Seat Belts Sign",
             IFlyKeyCommand.GENERAL_FASTEN_BELTS_SET, new[] { "Off", "Auto", "On" });
 
-        Btn(P, "BTN_ATTENDANT_CALL", "Attendant Call", IFlyKeyCommand.COMMUNICATION_ATTENDANT_CALL);
-        Btn(P, "BTN_GROUND_CALL", "Ground Call", IFlyKeyCommand.COMMUNICATION_GROUND_CALL);
+        Btn(PS, "BTN_ATTENDANT_CALL", "Attendant Call", IFlyKeyCommand.COMMUNICATION_ATTENDANT_CALL);
+        Btn(PS, "BTN_GROUND_CALL", "Ground Call", IFlyKeyCommand.COMMUNICATION_GROUND_CALL);
 
         // Emergency exit lights: combo reads the ORIGINAL guarded field
         // (0 cover closed / 1 Off / 2 Armed / 3 On); GENERAL_EMER_LIGHT_SET Value2
         // is 0 OFF / 1 ARMED / 2 ON (no guard-ignore Value3 in the doc), so the
         // guard-closed state collapses onto Off for the write.
-        SwD(P, "Emergency_Light_Switch_Status", "Emergency Exit Lights",
+        SwD(PS, "Emergency_Light_Switch_Status", "Emergency Exit Lights",
             IFlyKeyCommand.GENERAL_EMER_LIGHT_SET,
             new Dictionary<double, string>
             {
@@ -90,16 +102,9 @@ public partial class IFly737MAXDefinition
                 [2] = "Armed",
                 [3] = "On",
             }, map: v => v == 0 ? 0 : v - 1);
-        Annun(P, "NOT_ARMED_Light_Status", "Emergency Exit Lights Not Armed light");
+        Annun(PS, "NOT_ARMED_Light_Status", "Emergency Exit Lights Not Armed light");
         // Skipped: Emergency_Exit_Light_Switch_Status (v1.1 duplicate of the same switch;
         // its 0-3 encoding carries cover state but no ARMED position — the original field above is used).
-
-        // The two main-panel brightness controls are exposed; all other brightness
-        // knobs are deliberately skipped (see the skip block below).
-        NumSet(P, "CAPT_MAIN_PANEL_BRIGHT_SET", "Captain Main Panel Brightness (0 to 20)",
-            IFlyKeyCommand.GENERAL_CAPT_MAIN_PANEL_SET, 0, 20);
-        NumSet(P, "FO_MAIN_PANEL_BRIGHT_SET", "First Officer Main Panel Brightness (0 to 20)",
-            IFlyKeyCommand.GENERAL_FO_MAIN_PANEL_SET, 0, 20);
 
         // Deliberately skipped Airplane General fields:
         //   Aircraft_Model / Tick18 / UNITstyle — SDK metadata, not cockpit controls.

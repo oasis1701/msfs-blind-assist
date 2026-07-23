@@ -718,6 +718,18 @@ public partial class IFly737MAXDefinition
         Btn(P, "BTN_RUDDER_TRIM_LEFT", "Rudder Trim Left", IFlyKeyCommand.FLTCTRL_RUDDER_TRIM_DEC);
         Btn(P, "BTN_RUDDER_TRIM_RIGHT", "Rudder Trim Right", IFlyKeyCommand.FLTCTRL_RUDDER_TRIM_INC);
 
+        // Stabilizer pitch trim — the MANUAL TRIM WHEEL click commands (2026-07-23
+        // audit finding): the wheel is the pitch-trim path that stays effective
+        // after the PRI/B-U cutout switches above are moved to Cutoff (runaway-
+        // stabilizer memory item), and this panel previously exposed the cutouts
+        // with no way to actually trim afterwards. One click per press; read back
+        // on the "Stabilizer Trim Units" display below. LIVE-VERIFY: per-click
+        // trim delta unconfirmed (the electric-switch siblings
+        // FLTCTRL_CAPT/FO_STAB_TRIM_SWITCH_UP/DN exist if the wheel proves too
+        // slow or unmodeled).
+        Btn(P, "BTN_STAB_TRIM_NOSE_DOWN", "Stabilizer Trim Nose Down", IFlyKeyCommand.FLTCTRL_STAB_TRIM_WHEEL_DN);
+        Btn(P, "BTN_STAB_TRIM_NOSE_UP", "Stabilizer Trim Nose Up", IFlyKeyCommand.FLTCTRL_STAB_TRIM_WHEEL_UP);
+
         // Rudder trim indicator: -1.0 full left / 0 center / +1.0 full right.
         Disp(P, "Rudder_Trim_Pointer_Status", "Rudder Trim Indicator");
         // Stabilizer trim indicator: 0-17 units.
