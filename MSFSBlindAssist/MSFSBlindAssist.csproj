@@ -127,6 +127,12 @@
     <None Update="Checklists\FBW_A380_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
+         hotkey lists' "see Guides\..." references resolve next to the exe, and any
+         future per-aircraft manual added here ships automatically. -->
+    <None Update="Guides\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Coherent in-page agents (injected at runtime via the remote debugger) -->
     <None Update="Resources\coherent-a380-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
