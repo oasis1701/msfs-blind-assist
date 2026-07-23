@@ -485,9 +485,7 @@ public partial class IFly737MAXDefinition
         // Engine start switches (0:GRD 1:OFF 2:CONT 3:FLT, SET Value2 matches).
         // Each engine's START LEVER sits directly after its start switch
         // (Start 1, Lever 1, Start 2, Lever 2) — the PMDG 737 "Engines" panel
-        // ordering; the levers moved here from the Control Stand panel
-        // 2026-07-24 by user request (PMDG parity — physically they live on the
-        // control stand, but the start flow belongs together).
+        // ordering.
         //
         // Start levers: status 0-2 CUTOFF × fire light, 3-5 IDLE × fire light.
         // ⚠ ENCODING TRAP: ENGAPU_ENG_n_START_LEVER_SET Value2 is 0 = IDLE,

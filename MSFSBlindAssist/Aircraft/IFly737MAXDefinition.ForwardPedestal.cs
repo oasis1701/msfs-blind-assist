@@ -764,10 +764,6 @@ public partial class IFly737MAXDefinition
     {
         const string P = "Control Stand";
 
-        // (The engine start levers moved to the "Engines and APU" panel —
-        // 2026-07-24 user request, PMDG 737 "Engines" panel parity; see
-        // RegisterEnginesApu for the levers and their inverted-SET encoding trap.)
-
         // FLTCTRL_FLAP_SET Value2 0-8 = lever detents UP..40 — matches FLAP_Status.
         // DisplayName "Flaps" gives the fleet-parity wording on the GENERIC combo
         // path ("Flaps: 5" / "Flaps: Up" — the colon form this branch already uses
