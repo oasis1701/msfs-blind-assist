@@ -49,7 +49,13 @@ public sealed class IFlySdkSnapshot
             char ch = (char)ByteAt(rowBase + c);
             sb.Append(color switch
             {
-                5 => '▯',            // empty box (data-entry box)
+                // Empty data-entry box prompt. Rendered as '-' (not the faithful
+                // U+25AF '▯'): NVDA has no spoken symbol for the box glyph and
+                // braille tables render nothing, so a required-entry field read
+                // as blank (live report 2026-07-23, POS INIT line 4). Dashes are
+                // the CDU's own optional-entry prompt style and read/braille
+                // perfectly — same glyph-stripping lesson as the A380 agents.
+                5 => '-',
                 6 or 7 or 8 => '°',  // degree symbol
                 9 => '<',                 // left arrow (prompt)
                 10 => '>',                // right arrow (prompt)
