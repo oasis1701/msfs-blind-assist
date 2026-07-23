@@ -123,7 +123,7 @@ Full accessibility support for the FlyByWire A380X — the free, high-fidelity A
 - Automatic announcements: Master Warning/Caution, the full **FMA**, autopilot, approach capability, **spoken TCAS guidance** (traffic/resolution advisories with the "what to fly" vertical-speed instruction), ROW/ROP runway-overrun protection, and **OANS + Brake-To-Vacate (BTV)** with dry/wet stopping distance and rollout call-outs.
 - Honours the A380's own units in MSFSBA's read-outs: **metric altitude** (FCU MTRS — every altitude reads, and the FCU altitude input is entered, in metres) and **kg/lb weight**; the clock chronometer and elapsed-time counter; pitch/rudder trim; fuel pumps; and the audio control panel.
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
-- A complete screen-reader-first manual ships in `docs/a380-manual.html`.
+- A complete screen-reader-first manual ships in the `Guides` folder (`Guides/a380-manual.html`).
 
 ## Discord
 Please join us on discord for support or to hang out with us:

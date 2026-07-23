@@ -7,7 +7,7 @@ Application Navigation:
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 For step-by-step explanations of every feature (MCDU, flyPad, checklists, displays,
-flight planning, systems, a full-flight walkthrough), see docs/a380-manual.html.
+flight planning, systems, a full-flight walkthrough), see Guides/a380-manual.html.
 
 OUTPUT MODE - Press right bracket to activate
 
@@ -328,4 +328,4 @@ Automatic Announcements:
   - Ground speed callouts while on the ground
   Mute any of these from the Monitor Manager (Ctrl+M).
 
-Full explanations: docs/a380-manual.html.
+Full explanations: Guides/a380-manual.html.
