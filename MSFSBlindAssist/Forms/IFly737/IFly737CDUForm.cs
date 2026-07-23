@@ -287,7 +287,10 @@ public class IFly737CDUForm : Form
             lines.Add($"{pair + 1}: {data}");
         }
         lines.Add($"Scratchpad: {scratchpad}");
-        if (snap.CduExecLit(unit)) lines.Add("EXEC light on");
+        // No "EXEC light on" screen row: the light's edge-announce below is the
+        // whole interface, same as MSG — and the PMDG CDU forms render no light
+        // rows either (user ruling 2026-07-23). The light state stays in the
+        // change hash above so a light-only change still refreshes/announces.
 
         // Diff into the ListBox preserving the reading position.
         int selected = _display.SelectedIndex;
