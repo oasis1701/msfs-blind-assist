@@ -661,8 +661,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // Flap maneuvering speeds — CALCULATED from live gross weight (see
         // IFly737FlapSpeeds: FCTM additive schedule over a weight-derived VREF40;
         // the iFly exposes the speed-tape flap bugs nowhere, 2026-07-24
-        // investigation). The var doubles as the synchronous weight source for
-        // the output-mode Shift+1..6 hotkey readouts (GetCachedVariableValue).
+        // investigation). NOTE this var has NO continuous stream (IsAnnounced =
+        // false — neither batches nor a per-var subscription cover it): the panel
+        // display refresh requests it while FMS Data is shown, and the output-mode
+        // Shift+1..6 hotkeys must RequestVariable a fresh read per press (see
+        // AnnounceFlapManeuverSpeedAsync — a bare cache read was dead until the
+        // panel had been visited, live report 2026-07-24).
         _vars["IFLY_FLAP_SPEEDS"] = new SimConnect.SimVarDefinition
         {
             Name = "TOTAL WEIGHT",
@@ -859,23 +863,29 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// verified clicks to the nearest channel. The readback announces the ACTUAL
     /// landed frequency, so an unreachable in-between target degrades to an honest
     /// nearest-channel result.</summary>
-    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. Reads the
-    /// live gross weight from the IFLY_FLAP_SPEEDS Continuous var's cache
-    /// (synchronous — no async request round-trip) and speaks the calculated
-    /// speed; out-of-range/cold cache speaks unavailable, never a garbage number.</summary>
-    private bool AnnounceFlapManeuverSpeed(int scheduleIndex,
+    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. REQUESTS a
+    /// fresh gross-weight read on every press, then announces from the cache:
+    /// the IFLY_FLAP_SPEEDS var has NO continuous stream (IsAnnounced=false, so
+    /// neither the batches nor a per-var subscription cover it) — its cache only
+    /// fills when something requests it, which used to be only the FMS Data
+    /// panel's display refresh, leaving the hotkey speaking "unavailable" until
+    /// that panel had been visited (live report 2026-07-24) and stale afterwards.
+    /// async void on the UI thread (the TuneNavActiveAsync pattern); ~600 ms to
+    /// let the ONCE response land, same latency class as the W/F readout hotkeys.</summary>
+    private async void AnnounceFlapManeuverSpeedAsync(int scheduleIndex,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        simConnect.RequestVariable("IFLY_FLAP_SPEEDS", forceUpdate: true);
+        await Task.Delay(600);
         double? kg = simConnect.GetCachedVariableValue("IFLY_FLAP_SPEEDS");
         if (kg is not { } weight || !IFly737FlapSpeeds.IsPlausibleWeight(weight))
         {
             announcer.AnnounceImmediate("Flap speeds unavailable.");
-            return true;
+            return;
         }
         announcer.AnnounceImmediate(
             $"{IFly737FlapSpeeds.FlapName(scheduleIndex)} maneuver speed " +
             $"{IFly737FlapSpeeds.ManeuverSpeedKnots(weight, scheduleIndex)} knots, calculated");
-        return true;
     }
 
     private void SetRtpStandbyFrequency(int rtp, double target, ScreenReaderAnnouncer announcer)
@@ -1980,12 +1990,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             // because these approximate the FMC's speed-tape bugs, they are not
             // read from the aircraft (nothing exposes them — 2026-07-24).
             // ------------------------------------------------------------------
-            case HotkeyAction.ReadSpeedGD:  return AnnounceFlapManeuverSpeed(0, simConnect, announcer); // Shift+1: flaps up
-            case HotkeyAction.ReadSpeedS:   return AnnounceFlapManeuverSpeed(1, simConnect, announcer); // Shift+2: flaps 1
-            case HotkeyAction.ReadSpeedF:   return AnnounceFlapManeuverSpeed(2, simConnect, announcer); // Shift+3: flaps 5
-            case HotkeyAction.ReadSpeedVLS: return AnnounceFlapManeuverSpeed(3, simConnect, announcer); // Shift+4: flaps 10
-            case HotkeyAction.ReadSpeedVS:  return AnnounceFlapManeuverSpeed(4, simConnect, announcer); // Shift+5: flaps 15
-            case HotkeyAction.ReadSpeedVFE: return AnnounceFlapManeuverSpeed(5, simConnect, announcer); // Shift+6: flaps 25
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeedAsync(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeedAsync(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeedAsync(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeedAsync(3, simConnect, announcer); return true; // Shift+4: flaps 10
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeedAsync(4, simConnect, announcer); return true; // Shift+5: flaps 15
+            case HotkeyAction.ReadSpeedVFE: AnnounceFlapManeuverSpeedAsync(5, simConnect, announcer); return true; // Shift+6: flaps 25
 
             // ------------------------------------------------------------------
             // Flaps (L) — SDK flap-lever detent + the TE flap transit lights.
