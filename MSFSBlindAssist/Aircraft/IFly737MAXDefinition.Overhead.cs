@@ -50,29 +50,39 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.ELECTRICAL_IDG_2_DISCONNECT_SET,
             new Dictionary<double, string> { [1] = "Connected", [2] = "Disconnected" }, map: v => v - 1, value3: 1);
 
-        // Ground power: 3-position momentary (springs back to NEUTRAL); status and SET
-        // Value2 share the same 0:OFF 1:NEUTRAL 2:ON encoding.
-        // NOTE: special-cased in HandleUIVariableSet (with the four generator
-        // switches below) — SET pins a momentary switch without completing the
-        // press, so the handler sets the position, holds 300 ms, then releases to
-        // NEUTRAL like the real spring-loaded switch.
-        Sw(P, "Ground_Power_Switch_Status", "Ground Power",
-            IFlyKeyCommand.ELECTRICAL_GRD_PWR_SET, new[] { "Off", "Neutral", "On" });
+        // Ground power + ENG/APU generators: 3-position momentary switches (spring
+        // back to NEUTRAL). ENCODING TRAP (live-verified 2026-07-23): the _SET
+        // commands only MOVE THE ANIMATION — the electrical connect/trip logic
+        // never fires (GRD PWR SET was dead in BOTH directions with ground power
+        // available; the old SET-hold-release emulation clicked audibly but never
+        // connected). The momentary CLICK commands are the cockpit-clickspot path
+        // and work: Move DOWN = ON/connect, Move UP = OFF/trip, and the SDK
+        // springs the switch back to NEUTRAL by itself (verified on GRD PWR and
+        // APU GEN 1, both directions, watching TRANSFER_BUS_OFF / GEN_OFF_BUS).
+        // Because the resting position is always NEUTRAL, there is no meaningful
+        // switch state to show — expose stateless On/Off momentary button pairs,
+        // the exact PMDG 737 shape (ELEC_GrdPwrSw_On/_Off, ELEC_APUGenSw_n_On/_Off);
+        // connect state is announced by the GEN OFF BUS / TRANSFER BUS OFF /
+        // GRD POWER AVAILABLE annunciators below.
+        Btn(P, "BTN_GRD_PWR_ON", "Ground Power On", IFlyKeyCommand.ELECTRICAL_GRD_PWR_DOWN);
+        Btn(P, "BTN_GRD_PWR_OFF", "Ground Power Off", IFlyKeyCommand.ELECTRICAL_GRD_PWR_UP);
 
         // Bus transfer is GUARDED: Mode 1:OFF 2:AUTO; Value2 0:OFF 1:AUTO -> map v-1; Value3 1.
         SwD(P, "Bus_Transfer_Switches_Mode", "Bus Transfer", IFlyKeyCommand.ELECTRICAL_BUS_TRANSFER_SET,
             new Dictionary<double, string> { [1] = "Off", [2] = "Auto" }, map: v => v - 1, value3: 1);
 
-        // Engine + APU generators: 3-position momentary up/down switches (spring to NEUTRAL);
-        // GENERATOR_n_SET / APU_GENERATOR_n_SET Value2 = 0:OFF 1:Neutral 2:ON, same as the status.
-        Sw(P, "ENG_Generator_Switch_Status_0", "Engine 1 Generator",
-            IFlyKeyCommand.ELECTRICAL_GENERATOR_1_SET, new[] { "Off", "Neutral", "On" });
-        Sw(P, "ENG_Generator_Switch_Status_1", "Engine 2 Generator",
-            IFlyKeyCommand.ELECTRICAL_GENERATOR_2_SET, new[] { "Off", "Neutral", "On" });
-        Sw(P, "APU_Generator_Switch_Status_0", "APU Generator 1",
-            IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_1_SET, new[] { "Off", "Neutral", "On" });
-        Sw(P, "APU_Generator_Switch_Status_1", "APU Generator 2",
-            IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_2_SET, new[] { "Off", "Neutral", "On" });
+        // Engine + APU generator switches — same momentary click-command pairs as
+        // Ground Power above (the APU GEN SET happened to work in live testing,
+        // but the click path is the verified pilot path for the whole family and
+        // the GRD PWR SET proved the SETs can't be trusted switch-by-switch).
+        Btn(P, "BTN_GEN_1_ON", "Generator 1 On", IFlyKeyCommand.ELECTRICAL_GENERATOR_1_DOWN);
+        Btn(P, "BTN_GEN_1_OFF", "Generator 1 Off", IFlyKeyCommand.ELECTRICAL_GENERATOR_1_UP);
+        Btn(P, "BTN_GEN_2_ON", "Generator 2 On", IFlyKeyCommand.ELECTRICAL_GENERATOR_2_DOWN);
+        Btn(P, "BTN_GEN_2_OFF", "Generator 2 Off", IFlyKeyCommand.ELECTRICAL_GENERATOR_2_UP);
+        Btn(P, "BTN_APU_GEN_1_ON", "APU Generator 1 On", IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_1_DOWN);
+        Btn(P, "BTN_APU_GEN_1_OFF", "APU Generator 1 Off", IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_1_UP);
+        Btn(P, "BTN_APU_GEN_2_ON", "APU Generator 2 On", IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_2_DOWN);
+        Btn(P, "BTN_APU_GEN_2_OFF", "APU Generator 2 Off", IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_2_UP);
 
         // Meters selectors (status and SET Value2 encodings match).
         Sw(P, "DC_Meters_Selector_Status", "DC Meters Selector", IFlyKeyCommand.ELECTRICAL_DC_METER_SET,

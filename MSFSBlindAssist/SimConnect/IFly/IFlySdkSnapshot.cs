@@ -201,6 +201,21 @@ public sealed class IFlySdkSnapshot
         ($"{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1000_Status))}{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_100_Status))}" +
          $"{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_10_Status))}{XpdrFuelDigit(ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1_Status))}").Trim();
 
+    /// <summary>Number of FILLED digit cells in the transponder code window (0-4).
+    /// During keypad entry the window fills left to right, so 1-3 means a PARTIAL
+    /// entry in progress and 4 means a complete code (or the idle committed code —
+    /// the panel shows the same four cells for both). Cells read 10 (blank) when
+    /// not yet keyed or the panel is unpowered (live-verified 2026-07-23).</summary>
+    public int TransponderCodeDigitCount()
+    {
+        int n = 0;
+        if (ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1000_Status) <= 9) n++;
+        if (ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_100_Status) <= 9) n++;
+        if (ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_10_Status) <= 9) n++;
+        if (ByteAt(IFlySdkOffsets.Transponder_Windows_Digital_1_Status) <= 9) n++;
+        return n;
+    }
+
     /// <summary>Fuel quantity indicator (tank: 0 = left, 1 = right, 2 = center), digits only.</summary>
     public string FuelQuantityText(int tank)
     {

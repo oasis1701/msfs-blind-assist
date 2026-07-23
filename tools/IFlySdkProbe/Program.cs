@@ -107,6 +107,84 @@ switch (mode)
             Thread.Sleep(1000);
         }
     }
+    case "get":
+    {
+        // get <substring> — dump every field whose name contains the substring
+        // (case-insensitive), e.g. `get Ground_Power` or `get XPDR`.
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: get <field-name-substring>");
+            return;
+        }
+        var data = Read();
+        if (data == null) return;
+        foreach (var f in IFlySdkFields.All)
+        {
+            if (!f.Name.Contains(args[1], StringComparison.OrdinalIgnoreCase)) continue;
+            for (int i = 0; i < f.Count; i++)
+            {
+                int off = f.Offset + i * f.Stride;
+                double v = f.Kind switch
+                {
+                    'I' => BitConverter.ToInt32(data, off),
+                    'D' => BitConverter.ToDouble(data, off),
+                    _ => data[off],
+                };
+                Console.WriteLine($"{(f.Count > 1 ? $"{f.Name}_{i}" : f.Name)} = {v}");
+            }
+        }
+        break;
+    }
+    case "xpdr":
+    {
+        // xpdr <digits> [delayMs] [--noclr] — replay the app's squawk-entry key
+        // sequence in-process (precise pacing) and dump the transponder window +
+        // entry progression after every keystroke.
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: xpdr <digits> [delayMs] [--noclr]");
+            return;
+        }
+        string digits = args[1];
+        int delay = args.Length > 2 && int.TryParse(args[2], out int d) ? d : 120;
+        bool noClr = args.Contains("--noclr");
+        int clrCount = 1;
+        int clrIdx = Array.IndexOf(args, "--clr");
+        if (clrIdx >= 0 && clrIdx + 1 < args.Length) clrCount = int.Parse(args[clrIdx + 1]);
+
+        string Window()
+        {
+            var data = Read();
+            if (data == null) return "<no shm>";
+            var s = new IFlySdkSnapshot(data);
+            // Raw per-digit codes (1000/100/10/1 windows) alongside the trimmed text —
+            // Trim() hides blank positions, which matters when diagnosing entry order.
+            return $"'{s.TransponderCodeText()}' raw=[{data[IFlySdkOffsets.Transponder_Windows_Digital_1000_Status]},{data[IFlySdkOffsets.Transponder_Windows_Digital_100_Status]},{data[IFlySdkOffsets.Transponder_Windows_Digital_10_Status]},{data[IFlySdkOffsets.Transponder_Windows_Digital_1_Status]}]";
+        }
+
+        Console.WriteLine($"start: window='{Window()}'");
+        if (!noClr)
+        {
+            for (int i = 0; i < clrCount; i++)
+            {
+                if (i > 0) Thread.Sleep(delay);
+                SendIFly(IFlyKeyCommand.FMS_XPNDR_KEYPAD_CLR);
+                Console.WriteLine($"after CLR #{i + 1}: window='{Window()}'");
+            }
+        }
+        foreach (char c in digits)
+        {
+            Thread.Sleep(delay);
+            SendIFly(IFlyKeyCommand.FMS_XPNDR_KEYPAD_0 + (c - '0'));
+            Console.WriteLine($"after {c}: window='{Window()}'");
+        }
+        for (int t = 0; t < 8; t++)
+        {
+            Thread.Sleep(500);
+            Console.WriteLine($"+{(t + 1) * 500}ms: window='{Window()}'");
+        }
+        break;
+    }
     case "send":
     {
         if (args.Length < 2 || !Enum.TryParse<IFlyKeyCommand>(args[1], out var cmd))
@@ -138,8 +216,25 @@ switch (mode)
         break;
     }
     default:
-        Console.WriteLine("Modes: dump | cdu | watch | send <COMMAND> [v2] [v3]");
+        Console.WriteLine("Modes: dump | cdu | watch | get <name> | xpdr <digits> [delayMs] [--noclr] | send <COMMAND> [v2] [v3]");
         break;
+}
+
+static bool SendIFly(IFlyKeyCommand cmd, double v2 = 0, double v3 = 0)
+{
+    var hwnd = Program.FindWindowEx(IntPtr.Zero, IntPtr.Zero, null, "iFly Plugin - MSFS2024");
+    if (hwnd == IntPtr.Zero) hwnd = Program.FindWindowEx(IntPtr.Zero, IntPtr.Zero, null, "iFly Plugin");
+    if (hwnd == IntPtr.Zero) { Console.WriteLine("iFly plugin window not found."); return false; }
+    uint msgId = Program.RegisterWindowMessage("iFly737MAX_MSG_GAU");
+    var payload = new IFlyMessage { Command = (int)cmd, Value1 = 1, Value2 = v2, Value3 = v3 };
+    int size = Marshal.SizeOf<IFlyMessage>();
+    IntPtr buf = Marshal.AllocHGlobal(size + 2);
+    Marshal.StructureToPtr(payload, buf, false);
+    Marshal.WriteInt16(buf, size, 0);
+    var cds = new COPYDATASTRUCT { dwData = (IntPtr)msgId, cbData = size + 2, lpData = buf };
+    var ok = Program.SendMessageTimeout(hwnd, 0x004A, IntPtr.Zero, ref cds, 0x0002, 2000, out _);
+    Marshal.FreeHGlobal(buf);
+    return ok != IntPtr.Zero;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]

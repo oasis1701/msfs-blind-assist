@@ -115,6 +115,31 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
         };
+
+        // COM1/COM2 active + standby — the iFly keeps the stock COM radios in sync
+        // with its RTP panels (live-verified 2026-07-23: the RTP windows and the
+        // stock vars track exactly, and a stock-event write is overridden straight
+        // back by the iFly, i.e. the panel is authoritative and mirrors OUT to
+        // these vars). Announced on background change with the PMDG 737 wording
+        // ("COM1 active 124.850") — baseline-first + micro-delta dedup in
+        // ProcessSimVarUpdate, quiet while app-driven RTP tuning steps through
+        // intermediate channels (_comAnnounceQuietUntilTicks).
+        void ComVar(string key, string simVar, string display)
+        {
+            _vars[key] = new SimConnect.SimVarDefinition
+            {
+                Name = simVar,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            };
+        }
+        ComVar("COM1_ACTIVE_FREQ", "COM ACTIVE FREQUENCY:1", "COM1 Active");
+        ComVar("COM1_STANDBY_FREQ", "COM STANDBY FREQUENCY:1", "COM1 Standby");
+        ComVar("COM2_ACTIVE_FREQ", "COM ACTIVE FREQUENCY:2", "COM2 Active");
+        ComVar("COM2_STANDBY_FREQ", "COM STANDBY FREQUENCY:2", "COM2 Standby");
     }
 
     private List<string> PanelList(string panel) =>
@@ -601,10 +626,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         EnsureRegistered();
 
-        // Squawk code: no absolute SET command — keyed digit by digit.
+        // Squawk code: no absolute SET command — keyed digit by digit by replaying
+        // the cockpit keypad clickspots (the SDK keypad clicks cannot commit an
+        // entry — see SetSquawkCodeAsync).
         if (varKey == "XPDR_CODE_SET")
         {
-            SetSquawkCode(value, announcer);
+            SetSquawkCodeAsync(value, simConnect, announcer);
             return true;
         }
 
@@ -664,30 +691,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // 3-position MOMENTARY spring-to-NEUTRAL switches (GRD PWR + ENG/APU
-        // generators): a bare SET pins the switch at ON/OFF — the animation moves
-        // but the press-release cycle the aircraft logic keys on never completes
-        // (live report 2026-07: GRD PWR "goes to ON but nothing happens", ground
-        // power never connected). Emulate the pilot's click instead: SET to the
-        // chosen position, hold through several sim frames, release to NEUTRAL.
-        if (varKey is "Ground_Power_Switch_Status"
-            or "ENG_Generator_Switch_Status_0" or "ENG_Generator_Switch_Status_1"
-            or "APU_Generator_Switch_Status_0" or "APU_Generator_Switch_Status_1")
-        {
-            var momentaryCmd = _writes[varKey].Command;
-            if (!Sdk.SendCommand(momentaryCmd, value))
-            {
-                announcer.AnnounceImmediate("iFly plugin not responding.");
-                return true;
-            }
-            if ((int)Math.Round(value) != 1)
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(300);           // hold at ON/OFF briefly
-                    Sdk.SendCommand(momentaryCmd, 1); // release — the real switch springs back
-                });
-            return true;
-        }
+        // NOTE: the GRD PWR / ENG-APU generator momentary switches are NOT special-
+        // cased here any more. Their _SET commands only move the animation — the
+        // electrical logic never fires (live-verified 2026-07-23) — so they are
+        // registered as momentary click-command button pairs in RegisterElectrical
+        // and go through the generic button dispatch below.
 
         if (_writes.TryGetValue(varKey, out var w))
         {
@@ -736,6 +744,28 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         return false;
     }
 
+    /// <summary>Ticks (Environment.TickCount64) until which background COM1/COM2
+    /// active/standby announcements stay quiet. App-driven RTP tuning steps the
+    /// standby through many intermediate channels — each one changes the stock
+    /// COM SimVar, and announcing every click would be noise on top of the final
+    /// "RTP n standby ..." readback. Refreshed after every click below; announce
+    /// baselines still update during the quiet window (see ProcessSimVarUpdate).</summary>
+    private long _comAnnounceQuietUntilTicks;
+
+    /// <summary>RTP standby tuning — steps the WHOLE/FRACT rotaries to the target.
+    ///
+    /// STEP-SIZE TRAP (live-verified 2026-07-23, resolves the old LIVE-VERIFY
+    /// note): the FRACT knob does NOT step uniform 25 kHz — with the sim's 8.33 kHz
+    /// spacing it walks the mixed channel-name table (display steps of 5 and
+    /// 10 kHz, e.g. 124.860 -> 124.865 -> 124.875), so a precomputed click count
+    /// lands on the wrong channel. The WHOLE knob is a uniform 1 MHz per click
+    /// (live-verified both directions). So: burst the whole-MHz clicks, then walk
+    /// the fraction with measured verify rounds — each burst is sized against the
+    /// LARGEST step the knob could take (25 kHz mode), which can only undershoot,
+    /// never overshoot; re-read the display between rounds and finish with single
+    /// verified clicks to the nearest channel. The readback announces the ACTUAL
+    /// landed frequency, so an unreachable in-between target degrades to an honest
+    /// nearest-channel result.</summary>
     private void SetRtpStandbyFrequency(int rtp, double target, ScreenReaderAnnouncer announcer)
     {
         var snap = Sdk.Snapshot;
@@ -749,45 +779,84 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             announcer.AnnounceImmediate("Enter a VHF frequency between 118 and 136.975.");
             return;
         }
-        string curText = snap.RtpText(rtp - 1, rightSide: true);
-        if (!double.TryParse(curText, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double current))
+
+        IFlyKeyCommand? Resolve(string suffix) =>
+            Enum.TryParse<IFlyKeyCommand>($"COMMUNICATION_RTP_{rtp}_{suffix}", out var c) ? c : null;
+        var wholeInc = Resolve("WHOLE_INC");
+        var wholeDec = Resolve("WHOLE_DEC");
+        var fractInc = Resolve("FRACT_INC");
+        var fractDec = Resolve("FRACT_DEC");
+        if (wholeInc == null || wholeDec == null || fractInc == null || fractDec == null) return;
+
+        double? Current()
+        {
+            string t = Sdk.Snapshot?.RtpText(rtp - 1, rightSide: true) ?? "";
+            return double.TryParse(t, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : null;
+        }
+
+        if (Current() is not { } start)
         {
             announcer.AnnounceImmediate("Standby frequency not readable. Is the radio powered?");
             return;
         }
 
-        // Whole-MHz steps (outer knob) + 25 kHz fraction steps (inner knob).
-        int wholeDelta = (int)Math.Floor(target) - (int)Math.Floor(current);
-        int fractDelta = (int)Math.Round((target - Math.Floor(target)) / 0.025)
-                       - (int)Math.Round((current - Math.Floor(current)) / 0.025);
-
-        bool ok = true;
-        IFlyKeyCommand? Resolve(string suffix) =>
-            Enum.TryParse<IFlyKeyCommand>($"COMMUNICATION_RTP_{rtp}_{suffix}", out var c) ? c : null;
-
-        var whole = Resolve(wholeDelta >= 0 ? "WHOLE_INC" : "WHOLE_DEC");
-        var fract = Resolve(fractDelta >= 0 ? "FRACT_INC" : "FRACT_DEC");
-        if (whole == null || fract == null) return;
-
         _ = Task.Run(async () =>
         {
-            for (int i = 0; i < Math.Abs(wholeDelta) && ok; i++)
+            const double Done = 0.0026;     // half the smallest display step (5 kHz), with margin
+            const double MaxStep = 0.026;   // largest possible fract step (25 kHz mode), with margin
+            void Quiet() => System.Threading.Interlocked.Exchange(
+                ref _comAnnounceQuietUntilTicks, Environment.TickCount64 + 2000);
+
+            bool ok = true;
+            async Task<bool> Click(IFlyKeyCommand cmd)
             {
-                ok = Sdk.SendCommand(whole.Value);
+                Quiet();
+                ok = Sdk.SendCommand(cmd);
                 await Task.Delay(40);
+                return ok;
             }
-            for (int i = 0; i < Math.Abs(fractDelta) && ok; i++)
+
+            // Whole-MHz phase: uniform 1 MHz per click — burst, then re-verify once
+            // (the knob may clamp at the band edge).
+            for (int round = 0; round < 2 && ok; round++)
             {
-                ok = Sdk.SendCommand(fract.Value);
-                await Task.Delay(40);
+                if (Current() is not { } cur) break;
+                int wholeDelta = (int)Math.Floor(target) - (int)Math.Floor(cur);
+                if (wholeDelta == 0) break;
+                var cmd = wholeDelta > 0 ? wholeInc.Value : wholeDec.Value;
+                for (int i = 0; i < Math.Abs(wholeDelta) && ok; i++) await Click(cmd);
+                await Task.Delay(600); // let the 250 ms poll see the result
             }
+
+            // Fraction phase: measured rounds. Undershoot-sized bursts converge from
+            // any distance; the endgame is single verified clicks, stopping at the
+            // nearest channel when a click crosses the target.
+            for (int round = 0; round < 24 && ok; round++)
+            {
+                if (Current() is not { } cur) break;
+                double delta = target - cur;
+                if (Math.Abs(delta) < Done) break;
+                int burst = Math.Max(1, (int)Math.Floor(Math.Abs(delta) / MaxStep));
+                var cmd = delta > 0 ? fractInc.Value : fractDec.Value;
+                for (int i = 0; i < burst && ok; i++) await Click(cmd);
+                await Task.Delay(500); // poll refresh before the next measurement
+                if (Current() is not { } after || after == cur) break; // knob not moving — bail honestly
+                if (burst == 1 && Math.Sign(target - after) != Math.Sign(delta)
+                    && Math.Abs(target - after) >= Math.Abs(delta))
+                {
+                    await Click(delta > 0 ? fractDec.Value : fractInc.Value); // stepped past — nearest was behind
+                    await Task.Delay(500);
+                    break;
+                }
+            }
+
             if (!ok)
             {
                 Sdk.RunOnUi(() => announcer.AnnounceImmediate("iFly plugin not responding."));
                 return;
             }
-            await Task.Delay(600); // let the poll pick up the new display
+            await Task.Delay(600); // let the poll pick up the final display
             string result = Sdk.Snapshot?.RtpText(rtp - 1, rightSide: true) ?? "";
             Sdk.RunOnUi(() => announcer.AnnounceImmediate(result.Length > 0
                 ? $"RTP {rtp} standby {result}"
@@ -1044,7 +1113,35 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         return false;
     }
 
-    private void SetSquawkCode(double value, ScreenReaderAnnouncer announcer)
+    /// <summary>Squawk entry — replays the cockpit ATC-panel keypad clickspots.
+    ///
+    /// TRANSPORT TRAP (live-verified 2026-07-23): the SDK's FMS_XPNDR_KEYPAD_*
+    /// WM_COPYDATA clicks are HALF-clicks — each appends its digit to the code
+    /// window, but the commit edge never fires, so a fresh 4-digit entry keyed via
+    /// the SDK NEVER becomes the transponder code. Worse, KEYPAD_CLR is a BACKSPACE
+    /// (not clear-all): the old CLR+4-digits sequence backspaced the committed code
+    /// into an edit ("7000" -> "700"), let the first keyed digit refill and COMMIT a
+    /// garbage code ("7001"), and stranded the remaining digits as a dead partial —
+    /// the reported "squawk sets a completely different value" bug. The cockpit
+    /// clickspots instead write press/release trigger pairs to
+    /// L:VC_Navigation_trigger_VAL (keypad digit d: press 387+2d, release 388+2d;
+    /// CLR 403/404 — from iFly737Max_INTERIOR.xml), and THAT path commits the code
+    /// the moment the 4th digit lands (verified against both the panel window and
+    /// the stock TRANSPONDER CODE:1, twice, incl. repeated digits). Same
+    /// clickspot-replay exception to the no-L:var-writes rule as
+    /// TuneNavActiveAsync's transfer fallback and the autopilot window's engage
+    /// fallback.
+    ///
+    /// Window state machine (live-mapped): digits fill LEFT TO RIGHT; a digit
+    /// pressed on a FULL window starts a fresh entry; CLR backspaces one digit,
+    /// except on a 1-digit entry where it CANCELS back to a full window. So any
+    /// stale partial entry is first normalized with CLR clicks until the window is
+    /// full, then the four digits are keyed — the code commits on the fourth. The
+    /// confirmation reads back the ACTUAL landed window, never an assumed success.
+    /// async void on the UI thread so every SimConnect call stays on the UI thread
+    /// (the TuneNavActiveAsync pattern).</summary>
+    private async void SetSquawkCodeAsync(
+        double value, SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         int code = (int)Math.Round(value);
         string digits = code.ToString("D4");
@@ -1053,18 +1150,55 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             announcer.AnnounceImmediate("Enter a four digit squawk code using digits 0 to 7.");
             return;
         }
-        // Clear any partial entry, then key the four digits. The keypad commands are
-        // sequential in the enum: KEYPAD_0..KEYPAD_7.
-        Sdk.SendCommand(IFlyKeyCommand.FMS_XPNDR_KEYPAD_CLR);
-        _ = Task.Run(async () =>
+        var snap = Sdk.Snapshot;
+        if (snap == null || !snap.IsRunning)
         {
-            foreach (char d in digits)
-            {
-                await Task.Delay(120); // pace consecutive keypad presses
-                Sdk.SendCommand(IFlyKeyCommand.FMS_XPNDR_KEYPAD_0 + (d - '0'));
-            }
-            Sdk.RunOnUi(() => announcer.AnnounceImmediate($"Squawk {digits}"));
-        });
+            announcer.AnnounceImmediate("iFly 737 not detected.");
+            return;
+        }
+        if (snap.TransponderCodeDigitCount() == 0)
+        {
+            announcer.AnnounceImmediate("Transponder code window is blank. Is the panel powered?");
+            return;
+        }
+
+        async Task ClickAsync(int pressTrigger)
+        {
+            simConnect.SetLVar("VC_Navigation_trigger_VAL", pressTrigger);
+            await Task.Delay(80);
+            simConnect.SetLVar("VC_Navigation_trigger_VAL", pressTrigger + 1);
+            await Task.Delay(120);
+        }
+
+        // Cancel any stale partial entry: CLR until the window is full again (each
+        // click backspaces a 2-3 digit partial one digit; on a 1-digit partial it
+        // cancels back to the full window). Bounded loop, re-checked against the
+        // live snapshot (the SDK poll refreshes every 250 ms).
+        for (int guard = 0; guard < 6 && (Sdk.Snapshot?.TransponderCodeDigitCount() ?? 0) < 4; guard++)
+        {
+            await ClickAsync(403);
+            await Task.Delay(400);
+        }
+        if ((Sdk.Snapshot?.TransponderCodeDigitCount() ?? 0) < 4)
+        {
+            announcer.AnnounceImmediate("Transponder entry did not reset. Try again.");
+            return;
+        }
+
+        // Prime the background SYN_XPDR_CODE announce dedup with the expected text
+        // so the code-change announcement and this confirmation don't double-speak.
+        _lastWindowAnnounce["SYN_XPDR_CODE"] = $"Squawk {digits}";
+
+        foreach (char d in digits)
+            await ClickAsync(387 + 2 * (d - '0'));
+
+        await Task.Delay(700); // commit on the 4th digit + the SDK poll refresh
+        string result = Sdk.Snapshot?.TransponderCodeText() ?? "";
+        if (result.Length == 4)
+            _lastWindowAnnounce["SYN_XPDR_CODE"] = $"Squawk {result}";
+        announcer.AnnounceImmediate(result.Length == 4
+            ? $"Squawk {result}"
+            : "Squawk entry did not complete.");
     }
 
     // =========================================================================
@@ -1074,6 +1208,10 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private readonly Dictionary<string, bool> _litState = new();
     private readonly Dictionary<string, string> _lastWindowAnnounce = new();
     private double _lastAnnouncedAltimeter = double.NaN;
+
+    // COM1/COM2 active/standby announce baselines (key = var key). Absent key =
+    // baseline not yet seen; the first read after launch/reconnect stays silent.
+    private readonly Dictionary<string, double> _lastComFreq = new();
 
     // Speedbrake lever announce state (PR #163, minor 9). null initial means the
     // first post-launch event announces (announceInitialChange semantics for this
@@ -1357,6 +1495,32 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.Announce("Altimeter standard");
             else
                 announcer.Announce($"Altimeter: {(int)Math.Round(value * 33.8639)}, {value:0.00}");
+            return true;
+        }
+
+        // COM1/COM2 active + standby (stock vars — see RegisterStockVars). PMDG 737
+        // announce shape verbatim: suppress the initial baseline, skip micro-deltas,
+        // then "COM1 active 124.850". Quiet while app-driven RTP tuning walks
+        // intermediate channels — the baseline still updates during the quiet
+        // window, so the walk's landing value never announces on top of the
+        // "RTP n standby ..." readback that confirms it.
+        if (varName is "COM1_ACTIVE_FREQ" or "COM1_STANDBY_FREQ"
+                    or "COM2_ACTIVE_FREQ" or "COM2_STANDBY_FREQ")
+        {
+            bool had = _lastComFreq.TryGetValue(varName, out double lastFreq);
+            if (had && Math.Abs(value - lastFreq) < 0.0001) return true;
+            _lastComFreq[varName] = value;
+            if (!had) return true; // initial baseline — silent
+            if (Environment.TickCount64 < System.Threading.Interlocked.Read(ref _comAnnounceQuietUntilTicks))
+                return true;
+            string comLabel = varName switch
+            {
+                "COM1_ACTIVE_FREQ" => "COM1 active",
+                "COM1_STANDBY_FREQ" => "COM1 standby",
+                "COM2_ACTIVE_FREQ" => "COM2 active",
+                _ => "COM2 standby",
+            };
+            announcer.Announce($"{comLabel} {value:F3}");
             return true;
         }
 

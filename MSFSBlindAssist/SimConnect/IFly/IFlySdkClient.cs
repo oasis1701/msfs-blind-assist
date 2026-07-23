@@ -299,7 +299,12 @@ public class IFlySdkClient : IDisposable
         Set("SYN_MCP_VS", ParseNum(snap.McpVerticalSpeedText()));
         Set("SYN_MCP_COURSE_1", ParseNum(snap.McpCourseText(0)));
         Set("SYN_MCP_COURSE_2", ParseNum(snap.McpCourseText(1)));
-        Set("SYN_XPDR_CODE", ParseNum(snap.TransponderCodeText()));
+        // Squawk entry fills the window LEFT TO RIGHT one digit per keypress
+        // (live-verified 2026-07-23), so a partial 1-3 digit entry parses as a
+        // small number ("12__" -> 12) and would announce as a bogus "Squawk 0012".
+        // Only a COMPLETE 4-digit window carries a real code; partials stay blank.
+        Set("SYN_XPDR_CODE", snap.TransponderCodeDigitCount() == 4
+            ? ParseNum(snap.TransponderCodeText()) : SyntheticBlank);
         Set("SYN_FUEL_QTY_L", ParseNum(snap.FuelQuantityText(0)));
         Set("SYN_FUEL_QTY_R", ParseNum(snap.FuelQuantityText(1)));
         Set("SYN_FUEL_QTY_C", ParseNum(snap.FuelQuantityText(2)));
