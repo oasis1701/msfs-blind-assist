@@ -470,7 +470,7 @@ public partial class IFly737MAXDefinition
 
         // ACP_RVC_*_Switch_Status: 0-2 deselected (light off/dim/bright), 3-5
         // selected (light off/dim/bright) — same composite shape as the Cargo Fire
-        // arm switches and the engine start levers (RegisterFire/RegisterControlStand):
+        // arm switches and the engine start levers (RegisterFire/RegisterEnginesApu):
         // a base select/deselect bit with a light state folded on top. The *_SET
         // command's doc is the bare "...Switch - Set" (no Value2 detail beyond the
         // family name) — inferred by symmetry with those other confirmed-working
@@ -764,28 +764,9 @@ public partial class IFly737MAXDefinition
     {
         const string P = "Control Stand";
 
-        // Engine start levers: status 0-2 CUTOFF × fire light, 3-5 IDLE × fire light.
-        // ⚠ ENCODING TRAP: ENGAPU_ENG_n_START_LEVER_SET Value2 is 0 = IDLE, 1 = CUTOFF
-        // (INVERTED vs. the intuitive order) → map v >= 3 ? 0 : 1.
-        var startLeverStates = new Dictionary<double, string>
-        {
-            [0] = "Cutoff",
-            [1] = "Cutoff, fire light dim",
-            [2] = "Cutoff, fire light bright",
-            [3] = "Idle",
-            [4] = "Idle, fire light dim",
-            [5] = "Idle, fire light bright",
-        };
-        SwD(P, "Engine_Start_Lever_Status_0", "Engine 1 Start Lever",
-            IFlyKeyCommand.ENGAPU_ENG_1_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
-        SwD(P, "Engine_Start_Lever_Status_1", "Engine 2 Start Lever",
-            IFlyKeyCommand.ENGAPU_ENG_2_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
-
-        // Readback legitimately differs from the picked value (fire-light bit folded
-        // into the same 0-5 field) — suppress the post-set echo on the time window
-        // alone. (PR #163, minor 15.)
-        foreach (var k in new[] { "Engine_Start_Lever_Status_0", "Engine_Start_Lever_Status_1" })
-            _vars[k].UiEchoMatchesAnyValue = true;
+        // (The engine start levers moved to the "Engines and APU" panel —
+        // 2026-07-24 user request, PMDG 737 "Engines" panel parity; see
+        // RegisterEnginesApu for the levers and their inverted-SET encoding trap.)
 
         // FLTCTRL_FLAP_SET Value2 0-8 = lever detents UP..40 — matches FLAP_Status.
         // DisplayName "Flaps" gives the fleet-parity wording on the GENERIC combo

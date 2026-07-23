@@ -483,10 +483,38 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.ENGAPU_IGNITION_SELECT_SET, new[] { "Ignition Left", "Both", "Ignition Right" });
 
         // Engine start switches (0:GRD 1:OFF 2:CONT 3:FLT, SET Value2 matches).
+        // Each engine's START LEVER sits directly after its start switch
+        // (Start 1, Lever 1, Start 2, Lever 2) — the PMDG 737 "Engines" panel
+        // ordering; the levers moved here from the Control Stand panel
+        // 2026-07-24 by user request (PMDG parity — physically they live on the
+        // control stand, but the start flow belongs together).
+        //
+        // Start levers: status 0-2 CUTOFF × fire light, 3-5 IDLE × fire light.
+        // ⚠ ENCODING TRAP: ENGAPU_ENG_n_START_LEVER_SET Value2 is 0 = IDLE,
+        // 1 = CUTOFF (INVERTED vs. the intuitive order) → map v >= 3 ? 0 : 1.
+        var startLeverStates = new Dictionary<double, string>
+        {
+            [0] = "Cutoff",
+            [1] = "Cutoff, fire light dim",
+            [2] = "Cutoff, fire light bright",
+            [3] = "Idle",
+            [4] = "Idle, fire light dim",
+            [5] = "Idle, fire light bright",
+        };
         Sw(P, "Engine_Start_Switch_Status_0", "Engine 1 Start",
             IFlyKeyCommand.ENGAPU_ENG_1_START_SET, new[] { "Ground", "Off", "Continuous", "Flight" });
+        SwD(P, "Engine_Start_Lever_Status_0", "Engine 1 Start Lever",
+            IFlyKeyCommand.ENGAPU_ENG_1_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
         Sw(P, "Engine_Start_Switch_Status_1", "Engine 2 Start",
             IFlyKeyCommand.ENGAPU_ENG_2_START_SET, new[] { "Ground", "Off", "Continuous", "Flight" });
+        SwD(P, "Engine_Start_Lever_Status_1", "Engine 2 Start Lever",
+            IFlyKeyCommand.ENGAPU_ENG_2_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
+
+        // Readback legitimately differs from the picked value (fire-light bit folded
+        // into the same 0-5 field) — suppress the post-set echo on the time window
+        // alone. (PR #163, minor 15.)
+        foreach (var k in new[] { "Engine_Start_Lever_Status_0", "Engine_Start_Lever_Status_1" })
+            _vars[k].UiEchoMatchesAnyValue = true;
 
         // EEC switches: the status is a complex 0-11 encoding (switch OFF/ON x ON-light
         // off/dim/bright x guard open/closed); EEC_n_SET Value2 is just 0:ALTN 1:ON
@@ -542,7 +570,7 @@ public partial class IFly737MAXDefinition
         Annun(P, "ENGINE_CONTROL_Light_Status_0", "Engine 1 Control light");
         Annun(P, "ENGINE_CONTROL_Light_Status_1", "Engine 2 Control light");
 
-        // Skipped (Control Stand panel, registered elsewhere): Engine_Start_Lever_Status[2],
+        // Skipped (Control Stand panel scope, registered elsewhere or deliberately not):
         // Throttle_Lever_1/2_Position, Reverse_Lever_1/2_Position, Reverse_Lever_1/2_locked.
     }
 }
