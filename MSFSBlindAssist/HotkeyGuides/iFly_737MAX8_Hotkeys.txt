@@ -124,9 +124,7 @@ FMC / CDU (Shift+M):
   Opens the accessible FMC window (same layout as the PMDG 737 CDU window).
   Left/Right CDU selectable. Arrow keys read the screen. Below the display
   is a Scratchpad field (Alt+S) — type there and press Enter to send — and
-  buttons for every page key plus Exec and CLR/DEL. Typing directly on the
-  display also enters scratchpad text (letters, digits, period, slash,
-  plus/minus, space).
+  buttons for every page key plus Exec and CLR/DEL.
   Ctrl+1 to Ctrl+6    Left line select keys 1-6
   Alt+1 to Alt+6      Right line select keys 1-6
   (F1-F6 / F7-F12 when the alternate LSK setting is on)

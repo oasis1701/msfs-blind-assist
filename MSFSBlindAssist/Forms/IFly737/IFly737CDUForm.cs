@@ -16,7 +16,10 @@ namespace MSFSBlindAssist.Forms.IFly737;
 /// ListBox (row 0 = page title, rows 1-12 = six label/data pairs with data rows
 /// prefixed "n:", row 13 = scratchpad), a dedicated SCRATCHPAD TEXTBOX (type,
 /// Enter to send — Alt+S focuses it), and PAGE BUTTONS for every MAX CDU key
-/// including Exec and CLR/DEL. Typing directly in the display also works.
+/// including Exec and CLR/DEL. Text entry goes through the scratchpad box ONLY
+/// (type, then Enter commits — the PMDG-form behavior; direct display type-through
+/// was removed 2026-07-23 by user ruling: keys must never reach the CDU while
+/// the user navigates the display list or other controls).
 /// Ctrl+1-6 / Alt+1-6 are the left/right LSKs (F1-F12 in alternate mode);
 /// Alt-letter page chords match the PMDG form where the key exists (Alt+E EXEC,
 /// Alt+G LEGS, Alt+A DEP ARR, Alt+C CLR/DEL) with iFly-specific extras kept
@@ -98,7 +101,6 @@ public class IFly737CDUForm : Form
             IntegralHeight = false,
             AccessibleName = "FMC display",
         };
-        _display.KeyPress += Display_KeyPress;
         y += 290;
 
         _scratchpadInput = new TextBox
@@ -170,7 +172,7 @@ public class IFly737CDUForm : Form
         {
             Location = new Point(10, y),
             Size = new Size(565, 34),
-            Text = "Type in the scratchpad and press Enter, or type directly on the display. " +
+            Text = "Type in the scratchpad and press Enter to send. " +
                    "Ctrl+1-6 left keys, Alt+1-6 right keys, Alt+E EXEC, Alt+C CLR/DEL.",
             TabStop = false,
         };
@@ -448,16 +450,9 @@ public class IFly737CDUForm : Form
         _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(current.Length * KeyPumpSpacingMs + 500);
     }
 
-    private void Display_KeyPress(object? sender, KeyPressEventArgs e)
-    {
-        string? key = MapChar(e.KeyChar);
-        if (key != null)
-        {
-            _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(700);
-            SendKey(key);
-            e.Handled = true;
-        }
-    }
+    // NOTE: no Display_KeyPress type-through — text entry is scratchpad-box-only
+    // (PMDG-form parity, user ruling 2026-07-23): typed characters while the
+    // display list or any other control has focus must NOT reach the CDU.
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -576,10 +571,12 @@ public class IFly737CDUForm : Form
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 break;
-            // Backspace = CLR from ANYWHERE in the form (KeyPreview delivers it
-            // here first) — the only exception is while editing text in the
-            // scratchpad box, where Backspace must edit that text normally.
-            case Keys.Back when !(ActiveControl == _scratchpadInput && _scratchpadInput.Text.Length > 0):
+            // Backspace = CLR/DEL only while the DISPLAY is focused, or in the
+            // scratchpad box when it is empty (PMDG-form parity — a Backspace on
+            // the unit selector or a page button must not clear the scratchpad;
+            // while editing scratchpad text it edits that text normally).
+            case Keys.Back when ActiveControl == _display
+                             || (ActiveControl == _scratchpadInput && _scratchpadInput.Text.Length == 0):
                 ClearOrDelete();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
